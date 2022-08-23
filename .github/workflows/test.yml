@@ -1,0 +1,13 @@
+name: Test
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - wbfy
+      - renovate/**
+jobs:
+  test:
+    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main
+    with:
+      github_hosted_runner: true

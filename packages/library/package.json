@@ -1,0 +1,36 @@
+{
+  "name": "library",
+  "version": "0.0.0-semantically-released",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
+  "scripts": {
+    "cleanup": "yarn format && yarn lint-fix",
+    "format": "sort-package-json && yarn prettify",
+    "lint": "eslint --color \"./{src,__tests__,scripts}/**/*.{cjs,js,jsx,mjs,ts,tsx}\"",
+    "lint-fix": "yarn lint --fix",
+    "prettify": "prettier --color --write \"**/{.*/,}*.{cjs,css,htm,html,js,json,json5,jsx,md,mjs,scss,ts,tsx,vue,yaml,yml}\" \"!**/test-fixtures/**\"",
+    "typecheck": "tsc --noEmit --Pretty"
+  },
+  "prettier": "@willbooster/prettier-config",
+  "devDependencies": {
+    "@types/eslint": "^8",
+    "@types/micromatch": "^4",
+    "@types/prettier": "^2",
+    "@typescript-eslint/eslint-plugin": "5.34.0",
+    "@typescript-eslint/parser": "5.34.0",
+    "@willbooster/eslint-config-ts": "9.0.3",
+    "@willbooster/prettier-config": "9.0.1",
+    "eslint": "8.22.0",
+    "eslint-config-prettier": "8.5.0",
+    "eslint-import-resolver-typescript": "3.5.0",
+    "eslint-plugin-import": "2.26.0",
+    "eslint-plugin-sort-class-members": "1.14.1",
+    "eslint-plugin-sort-destructure-keys": "1.4.0",
+    "lint-staged": "13.0.3",
+    "micromatch": "4.0.5",
+    "prettier": "2.7.1",
+    "sort-package-json": "1.57.0",
+    "typescript": "4.7.4"
+  },
+  "packageManager": "yarn@4.0.0-rc.14"
+}

@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "alwaysStrict": true,
+    "esModuleInterop": true,
+    "importHelpers": false,
+    "module": "esnext",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "strict": true,
+    "target": "esnext"
+  },
+  "include": [
+    "src/**/*",
+    "__tests__/**/*",
+    "scripts/**/*",
+    "packages/*/src/**/*",
+    "packages/*/__tests__/**/*",
+    "packages/*/scripts/**/*",
+    "./node_modules/@types",
+    "./@types"
+  ]
+}
