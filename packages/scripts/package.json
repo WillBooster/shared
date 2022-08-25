@@ -3,6 +3,9 @@
   "version": "0.0.0-semantically-released",
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
+  "bin": {
+    "wb": "bin/index.cjs"
+  },
   "scripts": {
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify",
