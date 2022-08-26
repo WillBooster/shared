@@ -95,7 +95,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/eslint@npm:^8":
+"@types/eslint@npm:8.4.6":
   version: 8.4.6
   resolution: "@types/eslint@npm:8.4.6"
   dependencies:
@@ -287,7 +287,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster-shared/scripts@workspace:packages/scripts"
   dependencies:
-    "@types/eslint": ^8
+    "@types/eslint": 8.4.6
     "@types/micromatch": 4.0.2
     "@typescript-eslint/eslint-plugin": 5.35.1
     "@typescript-eslint/parser": 5.35.1
@@ -1705,7 +1705,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "library@workspace:packages/library"
   dependencies:
-    "@types/eslint": ^8
+    "@types/eslint": 8.4.6
     "@types/micromatch": 4.0.2
     "@types/prettier": 2.7.0
     "@typescript-eslint/eslint-plugin": 5.35.1
@@ -2665,7 +2665,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "willbooster-shared@workspace:."
   dependencies:
-    "@types/eslint": ^8
+    "@types/eslint": 8.4.6
     "@typescript-eslint/parser": 5.35.1
     "@willbooster/prettier-config": 9.1.0
     "@willbooster/renovate-config": 9.4.0

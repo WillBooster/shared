@@ -16,7 +16,7 @@
     "yargs": "17.5.1"
   },
   "devDependencies": {
-    "@types/eslint": "^8",
+    "@types/eslint": "8.4.6",
     "@types/micromatch": "4.0.2",
     "@typescript-eslint/eslint-plugin": "5.35.1",
     "@typescript-eslint/parser": "5.35.1",
