@@ -22,7 +22,7 @@
     "@typescript-eslint/parser": "5.35.1",
     "@willbooster/eslint-config-ts": "9.2.1",
     "@willbooster/prettier-config": "9.1.0",
-    "eslint": "8.22.0",
+    "eslint": "8.23.0",
     "eslint-config-prettier": "8.5.0",
     "eslint-import-resolver-typescript": "3.5.0",
     "eslint-plugin-import": "2.26.0",
@@ -34,5 +34,5 @@
     "sort-package-json": "1.57.0",
     "typescript": "4.8.2"
   },
-  "packageManager": "yarn@4.0.0-rc.14"
+  "packageManager": "yarn@4.0.0-rc.15"
 }

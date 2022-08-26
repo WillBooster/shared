@@ -23,7 +23,7 @@
     "@typescript-eslint/parser": "5.35.1",
     "@willbooster/prettier-config": "9.1.0",
     "@willbooster/renovate-config": "9.4.0",
-    "eslint": "8.22.0",
+    "eslint": "8.23.0",
     "husky": "8.0.1",
     "lint-staged": "13.0.3",
     "micromatch": "4.0.5",
