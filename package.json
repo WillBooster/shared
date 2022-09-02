@@ -20,7 +20,7 @@
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@types/eslint": "8.4.6",
-    "@typescript-eslint/parser": "5.35.1",
+    "@typescript-eslint/parser": "5.36.1",
     "@willbooster/prettier-config": "9.1.0",
     "@willbooster/renovate-config": "9.4.0",
     "eslint": "8.23.0",
