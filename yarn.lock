@@ -2046,7 +2046,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/babel__core@npm:^7":
+"@types/babel__core@npm:7.1.19":
   version: 7.1.19
   resolution: "@types/babel__core@npm:7.1.19"
   dependencies:
@@ -2068,7 +2068,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/babel__preset-env@npm:^7":
+"@types/babel__preset-env@npm:7.9.2":
   version: 7.9.2
   resolution: "@types/babel__preset-env@npm:7.9.2"
   checksum: 51515fb303fc4b105660d0a8bfcad0b7069ac4201a0ddf42abf57d2e2533f3fb11c02bb722732a9979e9edbb487c0a8a53e4d14d18744a1d04cc85ed8c43e61d
@@ -2101,7 +2101,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/eslint@npm:^8":
+"@types/eslint@npm:8.4.6":
   version: 8.4.6
   resolution: "@types/eslint@npm:8.4.6"
   dependencies:
@@ -2149,7 +2149,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/micromatch@npm:^4":
+"@types/micromatch@npm:4.0.2":
   version: 4.0.2
   resolution: "@types/micromatch@npm:4.0.2"
   dependencies:
@@ -2200,7 +2200,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/prettier@npm:^2":
+"@types/prettier@npm:2.7.0":
   version: 2.7.0
   resolution: "@types/prettier@npm:2.7.0"
   checksum: ee4924676c522c0fcd10c7e03b225f09b420f5e2113cd70663539e963028bc6df3afe48055595398afeadb4871d23843d877822e673ffc62db17f23e455e0f29
@@ -2417,11 +2417,11 @@ __metadata:
     "@rollup/plugin-babel": "npm:5.3.1"
     "@rollup/plugin-commonjs": "npm:22.0.2"
     "@rollup/plugin-node-resolve": "npm:14.0.1"
-    "@types/babel__core": "npm:^7"
-    "@types/babel__preset-env": "npm:^7"
-    "@types/eslint": "npm:^8"
-    "@types/micromatch": "npm:^4"
-    "@types/prettier": "npm:^2"
+    "@types/babel__core": "npm:7.1.19"
+    "@types/babel__preset-env": "npm:7.9.2"
+    "@types/eslint": "npm:8.4.6"
+    "@types/micromatch": "npm:4.0.2"
+    "@types/prettier": "npm:2.7.0"
     "@typescript-eslint/eslint-plugin": "npm:5.36.2"
     "@typescript-eslint/parser": "npm:5.36.2"
     "@willbooster/babel-configs": "npm:1.0.0"
@@ -2451,8 +2451,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-scripts@workspace:packages/scripts"
   dependencies:
-    "@types/eslint": "npm:^8"
-    "@types/micromatch": "npm:^4"
+    "@types/eslint": "npm:8.4.6"
+    "@types/micromatch": "npm:4.0.2"
     "@types/yargs": "npm:17.0.12"
     "@typescript-eslint/eslint-plugin": "npm:5.36.2"
     "@typescript-eslint/parser": "npm:5.36.2"
@@ -8750,7 +8750,7 @@ __metadata:
   resolution: "willbooster-shared@workspace:."
   dependencies:
     "@qiwi/multi-semantic-release": "npm:6.5.1"
-    "@types/eslint": "npm:^8"
+    "@types/eslint": "npm:8.4.6"
     "@typescript-eslint/parser": "npm:5.36.2"
     "@willbooster/prettier-config": "npm:9.1.0"
     "@willbooster/renovate-config": "npm:9.4.0"
