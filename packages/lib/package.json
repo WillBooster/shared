@@ -1,9 +1,15 @@
 {
-  "name": "library",
+  "name": "@willbooster/shared-lib",
   "version": "0.0.0-semantically-released",
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
+  "module": "dist/index.js",
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "scripts": {
+    "build": "rm -Rf dist; rollup -c --environment NODE_ENV:production",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify",
     "lint": "eslint --color \"./{src,__tests__,scripts}/**/*.{cjs,js,jsx,mjs,ts,tsx}\"",
@@ -13,24 +19,43 @@
   },
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
+    "@babel/core": "7.19.0",
+    "@babel/plugin-proposal-class-properties": "7.18.6",
+    "@babel/plugin-proposal-numeric-separator": "7.18.6",
+    "@babel/preset-env": "7.19.0",
+    "@babel/preset-typescript": "7.18.6",
+    "@rollup/plugin-babel": "5.3.1",
+    "@rollup/plugin-commonjs": "22.0.2",
+    "@rollup/plugin-node-resolve": "14.0.1",
+    "@types/babel__core": "7.1.19",
+    "@types/babel__preset-env": "7.9.2",
     "@types/eslint": "8.4.6",
     "@types/micromatch": "4.0.2",
     "@types/prettier": "2.7.0",
     "@typescript-eslint/eslint-plugin": "5.36.2",
     "@typescript-eslint/parser": "5.36.2",
-    "@willbooster/eslint-config-ts": "9.2.1",
+    "@willbooster/babel-configs": "1.0.0",
+    "@willbooster/eslint-config-ts": "10.0.0",
     "@willbooster/prettier-config": "9.1.0",
-    "eslint": "8.23.0",
+    "babel-plugin-transform-remove-console": "6.9.4",
+    "eslint": "8.23.1",
     "eslint-config-prettier": "8.5.0",
     "eslint-import-resolver-typescript": "3.5.1",
     "eslint-plugin-import": "2.26.0",
     "eslint-plugin-sort-class-members": "1.15.2",
     "eslint-plugin-sort-destructure-keys": "1.4.0",
+    "eslint-plugin-unicorn": "43.0.2",
     "lint-staged": "13.0.3",
     "micromatch": "4.0.5",
     "prettier": "2.7.1",
+    "rollup": "2.79.0",
+    "rollup-plugin-analyzer": "4.0.0",
+    "rollup-plugin-node-externals": "5.0.0",
+    "rollup-plugin-terser": "7.0.2",
     "sort-package-json": "1.57.0",
     "typescript": "4.8.3"
   },
-  "packageManager": "yarn@4.0.0-rc.18"
+  "publishConfig": {
+    "access": "public"
+  }
 }
