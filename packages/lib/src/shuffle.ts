@@ -1,7 +1,7 @@
 export function shuffle<T>(array: T[]): T[] {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+  for (let index = array.length - 1; index > 0; index--) {
+    const index_ = Math.floor(Math.random() * (index + 1));
+    [array[index], array[index_]] = [array[index_], array[index]];
   }
   return array;
 }

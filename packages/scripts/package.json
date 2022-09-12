@@ -21,23 +21,27 @@
     "@types/eslint": "^8",
     "@types/micromatch": "^4",
     "@types/yargs": "17.0.12",
-    "@typescript-eslint/eslint-plugin": "5.34.0",
-    "@typescript-eslint/parser": "5.34.0",
-    "@willbooster/eslint-config-ts": "9.0.3",
-    "@willbooster/prettier-config": "9.0.1",
+    "@typescript-eslint/eslint-plugin": "5.36.2",
+    "@typescript-eslint/parser": "5.36.2",
+    "@willbooster/eslint-config-ts": "10.0.0",
+    "@willbooster/prettier-config": "9.1.0",
     "esbuild": "0.15.7",
-    "eslint": "8.22.0",
+    "eslint": "8.23.1",
     "eslint-config-prettier": "8.5.0",
-    "eslint-import-resolver-typescript": "3.5.0",
+    "eslint-import-resolver-typescript": "3.5.1",
     "eslint-plugin-import": "2.26.0",
-    "eslint-plugin-sort-class-members": "1.14.1",
+    "eslint-plugin-sort-class-members": "1.15.2",
     "eslint-plugin-sort-destructure-keys": "1.4.0",
+    "eslint-plugin-unicorn": "43.0.2",
     "lint-staged": "13.0.3",
     "micromatch": "4.0.5",
     "prettier": "2.7.1",
     "sort-package-json": "1.57.0",
-    "typescript": "4.7.4",
+    "typescript": "4.8.3",
     "yargs": "17.5.1"
   },
-  "packageManager": "yarn@4.0.0-rc.14"
+  "packageManager": "yarn@4.0.0-rc.14",
+  "publishConfig": {
+    "access": "public"
+  }
 }
