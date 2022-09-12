@@ -1,5 +1,5 @@
 {
-  "name": "@willbooster-shared/scripts",
+  "name": "@willbooster/shared-scripts",
   "version": "0.0.0-semantically-released",
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
@@ -7,24 +7,25 @@
     "wb": "bin/index.cjs"
   },
   "scripts": {
+    "build": "node esbuild.js",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify",
     "lint": "eslint --color \"./{src,__tests__,scripts}/**/*.{cjs,js,jsx,mjs,ts,tsx}\"",
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --color --write \"**/{.*/,}*.{cjs,css,htm,html,js,json,json5,jsx,md,mjs,scss,ts,tsx,vue,yaml,yml}\" \"!**/test-fixtures/**\"",
+    "start": "yarn build && yarn wb",
     "typecheck": "tsc --noEmit --Pretty"
   },
   "prettier": "@willbooster/prettier-config",
-  "dependencies": {
-    "yargs": "17.5.1"
-  },
   "devDependencies": {
     "@types/eslint": "^8",
     "@types/micromatch": "^4",
+    "@types/yargs": "17.0.12",
     "@typescript-eslint/eslint-plugin": "5.34.0",
     "@typescript-eslint/parser": "5.34.0",
     "@willbooster/eslint-config-ts": "9.0.3",
     "@willbooster/prettier-config": "9.0.1",
+    "esbuild": "0.15.7",
     "eslint": "8.22.0",
     "eslint-config-prettier": "8.5.0",
     "eslint-import-resolver-typescript": "3.5.0",
@@ -35,7 +36,8 @@
     "micromatch": "4.0.5",
     "prettier": "2.7.1",
     "sort-package-json": "1.57.0",
-    "typescript": "4.7.4"
+    "typescript": "4.7.4",
+    "yargs": "17.5.1"
   },
   "packageManager": "yarn@4.0.0-rc.14"
 }
