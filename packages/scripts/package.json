@@ -6,6 +6,10 @@
   "bin": {
     "wb": "bin/index.cjs"
   },
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "scripts": {
     "build": "node esbuild.js",
     "cleanup": "yarn format && yarn lint-fix",

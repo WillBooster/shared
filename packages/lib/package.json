@@ -3,6 +3,11 @@
   "version": "0.0.0-semantically-released",
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
+  "module": "dist/index.js",
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "scripts": {
     "build": "rm -Rf dist; rollup -c --environment NODE_ENV:production",
     "cleanup": "yarn format && yarn lint-fix",
