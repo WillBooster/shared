@@ -8,7 +8,7 @@ export const optimizeDepsForDocker: CommandModule<unknown, InferredOptionTypes<t
   command: 'optimizeDepsForDocker',
   describe: 'Optimize devDependencies for building a Docker image',
   builder,
-  async handler(argv) {
+  async handler() {
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
     const developmentDeps = packageJson.devDependencies;
     if (!developmentDeps) return;
