@@ -27,11 +27,19 @@ export const optimizeDepsForDocker: CommandModule<unknown, InferredOptionTypes<t
       }
     }
     delete developmentDeps['conventional-changelog-conventionalcommits'];
+    delete developmentDeps['husky'];
     delete developmentDeps['lint-staged'];
     delete developmentDeps['open-cli'];
     delete developmentDeps['pinst'];
     delete developmentDeps['sort-package-json'];
     delete developmentDeps['wait-on'];
+
+    const scripts = (packageJson.scripts || {}) as Record<string, string>;
+    for (const [key, value] of Object.entries(scripts)) {
+      if (value.startsWith('husky ') || value.startsWith('pinst ')) {
+        delete scripts[key];
+      }
+    }
 
     await fs.writeFile('package.json', JSON.stringify(packageJson));
   },

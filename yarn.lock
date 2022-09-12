@@ -1905,9 +1905,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@rollup/plugin-node-resolve@npm:14.0.1":
-  version: 14.0.1
-  resolution: "@rollup/plugin-node-resolve@npm:14.0.1"
+"@rollup/plugin-node-resolve@npm:14.1.0":
+  version: 14.1.0
+  resolution: "@rollup/plugin-node-resolve@npm:14.1.0"
   dependencies:
     "@rollup/pluginutils": "npm:^3.1.0"
     "@types/resolve": "npm:1.17.1"
@@ -1917,7 +1917,7 @@ __metadata:
     resolve: "npm:^1.19.0"
   peerDependencies:
     rollup: ^2.78.0
-  checksum: 588f2f38c4a7f6afc6020a7258345e4e7ca2cbbf181d28327208cbd929b60049bc4bd3bb3345b097ce5cafdaa6d254ea31693991db0b11c7dc9aa64a3beaaea6
+  checksum: 48ed3c2c34c9be46b9b8bc4298fca1149069d7a814e8e13028e51fee3513002975ec3f330ffa916a802e359b463f0d941561e81d43a74d94df0d07d07c6b9d97
   languageName: node
   linkType: hard
 
@@ -2364,20 +2364,20 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/babel-configs@npm:1.0.0":
-  version: 1.0.0
-  resolution: "@willbooster/babel-configs@npm:1.0.0"
-  checksum: a54c1b55eb9ea2b4d6f7a9a2c76814d9b899253ea3c871a4a34480b30d49020a3710766e0c0717ef56fb05c3aed08c05005a2eb06af0445cc0c2757c3fc28a06
+"@willbooster/babel-configs@npm:1.0.2":
+  version: 1.0.2
+  resolution: "@willbooster/babel-configs@npm:1.0.2"
+  checksum: 7e9c238cfdcf8ebdd4eadde4f3c0db45114c7cbdd9a8a3e6c150d5a3da8035c0a0f11fb7bfc3c56fb2102822b42a986bf7d177714d3b974a0e9f3739eed0322b
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts@npm:10.0.0":
-  version: 10.0.0
-  resolution: "@willbooster/eslint-config-ts@npm:10.0.0"
+"@willbooster/eslint-config-ts@npm:10.0.4":
+  version: 10.0.4
+  resolution: "@willbooster/eslint-config-ts@npm:10.0.4"
   peerDependencies:
     "@typescript-eslint/eslint-plugin": ">=5"
     "@typescript-eslint/parser": ">=5"
-    "@willbooster/prettier-config": 9.1.0
+    "@willbooster/prettier-config": 9.1.1
     eslint: ">=8"
     eslint-config-prettier: ">=8"
     eslint-import-resolver-typescript: ">=2"
@@ -2385,23 +2385,23 @@ __metadata:
     eslint-plugin-sort-class-members: ">=1.14"
     eslint-plugin-sort-destructure-keys: ">=1.4"
     typescript: ">=4"
-  checksum: 2a66c8c3918f987dbfcf81e03e06b461190c9a302fe3ddab1376e38c19fd598442cdeb15734503821495c8afbbfc08d423fd4d504a83247e3d9a72356810b923
+  checksum: fc3179bde4a14a9728eb6ec14dfcc8cf73e4b118bddbaa89212ff2a3f476df4d0b4ebaba629538911dfa2e7e9b639afce1afee0c3d9c783aa94ff84107676aac
   languageName: node
   linkType: hard
 
-"@willbooster/prettier-config@npm:9.1.0":
-  version: 9.1.0
-  resolution: "@willbooster/prettier-config@npm:9.1.0"
+"@willbooster/prettier-config@npm:9.1.1":
+  version: 9.1.1
+  resolution: "@willbooster/prettier-config@npm:9.1.1"
   peerDependencies:
     prettier: ">=2"
-  checksum: 77b91bee3fe5f7a5b667d155f6921cafc1256eaeb5154ceb9c7c7e0c28a102d0eab6d9ccf63e4a3047b9eaf3d999755ac20ff858ec55939f756c852cd3da4b39
+  checksum: 4950e9e6a15d7fd2330f3a2036aa754b62bea72b0d9224c29de6d361955547591e9cab1f97713e5d60f8fa49a7474154e98b7dca461a60bd3cd6ac5eb5dd9d32
   languageName: node
   linkType: hard
 
-"@willbooster/renovate-config@npm:9.4.0":
-  version: 9.4.0
-  resolution: "@willbooster/renovate-config@npm:9.4.0"
-  checksum: efeb700b9b536ac49a26c5f600da5c98da21f5415f12a2a1bbcfa1f9688c12dc17b1e14230435afcbb5da657a8b1bbd33c0271ed6e054fc5868a6fdf4f376655
+"@willbooster/renovate-config@npm:9.4.1":
+  version: 9.4.1
+  resolution: "@willbooster/renovate-config@npm:9.4.1"
+  checksum: 34187806896dbafbd80374caac529b05aedd5e4cd1de87ae40067fff0f3e2d91da384ef2444bdc965ec01cdfd960500febac4d115c5f7fa7362f286c8ca23627
   languageName: node
   linkType: hard
 
@@ -2416,7 +2416,7 @@ __metadata:
     "@babel/preset-typescript": "npm:7.18.6"
     "@rollup/plugin-babel": "npm:5.3.1"
     "@rollup/plugin-commonjs": "npm:22.0.2"
-    "@rollup/plugin-node-resolve": "npm:14.0.1"
+    "@rollup/plugin-node-resolve": "npm:14.1.0"
     "@types/babel__core": "npm:7.1.19"
     "@types/babel__preset-env": "npm:7.9.2"
     "@types/eslint": "npm:8.4.6"
@@ -2424,9 +2424,9 @@ __metadata:
     "@types/prettier": "npm:2.7.0"
     "@typescript-eslint/eslint-plugin": "npm:5.36.2"
     "@typescript-eslint/parser": "npm:5.36.2"
-    "@willbooster/babel-configs": "npm:1.0.0"
-    "@willbooster/eslint-config-ts": "npm:10.0.0"
-    "@willbooster/prettier-config": "npm:9.1.0"
+    "@willbooster/babel-configs": "npm:1.0.2"
+    "@willbooster/eslint-config-ts": "npm:10.0.4"
+    "@willbooster/prettier-config": "npm:9.1.1"
     babel-plugin-transform-remove-console: "npm:6.9.4"
     eslint: "npm:8.23.1"
     eslint-config-prettier: "npm:8.5.0"
@@ -2456,8 +2456,8 @@ __metadata:
     "@types/yargs": "npm:17.0.12"
     "@typescript-eslint/eslint-plugin": "npm:5.36.2"
     "@typescript-eslint/parser": "npm:5.36.2"
-    "@willbooster/eslint-config-ts": "npm:10.0.0"
-    "@willbooster/prettier-config": "npm:9.1.0"
+    "@willbooster/eslint-config-ts": "npm:10.0.4"
+    "@willbooster/prettier-config": "npm:9.1.1"
     esbuild: "npm:0.15.7"
     eslint: "npm:8.23.1"
     eslint-config-prettier: "npm:8.5.0"
@@ -8752,8 +8752,8 @@ __metadata:
     "@qiwi/multi-semantic-release": "npm:6.5.1"
     "@types/eslint": "npm:8.4.6"
     "@typescript-eslint/parser": "npm:5.36.2"
-    "@willbooster/prettier-config": "npm:9.1.0"
-    "@willbooster/renovate-config": "npm:9.4.0"
+    "@willbooster/prettier-config": "npm:9.1.1"
+    "@willbooster/renovate-config": "npm:9.4.1"
     conventional-changelog-conventionalcommits: "npm:5.0.0"
     eslint: "npm:8.23.1"
     husky: "npm:8.0.1"
