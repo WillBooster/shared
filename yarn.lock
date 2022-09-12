@@ -2101,7 +2101,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/eslint@npm:8.4.6, @types/eslint@npm:^8":
+"@types/eslint@npm:^8":
   version: 8.4.6
   resolution: "@types/eslint@npm:8.4.6"
   dependencies:
@@ -2149,7 +2149,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/micromatch@npm:4.0.2, @types/micromatch@npm:^4":
+"@types/micromatch@npm:^4":
   version: 4.0.2
   resolution: "@types/micromatch@npm:4.0.2"
   dependencies:
@@ -2200,7 +2200,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/prettier@npm:2.7.0, @types/prettier@npm:^2":
+"@types/prettier@npm:^2":
   version: 2.7.0
   resolution: "@types/prettier@npm:2.7.0"
   checksum: ee4924676c522c0fcd10c7e03b225f09b420f5e2113cd70663539e963028bc6df3afe48055595398afeadb4871d23843d877822e673ffc62db17f23e455e0f29
@@ -5750,22 +5750,6 @@ __metadata:
   checksum: 830244fc88a7755b583a3b3c294f7b11e229511ab6e276c2b6d5a87c23721c4d5c613b31e8292bdb7fe4e299393954c2b140ff7c85c2116e09561711a1a47f8a
   languageName: node
   linkType: hard
-
-"library@workspace:packages/library":
-  version: 0.0.0-use.local
-  resolution: "library@workspace:packages/library"
-  dependencies:
-    "@types/eslint": "npm:8.4.6"
-    "@types/micromatch": "npm:4.0.2"
-    "@types/prettier": "npm:2.7.0"
-    "@willbooster/prettier-config": "npm:9.1.0"
-    lint-staged: "npm:13.0.3"
-    micromatch: "npm:4.0.5"
-    prettier: "npm:2.7.1"
-    sort-package-json: "npm:1.57.0"
-    typescript: "npm:4.8.3"
-  languageName: unknown
-  linkType: soft
 
 "lilconfig@npm:2.0.5":
   version: 2.0.5
