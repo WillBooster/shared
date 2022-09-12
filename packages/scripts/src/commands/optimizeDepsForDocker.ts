@@ -13,14 +13,26 @@ export const optimizeDepsForDocker: CommandModule<unknown, InferredOptionTypes<t
     const developmentDeps = packageJson.devDependencies;
     if (!developmentDeps) return;
 
-    delete developmentDeps['@playwright/test'];
+    for (const name of Object.keys(developmentDeps)) {
+      const keywords = name.split(/[/@-]/);
+      if (
+        keywords.includes('eslint') ||
+        keywords.includes('jest') ||
+        keywords.includes('playwright') ||
+        keywords.includes('prettier')
+      ) {
+        delete developmentDeps[name];
+      } else if (name.includes('semantic-release') || (name.includes('willbooster') && name.includes('config'))) {
+        delete developmentDeps[name];
+      }
+    }
     delete developmentDeps['conventional-changelog-conventionalcommits'];
-    delete developmentDeps['jest'];
-    delete developmentDeps['jest-watch-typeahead'];
+    delete developmentDeps['lint-staged'];
     delete developmentDeps['open-cli'];
-    delete developmentDeps['playwright'];
-    delete developmentDeps['semantic-release'];
+    delete developmentDeps['pinst'];
     delete developmentDeps['sort-package-json'];
+    delete developmentDeps['wait-on'];
+
     await fs.writeFile('package.json', JSON.stringify(packageJson));
   },
 };
