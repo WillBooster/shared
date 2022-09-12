@@ -1,14 +1,30 @@
+import child_process from 'node:child_process';
 import fs from 'node:fs/promises';
 
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 const builder = {} as const;
 
-export const optimizeDepsForDocker: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
-  command: 'optimizeDepsForDocker',
+export const optimizeSettingsForDocker: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'optimizeSettingsForDocker',
   describe: 'Optimize devDependencies for building a Docker image',
   builder,
   async handler() {
+    const opts = {
+      stdio: 'inherit',
+    } as const;
+    child_process.spawnSync('yarn', ['config', 'set', 'enableTelemetry', '0'], opts);
+    child_process.spawnSync('yarn', ['config', 'set', 'enableGlobalCache', '0'], opts);
+    child_process.spawnSync('yarn', ['config', 'set', 'nmMode', 'hardlinks-local'], opts);
+    const codes = ['YN0007', 'YN0013', 'YN0019'];
+    child_process.spawnSync(
+      'yarn',
+      ['config', 'set', 'logFilters', '--json', JSON.stringify(codes.map((code) => ({ code, level: 'discard' })))],
+      opts
+    );
+    child_process.spawnSync('yarn', ['plugin', 'set', 'remove', '@yarnpkg/plugin-typescript'], opts);
+    child_process.spawnSync('yarn', ['plugin', 'set', 'remove', 'plugin-auto-install'], opts);
+
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
     const developmentDeps = packageJson.devDependencies;
     if (!developmentDeps) return;
