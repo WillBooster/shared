@@ -32,8 +32,8 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
       ['config', 'set', 'logFilters', '--json', JSON.stringify(codes.map((code) => ({ code, level: 'discard' })))],
       opts
     );
-    child_process.spawnSync('yarn', ['plugin', 'set', 'remove', '@yarnpkg/plugin-typescript'], opts);
-    child_process.spawnSync('yarn', ['plugin', 'set', 'remove', 'plugin-auto-install'], opts);
+    child_process.spawnSync('yarn', ['plugin', 'remove', '@yarnpkg/plugin-typescript'], opts);
+    child_process.spawnSync('yarn', ['plugin', 'remove', 'plugin-auto-install'], opts);
 
     const packageJsonPath = path.resolve(workingDirectory, 'package.json');
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
