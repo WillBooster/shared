@@ -27,7 +27,7 @@
     "@types/yargs": "17.0.12",
     "@typescript-eslint/eslint-plugin": "5.37.0",
     "@typescript-eslint/parser": "5.37.0",
-    "@willbooster/eslint-config-ts": "10.0.4",
+    "@willbooster/eslint-config-ts": "10.0.7",
     "@willbooster/prettier-config": "9.1.1",
     "esbuild": "0.15.7",
     "eslint": "8.23.1",
