@@ -35,7 +35,7 @@
     "@typescript-eslint/eslint-plugin": "5.37.0",
     "@typescript-eslint/parser": "5.37.0",
     "@willbooster/babel-configs": "1.0.2",
-    "@willbooster/eslint-config-ts": "10.0.4",
+    "@willbooster/eslint-config-ts": "10.0.7",
     "@willbooster/prettier-config": "9.1.1",
     "babel-plugin-transform-remove-console": "6.9.4",
     "eslint": "8.23.1",
