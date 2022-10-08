@@ -29,7 +29,7 @@ export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof bu
     const environmentJson = JSON.stringify(
       Object.entries(process.env).sort(([key1], [key2]) => key1.localeCompare(key2))
     );
-    delete (packageJson as any).scripts;
+    delete (packageJson as Record<string, unknown>).scripts;
 
     const entries = await fs.readdir('.');
     const diff = child_process

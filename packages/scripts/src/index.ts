@@ -1,6 +1,7 @@
 import { hideBin } from 'yargs/helpers';
 
 import { buildIfNeeded } from './commands/buildIfNeeded';
+import { generatePackageJsonForFunctions } from './commands/generatePackageJsonForFunctions';
 import { optimizeForDockerBuild } from './commands/optimizeForDockerBuild';
 
 // https://github.com/yargs/yargs/issues/1929#issuecomment-920391458
@@ -8,5 +9,10 @@ import { optimizeForDockerBuild } from './commands/optimizeForDockerBuild';
 const yargs = require('yargs');
 
 export async function cli(): Promise<void> {
-  await yargs(hideBin(process.argv)).command(buildIfNeeded).command(optimizeForDockerBuild).demandCommand().help().argv;
+  await yargs(hideBin(process.argv))
+    .command(buildIfNeeded)
+    .command(generatePackageJsonForFunctions)
+    .command(optimizeForDockerBuild)
+    .demandCommand()
+    .help().argv;
 }
