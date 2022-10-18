@@ -3,7 +3,9 @@
   "version": "0.0.0-semantically-released",
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
-  "module": "dist/index.js",
+  "main": "dist/cjs/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
   "files": [
     "bin/",
     "dist/"
@@ -22,9 +24,9 @@
     "@babel/core": "7.19.3",
     "@babel/plugin-proposal-class-properties": "7.18.6",
     "@babel/plugin-proposal-numeric-separator": "7.18.6",
+    "@babel/plugin-transform-runtime": "7.19.1",
     "@babel/preset-env": "7.19.4",
     "@babel/preset-typescript": "7.18.6",
-    "@rollup/plugin-babel": "6.0.0",
     "@rollup/plugin-commonjs": "22.0.2",
     "@rollup/plugin-json": "4.1.0",
     "@rollup/plugin-node-resolve": "14.1.0",
@@ -38,7 +40,7 @@
     "@willbooster/babel-configs": "1.3.0",
     "@willbooster/eslint-config-ts": "10.0.7",
     "@willbooster/prettier-config": "9.1.1",
-    "@willbooster/rollup-configs": "2.0.0",
+    "@willbooster/rollup-configs": "3.0.0",
     "babel-plugin-transform-remove-console": "6.9.4",
     "eslint": "8.25.0",
     "eslint-config-prettier": "8.5.0",
@@ -54,6 +56,7 @@
     "rollup-plugin-analyzer": "4.0.0",
     "rollup-plugin-node-externals": "5.0.0",
     "rollup-plugin-terser": "7.0.2",
+    "rollup-plugin-ts": "3.0.2",
     "sort-package-json": "2.0.0",
     "typescript": "4.8.4"
   },

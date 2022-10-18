@@ -11,7 +11,8 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "target": "esnext"
+    "target": "esnext",
+    "declaration": true
   },
   "include": ["src/**/*", "__tests__/**/*", "scripts/**/*", "../../node_modules/@types", "../../@types", "./@types"]
 }
