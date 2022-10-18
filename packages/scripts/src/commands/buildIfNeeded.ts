@@ -53,7 +53,8 @@ export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof bu
     }
 
     console.log('Start building production code.');
-    child_process.spawnSync(argv.command, {
+    const [command, ...args] = argv.command.split(' ');
+    child_process.spawnSync(command, args, {
       stdio: 'inherit',
     });
     console.log('Finished building production code.');
