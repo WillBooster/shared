@@ -2514,10 +2514,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/rollup-configs@npm:3.0.0":
-  version: 3.0.0
-  resolution: "@willbooster/rollup-configs@npm:3.0.0"
-  checksum: bdb7a6aa641a1b2f6c3416cd4dd0969a83cd706a7b1bbb9bd2aa82e7549e55343b65c61f230b30484c12997861f5dcb6b86443de8eaf81609c8f4db530781cd4
+"@willbooster/rollup-configs@npm:3.0.1":
+  version: 3.0.1
+  resolution: "@willbooster/rollup-configs@npm:3.0.1"
+  checksum: 1b8882b80e2784321d3375fe494f014fb7bc4796ad3faa4f09d169f8ead5915d1903dafef469b7cbef29a614e95ecdb6601d54a2143a91504ec7518b50d0d9e4
   languageName: node
   linkType: hard
 
@@ -2544,7 +2544,7 @@ __metadata:
     "@willbooster/babel-configs": "npm:1.3.0"
     "@willbooster/eslint-config-ts": "npm:10.0.7"
     "@willbooster/prettier-config": "npm:9.1.1"
-    "@willbooster/rollup-configs": "npm:3.0.0"
+    "@willbooster/rollup-configs": "npm:3.0.1"
     babel-plugin-transform-remove-console: "npm:6.9.4"
     eslint: "npm:8.25.0"
     eslint-config-prettier: "npm:8.5.0"
