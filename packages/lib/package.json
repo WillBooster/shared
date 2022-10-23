@@ -42,7 +42,7 @@
     "@willbooster/prettier-config": "9.1.1",
     "@willbooster/rollup-configs": "3.0.1",
     "babel-plugin-transform-remove-console": "6.9.4",
-    "eslint": "8.25.0",
+    "eslint": "8.26.0",
     "eslint-config-prettier": "8.5.0",
     "eslint-import-resolver-typescript": "3.5.2",
     "eslint-plugin-import": "2.26.0",
