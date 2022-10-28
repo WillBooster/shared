@@ -2134,13 +2134,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/eslint@npm:8.4.8":
-  version: 8.4.8
-  resolution: "@types/eslint@npm:8.4.8"
+"@types/eslint@npm:8.4.9":
+  version: 8.4.9
+  resolution: "@types/eslint@npm:8.4.9"
   dependencies:
     "@types/estree": "npm:*"
     "@types/json-schema": "npm:*"
-  checksum: 4814ab03555e7810ba0ef87d21bffef1103d9d9d8114787e4714a1cca6296b3956530e3c5c3479e826c4234e6a27f287d39c27c028098122e3fc2c00da4867ac
+  checksum: 71ff3912cd6eda93e167a16f96c1041344a9491176f47ef5d9836c8d6d6bc303ddcc00f6756adb1653236de10829d0fae61624c0beea79f844a216b210a36ba7
   languageName: node
   linkType: hard
 
@@ -2479,7 +2479,7 @@ __metadata:
     "@rollup/plugin-node-resolve": "npm:14.1.0"
     "@types/babel__core": "npm:7.1.19"
     "@types/babel__preset-env": "npm:7.9.2"
-    "@types/eslint": "npm:8.4.8"
+    "@types/eslint": "npm:8.4.9"
     "@types/micromatch": "npm:4.0.2"
     "@types/prettier": "npm:2.7.1"
     "@typescript-eslint/eslint-plugin": "npm:5.41.0"
@@ -2513,7 +2513,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-scripts@workspace:packages/scripts"
   dependencies:
-    "@types/eslint": "npm:8.4.8"
+    "@types/eslint": "npm:8.4.9"
     "@types/micromatch": "npm:4.0.2"
     "@types/yargs": "npm:17.0.13"
     "@typescript-eslint/eslint-plugin": "npm:5.41.0"
@@ -4628,7 +4628,7 @@ __metadata:
 
 "fsevents@patch:fsevents@npm%3A~2.3.2#optional!builtin<compat/fsevents>":
   version: 2.3.2
-  resolution: "fsevents@patch:fsevents@npm%3A2.3.2#optional!builtin<compat/fsevents>::version=2.3.2&hash=18f3a7"
+  resolution: "fsevents@patch:fsevents@npm%3A2.3.2#optional!builtin<compat/fsevents>::version=2.3.2&hash=df0bf1"
   dependencies:
     node-gyp: "npm:latest"
   conditions: os=darwin
@@ -7643,7 +7643,7 @@ __metadata:
 
 "resolve@patch:resolve@npm%3A^1.10.0#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.14.2#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.17.0#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.19.0#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.20.0#optional!builtin<compat/resolve>, resolve@patch:resolve@npm%3A^1.22.0#optional!builtin<compat/resolve>":
   version: 1.22.1
-  resolution: "resolve@patch:resolve@npm%3A1.22.1#optional!builtin<compat/resolve>::version=1.22.1&hash=07638b"
+  resolution: "resolve@patch:resolve@npm%3A1.22.1#optional!builtin<compat/resolve>::version=1.22.1&hash=c3c19d"
   dependencies:
     is-core-module: "npm:^2.9.0"
     path-parse: "npm:^1.0.7"
@@ -8688,7 +8688,7 @@ __metadata:
 
 "typescript@patch:typescript@npm%3A4.8.4#optional!builtin<compat/typescript>":
   version: 4.8.4
-  resolution: "typescript@patch:typescript@npm%3A4.8.4#optional!builtin<compat/typescript>::version=4.8.4&hash=701156"
+  resolution: "typescript@patch:typescript@npm%3A4.8.4#optional!builtin<compat/typescript>::version=4.8.4&hash=0102e9"
   bin:
     tsc: bin/tsc
     tsserver: bin/tsserver
@@ -8930,7 +8930,7 @@ __metadata:
   resolution: "willbooster-shared@workspace:."
   dependencies:
     "@qiwi/multi-semantic-release": "npm:6.5.1"
-    "@types/eslint": "npm:8.4.8"
+    "@types/eslint": "npm:8.4.9"
     "@typescript-eslint/parser": "npm:5.41.0"
     "@willbooster/prettier-config": "npm:9.1.1"
     "@willbooster/renovate-config": "npm:9.4.2"
