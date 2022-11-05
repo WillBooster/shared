@@ -22,14 +22,14 @@
   },
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
-    "@types/eslint": "8.4.9",
+    "@types/eslint": "8.4.10",
     "@types/micromatch": "4.0.2",
     "@types/yargs": "17.0.13",
-    "@typescript-eslint/eslint-plugin": "5.41.0",
-    "@typescript-eslint/parser": "5.41.0",
+    "@typescript-eslint/eslint-plugin": "5.42.0",
+    "@typescript-eslint/parser": "5.42.0",
     "@willbooster/eslint-config-ts": "10.0.8",
     "@willbooster/prettier-config": "9.1.1",
-    "esbuild": "0.15.12",
+    "esbuild": "0.15.13",
     "eslint": "8.26.0",
     "eslint-config-prettier": "8.5.0",
     "eslint-import-resolver-typescript": "3.5.2",
@@ -42,7 +42,7 @@
     "prettier": "2.7.1",
     "sort-package-json": "2.0.0",
     "typescript": "4.8.4",
-    "yargs": "17.6.0"
+    "yargs": "17.6.2"
   },
   "publishConfig": {
     "access": "public"
