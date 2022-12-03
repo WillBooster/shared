@@ -2,6 +2,7 @@
   "compilerOptions": {
     "allowSyntheticDefaultImports": true,
     "alwaysStrict": true,
+    "declaration": true,
     "esModuleInterop": true,
     "importHelpers": false,
     "module": "esnext",
@@ -11,8 +12,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "target": "esnext",
-    "declaration": true
+    "target": "esnext"
   },
   "include": ["src/**/*", "__tests__/**/*", "scripts/**/*", "../../node_modules/@types", "../../@types", "./@types"]
 }
