@@ -3090,9 +3090,9 @@ __metadata:
   linkType: hard
 
 "caniuse-lite@npm:^1.0.30001317, caniuse-lite@npm:^1.0.30001328, caniuse-lite@npm:^1.0.30001400":
-  version: 1.0.30001435
-  resolution: "caniuse-lite@npm:1.0.30001435"
-  checksum: d6e9ab3b87f017c9b3b3b48bd613d574e04a8daec4008d4399fc65dba3c9ccb704685f444eb0a90832a69fcd2af185f43f6364498b19f1efa70ea853dfc10342
+  version: 1.0.30001436
+  resolution: "caniuse-lite@npm:1.0.30001436"
+  checksum: 6651c1e8dfe1967484a1a79083036a11eaf9b2205339f8ccb4b827632909379e79614abcfdb06cecda907b8c87429969aac60c68d0fd8f903e72e661c4acb868
   languageName: node
   linkType: hard
 
@@ -7828,11 +7828,11 @@ __metadata:
   linkType: hard
 
 "rxjs@npm:^7.5.7":
-  version: 7.5.7
-  resolution: "rxjs@npm:7.5.7"
+  version: 7.6.0
+  resolution: "rxjs@npm:7.6.0"
   dependencies:
     tslib: "npm:^2.1.0"
-  checksum: 9f40c5ba7904afbffe4a8c5fec9cb35dbd21cac55e20e004fe405f9712efef11d23a0baa23682a16d448976d5795ed66fd843c5f00329dd6e491676373610a79
+  checksum: 061c02f4e345b803b8737e6853e401f6c571b6d82179a8966e196c096e458be3e1a50923f2ed0b65ff76a1ab70eff290ca4d6f50fba06a0daca3fc1fd7986c33
   languageName: node
   linkType: hard
 
