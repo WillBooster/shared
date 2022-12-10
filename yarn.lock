@@ -2668,7 +2668,7 @@ __metadata:
     lint-staged: "npm:13.1.0"
     micromatch: "npm:4.0.5"
     prettier: "npm:2.8.1"
-    rollup: "npm:3.7.0"
+    rollup: "npm:3.7.1"
     rollup-plugin-analyzer: "npm:4.0.0"
     rollup-plugin-node-externals: "npm:5.0.2"
     rollup-plugin-terser: "npm:7.0.2"
@@ -7811,9 +7811,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rollup@npm:3.7.0":
-  version: 3.7.0
-  resolution: "rollup@npm:3.7.0"
+"rollup@npm:3.7.1":
+  version: 3.7.1
+  resolution: "rollup@npm:3.7.1"
   dependencies:
     fsevents: "npm:~2.3.2"
   dependenciesMeta:
@@ -7821,7 +7821,7 @@ __metadata:
       optional: true
   bin:
     rollup: dist/bin/rollup
-  checksum: c23bc02dc01bccf45db5cd508025fecd27419fb98e1077d79787e50dff07afab6617030eb5f5cae0e70efd584dc12a1d28741ec30835b2d8723a9ea9f240e68b
+  checksum: 8e76662e9765249a35f81510e55a6730667c5a358e9eb721ab2bcdd764b47624166de576ba104b95719a99dde007442e3049b7ac5238dde297c1484914e022bc
   languageName: node
   linkType: hard
 
