@@ -14,6 +14,8 @@
     "postinstall": "husky install",
     "lint": "yarn workspaces foreach --parallel --verbose run lint",
     "lint-fix": "yarn workspaces foreach --parallel --verbose run lint-fix",
+    "prepack": "pinst --disable",
+    "postpack": "pinst --enable",
     "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,js,json,json5,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/packages/**\" \"!**/test-fixtures/**\"",
     "release": "yarn multi-semantic-release --debug",
     "test": "yarn workspaces foreach --verbose run test",
@@ -26,7 +28,7 @@
   "devDependencies": {
     "@qiwi/multi-semantic-release": "6.5.1",
     "@types/eslint": "8.4.10",
-    "@typescript-eslint/parser": "5.47.0",
+    "@typescript-eslint/parser": "5.47.1",
     "@willbooster/prettier-config": "9.1.1",
     "@willbooster/renovate-config": "9.4.2",
     "conventional-changelog-conventionalcommits": "5.0.0",
