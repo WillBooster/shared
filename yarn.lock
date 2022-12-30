@@ -2231,10 +2231,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:18.11.17":
-  version: 18.11.17
-  resolution: "@types/node@npm:18.11.17"
-  checksum: c344af96ffdcc429d8d79576de72061553cd083d06cde8209a82b3d927c62ecf2211f24c3b970194636833f9dcfd94228f2b019f2d796f1f20dfc0d12e6dcc2b
+"@types/node@npm:18.11.18":
+  version: 18.11.18
+  resolution: "@types/node@npm:18.11.18"
+  checksum: bd39552701928d4a1613bc46adf8b65f8212064c2b5475a67161b6c4cef21ddb0a5c2ba062673213f8f5301ef6e171241a9e274a9b59c9fc1f5e2b69764740eb
   languageName: node
   linkType: hard
 
@@ -2322,12 +2322,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/yargs@npm:17.0.17":
-  version: 17.0.17
-  resolution: "@types/yargs@npm:17.0.17"
+"@types/yargs@npm:17.0.18":
+  version: 17.0.18
+  resolution: "@types/yargs@npm:17.0.18"
   dependencies:
     "@types/yargs-parser": "npm:*"
-  checksum: 4bc1ba6bf7f4383454a25df144eff9391897586061424a807a2a97102f916cded88f5327c9a03dd701bb9eec3229861b4d2b4105463e0a2dc55889760e1ae614
+  checksum: 17132032241701cf1351db655a16781622544826d4be25d01c9107787f908dc08b0ae26866e14937b07645fda8f945c47c9fa286f26bab6c8cd6d740d5f79a77
   languageName: node
   linkType: hard
 
@@ -2525,8 +2525,8 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:8.4.10"
     "@types/micromatch": "npm:4.0.2"
-    "@types/node": "npm:18.11.17"
-    "@types/yargs": "npm:17.0.17"
+    "@types/node": "npm:18.11.18"
+    "@types/yargs": "npm:17.0.18"
     "@typescript-eslint/eslint-plugin": "npm:5.47.1"
     "@typescript-eslint/parser": "npm:5.47.1"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
