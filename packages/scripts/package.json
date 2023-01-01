@@ -3,9 +3,10 @@
   "version": "0.0.0-semantically-released",
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
-  "main": "dist/index.min.cjs",
+  "type": "module",
+  "main": "dist/index.min.mjs",
   "bin": {
-    "wb": "bin/index.cjs"
+    "wb": "bin/index.mjs"
   },
   "files": [
     "bin/",
@@ -19,6 +20,7 @@
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,js,json,json5,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test-fixtures/**\"",
     "start": "build-ts run src/index.ts",
+    "start-prod": "yarn build && yarn wb",
     "typecheck": "tsc --noEmit --Pretty"
   },
   "prettier": "@willbooster/prettier-config",

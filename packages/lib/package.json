@@ -3,6 +3,7 @@
   "version": "0.0.0-semantically-released",
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
+  "type": "module",
   "main": "dist/cjs/index.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",

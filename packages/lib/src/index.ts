@@ -1,2 +1,2 @@
-export { shuffle } from './shuffle';
-export { zenkakuAlphanumericalsToHankaku } from './zenkaku';
+export { shuffle } from './shuffle.js';
+export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
