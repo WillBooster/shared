@@ -27,6 +27,8 @@ export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
   describe: 'Start app',
   builder,
   async handler(argv) {
+    console.log('start:', argv);
+
     const workingDirectory = path.resolve(argv.workingDir);
     process.chdir(workingDirectory);
 
