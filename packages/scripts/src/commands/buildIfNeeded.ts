@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 const builder = {
@@ -19,7 +20,7 @@ export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof bu
   describe: 'Build code if changes are detected',
   builder,
   async handler(argv) {
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
+    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
 
     const cacheDirectoryPath = path.resolve('node_modules', '.cache', 'build');
     const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
@@ -29,7 +30,7 @@ export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof bu
     const environmentJson = JSON.stringify(
       Object.entries(process.env).sort(([key1], [key2]) => key1.localeCompare(key2))
     );
-    delete (packageJson as Record<string, unknown>).scripts;
+    delete packageJson.scripts;
 
     const entries = await fs.readdir('.');
     const diff = child_process
