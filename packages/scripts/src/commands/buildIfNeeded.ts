@@ -5,7 +5,10 @@ import path from 'node:path';
 
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
+import { sharedOptions } from '../sharedOptions.js';
+
 const builder = {
+  ...sharedOptions,
   command: {
     description: 'A build command',
     type: 'string',

@@ -19,11 +19,16 @@
     "lint": "eslint --color \"./{__tests__,scripts,src}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}\"",
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,js,json,json5,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test-fixtures/**\"",
-    "start": "build-ts run src/index.ts",
+    "start": "build-ts run src/index.ts --",
     "start-prod": "yarn build && yarn wb",
     "typecheck": "tsc --noEmit --Pretty"
   },
   "prettier": "@willbooster/prettier-config",
+  "dependencies": {
+    "chalk": "5.2.0",
+    "minimal-promise-pool": "2.1.1",
+    "node-pty": "0.10.1"
+  },
   "devDependencies": {
     "@types/eslint": "8.4.10",
     "@types/micromatch": "4.0.2",
@@ -33,7 +38,7 @@
     "@typescript-eslint/parser": "5.47.1",
     "@willbooster/eslint-config-ts": "10.0.8",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "3.1.2",
+    "build-ts": "3.1.3",
     "eslint": "8.30.0",
     "eslint-config-prettier": "8.5.0",
     "eslint-import-resolver-typescript": "3.5.2",
