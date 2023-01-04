@@ -3,7 +3,10 @@ import path from 'node:path';
 
 import { CommandModule, InferredOptionTypes } from 'yargs';
 
+import { sharedOptions } from '../sharedOptions.js';
+
 const builder = {
+  ...sharedOptions,
   'input-dir': {
     description: 'A input directory',
     type: 'string',
