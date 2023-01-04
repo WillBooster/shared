@@ -2,6 +2,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 const builder = {
@@ -36,7 +37,7 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
     child_process.spawnSync('yarn', ['plugin', 'remove', 'plugin-auto-install'], opts);
 
     const packageJsonPath = path.resolve(workingDirectory, 'package.json');
-    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as PackageJson;
     const developmentDeps = packageJson.devDependencies;
     if (!developmentDeps) return;
 
