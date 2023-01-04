@@ -7,10 +7,10 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 const builder = {
   command: {
-    description: 'A build mode',
+    description: 'A running mode',
     type: 'string',
     default: 'yarn build',
-    alias: 'p',
+    alias: 'm',
   },
   'working-dir': {
     description: 'A working directory',
