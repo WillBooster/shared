@@ -1258,7 +1258,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@babel/runtime@npm:^7.5.5, @babel/runtime@npm:^7.8.4":
+"@babel/runtime@npm:7.20.7, @babel/runtime@npm:^7.5.5, @babel/runtime@npm:^7.8.4":
   version: 7.20.7
   resolution: "@babel/runtime@npm:7.20.7"
   dependencies:
@@ -2544,8 +2544,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:45.0.2"
     lint-staged: "npm:13.1.0"
     micromatch: "npm:4.0.5"
-    minimal-promise-pool: "npm:2.1.1"
-    node-pty: "npm:0.10.1"
+    minimal-promise-pool: "npm:2.1.2"
     prettier: "npm:2.8.1"
     sort-package-json: "npm:2.1.0"
     typescript: "npm:4.9.4"
@@ -6144,10 +6143,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"minimal-promise-pool@npm:2.1.1":
-  version: 2.1.1
-  resolution: "minimal-promise-pool@npm:2.1.1"
-  checksum: 4462d86248b5c21f041865c1534caca7a889a5249fa6f2df11a8c7f759d03b32b1ed0c576753e6921cf8f2c55ec9d1a00e96fb3391c14b62d7ffee16c7641088
+"minimal-promise-pool@npm:2.1.2":
+  version: 2.1.2
+  resolution: "minimal-promise-pool@npm:2.1.2"
+  dependencies:
+    "@babel/runtime": "npm:7.20.7"
+  checksum: 86f1a33add4cd42d18458c8863517d18ee62ab7ae4893ff790acb9feec08f2d9344b86271750340b63bae27a8e5ae7888f5eb533a6a4ba43886995da15a69ef7
   languageName: node
   linkType: hard
 
@@ -6331,15 +6332,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"nan@npm:^2.14.0":
-  version: 2.17.0
-  resolution: "nan@npm:2.17.0"
-  dependencies:
-    node-gyp: "npm:latest"
-  checksum: d424a730ee926fd928545c29ba19609bc1af03f8210c4465c825ba87070b83c546da2964a14d6acdacca847798184f48d5b8585f061dcb59459b300f2aff09c8
-  languageName: node
-  linkType: hard
-
 "natural-compare-lite@npm:^1.4.0":
   version: 1.4.0
   resolution: "natural-compare-lite@npm:1.4.0"
@@ -6415,15 +6407,6 @@ __metadata:
   bin:
     node-gyp: bin/node-gyp.js
   checksum: 40aca5b9b3cc5715d5407101d69826927db9a2cf140f113ac52e239a10b15fbae277844ff815c05bcaa9c9fc5256e4e23b3ce3bdace573429d929e3b5df99845
-  languageName: node
-  linkType: hard
-
-"node-pty@npm:0.10.1":
-  version: 0.10.1
-  resolution: "node-pty@npm:0.10.1"
-  dependencies:
-    nan: "npm:^2.14.0"
-  checksum: 29dd29d358f59859a6c8ff94e99e242b5e714a6f3edb57dfb8914617eeb05615a2709b3a2503bf1d9a4bb01668f95e8b5f033b16284e22d65ea28ba17aaa1d54
   languageName: node
   linkType: hard
 

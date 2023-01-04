@@ -26,8 +26,7 @@
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.2.0",
-    "minimal-promise-pool": "2.1.1",
-    "node-pty": "0.10.1"
+    "minimal-promise-pool": "2.1.2"
   },
   "devDependencies": {
     "@types/eslint": "8.4.10",
