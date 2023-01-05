@@ -31,7 +31,6 @@ export const setup: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
       const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
       await runCommand('poetry', ['env', 'use', version]);
       await runCommand('poetry', ['run', 'pip', 'install', '--upgrade', 'pip']);
-      await runCommand('poetry', ['lock', '--no-update', '--ansi']);
       await runCommand('poetry', ['install', '--ansi']);
     }
     await promisePool.promiseAllSettled();
