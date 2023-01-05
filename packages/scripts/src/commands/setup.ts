@@ -31,6 +31,7 @@ export const setup: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
       const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
       await runCommand('poetry', ['env', 'use', version]);
       await runCommand('poetry', ['run', 'pip', 'install', '--upgrade', 'pip']);
+      await runCommand('poetry', ['lock', '--no-update', '--ansi']);
       await runCommand('poetry', ['install', '--ansi']);
     }
     await promisePool.promiseAllSettled();
@@ -68,7 +69,7 @@ async function runCommand(command: string, args: string[], parallel = false): Pr
     : new Promise((resolve) => {
         const proc = child_process.spawn(command, args, { stdio: 'inherit' });
         proc.on('close', (code) => {
-          console.info(chalk.cyan('Finished:'), command, args.join(' '), `with exit code: ${code}`);
+          console.info(chalk.cyan('Finished:'), `"${[command, ...args].join(' ')}"`, `with exit code: ${code}`);
           resolve(undefined);
         });
       }));
