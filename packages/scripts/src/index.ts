@@ -20,4 +20,5 @@ await yargs(hideBin(process.argv))
   .command(generatePackageJsonForFunctions)
   .command(optimizeForDockerBuild)
   .demandCommand()
+  .strict()
   .help().argv;
