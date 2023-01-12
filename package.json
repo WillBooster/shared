@@ -23,13 +23,10 @@
     "typecheck": "yarn workspaces foreach --parallel --verbose run typecheck"
   },
   "prettier": "@willbooster/prettier-config",
-  "resolutions": {
-    "npm/chalk": "^4.1.2"
-  },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "6.5.1",
     "@types/eslint": "8.4.10",
-    "@typescript-eslint/parser": "5.48.0",
+    "@typescript-eslint/parser": "5.48.1",
     "@willbooster/prettier-config": "9.1.1",
     "@willbooster/renovate-config": "9.5.0",
     "conventional-changelog-conventionalcommits": "5.0.0",
@@ -38,9 +35,9 @@
     "lint-staged": "13.1.0",
     "micromatch": "4.0.5",
     "pinst": "3.0.0",
-    "prettier": "2.8.1",
+    "prettier": "2.8.2",
     "sort-package-json": "2.1.0",
     "typescript": "4.9.4"
   },
-  "packageManager": "yarn@4.0.0-rc.34"
+  "packageManager": "yarn@4.0.0-rc.35"
 }
