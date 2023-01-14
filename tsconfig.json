@@ -16,11 +16,11 @@
     "typeRoots": ["./node_modules/@types", "./@types"]
   },
   "include": [
-    "__tests__/**/*",
-    "packages/*/__tests__/**/*",
     "packages/*/scripts/**/*",
     "packages/*/src/**/*",
+    "packages/*/tests/**/*",
     "scripts/**/*",
-    "src/**/*"
+    "src/**/*",
+    "tests/**/*"
   ]
 }
