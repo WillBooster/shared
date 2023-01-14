@@ -36,7 +36,7 @@
     "@typescript-eslint/parser": "5.48.1",
     "@willbooster/eslint-config-ts": "10.0.8",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "3.2.4",
+    "build-ts": "3.2.5",
     "eslint": "8.31.0",
     "eslint-config-prettier": "8.6.0",
     "eslint-import-resolver-typescript": "3.5.3",
@@ -46,7 +46,7 @@
     "eslint-plugin-unicorn": "45.0.2",
     "lint-staged": "13.1.0",
     "micromatch": "4.0.5",
-    "prettier": "2.8.2",
+    "prettier": "2.8.3",
     "sort-package-json": "2.1.0",
     "typescript": "4.9.4",
     "yargs": "17.6.2"
