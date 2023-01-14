@@ -2496,7 +2496,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.48.1"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:3.2.4"
+    build-ts: "npm:3.2.5"
     eslint: "npm:8.31.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
@@ -2506,7 +2506,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:45.0.2"
     lint-staged: "npm:13.1.0"
     micromatch: "npm:4.0.5"
-    prettier: "npm:2.8.2"
+    prettier: "npm:2.8.3"
     sort-package-json: "npm:2.1.0"
     typescript: "npm:4.9.4"
   languageName: unknown
@@ -2524,7 +2524,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.48.1"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:3.2.4"
+    build-ts: "npm:3.2.5"
     chalk: "npm:5.2.0"
     eslint: "npm:8.31.0"
     eslint-config-prettier: "npm:8.6.0"
@@ -2536,7 +2536,7 @@ __metadata:
     lint-staged: "npm:13.1.0"
     micromatch: "npm:4.0.5"
     minimal-promise-pool: "npm:2.1.2"
-    prettier: "npm:2.8.2"
+    prettier: "npm:2.8.3"
     sort-package-json: "npm:2.1.0"
     typescript: "npm:4.9.4"
     yargs: "npm:17.6.2"
@@ -3009,9 +3009,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"build-ts@npm:3.2.4":
-  version: 3.2.4
-  resolution: "build-ts@npm:3.2.4"
+"build-ts@npm:3.2.5":
+  version: 3.2.5
+  resolution: "build-ts@npm:3.2.5"
   dependencies:
     "@babel/core": "npm:7.20.12"
     "@babel/plugin-proposal-class-properties": "npm:7.18.6"
@@ -3031,7 +3031,7 @@ __metadata:
     core-js: "npm:3.27.1"
     core-js-pure: "npm:3.27.1"
     dotenv: "npm:16.0.3"
-    rollup: "npm:3.9.1"
+    rollup: "npm:3.10.0"
     rollup-plugin-analyzer: "npm:4.0.0"
     rollup-plugin-node-externals: "npm:5.1.0"
     rollup-plugin-string: "npm:3.0.0"
@@ -3040,7 +3040,7 @@ __metadata:
     yargs: "npm:17.6.2"
   bin:
     build-ts: bin/index.mjs
-  checksum: a4531535a15f6d44ca747895baa693c8ecb3fd180878137d96854cd28bbe0e3bf1666714ca31183a066cd260dfc8583849c82e4e5bf56714d0902434d9c79b3d
+  checksum: d59a6bda78bc5bff373db79e586cc6f4728d3946ed8760cf510948ee27e6551b27b5a1fe2a41568d8372609e91641a3bb134fe740361b638036c188ab3972f61
   languageName: node
   linkType: hard
 
@@ -7198,12 +7198,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"prettier@npm:2.8.2":
-  version: 2.8.2
-  resolution: "prettier@npm:2.8.2"
+"prettier@npm:2.8.3":
+  version: 2.8.3
+  resolution: "prettier@npm:2.8.3"
   bin:
     prettier: bin-prettier.js
-  checksum: a03ed99722f92e36e5c63b5dd5008d2b3d8d25d26c2894d3fd9a2bd887265af753af94c532990c3509711c74270df0b31f3c22110d5cc19ae3f0ee85079fb57b
+  checksum: 9daf1c05e07337a96fec26b5518ce787e4f98bfd1a5eb72af988cf123ea7ed56584f10c0cc4fc3073bf9504d157a8604d93a8e17752c483ae114614a0c557b36
   languageName: node
   linkType: hard
 
@@ -7771,9 +7771,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rollup@npm:3.9.1":
-  version: 3.9.1
-  resolution: "rollup@npm:3.9.1"
+"rollup@npm:3.10.0":
+  version: 3.10.0
+  resolution: "rollup@npm:3.10.0"
   dependencies:
     fsevents: "npm:~2.3.2"
   dependenciesMeta:
@@ -7781,7 +7781,7 @@ __metadata:
       optional: true
   bin:
     rollup: dist/bin/rollup
-  checksum: 5772b4d375307fd452395ca31c009c9b1354ac78866c80836ad895f383fbacebb721fb33c8b55e0a7906c8259823c8d1aa1945f14de65381025a615a5646f8bd
+  checksum: bfd500d01cf8f11db5815b5642f4249268ba2fe8aa0be0e51ae91331f7487ddb99137a0d5133fe3718208de8d1da7d2689499358ac11d01eecbf01caeb9054fd
   languageName: node
   linkType: hard
 
@@ -9005,7 +9005,7 @@ __metadata:
     lint-staged: "npm:13.1.0"
     micromatch: "npm:4.0.5"
     pinst: "npm:3.0.0"
-    prettier: "npm:2.8.2"
+    prettier: "npm:2.8.3"
     sort-package-json: "npm:2.1.0"
     typescript: "npm:4.9.4"
   languageName: unknown
