@@ -2334,12 +2334,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/yargs@npm:17.0.19":
-  version: 17.0.19
-  resolution: "@types/yargs@npm:17.0.19"
+"@types/yargs@npm:17.0.20":
+  version: 17.0.20
+  resolution: "@types/yargs@npm:17.0.20"
   dependencies:
     "@types/yargs-parser": "npm:*"
-  checksum: cd721988a571d91770150ee0455e2030d7368e1cfd2b443f5be9158ab3eddc22ad9f64f25d8580ac5bf6759a212e051f4e318ab807a0f95ad0b0a352d61edcce
+  checksum: 2200d4e22c9a3ffb14ad95d7db67b12e13722146b4f1b4ca2de8857069c7d5978b41176e8166ac7b4d2d7910065af962b8d299af562086708e47b45ccf0a4838
   languageName: node
   linkType: hard
 
@@ -2538,7 +2538,7 @@ __metadata:
     "@types/eslint": "npm:8.4.10"
     "@types/micromatch": "npm:4.0.2"
     "@types/node": "npm:18.11.18"
-    "@types/yargs": "npm:17.0.19"
+    "@types/yargs": "npm:17.0.20"
     "@typescript-eslint/eslint-plugin": "npm:5.48.2"
     "@typescript-eslint/parser": "npm:5.48.2"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
