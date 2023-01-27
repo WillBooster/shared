@@ -2738,7 +2738,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.49.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:3.2.6"
+    build-ts: "npm:4.0.0"
     eslint: "npm:8.32.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
@@ -2767,7 +2767,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.49.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:3.2.6"
+    build-ts: "npm:4.0.0"
     chalk: "npm:5.2.0"
     eslint: "npm:8.32.0"
     eslint-config-prettier: "npm:8.6.0"
@@ -3275,9 +3275,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"build-ts@npm:3.2.6":
-  version: 3.2.6
-  resolution: "build-ts@npm:3.2.6"
+"build-ts@npm:4.0.0":
+  version: 4.0.0
+  resolution: "build-ts@npm:4.0.0"
   dependencies:
     "@babel/core": "npm:7.20.12"
     "@babel/plugin-proposal-class-properties": "npm:7.18.6"
@@ -3306,7 +3306,7 @@ __metadata:
     yargs: "npm:17.6.2"
   bin:
     build-ts: bin/index.mjs
-  checksum: 8ede8de79d8555d20dfb31cb1b8c98bfdd32f3509dc8a9333b26b76f9373c195753f2f2a4523c7569fd1b42daff3f27371d469271049e7b2f1c9202f0d9d6cd0
+  checksum: 489648a6d9ac66f91813fd2a31dee5a5f2d0afaef3081b5c7fe548ef695e89bde9ac4e6c9c9cbbb29a3bae550334c25d8460d6cfb79d75d70a45b1c98ab281c4
   languageName: node
   linkType: hard
 
