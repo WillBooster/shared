@@ -12,7 +12,7 @@ describe('spawn', () => {
     expect(ret.signal).toBeNull();
     expect(ret.status).toBe(0);
   });
-  it.each([['ls -Z']])('get non-zero code from "%s"', async (commandWithArgs) => {
+  it.each([['ls -@']])('get non-zero code from "%s"', async (commandWithArgs) => {
     const [command, ...args] = commandWithArgs.split(' ');
     const ret = await spawnAsync(command, args);
     expect(ret.pid).to.greaterThan(0);
