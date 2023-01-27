@@ -12,6 +12,7 @@ describe('spawn', () => {
     expect(ret.signal).toBeNull();
     expect(ret.status).toBe(0);
   });
+
   it.each([['ls -@']])('get non-zero code from "%s"', async (commandWithArgs) => {
     const [command, ...args] = commandWithArgs.split(' ');
     const ret = await spawnAsync(command, args);
