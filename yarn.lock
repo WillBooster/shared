@@ -1259,16 +1259,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@babel/runtime@npm:7.20.7":
-  version: 7.20.7
-  resolution: "@babel/runtime@npm:7.20.7"
-  dependencies:
-    regenerator-runtime: "npm:^0.13.11"
-  checksum: b22b904439569fa3b28627fc398d9bb9619f14bc9165cdf63ab5fa248660a10104ae81514607cbe55e4e26fe0d4048a89263f47f1f3da1e37f8e670b95acf244
-  languageName: node
-  linkType: hard
-
-"@babel/runtime@npm:^7.5.5, @babel/runtime@npm:^7.8.4":
+"@babel/runtime@npm:7.20.13, @babel/runtime@npm:^7.5.5, @babel/runtime@npm:^7.8.4":
   version: 7.20.13
   resolution: "@babel/runtime@npm:7.20.13"
   dependencies:
@@ -2778,7 +2769,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:45.0.2"
     lint-staged: "npm:13.1.0"
     micromatch: "npm:4.0.5"
-    minimal-promise-pool: "npm:2.1.2"
+    minimal-promise-pool: "npm:2.1.4"
     prettier: "npm:2.8.3"
     sort-package-json: "npm:2.2.0"
     typescript: "npm:4.9.4"
@@ -6616,12 +6607,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"minimal-promise-pool@npm:2.1.2":
-  version: 2.1.2
-  resolution: "minimal-promise-pool@npm:2.1.2"
+"minimal-promise-pool@npm:2.1.4":
+  version: 2.1.4
+  resolution: "minimal-promise-pool@npm:2.1.4"
   dependencies:
-    "@babel/runtime": "npm:7.20.7"
-  checksum: 86f1a33add4cd42d18458c8863517d18ee62ab7ae4893ff790acb9feec08f2d9344b86271750340b63bae27a8e5ae7888f5eb533a6a4ba43886995da15a69ef7
+    "@babel/runtime": "npm:7.20.13"
+  checksum: c0ef563ebd848bbd708c400b66a9f555ca04eff7daeb4dc804a80c1025692bf8ba7516481d20c9ad0da5b0a105310f7bb291951dbe5a54fdc8faa531fef7b85e
   languageName: node
   linkType: hard
 
