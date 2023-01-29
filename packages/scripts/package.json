@@ -12,7 +12,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "build-ts build -t app",
+    "build": "build-ts app",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify",
     "lint": "eslint --color \"./{scripts,src,tests}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}\"",
@@ -36,8 +36,8 @@
     "@typescript-eslint/parser": "5.49.0",
     "@willbooster/eslint-config-ts": "10.0.8",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "3.2.6",
-    "eslint": "8.32.0",
+    "build-ts": "5.1.0",
+    "eslint": "8.33.0",
     "eslint-config-prettier": "8.6.0",
     "eslint-import-resolver-typescript": "3.5.3",
     "eslint-plugin-import": "2.27.5",
