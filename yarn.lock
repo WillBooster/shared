@@ -5159,11 +5159,11 @@ __metadata:
   linkType: hard
 
 "globals@npm:^13.19.0":
-  version: 13.19.0
-  resolution: "globals@npm:13.19.0"
+  version: 13.20.0
+  resolution: "globals@npm:13.20.0"
   dependencies:
     type-fest: "npm:^0.20.2"
-  checksum: 3f3d6606b78da1731d7a2837e75c5e941e7db414ca4a5ad90e456f771b68552095214457295f88a2b1580cd60b430c72020a3e10e39be1093c55c9331b5889ce
+  checksum: 1ba80ad03f29b8ca83b066c9d9ae305e7f0ee46164de36efac286fc3a58efc48986d688bf1f427f164f2a65bb1bdfa53beb8c56ae3092be255fc097bdcab1f1a
   languageName: node
   linkType: hard
 
@@ -8317,7 +8317,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rollup@npm:3.11.0, rollup@npm:^3.7.0":
+"rollup@npm:3.11.0":
   version: 3.11.0
   resolution: "rollup@npm:3.11.0"
   dependencies:
@@ -8328,6 +8328,20 @@ __metadata:
   bin:
     rollup: dist/bin/rollup
   checksum: 48ea267db5e8b2b52a95b75acfc149c34c029743729a93520feb2aa363bc3e8b02bebb72c535933450c9cc9e9ff118b18b6cce718c40b7cf3e55c9fdcdcfb6d2
+  languageName: node
+  linkType: hard
+
+"rollup@npm:^3.7.0":
+  version: 3.12.0
+  resolution: "rollup@npm:3.12.0"
+  dependencies:
+    fsevents: "npm:~2.3.2"
+  dependenciesMeta:
+    fsevents:
+      optional: true
+  bin:
+    rollup: dist/bin/rollup
+  checksum: 41dfcd8fd28232ba3d6fa58e5694ec3eb47edb94073dab37dacd33c76adf1e53a6008c184e03b7f98a432805aef2487711261e42b8b88e56ebfe1b3bf8f89cd1
   languageName: node
   linkType: hard
 
@@ -8969,12 +8983,12 @@ __metadata:
   linkType: hard
 
 "synckit@npm:^0.8.4":
-  version: 0.8.4
-  resolution: "synckit@npm:0.8.4"
+  version: 0.8.5
+  resolution: "synckit@npm:0.8.5"
   dependencies:
     "@pkgr/utils": "npm:^2.3.1"
-    tslib: "npm:^2.4.0"
-  checksum: 4e48556558263008c05df5f747b20b34ba919d7b41dda61e0756d3a7e26ade65b1b2c30e2772f8a5782fac01a6973d6bb5cd9d5636c8f04f61a1bded9e9feea7
+    tslib: "npm:^2.5.0"
+  checksum: 4f8cad99ececb0f22d91780c9882d1ef51fd551051cbd53f4674876771007e3b0ed6adcf17622a9bca8f9f8b16f49d91c4cc37d25888bc9d7ab3470e496bc4a6
   languageName: node
   linkType: hard
 
@@ -9237,7 +9251,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"tslib@npm:^2.1.0, tslib@npm:^2.4.0, tslib@npm:^2.4.1":
+"tslib@npm:^2.1.0, tslib@npm:^2.4.0, tslib@npm:^2.4.1, tslib@npm:^2.5.0":
   version: 2.5.0
   resolution: "tslib@npm:2.5.0"
   checksum: 5a6ee935f56cd653af29de928483acbab7323f964b053e98b6b318abc69431fb0e4f660c4f4a396e2e93852510bef25eeb9f1d951d060b2d7bcc313811e5da6f
