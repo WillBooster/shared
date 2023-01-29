@@ -13,7 +13,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "build-ts build -t lib",
+    "build": "build-ts lib",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify",
     "lint": "eslint --color \"./{scripts,src,tests}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}\"",
