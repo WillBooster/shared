@@ -70,7 +70,7 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
       }
     }
 
-    const nameWordsOfUnnecessaryScripts = ['check', 'format', 'lint', 'start', 'test'];
+    const nameWordsOfUnnecessaryScripts = ['check', 'deploy', 'format', 'lint', 'start', 'test'];
     const contentWordsOfUnnecessaryScripts = ['pinst ', 'husky '];
     const scripts = (packageJson.scripts || {}) as Record<string, string>;
     for (const [name, content] of Object.entries(scripts)) {
