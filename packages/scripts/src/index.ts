@@ -8,6 +8,7 @@ import { setup } from './commands/setup.js';
 import { sharedOptions } from './sharedOptions.js';
 
 await yargs(hideBin(process.argv))
+  .scriptName('wb')
   .options(sharedOptions)
   .middleware((argv) => {
     const workingDir = argv['working-dir'];

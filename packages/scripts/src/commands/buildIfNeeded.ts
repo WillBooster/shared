@@ -1,8 +1,9 @@
 import child_process from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, Hash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { sharedOptions } from '../sharedOptions.js';
@@ -22,27 +23,29 @@ export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof bu
   describe: 'Build code if changes are detected',
   builder,
   async handler(argv) {
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
+    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
 
     const cacheDirectoryPath = path.resolve('node_modules', '.cache', 'build');
     const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
     await fs.mkdir(cacheDirectoryPath, { recursive: true });
 
+    const hash = createHash('sha256');
+
     const commitHash = child_process.execSync('git rev-parse HEAD').toString().trim();
+    hash.update(commitHash);
+
     const environmentJson = JSON.stringify(
       Object.entries(process.env).sort(([key1], [key2]) => key1.localeCompare(key2))
     );
-    delete (packageJson as Record<string, unknown>).scripts;
+    hash.update(environmentJson);
 
-    const entries = await fs.readdir('.');
-    const diff = child_process
-      .execSync(`git diff ${entries.join(' ')}`)
-      .toString()
-      .trim();
-    const content = commitHash + environmentJson + diff + JSON.stringify(packageJson);
+    const build = packageJson.scripts?.['build'] || '';
+    delete packageJson.scripts;
+    packageJson.scripts = { build };
+    hash.update(JSON.stringify(packageJson));
 
-    const hash = createHash('sha256');
-    hash.update(content);
+    await updateHashWithDiffResult(hash);
+
     const contentHash = hash.digest('hex');
 
     try {
@@ -65,3 +68,16 @@ export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof bu
     await fs.writeFile(cacheFilePath, contentHash, 'utf8');
   },
 };
+
+async function updateHashWithDiffResult(hash: Hash): Promise<void> {
+  const entries = await fs.readdir('.');
+  return new Promise((resolve) => {
+    const proc = child_process.spawn('git', ['diff', ...entries]);
+    proc.stdout?.on('data', (data) => {
+      hash.update(data);
+    });
+    proc.on('close', () => {
+      resolve();
+    });
+  });
+}
