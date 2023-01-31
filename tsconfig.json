@@ -5,6 +5,7 @@
     "declaration": true,
     "esModuleInterop": true,
     "importHelpers": false,
+    "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "NodeNext",
     "outDir": "dist",

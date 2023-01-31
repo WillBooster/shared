@@ -1,1 +1,4 @@
-{ "root": true, "extends": ["@willbooster/eslint-config-ts", "../../.eslintrc.json", "plugin:storybook/recommended"] }
+{
+  "root": true,
+  "extends": ["plugin:storybook/recommended", "@willbooster/eslint-config-ts-react", "../../.eslintrc.json"]
+}
