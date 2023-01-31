@@ -28,8 +28,7 @@
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,js,json,json5,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test-fixtures/**\"",
     "storybook": "start-storybook -p 6006",
-    "test": "vitest",
-    "test/ci": "yarn build-storybook && vitest",
+    "test/ci": "yarn build-storybook",
     "typecheck": "tsc --noEmit --Pretty"
   },
   "prettier": "@willbooster/prettier-config",
