@@ -8,7 +8,12 @@ import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
   ...sharedOptions,
-  pre: {
+  outside: {
+    description: 'Whether the optimization is executed outside a docker container or not',
+    type: 'boolean',
+    alias: 'o',
+  },
+  post: {
     description: 'Whether the optimization is before "docker build" or not',
     type: 'boolean',
     alias: 'p',
@@ -20,10 +25,11 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
   describe: 'Optimize configuration when building a Docker image',
   builder,
   async handler(argv) {
-    if (!argv.pre) {
-      const opts = {
-        stdio: 'inherit',
-      } as const;
+    const opts = {
+      stdio: 'inherit',
+    } as const;
+
+    if (!argv.outside) {
       child_process.spawnSync('yarn', ['config', 'set', 'enableTelemetry', '0'], opts);
       child_process.spawnSync('yarn', ['config', 'set', 'enableGlobalCache', '0'], opts);
       child_process.spawnSync('yarn', ['config', 'set', 'nmMode', 'hardlinks-local'], opts);
@@ -58,13 +64,13 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
       'semantic-release',
       'vitest',
     ];
-    if (!argv.pre) {
+    if (argv.post) {
       nameWordsToBeRemoved.push('@types', 'build-ts', 'rollup', 'typefest', 'typescript', 'vite', 'webpack');
     }
     for (const name of Object.keys(developmentDeps)) {
       if (
         nameWordsToBeRemoved.some((word) => name.includes(word)) ||
-        (!argv.pre && name.includes('willbooster') && name.includes('config'))
+        (argv.post && name.includes('willbooster') && name.includes('config'))
       ) {
         delete developmentDeps[name];
       }
@@ -82,13 +88,17 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
       }
     }
 
-    if (argv.pre) {
+    if (argv.outside) {
       await fs.mkdir('dist', { recursive: true });
     }
     await fs.writeFile(
-      argv.pre ? path.join('dist', 'package.json') : 'package.json',
+      argv.outside ? path.join('dist', 'package.json') : 'package.json',
       JSON.stringify(packageJson),
       'utf8'
     );
+
+    if (argv.post) {
+      child_process.spawnSync('yarn', opts);
+    }
   },
 };
