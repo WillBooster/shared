@@ -5225,6 +5225,7 @@ __metadata:
     minimal-promise-pool: "npm:2.1.4"
     prettier: "npm:2.8.3"
     sort-package-json: "npm:2.3.0"
+    type-fest: "npm:3.5.4"
     typescript: "npm:4.9.4"
     yargs: "npm:17.6.2"
   bin:
@@ -17596,6 +17597,13 @@ __metadata:
   version: 4.0.8
   resolution: "type-detect@npm:4.0.8"
   checksum: 2d2111a44529a381e9be7090066cc89b60ac2c822194e3d213a0d5f630e81abfd07d2b91a324ef4a173973c5b0c68b0bdf29ac6896459cf819914a6f56199e0f
+  languageName: node
+  linkType: hard
+
+"type-fest@npm:3.5.4":
+  version: 3.5.4
+  resolution: "type-fest@npm:3.5.4"
+  checksum: 105ca92c06b60c2e7b3c4fec1e15279b2186e2bcedf781fa101639a9d5d561e7239b57bdca4313de258ceb1f11215d9623c698683bb3e0314da8310af82a3b9c
   languageName: node
   linkType: hard
 
