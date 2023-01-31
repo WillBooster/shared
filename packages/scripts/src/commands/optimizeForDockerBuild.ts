@@ -65,7 +65,8 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
       'vitest',
     ];
     if (argv.post) {
-      nameWordsToBeRemoved.push('@types', 'build-ts', 'rollup', 'typefest', 'typescript', 'vite', 'webpack');
+      // Seed scripts require TypeScript-related packages.
+      nameWordsToBeRemoved.push('build-ts', 'rollup', 'vite', 'webpack');
     }
     for (const name of Object.keys(developmentDeps)) {
       if (
