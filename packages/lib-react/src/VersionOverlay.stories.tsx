@@ -11,4 +11,3 @@ export default {
 const Template: ComponentStory<typeof VersionOverlay> = (args) => <VersionOverlay {...args} />;
 
 export const Default = Template.bind({});
-// Default.args = {};
