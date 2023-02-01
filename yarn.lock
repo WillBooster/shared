@@ -5192,7 +5192,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.50.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:5.1.0"
+    build-ts: "npm:5.3.2"
     eslint: "npm:8.33.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
@@ -5234,7 +5234,7 @@ __metadata:
     "@willbooster/eslint-config-ts-react": "npm:10.1.0"
     "@willbooster/prettier-config": "npm:9.1.1"
     babel-loader: "npm:^8.3.0"
-    build-ts: "npm:5.1.0"
+    build-ts: "npm:5.3.2"
     eslint: "npm:8.33.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
@@ -5270,7 +5270,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.50.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:5.1.0"
+    build-ts: "npm:5.3.2"
     eslint: "npm:8.33.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
@@ -5299,7 +5299,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.50.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:5.1.0"
+    build-ts: "npm:5.3.2"
     chalk: "npm:5.2.0"
     eslint: "npm:8.33.0"
     eslint-config-prettier: "npm:8.6.0"
@@ -6547,9 +6547,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"build-ts@npm:5.1.0":
-  version: 5.1.0
-  resolution: "build-ts@npm:5.1.0"
+"build-ts@npm:5.3.2":
+  version: 5.3.2
+  resolution: "build-ts@npm:5.3.2"
   dependencies:
     "@babel/core": "npm:7.20.12"
     "@babel/plugin-proposal-class-properties": "npm:7.18.6"
@@ -6567,19 +6567,23 @@ __metadata:
     "@rollup/pluginutils": "npm:5.0.2"
     babel-plugin-polyfill-corejs3: "npm:0.6.0"
     babel-plugin-transform-remove-console: "npm:6.9.4"
+    chalk: "npm:5.2.0"
     core-js: "npm:3.27.2"
     core-js-pure: "npm:3.27.2"
+    date-time: "npm:4.0.0"
     dotenv: "npm:16.0.3"
+    pretty-ms: "npm:8.0.0"
     rollup: "npm:3.11.0"
     rollup-plugin-analyzer: "npm:4.0.0"
     rollup-plugin-node-externals: "npm:5.1.0"
     rollup-plugin-string: "npm:3.0.0"
     rollup-plugin-ts: "npm:3.2.0"
+    signal-exit: "npm:3.0.7"
     ts-node: "npm:10.9.1"
     yargs: "npm:17.6.2"
   bin:
     build-ts: bin/index.mjs
-  checksum: 6a4185db10ef5d0c77b242844fe1c099076faf48a03fde627b61d3a4347fe4ec9eb0e40c0fb23ce5f8b861b714604ed0222eb4fde3695bd2060eab17298a185b
+  checksum: cf8c48292a24864f86c5b1a28fdaf1611cc088270e069053928ab4fd75de8c00fe4032d645b8c8e4bd91102a487bd03ba692f1edd5f1401165694b61811ddd7c
   languageName: node
   linkType: hard
 
@@ -7830,6 +7834,15 @@ __metadata:
   version: 1.0.1
   resolution: "cyclist@npm:1.0.1"
   checksum: 7cb16a1e4310ed56c083956b76719bad9308dd1fcae419ca3588054ef8434d8c48152b797dd53b2660c39b13296f72896443b3590b6a972ec377a931562bcfad
+  languageName: node
+  linkType: hard
+
+"date-time@npm:4.0.0":
+  version: 4.0.0
+  resolution: "date-time@npm:4.0.0"
+  dependencies:
+    time-zone: "npm:^2.0.0"
+  checksum: 11edfafb9d6a88cf926c55f1e1458e764c31d82f2b12d3c5d28213d137e6c50f142856b8db49fcfdc7d656aec47aec21dcda3f169e0b9825c250bea3b571e28f
   languageName: node
   linkType: hard
 
@@ -14362,6 +14375,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"parse-ms@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "parse-ms@npm:3.0.0"
+  checksum: 897479c5075013613687435328af0a14a2b8ce60a35c722201da07ac1aea9e1dd17462571b0e3239d29f89b1ed0c377209eca61e6aba548bd9f8e1174cd3c090
+  languageName: node
+  linkType: hard
+
 "parse5@npm:^6.0.0":
   version: 6.0.1
   resolution: "parse5@npm:6.0.1"
@@ -14850,6 +14870,15 @@ __metadata:
   version: 1.0.3
   resolution: "pretty-hrtime@npm:1.0.3"
   checksum: 0c7e44c877abaaef41d93231e143d5505d0234376a7074a6ec65dc6809e751398f18949014977f4cce1c9117ae27ecb28d73ed2995bf5fedfb54776d4bd55824
+  languageName: node
+  linkType: hard
+
+"pretty-ms@npm:8.0.0":
+  version: 8.0.0
+  resolution: "pretty-ms@npm:8.0.0"
+  dependencies:
+    parse-ms: "npm:^3.0.0"
+  checksum: 35b39c20ee7ca8128f6796741b6ac3fd76fc7e2510d99bebf754b9885a60dc28fcf869205cab81c6e3089606534e0b586340846d830ddad0b076b08714277b9e
   languageName: node
   linkType: hard
 
@@ -16448,7 +16477,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"signal-exit@npm:^3.0.0, signal-exit@npm:^3.0.2, signal-exit@npm:^3.0.3, signal-exit@npm:^3.0.7":
+"signal-exit@npm:3.0.7, signal-exit@npm:^3.0.0, signal-exit@npm:^3.0.2, signal-exit@npm:^3.0.3, signal-exit@npm:^3.0.7":
   version: 3.0.7
   resolution: "signal-exit@npm:3.0.7"
   checksum: 5cf7525c55a72d8d104d914acf2e470f74b2c156197277ad7b331bc5de3d8790170fed3c82ff98c7c31adaa8ff941bfd5ba44f55171cbe8ed0e939fa82a8322a
@@ -17458,6 +17487,13 @@ __metadata:
   version: 2.3.8
   resolution: "through@npm:2.3.8"
   checksum: c9d6883ace26b3c967283827cafdd4ceee6164fa4d3754865f5032dcb564e0cbdea9dc6f43806afa51e1f2863d8e3beca141cbf7b8dcff989982aef69bb851c0
+  languageName: node
+  linkType: hard
+
+"time-zone@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "time-zone@npm:2.0.0"
+  checksum: 7fd5905e65def9fd6774a8b0be637ac8823285628bfaaa759852305c84c929a398da0e30a70cf41d301e30cf87946065dbf742332c6f816ffdbbad15891ee588
   languageName: node
   linkType: hard
 
