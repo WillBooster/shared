@@ -44,9 +44,16 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
     }
 
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
-    const developmentDeps = packageJson.devDependencies;
-    if (!developmentDeps) return;
 
+    const deps = packageJson.dependencies || {};
+    if (deps['@moti-components/go-e-mon']) {
+      deps['@moti-components/go-e-mon'] = './@moti-components/go-e-mon';
+    }
+    if (deps['online-judge-shared']) {
+      deps['online-judge-shared'] = './online-judge-shared';
+    }
+
+    const developmentDeps = packageJson.devDependencies || {};
     const nameWordsToBeRemoved = [
       'concurrently',
       'conventional-changelog-conventionalcommits',
