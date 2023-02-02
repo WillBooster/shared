@@ -2,7 +2,7 @@ import type React from 'react';
 
 const css = `
 @media print {
-  .version {
+  .wb-shared-version {
     display: none;
   }
 }`;
@@ -11,7 +11,7 @@ export const VersionOverlay: React.FC = () => (
   <>
     <style type="text/css">{css}</style>
     <div
-      className="version"
+      className="wb-shared-version"
       style={{
         bottom: 4,
         left: 4,
