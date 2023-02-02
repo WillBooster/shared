@@ -69,10 +69,36 @@ export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof bu
   },
 };
 
+const includePatterns = ['src/', 'public/'];
+const includeSuffix = [
+  '.js',
+  '.cjs',
+  '.mjs',
+  '.jsx',
+  '.ts',
+  '.cts',
+  '.mts',
+  '.tsx',
+  '.json',
+  '.browserslistrc',
+  'yarn.lock',
+];
+const excludePatterns = ['/test/', '/tests/', '/__tests__/', '/test-fixtures/'];
+
 async function updateHashWithDiffResult(hash: Hash): Promise<void> {
-  const entries = await fs.readdir('.');
   return new Promise((resolve) => {
-    const proc = child_process.spawn('git', ['diff', ...entries]);
+    const ret = child_process.spawnSync('git', ['diff', '--name-only'], { stdio: 'pipe', encoding: 'utf8' });
+    const filePaths = ret.stdout
+      .trim()
+      .split('\n')
+      .filter(
+        (filePath) =>
+          (includePatterns.some((pattern) => filePath.includes(pattern)) ||
+            includeSuffix.some((suffix) => filePath.endsWith(suffix))) &&
+          !excludePatterns.some((pattern) => filePath.includes(pattern))
+      );
+
+    const proc = child_process.spawn('git', ['diff', '--', ...filePaths]);
     proc.stdout?.on('data', (data) => {
       hash.update(data);
     });
