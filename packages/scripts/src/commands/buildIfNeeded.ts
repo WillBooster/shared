@@ -83,7 +83,7 @@ const includeSuffix = [
   '.browserslistrc',
   'yarn.lock',
 ];
-const excludePatterns = ['/test/', '/tests/', '/__tests__/', '/test-fixtures/'];
+const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/'];
 
 async function updateHashWithDiffResult(hash: Hash): Promise<void> {
   return new Promise((resolve) => {
