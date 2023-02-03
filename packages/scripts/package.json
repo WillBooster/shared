@@ -25,18 +25,18 @@
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.2.0",
-    "minimal-promise-pool": "2.1.4"
+    "minimal-promise-pool": "2.1.5"
   },
   "devDependencies": {
-    "@types/eslint": "8.4.10",
+    "@types/eslint": "8.21.0",
     "@types/micromatch": "4.0.2",
     "@types/node": "18.11.18",
-    "@types/yargs": "17.0.20",
+    "@types/yargs": "17.0.22",
     "@typescript-eslint/eslint-plugin": "5.50.0",
     "@typescript-eslint/parser": "5.50.0",
     "@willbooster/eslint-config-ts": "10.0.8",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "5.3.2",
+    "build-ts": "5.3.3",
     "eslint": "8.33.0",
     "eslint-config-prettier": "8.6.0",
     "eslint-import-resolver-typescript": "3.5.3",
