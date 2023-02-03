@@ -5192,7 +5192,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.50.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:5.3.2"
+    build-ts: "npm:5.3.3"
     eslint: "npm:8.33.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
@@ -5234,7 +5234,7 @@ __metadata:
     "@willbooster/eslint-config-ts-react": "npm:10.1.0"
     "@willbooster/prettier-config": "npm:9.1.1"
     babel-loader: "npm:^8.3.0"
-    build-ts: "npm:5.3.2"
+    build-ts: "npm:5.3.3"
     eslint: "npm:8.33.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
@@ -5270,7 +5270,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.50.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:5.3.2"
+    build-ts: "npm:5.3.3"
     eslint: "npm:8.33.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
@@ -5299,7 +5299,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.50.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    build-ts: "npm:5.3.2"
+    build-ts: "npm:5.3.3"
     chalk: "npm:5.2.0"
     eslint: "npm:8.33.0"
     eslint-config-prettier: "npm:8.6.0"
@@ -6584,9 +6584,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"build-ts@npm:5.3.2":
-  version: 5.3.2
-  resolution: "build-ts@npm:5.3.2"
+"build-ts@npm:5.3.3":
+  version: 5.3.3
+  resolution: "build-ts@npm:5.3.3"
   dependencies:
     "@babel/core": "npm:7.20.12"
     "@babel/plugin-proposal-class-properties": "npm:7.18.6"
@@ -6620,7 +6620,7 @@ __metadata:
     yargs: "npm:17.6.2"
   bin:
     build-ts: bin/index.mjs
-  checksum: cf8c48292a24864f86c5b1a28fdaf1611cc088270e069053928ab4fd75de8c00fe4032d645b8c8e4bd91102a487bd03ba692f1edd5f1401165694b61811ddd7c
+  checksum: 38e1b87ffed1387d3f11324004f435bbd890c841ed172dfb9c4abefab2d4154ad3d3345fb792dfef452b03405e4e2c23a429280f186abbdedea86b1a121e2870
   languageName: node
   linkType: hard
 

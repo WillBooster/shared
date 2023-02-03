@@ -54,7 +54,7 @@
     "@willbooster/eslint-config-ts-react": "10.1.0",
     "@willbooster/prettier-config": "9.1.1",
     "babel-loader": "^8.3.0",
-    "build-ts": "5.3.2",
+    "build-ts": "5.3.3",
     "eslint": "8.33.0",
     "eslint-config-prettier": "8.6.0",
     "eslint-import-resolver-typescript": "3.5.3",
