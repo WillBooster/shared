@@ -36,14 +36,8 @@ yarn concurrently --raw --kill-others-on-fail
         case 'prod': {
           process.exitCode = await runScript(
             `
-yarn db:setup && yarn build && yarn blitz start -p \${PORT:-8080}
-`,
-            {
-              env: {
-                ...process.env,
-                NODE_ENV: 'production',
-              },
-            }
+NODE_ENV=production; yarn db:setup && yarn build && yarn blitz start -p \${PORT:-8080}
+`
           );
           break;
         }

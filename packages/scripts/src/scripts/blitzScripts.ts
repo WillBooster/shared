@@ -12,12 +12,16 @@ class BlitzScripts {
   }
   startDocker(name: string): string {
     return `${blitzScripts.stopDocker(name)}
-      && docker run --rm \${DOCKER_RUN_OPTS:--it} -p 8080:8080
+      && docker run --rm --it -p 8080:8080
         -v '${path.resolve()}/db/mount':/app/db/mount --name ${name} ${name}`;
   }
 
   stopDocker(name: string): string {
     return `echo $(docker rm -f $(docker container ls -q -f name=${name}) 2> /dev/null)`;
+  }
+
+  testE2E(name: string): string {
+    return `APP_ENV=production dotenv -e .env.production -- concurrently --kill-others --raw --success first "rm -Rf db/mount && \${START_CMD:-yarn start-prod}" "wait-on -t 300000 -i 2000 http://127.0.0.1:8080 && playwright \${PLAYWRIGHT_ARGS:-test tests/e2e}"`;
   }
 
   waitApp(port = 3000): string {
