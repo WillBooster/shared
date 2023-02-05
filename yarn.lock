@@ -2128,6 +2128,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@mdx-js/react@npm:^2.0.0":
+  version: 2.2.1
+  resolution: "@mdx-js/react@npm:2.2.1"
+  dependencies:
+    "@types/mdx": "npm:^2.0.0"
+    "@types/react": "npm:>=16"
+  peerDependencies:
+    react: ">=16"
+  checksum: 7cd7b79f49bc2805e4eb68a17240d52a76d459074284744f765f8eb8c30e997d3c8dc6b4540bc45779f7b93e30e99e19de926128b03e74f1ee6dcb3f9bd845ef
+  languageName: node
+  linkType: hard
+
 "@mdx-js/util@npm:1.6.22":
   version: 1.6.22
   resolution: "@mdx-js/util@npm:1.6.22"
@@ -4276,6 +4288,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/mdx@npm:^2.0.0":
+  version: 2.0.3
+  resolution: "@types/mdx@npm:2.0.3"
+  checksum: f02f90e91a2c06801d5d3823fe6d9b2d60f57bcd7eabcdef4de26ed67014bb9207488176449a27d0ce160157b08107897d104c57f7fe7203d185dc3ea9108210
+  languageName: node
+  linkType: hard
+
 "@types/micromatch@npm:4.0.2":
   version: 4.0.2
   resolution: "@types/micromatch@npm:4.0.2"
@@ -4416,7 +4435,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/react@npm:*, @types/react@npm:18.0.27":
+"@types/react@npm:*, @types/react@npm:18.0.27, @types/react@npm:>=16":
   version: 18.0.27
   resolution: "@types/react@npm:18.0.27"
   dependencies:
@@ -5158,7 +5177,7 @@ __metadata:
   resolution: "@willbooster/shared-lib-react@workspace:packages/lib-react"
   dependencies:
     "@babel/core": "npm:^7.20.12"
-    "@mdx-js/react": "npm:^1.6.22"
+    "@mdx-js/react": "npm:^2.0.0"
     "@storybook/addon-actions": "npm:^6.5.16"
     "@storybook/addon-docs": "npm:^6.5.16"
     "@storybook/addon-essentials": "npm:^6.5.16"
