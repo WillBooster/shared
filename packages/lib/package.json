@@ -31,7 +31,7 @@
   },
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
-    "@types/eslint": "8.4.10",
+    "@types/eslint": "8.21.0",
     "@types/micromatch": "4.0.2",
     "@types/prettier": "2.7.2",
     "@typescript-eslint/eslint-plugin": "5.50.0",
@@ -49,9 +49,9 @@
     "lint-staged": "13.1.0",
     "micromatch": "4.0.5",
     "prettier": "2.8.3",
-    "sort-package-json": "2.4.0",
+    "sort-package-json": "2.4.1",
     "typescript": "4.9.5",
-    "vitest": "0.28.3"
+    "vitest": "0.28.4"
   },
   "publishConfig": {
     "access": "public"
