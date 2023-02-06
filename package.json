@@ -24,7 +24,7 @@
   },
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
-    "@yarnpkg/shell": "4.0.0-rc.37"
+    "@yarnpkg/shell": "4.0.0-rc.38"
   },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "6.5.1",

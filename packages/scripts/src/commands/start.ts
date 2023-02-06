@@ -26,32 +26,15 @@ export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
     if (packageJson.dependencies?.['blitz']) {
       switch (argv.mode) {
         case 'dev': {
-          process.exitCode = await runScript(
-            `
-yarn concurrently --raw --kill-others-on-fail
-  "blitz dev"
-  "${blitzScripts.waitAndOpenApp()}");
-`
-          );
+          process.exitCode = await runScript(blitzScripts.start());
           break;
         }
         case 'prod': {
-          process.exitCode = await runScript(
-            `
-NODE_ENV=production; yarn db:setup && yarn build && yarn blitz start -p \${PORT:-8080}
-`
-          );
+          process.exitCode = await runScript(blitzScripts.startProduction());
           break;
         }
         case 'docker': {
-          process.exitCode = await runScript(
-            `
-${dockerScripts.buildDevImage(name)}
-  && yarn concurrently --raw --kill-others-on-fail
-    "${dockerScripts.stopAndStart(name, `-v '${path.resolve()}/db/mount':/app/db/mount`)}"
-    "${blitzScripts.waitAndOpenApp(8080)}"
-`
-          );
+          process.exitCode = await runScript(blitzScripts.startDocker(name));
           break;
         }
         default: {
