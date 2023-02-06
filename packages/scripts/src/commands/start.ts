@@ -4,6 +4,7 @@ import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts } from '../scripts/blitzScripts.js';
+import { dockerScripts } from '../scripts/dockerScripts.js';
 import { runScript } from '../scripts/sharedScripts.js';
 
 const builder = {
@@ -44,9 +45,9 @@ NODE_ENV=production; yarn db:setup && yarn build && yarn blitz start -p \${PORT:
         case 'docker': {
           process.exitCode = await runScript(
             `
-${blitzScripts.buildDocker(name)}
+${dockerScripts.buildDocker(name)}
   && yarn concurrently --raw --kill-others-on-fail
-    "${blitzScripts.startDocker(name)}"
+    "${dockerScripts.stopAndStartDocker(name)}"
     "${blitzScripts.waitAndOpenApp(8080)}"
 `
           );

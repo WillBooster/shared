@@ -17,6 +17,11 @@ const builder = {
     type: 'boolean',
     alias: 'e',
   },
+  e2eMode: {
+    description: 'e2e mode: headless (default) | headed | debug | generate | trace',
+    type: 'string',
+    alias: 'em',
+  },
   start: {
     description: 'Whether to run start tests',
     type: 'boolean',
@@ -39,7 +44,13 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
     if (packageJson.dependencies?.['blitz']) {
       const promises: Promise<number>[] = [];
       if (argv.ci) {
-        const rmDockerPromise = runScript(`docker rm -f $(docker ps -q) 2> /dev/null || true`);
+        const rmDockerPromise = runScript(blitzScripts.stopAllDocker());
+        if (argv.unit !== false) {
+          promises.push(runScript(`yarn vitest run tests/unit`));
+        }
+        if (argv.start !== false) {
+          promises.push(runScript(`yarn concurrently --kill-others --raw "blitz dev" "${blitzScripts.waitApp()}"`));
+        }
         promises.push(
           runScript(`yarn vitest run tests/unit`),
           runScript(`yarn concurrently --kill-others --raw "blitz dev" "${blitzScripts.waitApp()}"`)
@@ -47,6 +58,39 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
         await rmDockerPromise;
         promises.push(runScript(`${blitzScripts.buildDocker(name)}`));
         await Promise.all(promises);
+        await runScript(blitzScripts.testE2E({ startCommand: `unbuffer ${blitzScripts.stopDocker(name)}` }));
+      } else {
+        if (argv.unit) {
+          promises.push(runScript(`yarn vitest run tests/unit`));
+        }
+        if (argv.start) {
+          promises.push(runScript(`yarn concurrently --kill-others --raw "blitz dev" "${blitzScripts.waitApp()}"`));
+        }
+        await Promise.all(promises);
+        if (argv.e2e) {
+          switch (argv.e2eMode) {
+            case 'headless': {
+              await runScript(blitzScripts.testE2E({}));
+              break;
+            }
+            case 'headed': {
+              await runScript(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
+              break;
+            }
+            case 'debug': {
+              await runScript(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
+              break;
+            }
+            case 'generate': {
+              await runScript(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
+              break;
+            }
+            case 'trace': {
+              await runScript(`yarn playwright show-trace`);
+              break;
+            }
+          }
+        }
       }
 
       //    "test": "yarn test:unit && yarn test:e2e && yarn test:start",
