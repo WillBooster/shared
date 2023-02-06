@@ -4,6 +4,7 @@ import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts } from '../scripts/blitzScripts.js';
+import { dockerScripts } from '../scripts/dockerScripts.js';
 import { runScript } from '../scripts/sharedScripts.js';
 
 const builder = {
@@ -44,7 +45,7 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
     if (packageJson.dependencies?.['blitz']) {
       const promises: Promise<number>[] = [];
       if (argv.ci) {
-        const rmDockerPromise = runScript(blitzScripts.stopAllDocker());
+        const rmDockerPromise = runScript(dockerScripts.stopAll());
         if (argv.unit !== false) {
           promises.push(runScript(`yarn vitest run tests/unit`));
         }
@@ -56,9 +57,9 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
           runScript(`yarn concurrently --kill-others --raw "blitz dev" "${blitzScripts.waitApp()}"`)
         );
         await rmDockerPromise;
-        promises.push(runScript(`${blitzScripts.buildDocker(name)}`));
+        promises.push(runScript(`${dockerScripts.buildDevImage(name)}`));
         await Promise.all(promises);
-        await runScript(blitzScripts.testE2E({ startCommand: `unbuffer ${blitzScripts.stopDocker(name)}` }));
+        await runScript(blitzScripts.testE2E({ startCommand: `unbuffer ${dockerScripts.stop(name)}` }));
       } else {
         if (argv.unit) {
           promises.push(runScript(`yarn vitest run tests/unit`));

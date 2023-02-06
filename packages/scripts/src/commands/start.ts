@@ -45,9 +45,9 @@ NODE_ENV=production; yarn db:setup && yarn build && yarn blitz start -p \${PORT:
         case 'docker': {
           process.exitCode = await runScript(
             `
-${dockerScripts.buildDocker(name)}
+${dockerScripts.buildDevImage(name)}
   && yarn concurrently --raw --kill-others-on-fail
-    "${dockerScripts.stopAndStartDocker(name)}"
+    "${dockerScripts.stopAndStart(name)}"
     "${blitzScripts.waitAndOpenApp(8080)}"
 `
           );
