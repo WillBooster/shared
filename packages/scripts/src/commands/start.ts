@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
@@ -47,7 +48,7 @@ NODE_ENV=production; yarn db:setup && yarn build && yarn blitz start -p \${PORT:
             `
 ${dockerScripts.buildDevImage(name)}
   && yarn concurrently --raw --kill-others-on-fail
-    "${dockerScripts.stopAndStart(name)}"
+    "${dockerScripts.stopAndStart(name, `-v '${path.resolve()}/db/mount':/app/db/mount`)}"
     "${blitzScripts.waitAndOpenApp(8080)}"
 `
           );

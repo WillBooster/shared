@@ -8,11 +8,11 @@ class DockerScripts {
         --build-arg WB_ENV=local
         --build-arg VERSION=dev .`;
   }
-  stopAndStart(name: string): string {
-    return `${this.stop(name)} && ${this.start(name)}`;
+  stopAndStart(name: string, additionalArgs = ''): string {
+    return `${this.stop(name)} && ${this.start(name, additionalArgs)}`;
   }
-  start(name: string): string {
-    return `docker run --rm --it -p 8080:8080 -v '${path.resolve()}/db/mount':/app/db/mount --name ${name} ${name}`;
+  start(name: string, additionalArgs = ''): string {
+    return `docker run --rm --it -p 8080:8080 ${additionalArgs} --name ${name} ${name}`;
   }
 
   stop(name: string): string {
