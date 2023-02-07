@@ -12,7 +12,6 @@ const builder = {
   ci: {
     description: 'Whether or not to enable CI mode',
     type: 'boolean',
-    default: false,
   },
 } as const;
 

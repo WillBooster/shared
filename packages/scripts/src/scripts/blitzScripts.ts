@@ -28,7 +28,7 @@ class BlitzScripts {
     return `NODE_ENV=production; yarn db:setup && yarn build && yarn blitz start -p \${PORT:-${port}}`;
   }
 
-  testE2E({ playwrightArgs = 'test tests/e2e', startCommand = 'yarn start-prod' }): string {
+  testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {
     return `APP_ENV=production yarn dotenv -e .env.production -- concurrently --kill-others --raw --success first
       "rm -Rf db/mount && ${startCommand}"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && playwright ${playwrightArgs}"`;

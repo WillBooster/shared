@@ -5,7 +5,6 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts } from '../scripts/blitzScripts.js';
 import { runScript } from '../scripts/sharedScripts.js';
-import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
   mode: {
@@ -13,7 +12,6 @@ const builder = {
     type: 'string',
     alias: 'm',
   },
-  ...sharedOptions,
 } as const;
 
 export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
@@ -26,15 +24,15 @@ export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
     if (packageJson.dependencies?.['blitz']) {
       switch (argv.mode) {
         case 'dev': {
-          await runScript(blitzScripts.start(), argv.verbose);
+          await runScript(blitzScripts.start());
           break;
         }
         case 'prod': {
-          await runScript(blitzScripts.startProduction(), argv.verbose);
+          await runScript(blitzScripts.startProduction());
           break;
         }
         case 'docker': {
-          await runScript(blitzScripts.startDocker(name), argv.verbose);
+          await runScript(blitzScripts.startDocker(name));
           break;
         }
         default: {
