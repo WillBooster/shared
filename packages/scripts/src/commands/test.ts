@@ -54,11 +54,15 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
         await rmDockerPromise;
         promises.push(runScript(`${blitzScripts.buildDocker(name)}`));
         await Promise.all(promises);
-        await runScript(
-          blitzScripts.testE2E({
-            startCommand: `unbuffer ${dockerScripts.start(name, blitzScripts.dockerRunAdditionalArgs)}`,
-          })
-        );
+        if (argv.e2e !== false) {
+          process.exitCode = await runScript(
+            blitzScripts.testE2E({
+              startCommand: `unbuffer ${dockerScripts.start(name, blitzScripts.dockerRunAdditionalArgs)}`,
+            }),
+            false
+          );
+          await runScript(dockerScripts.stop(name));
+        }
       } else {
         if (argv.unit) {
           promises.push(runScript(blitzScripts.testUnit()));
