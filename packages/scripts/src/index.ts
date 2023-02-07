@@ -7,11 +7,11 @@ import { optimizeForDockerBuild } from './commands/optimizeForDockerBuild.js';
 import { setup } from './commands/setup.js';
 import { start } from './commands/start.js';
 import { test } from './commands/test.js';
-import { sharedOptions } from './sharedOptions.js';
+import { preprocessedOptions } from './sharedOptions.js';
 
 await yargs(hideBin(process.argv))
   .scriptName('wb')
-  .options(sharedOptions)
+  .options(preprocessedOptions)
   .middleware((argv) => {
     const workingDir = argv['working-dir'];
     if (workingDir) {

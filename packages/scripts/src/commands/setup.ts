@@ -5,10 +5,10 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { promisePool } from '../promisePool.js';
-import { sharedOptions } from '../sharedOptions.js';
+import { preprocessedOptions } from '../sharedOptions.js';
 
 const builder = {
-  ...sharedOptions,
+  ...preprocessedOptions,
   ci: {
     description: 'Whether or not to enable CI mode',
     type: 'boolean',

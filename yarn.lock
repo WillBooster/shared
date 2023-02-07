@@ -5255,6 +5255,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.50.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
+    "@yarnpkg/shell": "npm:4.0.0-rc.38"
     build-ts: "npm:5.5.0"
     chalk: "npm:5.2.0"
     eslint: "npm:8.33.0"

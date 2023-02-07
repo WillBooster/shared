@@ -1,12 +1,11 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
 
 import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts } from '../scripts/blitzScripts.js';
-import { dockerScripts } from '../scripts/dockerScripts.js';
 import { runScript } from '../scripts/sharedScripts.js';
+import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
   mode: {
@@ -14,6 +13,7 @@ const builder = {
     type: 'string',
     alias: 'm',
   },
+  ...sharedOptions,
 } as const;
 
 export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
@@ -26,15 +26,15 @@ export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
     if (packageJson.dependencies?.['blitz']) {
       switch (argv.mode) {
         case 'dev': {
-          process.exitCode = await runScript(blitzScripts.start());
+          await runScript(blitzScripts.start(), argv.verbose);
           break;
         }
         case 'prod': {
-          process.exitCode = await runScript(blitzScripts.startProduction());
+          await runScript(blitzScripts.startProduction(), argv.verbose);
           break;
         }
         case 'docker': {
-          process.exitCode = await runScript(blitzScripts.startDocker(name));
+          await runScript(blitzScripts.startDocker(name), argv.verbose);
           break;
         }
         default: {

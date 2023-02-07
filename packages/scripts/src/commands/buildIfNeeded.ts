@@ -6,10 +6,10 @@ import path from 'node:path';
 import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { sharedOptions } from '../sharedOptions.js';
+import { preprocessedOptions } from '../sharedOptions.js';
 
 const builder = {
-  ...sharedOptions,
+  ...preprocessedOptions,
   command: {
     description: 'A build command',
     type: 'string',

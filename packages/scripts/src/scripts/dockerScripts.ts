@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 class DockerScripts {
   buildDevImage(name: string): string {
     return `yarn wb optimizeForDockerBuild --outside
@@ -12,7 +10,7 @@ class DockerScripts {
     return `${this.stop(name)} && ${this.start(name, additionalArgs)}`;
   }
   start(name: string, additionalArgs = ''): string {
-    return `docker run --rm --it -p 8080:8080 ${additionalArgs} --name ${name} ${name}`;
+    return `docker run --rm -it -p 8080:8080 ${additionalArgs} --name ${name} ${name}`;
   }
 
   stop(name: string): string {

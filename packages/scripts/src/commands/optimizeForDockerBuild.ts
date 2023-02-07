@@ -4,10 +4,10 @@ import path from 'node:path';
 
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { sharedOptions } from '../sharedOptions.js';
+import { preprocessedOptions } from '../sharedOptions.js';
 
 const builder = {
-  ...sharedOptions,
+  ...preprocessedOptions,
   outside: {
     description: 'Whether the optimization is executed outside a docker container or not',
     type: 'boolean',

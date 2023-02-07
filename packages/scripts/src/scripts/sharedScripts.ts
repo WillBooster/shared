@@ -1,11 +1,13 @@
-import { execute, UserOptions } from '@yarnpkg/shell';
+import { execute } from '@yarnpkg/shell';
 
-class SharedScripts {
-  // do nothing
-}
-
-export const sharedScripts = new SharedScripts();
-
-export function runScript(script: string, opts?: Partial<UserOptions>): Promise<number> {
-  return execute(script.replaceAll('\n', '').trim(), undefined, opts);
+export async function runScript(script: string, verbose?: boolean, exitWithNonZeroCode = true): Promise<number> {
+  script = script.replaceAll('\n', '').trim();
+  if (verbose) {
+    console.info(`$ ${script}`);
+  }
+  const exitCode = await execute(script, undefined);
+  if (exitWithNonZeroCode && exitCode !== 0) {
+    process.exit(exitCode);
+  }
+  return exitCode;
 }
