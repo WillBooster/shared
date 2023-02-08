@@ -4,7 +4,7 @@ import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts } from '../scripts/blitzScripts.js';
-import { runScript } from '../scripts/sharedScripts.js';
+import { runWithYarn } from '../scripts/sharedScripts.js';
 
 const builder = {
   mode: {
@@ -24,15 +24,15 @@ export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
     if (packageJson.dependencies?.['blitz']) {
       switch (argv.mode || 'dev') {
         case 'dev': {
-          await runScript(blitzScripts.start());
+          await runWithYarn(blitzScripts.start());
           break;
         }
         case 'prod': {
-          await runScript(blitzScripts.startProduction());
+          await runWithYarn(blitzScripts.startProduction());
           break;
         }
         case 'docker': {
-          await runScript(blitzScripts.startDocker(name));
+          await runWithYarn(blitzScripts.startDocker(name));
           break;
         }
         default: {

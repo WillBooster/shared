@@ -5,7 +5,7 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import { runScript } from '../scripts/sharedScripts.js';
+import { runWithSpawn, runWithYarn } from '../scripts/sharedScripts.js';
 
 const builder = {
   ci: {
@@ -32,6 +32,10 @@ const builder = {
     type: 'boolean',
     alias: 'u',
   },
+  'unit-timeout': {
+    description: 'Timeout for unit tests',
+    type: 'number',
+  },
 } as const;
 
 export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
@@ -42,55 +46,55 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
     const name = packageJson.name || 'unknown';
     if (packageJson.dependencies?.['blitz']) {
-      const promises: Promise<number>[] = [];
+      const promises: Promise<unknown>[] = [];
       if (argv.ci) {
-        const rmDockerPromise = runScript(dockerScripts.stopAll());
+        const rmDockerPromise = runWithYarn(dockerScripts.stopAll());
         if (argv.unit !== false) {
-          promises.push(runScript(blitzScripts.testUnit()));
+          promises.push(runWithSpawn(blitzScripts.testUnit(), argv.unitTimeout));
         }
         if (argv.start !== false) {
-          promises.push(runScript(blitzScripts.testStart()));
+          promises.push(runWithYarn(blitzScripts.testStart()));
         }
         await rmDockerPromise;
-        promises.push(runScript(`${blitzScripts.buildDocker(name)}`));
+        promises.push(runWithYarn(`${blitzScripts.buildDocker(name)}`));
         await Promise.all(promises);
         if (argv.e2e !== false) {
-          process.exitCode = await runScript(
+          process.exitCode = await runWithYarn(
             blitzScripts.testE2E({
               startCommand: `unbuffer ${dockerScripts.start(name, blitzScripts.dockerRunAdditionalArgs)}`,
             }),
             false
           );
-          await runScript(dockerScripts.stop(name));
+          await runWithYarn(dockerScripts.stop(name));
         }
       } else {
         if (argv.unit) {
-          promises.push(runScript(blitzScripts.testUnit()));
+          promises.push(runWithSpawn(blitzScripts.testUnit(), argv.unitTimeout));
         }
         if (argv.start) {
-          promises.push(runScript(blitzScripts.testStart()));
+          promises.push(runWithYarn(blitzScripts.testStart()));
         }
         await Promise.all(promises);
         if (argv.e2e) {
           switch (argv.e2eMode || 'headless') {
             case 'headless': {
-              await runScript(blitzScripts.testE2E({}));
+              await runWithYarn(blitzScripts.testE2E({}));
               break;
             }
             case 'headed': {
-              await runScript(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
+              await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
               break;
             }
             case 'debug': {
-              await runScript(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
+              await runWithYarn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
               break;
             }
             case 'generate': {
-              await runScript(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
+              await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
               break;
             }
             case 'trace': {
-              await runScript(`yarn playwright show-trace`);
+              await runWithYarn(`yarn playwright show-trace`);
               break;
             }
           }
