@@ -14,7 +14,7 @@ class BlitzScripts {
   start(): string {
     return `yarn concurrently --raw --kill-others-on-fail
       "blitz dev"
-      "${blitzScripts.waitAndOpenApp()}");`;
+      "${blitzScripts.waitAndOpenApp()}"`;
   }
 
   startDocker(name: string): string {
