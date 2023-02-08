@@ -60,11 +60,15 @@ export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof bu
 
     console.log('Start building production code.');
     const [command, ...args] = argv.command.split(' ');
-    child_process.spawnSync(command, args, {
+    const ret = child_process.spawnSync(command, args, {
       stdio: 'inherit',
     });
-    console.log('Finished building production code.');
+    if (ret.status !== 0) {
+      console.log('Failed to build production code.');
+      process.exit(ret.status ?? 1);
+    }
 
+    console.log('Finished building production code.');
     await fs.writeFile(cacheFilePath, contentHash, 'utf8');
   },
 };
