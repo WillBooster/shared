@@ -8,7 +8,7 @@ import { runScript } from '../scripts/sharedScripts.js';
 
 const builder = {
   mode: {
-    description: 'Start mode: dev | prod | docker',
+    description: 'Start mode: dev (default) | prod | docker',
     type: 'string',
     alias: 'm',
   },
@@ -22,7 +22,7 @@ export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
     const name = packageJson.name || 'unknown';
     if (packageJson.dependencies?.['blitz']) {
-      switch (argv.mode) {
+      switch (argv.mode || 'dev') {
         case 'dev': {
           await runScript(blitzScripts.start());
           break;
