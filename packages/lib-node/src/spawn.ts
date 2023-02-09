@@ -25,7 +25,9 @@ export async function spawnAsync(
     | SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioNull>
     | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioPipe>
     | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>
-    | SpawnOptions
+    | SpawnOptions,
+  stopProcessOnExit?: boolean,
+  verbose?: boolean
 ): Promise<SpawnAsyncReturns> {
   return new Promise((resolve, reject) => {
     try {
@@ -58,12 +60,20 @@ export async function spawnAsync(
               descendantProcIds.push(pid);
             }
           }
-          execSync(`kill ${descendantProcIds.join(' ')}`);
+
+          const killScript = `kill ${descendantProcIds.join(' ')}`;
+          if (verbose) {
+            console.info(pstreeOutput);
+            console.info(`$ ${killScript}`);
+          }
+          execSync(killScript);
         } catch {
           // do nothing.
         }
       };
-      process.on('exit', stopProcess);
+      if (stopProcessOnExit) {
+        process.on('exit', stopProcess);
+      }
 
       proc.on('error', (error) => {
         process.removeListener('exit', stopProcess);

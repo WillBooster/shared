@@ -13,7 +13,7 @@ export async function runWithYarn(script: string, exitWithNonZeroCode = true): P
 
 export async function runWithSpawn(script: string, timeout?: number, exitWithNonZeroCode = true): Promise<void> {
   const normalizedScript = normalizeScript(script);
-  const ret = await spawnAsync(normalizedScript, undefined, { shell: true, stdio: 'inherit', timeout });
+  const ret = await spawnAsync(normalizedScript, undefined, { shell: true, stdio: 'inherit', timeout }, true, true);
   if (exitWithNonZeroCode && ret.status !== 0) {
     console.info(`Failed to run with exit code ${ret.status}: ${normalizedScript}`);
     process.exit(ret.status ?? 1);
