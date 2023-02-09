@@ -35,7 +35,7 @@ class BlitzScripts {
   }
 
   testStart(): string {
-    return `yarn concurrently --kill-others --raw "blitz dev" "${this.waitApp()}"`;
+    return `yarn concurrently --kill-others --raw --success first "blitz dev" "${this.waitApp()}"`;
   }
 
   testUnit(): string {
