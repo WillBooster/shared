@@ -13,7 +13,16 @@ describe('spawn', () => {
     expect(ret.status).toBe(0);
   });
 
-  it.each([['ls -@']])('get non-zero code from "%s"', async (commandWithArgs) => {
+  it.each([['echo'], ['echo 1']])('spawn "%s" without args successfully', async (command) => {
+    const ret = await spawnAsync(command, undefined, { shell: true });
+    expect(ret.pid).to.greaterThan(0);
+    expect(ret.stdout).toBeTruthy();
+    expect(ret.stderr).toBeFalsy();
+    expect(ret.signal).toBeNull();
+    expect(ret.status).toBe(0);
+  });
+
+  it.each([['ls ----']])('get non-zero code from "%s"', async (commandWithArgs) => {
     const [command, ...args] = commandWithArgs.split(' ');
     const ret = await spawnAsync(command, args);
     expect(ret.pid).to.greaterThan(0);

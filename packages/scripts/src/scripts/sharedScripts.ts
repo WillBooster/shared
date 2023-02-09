@@ -10,8 +10,7 @@ export async function runWithYarn(script: string, exitWithNonZeroCode = true): P
 }
 
 export async function runWithSpawn(script: string, timeout?: number, exitWithNonZeroCode = true): Promise<void> {
-  const [command, ...args] = normalizeScript(script).split(' ');
-  const ret = await spawnAsync(command, args, { stdio: 'inherit', timeout });
+  const ret = await spawnAsync(normalizeScript(script), undefined, { shell: true, stdio: 'inherit', timeout });
   if (exitWithNonZeroCode && ret.status !== 0) {
     process.exit(ret.status ?? 1);
   }

@@ -56,7 +56,7 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
           promises.push(runWithYarn(blitzScripts.testStart()));
         }
         await rmDockerPromise;
-        promises.push(runWithYarn(`${blitzScripts.buildDocker(name, 'test')}`));
+        promises.push(runWithSpawn(`${blitzScripts.buildDocker(name, 'test')}`));
         await Promise.all(promises);
         if (argv.e2e !== false) {
           process.exitCode = await runWithYarn(
