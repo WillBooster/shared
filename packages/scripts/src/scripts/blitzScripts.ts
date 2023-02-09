@@ -7,8 +7,8 @@ class BlitzScripts {
     return `-v '${path.resolve()}/db/mount':/app/db/mount`;
   }
 
-  buildDocker(name: string): string {
-    return `touch gcp-sa-key.json && ${dockerScripts.buildDevImage(name)}`;
+  buildDocker(name: string, wbEnv = 'local'): string {
+    return `touch gcp-sa-key.json && ${dockerScripts.buildDevImage(name, wbEnv)}`;
   }
 
   start(): string {

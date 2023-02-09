@@ -1,10 +1,10 @@
 class DockerScripts {
-  buildDevImage(name: string): string {
+  buildDevImage(name: string, wbEnv = 'local'): string {
     return `yarn wb optimizeForDockerBuild --outside
     && yarn retry -n 3 -- docker build -t ${name}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
-        --build-arg WB_ENV=local
-        --build-arg VERSION=dev .`;
+        --build-arg WB_ENV=${wbEnv}
+        --build-arg WB_VERSION=dev .`;
   }
   stopAndStart(name: string, additionalArgs = ''): string {
     return `${this.stop(name)} && ${this.start(name, additionalArgs)}`;
