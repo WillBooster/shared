@@ -4,7 +4,7 @@ import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts } from '../scripts/blitzScripts.js';
-import { runWithYarn } from '../scripts/sharedScripts.js';
+import { runWithYarn } from '../scripts/run.js';
 
 const builder = {
   mode: {

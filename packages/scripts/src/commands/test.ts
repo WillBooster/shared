@@ -5,7 +5,7 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import { runWithSpawn, runWithYarn } from '../scripts/sharedScripts.js';
+import { runWithSpawn, runWithYarn } from '../scripts/run.js';
 
 const builder = {
   ci: {
@@ -48,16 +48,15 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
     if (packageJson.dependencies?.['blitz']) {
       const promises: Promise<unknown>[] = [];
       if (argv.ci) {
-        const rmDockerPromise = runWithYarn(dockerScripts.stopAll());
+        promises.push(runWithYarn(dockerScripts.stopAll()));
         if (argv.unit !== false) {
           promises.push(runWithSpawn(blitzScripts.testUnit(), argv.unitTimeout));
         }
         if (argv.start !== false) {
           promises.push(runWithYarn(blitzScripts.testStart()));
         }
-        await rmDockerPromise;
-        promises.push(runWithSpawn(`${blitzScripts.buildDocker(name, 'test')}`));
         await Promise.all(promises);
+        await runWithSpawn(`${blitzScripts.buildDocker(name, 'test')}`);
         if (argv.e2e !== false) {
           process.exitCode = await runWithYarn(
             blitzScripts.testE2E({

@@ -37,7 +37,7 @@ export const setup: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
 };
 
 async function runCommand(command: string, args: string[], parallel = false): Promise<void> {
-  console.info(chalk.green('Starting:'), command, args.join(' '));
+  console.info(chalk.green('Start:'), command, args.join(' '));
 
   await (parallel
     ? promisePool.run(
