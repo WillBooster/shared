@@ -48,7 +48,7 @@ class BlitzScripts {
       || wait-on -t 10000 -i 1000 http://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 10000 -i 2000 http://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 20000 -i 4000 http://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 60000 -i 5000 http://127.0.0.1:${port}`;
+      || wait-on -t 120000 -i 5000 http://127.0.0.1:${port}`;
   }
 
   private waitAndOpenApp(port = 3000): string {
