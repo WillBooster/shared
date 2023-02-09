@@ -8,6 +8,7 @@ import {
   StdioPipe,
   execSync,
 } from 'node:child_process';
+import * as os from 'node:os';
 
 export type SpawnAsyncReturns = Omit<SpawnSyncReturns<string>, 'output' | 'error'>;
 
@@ -41,12 +42,17 @@ export async function spawnAsync(
 
       const stopProcess = (): void => {
         try {
-          const procIdLines = execSync(`pstree -p ${proc.pid}`).toString();
-          const procIds = procIdLines.split('\n').map((line) => {
-            const [pid] = line.match(/\d+/) ?? [];
-            return Number(pid);
-          });
-          const descendantProcIds = [];
+          let pstreeOutput: string;
+          let regex: RegExp;
+          if (os.platform() === 'darwin') {
+            pstreeOutput = execSync(`pstree ${proc.pid}`).toString();
+            regex = /\d+/;
+          } else {
+            pstreeOutput = execSync(`pstree -p ${proc.pid}`).toString();
+            regex = /\d+/g;
+          }
+          const procIds = pstreeOutput.split('\n').flatMap((line) => (line.match(regex) ?? []).map(Number));
+          const descendantProcIds: number[] = [];
           for (const pid of procIds) {
             if (pid > 0 && (pid === proc.pid || descendantProcIds.length > 0)) {
               descendantProcIds.push(pid);
