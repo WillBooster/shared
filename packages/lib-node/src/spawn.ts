@@ -12,22 +12,26 @@ import * as os from 'node:os';
 
 export type SpawnAsyncReturns = Omit<SpawnSyncReturns<string>, 'output' | 'error'>;
 
+export type SpawnAsyncOptions = (
+  | SpawnOptionsWithoutStdio
+  | SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioPipe>
+  | SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioNull>
+  | SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioPipe>
+  | SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe>
+  | SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioNull>
+  | SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioNull>
+  | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioPipe>
+  | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>
+  | SpawnOptions
+) & {
+  killOnExit?: boolean;
+  verbose?: boolean;
+};
+
 export async function spawnAsync(
   command: string,
   args?: ReadonlyArray<string>,
-  options?:
-    | SpawnOptionsWithoutStdio
-    | SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioPipe>
-    | SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioNull>
-    | SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioPipe>
-    | SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioPipe>
-    | SpawnOptionsWithStdioTuple<StdioPipe, StdioNull, StdioNull>
-    | SpawnOptionsWithStdioTuple<StdioNull, StdioPipe, StdioNull>
-    | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioPipe>
-    | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>
-    | SpawnOptions,
-  stopProcessOnExit?: boolean,
-  verbose?: boolean
+  options?: SpawnAsyncOptions
 ): Promise<SpawnAsyncReturns> {
   return new Promise((resolve, reject) => {
     try {
@@ -62,7 +66,7 @@ export async function spawnAsync(
           }
 
           const killScript = `kill ${descendantProcIds.join(' ')}`;
-          if (verbose) {
+          if (options?.verbose) {
             console.info(pstreeOutput);
             console.info(`$ ${killScript}`);
           }
@@ -71,7 +75,7 @@ export async function spawnAsync(
           // do nothing.
         }
       };
-      if (stopProcessOnExit) {
+      if (options?.killOnExit) {
         process.on('exit', stopProcess);
       }
 

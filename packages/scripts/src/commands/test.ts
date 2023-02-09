@@ -50,7 +50,7 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
       if (argv.ci) {
         promises.push(runWithYarn(dockerScripts.stopAll()));
         if (argv.unit !== false) {
-          promises.push(runWithSpawn(blitzScripts.testUnit(), argv.unitTimeout));
+          promises.push(runWithSpawn(blitzScripts.testUnit(), { timeout: argv.unitTimeout }));
         }
         if (argv.start !== false) {
           promises.push(runWithYarn(blitzScripts.testStart()));
@@ -62,13 +62,13 @@ export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
             blitzScripts.testE2E({
               startCommand: `unbuffer ${dockerScripts.start(name, blitzScripts.dockerRunAdditionalArgs)}`,
             }),
-            false
+            { exitIfFailed: false }
           );
           await runWithYarn(dockerScripts.stop(name));
         }
       } else {
         if (argv.unit) {
-          promises.push(runWithSpawn(blitzScripts.testUnit(), argv.unitTimeout));
+          promises.push(runWithSpawn(blitzScripts.testUnit(), { timeout: argv.unitTimeout }));
         }
         if (argv.start) {
           promises.push(runWithYarn(blitzScripts.testStart()));
