@@ -10,6 +10,11 @@
       "require": "./dist/cjs/index.cjs",
       "import": "./dist/esm/index.js",
       "types": "./dist/esm/index.d.ts"
+    },
+    "./src": {
+      "require": "./src/index.ts",
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     }
   },
   "main": "dist/cjs/index.cjs",

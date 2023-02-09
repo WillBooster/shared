@@ -42,11 +42,16 @@ class BlitzScripts {
     return `yarn vitest run tests/unit`;
   }
 
-  waitApp(port = 3000): string {
-    return `wait-on -t 60000 -i 2000 http://127.0.0.1:${port}`;
+  private waitApp(port = 3000): string {
+    return `wait-on -t 10000 http://127.0.0.1:${port}
+      || wait-on -t 10000 -i 500 http://127.0.0.1:${port}
+      || wait-on -t 10000 -i 1000 http://127.0.0.1:${port}
+      || wait-on -t 10000 -i 2000 http://127.0.0.1:${port}
+      || wait-on -t 10000 -i 3000 http://127.0.0.1:${port}
+      || wait-on -t 10000 -i 5000 http://127.0.0.1:${port}`;
   }
 
-  waitAndOpenApp(port = 3000): string {
+  private waitAndOpenApp(port = 3000): string {
     return `${this.waitApp(port)} && open-cli http://localhost:${port}`;
   }
 }

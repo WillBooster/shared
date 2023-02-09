@@ -1,4 +1,4 @@
-import { spawnAsync } from '@willbooster/shared-lib-node';
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { execute } from '@yarnpkg/shell';
 
 export async function runWithYarn(script: string, exitWithNonZeroCode = true): Promise<number> {
