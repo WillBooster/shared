@@ -29,7 +29,8 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
       stdio: 'inherit',
     } as const;
 
-    if (!argv.outside) {
+    if (!argv.outside && !argv.post) {
+      child_process.spawnSync('yarn', ['plugin', 'remove', 'plugin-auto-install'], opts);
       child_process.spawnSync('yarn', ['config', 'set', 'enableTelemetry', '0'], opts);
       child_process.spawnSync('yarn', ['config', 'set', 'enableGlobalCache', '0'], opts);
       child_process.spawnSync('yarn', ['config', 'set', 'nmMode', 'hardlinks-local'], opts);
@@ -39,8 +40,6 @@ export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<
         ['config', 'set', 'logFilters', '--json', JSON.stringify(codes.map((code) => ({ code, level: 'discard' })))],
         opts
       );
-      child_process.spawnSync('yarn', ['plugin', 'remove', '@yarnpkg/plugin-typescript'], opts);
-      child_process.spawnSync('yarn', ['plugin', 'remove', 'plugin-auto-install'], opts);
     }
 
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
