@@ -24,7 +24,7 @@
   },
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
-    "@yarnpkg/shell": "4.0.0-rc.38"
+    "@yarnpkg/shell": "4.0.0-rc.39"
   },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "6.5.1",
@@ -33,7 +33,7 @@
     "@willbooster/prettier-config": "9.1.1",
     "@willbooster/renovate-config": "9.5.0",
     "conventional-changelog-conventionalcommits": "5.0.0",
-    "eslint": "8.33.0",
+    "eslint": "8.34.0",
     "husky": "8.0.3",
     "lint-staged": "13.1.1",
     "micromatch": "4.0.5",

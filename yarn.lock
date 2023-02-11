@@ -2119,15 +2119,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mdx-js/react@npm:2.2.1":
-  version: 2.2.1
-  resolution: "@mdx-js/react@npm:2.2.1"
+"@mdx-js/react@npm:2.3.0":
+  version: 2.3.0
+  resolution: "@mdx-js/react@npm:2.3.0"
   dependencies:
     "@types/mdx": "npm:^2.0.0"
     "@types/react": "npm:>=16"
   peerDependencies:
     react: ">=16"
-  checksum: 7cd7b79f49bc2805e4eb68a17240d52a76d459074284744f765f8eb8c30e997d3c8dc6b4540bc45779f7b93e30e99e19de926128b03e74f1ee6dcb3f9bd845ef
+  checksum: c72aef2fbddf66a8e627dee8bf90cb1475cedb060db28519978d6bb847b8a9c35fb3e5ef86e64d0df25762798ab5d96173ab63caf1731045829ed9e9e6800dc2
   languageName: node
   linkType: hard
 
@@ -4328,10 +4328,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:*, @types/node@npm:18.11.19":
+"@types/node@npm:*":
   version: 18.11.19
   resolution: "@types/node@npm:18.11.19"
   checksum: 72c822bd403b89a7c1fe59fd9360d29f2373459cdcf890fe6260c7413f936d89e5d154bdeb701bc833936ee88e87776ae9a4dc2b654ba111babbdebac1e67228
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:18.13.0":
+  version: 18.13.0
+  resolution: "@types/node@npm:18.13.0"
+  checksum: 591b7b9a97dbeaa155c3fe1a00e22fc13241781bda02f4e96935811723e7719fe18ed003301551cfa3273488cc7cf2f99146b752abc9b60aaab57bcbc67da830
   languageName: node
   linkType: hard
 
@@ -5212,7 +5219,7 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
     build-ts: "npm:5.5.0"
-    eslint: "npm:8.33.0"
+    eslint: "npm:8.34.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
     eslint-plugin-import: "npm:2.27.5"
@@ -5233,7 +5240,7 @@ __metadata:
   resolution: "@willbooster/shared-lib-react@workspace:packages/lib-react"
   dependencies:
     "@babel/core": "npm:7.20.12"
-    "@mdx-js/react": "npm:2.2.1"
+    "@mdx-js/react": "npm:2.3.0"
     "@storybook/addon-actions": "npm:6.5.16"
     "@storybook/addon-docs": "npm:6.5.16"
     "@storybook/addon-essentials": "npm:6.5.16"
@@ -5254,7 +5261,7 @@ __metadata:
     "@willbooster/prettier-config": "npm:9.1.1"
     babel-loader: "npm:9.1.2"
     build-ts: "npm:5.5.0"
-    eslint: "npm:8.33.0"
+    eslint: "npm:8.34.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
     eslint-plugin-import: "npm:2.27.5"
@@ -5290,7 +5297,7 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
     build-ts: "npm:5.5.0"
-    eslint: "npm:8.33.0"
+    eslint: "npm:8.34.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
     eslint-plugin-import: "npm:2.27.5"
@@ -5312,16 +5319,16 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:8.21.0"
     "@types/micromatch": "npm:4.0.2"
-    "@types/node": "npm:18.11.19"
+    "@types/node": "npm:18.13.0"
     "@types/yargs": "npm:17.0.22"
     "@typescript-eslint/eslint-plugin": "npm:5.51.0"
     "@typescript-eslint/parser": "npm:5.51.0"
     "@willbooster/eslint-config-ts": "npm:10.0.8"
     "@willbooster/prettier-config": "npm:9.1.1"
-    "@yarnpkg/shell": "npm:4.0.0-rc.38"
+    "@yarnpkg/shell": "npm:4.0.0-rc.39"
     build-ts: "npm:5.5.0"
     chalk: "npm:5.2.0"
-    eslint: "npm:8.33.0"
+    eslint: "npm:8.34.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
     eslint-plugin-import: "npm:2.27.5"
@@ -5333,7 +5340,7 @@ __metadata:
     minimal-promise-pool: "npm:2.1.5"
     prettier: "npm:2.8.4"
     sort-package-json: "npm:2.4.1"
-    type-fest: "npm:3.5.5"
+    type-fest: "npm:3.5.7"
     typescript: "npm:4.9.5"
     yargs: "npm:17.6.2"
   bin:
@@ -5355,31 +5362,31 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@yarnpkg/fslib@npm:^3.0.0-rc.38":
-  version: 3.0.0-rc.38
-  resolution: "@yarnpkg/fslib@npm:3.0.0-rc.38"
+"@yarnpkg/fslib@npm:^3.0.0-rc.39":
+  version: 3.0.0-rc.39
+  resolution: "@yarnpkg/fslib@npm:3.0.0-rc.39"
   dependencies:
     tslib: "npm:^2.4.0"
-  checksum: e8fd54f3b8222a3e460ffd64fba4ed21ec9b23afe1e4fa9ebd563f87427dbaaf0411114fd14c60c9918652a2d94bb8fe06263ef8f32b395b3b43524d5af816c1
+  checksum: 683e86493b407d8a4cda1a351176c3ce468f9c7f73605dc82a7fcb1731ff78c92b229aa032e8b587f6394c3ecad7754e16b92359279a33f09aaa408eb862b3d7
   languageName: node
   linkType: hard
 
-"@yarnpkg/parsers@npm:^3.0.0-rc.38":
-  version: 3.0.0-rc.38
-  resolution: "@yarnpkg/parsers@npm:3.0.0-rc.38"
+"@yarnpkg/parsers@npm:^3.0.0-rc.39":
+  version: 3.0.0-rc.39
+  resolution: "@yarnpkg/parsers@npm:3.0.0-rc.39"
   dependencies:
     js-yaml: "npm:^3.10.0"
     tslib: "npm:^2.4.0"
-  checksum: 301e093bb00d76bf0e31c6db721cc0fd92bac62fdb46c11bad2d9c6149300bb2c048f4d42722ce8006d51ab35d01b41a2f73996f27128ee0e8eec8acdec4303e
+  checksum: 41bd63c7e8cf3b69a1aeae578b1b0d42103eef60949b595a19812176a897ec85387eaed4bb9507a455a5173b445aa1d949642e37d06ea3b153fdad51220be900
   languageName: node
   linkType: hard
 
-"@yarnpkg/shell@npm:4.0.0-rc.38":
-  version: 4.0.0-rc.38
-  resolution: "@yarnpkg/shell@npm:4.0.0-rc.38"
+"@yarnpkg/shell@npm:4.0.0-rc.39":
+  version: 4.0.0-rc.39
+  resolution: "@yarnpkg/shell@npm:4.0.0-rc.39"
   dependencies:
-    "@yarnpkg/fslib": "npm:^3.0.0-rc.38"
-    "@yarnpkg/parsers": "npm:^3.0.0-rc.38"
+    "@yarnpkg/fslib": "npm:^3.0.0-rc.39"
+    "@yarnpkg/parsers": "npm:^3.0.0-rc.39"
     chalk: "npm:^3.0.0"
     clipanion: "npm:^3.2.0-rc.10"
     cross-spawn: "npm:7.0.3"
@@ -5388,7 +5395,7 @@ __metadata:
     tslib: "npm:^2.4.0"
   bin:
     shell: ./lib/cli.js
-  checksum: a10de893000889912ffe2d6c0c525bbbe41c127748e7be123c75d9a57f57e556361e534bee52f0abf3de5ccaaf06ace1010ee5b0f6a98580b82fddc98d8104ea
+  checksum: 6f582a10f899c75daf5beffac63a7f72c3138857397755c7da9bb5b772d9bb68a8071274d566ba2ea4c124ebb53e7f4e74f3a9cfa94fa1a43bd503dcf0a1fc3e
   languageName: node
   linkType: hard
 
@@ -9119,9 +9126,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint@npm:8.33.0":
-  version: 8.33.0
-  resolution: "eslint@npm:8.33.0"
+"eslint@npm:8.34.0":
+  version: 8.34.0
+  resolution: "eslint@npm:8.34.0"
   dependencies:
     "@eslint/eslintrc": "npm:^1.4.1"
     "@humanwhocodes/config-array": "npm:^0.11.8"
@@ -9164,7 +9171,7 @@ __metadata:
     text-table: "npm:^0.2.0"
   bin:
     eslint: bin/eslint.js
-  checksum: 616877cf98325f619070e6c85b1bb4734fe99202871f5f43cbb9c56b13d7cacf8caa499c61c0a112541067be3b6143cd0497d1319950a4a1d355adeff8504596
+  checksum: ec20023e4d680f390b89509f27b40824957d6518ed19c43c52b979e891a3ee225cf09a7fc9e9f882b3636f5cfa34a7a2e20416a2b22047d94db9b1ac3a55e9d9
   languageName: node
   linkType: hard
 
@@ -17920,10 +17927,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"type-fest@npm:3.5.5":
-  version: 3.5.5
-  resolution: "type-fest@npm:3.5.5"
-  checksum: 463dc015679c77c5b066b4071652115e9798a848e98e0cf8c999588dce0c309340762486ee4443d109df6804275ef7e0d6dd3f420d9fd6de1f12f521a60d0ce7
+"type-fest@npm:3.5.7":
+  version: 3.5.7
+  resolution: "type-fest@npm:3.5.7"
+  checksum: 62ab52720a657909945df45364a56fcaa8495b5aa72f95743924d528ac1ba40e2177bba35d25e967751ea00cb82e63b0b4b069a63310db641703d2e9994b9636
   languageName: node
   linkType: hard
 
@@ -18971,9 +18978,9 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.51.0"
     "@willbooster/prettier-config": "npm:9.1.1"
     "@willbooster/renovate-config": "npm:9.5.0"
-    "@yarnpkg/shell": "npm:4.0.0-rc.38"
+    "@yarnpkg/shell": "npm:4.0.0-rc.39"
     conventional-changelog-conventionalcommits: "npm:5.0.0"
-    eslint: "npm:8.33.0"
+    eslint: "npm:8.34.0"
     husky: "npm:8.0.3"
     lint-staged: "npm:13.1.1"
     micromatch: "npm:4.0.5"
