@@ -18,60 +18,73 @@ const builder = {
   },
 } as const;
 
-export const buildIfNeeded: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'buildIfNeeded',
   describe: 'Build code if changes are detected',
   builder,
   async handler(argv) {
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
-
-    const cacheDirectoryPath = path.resolve('node_modules', '.cache', 'build');
-    const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
-    await fs.mkdir(cacheDirectoryPath, { recursive: true });
-
-    const hash = createHash('sha256');
-
-    const commitHash = child_process.execSync('git rev-parse HEAD').toString().trim();
-    hash.update(commitHash);
-
-    const environmentJson = JSON.stringify(
-      Object.entries(process.env).sort(([key1], [key2]) => key1.localeCompare(key2))
-    );
-    hash.update(environmentJson);
-
-    const build = packageJson.scripts?.['build'] || '';
-    delete packageJson.scripts;
-    packageJson.scripts = { build };
-    hash.update(JSON.stringify(packageJson));
-
-    await updateHashWithDiffResult(hash);
-
-    const contentHash = hash.digest('hex');
-
-    try {
-      const cachedContentHash = await fs.readFile(cacheFilePath, 'utf8');
-      if (cachedContentHash === contentHash) {
-        console.log('Skip to build production code.');
-        return;
-      }
-    } catch {
-      // do nothing
-    }
-
-    console.log('Start building production code.');
-    const [command, ...args] = argv.command.split(' ');
-    const ret = child_process.spawnSync(command, args, {
-      stdio: 'inherit',
-    });
-    if (ret.status !== 0) {
-      console.log('Failed to build production code.');
-      process.exit(ret.status ?? 1);
-    }
-
-    console.log('Finished building production code.');
-    await fs.writeFile(cacheFilePath, contentHash, 'utf8');
+    await buildIfNeeded(argv.command);
   },
 };
+
+export async function buildIfNeeded(commandWithArgs: string, rootDirPath = '.'): Promise<boolean> {
+  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(rootDirPath);
+  if (canSkip) return false;
+
+  console.log('Start building production code.');
+  const [command, ...args] = commandWithArgs.split(' ');
+  const ret = child_process.spawnSync(command, args, {
+    stdio: 'inherit',
+  });
+  if (ret.status !== 0) {
+    console.log('Failed to build production code.');
+    process.exitCode = ret.status ?? 1;
+    return false;
+  }
+
+  console.log('Finished building production code.');
+  await fs.writeFile(cacheFilePath, contentHash, 'utf8');
+  return true;
+}
+
+export async function canSkipBuild(rootDirPath = '.'): Promise<[boolean, string, string]> {
+  const packageJsonPath = path.resolve(rootDirPath, 'package.json');
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as PackageJson;
+
+  const cacheDirectoryPath = path.resolve(rootDirPath, 'node_modules', '.cache', 'build');
+  const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
+  await fs.mkdir(cacheDirectoryPath, { recursive: true });
+
+  const hash = createHash('sha256');
+
+  const commitHash = child_process.execSync('git rev-parse HEAD').toString().trim();
+  hash.update(commitHash);
+
+  const environmentJson = JSON.stringify(
+    Object.entries(process.env).sort(([key1], [key2]) => key1.localeCompare(key2))
+  );
+  hash.update(environmentJson);
+
+  const build = packageJson.scripts?.['build'] || '';
+  delete packageJson.scripts;
+  packageJson.scripts = { build };
+  hash.update(JSON.stringify(packageJson));
+
+  await updateHashWithDiffResult(hash);
+
+  const contentHash = hash.digest('hex');
+
+  try {
+    const cachedContentHash = await fs.readFile(cacheFilePath, 'utf8');
+    if (cachedContentHash === contentHash) {
+      console.log('Skip to build production code.');
+      return [true, cacheFilePath, contentHash];
+    }
+  } catch {
+    // do nothing
+  }
+  return [false, cacheFilePath, contentHash];
+}
 
 const includePatterns = ['src/', 'public/'];
 const includeSuffix = [

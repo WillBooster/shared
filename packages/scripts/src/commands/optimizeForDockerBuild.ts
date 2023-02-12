@@ -20,7 +20,7 @@ const builder = {
   },
 } as const;
 
-export const optimizeForDockerBuild: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'optimizeForDockerBuild',
   describe: 'Optimize configuration when building a Docker image',
   builder,

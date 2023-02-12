@@ -14,7 +14,7 @@ const builder = {
   },
 } as const;
 
-export const start: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'start',
   describe: 'Start app',
   builder,

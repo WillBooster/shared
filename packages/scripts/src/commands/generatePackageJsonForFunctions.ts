@@ -21,7 +21,7 @@ const builder = {
   },
 } as const;
 
-export const generatePackageJsonForFunctions: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const generatePackageJsonForFunctionsCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'generatePackageJsonForFunctions',
   describe: ' Generate package.json for Firebase / GCP Functions',
   builder,
