@@ -7,14 +7,18 @@ interface Options {
   timeout?: number;
 }
 
-export async function runWithYarn(script: string, opts?: Omit<Options, 'timeout'>): Promise<number> {
+const defaultOptions: Options = {
+  exitIfFailed: true,
+};
+
+export async function runWithYarn(script: string, opts: Omit<Options, 'timeout'> = defaultOptions): Promise<number> {
   const normalizedScript = normalizeScript(script);
   const exitCode = await execute(normalizedScript, undefined);
   finishedScript(normalizedScript, exitCode, opts);
   return exitCode;
 }
 
-export async function runWithSpawn(script: string, opts?: Options): Promise<number> {
+export async function runWithSpawn(script: string, opts: Options = defaultOptions): Promise<number> {
   const normalizedScript = normalizeScript(script);
   const ret = await spawnAsync(normalizedScript, undefined, {
     shell: true,
