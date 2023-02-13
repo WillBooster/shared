@@ -28,7 +28,6 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
 };
 
 export async function buildIfNeeded(commandWithArgs: string, rootDirPath = '.'): Promise<boolean> {
-  rootDirPath = path.resolve(rootDirPath);
   const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(rootDirPath);
   if (canSkip) return false;
 
@@ -114,14 +113,17 @@ async function updateHashWithDiffResult(hash: Hash, rootDirPath: string): Promis
     const filePaths = ret.stdout
       .trim()
       .split('\n')
-      .filter(
-        (filePath) =>
-          (includePatterns.some((pattern) => filePath.includes(pattern)) ||
-            includeSuffix.some((suffix) => filePath.endsWith(suffix))) &&
-          !excludePatterns.some((pattern) => filePath.includes(pattern))
+      .map((filePath) =>
+        rootDirPath === '.' ? filePath : filePath.replace(/packages\/scripts\/test-fixtures\/[^/]+\//, '')
       );
+    const filteredFilePaths = filePaths.filter(
+      (filePath) =>
+        (includePatterns.some((pattern) => filePath.includes(pattern)) ||
+          includeSuffix.some((suffix) => filePath.endsWith(suffix))) &&
+        !excludePatterns.some((pattern) => filePath.includes(pattern))
+    );
 
-    const proc = child_process.spawn('git', ['diff', '--', ...filePaths], { cwd: rootDirPath });
+    const proc = child_process.spawn('git', ['diff', '--', ...filteredFilePaths], { cwd: rootDirPath });
     proc.stdout?.on('data', (data) => {
       hash.update(data);
     });
