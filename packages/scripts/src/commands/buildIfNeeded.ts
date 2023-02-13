@@ -31,27 +31,24 @@ export async function buildIfNeeded(commandWithArgs: string, rootDirPath = '.'):
   const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(rootDirPath);
   if (canSkip) return false;
 
-  console.log('Start building production code.');
+  console.info('Start building production code.');
   const [command, ...args] = commandWithArgs.split(' ');
   const ret = child_process.spawnSync(command, args, {
     cwd: rootDirPath,
     stdio: 'inherit',
   });
   if (ret.status !== 0) {
-    console.log('Failed to build production code.');
+    console.info('Failed to build production code.');
     process.exitCode = ret.status ?? 1;
     return false;
   }
 
-  console.log('Finished building production code.');
+  console.info('Finished building production code.');
   await fs.writeFile(cacheFilePath, contentHash, 'utf8');
   return true;
 }
 
 export async function canSkipBuild(rootDirPath: string): Promise<[boolean, string, string]> {
-  const packageJsonPath = path.resolve(rootDirPath, 'package.json');
-  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as PackageJson;
-
   const cacheDirectoryPath = path.resolve(rootDirPath, 'node_modules', '.cache', 'build');
   const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
   await fs.mkdir(cacheDirectoryPath, { recursive: true });
@@ -66,11 +63,6 @@ export async function canSkipBuild(rootDirPath: string): Promise<[boolean, strin
   );
   hash.update(environmentJson);
 
-  const build = packageJson.scripts?.['build'] || '';
-  delete packageJson.scripts;
-  packageJson.scripts = { build };
-  hash.update(JSON.stringify(packageJson));
-
   await updateHashWithDiffResult(hash, rootDirPath);
 
   const contentHash = hash.digest('hex');
@@ -78,7 +70,7 @@ export async function canSkipBuild(rootDirPath: string): Promise<[boolean, strin
   try {
     const cachedContentHash = await fs.readFile(cacheFilePath, 'utf8');
     if (cachedContentHash === contentHash) {
-      console.log('Skip to build production code.');
+      console.info('Skip to build production code.');
       return [true, cacheFilePath, contentHash];
     }
   } catch {

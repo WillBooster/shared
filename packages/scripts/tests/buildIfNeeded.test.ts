@@ -47,6 +47,6 @@ async function initializeFiles(): Promise<void> {
       },
       undefined,
       2
-    )
+    ) + '\n'
   );
 }
