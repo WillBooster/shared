@@ -28,12 +28,14 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
 };
 
 export async function buildIfNeeded(commandWithArgs: string, rootDirPath = '.'): Promise<boolean> {
+  rootDirPath = path.resolve(rootDirPath);
   const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(rootDirPath);
   if (canSkip) return false;
 
   console.log('Start building production code.');
   const [command, ...args] = commandWithArgs.split(' ');
   const ret = child_process.spawnSync(command, args, {
+    cwd: rootDirPath,
     stdio: 'inherit',
   });
   if (ret.status !== 0) {
@@ -47,7 +49,7 @@ export async function buildIfNeeded(commandWithArgs: string, rootDirPath = '.'):
   return true;
 }
 
-export async function canSkipBuild(rootDirPath = '.'): Promise<[boolean, string, string]> {
+export async function canSkipBuild(rootDirPath: string): Promise<[boolean, string, string]> {
   const packageJsonPath = path.resolve(rootDirPath, 'package.json');
   const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as PackageJson;
 
@@ -57,7 +59,7 @@ export async function canSkipBuild(rootDirPath = '.'): Promise<[boolean, string,
 
   const hash = createHash('sha256');
 
-  const commitHash = child_process.execSync('git rev-parse HEAD').toString().trim();
+  const commitHash = child_process.execSync('git rev-parse HEAD', { cwd: rootDirPath }).toString().trim();
   hash.update(commitHash);
 
   const environmentJson = JSON.stringify(
@@ -70,7 +72,7 @@ export async function canSkipBuild(rootDirPath = '.'): Promise<[boolean, string,
   packageJson.scripts = { build };
   hash.update(JSON.stringify(packageJson));
 
-  await updateHashWithDiffResult(hash);
+  await updateHashWithDiffResult(hash, rootDirPath);
 
   const contentHash = hash.digest('hex');
 
@@ -102,9 +104,13 @@ const includeSuffix = [
 ];
 const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/'];
 
-async function updateHashWithDiffResult(hash: Hash): Promise<void> {
+async function updateHashWithDiffResult(hash: Hash, rootDirPath: string): Promise<void> {
   return new Promise((resolve) => {
-    const ret = child_process.spawnSync('git', ['diff', '--name-only'], { stdio: 'pipe', encoding: 'utf8' });
+    const ret = child_process.spawnSync('git', ['diff', '--name-only'], {
+      cwd: rootDirPath,
+      stdio: 'pipe',
+      encoding: 'utf8',
+    });
     const filePaths = ret.stdout
       .trim()
       .split('\n')
@@ -115,7 +121,7 @@ async function updateHashWithDiffResult(hash: Hash): Promise<void> {
           !excludePatterns.some((pattern) => filePath.includes(pattern))
       );
 
-    const proc = child_process.spawn('git', ['diff', '--', ...filePaths]);
+    const proc = child_process.spawn('git', ['diff', '--', ...filePaths], { cwd: rootDirPath });
     proc.stdout?.on('data', (data) => {
       hash.update(data);
     });
