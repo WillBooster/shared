@@ -2,6 +2,8 @@ import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { execute } from '@yarnpkg/shell';
 import chalk from 'chalk';
 
+import { promisePool } from '../promisePool.js';
+
 interface Options {
   exitIfFailed?: boolean;
   timeout?: number;
@@ -31,10 +33,32 @@ export async function runWithSpawn(script: string, opts: Options = defaultOption
   return ret.status ?? 1;
 }
 
-function normalizeScript(script: string): string {
+export function runWithSpawnInParallel(script: string, opts: Options = defaultOptions): Promise<void> {
+  return promisePool.run(async () => {
+    const normalizedScript = normalizeScript(script, true);
+    const ret = await spawnAsync(normalizedScript, undefined, {
+      shell: true,
+      stdio: 'pipe',
+      timeout: opts?.timeout,
+      mergeOutAndError: true,
+      killOnExit: true,
+      verbose: true,
+    });
+    printStart(normalizedScript);
+    const out = ret.stdout.trim();
+    if (out) console.info(ret.stdout.trim());
+    finishedScript(normalizedScript, ret.status, opts);
+  });
+}
+
+function normalizeScript(script: string, silent = false): string {
   const newScript = script.replaceAll('\n', '').replaceAll(/\s\s+/g, ' ').trim();
-  console.info(chalk.green(chalk.bold('Start:'), newScript));
+  !silent && printStart(newScript);
   return newScript;
+}
+
+function printStart(normalizedScript: string): void {
+  console.info('\n' + chalk.green(chalk.bold('Start:'), normalizedScript));
 }
 
 function finishedScript(script: string, exitCode: number | null, opts?: Omit<Options, 'timeout'>): void {

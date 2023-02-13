@@ -24,6 +24,7 @@ export type SpawnAsyncOptions = (
   | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>
   | SpawnOptions
 ) & {
+  mergeOutAndError?: boolean;
   killOnExit?: boolean;
   verbose?: boolean;
 };
@@ -43,7 +44,11 @@ export async function spawnAsync(
         stdout += data;
       });
       proc.stderr?.on('data', (data) => {
-        stderr += data;
+        if (options?.mergeOutAndError) {
+          stdout += data;
+        } else {
+          stderr += data;
+        }
       });
 
       const stopProcess = (): void => {

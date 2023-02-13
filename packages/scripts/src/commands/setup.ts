@@ -1,10 +1,13 @@
 import child_process from 'node:child_process';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 
 import chalk from 'chalk';
+import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { promisePool } from '../promisePool.js';
+import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { preprocessedOptions } from '../sharedOptions.js';
 
 const builder = {
@@ -20,55 +23,25 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   describe: 'Setup development environment',
   builder,
   async handler() {
+    const packageJsonPromise = fs.readFile('package.json', 'utf8');
+
     const dirents = await fs.readdir('.', { withFileTypes: true });
     if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
-      await runCommand('asdf', ['install']);
+      await runWithSpawn('asdf install');
     }
     if (dirents.some((d) => d.isFile() && d.name === 'pyproject.toml')) {
-      await runCommand('poetry', ['config', 'virtualenvs.in-project', 'true'], true);
-      await runCommand('poetry', ['config', 'virtualenvs.prefer-active-python', 'true'], true);
+      await runWithSpawnInParallel('poetry config virtualenvs.in-project true');
+      await runWithSpawnInParallel('poetry config virtualenvs.prefer-active-python true');
       const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
-      await runCommand('poetry', ['env', 'use', version]);
-      await runCommand('poetry', ['run', 'pip', 'install', '--upgrade', 'pip']);
-      await runCommand('poetry', ['install', '--ansi']);
+      await runWithSpawnInParallel(`poetry env use ${version}`);
+      await promisePool.promiseAll();
+      await runWithSpawn('poetry run pip install --upgrade pip');
+      await runWithSpawn('poetry install --ansi');
     }
-    await promisePool.promiseAllSettled();
+
+    const packageJson = JSON.parse(await packageJsonPromise) as PackageJson;
+    if (packageJson.dependencies?.['blitz'] && os.platform() === 'darwin') {
+      await runWithSpawn('brew install unbuffer');
+    }
   },
 };
-
-async function runCommand(command: string, args: string[], parallel = false): Promise<void> {
-  console.info(chalk.green('Start:'), command, args.join(' '));
-
-  await (parallel
-    ? promisePool.run(
-        () =>
-          new Promise((resolve) => {
-            const proc = child_process.spawn(command, args, { stdio: 'pipe' });
-            let output = '';
-            proc.stdout.on('data', (data) => {
-              output += data;
-            });
-            proc.stderr.on('data', (data) => {
-              output += data;
-            });
-            proc.on('close', (code) => {
-              console.info(chalk.cyan('Finished:'), command, args.join(' '), `with exit code: ${code}`);
-              output = output.trim();
-              if (output) {
-                console.info('------------ start of output ------------');
-                console.info(output.trim());
-                console.info('------------- end of output -------------');
-                console.info();
-              }
-              resolve(undefined);
-            });
-          })
-      )
-    : new Promise((resolve) => {
-        const proc = child_process.spawn(command, args, { stdio: 'inherit' });
-        proc.on('close', (code) => {
-          console.info(chalk.cyan('Finished:'), `"${[command, ...args].join(' ')}"`, `with exit code: ${code}`);
-          resolve(undefined);
-        });
-      }));
-}
