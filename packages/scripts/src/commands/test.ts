@@ -38,7 +38,7 @@ const builder = {
   },
 } as const;
 
-export const test: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'test',
   describe: 'Test project',
   builder,

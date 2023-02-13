@@ -3,12 +3,12 @@ import path from 'node:path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
-import { buildIfNeeded } from './commands/buildIfNeeded.js';
-import { generatePackageJsonForFunctions } from './commands/generatePackageJsonForFunctions.js';
-import { optimizeForDockerBuild } from './commands/optimizeForDockerBuild.js';
-import { setup } from './commands/setup.js';
-import { start } from './commands/start.js';
-import { test } from './commands/test.js';
+import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
+import { generatePackageJsonForFunctionsCommand } from './commands/generatePackageJsonForFunctions.js';
+import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
+import { setupCommand } from './commands/setup.js';
+import { startCommand } from './commands/start.js';
+import { testCommand } from './commands/test.js';
 import { preprocessedOptions } from './sharedOptions.js';
 
 await yargs(hideBin(process.argv))
@@ -20,12 +20,12 @@ await yargs(hideBin(process.argv))
       process.chdir(path.resolve(workingDir));
     }
   })
-  .command(setup)
-  .command(buildIfNeeded)
-  .command(generatePackageJsonForFunctions)
-  .command(optimizeForDockerBuild)
-  .command(start)
-  .command(test)
+  .command(setupCommand)
+  .command(buildIfNeededCommand)
+  .command(generatePackageJsonForFunctionsCommand)
+  .command(optimizeForDockerBuildCommand)
+  .command(startCommand)
+  .command(testCommand)
   .demandCommand()
   .strict()
   .help().argv;

@@ -15,7 +15,7 @@ const builder = {
   },
 } as const;
 
-export const setup: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'setup',
   describe: 'Setup development environment',
   builder,
