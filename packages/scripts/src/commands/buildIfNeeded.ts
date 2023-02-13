@@ -3,7 +3,6 @@ import { createHash, Hash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { preprocessedOptions } from '../sharedOptions.js';

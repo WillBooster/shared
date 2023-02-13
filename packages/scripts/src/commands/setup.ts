@@ -2,7 +2,6 @@ import child_process from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 
-import chalk from 'chalk';
 import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
