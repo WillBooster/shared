@@ -1,12 +1,6 @@
-import path from 'node:path';
-
 import { dockerScripts } from './dockerScripts.js';
 
 class BlitzScripts {
-  get dockerRunAdditionalArgs(): string {
-    return `-v '${path.resolve()}/db/mount':/app/db/mount`;
-  }
-
   buildDocker(name: string, wbEnv = 'local'): string {
     return `touch gcp-sa-key.json && ${dockerScripts.buildDevImage(name, wbEnv)}`;
   }
@@ -20,7 +14,7 @@ class BlitzScripts {
   startDocker(name: string): string {
     return `${this.buildDocker(name)}
       && yarn concurrently --raw --kill-others-on-fail
-        "${dockerScripts.stopAndStart(name, false, this.dockerRunAdditionalArgs)}"
+        "${dockerScripts.stopAndStart(name, false)}"
         "${blitzScripts.waitAndOpenApp(8080)}"`;
   }
 
