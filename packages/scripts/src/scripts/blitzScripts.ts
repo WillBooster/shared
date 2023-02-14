@@ -20,7 +20,7 @@ class BlitzScripts {
   startDocker(name: string): string {
     return `${this.buildDocker(name)}
       && yarn concurrently --raw --kill-others-on-fail
-        "${dockerScripts.stopAndStart(name, this.dockerRunAdditionalArgs)}"
+        "${dockerScripts.stopAndStart(name, false, this.dockerRunAdditionalArgs)}"
         "${blitzScripts.waitAndOpenApp(8080)}"`;
   }
 

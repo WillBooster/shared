@@ -6,8 +6,8 @@ class DockerScripts {
         --build-arg WB_ENV=${wbEnv}
         --build-arg WB_VERSION=dev .`;
   }
-  stopAndStart(name: string, additionalArgs = ''): string {
-    return `${this.stop(name)} && ${this.start(name, additionalArgs)}`;
+  stopAndStart(name: string, unbuffer = false, additionalArgs = ''): string {
+    return `${this.stop(name)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(name, additionalArgs)}`;
   }
   start(name: string, additionalArgs = ''): string {
     return `docker run --rm -it -p 8080:8080 ${additionalArgs} --name ${name} ${name}`;

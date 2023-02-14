@@ -60,7 +60,7 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
         if (argv.e2e !== false) {
           process.exitCode = await runWithYarn(
             blitzScripts.testE2E({
-              startCommand: `unbuffer ${dockerScripts.stopAndStart(name, blitzScripts.dockerRunAdditionalArgs)}`,
+              startCommand: dockerScripts.stopAndStart(name, true, blitzScripts.dockerRunAdditionalArgs),
             }),
             { exitIfFailed: false }
           );
