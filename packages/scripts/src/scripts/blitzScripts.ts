@@ -23,8 +23,8 @@ class BlitzScripts {
   }
 
   testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {
-    return `APP_ENV=production yarn dotenv -e .env.production -- concurrently --kill-others --raw --success first
-      "rm -Rf db/mount && WB_ENV=test ${startCommand}"
+    return `APP_ENV=production WB_ENV=test yarn dotenv -e .env.production -- concurrently --kill-others --raw --success first
+      "rm -Rf db/mount && ${startCommand}"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && playwright ${playwrightArgs}"`;
   }
 
@@ -33,10 +33,11 @@ class BlitzScripts {
   }
 
   testUnit(): string {
-    return `yarn vitest run tests/unit`;
+    // Since this command is referred to from other commands, we have to use "vitest run".
+    return `yarn vitest run tests/unit --color`;
   }
 
-  private waitApp(port = 3000): string {
+  waitApp(port = 3000): string {
     return `wait-on -t 10000 http://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 10000 -i 500 http://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 10000 -i 1000 http://127.0.0.1:${port} 2> /dev/null
@@ -45,9 +46,11 @@ class BlitzScripts {
       || wait-on -t 60000 -i 5000 http://127.0.0.1:${port}`;
   }
 
-  private waitAndOpenApp(port = 3000): string {
+  waitAndOpenApp(port = 3000): string {
     return `${this.waitApp(port)} && open-cli http://localhost:${port}`;
   }
 }
+
+export type BlitzScriptsType = InstanceType<typeof BlitzScripts>;
 
 export const blitzScripts = new BlitzScripts();

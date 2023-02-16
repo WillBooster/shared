@@ -3,9 +3,11 @@ import fs from 'node:fs/promises';
 import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { blitzScripts } from '../scripts/blitzScripts.js';
+import { promisePool } from '../promisePool.js';
+import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import { runWithSpawn, runWithYarn } from '../scripts/run.js';
+import { expressScripts, ExpressScriptsType } from '../scripts/expressScripts.js';
+import { runWithSpawn, runWithSpawnInParallel, runWithYarn } from '../scripts/run.js';
 
 const builder = {
   ci: {
@@ -45,57 +47,80 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   async handler(argv) {
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
     const name = packageJson.name || 'unknown';
-    if (packageJson.dependencies?.['blitz']) {
-      const promises: Promise<unknown>[] = [];
-      if (argv.ci) {
-        promises.push(runWithYarn(dockerScripts.stopAll()));
-        if (argv.unit !== false) {
-          promises.push(runWithSpawn(blitzScripts.testUnit(), { timeout: argv.unitTimeout }));
-        }
-        if (argv.start !== false) {
-          promises.push(runWithYarn(blitzScripts.testStart()));
-        }
-        await Promise.all(promises);
-        await runWithSpawn(`${blitzScripts.buildDocker(name, 'test')}`);
-        if (argv.e2e !== false) {
-          process.exitCode = await runWithYarn(
-            blitzScripts.testE2E({
-              startCommand: dockerScripts.stopAndStart(name, true),
-            }),
-            { exitIfFailed: false }
-          );
-          await runWithYarn(dockerScripts.stop(name));
+    const deps = packageJson.dependencies || {};
+    let scripts: BlitzScriptsType | ExpressScriptsType | undefined;
+    if (deps['blitz']) {
+      scripts = blitzScripts;
+    } else if (deps['express'] && !deps['firebase-functions']) {
+      scripts = expressScripts;
+    }
+    if (!scripts) return;
+
+    const promises: Promise<unknown>[] = [];
+    if (argv.ci) {
+      await runWithSpawnInParallel(dockerScripts.stopAll());
+      if (argv.unit !== false) {
+        await runWithSpawnInParallel(scripts.testUnit(), { timeout: argv.unitTimeout });
+      }
+      if (argv.start !== false) {
+        await runWithSpawnInParallel(scripts.testStart());
+      }
+      await promisePool.promiseAll();
+      await runWithSpawn(`${scripts.buildDocker(name, 'test')}`);
+      if (argv.e2e !== false) {
+        process.exitCode = await runWithYarn(
+          scripts.testE2E({
+            startCommand: dockerScripts.stopAndStart(name, true),
+          }),
+          { exitIfFailed: false }
+        );
+        await runWithYarn(dockerScripts.stop(name));
+      }
+      return;
+    }
+
+    if (argv.unit) {
+      promises.push(runWithSpawn(scripts.testUnit(), { timeout: argv.unitTimeout }));
+    }
+    if (argv.start) {
+      promises.push(runWithYarn(scripts.testStart()));
+    }
+    await Promise.all(promises);
+    if (argv.e2e) {
+      if (deps['blitz']) {
+        switch (argv.e2eMode || 'headless') {
+          case 'headless': {
+            await runWithYarn(blitzScripts.testE2E({}));
+            break;
+          }
+          case 'headed': {
+            await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
+            break;
+          }
+          case 'debug': {
+            await runWithYarn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
+            break;
+          }
+          case 'generate': {
+            await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
+            break;
+          }
+          case 'trace': {
+            await runWithYarn(`yarn playwright show-trace`);
+            break;
+          }
+          default: {
+            throw new Error(`Unknown e2e mode: ${argv.mode}`);
+          }
         }
       } else {
-        if (argv.unit) {
-          promises.push(runWithSpawn(blitzScripts.testUnit(), { timeout: argv.unitTimeout }));
-        }
-        if (argv.start) {
-          promises.push(runWithYarn(blitzScripts.testStart()));
-        }
-        await Promise.all(promises);
-        if (argv.e2e) {
-          switch (argv.e2eMode || 'headless') {
-            case 'headless': {
-              await runWithYarn(blitzScripts.testE2E({}));
-              break;
-            }
-            case 'headed': {
-              await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
-              break;
-            }
-            case 'debug': {
-              await runWithYarn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
-              break;
-            }
-            case 'generate': {
-              await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
-              break;
-            }
-            case 'trace': {
-              await runWithYarn(`yarn playwright show-trace`);
-              break;
-            }
+        switch (argv.e2eMode || 'headless') {
+          case 'headless': {
+            await runWithYarn(expressScripts.testE2E({}));
+            break;
+          }
+          default: {
+            throw new Error(`Unknown e2e mode: ${argv.mode}`);
           }
         }
       }

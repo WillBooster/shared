@@ -46,7 +46,7 @@ export function runWithSpawnInParallel(script: string, opts: Options = defaultOp
     });
     printStart(normalizedScript);
     const out = ret.stdout.trim();
-    if (out) console.info(ret.stdout.trim());
+    if (out) console.info(out);
     finishedScript(normalizedScript, ret.status, opts);
   });
 }

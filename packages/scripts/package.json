@@ -5,7 +5,7 @@
   "author": "WillBooster Inc.",
   "type": "module",
   "bin": {
-    "wb": "bin/index.mjs"
+    "wb": "bin/index.js"
   },
   "files": [
     "bin/",
@@ -30,7 +30,7 @@
     "minimal-promise-pool": "2.1.5"
   },
   "devDependencies": {
-    "@types/eslint": "8.21.0",
+    "@types/eslint": "8.21.1",
     "@types/micromatch": "4.0.2",
     "@types/node": "18.13.0",
     "@types/yargs": "17.0.22",
@@ -38,13 +38,13 @@
     "@typescript-eslint/parser": "5.52.0",
     "@willbooster/eslint-config-ts": "10.0.8",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "5.5.0",
+    "build-ts": "5.7.2",
     "eslint": "8.34.0",
     "eslint-config-prettier": "8.6.0",
     "eslint-import-resolver-typescript": "3.5.3",
     "eslint-plugin-import": "2.27.5",
     "eslint-plugin-sort-class-members": "1.16.0",
-    "eslint-plugin-sort-destructure-keys": "1.4.0",
+    "eslint-plugin-sort-destructure-keys": "1.5.0",
     "eslint-plugin-unicorn": "45.0.2",
     "lint-staged": "13.1.2",
     "micromatch": "4.0.5",
@@ -52,7 +52,7 @@
     "sort-package-json": "2.4.1",
     "type-fest": "3.5.7",
     "typescript": "4.9.5",
-    "vitest": "0.28.4",
+    "vitest": "0.28.5",
     "yargs": "17.6.2"
   },
   "publishConfig": {

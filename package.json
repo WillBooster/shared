@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "6.5.1",
-    "@types/eslint": "8.21.0",
+    "@types/eslint": "8.21.1",
     "@typescript-eslint/parser": "5.52.0",
     "@willbooster/prettier-config": "9.1.1",
     "@willbooster/renovate-config": "9.5.0",

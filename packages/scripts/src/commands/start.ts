@@ -3,7 +3,8 @@ import fs from 'node:fs/promises';
 import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { blitzScripts } from '../scripts/blitzScripts.js';
+import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
+import { expressScripts, ExpressScriptsType } from '../scripts/expressScripts.js';
 import { runWithYarn } from '../scripts/run.js';
 
 const builder = {
@@ -21,23 +22,30 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   async handler(argv) {
     const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
     const name = packageJson.name || 'unknown';
-    if (packageJson.dependencies?.['blitz']) {
-      switch (argv.mode || 'dev') {
-        case 'dev': {
-          await runWithYarn(blitzScripts.start());
-          break;
-        }
-        case 'prod': {
-          await runWithYarn(blitzScripts.startProduction());
-          break;
-        }
-        case 'docker': {
-          await runWithYarn(blitzScripts.startDocker(name));
-          break;
-        }
-        default: {
-          throw new Error(`Unknown start mode: ${argv.mode}`);
-        }
+    const deps = packageJson.dependencies || {};
+    let scripts: BlitzScriptsType | ExpressScriptsType | undefined;
+    if (deps['blitz']) {
+      scripts = blitzScripts;
+    } else if (deps['express'] && !deps['firebase-functions']) {
+      scripts = expressScripts;
+    }
+    if (!scripts) return;
+
+    switch (argv.mode || 'dev') {
+      case 'dev': {
+        await runWithYarn(scripts.start());
+        break;
+      }
+      case 'prod': {
+        await runWithYarn(scripts.startProduction());
+        break;
+      }
+      case 'docker': {
+        await runWithYarn(scripts.startDocker(name));
+        break;
+      }
+      default: {
+        throw new Error(`Unknown start mode: ${argv.mode}`);
       }
     }
   },
