@@ -20,7 +20,7 @@ const builder = {
     alias: 'e',
   },
   'e2e-mode': {
-    description: 'e2e mode: headless (default) | headed | debug | generate | trace',
+    description: 'e2e mode: headless (default) | docker | headed | debug | generate | trace',
     type: 'string',
     alias: 'm',
   },
@@ -87,43 +87,44 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
     }
     await Promise.all(promises);
     if (argv.e2e) {
+      switch (argv.e2eMode || 'headless') {
+        case 'headless': {
+          await runWithYarn(scripts.testE2E({}));
+          return;
+        }
+        case 'docker': {
+          await runWithSpawn(`${scripts.buildDocker(name, 'test')}`);
+          process.exitCode = await runWithYarn(
+            scripts.testE2E({
+              startCommand: dockerScripts.stopAndStart(name, true),
+            }),
+            { exitIfFailed: false }
+          );
+          await runWithYarn(dockerScripts.stop(name));
+          return;
+        }
+      }
       if (deps['blitz']) {
         switch (argv.e2eMode || 'headless') {
-          case 'headless': {
-            await runWithYarn(blitzScripts.testE2E({}));
-            break;
-          }
           case 'headed': {
             await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
-            break;
+            return;
           }
           case 'debug': {
             await runWithYarn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
-            break;
+            return;
           }
           case 'generate': {
             await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
-            break;
+            return;
           }
           case 'trace': {
             await runWithYarn(`yarn playwright show-trace`);
-            break;
-          }
-          default: {
-            throw new Error(`Unknown e2e mode: ${argv.mode}`);
-          }
-        }
-      } else {
-        switch (argv.e2eMode || 'headless') {
-          case 'headless': {
-            await runWithYarn(expressScripts.testE2E({}));
-            break;
-          }
-          default: {
-            throw new Error(`Unknown e2e mode: ${argv.mode}`);
+            return;
           }
         }
       }
+      throw new Error(`Unknown e2e mode: ${argv.mode}`);
     }
   },
 };
