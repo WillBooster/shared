@@ -9,7 +9,7 @@ import { runWithYarn } from '../scripts/run.js';
 
 const builder = {
   mode: {
-    description: 'Start mode: dev (default) | prod | docker',
+    description: 'Start mode: dev[elopment] (default) | prod[uction] | docker',
     type: 'string',
     alias: 'm',
   },
@@ -32,11 +32,13 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     if (!scripts) return;
 
     switch (argv.mode || 'dev') {
-      case 'dev': {
+      case 'dev':
+      case 'development': {
         await runWithYarn(scripts.start());
         break;
       }
-      case 'prod': {
+      case 'prod':
+      case 'production': {
         await runWithYarn(scripts.startProduction());
         break;
       }
