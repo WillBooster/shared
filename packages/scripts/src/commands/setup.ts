@@ -11,9 +11,10 @@ import { preprocessedOptions } from '../sharedOptions.js';
 
 const builder = {
   ...preprocessedOptions,
-  ci: {
-    description: 'Whether or not to enable CI mode',
+  init: {
+    description: 'Whether or not to setup a project initially',
     type: 'boolean',
+    alias: 'i',
   },
 } as const;
 
@@ -21,7 +22,7 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   command: 'setup',
   describe: 'Setup development environment',
   builder,
-  async handler() {
+  async handler(argv) {
     const packageJsonPromise = fs.readFile('package.json', 'utf8');
 
     const dirents = await fs.readdir('.', { withFileTypes: true });
@@ -39,8 +40,19 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     }
 
     const packageJson = JSON.parse(await packageJsonPromise) as PackageJson;
-    if (packageJson.dependencies?.['blitz'] && os.platform() === 'darwin') {
-      await runWithSpawn('brew install unbuffer');
+    const deps = packageJson.dependencies ?? {};
+    const scripts = packageJson.scripts ?? {};
+    if (deps['blitz']) {
+      if (os.platform() === 'darwin') {
+        await runWithSpawnInParallel('brew install unbuffer');
+      }
+      if (argv.init) {
+        await runWithSpawnInParallel('yarn add -D concurrently dotenv-cli open-cli retry-cli wait-on');
+      }
+      if (scripts['gen-code']) {
+        await runWithSpawnInParallel('yarn gen-code');
+      }
+      await promisePool.promiseAll();
     }
   },
 };
