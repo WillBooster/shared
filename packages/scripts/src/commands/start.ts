@@ -41,7 +41,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         break;
       }
       case 'docker': {
-        await runWithYarn(scripts.startDocker(name));
+        await runWithYarn(scripts.startDocker(name, packageJson));
         break;
       }
       default: {

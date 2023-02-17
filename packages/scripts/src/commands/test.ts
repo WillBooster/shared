@@ -66,7 +66,7 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
         await runWithSpawnInParallel(scripts.testStart());
       }
       await promisePool.promiseAll();
-      await runWithSpawn(`${scripts.buildDocker(name, 'test')}`);
+      await runWithSpawn(`${scripts.buildDocker(name, packageJson, 'test')}`);
       if (argv.e2e !== false) {
         process.exitCode = await runWithYarn(
           scripts.testE2E({
@@ -93,7 +93,7 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
           return;
         }
         case 'docker': {
-          await runWithSpawn(`${scripts.buildDocker(name, 'test')}`);
+          await runWithSpawn(`${scripts.buildDocker(name, packageJson, 'test')}`);
           process.exitCode = await runWithYarn(
             scripts.testE2E({
               startCommand: dockerScripts.stopAndStart(name, true),
