@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { execute } from '@yarnpkg/shell';
 import chalk from 'chalk';
@@ -52,6 +55,9 @@ export function runWithSpawnInParallel(script: string, opts: Options = defaultOp
 }
 
 function normalizeScript(script: string, silent = false): string {
+  // TODO: consider Yarn PnP
+  addBinPathsToEnv();
+
   const newScript = script.replaceAll('\n', '').replaceAll(/\s\s+/g, ' ').trim();
   !silent && printStart(newScript);
   return newScript;
@@ -69,5 +75,26 @@ function finishedScript(script: string, exitCode: number | null, opts?: Omit<Opt
     if (opts?.exitIfFailed) {
       process.exit(exitCode ?? 1);
     }
+  }
+}
+
+let addedBinPaths = false;
+
+function addBinPathsToEnv(): void {
+  if (addedBinPaths) return;
+  addedBinPaths = true;
+
+  let currentPath = path.resolve();
+  for (;;) {
+    const binPath = path.join(currentPath, 'node_modules', '.bin');
+    if (fs.existsSync(binPath)) {
+      process.env.PATH += `:${binPath}`;
+    }
+
+    const parentPath = path.dirname(currentPath);
+    if (currentPath === parentPath) {
+      break;
+    }
+    currentPath = parentPath;
   }
 }

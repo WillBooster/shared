@@ -20,14 +20,14 @@ class ExpressScripts {
     return `NODE_ENV=production; yarn build && PORT=\${PORT:-${port}} node dist/index.js`;
   }
 
-  testE2E({ startCommand = `yarn prisma migrate reset --force --skip-generate && ${this.startProduction()}` }): string {
-    return `NODE_ENV=production WB_ENV=test yarn concurrently --kill-others --raw --success first
+  testE2E({ startCommand = `prisma migrate reset --force --skip-generate && ${this.startProduction()}` }): string {
+    return `NODE_ENV=production WB_ENV=test concurrently --kill-others --raw --success first
       "${startCommand}"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run tests/e2e --color"`;
   }
 
   testStart(): string {
-    return `yarn concurrently --kill-others --raw --success first "${this.start()}" "${this.waitApp()}"`;
+    return `concurrently --kill-others --raw --success first "${this.start()}" "${this.waitApp()}"`;
   }
 
   testUnit(): string {

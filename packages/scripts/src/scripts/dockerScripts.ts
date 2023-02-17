@@ -5,8 +5,8 @@ import { PackageJson } from 'type-fest';
 class DockerScripts {
   buildDevImage(name: string, packageJson: PackageJson, wbEnv = 'local'): string {
     const prefix = packageJson?.scripts?.['docker/build/prepare'] ? 'yarn run docker/build/prepare && ' : '';
-    return `${prefix}yarn wb optimizeForDockerBuild --outside
-    && yarn retry -n 3 -- docker build -t ${name}
+    return `${prefix}wb optimizeForDockerBuild --outside
+    && retry -n 3 -- docker build -t ${name}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
         --build-arg WB_ENV=${wbEnv}
         --build-arg WB_VERSION=dev .`;

@@ -119,7 +119,7 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
             return;
           }
           case 'trace': {
-            await runWithSpawn(`yarn playwright show-trace`);
+            await runWithSpawn(`playwright show-trace`);
             return;
           }
         }

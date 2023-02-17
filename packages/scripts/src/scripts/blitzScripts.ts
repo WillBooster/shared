@@ -8,35 +8,35 @@ class BlitzScripts {
   }
 
   start(): string {
-    return `yarn concurrently --raw --kill-others-on-fail
+    return `concurrently --raw --kill-others-on-fail
       "blitz dev"
       "${blitzScripts.waitAndOpenApp()}"`;
   }
 
   startDocker(name: string, packageJson: PackageJson): string {
     return `${this.buildDocker(name, packageJson)}
-      && yarn concurrently --raw --kill-others-on-fail
+      && concurrently --raw --kill-others-on-fail
         "${dockerScripts.stopAndStart(name, false)}"
         "${blitzScripts.waitAndOpenApp(8080)}"`;
   }
 
   startProduction(port = 8080): string {
-    return `NODE_ENV=production; yarn db:setup && yarn build && yarn blitz start -p \${PORT:-${port}}`;
+    return `NODE_ENV=production; yarn db:setup && yarn build && blitz start -p \${PORT:-${port}}`;
   }
 
   testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {
-    return `APP_ENV=production WB_ENV=test yarn dotenv -e .env.production -- concurrently --kill-others --raw --success first
+    return `APP_ENV=production WB_ENV=test dotenv -e .env.production -- concurrently --kill-others --raw --success first
       "rm -Rf db/mount && ${startCommand}"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && playwright ${playwrightArgs}"`;
   }
 
   testStart(): string {
-    return `yarn concurrently --kill-others --raw --success first "blitz dev" "${this.waitApp()}"`;
+    return `concurrently --kill-others --raw --success first "blitz dev" "${this.waitApp()}"`;
   }
 
   testUnit(): string {
     // Since this command is referred to from other commands, we have to use "vitest run".
-    return `yarn vitest run tests/unit --color`;
+    return `vitest run tests/unit --color`;
   }
 
   waitApp(port = 3000): string {
