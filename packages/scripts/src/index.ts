@@ -29,3 +29,7 @@ await yargs(hideBin(process.argv))
   .demandCommand()
   .strict()
   .help().argv;
+
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
+  process.on(signal, () => process.exit());
+}

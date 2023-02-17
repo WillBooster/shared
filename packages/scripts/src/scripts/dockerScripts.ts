@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+
 class DockerScripts {
   buildDevImage(name: string, wbEnv = 'local'): string {
     return `yarn wb optimizeForDockerBuild --outside
@@ -10,6 +12,7 @@ class DockerScripts {
     return `${this.stop(name)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(name, additionalArgs)}`;
   }
   start(name: string, additionalArgs = ''): string {
+    process.on('exit', () => spawnSync(this.stop(name), { shell: true, stdio: 'inherit' }));
     return `docker run --rm -it -p 8080:8080 ${additionalArgs} --name ${name} ${name}`;
   }
 
