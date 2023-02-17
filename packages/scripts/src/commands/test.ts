@@ -7,7 +7,7 @@ import { promisePool } from '../promisePool.js';
 import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import { expressScripts, ExpressScriptsType } from '../scripts/expressScripts.js';
-import { runWithSpawn, runWithSpawnInParallel, runWithYarn } from '../scripts/run.js';
+import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 
 const builder = {
   ci: {
@@ -68,13 +68,13 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
       await promisePool.promiseAll();
       await runWithSpawn(`${scripts.buildDocker(name, packageJson, 'test')}`);
       if (argv.e2e !== false) {
-        process.exitCode = await runWithYarn(
+        process.exitCode = await runWithSpawn(
           scripts.testE2E({
             startCommand: dockerScripts.stopAndStart(name, true),
           }),
           { exitIfFailed: false }
         );
-        await runWithYarn(dockerScripts.stop(name));
+        await runWithSpawn(dockerScripts.stop(name));
       }
       return;
     }
@@ -83,43 +83,43 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
       promises.push(runWithSpawn(scripts.testUnit(), { timeout: argv.unitTimeout }));
     }
     if (argv.start) {
-      promises.push(runWithYarn(scripts.testStart()));
+      promises.push(runWithSpawn(scripts.testStart()));
     }
     await Promise.all(promises);
     if (argv.e2e) {
       switch (argv.e2eMode || 'headless') {
         case 'headless': {
-          await runWithYarn(scripts.testE2E({}));
+          await runWithSpawn(scripts.testE2E({}));
           return;
         }
         case 'docker': {
           await runWithSpawn(`${scripts.buildDocker(name, packageJson, 'test')}`);
-          process.exitCode = await runWithYarn(
+          process.exitCode = await runWithSpawn(
             scripts.testE2E({
               startCommand: dockerScripts.stopAndStart(name, true),
             }),
             { exitIfFailed: false }
           );
-          await runWithYarn(dockerScripts.stop(name));
+          await runWithSpawn(dockerScripts.stop(name));
           return;
         }
       }
       if (deps['blitz']) {
         switch (argv.e2eMode || 'headless') {
           case 'headed': {
-            await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
+            await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
             return;
           }
           case 'debug': {
-            await runWithYarn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
+            await runWithSpawn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
             return;
           }
           case 'generate': {
-            await runWithYarn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
+            await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
             return;
           }
           case 'trace': {
-            await runWithYarn(`yarn playwright show-trace`);
+            await runWithSpawn(`yarn playwright show-trace`);
             return;
           }
         }

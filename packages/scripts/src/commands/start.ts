@@ -5,7 +5,7 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { expressScripts, ExpressScriptsType } from '../scripts/expressScripts.js';
-import { runWithYarn } from '../scripts/run.js';
+import { runWithSpawn } from '../scripts/run.js';
 
 const builder = {
   mode: {
@@ -34,16 +34,16 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     switch (argv.mode || 'dev') {
       case 'dev':
       case 'development': {
-        await runWithYarn(scripts.start());
+        await runWithSpawn(scripts.start());
         break;
       }
       case 'prod':
       case 'production': {
-        await runWithYarn(scripts.startProduction());
+        await runWithSpawn(scripts.startProduction());
         break;
       }
       case 'docker': {
-        await runWithYarn(scripts.startDocker(name, packageJson));
+        await runWithSpawn(scripts.startDocker(name, packageJson));
         break;
       }
       default: {
