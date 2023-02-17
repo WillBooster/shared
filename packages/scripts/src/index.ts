@@ -9,6 +9,7 @@ import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild
 import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
+import { typeCheckCommand } from './commands/typecheck.js';
 import { preprocessedOptions } from './sharedOptions.js';
 
 await yargs(hideBin(process.argv))
@@ -26,6 +27,7 @@ await yargs(hideBin(process.argv))
   .command(optimizeForDockerBuildCommand)
   .command(startCommand)
   .command(testCommand)
+  .command(typeCheckCommand)
   .demandCommand()
   .strict()
   .help().argv;
