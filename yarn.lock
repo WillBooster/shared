@@ -5168,9 +5168,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts-react@npm:10.1.0":
-  version: 10.1.0
-  resolution: "@willbooster/eslint-config-ts-react@npm:10.1.0"
+"@willbooster/eslint-config-ts-react@npm:10.1.1":
+  version: 10.1.1
+  resolution: "@willbooster/eslint-config-ts-react@npm:10.1.1"
   dependencies:
     "@willbooster/eslint-config-ts": "npm:10.0.8"
   peerDependencies:
@@ -5186,7 +5186,7 @@ __metadata:
     eslint-plugin-sort-class-members: ">=1.14"
     eslint-plugin-sort-destructure-keys: ">=1.4"
     typescript: ">=4"
-  checksum: 6d605367d7bdeacb45808d8770aa6710d4c9810232ab611c6881d56189d5f52304802db5d11089e3156d47b3156efb4a5105e766a21e9750bb8061ad433aab45
+  checksum: 32ab066f8b028fa6c04885ae8492a37cc9c5c4a4c27122576e350d1a46c1e1356e7e53b9d03631c3f2e570daf7e23ca6cd69aa751a7aec45ae77159c8035b44c
   languageName: node
   linkType: hard
 
@@ -5274,7 +5274,7 @@ __metadata:
     "@types/react-dom": "npm:18.0.11"
     "@typescript-eslint/eslint-plugin": "npm:5.52.0"
     "@typescript-eslint/parser": "npm:5.52.0"
-    "@willbooster/eslint-config-ts-react": "npm:10.1.0"
+    "@willbooster/eslint-config-ts-react": "npm:10.1.1"
     "@willbooster/prettier-config": "npm:9.1.1"
     babel-loader: "npm:9.1.2"
     build-ts: "npm:5.7.2"
