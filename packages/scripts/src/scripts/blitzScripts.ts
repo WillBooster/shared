@@ -21,7 +21,9 @@ class BlitzScripts {
   }
 
   startProduction(port = 8080): string {
-    return `NODE_ENV=production; yarn db:setup && yarn build && blitz start -p \${PORT:-${port}}`;
+    // Add NODE_ENV=production only to "yarn db:setup",
+    // since NODE_ENV=production is set by default in "blitz build" and "blitz start"
+    return `NODE_ENV=production yarn db:setup && yarn build && blitz start -p \${PORT:-${port}}`;
   }
 
   testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {
