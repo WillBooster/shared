@@ -5,8 +5,8 @@ import { PackageJson } from 'type-fest';
 class DockerScripts {
   buildDevImage(name: string, packageJson: PackageJson, wbEnv = 'local'): string {
     const prefix = packageJson?.scripts?.['docker/build/prepare'] ? 'yarn run docker/build/prepare && ' : '';
-    return `${prefix}wb optimizeForDockerBuild --outside
-    && retry -n 3 -- docker build -t ${name}
+    return `${prefix}YARN wb optimizeForDockerBuild --outside
+    && YARN retry -n 3 -- docker build -t ${name}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
         --build-arg WB_ENV=${wbEnv}
         --build-arg WB_VERSION=dev .`;
@@ -20,11 +20,11 @@ class DockerScripts {
   }
 
   stop(name: string): string {
-    return `echo $(docker rm -f $(docker container ls -q -f name=${name}) 2> /dev/null)`;
+    return `true $(docker rm -f $(docker container ls -q -f name=${name}) 2> /dev/null)`;
   }
 
   stopAll(): string {
-    return `echo $(docker rm -f $(docker ps -q) 2> /dev/null)`;
+    return `true $(docker rm -f $(docker ps -q) 2> /dev/null)`;
   }
 }
 

@@ -9,7 +9,7 @@ class ExpressScripts {
   }
 
   start(): string {
-    return `build-ts run src/index.ts`;
+    return `YARN build-ts run src/index.ts`;
   }
 
   startDocker(name: string, packageJson: PackageJson): string {
@@ -21,13 +21,13 @@ class ExpressScripts {
   }
 
   testE2E({ startCommand = `prisma migrate reset --force --skip-generate && ${this.startProduction()}` }): string {
-    return `NODE_ENV=production WB_ENV=test concurrently --kill-others --raw --success first
+    return `NODE_ENV=production WB_ENV=test YARN concurrently --kill-others --raw --success first
       "${startCommand}"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run tests/e2e --color"`;
   }
 
   testStart(): string {
-    return `concurrently --kill-others --raw --success first "${this.start()}" "${this.waitApp()}"`;
+    return `YARN concurrently --kill-others --raw --success first "${this.start()}" "${this.waitApp()}"`;
   }
 
   testUnit(): string {

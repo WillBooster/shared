@@ -55,21 +55,19 @@ export function runWithSpawnInParallel(script: string, opts: Options = defaultOp
 }
 
 function normalizeScript(script: string, silent = false): string {
-  // TODO: consider Yarn PnP
-  addBinPathsToEnv();
-
+  const binExists = addBinPathsToEnv();
   const newScript = script.replaceAll('\n', '').replaceAll(/\s\s+/g, ' ').trim();
-  !silent && printStart(newScript);
-  return newScript;
+  !silent && printStart(newScript.replaceAll('YARN ', 'yarn'));
+  return newScript.replaceAll('YARN ', binExists ? '' : 'yarn');
 }
 
 function printStart(normalizedScript: string): void {
-  console.info('\n' + chalk.green(chalk.bold('Start:'), normalizedScript));
+  console.info('\n' + chalk.cyan(chalk.bold('Start:'), normalizedScript));
 }
 
 function finishedScript(script: string, exitCode: number | null, opts?: Omit<Options, 'timeout'>): void {
   if (exitCode === 0) {
-    console.info(chalk.cyan(chalk.bold('Finished:'), script));
+    console.info(chalk.green(chalk.bold('Finished:'), script));
   } else {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}): `), script));
     if (opts?.exitIfFailed) {
@@ -79,9 +77,10 @@ function finishedScript(script: string, exitCode: number | null, opts?: Omit<Opt
 }
 
 let addedBinPaths = false;
+let binFound = false;
 
-function addBinPathsToEnv(): void {
-  if (addedBinPaths) return;
+function addBinPathsToEnv(): boolean {
+  if (addedBinPaths) return binFound;
   addedBinPaths = true;
 
   let currentPath = path.resolve();
@@ -89,12 +88,17 @@ function addBinPathsToEnv(): void {
     const binPath = path.join(currentPath, 'node_modules', '.bin');
     if (fs.existsSync(binPath)) {
       process.env.PATH += `:${binPath}`;
+      binFound = true;
     }
 
+    if (fs.existsSync(path.join(currentPath, '.git'))) {
+      break;
+    }
     const parentPath = path.dirname(currentPath);
     if (currentPath === parentPath) {
       break;
     }
     currentPath = parentPath;
   }
+  return binFound;
 }
