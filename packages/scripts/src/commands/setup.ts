@@ -44,7 +44,7 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     const scripts = packageJson.scripts ?? {};
     if (deps['blitz']) {
       if (os.platform() === 'darwin') {
-        await runWithSpawnInParallel('brew install unbuffer');
+        await runWithSpawnInParallel('brew install expect');
       }
       if (argv.init) {
         await runWithSpawnInParallel('yarn add -D concurrently dotenv-cli open-cli retry-cli wait-on');
