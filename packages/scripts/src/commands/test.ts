@@ -1,8 +1,7 @@
-import fs from 'node:fs/promises';
-
-import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
+import { ArgumentsCamelCase } from 'yargs';
 
+import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
@@ -45,86 +44,90 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   describe: 'Test project',
   builder,
   async handler(argv) {
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
-    const name = packageJson.name || 'unknown';
-    const deps = packageJson.dependencies || {};
-    let scripts: BlitzScriptsType | ExpressScriptsType | undefined;
-    if (deps['blitz']) {
-      scripts = blitzScripts;
-    } else if (deps['express'] && !deps['firebase-functions']) {
-      scripts = expressScripts;
-    }
-    if (!scripts) return;
+    await test(argv);
+  },
+};
 
-    const promises: Promise<unknown>[] = [];
-    if (argv.ci) {
-      await runWithSpawnInParallel(dockerScripts.stopAll());
-      if (argv.unit !== false) {
-        await runWithSpawnInParallel(scripts.testUnit(), { timeout: argv.unitTimeout });
+export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
+  const deps = project.packageJson.dependencies || {};
+  let scripts: BlitzScriptsType | ExpressScriptsType | undefined;
+  if (deps['blitz']) {
+    scripts = blitzScripts;
+  } else if (deps['express'] && !deps['firebase-functions']) {
+    scripts = expressScripts;
+  }
+  if (!scripts) return;
+
+  const promises: Promise<unknown>[] = [];
+  if (argv.ci) {
+    await runWithSpawnInParallel(dockerScripts.stopAll());
+    if (argv.unit !== false) {
+      await runWithSpawnInParallel(scripts.testUnit(), { timeout: argv.unitTimeout });
+    }
+    if (argv.start !== false) {
+      await runWithSpawnInParallel(scripts.testStart());
+    }
+    await promisePool.promiseAll();
+    if (argv.e2e !== false) {
+      if (project.hasDockerfile) {
+        await runWithSpawn(`${scripts.buildDocker('test')}`);
       }
-      if (argv.start !== false) {
-        await runWithSpawnInParallel(scripts.testStart());
+      const options = project.hasDockerfile
+        ? {
+            startCommand: dockerScripts.stopAndStart(true),
+          }
+        : {};
+      process.exitCode = await runWithSpawn(scripts.testE2E(options), { exitIfFailed: false });
+      await runWithSpawn(dockerScripts.stop());
+    }
+    return;
+  }
+
+  if (argv.unit) {
+    promises.push(runWithSpawn(scripts.testUnit(), { timeout: argv.unitTimeout }));
+  }
+  if (argv.start) {
+    promises.push(runWithSpawn(scripts.testStart()));
+  }
+  await Promise.all(promises);
+  if (argv.e2e) {
+    switch (argv.e2eMode || 'headless') {
+      case 'headless': {
+        await runWithSpawn(scripts.testE2E({}));
+        return;
       }
-      await promisePool.promiseAll();
-      await runWithSpawn(`${scripts.buildDocker(name, packageJson, 'test')}`);
-      if (argv.e2e !== false) {
+      case 'docker': {
+        await runWithSpawn(`${scripts.buildDocker('test')}`);
         process.exitCode = await runWithSpawn(
           scripts.testE2E({
-            startCommand: dockerScripts.stopAndStart(name, true),
+            startCommand: dockerScripts.stopAndStart(true),
           }),
           { exitIfFailed: false }
         );
-        await runWithSpawn(dockerScripts.stop(name));
+        await runWithSpawn(dockerScripts.stop());
+        return;
       }
-      return;
     }
-
-    if (argv.unit) {
-      promises.push(runWithSpawn(scripts.testUnit(), { timeout: argv.unitTimeout }));
-    }
-    if (argv.start) {
-      promises.push(runWithSpawn(scripts.testStart()));
-    }
-    await Promise.all(promises);
-    if (argv.e2e) {
+    if (deps['blitz']) {
       switch (argv.e2eMode || 'headless') {
-        case 'headless': {
-          await runWithSpawn(scripts.testE2E({}));
+        case 'headed': {
+          await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
           return;
         }
-        case 'docker': {
-          await runWithSpawn(`${scripts.buildDocker(name, packageJson, 'test')}`);
-          process.exitCode = await runWithSpawn(
-            scripts.testE2E({
-              startCommand: dockerScripts.stopAndStart(name, true),
-            }),
-            { exitIfFailed: false }
-          );
-          await runWithSpawn(dockerScripts.stop(name));
+        case 'debug': {
+          await runWithSpawn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
+          return;
+        }
+        case 'generate': {
+          await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
+          return;
+        }
+        case 'trace': {
+          await runWithSpawn(`playwright show-trace`);
           return;
         }
       }
-      if (deps['blitz']) {
-        switch (argv.e2eMode || 'headless') {
-          case 'headed': {
-            await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
-            return;
-          }
-          case 'debug': {
-            await runWithSpawn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
-            return;
-          }
-          case 'generate': {
-            await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
-            return;
-          }
-          case 'trace': {
-            await runWithSpawn(`playwright show-trace`);
-            return;
-          }
-        }
-      }
-      throw new Error(`Unknown e2e mode: ${argv.mode}`);
     }
-  },
-};
+    throw new Error(`Unknown e2e mode: ${argv.mode}`);
+  }
+}

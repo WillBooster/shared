@@ -1,19 +1,17 @@
-import { PackageJson } from 'type-fest';
-
 import { blitzScripts } from './blitzScripts.js';
 import { dockerScripts } from './dockerScripts.js';
 
 class ExpressScripts {
-  buildDocker(name: string, packageJson: PackageJson, wbEnv = 'local'): string {
-    return dockerScripts.buildDevImage(name, packageJson, wbEnv);
+  buildDocker(wbEnv = 'local'): string {
+    return dockerScripts.buildDevImage(wbEnv);
   }
 
   start(): string {
     return `YARN build-ts run src/index.ts`;
   }
 
-  startDocker(name: string, packageJson: PackageJson): string {
-    return `${this.buildDocker(name, packageJson)} && ${dockerScripts.stopAndStart(name, false)}`;
+  startDocker(): string {
+    return `${this.buildDocker()} && ${dockerScripts.stopAndStart(false)}`;
   }
 
   startProduction(port = 8080): string {

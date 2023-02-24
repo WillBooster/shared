@@ -1,23 +1,26 @@
 import fs from 'node:fs';
 
-import { describe, expect, it, afterAll, beforeAll } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildIfNeeded } from '../src/commands/buildIfNeeded.js';
+import { project } from '../src/project.js';
 
 describe('buildIfNeeded', () => {
   beforeAll(initializeFiles);
 
   it('app', async () => {
+    project.dirPath = 'test-fixtures/app';
+
     const command = 'echo build';
-    expect(await buildIfNeeded(command, 'test-fixtures/app')).toBe(true);
-    expect(await buildIfNeeded(command, 'test-fixtures/app')).toBe(false);
+    expect(await buildIfNeeded(command)).toBe(true);
+    expect(await buildIfNeeded(command)).toBe(false);
 
     await fs.promises.writeFile('test-fixtures/app/index.js', `console.log('Hello'); console.log('Hello');`);
-    expect(await buildIfNeeded(command, 'test-fixtures/app')).toBe(true);
-    expect(await buildIfNeeded(command, 'test-fixtures/app')).toBe(false);
+    expect(await buildIfNeeded(command)).toBe(true);
+    expect(await buildIfNeeded(command)).toBe(false);
 
     await fs.promises.writeFile('test-fixtures/app/README.md', `# test-fixtures/app/`);
-    expect(await buildIfNeeded(command, 'test-fixtures/app')).toBe(false);
+    expect(await buildIfNeeded(command)).toBe(false);
 
     await fs.promises.writeFile(
       'test-fixtures/app/package.json',
@@ -29,7 +32,7 @@ describe('buildIfNeeded', () => {
         2
       )
     );
-    expect(await buildIfNeeded(command, 'test-fixtures/app')).toBe(false);
+    expect(await buildIfNeeded(command)).toBe(false);
   });
 
   afterAll(initializeFiles);

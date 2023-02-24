@@ -1,26 +1,26 @@
 import { spawnSync } from 'node:child_process';
 
-import { PackageJson } from 'type-fest';
+import { project } from '../project.js';
 
 class DockerScripts {
-  buildDevImage(name: string, packageJson: PackageJson, wbEnv = 'local'): string {
-    const prefix = packageJson?.scripts?.['docker/build/prepare'] ? 'yarn run docker/build/prepare && ' : '';
+  buildDevImage(wbEnv = 'local'): string {
+    const prefix = project.packageJson.scripts?.['docker/build/prepare'] ? 'yarn run docker/build/prepare && ' : '';
     return `${prefix}YARN wb optimizeForDockerBuild --outside
-    && YARN retry -n 3 -- docker build -t ${name}
+    && YARN retry -n 3 -- docker build -t ${project.name}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
         --build-arg WB_ENV=${wbEnv}
         --build-arg WB_VERSION=dev .`;
   }
-  stopAndStart(name: string, unbuffer = false, additionalArgs = ''): string {
-    return `${this.stop(name)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(name, additionalArgs)}`;
+  stopAndStart(unbuffer = false, additionalArgs = ''): string {
+    return `${this.stop()} && ${unbuffer ? 'unbuffer ' : ''}${this.start(additionalArgs)}`;
   }
-  start(name: string, additionalArgs = ''): string {
-    process.on('exit', () => spawnSync(this.stop(name), { shell: true, stdio: 'inherit' }));
-    return `docker run --rm -it -p 8080:8080 ${additionalArgs} --name ${name} ${name}`;
+  start(additionalArgs = ''): string {
+    process.on('exit', () => spawnSync(this.stop(), { shell: true, stdio: 'inherit' }));
+    return `docker run --rm -it -p 8080:8080 ${additionalArgs} --name ${project.name} ${project.name}`;
   }
 
-  stop(name: string): string {
-    return `true $(docker rm -f $(docker container ls -q -f name=${name}) 2> /dev/null)`;
+  stop(): string {
+    return `true $(docker rm -f $(docker container ls -q -f name=${project.name}) 2> /dev/null)`;
   }
 
   stopAll(): string {

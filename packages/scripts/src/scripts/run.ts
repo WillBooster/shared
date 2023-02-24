@@ -5,6 +5,7 @@ import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { execute } from '@yarnpkg/shell';
 import chalk from 'chalk';
 
+import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 
 interface Options {
@@ -26,6 +27,7 @@ export async function runWithYarn(script: string, opts: Omit<Options, 'timeout'>
 export async function runWithSpawn(script: string, opts: Options = defaultOptions): Promise<number> {
   const normalizedScript = normalizeScript(script);
   const ret = await spawnAsync(normalizedScript, undefined, {
+    cwd: project.dirPath,
     shell: true,
     stdio: 'inherit',
     timeout: opts?.timeout,
@@ -39,7 +41,9 @@ export async function runWithSpawn(script: string, opts: Options = defaultOption
 export function runWithSpawnInParallel(script: string, opts: Options = defaultOptions): Promise<void> {
   return promisePool.run(async () => {
     const normalizedScript = normalizeScript(script, true);
+    printStart(normalizedScript, 'Start (parallel)');
     const ret = await spawnAsync(normalizedScript, undefined, {
+      cwd: project.dirPath,
       shell: true,
       stdio: 'pipe',
       timeout: opts?.timeout,
@@ -47,7 +51,7 @@ export function runWithSpawnInParallel(script: string, opts: Options = defaultOp
       killOnExit: true,
       verbose: true,
     });
-    printStart(normalizedScript);
+    printStart(normalizedScript, 'Log');
     const out = ret.stdout.trim();
     if (out) console.info(out);
     finishedScript(normalizedScript, ret.status, opts);
@@ -57,12 +61,12 @@ export function runWithSpawnInParallel(script: string, opts: Options = defaultOp
 function normalizeScript(script: string, silent = false): string {
   const binExists = addBinPathsToEnv();
   const newScript = script.replaceAll('\n', '').replaceAll(/\s\s+/g, ' ').trim();
-  !silent && printStart(newScript.replaceAll('YARN ', 'yarn'));
-  return newScript.replaceAll('YARN ', binExists ? '' : 'yarn');
+  !silent && printStart(newScript.replaceAll('YARN ', 'yarn '));
+  return newScript.replaceAll('YARN ', binExists ? '' : 'yarn ');
 }
 
-function printStart(normalizedScript: string): void {
-  console.info('\n' + chalk.cyan(chalk.bold('Start:'), normalizedScript));
+function printStart(normalizedScript: string, prefix = 'Start'): void {
+  console.info('\n' + chalk.cyan(chalk.bold(`${prefix}:`), normalizedScript));
 }
 
 function finishedScript(script: string, exitCode: number | null, opts?: Omit<Options, 'timeout'>): void {
@@ -83,7 +87,7 @@ function addBinPathsToEnv(): boolean {
   if (addedBinPaths) return binFound;
   addedBinPaths = true;
 
-  let currentPath = path.resolve();
+  let currentPath = project.dirPath;
   for (;;) {
     const binPath = path.join(currentPath, 'node_modules', '.bin');
     if (fs.existsSync(binPath)) {

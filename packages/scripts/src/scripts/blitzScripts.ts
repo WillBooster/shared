@@ -1,10 +1,8 @@
-import { PackageJson } from 'type-fest';
-
 import { dockerScripts } from './dockerScripts.js';
 
 class BlitzScripts {
-  buildDocker(name: string, packageJson: PackageJson, wbEnv = 'local'): string {
-    return dockerScripts.buildDevImage(name, packageJson, wbEnv);
+  buildDocker(wbEnv = 'local'): string {
+    return dockerScripts.buildDevImage(wbEnv);
   }
 
   start(): string {
@@ -13,10 +11,10 @@ class BlitzScripts {
       "${blitzScripts.waitAndOpenApp()}"`;
   }
 
-  startDocker(name: string, packageJson: PackageJson): string {
-    return `${this.buildDocker(name, packageJson)}
+  startDocker(): string {
+    return `${this.buildDocker()}
       && YARN concurrently --raw --kill-others-on-fail
-        "${dockerScripts.stopAndStart(name, false)}"
+        "${dockerScripts.stopAndStart(false)}"
         "${blitzScripts.waitAndOpenApp(8080)}"`;
   }
 

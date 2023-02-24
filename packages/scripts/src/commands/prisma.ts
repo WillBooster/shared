@@ -1,6 +1,3 @@
-import fs from 'node:fs/promises';
-
-import { PackageJson } from 'type-fest';
 import type { CommandModule } from 'yargs';
 
 import { prismaScripts } from '../scripts/prismaScripts.js';
@@ -27,8 +24,7 @@ const migrateCommand: CommandModule = {
   describe: 'Apply migration files to DB',
   builder: {},
   async handler() {
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
-    await runWithSpawn(prismaScripts.migrate(packageJson));
+    await runWithSpawn(prismaScripts.migrate());
   },
 };
 
@@ -46,8 +42,7 @@ const resetCommand: CommandModule = {
   describe: 'Reset DB',
   builder: {},
   async handler() {
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
-    await runWithSpawn(prismaScripts.reset(packageJson));
+    await runWithSpawn(prismaScripts.reset());
   },
 };
 
@@ -56,7 +51,6 @@ const seedCommand: CommandModule = {
   describe: 'Populate DB with seed data',
   builder: {},
   async handler() {
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
-    await runWithSpawn(prismaScripts.seed(packageJson));
+    await runWithSpawn(prismaScripts.seed());
   },
 };

@@ -4,13 +4,13 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
-import { generatePackageJsonForFunctionsCommand } from './commands/generatePackageJsonForFunctions.js';
 import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
 import { prismaCommand } from './commands/prisma.js';
 import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
 import { typeCheckCommand } from './commands/typecheck.js';
+import { project } from './project.js';
 import { preprocessedOptions } from './sharedOptions.js';
 
 await yargs(hideBin(process.argv))
@@ -19,12 +19,13 @@ await yargs(hideBin(process.argv))
   .middleware((argv) => {
     const workingDir = argv['working-dir'];
     if (workingDir) {
-      process.chdir(path.resolve(workingDir));
+      const dirPath = path.resolve(workingDir);
+      process.chdir(dirPath);
+      project.dirPath = dirPath;
     }
   })
   .command(setupCommand)
   .command(buildIfNeededCommand)
-  .command(generatePackageJsonForFunctionsCommand)
   .command(optimizeForDockerBuildCommand)
   .command(prismaCommand)
   .command(startCommand)
