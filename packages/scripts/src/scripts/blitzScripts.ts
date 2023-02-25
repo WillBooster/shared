@@ -1,4 +1,5 @@
 import { dockerScripts } from './dockerScripts.js';
+import { prismaScripts } from './prismaScripts.js';
 
 class BlitzScripts {
   buildDocker(wbEnv = 'local'): string {
@@ -19,9 +20,9 @@ class BlitzScripts {
   }
 
   startProduction(port = 8080): string {
-    // Add NODE_ENV=production only to "yarn db:setup",
+    // Add NODE_ENV=production only to ${prismaScripts.reset()},
     // since NODE_ENV=production is set by default in "blitz build" and "blitz start"
-    return `NODE_ENV=production yarn db:setup && yarn build && YARN blitz start -p \${PORT:-${port}}`;
+    return `NODE_ENV=production ${prismaScripts.reset()} && yarn build && YARN blitz start -p \${PORT:-${port}}`;
   }
 
   testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {
@@ -36,7 +37,7 @@ class BlitzScripts {
 
   testUnit(): string {
     // Since this command is referred to from other commands, we have to use "vitest run".
-    return `YARN vitest run tests/unit --color`;
+    return `if [ -f tests/unit ]; then YARN vitest run tests/unit --color; else echo 'No tests found.'; fi`;
   }
 
   /*private*/ waitApp(port = 3000): string {

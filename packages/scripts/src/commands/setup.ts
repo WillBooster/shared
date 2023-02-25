@@ -46,14 +46,14 @@ export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes
   const scripts = project.packageJson.scripts ?? {};
   if (deps['blitz']) {
     if (os.platform() === 'darwin') {
-      await runWithSpawnInParallel('brew install expect');
+      await runWithSpawnInParallel('brew install expect pstree');
     }
     if (argv.init) {
       await runWithSpawnInParallel('yarn add -D concurrently dotenv-cli open-cli retry-cli wait-on');
     }
-    if (scripts['gen-code']) {
-      await runWithSpawnInParallel('yarn gen-code');
-    }
     await promisePool.promiseAll();
+    if (scripts['gen-code']) {
+      await runWithSpawn('yarn gen-code');
+    }
   }
 }

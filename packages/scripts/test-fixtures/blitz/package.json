@@ -1,6 +1,7 @@
 {
   "name": "blitz",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
     "dev": "blitz dev",
     "build": "blitz build",
@@ -22,7 +23,7 @@
   "devDependencies": {
     "@types/node": "18.11.9",
     "@types/react": "18.0.25",
-    "typescript": "^4.8.4"
+    "typescript": "4.8.4"
   },
-  "private": true
+  "packageManager": "yarn@4.0.0-rc.39"
 }

@@ -40,8 +40,7 @@ export async function runWithSpawn(script: string, opts: Options = defaultOption
 
 export function runWithSpawnInParallel(script: string, opts: Options = defaultOptions): Promise<void> {
   return promisePool.run(async () => {
-    const normalizedScript = normalizeScript(script, true);
-    printStart(normalizedScript, 'Start (parallel)');
+    const normalizedScript = normalizeScript(script, 'Start (parallel)');
     const ret = await spawnAsync(normalizedScript, undefined, {
       cwd: project.dirPath,
       shell: true,
@@ -58,23 +57,27 @@ export function runWithSpawnInParallel(script: string, opts: Options = defaultOp
   });
 }
 
-function normalizeScript(script: string, silent = false): string {
+function normalizeScript(script: string, prefix = 'Start'): string {
   const binExists = addBinPathsToEnv();
-  const newScript = script.replaceAll('\n', '').replaceAll(/\s\s+/g, ' ').trim();
-  !silent && printStart(newScript.replaceAll('YARN ', 'yarn '));
+  const newScript = script
+    .replaceAll('\n', '')
+    .replaceAll(/\s\s+/g, ' ')
+    .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
+    .trim();
+  printStart(newScript.replaceAll('YARN ', 'yarn '), prefix);
   return newScript.replaceAll('YARN ', binExists ? '' : 'yarn ');
 }
 
-function printStart(normalizedScript: string, prefix = 'Start'): void {
+function printStart(normalizedScript: string, prefix: string): void {
   console.info('\n' + chalk.cyan(chalk.bold(`${prefix}:`), normalizedScript));
 }
 
-function finishedScript(script: string, exitCode: number | null, opts?: Omit<Options, 'timeout'>): void {
+function finishedScript(script: string, exitCode: number | null, opts: Omit<Options, 'timeout'>): void {
   if (exitCode === 0) {
     console.info(chalk.green(chalk.bold('Finished:'), script));
   } else {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}): `), script));
-    if (opts?.exitIfFailed) {
+    if (opts.exitIfFailed !== false) {
       process.exit(exitCode ?? 1);
     }
   }
