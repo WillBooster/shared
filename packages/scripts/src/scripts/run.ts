@@ -18,15 +18,17 @@ const defaultOptions: Options = {
 };
 
 export async function runWithYarn(script: string, opts: Omit<Options, 'timeout'> = defaultOptions): Promise<number> {
-  const normalizedScript = normalizeScript(script);
-  const exitCode = await execute(normalizedScript, undefined);
-  finishedScript(normalizedScript, exitCode, opts);
+  const [printableScript, runnableScript] = normalizeScript(script);
+  printStart(printableScript);
+  const exitCode = await execute(runnableScript, undefined);
+  finishedScript(printableScript, exitCode, opts);
   return exitCode;
 }
 
 export async function runWithSpawn(script: string, opts: Options = defaultOptions): Promise<number> {
-  const normalizedScript = normalizeScript(script);
-  const ret = await spawnAsync(normalizedScript, undefined, {
+  const [printableScript, runnableScript] = normalizeScript(script);
+  printStart(printableScript);
+  const ret = await spawnAsync(runnableScript, undefined, {
     cwd: project.dirPath,
     shell: true,
     stdio: 'inherit',
@@ -34,14 +36,15 @@ export async function runWithSpawn(script: string, opts: Options = defaultOption
     killOnExit: true,
     verbose: true,
   });
-  finishedScript(normalizedScript, ret.status, opts);
+  finishedScript(printableScript, ret.status, opts);
   return ret.status ?? 1;
 }
 
 export function runWithSpawnInParallel(script: string, opts: Options = defaultOptions): Promise<void> {
   return promisePool.run(async () => {
-    const normalizedScript = normalizeScript(script, 'Start (parallel)');
-    const ret = await spawnAsync(normalizedScript, undefined, {
+    const [printableScript, runnableScript] = normalizeScript(script);
+    printStart(printableScript, 'Start (parallel)', true);
+    const ret = await spawnAsync(runnableScript, undefined, {
       cwd: project.dirPath,
       shell: true,
       stdio: 'pipe',
@@ -50,26 +53,25 @@ export function runWithSpawnInParallel(script: string, opts: Options = defaultOp
       killOnExit: true,
       verbose: true,
     });
-    printStart(normalizedScript, 'Log');
+    printStart(printableScript, 'Log');
     const out = ret.stdout.trim();
     if (out) console.info(out);
-    finishedScript(normalizedScript, ret.status, opts);
+    finishedScript(printableScript, ret.status, opts);
   });
 }
 
-function normalizeScript(script: string, prefix = 'Start'): string {
+function normalizeScript(script: string): [string, string] {
   const binExists = addBinPathsToEnv();
   const newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
     .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
     .trim();
-  printStart(newScript.replaceAll('YARN ', 'yarn '), prefix);
-  return newScript.replaceAll('YARN ', binExists ? '' : 'yarn ');
+  return [newScript.replaceAll('YARN ', 'yarn '), newScript.replaceAll('YARN ', binExists ? '' : 'yarn ')];
 }
 
-function printStart(normalizedScript: string, prefix: string): void {
-  console.info('\n' + chalk.cyan(chalk.bold(`${prefix}:`), normalizedScript));
+function printStart(normalizedScript: string, prefix = 'Start', weak = false): void {
+  console.info('\n' + (weak ? chalk.gray : chalk.cyan)(chalk.bold(`${prefix}:`), normalizedScript));
 }
 
 function finishedScript(script: string, exitCode: number | null, opts: Omit<Options, 'timeout'>): void {

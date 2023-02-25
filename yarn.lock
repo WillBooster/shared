@@ -5303,7 +5303,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:45.0.2"
     lint-staged: "npm:13.1.2"
     micromatch: "npm:4.0.5"
-    minimal-promise-pool: "npm:2.1.6"
+    minimal-promise-pool: "npm:2.1.7"
     prettier: "npm:2.8.4"
     sort-package-json: "npm:2.4.1"
     type-fest: "npm:3.6.0"
@@ -13064,12 +13064,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"minimal-promise-pool@npm:2.1.6":
-  version: 2.1.6
-  resolution: "minimal-promise-pool@npm:2.1.6"
+"minimal-promise-pool@npm:2.1.7":
+  version: 2.1.7
+  resolution: "minimal-promise-pool@npm:2.1.7"
   dependencies:
     "@babel/runtime": "npm:7.21.0"
-  checksum: 26a61c0b5af07d4c2fdb50e084983da0139150b452d7fa1294ea8f9a3588a8bc0b2d88a5fec380c9839198612bc71ca8c0b20556b1ec11709651be701e39640a
+  checksum: f6a51a7cbc2a338dc59bf68b52a7bd78352c9abebed23cf39e0c85990232be2b5b4f7a10ac7fde8acda4ac9f1af060a765aa628fde3f25dd6c8dc02d50b7eb40
   languageName: node
   linkType: hard
 

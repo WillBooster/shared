@@ -27,7 +27,7 @@
   "dependencies": {
     "@yarnpkg/shell": "4.0.0-rc.39",
     "chalk": "5.2.0",
-    "minimal-promise-pool": "2.1.6"
+    "minimal-promise-pool": "2.1.7"
   },
   "devDependencies": {
     "@types/eslint": "8.21.1",
