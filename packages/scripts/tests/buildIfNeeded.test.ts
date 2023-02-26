@@ -16,6 +16,9 @@ describe('buildIfNeeded', () => {
     await fs.promises.cp('test-fixtures/app', project.dirPath, { force: true, recursive: true });
     child_process.execSync('git init', { cwd: project.dirPath, stdio: 'inherit' });
     child_process.execSync('git add -A', { cwd: project.dirPath, stdio: 'inherit' });
+    child_process.execSync('git config user.email "bot@willbooster.com"', { cwd: project.dirPath, stdio: 'inherit' });
+    child_process.execSync('git config user.name "WillBooster Inc."', { cwd: project.dirPath, stdio: 'inherit' });
+    child_process.execSync('git add -A', { cwd: project.dirPath, stdio: 'inherit' });
     child_process.execSync('git commit -m .', { cwd: project.dirPath, stdio: 'inherit' });
 
     const command = 'echo build';
