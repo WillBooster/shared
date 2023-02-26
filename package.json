@@ -33,7 +33,7 @@
     "@willbooster/prettier-config": "9.1.1",
     "@willbooster/renovate-config": "9.5.0",
     "conventional-changelog-conventionalcommits": "5.0.0",
-    "eslint": "8.34.0",
+    "eslint": "8.35.0",
     "husky": "8.0.3",
     "lint-staged": "13.1.2",
     "micromatch": "4.0.5",
