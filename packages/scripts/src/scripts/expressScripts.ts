@@ -1,19 +1,17 @@
-import { PackageJson } from 'type-fest';
-
 import { blitzScripts } from './blitzScripts.js';
 import { dockerScripts } from './dockerScripts.js';
 
 class ExpressScripts {
-  buildDocker(name: string, packageJson: PackageJson, wbEnv = 'local'): string {
-    return dockerScripts.buildDevImage(name, packageJson, wbEnv);
+  buildDocker(wbEnv = 'local'): string {
+    return dockerScripts.buildDevImage(wbEnv);
   }
 
   start(): string {
-    return `build-ts run src/index.ts`;
+    return `YARN build-ts run src/index.ts`;
   }
 
-  startDocker(name: string, packageJson: PackageJson): string {
-    return `${this.buildDocker(name, packageJson)} && ${dockerScripts.stopAndStart(name, false)}`;
+  startDocker(): string {
+    return `${this.buildDocker()} && ${dockerScripts.stopAndStart(false)}`;
   }
 
   startProduction(port = 8080): string {
@@ -21,13 +19,14 @@ class ExpressScripts {
   }
 
   testE2E({ startCommand = `prisma migrate reset --force --skip-generate && ${this.startProduction()}` }): string {
-    return `NODE_ENV=production WB_ENV=test concurrently --kill-others --raw --success first
+    console.log('testE2E', startCommand);
+    return `NODE_ENV=production WB_ENV=test YARN concurrently --kill-others --raw --success first
       "${startCommand}"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run tests/e2e --color"`;
   }
 
   testStart(): string {
-    return `concurrently --kill-others --raw --success first "${this.start()}" "${this.waitApp()}"`;
+    return `YARN concurrently --kill-others --raw --success first "${this.start()}" "${this.waitApp()}"`;
   }
 
   testUnit(): string {

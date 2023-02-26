@@ -1,8 +1,6 @@
-import fs from 'node:fs/promises';
-
-import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
+import { project } from '../project.js';
 import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { expressScripts, ExpressScriptsType } from '../scripts/expressScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -20,9 +18,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   describe: 'Start app',
   builder,
   async handler(argv) {
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
-    const name = packageJson.name || 'unknown';
-    const deps = packageJson.dependencies || {};
+    const deps = project.packageJson.dependencies || {};
     let scripts: BlitzScriptsType | ExpressScriptsType | undefined;
     if (deps['blitz']) {
       scripts = blitzScripts;
@@ -43,7 +39,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         break;
       }
       case 'docker': {
-        await runWithSpawn(scripts.startDocker(name, packageJson));
+        await runWithSpawn(scripts.startDocker());
         break;
       }
       default: {

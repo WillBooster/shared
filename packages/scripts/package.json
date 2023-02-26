@@ -20,14 +20,14 @@
     "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,js,json,json5,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test-fixtures/**\"",
     "start": "build-ts run src/index.ts --",
     "start-prod": "yarn build && yarn wb",
-    "test": "vitest run tests",
+    "test": "WB_ENV=test vitest run tests",
     "typecheck": "tsc --noEmit --Pretty"
   },
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "@yarnpkg/shell": "4.0.0-rc.39",
     "chalk": "5.2.0",
-    "minimal-promise-pool": "2.1.5"
+    "minimal-promise-pool": "2.1.7"
   },
   "devDependencies": {
     "@types/eslint": "8.21.1",
@@ -52,7 +52,7 @@
     "sort-package-json": "2.4.1",
     "type-fest": "3.6.0",
     "typescript": "4.9.5",
-    "vitest": "0.28.5",
+    "vitest": "0.29.1",
     "yargs": "17.7.1"
   },
   "publishConfig": {

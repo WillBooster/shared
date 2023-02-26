@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
+import { project } from '../project.js';
 import { preprocessedOptions } from '../sharedOptions.js';
 
 const builder = {
@@ -24,9 +25,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       stdio: 'inherit',
     } as const;
 
-    const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8'));
-
-    const deps = packageJson.dependencies || {};
+    const deps = project.packageJson.dependencies || {};
     if (deps['@moti-components/go-e-mon']) {
       deps['@moti-components/go-e-mon'] = './@moti-components/go-e-mon';
     }
@@ -34,7 +33,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       deps['online-judge-shared'] = './online-judge-shared';
     }
 
-    const developmentDeps = packageJson.devDependencies || {};
+    const devDeps = project.packageJson.devDependencies || {};
     const nameWordsToBeRemoved = [
       'concurrently',
       'conventional-changelog-conventionalcommits',
@@ -56,18 +55,18 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       // Seed scripts require TypeScript-related packages.
       nameWordsToBeRemoved.push('build-ts', 'rollup', 'vite', 'webpack');
     }
-    for (const name of Object.keys(developmentDeps)) {
+    for (const name of Object.keys(devDeps)) {
       if (
         nameWordsToBeRemoved.some((word) => name.includes(word)) ||
         (!argv.outside && name.includes('willbooster') && name.includes('config'))
       ) {
-        delete developmentDeps[name];
+        delete devDeps[name];
       }
     }
 
     const nameWordsOfUnnecessaryScripts = ['check', 'deploy', 'format', 'lint', 'start', 'test'];
     const contentWordsOfUnnecessaryScripts = ['pinst ', 'husky '];
-    const scripts = (packageJson.scripts || {}) as Record<string, string>;
+    const scripts = (project.packageJson.scripts || {}) as Record<string, string>;
     for (const [name, content] of Object.entries(scripts)) {
       if (
         nameWordsOfUnnecessaryScripts.some((word) => name.includes(word)) ||
@@ -82,7 +81,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
     await fs.writeFile(
       argv.outside ? path.join('dist', 'package.json') : 'package.json',
-      JSON.stringify(packageJson),
+      JSON.stringify(project.packageJson),
       'utf8'
     );
 
