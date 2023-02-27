@@ -96,7 +96,7 @@ function addBinPathsToEnv(): boolean {
   for (;;) {
     const binPath = path.join(currentPath, 'node_modules', '.bin');
     if (fs.existsSync(binPath)) {
-      process.env.PATH += `:${binPath}`;
+      process.env.PATH = `${binPath}:${process.env.PATH}`;
       binFound = true;
     }
 

@@ -4378,10 +4378,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:*, @types/node@npm:18.14.1":
+"@types/node@npm:*":
   version: 18.14.1
   resolution: "@types/node@npm:18.14.1"
   checksum: b91f3b982e51b2560373086d70b43b2938f28e8ec63ad3fb77f742050a54ac1205b92c16e5d96514445e74e3e190e495f61f0acbc90da96548b2ad4973e93a98
+  languageName: node
+  linkType: hard
+
+"@types/node@npm:18.14.2":
+  version: 18.14.2
+  resolution: "@types/node@npm:18.14.2"
+  checksum: 129305df2c8e761c22cfa7a88ab780577864c8fc53a5b70cabbe4dd595e4b38b211b73a4380d0a18bf5da3634081bfa554cccf52dfd5e228e7a27de12c857aaf
   languageName: node
   linkType: hard
 
@@ -5292,7 +5299,7 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:8.21.1"
     "@types/micromatch": "npm:4.0.2"
-    "@types/node": "npm:18.14.1"
+    "@types/node": "npm:18.14.2"
     "@types/yargs": "npm:17.0.22"
     "@typescript-eslint/eslint-plugin": "npm:5.53.0"
     "@typescript-eslint/parser": "npm:5.53.0"
@@ -5313,7 +5320,7 @@ __metadata:
     minimal-promise-pool: "npm:2.1.7"
     prettier: "npm:2.8.4"
     sort-package-json: "npm:2.4.1"
-    type-fest: "npm:3.6.0"
+    type-fest: "npm:3.6.1"
     typescript: "npm:4.9.5"
     vitest: "npm:0.29.1"
     yargs: "npm:17.7.1"
@@ -17911,10 +17918,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"type-fest@npm:3.6.0":
-  version: 3.6.0
-  resolution: "type-fest@npm:3.6.0"
-  checksum: e72e4e85d1151d3097c3db0844c2d927661313d586efcdacc611608ac25edd13e4e886856a03b5e62bd55ea27892e043ff828c9f3b694b3d3a92c1153ce96d6f
+"type-fest@npm:3.6.1":
+  version: 3.6.1
+  resolution: "type-fest@npm:3.6.1"
+  checksum: d3ac5e99ac817ee5bd5827f720439792b8dab0fac93a731a4d90981ca5d1baa8f0c02e35258400b215f41062595cf015dfa076d49a964a6baeb596e83cda3209
   languageName: node
   linkType: hard
 

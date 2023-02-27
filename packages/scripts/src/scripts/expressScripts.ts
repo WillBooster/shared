@@ -18,7 +18,9 @@ class ExpressScripts {
     return `NODE_ENV=production; yarn build && PORT=\${PORT:-${port}} node dist/index.js`;
   }
 
-  testE2E({ startCommand = `prisma migrate reset --force --skip-generate && ${this.startProduction()}` }): string {
+  testE2E({
+    startCommand = `if [ -e "prisma" ]; then prisma migrate reset --force --skip-generate; fi && ${this.startProduction()}`,
+  }): string {
     console.log('testE2E', startCommand);
     return `NODE_ENV=production WB_ENV=test YARN concurrently --kill-others --raw --success first
       "${startCommand}"
