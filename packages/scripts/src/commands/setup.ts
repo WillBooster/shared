@@ -49,7 +49,7 @@ export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes
       await runWithSpawnInParallel('brew install expect pstree');
     }
     if (argv.init) {
-      await runWithSpawn('yarn add -D concurrently dotenv-cli open-cli retry-cli wait-on');
+      await runWithSpawn('yarn add -D concurrently dotenv-cli open-cli retry-cli vitest wait-on');
     }
     await promisePool.promiseAll();
     if (scripts['gen-code']) {

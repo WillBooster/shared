@@ -90,7 +90,7 @@ export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<
     promises.push(runWithSpawn(scripts.testStart()));
   }
   await Promise.all(promises);
-  if (argv.e2e) {
+  if (argv.e2e && project.packageJson.devDependencies?.['playwright']) {
     switch (argv.e2eMode || 'headless') {
       case 'headless': {
         await runWithSpawn(scripts.testE2E({}));

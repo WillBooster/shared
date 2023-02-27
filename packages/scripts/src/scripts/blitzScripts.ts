@@ -37,7 +37,7 @@ class BlitzScripts {
 
   testUnit(): string {
     // Since this command is referred to from other commands, we have to use "vitest run".
-    return `if [ -f tests/unit ]; then YARN vitest run tests/unit --color; else echo 'No tests found.'; fi`;
+    return `YARN vitest run tests/unit --color --passWithNoTests`;
   }
 
   /*private*/ waitApp(port = 3000): string {
