@@ -53,7 +53,7 @@ export function runWithSpawnInParallel(script: string, opts: Options = defaultOp
       killOnExit: true,
       verbose: true,
     });
-    printStart(printableScript, 'Log');
+    printStart(printableScript, 'Start (log)');
     const out = ret.stdout.trim();
     if (out) console.info(out);
     finishedScript(printableScript, ret.status, opts);

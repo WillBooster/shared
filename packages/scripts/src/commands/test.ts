@@ -68,7 +68,7 @@ export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<
       await runWithSpawnInParallel(scripts.testStart());
     }
     await promisePool.promiseAll();
-    if (argv.e2e !== false && project.packageJson.devDependencies?.['playwright']) {
+    if (argv.e2e !== false) {
       if (project.hasDockerfile) {
         await runWithSpawn(`${scripts.buildDocker('test')}`);
       }
@@ -90,7 +90,7 @@ export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<
     promises.push(runWithSpawn(scripts.testStart()));
   }
   await Promise.all(promises);
-  if (argv.e2e && project.packageJson.devDependencies?.['playwright']) {
+  if (argv.e2e) {
     switch (argv.e2eMode || 'headless') {
       case 'headless': {
         await runWithSpawn(scripts.testE2E({}));
