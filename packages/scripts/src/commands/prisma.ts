@@ -3,9 +3,9 @@ import type { CommandModule } from 'yargs';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 
-export const prismaCommand: CommandModule = {
-  command: 'prisma',
-  describe: 'Run prisma commands',
+export const dbCommand: CommandModule = {
+  command: 'db',
+  describe: 'Run db commands',
   builder: (yargs) => {
     return yargs
       .command(migrateCommand)
