@@ -6,8 +6,8 @@ class ExpressScripts {
     return dockerScripts.buildDevImage(wbEnv);
   }
 
-  start(): string {
-    return `YARN build-ts run src/index.ts`;
+  start(watch?: boolean): string {
+    return `YARN build-ts run src/index.ts ${watch ? '--watch' : ''}`;
   }
 
   startDocker(): string {

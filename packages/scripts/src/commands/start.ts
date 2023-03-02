@@ -6,6 +6,10 @@ import { expressScripts, ExpressScriptsType } from '../scripts/expressScripts.js
 import { runWithSpawn } from '../scripts/run.js';
 
 const builder = {
+  watch: {
+    description: 'Whether to watch files',
+    type: 'boolean',
+  },
   mode: {
     description: 'Start mode: dev[elopment] (default) | prod[uction] | docker',
     type: 'string',
@@ -30,7 +34,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     switch (argv.mode || 'dev') {
       case 'dev':
       case 'development': {
-        await runWithSpawn(scripts.start());
+        await runWithSpawn(scripts.start(argv.watch));
         break;
       }
       case 'prod':
