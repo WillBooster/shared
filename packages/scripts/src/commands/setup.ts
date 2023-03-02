@@ -11,11 +11,6 @@ import { preprocessedOptions } from '../sharedOptions.js';
 
 const builder = {
   ...preprocessedOptions,
-  init: {
-    description: 'Whether or not to setup a project initially',
-    type: 'boolean',
-    alias: 'i',
-  },
 } as const;
 
 export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
@@ -42,18 +37,29 @@ export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes
     await runWithSpawn('poetry install --ansi');
   }
 
+  if (os.platform() === 'darwin') {
+    const packages = ['pstree'];
+    if (project.hasDockerfile) {
+      packages.push('expect');
+    }
+    await runWithSpawnInParallel(`brew install ${packages.join(' ')}`);
+  }
+
   const deps = project.packageJson.dependencies ?? {};
   const scripts = project.packageJson.scripts ?? {};
+  const newDevDeps: string[] = [];
+  if (project.hasDockerfile) {
+    newDevDeps.push('retry-cli');
+  }
   if (deps['blitz']) {
-    if (os.platform() === 'darwin') {
-      await runWithSpawnInParallel('brew install expect pstree');
-    }
-    if (argv.init) {
-      await runWithSpawn('yarn add -D concurrently dotenv-cli open-cli retry-cli vitest wait-on');
-    }
-    await promisePool.promiseAll();
-    if (scripts['gen-code']) {
-      await runWithSpawn('yarn gen-code');
-    }
+    newDevDeps.push('concurrently', 'dotenv-cli', 'open-cli', 'vitest', 'wait-on');
+  } else if (deps['express']) {
+    newDevDeps.push('concurrently', 'vitest', 'wait-on');
+  }
+  if (newDevDeps.length > 0) {
+    await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`);
+  }
+  if (scripts['gen-code']) {
+    await runWithSpawn('yarn gen-code');
   }
 }
