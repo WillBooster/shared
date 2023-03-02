@@ -68,7 +68,8 @@ export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<
       await runWithSpawnInParallel(scripts.testStart());
     }
     await promisePool.promiseAll();
-    if (argv.e2e !== false) {
+    // Check playwright installation because --ci includes --e2e implicitly
+    if (argv.e2e !== false && project.packageJson.devDependencies?.['playwright']) {
       if (project.hasDockerfile) {
         await runWithSpawn(`${scripts.buildDocker('test')}`);
       }
@@ -90,6 +91,7 @@ export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<
     promises.push(runWithSpawn(scripts.testStart()));
   }
   await Promise.all(promises);
+  // Don't check playwright installation because --e2e is set explicitly
   if (argv.e2e) {
     switch (argv.e2eMode || 'headless') {
       case 'headless': {
