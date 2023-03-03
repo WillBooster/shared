@@ -33,35 +33,35 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       deps['online-judge-shared'] = './online-judge-shared';
     }
 
-    const devDeps = project.packageJson.devDependencies || {};
-    const nameWordsToBeRemoved = [
-      'concurrently',
-      'conventional-changelog-conventionalcommits',
-      'eslint',
-      'husky',
-      'jest',
-      'kill-port',
-      'lint-staged',
-      'open-cli',
-      'playwright',
-      'prettier',
-      'pinst',
-      'sort-package-json',
-      'wait-on',
-      'semantic-release',
-      'vitest',
-    ];
-    if (!argv.outside) {
-      // Seed scripts require TypeScript-related packages.
-      nameWordsToBeRemoved.push('build-ts', 'rollup', 'vite', 'webpack');
-    }
-    for (const name of Object.keys(devDeps)) {
-      if (
-        nameWordsToBeRemoved.some((word) => name.includes(word)) ||
-        (!argv.outside && name.includes('willbooster') && name.includes('config'))
-      ) {
-        delete devDeps[name];
+    if (argv.outside) {
+      const devDeps = project.packageJson.devDependencies || {};
+      const nameWordsToBeRemoved = [
+        'concurrently',
+        'conventional-changelog-conventionalcommits',
+        'eslint',
+        'husky',
+        'jest',
+        'kill-port',
+        'lint-staged',
+        'open-cli',
+        'playwright',
+        'prettier',
+        'pinst',
+        'sort-package-json',
+        'wait-on',
+        'semantic-release',
+        'vitest',
+      ];
+      for (const name of Object.keys(devDeps)) {
+        if (
+          nameWordsToBeRemoved.some((word) => name.includes(word)) ||
+          (!argv.outside && name.includes('willbooster') && name.includes('config'))
+        ) {
+          delete devDeps[name];
+        }
       }
+    } else {
+      delete project.packageJson.devDependencies;
     }
 
     const nameWordsOfUnnecessaryScripts = ['check', 'deploy', 'format', 'lint', 'start', 'test'];
