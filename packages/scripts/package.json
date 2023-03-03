@@ -27,6 +27,7 @@
   "dependencies": {
     "@yarnpkg/shell": "4.0.0-rc.39",
     "chalk": "5.2.0",
+    "dotenv": "16.0.3",
     "minimal-promise-pool": "2.1.7"
   },
   "devDependencies": {

@@ -1,4 +1,9 @@
 export const preprocessedOptions = {
+  env: {
+    description: '.env files to be loaded.',
+    type: 'array',
+    alias: 'e',
+  },
   'working-dir': {
     description: 'A working directory',
     type: 'string',

@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import dotenv from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -22,6 +23,9 @@ await yargs(hideBin(process.argv))
       const dirPath = path.resolve(workingDir);
       process.chdir(dirPath);
       project.dirPath = dirPath;
+    }
+    for (const dotenvPath of argv.env ?? []) {
+      dotenv.config({ path: path.join(project.dirPath, dotenvPath.toString()) });
     }
   })
   .command(setupCommand)

@@ -5308,6 +5308,7 @@ __metadata:
     "@yarnpkg/shell": "npm:4.0.0-rc.39"
     build-ts: "npm:5.7.3"
     chalk: "npm:5.2.0"
+    dotenv: "npm:16.0.3"
     eslint: "npm:8.35.0"
     eslint-config-prettier: "npm:8.6.0"
     eslint-import-resolver-typescript: "npm:3.5.3"
