@@ -8,6 +8,7 @@ export const dbCommand: CommandModule = {
   describe: 'Run db commands',
   builder: (yargs) => {
     return yargs
+      .command(litestreamCommand)
       .command(migrateCommand)
       .command(migrateDevCommand)
       .command(resetCommand)
@@ -16,6 +17,15 @@ export const dbCommand: CommandModule = {
   },
   handler() {
     // Do nothing
+  },
+};
+
+const litestreamCommand: CommandModule = {
+  command: 'litestream',
+  describe: 'Setup DB for Litestream',
+  builder: {},
+  async handler() {
+    await runWithSpawn(prismaScripts.litestream());
   },
 };
 

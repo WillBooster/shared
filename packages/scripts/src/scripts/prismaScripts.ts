@@ -1,6 +1,16 @@
 import { project } from '../project.js';
 
 class PrismaScripts {
+  litestream(): string {
+    return `node -e '
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+prisma.$queryRaw\`PRAGMA journal_mode = WAL;\`
+  .catch((error) => console.log(\`Failed due to:\`, error))
+  .finally(() => prisma.$disconnect());
+'`;
+  }
+
   migrate(): string {
     return `PRISMA migrate deploy && PRISMA generate && ${this.seed()}`;
   }
