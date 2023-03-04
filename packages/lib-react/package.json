@@ -54,7 +54,7 @@
     "@willbooster/eslint-config-ts-react": "10.1.1",
     "@willbooster/prettier-config": "9.1.1",
     "babel-loader": "9.1.2",
-    "build-ts": "5.7.3",
+    "build-ts": "5.7.4",
     "eslint": "8.35.0",
     "eslint-config-prettier": "8.6.0",
     "eslint-import-resolver-typescript": "3.5.3",
@@ -72,7 +72,7 @@
     "react-dom": "18.2.0",
     "sort-package-json": "2.4.1",
     "typescript": "4.9.5",
-    "vitest": "0.29.1"
+    "vitest": "0.29.2"
   },
   "peerDependencies": {
     "react": "~18.2.0",
