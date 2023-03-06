@@ -1,3 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { existsAsync } from '@willbooster/shared-lib-node/src';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 import { ArgumentsCamelCase } from 'yargs';
 
@@ -60,8 +64,11 @@ export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<
 
   const promises: Promise<unknown>[] = [];
   if (argv.ci) {
+    const unitTestsExistPromise = existsAsync(path.join(project.dirPath, 'tests', 'unit'));
+    const e2eTestsExistPromise = existsAsync(path.join(project.dirPath, 'tests', 'e2e'));
+
     await runWithSpawnInParallel(dockerScripts.stopAll());
-    if (argv.unit !== false) {
+    if (argv.unit !== false && (await unitTestsExistPromise)) {
       await runWithSpawnInParallel(scripts.testUnit(), { timeout: argv.unitTimeout });
     }
     if (argv.start !== false) {
@@ -69,7 +76,7 @@ export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<
     }
     await promisePool.promiseAll();
     // Check playwright installation because --ci includes --e2e implicitly
-    if (argv.e2e !== false && project.packageJson.devDependencies?.['playwright']) {
+    if (argv.e2e !== false && (await e2eTestsExistPromise)) {
       if (project.hasDockerfile) {
         await runWithSpawn(`${scripts.buildDocker('test')}`);
       }
