@@ -18,7 +18,8 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
   }
 
   reset(): string {
-    return `rm -f db/**/*.sqlite* && PRISMA migrate reset --force && ${this.seed()}`;
+    // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
+    return `rm -f db/**/*.sqlite* && PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
   }
 
   seed(): string {
