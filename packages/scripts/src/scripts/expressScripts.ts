@@ -19,7 +19,7 @@ class ExpressScripts {
   }
 
   testE2E({
-    startCommand = `if [ -e "prisma" ]; then prisma migrate reset --force --skip-generate; fi && ${this.startProduction()}`,
+    startCommand = `if [ -e "prisma" ]; then prisma migrate reset --force --skip-generate; fi && (${this.startProduction()})`,
   }): string {
     return `NODE_ENV=production WB_ENV=test YARN concurrently --kill-others --raw --success first
       "${startCommand}"
