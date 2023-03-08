@@ -17,7 +17,7 @@ describe('setup', () => {
       await fs.promises.rm(project.dirPath, { recursive: true, force: true });
       await fs.promises.cp('test-fixtures/blitz', project.dirPath, { force: true, recursive: true });
 
-      await setup({ init: true });
+      await setup();
       const ret = child_process.spawnSync(`yarn start test -w ${project.dirPath} --ci`, {
         shell: true,
         stdio: 'inherit',

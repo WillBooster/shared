@@ -2,7 +2,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 
-import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
@@ -17,12 +17,12 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   command: 'setup',
   describe: 'Setup development environment',
   builder,
-  async handler(argv) {
-    await setup(argv);
+  async handler() {
+    await setup();
   },
 };
 
-export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
+export async function setup(): Promise<void> {
   const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
   if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
     await runWithSpawn('asdf install');
