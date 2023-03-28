@@ -25,21 +25,21 @@
   },
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
-    "@yarnpkg/shell": "4.0.0-rc.40",
+    "@yarnpkg/shell": "4.0.0-rc.41",
     "chalk": "5.2.0",
     "dotenv": "16.0.3",
     "minimal-promise-pool": "2.1.7"
   },
   "devDependencies": {
-    "@types/eslint": "8.21.2",
+    "@types/eslint": "8.21.3",
     "@types/micromatch": "4.0.2",
-    "@types/node": "18.15.3",
-    "@types/yargs": "17.0.22",
+    "@types/node": "18.15.10",
+    "@types/yargs": "17.0.24",
     "@typescript-eslint/eslint-plugin": "5.57.0",
     "@typescript-eslint/parser": "5.57.0",
     "@willbooster/eslint-config-ts": "10.1.0",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "5.7.5",
+    "build-ts": "5.7.6",
     "eslint": "8.36.0",
     "eslint-config-prettier": "8.8.0",
     "eslint-import-resolver-typescript": "3.5.3",
@@ -51,9 +51,9 @@
     "micromatch": "4.0.5",
     "prettier": "2.8.7",
     "sort-package-json": "2.4.1",
-    "type-fest": "3.6.1",
+    "type-fest": "3.7.1",
     "typescript": "5.0.2",
-    "vitest": "0.29.3",
+    "vitest": "0.29.8",
     "yargs": "17.7.1"
   },
   "engines": {

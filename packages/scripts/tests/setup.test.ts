@@ -7,15 +7,14 @@ import { describe, expect, it } from 'vitest';
 import { setup } from '../src/commands/setup.js';
 import { project } from '../src/project.js';
 
-import { tempDir } from './shared.js';
+import { initializeProjectDirectory, tempDir } from './shared.js';
 
 describe('setup', () => {
   it(
-    'app',
+    'blitz',
     async () => {
       project.dirPath = path.join(tempDir, 'blitz');
-      await fs.promises.rm(project.dirPath, { recursive: true, force: true });
-      await fs.promises.cp('test-fixtures/blitz', project.dirPath, { force: true, recursive: true });
+      await initializeProjectDirectory();
 
       await setup();
       const ret = child_process.spawnSync(`yarn start test -w ${project.dirPath} --ci`, {
