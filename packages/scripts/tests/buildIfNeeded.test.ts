@@ -7,13 +7,13 @@ import { describe, expect, it } from 'vitest';
 import { buildIfNeeded } from '../src/commands/buildIfNeeded.js';
 import { project } from '../src/project.js';
 
-import { tempDir } from './shared.js';
+import { initializeProjectDirectory, tempDir } from './shared.js';
 
 describe('buildIfNeeded', () => {
   it('app', async () => {
     project.dirPath = path.join(tempDir, 'app');
-    await fs.promises.rm(project.dirPath, { recursive: true, force: true });
-    await fs.promises.cp('test-fixtures/app', project.dirPath, { force: true, recursive: true });
+    await initializeProjectDirectory();
+
     child_process.execSync('git init', { cwd: project.dirPath, stdio: 'inherit' });
     child_process.execSync('git add -A', { cwd: project.dirPath, stdio: 'inherit' });
     child_process.execSync('git config user.email "bot@willbooster.com"', { cwd: project.dirPath, stdio: 'inherit' });
