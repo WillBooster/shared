@@ -1,7 +1,7 @@
 import { blitzScripts } from './blitzScripts.js';
 import { dockerScripts } from './dockerScripts.js';
 
-class ExpressScripts {
+class HttpServerScripts {
   buildDocker(wbEnv = 'local'): string {
     return dockerScripts.buildDevImage(wbEnv);
   }
@@ -39,6 +39,6 @@ class ExpressScripts {
   }
 }
 
-export type ExpressScriptsType = InstanceType<typeof ExpressScripts>;
+export type HttpServerScriptsType = InstanceType<typeof HttpServerScripts>;
 
-export const expressScripts = new ExpressScripts();
+export const httpServerScripts = new HttpServerScripts();

@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { existsAsync } from '@willbooster/shared-lib-node/src';
+import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 import { ArgumentsCamelCase } from 'yargs';
 
@@ -8,7 +9,7 @@ import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import { expressScripts, ExpressScriptsType } from '../scripts/expressScripts.js';
+import { httpServerScripts, HttpServerScriptsType } from '../scripts/httpServerScripts.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 
 const builder = {
@@ -53,13 +54,16 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
 
 export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
   const deps = project.packageJson.dependencies || {};
-  let scripts: BlitzScriptsType | ExpressScriptsType | undefined;
+  let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;
   if (deps['blitz']) {
     scripts = blitzScripts;
   } else if (deps['express'] && !deps['firebase-functions']) {
-    scripts = expressScripts;
+    scripts = httpServerScripts;
   }
-  if (!scripts) return;
+  if (!scripts) {
+    console.error(chalk.red('Unable to determine the method for testing the app.'));
+    return;
+  }
 
   const promises: Promise<unknown>[] = [];
   if (argv.ci) {

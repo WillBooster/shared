@@ -5,6 +5,7 @@ import type { PackageJson } from 'type-fest';
 
 class Project {
   private _dirPath: string;
+  private _dockerfile: string | undefined;
   private _hasDockerfile: boolean | undefined;
   private _name: string | undefined;
   private _packageJson: PackageJson | undefined;
@@ -19,6 +20,10 @@ class Project {
 
   set dirPath(newDirPath: string) {
     this._dirPath = path.resolve(newDirPath);
+  }
+
+  get dockerfile(): string {
+    return (this._dockerfile ??= fs.readFileSync(path.join(this.dirPath, 'Dockerfile'), 'utf8'));
   }
 
   get hasDockerfile(): boolean {

@@ -1,8 +1,9 @@
+import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
-import { expressScripts, ExpressScriptsType } from '../scripts/expressScripts.js';
+import { httpServerScripts, HttpServerScriptsType } from '../scripts/httpServerScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 
 const builder = {
@@ -23,13 +24,16 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   builder,
   async handler(argv) {
     const deps = project.packageJson.dependencies || {};
-    let scripts: BlitzScriptsType | ExpressScriptsType | undefined;
+    let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;
     if (deps['blitz']) {
       scripts = blitzScripts;
-    } else if (deps['express'] && !deps['firebase-functions']) {
-      scripts = expressScripts;
+    } else if ((deps['express'] && !deps['firebase-functions']) || /EXPOSE\s+8080/.test(project.dockerfile)) {
+      scripts = httpServerScripts;
     }
-    if (!scripts) return;
+    if (!scripts) {
+      console.error(chalk.red('Unable to determine the method for starting the app.'));
+      return;
+    }
 
     switch (argv.mode || 'dev') {
       case 'dev':
