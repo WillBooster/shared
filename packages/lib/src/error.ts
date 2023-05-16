@@ -35,3 +35,22 @@ export async function ignoreEnoentAsync<T>(fn: () => Promise<T>): Promise<T | un
     throw error;
   }
 }
+
+export async function withRetry<T>(
+  func: () => Promise<T>,
+  retryCount = 3,
+  log?: (message: string) => void
+): Promise<T> {
+  let failedCount = 0;
+  for (;;) {
+    try {
+      return await func();
+    } catch (error) {
+      failedCount++;
+      if (failedCount >= retryCount) {
+        throw error;
+      }
+      log?.(`Retry due to: ${error instanceof Error ? error.stack : error}`);
+    }
+  }
+}
