@@ -32,6 +32,9 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     if (deps['online-judge-shared']) {
       deps['online-judge-shared'] = './online-judge-shared';
     }
+    if (deps['program-executor']) {
+      deps['program-executor'] = './program-executor';
+    }
 
     if (argv.outside) {
       const devDeps = project.packageJson.devDependencies || {};
