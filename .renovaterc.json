@@ -1,1 +1,4 @@
-{ "extends": ["@willbooster"] }
+{
+  "extends": ["@willbooster"],
+  "packageRules": [{ "packageNames": ["next"], "enabled": false }]
+}
