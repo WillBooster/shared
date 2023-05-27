@@ -5,15 +5,18 @@ import { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { runWithSpawn } from '../scripts/run.js';
+import { sharedOptions } from '../sharedOptions.js';
 
-const builder = {} as const;
+const builder = {
+  ...sharedOptions,
+} as const;
 
 export const typeCheckCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'typecheck',
   describe: 'Run type checking',
   builder,
-  async handler() {
-    process.exitCode = await runWithSpawn(`tsc --noEmit --Pretty`);
+  async handler(argv) {
+    process.exitCode = await runWithSpawn(`tsc --noEmit --Pretty`, argv);
     if (process.exitCode !== 0) {
       const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
       const deps = packageJson.dependencies || {};
@@ -22,4 +25,9 @@ export const typeCheckCommand: CommandModule<unknown, InferredOptionTypes<typeof
       }
     }
   },
+};
+
+export const tcCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  ...typeCheckCommand,
+  command: 'tc',
 };

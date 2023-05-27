@@ -6,6 +6,7 @@ interface BasicAuthMiddlewareOptions {
   username: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
 export function BasicAuthMiddleware(options: BasicAuthMiddlewareOptions): RequestMiddleware {
   return async (request, response, next) => {
     const authorizationHeader = request.headers.authorization ?? '';

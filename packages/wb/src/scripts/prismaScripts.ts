@@ -10,7 +10,7 @@ class PrismaScripts {
     return `node -e '
 const { PrismaClient } = require("@prisma/client");
 new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
-  .catch((error) => { console.log(\`Failed due to:\`, error); process.exit(1); });
+  .catch((error) => { console.log("Failed due to:", error); process.exit(1); });
 '`;
   }
 

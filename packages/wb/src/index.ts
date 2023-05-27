@@ -10,7 +10,7 @@ import { prismaCommand } from './commands/prisma.js';
 import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
-import { typeCheckCommand } from './commands/typecheck.js';
+import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { project } from './project.js';
 import { preprocessedOptions } from './sharedOptions.js';
 
@@ -35,6 +35,7 @@ await yargs(hideBin(process.argv))
   .command(startCommand)
   .command(testCommand)
   .command(typeCheckCommand)
+  .command(tcCommand)
   .demandCommand()
   .strict()
   .help().argv;

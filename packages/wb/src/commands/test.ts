@@ -11,8 +11,10 @@ import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import { httpServerScripts, HttpServerScriptsType } from '../scripts/httpServerScripts.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
+import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
+  ...sharedOptions,
   ci: {
     description: 'Whether to run tests on CI',
     type: 'boolean',
@@ -52,7 +54,7 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   },
 };
 
-export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
+export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>): Promise<void> {
   const deps = project.packageJson.dependencies || {};
   let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;
   if (deps['blitz']) {
@@ -70,72 +72,73 @@ export async function test(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<
     const unitTestsExistPromise = existsAsync(path.join(project.dirPath, 'tests', 'unit'));
     const e2eTestsExistPromise = existsAsync(path.join(project.dirPath, 'tests', 'e2e'));
 
-    await runWithSpawnInParallel(dockerScripts.stopAll());
+    await runWithSpawnInParallel(dockerScripts.stopAll(), argv);
     if (argv.unit !== false && (await unitTestsExistPromise)) {
-      await runWithSpawnInParallel(scripts.testUnit(), { timeout: argv.unitTimeout });
+      await runWithSpawnInParallel(scripts.testUnit(), argv, { timeout: argv.unitTimeout });
     }
     if (argv.start !== false) {
-      await runWithSpawnInParallel(scripts.testStart());
+      await runWithSpawnInParallel(scripts.testStart(), argv);
     }
     await promisePool.promiseAll();
     // Check playwright installation because --ci includes --e2e implicitly
     if (argv.e2e !== false && (await e2eTestsExistPromise)) {
       if (project.hasDockerfile) {
-        await runWithSpawn(`${scripts.buildDocker('test')}`);
+        await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
       }
       const options = project.hasDockerfile
         ? {
             startCommand: dockerScripts.stopAndStart(true),
           }
         : {};
-      process.exitCode = await runWithSpawn(scripts.testE2E(options), { exitIfFailed: false });
-      await runWithSpawn(dockerScripts.stop());
+      process.exitCode = await runWithSpawn(scripts.testE2E(options), argv, { exitIfFailed: false });
+      await runWithSpawn(dockerScripts.stop(), argv);
     }
     return;
   }
 
   if (argv.unit || (!argv.start && !argv.e2e)) {
-    promises.push(runWithSpawn(scripts.testUnit(), { timeout: argv.unitTimeout }));
+    promises.push(runWithSpawn(scripts.testUnit(), argv, { timeout: argv.unitTimeout }));
   }
   if (argv.start) {
-    promises.push(runWithSpawn(scripts.testStart()));
+    promises.push(runWithSpawn(scripts.testStart(), argv));
   }
   await Promise.all(promises);
   // Don't check playwright installation because --e2e is set explicitly
   if (argv.e2e) {
     switch (argv.e2eMode || 'headless') {
       case 'headless': {
-        await runWithSpawn(scripts.testE2E({}));
+        await runWithSpawn(scripts.testE2E({}), argv);
         return;
       }
       case 'docker': {
-        await runWithSpawn(`${scripts.buildDocker('test')}`);
+        await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
         process.exitCode = await runWithSpawn(
           scripts.testE2E({
             startCommand: dockerScripts.stopAndStart(true),
           }),
+          argv,
           { exitIfFailed: false }
         );
-        await runWithSpawn(dockerScripts.stop());
+        await runWithSpawn(dockerScripts.stop(), argv);
         return;
       }
     }
     if (deps['blitz']) {
       switch (argv.e2eMode || 'headless') {
         case 'headed': {
-          await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }));
+          await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
           return;
         }
         case 'debug': {
-          await runWithSpawn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`);
+          await runWithSpawn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`, argv);
           return;
         }
         case 'generate': {
-          await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }));
+          await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }), argv);
           return;
         }
         case 'trace': {
-          await runWithSpawn(`playwright show-trace`);
+          await runWithSpawn(`playwright show-trace`, argv);
           return;
         }
       }

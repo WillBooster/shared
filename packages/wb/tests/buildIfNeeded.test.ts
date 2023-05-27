@@ -22,15 +22,15 @@ describe('buildIfNeeded', () => {
     child_process.execSync('git commit -m .', { cwd: project.dirPath, stdio: 'inherit' });
 
     const command = 'echo build';
-    expect(await buildIfNeeded(command)).toBe(true);
-    expect(await buildIfNeeded(command)).toBe(false);
+    expect(await buildIfNeeded({ command })).toBe(true);
+    expect(await buildIfNeeded({ command })).toBe(false);
 
     await fs.promises.writeFile(path.join(project.dirPath, 'index.js'), `console.log('Hello'); console.log('Hello');`);
-    expect(await buildIfNeeded(command)).toBe(true);
-    expect(await buildIfNeeded(command)).toBe(false);
+    expect(await buildIfNeeded({ command })).toBe(true);
+    expect(await buildIfNeeded({ command })).toBe(false);
 
     await fs.promises.writeFile(path.join(project.dirPath, 'README.md'), `# test-fixtures/app/`);
-    expect(await buildIfNeeded(command)).toBe(false);
+    expect(await buildIfNeeded({ command })).toBe(false);
 
     await fs.promises.writeFile(
       path.join(project.dirPath, 'package.json'),
@@ -42,6 +42,6 @@ describe('buildIfNeeded', () => {
         2
       )
     );
-    expect(await buildIfNeeded(command)).toBe(false);
+    expect(await buildIfNeeded({ command })).toBe(false);
   });
 });

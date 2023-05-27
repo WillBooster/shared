@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import { execute } from '@yarnpkg/shell';
 import chalk from 'chalk';
+import { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
+import { sharedOptions } from '../sharedOptions.js';
 
 interface Options {
   exitIfFailed?: boolean;
@@ -16,18 +17,18 @@ interface Options {
 const defaultOptions: Options = {
   exitIfFailed: true,
 };
-
-export async function runWithYarn(script: string, opts: Omit<Options, 'timeout'> = defaultOptions): Promise<number> {
+export async function runWithSpawn(
+  script: string,
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>,
+  opts: Options = defaultOptions
+): Promise<number> {
   const [printableScript, runnableScript] = normalizeScript(script);
   printStart(printableScript);
-  const exitCode = await execute(runnableScript, undefined);
-  finishedScript(printableScript, exitCode, opts);
-  return exitCode;
-}
+  if (argv.dryRun) {
+    finishedScript(printableScript, 0, opts);
+    return 0;
+  }
 
-export async function runWithSpawn(script: string, opts: Options = defaultOptions): Promise<number> {
-  const [printableScript, runnableScript] = normalizeScript(script);
-  printStart(printableScript);
   const ret = await spawnAsync(runnableScript, undefined, {
     cwd: project.dirPath,
     shell: true,
@@ -40,10 +41,20 @@ export async function runWithSpawn(script: string, opts: Options = defaultOption
   return ret.status ?? 1;
 }
 
-export function runWithSpawnInParallel(script: string, opts: Options = defaultOptions): Promise<void> {
+export function runWithSpawnInParallel(
+  script: string,
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>,
+  opts: Options = defaultOptions
+): Promise<void> {
   return promisePool.run(async () => {
     const [printableScript, runnableScript] = normalizeScript(script);
     printStart(printableScript, 'Start (parallel)', true);
+    if (argv.dryRun) {
+      printStart(printableScript, 'Start (log)');
+      finishedScript(printableScript, 0, opts);
+      return;
+    }
+
     const ret = await spawnAsync(runnableScript, undefined, {
       cwd: project.dirPath,
       shell: true,

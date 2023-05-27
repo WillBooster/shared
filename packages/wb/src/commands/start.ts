@@ -5,8 +5,10 @@ import { project } from '../project.js';
 import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { httpServerScripts, HttpServerScriptsType } from '../scripts/httpServerScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
+import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
+  ...sharedOptions,
   watch: {
     description: 'Whether to watch files',
     type: 'boolean',
@@ -38,16 +40,16 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     switch (argv.mode || 'dev') {
       case 'dev':
       case 'development': {
-        await runWithSpawn(scripts.start(argv.watch));
+        await runWithSpawn(scripts.start(argv.watch), argv);
         break;
       }
       case 'prod':
       case 'production': {
-        await runWithSpawn(scripts.startProduction());
+        await runWithSpawn(scripts.startProduction(), argv);
         break;
       }
       case 'docker': {
-        await runWithSpawn(scripts.startDocker());
+        await runWithSpawn(scripts.startDocker(), argv);
         break;
       }
       default: {

@@ -12,8 +12,13 @@ export const preprocessedOptions = {
 } as const;
 
 export const sharedOptions = {
+  dry: {
+    description: 'Indicates if dry-run mode is enabled or not.',
+    type: 'boolean',
+    alias: 'd',
+  },
   verbose: {
-    description: 'Whether or not verbose mode is enabled.',
+    description: 'Indicates if verbose mode is enabled or not.',
     type: 'boolean',
     alias: 'v',
   },

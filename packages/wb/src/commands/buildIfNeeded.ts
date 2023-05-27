@@ -4,12 +4,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import type { CommandModule, InferredOptionTypes } from 'yargs';
+import { ArgumentsCamelCase } from 'yargs';
 
 import { project } from '../project.js';
-import { preprocessedOptions } from '../sharedOptions.js';
+import { preprocessedOptions, sharedOptions } from '../sharedOptions.js';
 
 const builder = {
   ...preprocessedOptions,
+  ...sharedOptions,
   command: {
     description: 'A build command',
     type: 'string',
@@ -23,28 +25,34 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
   describe: 'Build code if changes are detected',
   builder,
   async handler(argv) {
-    await buildIfNeeded(argv.command);
+    await buildIfNeeded(argv);
   },
 };
 
-export async function buildIfNeeded(commandWithArgs: string): Promise<boolean> {
+export async function buildIfNeeded(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
+): Promise<boolean> {
   const [canSkip, cacheFilePath, contentHash] = await canSkipBuild();
   if (canSkip) return false;
 
   console.info('Start building production code.');
-  const [command, ...args] = commandWithArgs.split(' ');
-  const ret = child_process.spawnSync(command, args, {
-    cwd: project.dirPath,
-    stdio: 'inherit',
-  });
-  if (ret.status !== 0) {
-    console.info('Failed to build production code.');
-    process.exitCode = ret.status ?? 1;
-    return false;
+  if (!argv.dry) {
+    const [command, ...args] = (argv.command ?? '').split(' ');
+    const ret = child_process.spawnSync(command, args, {
+      cwd: project.dirPath,
+      stdio: 'inherit',
+    });
+    if (ret.status !== 0) {
+      console.info('Failed to build production code.');
+      process.exitCode = ret.status ?? 1;
+      return false;
+    }
   }
 
   console.info('Finished building production code.');
-  await fs.writeFile(cacheFilePath, contentHash, 'utf8');
+  if (!argv.dry) {
+    await fs.writeFile(cacheFilePath, contentHash, 'utf8');
+  }
   return true;
 }
 

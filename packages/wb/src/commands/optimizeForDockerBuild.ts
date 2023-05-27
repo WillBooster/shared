@@ -5,10 +5,11 @@ import path from 'node:path';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import { preprocessedOptions } from '../sharedOptions.js';
+import { preprocessedOptions, sharedOptions } from '../sharedOptions.js';
 
 const builder = {
   ...preprocessedOptions,
+  ...sharedOptions,
   outside: {
     description: 'Whether the optimization is executed outside a docker container or not',
     type: 'boolean',
@@ -78,6 +79,8 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
         delete scripts[name];
       }
     }
+
+    if (argv.dry) return;
 
     if (argv.outside) {
       await fs.mkdir('dist', { recursive: true });

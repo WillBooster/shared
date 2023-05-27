@@ -3,38 +3,42 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 
 import type { CommandModule, InferredOptionTypes } from 'yargs';
+import { ArgumentsCamelCase } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
-import { preprocessedOptions } from '../sharedOptions.js';
+import { preprocessedOptions, sharedOptions } from '../sharedOptions.js';
 
 const builder = {
   ...preprocessedOptions,
+  ...sharedOptions,
 } as const;
 
 export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'setup',
   describe: 'Setup development environment',
   builder,
-  async handler() {
-    await setup();
+  async handler(argv) {
+    await setup(argv);
   },
 };
 
-export async function setup(): Promise<void> {
+export async function setup(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>
+): Promise<void> {
   const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
   if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
-    await runWithSpawn('asdf install');
+    await runWithSpawn('asdf install', argv);
   }
   if (dirents.some((d) => d.isFile() && d.name === 'pyproject.toml')) {
-    await runWithSpawnInParallel('poetry config virtualenvs.in-project true');
-    await runWithSpawnInParallel('poetry config virtualenvs.prefer-active-python true');
+    await runWithSpawnInParallel('poetry config virtualenvs.in-project true', argv);
+    await runWithSpawnInParallel('poetry config virtualenvs.prefer-active-python true', argv);
     const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
-    await runWithSpawnInParallel(`poetry env use ${version}`);
+    await runWithSpawnInParallel(`poetry env use ${version}`, argv);
     await promisePool.promiseAll();
-    await runWithSpawn('poetry run pip install --upgrade pip');
-    await runWithSpawn('poetry install --ansi');
+    await runWithSpawn('poetry run pip install --upgrade pip', argv);
+    await runWithSpawn('poetry install --ansi', argv);
   }
 
   if (os.platform() === 'darwin') {
@@ -42,7 +46,7 @@ export async function setup(): Promise<void> {
     if (project.hasDockerfile) {
       packages.push('expect');
     }
-    await runWithSpawnInParallel(`brew install ${packages.join(' ')}`);
+    await runWithSpawnInParallel(`brew install ${packages.join(' ')}`, argv);
   }
 
   const deps = project.packageJson.dependencies ?? {};
@@ -57,9 +61,9 @@ export async function setup(): Promise<void> {
     newDevDeps.push('concurrently', 'vitest', 'wait-on');
   }
   if (newDevDeps.length > 0) {
-    await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`);
+    await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`, argv);
   }
   if (scripts['gen-code']) {
-    await runWithSpawn('yarn gen-code');
+    await runWithSpawn('yarn gen-code', argv);
   }
 }
