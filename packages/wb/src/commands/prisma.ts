@@ -3,9 +3,9 @@ import type { CommandModule } from 'yargs';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 
-export const dbCommand: CommandModule = {
-  command: 'db',
-  describe: 'Run db commands',
+export const prismaCommand: CommandModule = {
+  command: 'prisma',
+  describe: 'Run prisma commands',
   builder: (yargs) => {
     return yargs
       .command(litestreamCommand)
@@ -13,6 +13,7 @@ export const dbCommand: CommandModule = {
       .command(migrateDevCommand)
       .command(resetCommand)
       .command(seedCommand)
+      .command(studioCommand)
       .demandCommand();
   },
   handler() {
@@ -62,5 +63,14 @@ const seedCommand: CommandModule = {
   builder: {},
   async handler() {
     await runWithSpawn(prismaScripts.seed());
+  },
+};
+
+const studioCommand: CommandModule = {
+  command: 'studio',
+  describe: 'Open Prisma Studio',
+  builder: {},
+  async handler() {
+    await runWithSpawn(prismaScripts.studio());
   },
 };

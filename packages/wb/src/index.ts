@@ -5,8 +5,8 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
-import { dbCommand } from './commands/db.js';
 import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
+import { prismaCommand } from './commands/prisma.js';
 import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
@@ -31,7 +31,7 @@ await yargs(hideBin(process.argv))
   .command(setupCommand)
   .command(buildIfNeededCommand)
   .command(optimizeForDockerBuildCommand)
-  .command(dbCommand)
+  .command(prismaCommand)
   .command(startCommand)
   .command(testCommand)
   .command(typeCheckCommand)

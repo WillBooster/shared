@@ -1,12 +1,10 @@
 {
-  "name": "@willbooster/shared-scripts",
+  "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
   "type": "module",
-  "bin": {
-    "wb": "bin/index.js"
-  },
+  "bin": "bin/index.js",
   "files": [
     "bin/",
     "dist/"
