@@ -5948,9 +5948,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/shared-scripts@workspace:packages/scripts":
+"@willbooster/wb@workspace:packages/wb":
   version: 0.0.0-use.local
-  resolution: "@willbooster/shared-scripts@workspace:packages/scripts"
+  resolution: "@willbooster/wb@workspace:packages/wb"
   dependencies:
     "@types/eslint": "npm:8.40.0"
     "@types/micromatch": "npm:4.0.2"
