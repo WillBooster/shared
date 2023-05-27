@@ -5813,9 +5813,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/shared-lib-blitz-next@workspace:packages/lib-blitz-next":
+"@willbooster/shared-lib-blitz-next@workspace:packages/shared-lib-blitz-next":
   version: 0.0.0-use.local
-  resolution: "@willbooster/shared-lib-blitz-next@workspace:packages/lib-blitz-next"
+  resolution: "@willbooster/shared-lib-blitz-next@workspace:packages/shared-lib-blitz-next"
   dependencies:
     "@types/eslint": "npm:8.40.0"
     "@types/micromatch": "npm:4.0.2"
@@ -5842,9 +5842,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/shared-lib-node@workspace:packages/lib-node":
+"@willbooster/shared-lib-node@workspace:packages/shared-lib-node":
   version: 0.0.0-use.local
-  resolution: "@willbooster/shared-lib-node@workspace:packages/lib-node"
+  resolution: "@willbooster/shared-lib-node@workspace:packages/shared-lib-node"
   dependencies:
     "@types/eslint": "npm:8.40.0"
     "@types/micromatch": "npm:4.0.2"
@@ -5870,9 +5870,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/shared-lib-react@workspace:packages/lib-react":
+"@willbooster/shared-lib-react@workspace:packages/shared-lib-react":
   version: 0.0.0-use.local
-  resolution: "@willbooster/shared-lib-react@workspace:packages/lib-react"
+  resolution: "@willbooster/shared-lib-react@workspace:packages/shared-lib-react"
   dependencies:
     "@babel/core": "npm:7.22.1"
     "@mdx-js/react": "npm:2.3.0"
@@ -5920,9 +5920,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/shared-lib@workspace:packages/lib":
+"@willbooster/shared-lib@workspace:packages/shared-lib":
   version: 0.0.0-use.local
-  resolution: "@willbooster/shared-lib@workspace:packages/lib"
+  resolution: "@willbooster/shared-lib@workspace:packages/shared-lib"
   dependencies:
     "@types/eslint": "npm:8.40.0"
     "@types/micromatch": "npm:4.0.2"
