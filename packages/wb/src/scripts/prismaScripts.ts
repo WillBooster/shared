@@ -1,5 +1,10 @@
 import { project } from '../project.js';
 
+/**
+ * A collection of scripts for executing Prisma commands.
+ * Note that `PRISMA` is replaced with `YARN prisma` or `YARN blitz prisma`
+ * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
+ */
 class PrismaScripts {
   litestream(): string {
     return `node -e '

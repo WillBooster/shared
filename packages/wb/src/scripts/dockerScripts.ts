@@ -2,6 +2,10 @@ import { spawnSync } from 'node:child_process';
 
 import { project } from '../project.js';
 
+/**
+ * A collection of scripts for executing Docker commands.
+ * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
+ */
 class DockerScripts {
   buildDevImage(wbEnv = 'local'): string {
     const prefix = project.packageJson.scripts?.['docker/build/prepare'] ? 'yarn run docker/build/prepare && ' : '';

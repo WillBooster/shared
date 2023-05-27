@@ -1,6 +1,11 @@
 import { blitzScripts } from './blitzScripts.js';
 import { dockerScripts } from './dockerScripts.js';
 
+/**
+ * A collection of scripts for executing an app that utilizes an HTTP server like express.
+ * Note that `PRISMA` is replaced with `YARN prisma` or `YARN blitz prisma`
+ * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
+ */
 class HttpServerScripts {
   buildDocker(wbEnv = 'local'): string {
     return dockerScripts.buildDevImage(wbEnv);

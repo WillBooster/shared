@@ -1,6 +1,10 @@
 import { dockerScripts } from './dockerScripts.js';
 import { prismaScripts } from './prismaScripts.js';
 
+/**
+ * A collection of scripts for executing Blitz.js commands.
+ * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
+ */
 class BlitzScripts {
   buildDocker(wbEnv = 'local'): string {
     return dockerScripts.buildDevImage(wbEnv);
