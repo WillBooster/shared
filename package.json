@@ -24,16 +24,16 @@
   },
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
-    "@yarnpkg/shell": "4.0.0-rc.42"
+    "@yarnpkg/shell": "4.0.0-rc.44"
   },
   "devDependencies": {
-    "@qiwi/multi-semantic-release": "6.5.1",
-    "@types/eslint": "8.37.0",
-    "@typescript-eslint/parser": "5.59.6",
+    "@qiwi/multi-semantic-release": "6.7.0",
+    "@types/eslint": "8.40.0",
+    "@typescript-eslint/parser": "5.59.7",
     "@willbooster/prettier-config": "9.1.1",
     "@willbooster/renovate-config": "9.5.0",
     "conventional-changelog-conventionalcommits": "5.0.0",
-    "eslint": "8.40.0",
+    "eslint": "8.41.0",
     "husky": "8.0.3",
     "lint-staged": "13.2.2",
     "micromatch": "4.0.5",
@@ -42,5 +42,5 @@
     "sort-package-json": "2.4.1",
     "typescript": "5.0.4"
   },
-  "packageManager": "yarn@4.0.0-rc.43"
+  "packageManager": "yarn@4.0.0-rc.44"
 }
