@@ -10,9 +10,9 @@ class BlitzScripts {
     return dockerScripts.buildDevImage(wbEnv);
   }
 
-  start(): string {
+  start(watch?: boolean, additionalArgs = ''): string {
     return `YARN concurrently --raw --kill-others-on-fail
-      "blitz dev"
+      "blitz dev ${additionalArgs}"
       "${blitzScripts.waitAndOpenApp()}"`;
   }
 
@@ -23,11 +23,13 @@ class BlitzScripts {
         "${blitzScripts.waitAndOpenApp(8080)}"`;
   }
 
-  startProduction(port = 8080): string {
+  startProduction(port = 8080, additionalArgs = ''): string {
     // Add NODE_ENV=production only to ${prismaScripts.reset()},
     // since NODE_ENV=production is set by default in "blitz build" and "blitz start".
     // Note: `NODE_ENV=production; yarn blitz db seed` does not work, but `NODE_ENV=production yarn blitz db seed` works.
-    return `${prismaScripts.reset('NODE_ENV=production ')} && yarn build && YARN blitz start -p \${PORT:-${port}}`;
+    return `${prismaScripts.reset(
+      'NODE_ENV=production '
+    )} && yarn build && YARN blitz start -p \${PORT:-${port}} ${additionalArgs}`;
   }
 
   testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {

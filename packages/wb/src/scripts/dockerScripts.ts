@@ -15,12 +15,12 @@ class DockerScripts {
         --build-arg WB_ENV=${wbEnv}
         --build-arg WB_VERSION=dev .`;
   }
-  stopAndStart(unbuffer = false, additionalArgs = ''): string {
-    return `${this.stop()} && ${unbuffer ? 'unbuffer ' : ''}${this.start(additionalArgs)}`;
+  stopAndStart(unbuffer = false, additionalOptions = '', additionalArgs = ''): string {
+    return `${this.stop()} && ${unbuffer ? 'unbuffer ' : ''}${this.start(additionalOptions, additionalArgs)}`;
   }
-  start(additionalArgs = ''): string {
+  start(additionalOptions = '', additionalArgs = ''): string {
     process.on('exit', () => spawnSync(this.stop(), { shell: true, stdio: 'inherit' }));
-    return `docker run --rm -it -p 8080:8080 ${additionalArgs} --name ${project.name} ${project.name}`;
+    return `docker run --rm -it -p 8080:8080 --name ${project.name} ${additionalOptions} ${project.name} ${additionalArgs}`;
   }
 
   stop(): string {

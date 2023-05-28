@@ -11,16 +11,16 @@ class HttpServerScripts {
     return dockerScripts.buildDevImage(wbEnv);
   }
 
-  start(watch?: boolean): string {
-    return `YARN build-ts run src/index.ts ${watch ? '--watch' : ''}`;
+  start(watch?: boolean, additionalArgs = ''): string {
+    return `YARN build-ts run src/index.ts ${watch ? '--watch' : ''} ${additionalArgs}`;
   }
 
-  startDocker(): string {
-    return `${this.buildDocker()} && ${dockerScripts.stopAndStart(false)}`;
+  startDocker(additionalArgs = ''): string {
+    return `${this.buildDocker()} && ${dockerScripts.stopAndStart(false, '', additionalArgs)}`;
   }
 
-  startProduction(port = 8080): string {
-    return `NODE_ENV=production; yarn build && PORT=\${PORT:-${port}} node dist/index.js`;
+  startProduction(port = 8080, additionalArgs = ''): string {
+    return `NODE_ENV=production; yarn build && PORT=\${PORT:-${port}} node dist/index.js ${additionalArgs}`;
   }
 
   testE2E({

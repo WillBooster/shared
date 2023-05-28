@@ -18,6 +18,11 @@ const builder = {
     type: 'string',
     alias: 'm',
   },
+  args: {
+    description: 'Arguments text for start command',
+    type: 'string',
+    alias: 'm',
+  },
 } as const;
 
 export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
@@ -37,19 +42,20 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       return;
     }
 
+    const argsText = argv.args ?? '';
     switch (argv.mode || 'dev') {
       case 'dev':
       case 'development': {
-        await runWithSpawn(scripts.start(argv.watch), argv);
+        await runWithSpawn(scripts.start(argv.watch, argsText), argv);
         break;
       }
       case 'prod':
       case 'production': {
-        await runWithSpawn(scripts.startProduction(), argv);
+        await runWithSpawn(scripts.startProduction(8080, argsText), argv);
         break;
       }
       case 'docker': {
-        await runWithSpawn(scripts.startDocker(), argv);
+        await runWithSpawn(scripts.startDocker(argsText), argv);
         break;
       }
       default: {
