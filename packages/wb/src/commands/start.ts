@@ -21,7 +21,7 @@ const builder = {
   args: {
     description: 'Arguments text for start command',
     type: 'string',
-    alias: 'm',
+    alias: 'a',
   },
 } as const;
 
