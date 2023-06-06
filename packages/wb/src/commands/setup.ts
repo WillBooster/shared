@@ -52,9 +52,6 @@ export async function setup(
   const deps = project.packageJson.dependencies ?? {};
   const scripts = project.packageJson.scripts ?? {};
   const newDevDeps: string[] = [];
-  if (project.hasDockerfile) {
-    newDevDeps.push('retry-cli');
-  }
   if (deps['blitz']) {
     newDevDeps.push('concurrently', 'dotenv-cli', 'open-cli', 'vitest', 'wait-on');
   } else if (deps['express']) {

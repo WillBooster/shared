@@ -7,6 +7,7 @@ import { hideBin } from 'yargs/helpers';
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
 import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
 import { prismaCommand } from './commands/prisma.js';
+import { retryCommand } from './commands/retry.js';
 import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
@@ -28,10 +29,11 @@ await yargs(hideBin(process.argv))
       dotenv.config({ path: path.join(project.dirPath, dotenvPath.toString()) });
     }
   })
-  .command(setupCommand)
   .command(buildIfNeededCommand)
   .command(optimizeForDockerBuildCommand)
   .command(prismaCommand)
+  .command(retryCommand)
+  .command(setupCommand)
   .command(startCommand)
   .command(testCommand)
   .command(typeCheckCommand)

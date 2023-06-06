@@ -10,7 +10,7 @@ class DockerScripts {
   buildDevImage(wbEnv = 'local'): string {
     const prefix = project.packageJson.scripts?.['docker/build/prepare'] ? 'yarn run docker/build/prepare && ' : '';
     return `${prefix}YARN wb optimizeForDockerBuild --outside
-    && YARN retry -n 3 -- docker build -t ${project.name}
+    && YARN wb retry -- docker build -t ${project.name}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
         --build-arg WB_ENV=${wbEnv}
         --build-arg WB_VERSION=dev .`;
