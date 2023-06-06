@@ -121,7 +121,7 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     }
   }
   if (deps['blitz']) {
-    switch (argv.e2eMode || 'headless') {
+    switch (argv.e2e) {
       case 'headed': {
         await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
         return;

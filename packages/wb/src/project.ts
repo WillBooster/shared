@@ -6,6 +6,7 @@ import type { PackageJson } from 'type-fest';
 class Project {
   private _dirPath: string;
   private _dockerfile: string | undefined;
+  private _dockerfilePath: string | undefined;
   private _hasDockerfile: boolean | undefined;
   private _name: string | undefined;
   private _packageJson: PackageJson | undefined;
@@ -23,15 +24,33 @@ class Project {
   }
 
   get dockerfile(): string {
-    return (this._dockerfile ??= fs.readFileSync(path.join(this.dirPath, 'Dockerfile'), 'utf8'));
+    return (this._dockerfile ??= fs.readFileSync(this.dockerfilePath, 'utf8'));
+  }
+
+  get dockerfilePath(): string {
+    if (this._dockerfilePath) return this._dockerfilePath;
+    if (fs.existsSync(path.join(this.dirPath, 'Dockerfile'))) {
+      this._dockerfilePath = path.join(this.dirPath, 'Dockerfile');
+    } else if (fs.existsSync(path.join(this.dirPath, '..', '..', 'Dockerfile'))) {
+      this._dockerfilePath = path.join(this.dirPath, '..', '..', 'Dockerfile');
+    } else {
+      this._dockerfilePath = '';
+    }
+    return this._dockerfilePath;
   }
 
   get hasDockerfile(): boolean {
-    return (this._hasDockerfile ??= fs.existsSync(path.join(this.dirPath, 'Dockerfile')));
+    return (this._hasDockerfile ??= !!this.dockerfilePath);
   }
 
   get name(): string {
-    return (this._name ??= project.packageJson.name || 'unknown');
+    return (this._name ??= project.rootPackageJson.name || 'unknown');
+  }
+
+  get rootPackageJson(): PackageJson {
+    return (this._packageJson ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
+      ? JSON.parse(fs.readFileSync(path.join(this.dirPath, '..', '..', 'package.json'), 'utf8'))
+      : this.packageJson);
   }
 
   get packageJson(): PackageJson {
