@@ -3,11 +3,11 @@ import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
-import { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
+import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
-import { sharedOptions } from '../sharedOptions.js';
+import type { sharedOptions } from '../sharedOptions.js';
 
 interface Options {
   exitIfFailed?: boolean;

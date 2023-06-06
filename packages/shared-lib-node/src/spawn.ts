@@ -1,11 +1,12 @@
-import {
-  spawn,
+import type {
   SpawnOptions,
   SpawnOptionsWithoutStdio,
   SpawnOptionsWithStdioTuple,
   SpawnSyncReturns,
   StdioNull,
-  StdioPipe,
+  StdioPipe} from 'node:child_process';
+import {
+  spawn,
   execSync,
 } from 'node:child_process';
 import * as os from 'node:os';

@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 
 import chalk from 'chalk';
-import { PackageJson } from 'type-fest';
+import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { runWithSpawn } from '../scripts/run.js';

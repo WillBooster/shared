@@ -2,14 +2,15 @@ import path from 'node:path';
 
 import { existsAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
-import type { CommandModule, InferredOptionTypes } from 'yargs';
-import { ArgumentsCamelCase } from 'yargs';
+import type { CommandModule, InferredOptionTypes , ArgumentsCamelCase } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
-import { blitzScripts, BlitzScriptsType } from '../scripts/blitzScripts.js';
+import type { BlitzScriptsType } from '../scripts/blitzScripts.js';
+import { blitzScripts } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import { httpServerScripts, HttpServerScriptsType } from '../scripts/httpServerScripts.js';
+import type { HttpServerScriptsType } from '../scripts/httpServerScripts.js';
+import { httpServerScripts } from '../scripts/httpServerScripts.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
