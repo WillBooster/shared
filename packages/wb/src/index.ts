@@ -19,6 +19,14 @@ await yargs(hideBin(process.argv))
   .scriptName('wb')
   .options(preprocessedOptions)
   .middleware((argv) => {
+    // Remove npm & yarn environment variables from process.env
+    for (const key of Object.keys(process.env)) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey.startsWith('npm_') || lowerKey.startsWith('yarn_') || lowerKey.startsWith('berry_')) {
+        delete process.env[key];
+      }
+    }
+
     const workingDir = argv['working-dir'];
     if (workingDir) {
       const dirPath = path.resolve(workingDir);
