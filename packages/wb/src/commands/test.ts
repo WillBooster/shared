@@ -48,6 +48,16 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
 };
 
 export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>): Promise<void> {
+  if (project.packageJson.workspaces) {
+    process.env['CI'] = '1';
+    process.env['FORCE_COLOR'] = '3';
+    await runWithSpawn(
+      ['yarn', 'workspaces', 'foreach', '--verbose', 'run', 'wb', ...process.argv.slice(2)].join(' '),
+      argv
+    );
+    return;
+  }
+
   const deps = project.packageJson.dependencies || {};
   const devDeps = project.packageJson.devDependencies || {};
   let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;

@@ -29,18 +29,26 @@ class Project {
 
   get dockerfilePath(): string {
     if (this._dockerfilePath) return this._dockerfilePath;
+
     if (fs.existsSync(path.join(this.dirPath, 'Dockerfile'))) {
       this._dockerfilePath = path.join(this.dirPath, 'Dockerfile');
     } else if (fs.existsSync(path.join(this.dirPath, '..', '..', 'Dockerfile'))) {
       this._dockerfilePath = path.join(this.dirPath, '..', '..', 'Dockerfile');
     } else {
-      this._dockerfilePath = '';
+      throw new Error('Dockerfile not found');
     }
     return this._dockerfilePath;
   }
 
   get hasDockerfile(): boolean {
-    return (this._hasDockerfile ??= !!this.dockerfilePath);
+    if (this._hasDockerfile !== undefined) return this._hasDockerfile;
+
+    try {
+      this._hasDockerfile = !!this.dockerfilePath;
+    } catch {
+      this._hasDockerfile = false;
+    }
+    return this._hasDockerfile;
   }
 
   get name(): string {
