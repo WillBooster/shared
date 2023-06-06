@@ -20,24 +20,17 @@ const builder = {
     type: 'boolean',
   },
   e2e: {
-    description: 'Whether to run e2e tests',
-    type: 'boolean',
-    alias: 'e',
-  },
-  'e2e-mode': {
-    description: 'e2e mode: headless (default) | docker | headed | debug | generate | trace',
+    description: 'e2e mode: none (default) | headless | docker | headed | debug | generate | trace',
+    default: '',
     type: 'string',
-    alias: 'm',
   },
   start: {
     description: 'Whether to run start tests',
     type: 'boolean',
-    alias: 's',
   },
   unit: {
     description: 'Whether to run unit tests',
     type: 'boolean',
-    alias: 'u',
   },
   'unit-timeout': {
     description: 'Timeout for unit tests',
@@ -56,6 +49,7 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
 
 export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>): Promise<void> {
   const deps = project.packageJson.dependencies || {};
+  const devDeps = project.packageJson.devDependencies || {};
   let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;
   if (deps['blitz']) {
     scripts = blitzScripts;
@@ -81,7 +75,7 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     }
     await promisePool.promiseAll();
     // Check playwright installation because --ci includes --e2e implicitly
-    if (argv.e2e !== false && (await e2eTestsExistPromise)) {
+    if (argv.e2e !== 'none' && (await e2eTestsExistPromise)) {
       if (project.hasDockerfile) {
         await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
       }
@@ -104,45 +98,49 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
   }
   await Promise.all(promises);
   // Don't check playwright installation because --e2e is set explicitly
-  if (argv.e2e) {
-    switch (argv.e2eMode || 'headless') {
-      case 'headless': {
-        await runWithSpawn(scripts.testE2E({}), argv);
-        return;
-      }
-      case 'docker': {
-        await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
-        process.exitCode = await runWithSpawn(
-          scripts.testE2E({
-            startCommand: dockerScripts.stopAndStart(true),
-          }),
-          argv,
-          { exitIfFailed: false }
-        );
-        await runWithSpawn(dockerScripts.stop(), argv);
-        return;
-      }
+  switch (argv.e2e) {
+    case '':
+    case 'none': {
+      return;
     }
-    if (deps['blitz']) {
-      switch (argv.e2eMode || 'headless') {
-        case 'headed': {
-          await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
-          return;
-        }
-        case 'debug': {
-          await runWithSpawn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`, argv);
-          return;
-        }
-        case 'generate': {
-          await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }), argv);
-          return;
-        }
-        case 'trace': {
-          await runWithSpawn(`playwright show-trace`, argv);
-          return;
-        }
-      }
+    case 'headless': {
+      await runWithSpawn(scripts.testE2E({}), argv);
+      return;
     }
-    throw new Error(`Unknown e2e mode: ${argv.mode}`);
+    case 'docker': {
+      await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
+      process.exitCode = await runWithSpawn(
+        scripts.testE2E({
+          startCommand: dockerScripts.stopAndStart(true),
+        }),
+        argv,
+        { exitIfFailed: false }
+      );
+      await runWithSpawn(dockerScripts.stop(), argv);
+      return;
+    }
   }
+  if (deps['blitz']) {
+    switch (argv.e2eMode || 'headless') {
+      case 'headed': {
+        await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
+        return;
+      }
+      case 'debug': {
+        await runWithSpawn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`, argv);
+        return;
+      }
+      case 'generate': {
+        await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }), argv);
+        return;
+      }
+      case 'trace': {
+        await runWithSpawn(`playwright show-trace`, argv);
+        return;
+      }
+    }
+  } else if (devDeps['@remix-run/dev']) {
+    // TODO: implement commands for remix
+  }
+  throw new Error(`Unknown e2e mode: ${argv.mode}`);
 }

@@ -19,6 +19,8 @@ await yargs(hideBin(process.argv))
   .scriptName('wb')
   .options(preprocessedOptions)
   .middleware((argv) => {
+    console.log(process.env);
+
     const workingDir = argv['working-dir'];
     if (workingDir) {
       const dirPath = path.resolve(workingDir);
