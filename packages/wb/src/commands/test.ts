@@ -49,11 +49,6 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
 };
 
 export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>): Promise<void> {
-  console.log(process.argv, argv);
-  if (!project.packageJson.workspaces) {
-    process.exit();
-  }
-
   if (project.packageJson.workspaces) {
     process.env['CI'] = '1';
     process.env['FORCE_COLOR'] = '3';
