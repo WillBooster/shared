@@ -4,11 +4,9 @@ import type {
   SpawnOptionsWithStdioTuple,
   SpawnSyncReturns,
   StdioNull,
-  StdioPipe} from 'node:child_process';
-import {
-  spawn,
-  execSync,
+  StdioPipe,
 } from 'node:child_process';
+import { spawn, execSync } from 'node:child_process';
 import * as os from 'node:os';
 
 export type SpawnAsyncReturns = Omit<SpawnSyncReturns<string>, 'output' | 'error'>;

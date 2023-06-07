@@ -2,7 +2,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 
-import type { CommandModule, InferredOptionTypes , ArgumentsCamelCase } from 'yargs';
+import type { CommandModule, InferredOptionTypes, ArgumentsCamelCase } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
