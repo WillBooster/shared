@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { existsAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
-import type { CommandModule, InferredOptionTypes , ArgumentsCamelCase } from 'yargs';
+import type { CommandModule, InferredOptionTypes, ArgumentsCamelCase } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
@@ -21,8 +21,8 @@ const builder = {
     type: 'boolean',
   },
   e2e: {
-    description: 'e2e mode: none (default) | headless | docker | headed | debug | generate | trace',
-    default: '',
+    description:
+      'Whether to run e2e tests. You may pass mode as argument: none | headless (default) | docker | headed | debug | generate | trace',
     type: 'string',
   },
   start: {
@@ -49,6 +49,11 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
 };
 
 export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>): Promise<void> {
+  console.log(process.argv, argv);
+  if (!project.packageJson.workspaces) {
+    process.exit();
+  }
+
   if (project.packageJson.workspaces) {
     process.env['CI'] = '1';
     process.env['FORCE_COLOR'] = '3';
@@ -101,7 +106,7 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     return;
   }
 
-  if (argv.unit || (!argv.start && !argv.e2e)) {
+  if (argv.unit || (!argv.start && argv.e2e === undefined)) {
     promises.push(runWithSpawn(scripts.testUnit(), argv, { timeout: argv.unitTimeout }));
   }
   if (argv.start) {
@@ -110,10 +115,11 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
   await Promise.all(promises);
   // Don't check playwright installation because --e2e is set explicitly
   switch (argv.e2e) {
-    case '':
+    case undefined:
     case 'none': {
       return;
     }
+    case '':
     case 'headless': {
       await runWithSpawn(scripts.testE2E({}), argv);
       return;
@@ -153,5 +159,5 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
   } else if (devDeps['@remix-run/dev']) {
     // TODO: implement commands for remix
   }
-  throw new Error(`Unknown e2e mode: ${argv.mode}`);
+  throw new Error(`Unknown e2e mode: ${argv.e2e}`);
 }
