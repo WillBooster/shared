@@ -9,6 +9,7 @@ import { project } from '../project.js';
  */
 class DockerScripts {
   buildDevImage(wbEnv = 'local'): string {
+    // e.g. coding-booster uses `"docker/build/prepare": "touch drill-users.csv",`
     const prefix = project.packageJson.scripts?.['docker/build/prepare'] ? 'yarn run docker/build/prepare && ' : '';
     return `${prefix}YARN wb optimizeForDockerBuild --outside
     && cd ${path.dirname(project.dockerfilePath)}

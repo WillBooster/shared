@@ -24,6 +24,9 @@ export async function runWithSpawn(
 ): Promise<number> {
   const [printableScript, runnableScript] = normalizeScript(script);
   printStart(printableScript);
+  if (argv.verbose) {
+    printStart(printableScript, 'Start (detailed)', true);
+  }
   if (argv.dryRun) {
     finishedScript(printableScript, 0, opts);
     return 0;
