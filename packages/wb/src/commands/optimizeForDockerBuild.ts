@@ -43,7 +43,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     for (const packageJsonPath of packageJsonPaths) {
       const packageJson: PackageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
       const deps = packageJson.dependencies || {};
-      if (deps['@discord-bot/llm']) {
+      if (deps['@discord-bot/llm'] && deps['@discord-bot/llm'] !== 'workspace:*') {
         deps['@discord-bot/llm'] = './@discord-bot/llm';
       }
       if (deps['@moti-components/go-e-mon']) {
