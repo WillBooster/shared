@@ -19621,7 +19621,6 @@ __metadata:
     "@typescript-eslint/parser": "npm:5.59.9"
     "@willbooster/prettier-config": "npm:9.1.1"
     "@willbooster/renovate-config": "npm:9.5.0"
-    "@yarnpkg/shell": "npm:4.0.0-rc.45"
     conventional-changelog-conventionalcommits: "npm:6.0.0"
     eslint: "npm:8.42.0"
     husky: "npm:8.0.3"
