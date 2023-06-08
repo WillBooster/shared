@@ -44,6 +44,26 @@ export async function runWithSpawn(
   return ret.status ?? 1;
 }
 
+export async function runOnEachWorkspaceIfNeeded(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>
+): Promise<void> {
+  if (!project.packageJson.workspaces) return;
+
+  const args = process.argv.slice(2);
+  const index = args.findIndex((arg) => ['-w', '--working-dir', '--workingDir'].includes(arg));
+  if (index >= 0) {
+    args.splice(index, 2);
+  }
+
+  process.env['CI'] = '1';
+  process.env['FORCE_COLOR'] = '3';
+  await runWithSpawn(
+    ['yarn', 'workspaces', 'foreach', '--exclude', project.name, '--verbose', 'run', 'wb', ...args].join(' '),
+    argv
+  );
+  process.exit(0);
+}
+
 export function runWithSpawnInParallel(
   script: string,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>,

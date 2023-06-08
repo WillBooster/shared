@@ -28,7 +28,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     } as const;
 
     const packageJsonPaths = ['package.json'];
-    if (project.hasWorkspaces) {
+    if (project.packageJson.workspaces) {
       const packageDirs = await fs.promises.readdir('packages', { withFileTypes: true });
       for (const packageDir of packageDirs) {
         if (!packageDir.isDirectory()) continue;

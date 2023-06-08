@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { existsAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
-import type { CommandModule, InferredOptionTypes, ArgumentsCamelCase } from 'yargs';
+import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
@@ -11,7 +11,7 @@ import { blitzScripts } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { HttpServerScriptsType } from '../scripts/httpServerScripts.js';
 import { httpServerScripts } from '../scripts/httpServerScripts.js';
-import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
+import { runOnEachWorkspaceIfNeeded, runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
@@ -49,15 +49,7 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
 };
 
 export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>): Promise<void> {
-  if (project.packageJson.workspaces) {
-    process.env['CI'] = '1';
-    process.env['FORCE_COLOR'] = '3';
-    await runWithSpawn(
-      ['yarn', 'workspaces', 'foreach', '--verbose', 'run', 'wb', ...process.argv.slice(2)].join(' '),
-      argv
-    );
-    return;
-  }
+  await runOnEachWorkspaceIfNeeded(argv);
 
   const deps = project.packageJson.dependencies || {};
   const devDeps = project.packageJson.devDependencies || {};

@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import type { CommandModule, InferredOptionTypes, ArgumentsCamelCase } from 'yargs';
+import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { preprocessedOptions, sharedOptions } from '../sharedOptions.js';

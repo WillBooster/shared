@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { runWithSpawn } from '../scripts/run.js';
+import { runOnEachWorkspaceIfNeeded, runWithSpawn } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
@@ -16,6 +16,8 @@ export const typeCheckCommand: CommandModule<unknown, InferredOptionTypes<typeof
   describe: 'Run type checking',
   builder,
   async handler(argv) {
+    await runOnEachWorkspaceIfNeeded(argv);
+
     process.exitCode = await runWithSpawn(`tsc --noEmit --Pretty`, argv);
     if (process.exitCode !== 0) {
       const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
