@@ -16,8 +16,6 @@ export const typeCheckCommand: CommandModule<unknown, InferredOptionTypes<typeof
   describe: 'Run type checking',
   builder,
   async handler(argv) {
-    await runOnEachWorkspaceIfNeeded(argv);
-
     process.exitCode = await runWithSpawn(`tsc --noEmit --Pretty`, argv);
     if (process.exitCode !== 0) {
       const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
