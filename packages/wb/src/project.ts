@@ -9,6 +9,7 @@ class Project {
   private _dockerfilePath: string | undefined;
   private _hasDockerfile: boolean | undefined;
   private _name: string | undefined;
+  private _rootPackageJson: PackageJson | undefined;
   private _packageJson: PackageJson | undefined;
 
   constructor() {
@@ -56,7 +57,7 @@ class Project {
   }
 
   get rootPackageJson(): PackageJson {
-    return (this._packageJson ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
+    return (this._rootPackageJson ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
       ? JSON.parse(fs.readFileSync(path.join(this.dirPath, '..', '..', 'package.json'), 'utf8'))
       : this.packageJson);
   }

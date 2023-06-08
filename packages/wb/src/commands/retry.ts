@@ -20,15 +20,17 @@ export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   builder,
   async handler(argv) {
     const cmdAndArgs = argv._.slice(1);
+    let lastStatus = 0;
     for (let i = 0; i < argv.retry; i++) {
       if (i > 0) {
         console.info(`\n${chalk.yellow(`#${i} Retrying: ${cmdAndArgs.join(' ')}`)}`);
       }
       // TODO: should we add single quotes around each argument?
-      const status = await runWithSpawn(cmdAndArgs.join(' '), argv, {
+      lastStatus = await runWithSpawn(cmdAndArgs.join(' '), argv, {
         exitIfFailed: false,
       });
-      if (status === 0) return;
+      if (lastStatus === 0) return;
     }
+    process.exit(lastStatus);
   },
 };
