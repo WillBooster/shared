@@ -64,6 +64,10 @@ class Project {
   get packageJson(): PackageJson {
     return (this._packageJson ??= JSON.parse(fs.readFileSync(path.join(this.dirPath, 'package.json'), 'utf8')));
   }
+
+  get hasWorkspaces(): boolean {
+    return !!this.packageJson.workspaces;
+  }
 }
 
 export const project = new Project();
