@@ -11,10 +11,10 @@ export abstract class WebServerScripts {
     return dockerScripts.buildDevImage(wbEnv);
   }
 
-  startDocker(): string {
+  startDocker(additionalArgs = ''): string {
     return `${this.buildDocker()}
       && YARN concurrently --raw --kill-others-on-fail
-        "${dockerScripts.stopAndStart(false)}"
+        "${dockerScripts.stopAndStart(false, '', additionalArgs)}"
         "${this.waitAndOpenApp(8080)}"`;
   }
 
