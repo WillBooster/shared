@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { runOnEachWorkspaceIfNeeded, runWithSpawn } from '../scripts/run.js';
+import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {

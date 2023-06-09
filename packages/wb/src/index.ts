@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import dotenv from 'dotenv';
+import { config } from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -33,8 +33,25 @@ await yargs(hideBin(process.argv))
       process.chdir(dirPath);
       project.dirPath = dirPath;
     }
-    for (const dotenvPath of argv.env ?? []) {
-      dotenv.config({ path: path.join(project.dirPath, dotenvPath.toString()) });
+
+    let envPaths = (argv.env ?? []).map((envPath) => envPath.toString());
+    if (typeof argv.cascade === 'string') {
+      if (envPaths.length === 0) envPaths.push('.env');
+      const newEnvPaths: string[] = [];
+      for (const envPath of envPaths) {
+        newEnvPaths.push(
+          ...(argv.cascade
+            ? [`${envPath}.${argv.cascade}.local`, `${envPath}.local`, `${envPath}.${argv.cascade}`, envPath]
+            : [`${envPath}.local`, envPath])
+        );
+      }
+      envPaths = newEnvPaths;
+    }
+    if (argv.verbose) {
+      console.info('Loading env files:', envPaths);
+    }
+    for (const envPath of envPaths) {
+      config({ path: path.join(project.dirPath, envPath) });
     }
   })
   .command(buildIfNeededCommand)

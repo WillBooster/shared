@@ -2,7 +2,11 @@ export const preprocessedOptions = {
   env: {
     description: '.env files to be loaded.',
     type: 'array',
-    alias: 'e',
+  },
+  cascade: {
+    description:
+      'environment to load cascading .env files (e.g., `.env`, `.env.<environment>`, `.env.local` and `.env.<environment>.local`)',
+    type: 'string',
   },
   'working-dir': {
     description: 'A working directory',
