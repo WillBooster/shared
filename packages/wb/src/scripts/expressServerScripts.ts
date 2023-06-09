@@ -6,7 +6,7 @@ import { dockerScripts } from './dockerScripts.js';
  * Note that `PRISMA` is replaced with `YARN prisma` or `YARN blitz prisma`
  * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class HttpServerScripts {
+class ExpressServerScripts {
   buildDocker(wbEnv = 'local'): string {
     return dockerScripts.buildDevImage(wbEnv);
   }
@@ -44,6 +44,6 @@ class HttpServerScripts {
   }
 }
 
-export type HttpServerScriptsType = InstanceType<typeof HttpServerScripts>;
+export type HttpServerScriptsType = InstanceType<typeof ExpressServerScripts>;
 
-export const httpServerScripts = new HttpServerScripts();
+export const httpServerScripts = new ExpressServerScripts();

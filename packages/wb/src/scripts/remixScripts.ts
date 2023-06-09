@@ -1,20 +1,26 @@
 import { dockerScripts } from './dockerScripts.js';
 import { prismaScripts } from './prismaScripts.js';
-import { WebServerScripts } from './webServerScripts.js';
 
 /**
- * A collection of scripts for executing Blitz.js commands.
+ * A collection of scripts for executing Remix commands.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class BlitzScripts extends WebServerScripts {
-  constructor() {
-    super();
+class RemixScripts {
+  buildDocker(wbEnv = 'local'): string {
+    return dockerScripts.buildDevImage(wbEnv);
   }
 
   start(watch?: boolean, additionalArgs = ''): string {
     return `YARN concurrently --raw --kill-others-on-fail
-      "blitz dev ${additionalArgs}"
+      "dotenv -c development -- remix dev"
       "${this.waitAndOpenApp()}"`;
+  }
+
+  startDocker(): string {
+    return `${this.buildDocker()}
+      && YARN concurrently --raw --kill-others-on-fail
+        "${dockerScripts.stopAndStart(false)}"
+        "${blitzScripts.waitAndOpenApp(8080)}"`;
   }
 
   startProduction(port = 8080, additionalArgs = ''): string {
@@ -37,8 +43,26 @@ class BlitzScripts extends WebServerScripts {
   testStart(): string {
     return `YARN concurrently --kill-others --raw --success first "blitz dev" "${this.waitApp()}"`;
   }
+
+  testUnit(): string {
+    // Since this command is referred to from other commands, we have to use "vitest run".
+    return `YARN vitest run tests/unit --color --passWithNoTests`;
+  }
+
+  /*private*/ waitApp(port = 3000): string {
+    return `wait-on -t 10000 http://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 10000 -i 500 http://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 10000 -i 1000 http://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 10000 -i 2000 http://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 20000 -i 4000 http://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 60000 -i 5000 http://127.0.0.1:${port}`;
+  }
+
+  private waitAndOpenApp(port = 3000): string {
+    return `${this.waitApp(port)} && open-cli http://localhost:${port}`;
+  }
 }
 
-export type BlitzScriptsType = InstanceType<typeof BlitzScripts>;
+export type RemixScriptsType = InstanceType<typeof RemixScripts>;
 
-export const blitzScripts = new BlitzScripts();
+export const remixScripts = new RemixScripts();

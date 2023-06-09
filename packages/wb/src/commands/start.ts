@@ -4,8 +4,8 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 import { project } from '../project.js';
 import type { BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { blitzScripts } from '../scripts/blitzScripts.js';
-import type { HttpServerScriptsType } from '../scripts/httpServerScripts.js';
-import { httpServerScripts } from '../scripts/httpServerScripts.js';
+import type { HttpServerScriptsType } from '../scripts/expressServerScripts.js';
+import { httpServerScripts } from '../scripts/expressServerScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 

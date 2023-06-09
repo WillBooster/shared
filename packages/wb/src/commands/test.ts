@@ -9,8 +9,8 @@ import { promisePool } from '../promisePool.js';
 import type { BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { blitzScripts } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import type { HttpServerScriptsType } from '../scripts/httpServerScripts.js';
-import { httpServerScripts } from '../scripts/httpServerScripts.js';
+import type { HttpServerScriptsType } from '../scripts/expressServerScripts.js';
+import { httpServerScripts } from '../scripts/expressServerScripts.js';
 import { runOnEachWorkspaceIfNeeded, runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
