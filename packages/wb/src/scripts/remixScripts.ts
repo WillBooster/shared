@@ -22,8 +22,11 @@ class RemixScripts extends WebServerScripts {
       "${this.waitAndOpenApp(port)}"`;
   }
 
-  override testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {
-    return super.testE2E({ playwrightArgs, startCommand });
+  override testE2E({
+    playwrightArgs = 'test tests/e2e',
+    startCommand = `${prismaScripts.reset()} && yarn build && PORT=8080 pm2-runtime start ecosystem.config.cjs`,
+  }): string {
+    return super.testE2E({ playwrightArgs, prismaDirectory: 'prisma', startCommand });
   }
 
   testStart(): string {

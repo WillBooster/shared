@@ -18,11 +18,19 @@ export abstract class WebServerScripts {
         "${this.waitAndOpenApp(8080)}"`;
   }
 
-  testE2E({ playwrightArgs, startCommand }: { playwrightArgs: string; startCommand: string }): string {
+  testE2E({
+    playwrightArgs,
+    prismaDirectory,
+    startCommand,
+  }: {
+    playwrightArgs: string;
+    prismaDirectory: string;
+    startCommand: string;
+  }): string {
     // `playwright` must work, but it doesn't work on a project depending on `artillery-engine-playwright`.
     // So we use `yarn playwright` instead of `playwright`.
     return `APP_ENV=production WB_ENV=test YARN dotenv -c production -- concurrently --kill-others --raw --success first
-      "rm -Rf db/mount && ${startCommand} && exit 1"
+      "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && yarn playwright ${playwrightArgs}"`;
   }
 
