@@ -66,15 +66,11 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
       if (argv.dry) continue;
 
-      const distDirPath = path.join(path.dirname(packageJsonPath), 'dist');
-      if (argv.outside) {
-        await fs.promises.mkdir(distDirPath, { recursive: true });
-      }
-      await fs.promises.writeFile(
-        argv.outside ? path.join(distDirPath, 'package.json') : 'package.json',
-        JSON.stringify(packageJson),
-        'utf8'
-      );
+      const distDirPath = argv.outside
+        ? path.join(path.dirname(packageJsonPath), 'dist')
+        : path.dirname(packageJsonPath);
+      await fs.promises.mkdir(distDirPath, { recursive: true });
+      await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
     }
     if (!argv.dry && !argv.outside) {
       child_process.spawnSync('yarn', opts);
