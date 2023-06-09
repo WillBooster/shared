@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import dotenv from 'dotenv';
+import { config } from 'dotenv';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -51,7 +51,7 @@ await yargs(hideBin(process.argv))
       console.info('Loading env files:', envPaths);
     }
     for (const envPath of envPaths) {
-      dotenv.config({ path: path.join(project.dirPath, envPath) });
+      config({ path: path.join(project.dirPath, envPath) });
     }
   })
   .command(buildIfNeededCommand)

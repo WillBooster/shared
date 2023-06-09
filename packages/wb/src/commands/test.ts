@@ -11,6 +11,7 @@ import { blitzScripts } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { HttpServerScriptsType } from '../scripts/expressServerScripts.js';
 import { httpServerScripts } from '../scripts/expressServerScripts.js';
+import { remixScripts } from '../scripts/remixScripts.js';
 import { runOnEachWorkspaceIfNeeded, runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
@@ -56,6 +57,8 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
   let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;
   if (deps['blitz']) {
     scripts = blitzScripts;
+  } else if (devDeps['@remix-run/dev']) {
+    scripts = remixScripts;
   } else if (deps['express'] && !deps['firebase-functions']) {
     scripts = httpServerScripts;
   }
@@ -124,18 +127,18 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
       return;
     }
   }
-  if (deps['blitz']) {
+  if (deps['blitz'] || devDeps['@remix-run/dev']) {
     switch (argv.e2e) {
       case 'headed': {
-        await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
+        await runWithSpawn(scripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
         return;
       }
       case 'debug': {
-        await runWithSpawn(`PWDEBUG=1 ${blitzScripts.testE2E({})}`, argv);
+        await runWithSpawn(`PWDEBUG=1 ${scripts.testE2E({})}`, argv);
         return;
       }
       case 'generate': {
-        await runWithSpawn(blitzScripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }), argv);
+        await runWithSpawn(scripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }), argv);
         return;
       }
       case 'trace': {
@@ -143,8 +146,6 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
         return;
       }
     }
-  } else if (devDeps['@remix-run/dev']) {
-    // TODO: implement commands for remix
   }
   throw new Error(`Unknown e2e mode: ${argv.e2e}`);
 }

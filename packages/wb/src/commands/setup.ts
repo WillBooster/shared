@@ -49,9 +49,10 @@ export async function setup(
   }
 
   const deps = project.packageJson.dependencies ?? {};
+  const devDeps = project.packageJson.devDependencies || {};
   const scripts = project.packageJson.scripts ?? {};
   const newDevDeps: string[] = [];
-  if (deps['blitz']) {
+  if (deps['blitz'] || devDeps['@remix-run/dev']) {
     newDevDeps.push('concurrently', 'dotenv-cli', 'open-cli', 'vitest', 'wait-on');
   } else if (deps['express']) {
     newDevDeps.push('concurrently', 'vitest', 'wait-on');

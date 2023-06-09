@@ -1,21 +1,20 @@
-import { blitzScripts } from './blitzScripts.js';
 import { dockerScripts } from './dockerScripts.js';
+import { WebServerScripts } from './webServerScripts.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
- * Note that `PRISMA` is replaced with `YARN prisma` or `YARN blitz prisma`
- * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
+ * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class ExpressServerScripts {
-  buildDocker(wbEnv = 'local'): string {
-    return dockerScripts.buildDevImage(wbEnv);
+class ExpressServerScripts extends WebServerScripts {
+  constructor() {
+    super();
   }
 
   start(watch?: boolean, additionalArgs = ''): string {
     return `YARN build-ts run src/index.ts ${watch ? '--watch' : ''} ${additionalArgs}`;
   }
 
-  startDocker(additionalArgs = ''): string {
+  override startDocker(additionalArgs = ''): string {
     return `${this.buildDocker()} && ${dockerScripts.stopAndStart(false, '', additionalArgs)}`;
   }
 
@@ -23,7 +22,7 @@ class ExpressServerScripts {
     return `NODE_ENV=production; yarn build && PORT=\${PORT:-${port}} node dist/index.js ${additionalArgs}`;
   }
 
-  testE2E({
+  override testE2E({
     startCommand = `if [ -e "prisma" ]; then prisma migrate reset --force --skip-generate; fi && (${this.startProduction()})`,
   }): string {
     return `NODE_ENV=production WB_ENV=test YARN concurrently --kill-others --raw --success first
@@ -33,14 +32,6 @@ class ExpressServerScripts {
 
   testStart(): string {
     return `YARN concurrently --kill-others --raw --success first "${this.start()}" "${this.waitApp()}"`;
-  }
-
-  testUnit(): string {
-    return blitzScripts.testUnit();
-  }
-
-  private waitApp(port = 3000): string {
-    return blitzScripts.waitApp(port);
   }
 }
 

@@ -6,6 +6,7 @@ import type { BlitzScriptsType } from '../scripts/blitzScripts.js';
 import { blitzScripts } from '../scripts/blitzScripts.js';
 import type { HttpServerScriptsType } from '../scripts/expressServerScripts.js';
 import { httpServerScripts } from '../scripts/expressServerScripts.js';
+import { remixScripts } from '../scripts/remixScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
@@ -33,9 +34,12 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   builder,
   async handler(argv) {
     const deps = project.packageJson.dependencies || {};
+    const devDeps = project.packageJson.devDependencies || {};
     let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;
     if (deps['blitz']) {
       scripts = blitzScripts;
+    } else if (devDeps['@remix-run/dev']) {
+      scripts = remixScripts;
     } else if ((deps['express'] && !deps['firebase-functions']) || /EXPOSE\s+8080/.test(project.dockerfile)) {
       scripts = httpServerScripts;
     }
