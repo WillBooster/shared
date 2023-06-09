@@ -10,6 +10,7 @@ class Project {
   private _hasDockerfile: boolean | undefined;
   private _name: string | undefined;
   private _rootPackageJson: PackageJson | undefined;
+  private _dockerPackageJson: PackageJson | undefined;
   private _packageJson: PackageJson | undefined;
 
   constructor() {
@@ -56,14 +57,21 @@ class Project {
     return (this._name ??= project.rootPackageJson.name || 'unknown');
   }
 
+  get packageJson(): PackageJson {
+    return (this._packageJson ??= JSON.parse(fs.readFileSync(path.join(this.dirPath, 'package.json'), 'utf8')));
+  }
+
   get rootPackageJson(): PackageJson {
     return (this._rootPackageJson ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
       ? JSON.parse(fs.readFileSync(path.join(this.dirPath, '..', '..', 'package.json'), 'utf8'))
       : this.packageJson);
   }
 
-  get packageJson(): PackageJson {
-    return (this._packageJson ??= JSON.parse(fs.readFileSync(path.join(this.dirPath, 'package.json'), 'utf8')));
+  get dockerPackageJson(): PackageJson {
+    return (this._dockerPackageJson ??=
+      path.dirname(this.dockerfilePath) === this.dirPath
+        ? this.packageJson
+        : JSON.parse(fs.readFileSync(path.join(path.dirname(this.dockerfilePath), 'package.json'), 'utf8')));
   }
 }
 

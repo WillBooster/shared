@@ -10,9 +10,11 @@ import { project } from '../project.js';
 class DockerScripts {
   buildDevImage(wbEnv = 'local'): string {
     // e.g. coding-booster uses `"docker/build/prepare": "touch drill-users.csv",`
-    const prefix = project.packageJson.scripts?.['docker/build/prepare'] ? 'yarn run docker/build/prepare && ' : '';
-    return `${prefix}YARN wb optimizeForDockerBuild --outside
-    && cd ${path.dirname(project.dockerfilePath)}
+    const prefix = project.dockerPackageJson.scripts?.['docker/build/prepare']
+      ? 'yarn run docker/build/prepare && '
+      : '';
+    return `cd ${path.dirname(project.dockerfilePath)}
+    && ${prefix}YARN wb optimizeForDockerBuild --outside
     && YARN wb retry -- docker build -t ${project.name}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
         --build-arg WB_ENV=${wbEnv}
