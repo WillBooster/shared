@@ -17,12 +17,9 @@ class BlitzScripts extends WebServerScripts {
   }
 
   startProduction(port = 8080, additionalArgs = ''): string {
-    // Add NODE_ENV=production only to ${prismaScripts.reset()},
-    // since NODE_ENV=production is set by default in "blitz build" and "blitz start".
-    // Note: `NODE_ENV=production; yarn blitz db seed` does not work, but `NODE_ENV=production yarn blitz db seed` works.
-    return `${prismaScripts.reset(
-      'NODE_ENV=production '
-    )} && yarn build && YARN blitz start -p \${PORT:-${port}} ${additionalArgs}`;
+    return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
+      "${prismaScripts.reset()} && yarn build && PORT=${port} pm2-runtime start ecosystem.config.cjs ${additionalArgs}"
+      "${this.waitAndOpenApp(port)}"`;
   }
 
   override testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {

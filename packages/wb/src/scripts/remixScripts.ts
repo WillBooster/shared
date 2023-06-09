@@ -17,7 +17,9 @@ class RemixScripts extends WebServerScripts {
   }
 
   startProduction(port = 8080, additionalArgs = ''): string {
-    return `NODE_ENV=production; ${prismaScripts.reset()} && yarn build && PORT=${port} pm2-runtime start ecosystem.config.cjs ${additionalArgs}`;
+    return `NODE_ENV=production YARN dotenv -c production -- concurrently --raw --kill-others-on-fail
+      "${prismaScripts.reset()} && yarn build && PORT=${port} pm2-runtime start ecosystem.config.cjs ${additionalArgs}"
+      "${this.waitAndOpenApp(port)}"`;
   }
 
   override testE2E({ playwrightArgs = 'test tests/e2e', startCommand = this.startProduction() }): string {

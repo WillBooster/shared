@@ -51,11 +51,20 @@ export async function setup(
   const deps = project.packageJson.dependencies ?? {};
   const devDeps = project.packageJson.devDependencies || {};
   const scripts = project.packageJson.scripts ?? {};
+  const newDeps: string[] = [];
   const newDevDeps: string[] = [];
-  if (deps['blitz'] || devDeps['@remix-run/dev']) {
+  if (deps['blitz']) {
+    newDeps.push('pm2');
     newDevDeps.push('concurrently', 'dotenv-cli', 'open-cli', 'vitest', 'wait-on');
+  } else if (devDeps['@remix-run/dev']) {
+    newDeps.push('dotenv-cli', 'pm2');
+    newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
   } else if (deps['express']) {
+    newDeps.push('pm2');
     newDevDeps.push('concurrently', 'vitest', 'wait-on');
+  }
+  if (newDeps.length > 0) {
+    await runWithSpawn(`yarn add ${newDeps.join(' ')}`, argv);
   }
   if (newDevDeps.length > 0) {
     await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`, argv);
