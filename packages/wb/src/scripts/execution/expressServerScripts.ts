@@ -1,16 +1,17 @@
-import { dockerScripts } from './dockerScripts.js';
-import { WebServerScripts } from './webServerScripts.js';
+import { dockerScripts } from '../dockerScripts.js';
+
+import { ExecutionScripts } from './executionScripts.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class ExpressServerScripts extends WebServerScripts {
+class ExpressServerScripts extends ExecutionScripts {
   constructor() {
     super();
   }
 
-  start(watch?: boolean, additionalArgs = ''): string {
+  override start(watch?: boolean, additionalArgs = ''): string {
     return `YARN build-ts run src/index.ts ${watch ? '--watch' : ''} ${additionalArgs}`;
   }
 
@@ -18,7 +19,7 @@ class ExpressServerScripts extends WebServerScripts {
     return `${this.buildDocker()} && ${dockerScripts.stopAndStart(false, '', additionalArgs)}`;
   }
 
-  startProduction(port = 8080, additionalArgs = ''): string {
+  override startProduction(port = 8080, additionalArgs = ''): string {
     return `NODE_ENV=production; yarn build && PORT=\${PORT:-${port}} node dist/index.js ${additionalArgs}`;
   }
 
@@ -30,11 +31,9 @@ class ExpressServerScripts extends WebServerScripts {
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run tests/e2e --color --passWithNoTests"`;
   }
 
-  testStart(): string {
+  override testStart(): string {
     return `YARN concurrently --kill-others --raw --success first "${this.start()}" "${this.waitApp()}"`;
   }
 }
-
-export type HttpServerScriptsType = InstanceType<typeof ExpressServerScripts>;
 
 export const httpServerScripts = new ExpressServerScripts();

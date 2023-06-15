@@ -1,12 +1,11 @@
-import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import type { BlitzScriptsType } from '../scripts/blitzScripts.js';
-import { blitzScripts } from '../scripts/blitzScripts.js';
-import type { HttpServerScriptsType } from '../scripts/expressServerScripts.js';
-import { httpServerScripts } from '../scripts/expressServerScripts.js';
-import { remixScripts } from '../scripts/remixScripts.js';
+import { blitzScripts } from '../scripts/execution/blitzScripts.js';
+import type { ExecutionScripts } from '../scripts/execution/executionScripts.js';
+import { httpServerScripts } from '../scripts/execution/expressServerScripts.js';
+import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
+import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
@@ -35,17 +34,15 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   async handler(argv) {
     const deps = project.packageJson.dependencies || {};
     const devDeps = project.packageJson.devDependencies || {};
-    let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;
+    let scripts: ExecutionScripts;
     if (deps['blitz']) {
       scripts = blitzScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
     } else if ((deps['express'] && !deps['firebase-functions']) || /EXPOSE\s+8080/.test(project.dockerfile)) {
       scripts = httpServerScripts;
-    }
-    if (!scripts) {
-      console.error(chalk.red('Unable to determine the method for starting the app.'));
-      return;
+    } else {
+      scripts = plainAppScripts;
     }
 
     const argsText = argv.args ?? '';

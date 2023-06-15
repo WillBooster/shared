@@ -1,17 +1,16 @@
 import path from 'node:path';
 
 import { existsAsync } from '@willbooster/shared-lib-node/src';
-import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
-import type { BlitzScriptsType } from '../scripts/blitzScripts.js';
-import { blitzScripts } from '../scripts/blitzScripts.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import type { HttpServerScriptsType } from '../scripts/expressServerScripts.js';
-import { httpServerScripts } from '../scripts/expressServerScripts.js';
-import { remixScripts } from '../scripts/remixScripts.js';
+import { blitzScripts } from '../scripts/execution/blitzScripts.js';
+import type { ExecutionScripts } from '../scripts/execution/executionScripts.js';
+import { httpServerScripts } from '../scripts/execution/expressServerScripts.js';
+import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
+import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runOnEachWorkspaceIfNeeded, runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
@@ -54,17 +53,15 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
 
   const deps = project.packageJson.dependencies || {};
   const devDeps = project.packageJson.devDependencies || {};
-  let scripts: BlitzScriptsType | HttpServerScriptsType | undefined;
+  let scripts: ExecutionScripts;
   if (deps['blitz']) {
     scripts = blitzScripts;
   } else if (devDeps['@remix-run/dev']) {
     scripts = remixScripts;
   } else if (deps['express'] && !deps['firebase-functions']) {
     scripts = httpServerScripts;
-  }
-  if (!scripts) {
-    console.error(chalk.red('Unable to determine the method for testing the app.'));
-    return;
+  } else {
+    scripts = plainAppScripts;
   }
 
   const promises: Promise<unknown>[] = [];

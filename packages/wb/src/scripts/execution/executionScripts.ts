@@ -1,15 +1,19 @@
-import { dockerScripts } from './dockerScripts.js';
+import { dockerScripts } from '../dockerScripts.js';
 
 /**
- * A collection of scripts for executing an app that utilizes an HTTP server like express.
+ * A collection of scripts for executing an app.
  * Note that YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-export abstract class WebServerScripts {
+export abstract class ExecutionScripts {
   protected constructor(private readonly defaultPort = 3000) {}
 
   buildDocker(wbEnv = 'local'): string {
     return dockerScripts.buildDevImage(wbEnv);
   }
+
+  abstract start(watch: boolean | undefined, additionalArgs: string): string;
+
+  abstract startProduction(port: number, additionalArgs: string): string;
 
   startDocker(additionalArgs = ''): string {
     return `${this.buildDocker()}
@@ -23,9 +27,9 @@ export abstract class WebServerScripts {
     prismaDirectory,
     startCommand,
   }: {
-    playwrightArgs: string;
-    prismaDirectory: string;
-    startCommand: string;
+    playwrightArgs?: string;
+    prismaDirectory?: string;
+    startCommand?: string;
   }): string {
     // `playwright` must work, but it doesn't work on a project depending on `artillery-engine-playwright`.
     // So we use `yarn playwright` instead of `playwright`.
@@ -33,6 +37,8 @@ export abstract class WebServerScripts {
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && yarn playwright ${playwrightArgs}"`;
   }
+
+  abstract testStart(): string;
 
   testUnit(): string {
     // Since this command is referred to from other commands, we have to use "vitest run".
