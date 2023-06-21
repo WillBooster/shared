@@ -23,6 +23,7 @@ export type SpawnAsyncOptions = (
   | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>
   | SpawnOptions
 ) & {
+  input?: string;
   mergeOutAndError?: boolean;
   killOnExit?: boolean;
   verbose?: boolean;
@@ -39,6 +40,10 @@ export async function spawnAsync(
       let stdout = '';
       let stderr = '';
 
+      if (options?.input) {
+        proc.stdin?.write(options.input);
+        proc.stdin?.end();
+      }
       proc.stdout?.on('data', (data) => {
         stdout += data;
       });
