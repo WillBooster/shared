@@ -24,7 +24,9 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 
   reset(): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
-    return `true $(rm -Rf db/**/*.sqlite* 2> /dev/null) && true $(rm -Rf prisma/**/*.sqlite* 2> /dev/null) && PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
+    return `PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
+    // I'm not sure why we need to remove all sqlite files, so I commented out the following line.
+    // return `true $(rm -Rf db/**/*.sqlite* 2> /dev/null) && true $(rm -Rf prisma/**/*.sqlite* 2> /dev/null) && PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
   }
 
   seed(): string {
