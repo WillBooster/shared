@@ -19,7 +19,7 @@ class PlainAppScripts extends ExecutionScripts {
     return `${this.buildDocker()} && ${dockerScripts.stopAndStart(false, '', additionalArgs)}`;
   }
 
-  override startProduction(port = 8080, additionalArgs = ''): string {
+  override startProduction(_ = 8080, additionalArgs = ''): string {
     return `NODE_ENV=production; yarn build && node dist/index.js ${additionalArgs}`;
   }
 
