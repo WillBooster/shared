@@ -26,6 +26,7 @@
     "@yarnpkg/shell": "4.0.0-rc.45",
     "chalk": "5.2.0",
     "dotenv": "16.3.1",
+    "kill-port-process": "3.1.0",
     "minimal-promise-pool": "2.1.13"
   },
   "devDependencies": {
