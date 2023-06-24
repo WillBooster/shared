@@ -3,7 +3,7 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 import { project } from '../project.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import type { ExecutionScripts } from '../scripts/execution/executionScripts.js';
-import { httpServerScripts } from '../scripts/execution/expressServerScripts.js';
+import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -39,7 +39,10 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       scripts = blitzScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
-    } else if ((deps['express'] && !deps['firebase-functions']) || /EXPOSE\s+8080/.test(project.dockerfile)) {
+    } else if (
+      ((deps['express'] || deps['fastify']) && !deps['firebase-functions']) ||
+      /EXPOSE\s+8080/.test(project.dockerfile)
+    ) {
       scripts = httpServerScripts;
     } else {
       scripts = plainAppScripts;

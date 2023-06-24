@@ -23,6 +23,9 @@
     "typecheck": "yarn workspaces foreach --parallel --verbose run typecheck"
   },
   "prettier": "@willbooster/prettier-config",
+  "dependencies": {
+    "kill-port-process": "3.1.0"
+  },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "6.7.0",
     "@types/eslint": "8.40.2",

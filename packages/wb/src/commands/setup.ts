@@ -59,7 +59,7 @@ export async function setup(
   } else if (devDeps['@remix-run/dev']) {
     newDeps.push('dotenv-cli', 'pm2');
     newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
-  } else if (deps['express']) {
+  } else if (deps['express'] || deps['fastify']) {
     newDeps.push('pm2');
     newDevDeps.push('concurrently', 'vitest', 'wait-on');
   }

@@ -6,7 +6,7 @@ import { ExecutionScripts } from './executionScripts.js';
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class ExpressServerScripts extends ExecutionScripts {
+class HttpServerScripts extends ExecutionScripts {
   constructor() {
     super();
   }
@@ -36,4 +36,4 @@ class ExpressServerScripts extends ExecutionScripts {
   }
 }
 
-export const httpServerScripts = new ExpressServerScripts();
+export const httpServerScripts = new HttpServerScripts();
