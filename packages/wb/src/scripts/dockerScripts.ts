@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
 import { project } from '../project.js';
+import { spawnSyncOnExit } from '../utils.js';
 
 /**
  * A collection of scripts for executing Docker commands.
@@ -24,7 +25,7 @@ class DockerScripts {
     return `${this.stop()} && ${unbuffer ? 'unbuffer ' : ''}${this.start(additionalOptions, additionalArgs)}`;
   }
   start(additionalOptions = '', additionalArgs = ''): string {
-    process.on('exit', () => spawnSync(this.stop(), { shell: true, stdio: 'inherit' }));
+    spawnSyncOnExit(this.stop());
     return `docker run --rm -it -p 8080:8080 --name ${project.name} ${additionalOptions} ${project.name} ${additionalArgs}`;
   }
 

@@ -8,6 +8,7 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import type { sharedOptions } from '../sharedOptions.js';
+import { killPortProcessImmediatelyAndOnExit } from '../utils.js';
 
 interface Options {
   exitIfFailed?: boolean;
@@ -32,6 +33,10 @@ export async function runWithSpawn(
     return 0;
   }
 
+  const port = runnableScript.match(/http:\/\/127.0.0.1:(\d+)/)?.[1];
+  if (runnableScript.includes('wait-on') && port && !runnableScript.includes('docker run')) {
+    await killPortProcessImmediatelyAndOnExit(Number(port));
+  }
   const ret = await spawnAsync(runnableScript, undefined, {
     cwd: project.dirPath,
     shell: true,

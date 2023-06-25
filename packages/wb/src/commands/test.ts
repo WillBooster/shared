@@ -13,7 +13,6 @@ import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runOnEachWorkspaceIfNeeded, runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
-import { killPortProcessImmediatelyAndOnExit } from '../utils.js';
 
 const builder = {
   ...sharedOptions,
@@ -80,9 +79,9 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     await promisePool.promiseAll();
     // Check playwright installation because --ci includes --e2e implicitly
     if (argv.e2e !== 'none' && (await e2eTestsExistPromise)) {
-      await (project.hasDockerfile
-        ? runWithSpawn(`${scripts.buildDocker('test')}`, argv)
-        : killPortProcessImmediatelyAndOnExit());
+      if (project.hasDockerfile) {
+        await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
+      }
       const options = project.hasDockerfile
         ? {
             startCommand: dockerScripts.stopAndStart(true),
@@ -109,7 +108,6 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     }
     case '':
     case 'headless': {
-      await killPortProcessImmediatelyAndOnExit();
       await runWithSpawn(scripts.testE2E({}), argv);
       return;
     }
@@ -129,17 +127,14 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
   if (deps['blitz'] || devDeps['@remix-run/dev']) {
     switch (argv.e2e) {
       case 'headed': {
-        await killPortProcessImmediatelyAndOnExit();
         await runWithSpawn(scripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
         return;
       }
       case 'debug': {
-        await killPortProcessImmediatelyAndOnExit();
         await runWithSpawn(`PWDEBUG=1 ${scripts.testE2E({})}`, argv);
         return;
       }
       case 'generate': {
-        await killPortProcessImmediatelyAndOnExit();
         await runWithSpawn(scripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }), argv);
         return;
       }
