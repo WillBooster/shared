@@ -55,7 +55,10 @@ export async function spawnAsync(
         }
       });
 
+      let stopped = false;
       const stopProcess = (): void => {
+        if (stopped) return;
+        stopped = true;
         try {
           let pstreeOutput: string;
           let regex: RegExp;
@@ -85,7 +88,8 @@ export async function spawnAsync(
         }
       };
       if (options?.killOnExit) {
-        process.on('exit', stopProcess);
+        process.on('beforeExit', stopProcess);
+        process.on('SIGINT', stopProcess);
       }
 
       proc.on('error', (error) => {
