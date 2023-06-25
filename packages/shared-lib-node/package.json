@@ -35,6 +35,9 @@
     "typecheck": "tsc --noEmit --Pretty"
   },
   "prettier": "@willbooster/prettier-config",
+  "dependencies": {
+    "tree-kill": "1.2.2"
+  },
   "devDependencies": {
     "@types/eslint": "8.40.2",
     "@types/micromatch": "4.0.2",

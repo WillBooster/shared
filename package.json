@@ -24,7 +24,7 @@
   },
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
-    "@qiwi/multi-semantic-release": "6.7.0",
+    "@qiwi/multi-semantic-release": "7.0.0",
     "@types/eslint": "8.40.2",
     "@typescript-eslint/parser": "5.60.0",
     "@willbooster/prettier-config": "9.1.1",
