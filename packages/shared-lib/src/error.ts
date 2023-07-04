@@ -37,14 +37,14 @@ export async function ignoreEnoentAsync<T>(fn: () => Promise<T>): Promise<T | un
 }
 
 export async function withRetry<T>(
-  func: () => Promise<T>,
+  func: (failedCount: number) => Promise<T>,
   retryCount = 3,
   log?: (message: string) => void
 ): Promise<T> {
   let failedCount = 0;
   for (;;) {
     try {
-      return await func();
+      return await func(failedCount);
     } catch (error) {
       failedCount++;
       if (failedCount >= retryCount) {
