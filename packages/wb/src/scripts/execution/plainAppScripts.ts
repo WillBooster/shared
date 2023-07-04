@@ -20,7 +20,7 @@ class PlainAppScripts extends ExecutionScripts {
   }
 
   override startProduction(_ = 8080, additionalArgs = ''): string {
-    return `NODE_ENV=production; yarn build && node dist/index.js ${additionalArgs}`;
+    return `NODE_ENV=production yarn build && NODE_ENV=production node dist/index.js ${additionalArgs}`;
   }
 
   override testE2E(): string {
