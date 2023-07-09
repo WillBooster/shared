@@ -31,7 +31,7 @@
     "tree-kill": "1.2.2"
   },
   "devDependencies": {
-    "@types/eslint": "8.40.2",
+    "@types/eslint": "8.44.0",
     "@types/micromatch": "4.0.2",
     "@types/node": "18.16.19",
     "@types/yargs": "17.0.24",
@@ -39,7 +39,7 @@
     "@typescript-eslint/parser": "5.61.0",
     "@willbooster/eslint-config-ts": "10.2.0",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "5.10.4",
+    "build-ts": "5.10.5",
     "eslint": "8.44.0",
     "eslint-config-prettier": "8.8.0",
     "eslint-import-resolver-typescript": "3.5.5",
@@ -51,9 +51,9 @@
     "micromatch": "4.0.5",
     "prettier": "3.0.0",
     "sort-package-json": "2.5.1",
-    "type-fest": "3.12.0",
+    "type-fest": "3.13.0",
     "typescript": "5.1.6",
-    "vitest": "0.32.2",
+    "vitest": "0.33.0",
     "yargs": "17.7.2"
   },
   "engines": {
