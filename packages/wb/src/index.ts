@@ -19,6 +19,13 @@ await yargs(hideBin(process.argv))
   .scriptName('wb')
   .options(preprocessedOptions)
   .middleware((argv) => {
+    const workingDir = argv['working-dir'];
+    if (workingDir) {
+      const dirPath = path.resolve(workingDir);
+      process.chdir(dirPath);
+      project.dirPath = dirPath;
+    }
+
     // Remove npm & yarn environment variables from process.env
     for (const key of Object.keys(process.env)) {
       const lowerKey = key.toLowerCase();
@@ -27,25 +34,15 @@ await yargs(hideBin(process.argv))
       }
     }
 
-    const workingDir = argv['working-dir'];
-    if (workingDir) {
-      const dirPath = path.resolve(workingDir);
-      process.chdir(dirPath);
-      project.dirPath = dirPath;
-    }
-
     let envPaths = (argv.env ?? []).map((envPath) => envPath.toString());
-    if (typeof argv.cascade === 'string') {
+    const cascade = argv.nodeEnv ? process.env.NODE_ENV : argv.cascade;
+    if (typeof cascade === 'string') {
       if (envPaths.length === 0) envPaths.push('.env');
-      const newEnvPaths: string[] = [];
-      for (const envPath of envPaths) {
-        newEnvPaths.push(
-          ...(argv.cascade
-            ? [`${envPath}.${argv.cascade}.local`, `${envPath}.local`, `${envPath}.${argv.cascade}`, envPath]
-            : [`${envPath}.local`, envPath])
-        );
-      }
-      envPaths = newEnvPaths;
+      envPaths = envPaths.flatMap((envPath) =>
+        cascade
+          ? [`${envPath}.${cascade}.local`, `${envPath}.local`, `${envPath}.${cascade}`, envPath]
+          : [`${envPath}.local`, envPath]
+      );
     }
     if (argv.verbose) {
       console.info('Loading env files:', envPaths);
