@@ -43,7 +43,7 @@ export async function runWithSpawn(
     stdio: 'inherit',
     timeout: opts?.timeout,
     killOnExit: true,
-    verbose: true,
+    verbose: argv.verbose,
   });
   finishedScript(printableScript, ret.status, opts);
   return ret.status ?? 1;
@@ -90,7 +90,7 @@ export function runWithSpawnInParallel(
       timeout: opts?.timeout,
       mergeOutAndError: true,
       killOnExit: true,
-      verbose: true,
+      verbose: argv.verbose,
     });
     printStart(printableScript, 'Start (log)');
     const out = ret.stdout.trim();
