@@ -1,1 +1,5 @@
-{ "extends": ["@willbooster"], "packageRules": [{ "packageNames": ["next"], "enabled": false }] }
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>WillBooster/willbooster-configs:renovate.json5"],
+  "packageRules": [{ "packageNames": ["next"], "enabled": false }]
+}
