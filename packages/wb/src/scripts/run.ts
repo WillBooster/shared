@@ -110,7 +110,11 @@ function normalizeScript(script: string): [string, string] {
 }
 
 function printStart(normalizedScript: string, prefix = 'Start', weak = false): void {
-  console.info('\n' + (weak ? chalk.gray : chalk.cyan)(chalk.bold(`${prefix}:`), normalizedScript));
+  console.info(
+    '\n' +
+      (weak ? chalk.gray : chalk.cyan)(chalk.bold(`${prefix}:`), normalizedScript) +
+      chalk.gray(` (@ ${project.dirPath})`)
+  );
 }
 
 function finishedScript(script: string, exitCode: number | null, opts: Omit<Options, 'timeout'>): void {

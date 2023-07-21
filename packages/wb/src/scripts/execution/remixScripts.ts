@@ -25,9 +25,13 @@ class RemixScripts extends ExecutionScripts {
 
   override testE2E({
     playwrightArgs = 'test tests/e2e',
-    startCommand = `${prismaScripts.reset()} && yarn build && PORT=8080 pm2-runtime start ecosystem.config.cjs`,
+    startCommand = `${prismaScripts.reset()} && yarn build && pm2-runtime start ecosystem.config.cjs`,
   }): string {
     return super.testE2E({ playwrightArgs, prismaDirectory: 'prisma', startCommand });
+  }
+
+  override testE2EDev({ playwrightArgs = 'test tests/e2e', startCommand = 'remix dev' }): string {
+    return super.testE2EDev({ playwrightArgs, startCommand });
   }
 
   override testStart(): string {

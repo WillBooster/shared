@@ -22,7 +22,7 @@ const builder = {
   },
   e2e: {
     description:
-      'Whether to run e2e tests. You may pass mode as argument: none | headless (default) | docker | headed | debug | generate | trace',
+      'Whether to run e2e tests. You may pass mode as argument: none | headless (default) | headless-dev | headed | headed-dev | docker | debug | generate | trace',
     type: 'string',
   },
   start: {
@@ -111,6 +111,10 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
       await runWithSpawn(scripts.testE2E({}), argv);
       return;
     }
+    case 'headless-dev': {
+      await runWithSpawn(scripts.testE2EDev({}), argv);
+      return;
+    }
     case 'docker': {
       await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
       process.exitCode = await runWithSpawn(
@@ -128,6 +132,10 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     switch (argv.e2e) {
       case 'headed': {
         await runWithSpawn(scripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
+        return;
+      }
+      case 'headed-dev': {
+        await runWithSpawn(scripts.testE2EDev({ playwrightArgs: 'test tests/e2e --headed' }), argv);
         return;
       }
       case 'debug': {

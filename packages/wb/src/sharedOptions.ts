@@ -22,12 +22,12 @@ export const preprocessedOptions = {
 
 export const sharedOptions = {
   'dry-run': {
-    description: 'Indicates if dry-run mode is enabled or not.',
+    description: 'Whether to skip actual command execution',
     type: 'boolean',
     alias: 'd',
   },
   verbose: {
-    description: 'Indicates if verbose mode is enabled or not.',
+    description: 'Whether to show verbose information',
     type: 'boolean',
     alias: 'v',
   },

@@ -27,6 +27,10 @@ class PlainAppScripts extends ExecutionScripts {
     return `echo 'do nothing.'`;
   }
 
+  override testE2EDev(): string {
+    return `echo 'do nothing.'`;
+  }
+
   override testStart(): string {
     return `echo 'do nothing.'`;
   }
