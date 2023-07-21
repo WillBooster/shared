@@ -21,7 +21,7 @@ export const preprocessedOptions = {
 } as const;
 
 export const sharedOptions = {
-  dry: {
+  'dry-run': {
     description: 'Indicates if dry-run mode is enabled or not.',
     type: 'boolean',
     alias: 'd',

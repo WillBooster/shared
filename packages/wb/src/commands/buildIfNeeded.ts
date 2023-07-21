@@ -36,7 +36,7 @@ export async function buildIfNeeded(
   if (canSkip) return false;
 
   console.info('Start building production code.');
-  if (!argv.dry) {
+  if (!argv.dryRun) {
     const [command, ...args] = (argv.command ?? '').split(' ');
     const ret = child_process.spawnSync(command, args, {
       cwd: project.dirPath,
@@ -50,7 +50,7 @@ export async function buildIfNeeded(
   }
 
   console.info('Finished building production code.');
-  if (!argv.dry) {
+  if (!argv.dryRun) {
     await fs.writeFile(cacheFilePath, contentHash, 'utf8');
   }
   return true;
