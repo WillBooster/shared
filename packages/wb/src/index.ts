@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { config } from 'dotenv';
+import { loadEnvironmentVariables, removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -26,30 +26,8 @@ await yargs(hideBin(process.argv))
       project.dirPath = dirPath;
     }
 
-    // Remove npm & yarn environment variables from process.env
-    for (const key of Object.keys(process.env)) {
-      const lowerKey = key.toLowerCase();
-      if (lowerKey.startsWith('npm_') || lowerKey.startsWith('yarn_') || lowerKey.startsWith('berry_')) {
-        delete process.env[key];
-      }
-    }
-
-    let envPaths = (argv.env ?? []).map((envPath) => envPath.toString());
-    const cascade = argv.nodeEnv ? process.env.NODE_ENV : argv.cascade;
-    if (typeof cascade === 'string') {
-      if (envPaths.length === 0) envPaths.push('.env');
-      envPaths = envPaths.flatMap((envPath) =>
-        cascade
-          ? [`${envPath}.${cascade}.local`, `${envPath}.local`, `${envPath}.${cascade}`, envPath]
-          : [`${envPath}.local`, envPath]
-      );
-    }
-    if (argv.verbose) {
-      console.info('Loading env files:', envPaths);
-    }
-    for (const envPath of envPaths) {
-      config({ path: path.join(project.dirPath, envPath) });
-    }
+    removeNpmAndYarnEnvironmentVariables(process.env);
+    loadEnvironmentVariables(argv, project.dirPath);
   })
   .command(buildIfNeededCommand)
   .command(optimizeForDockerBuildCommand)
