@@ -5590,7 +5590,7 @@ __metadata:
     prettier: "npm:3.0.0"
     sort-package-json: "npm:2.5.1"
     tree-kill: "npm:1.2.2"
-    type-fest: "npm:3.13.1"
+    type-fest: "npm:4.0.0"
     typescript: "npm:5.1.6"
     vitest: "npm:0.33.0"
     yargs: "npm:17.7.2"
@@ -18843,10 +18843,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"type-fest@npm:3.13.1, type-fest@npm:^3.0.0, type-fest@npm:^3.1.0, type-fest@npm:^3.11.0, type-fest@npm:^3.12.0, type-fest@npm:^3.8.0, type-fest@npm:^3.9.0":
-  version: 3.13.1
-  resolution: "type-fest@npm:3.13.1"
-  checksum: 547d22186f73a8c04590b70dcf63baff390078c75ea8acd366bbd510fd0646e348bd1970e47ecf795b7cff0b41d26e9c475c1fedd6ef5c45c82075fbf916b629
+"type-fest@npm:4.0.0":
+  version: 4.0.0
+  resolution: "type-fest@npm:4.0.0"
+  checksum: 4cc987bd51dba7c354768c0d3717fd1f87b99353e088e13348912b2748fe1497e9d5e2d4711d0be45a1c171a04d92f857d3f23fe4678e9ef74017ecf0ac81806
   languageName: node
   linkType: hard
 
@@ -18910,6 +18910,13 @@ __metadata:
   version: 2.19.0
   resolution: "type-fest@npm:2.19.0"
   checksum: a5a7ecf2e654251613218c215c7493574594951c08e52ab9881c9df6a6da0aeca7528c213c622bc374b4e0cb5c443aa3ab758da4e3c959783ce884c3194e12cb
+  languageName: node
+  linkType: hard
+
+"type-fest@npm:^3.0.0, type-fest@npm:^3.1.0, type-fest@npm:^3.11.0, type-fest@npm:^3.12.0, type-fest@npm:^3.8.0, type-fest@npm:^3.9.0":
+  version: 3.13.1
+  resolution: "type-fest@npm:3.13.1"
+  checksum: 547d22186f73a8c04590b70dcf63baff390078c75ea8acd366bbd510fd0646e348bd1970e47ecf795b7cff0b41d26e9c475c1fedd6ef5c45c82075fbf916b629
   languageName: node
   linkType: hard
 
