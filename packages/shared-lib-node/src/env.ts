@@ -14,7 +14,7 @@ interface Options {
  * */
 export function loadEnvironmentVariables(argv: Options, cwd: string): Record<string, string> {
   let envPaths = (argv.env ?? []).map((envPath) => envPath.toString());
-  const cascade = argv.cascadeNodeEnv ? process.env.NODE_ENV : argv.cascadeEnv;
+  const cascade = argv.cascadeNodeEnv ? process.env.NODE_ENV ?? '' : argv.cascadeEnv;
   if (typeof cascade === 'string') {
     if (envPaths.length === 0) envPaths.push('.env');
     envPaths = envPaths.flatMap((envPath) =>
