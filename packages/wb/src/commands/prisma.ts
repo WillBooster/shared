@@ -13,16 +13,46 @@ export const prismaCommand: CommandModule = {
   describe: 'Run prisma commands',
   builder: (yargs) => {
     return yargs
+      .command(deployCommand)
+      .command(deployForceCommand)
       .command(litestreamCommand)
       .command(migrateCommand)
       .command(migrateDevCommand)
       .command(resetCommand)
+      .command(restoreCommand)
       .command(seedCommand)
       .command(studioCommand)
       .demandCommand();
   },
   handler() {
     // Do nothing
+  },
+};
+
+const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'deploy',
+  describe: 'Apply migration to DB without initializing it',
+  builder,
+  async handler(argv) {
+    await runWithSpawn(prismaScripts.deploy(), argv);
+  },
+};
+
+const deployForceAndRestoreBuilder = {
+  ...sharedOptions,
+  'backup-path': {
+    description: 'Whether to skip actual command execution',
+    required: true,
+    type: 'string',
+  },
+} as const;
+
+const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof deployForceAndRestoreBuilder>> = {
+  command: 'deploy-force',
+  describe: "Force to apply migration to DB utilizing Litestream's backup without initializing it",
+  builder,
+  async handler(argv) {
+    await runWithSpawn(prismaScripts.deployForce(argv.backupPath), argv);
   },
 };
 
@@ -37,7 +67,7 @@ const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof build
 
 const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'migrate',
-  describe: 'Apply migration files to DB',
+  describe: 'Apply migration to DB with initializing it',
   builder,
   async handler(argv) {
     await runWithSpawn(prismaScripts.migrate(), argv);
@@ -59,6 +89,15 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
   builder,
   async handler(argv) {
     await runWithSpawn(prismaScripts.reset(), argv);
+  },
+};
+
+const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof deployForceAndRestoreBuilder>> = {
+  command: 'restore',
+  describe: "Restore DB from Litestream's backup",
+  builder,
+  async handler(argv) {
+    await runWithSpawn(prismaScripts.restore(argv.backupPath), argv);
   },
 };
 

@@ -6,6 +6,14 @@ import { project } from '../project.js';
  * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PrismaScripts {
+  deploy(): string {
+    return 'PRISMA migrate deploy';
+  }
+
+  deployForce(backupPath: string): string {
+    return `rm -Rf db/mount/prod.sqlite3*; PRISMA migrate reset --force && rm -Rf db/mount/prod.sqlite3* && litestream restore -o db/mount/prod.sqlite3 ${backupPath} && PRISMA migrate deploy`;
+  }
+
   litestream(): string {
     return `node -e '
 const { PrismaClient } = require("@prisma/client");
@@ -27,6 +35,10 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     return `PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
     // I'm not sure why we need to remove all sqlite files, so I commented out the following line.
     // return `true $(rm -Rf db/**/*.sqlite* 2> /dev/null) && true $(rm -Rf prisma/**/*.sqlite* 2> /dev/null) && PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
+  }
+
+  restore(backupPath: string): string {
+    return `rm -Rf db/restored.sqlite3; GOOGLE_APPLICATION_CREDENTIALS=gcp-sa-key.json litestream restore -o db/restored.sqlite3 ${backupPath}`;
   }
 
   seed(): string {
