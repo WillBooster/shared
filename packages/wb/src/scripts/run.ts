@@ -113,7 +113,7 @@ function printStart(normalizedScript: string, prefix = 'Start', weak = false): v
   console.info(
     '\n' +
       (weak ? chalk.gray : chalk.cyan)(chalk.bold(`${prefix}:`), normalizedScript) +
-      chalk.gray(` (@ ${project.dirPath})`)
+      chalk.gray(` at ${project.dirPath}`)
   );
 }
 
