@@ -42,7 +42,7 @@ const deployForceAndRestoreBuilder = {
   ...sharedOptions,
   'backup-path': {
     description: 'Whether to skip actual command execution',
-    required: true,
+    demandOption: true,
     type: 'string',
   },
 } as const;
@@ -50,7 +50,7 @@ const deployForceAndRestoreBuilder = {
 const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof deployForceAndRestoreBuilder>> = {
   command: 'deploy-force',
   describe: "Force to apply migration to DB utilizing Litestream's backup without initializing it",
-  builder,
+  builder: deployForceAndRestoreBuilder,
   async handler(argv) {
     await runWithSpawn(prismaScripts.deployForce(argv.backupPath), argv);
   },
@@ -95,7 +95,7 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
 const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof deployForceAndRestoreBuilder>> = {
   command: 'restore',
   describe: "Restore DB from Litestream's backup",
-  builder,
+  builder: deployForceAndRestoreBuilder,
   async handler(argv) {
     await runWithSpawn(prismaScripts.restore(argv.backupPath), argv);
   },
