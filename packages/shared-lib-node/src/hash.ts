@@ -2,6 +2,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+/**
+ * Calculate hash from files.
+ * @param paths Paths to the files or directories.
+ * @returns Hash string.
+ */
 export async function calculateHashFromFiles(...paths: string[]): Promise<string> {
   const hash = crypto.createHash('sha512');
   for (const fileOrDirPath of paths.sort()) {
@@ -21,6 +26,12 @@ export async function calculateHashFromFiles(...paths: string[]): Promise<string
   return hash.digest('hex');
 }
 
+/**
+ * Update hash file if the hash is different from the current one.
+ * @param hashFilePath Path to the hash file.
+ * @param paths Paths to the files or directories.
+ * @returns Whether the hash file was updated.
+ */
 export async function updateHashFromFiles(hashFilePath: string, ...paths: string[]): Promise<boolean> {
   let oldHash = '';
   try {
