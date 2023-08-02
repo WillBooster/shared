@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export async function calculateHashFromFiles(paths: string[]): Promise<string> {
+export async function calculateHashFromFiles(...paths: string[]): Promise<string> {
   const hash = crypto.createHash('sha512');
   for (const fileOrDirPath of paths.sort()) {
     const stat = await fs.promises.stat(fileOrDirPath);
@@ -21,9 +21,14 @@ export async function calculateHashFromFiles(paths: string[]): Promise<string> {
   return hash.digest('hex');
 }
 
-export async function updateHashFromFiles(hashFilePath: string, paths: string[]): Promise<boolean> {
-  const oldHash = await fs.promises.readFile(hashFilePath, 'utf8');
-  const newHash = await calculateHashFromFiles(paths);
+export async function updateHashFromFiles(hashFilePath: string, ...paths: string[]): Promise<boolean> {
+  let oldHash = '';
+  try {
+    oldHash = await fs.promises.readFile(hashFilePath, 'utf8');
+  } catch {
+    // do nothing
+  }
+  const newHash = await calculateHashFromFiles(...paths);
   if (oldHash === newHash) return false;
 
   await fs.promises.writeFile(hashFilePath, newHash, 'utf8');
