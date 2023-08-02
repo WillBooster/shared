@@ -5977,6 +5977,7 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:8.44.1"
     "@types/micromatch": "npm:4.0.2"
+    "@types/node": "npm:18.17.1"
     "@types/prettier": "npm:2.7.3"
     "@typescript-eslint/eslint-plugin": "npm:6.2.1"
     "@typescript-eslint/parser": "npm:6.2.1"

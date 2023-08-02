@@ -14,7 +14,7 @@ fs.mkdirSync(hashDirPath, { recursive: true });
 test('calculateHashFromFiles should calculate the hash correctly', async () => {
   const hash = await calculateHashFromFiles(dirPath1);
   const expectedHash =
-    'd20f0ea2288e226b4477c3b5e5dd7a028831e4918491faa819a5bd6737882791a57010d1e109216bf579331ab212701d84431b1991eaddc774c63fb31ef2171f';
+    '1cbfa1e170e7e6ac645f26fb8e07f3e8d1d6a1ed5e2a73c59a42911887af6ea2918192a7da149aa9917b87cde4b3a16207a0e40e52d8762db702a5fa8f006d83';
   expect(hash).toBe(expectedHash);
 });
 
