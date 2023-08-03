@@ -34,6 +34,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 
   reset(): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
+    // Blitz does not trigger seed automatically, so we need to run it manually.
     return `PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
     // I'm not sure why we need to remove all sqlite files, so I commented out the following line.
     // return `true $(rm -Rf db/**/*.sqlite* 2> /dev/null) && true $(rm -Rf prisma/**/*.sqlite* 2> /dev/null) && PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
@@ -45,6 +46,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 
   seed(): string {
     if (project.packageJson.dependencies?.['blitz']) return `YARN blitz db seed`;
+    if ((project.packageJson.prisma as Record<string, string> | undefined)?.['seed']) return `YARN prisma seed`;
     return `if [ -e "prisma/seeds.ts" ]; then YARN build-ts run prisma/seeds.ts; fi`;
   }
 
