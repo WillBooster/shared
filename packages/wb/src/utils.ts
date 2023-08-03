@@ -5,15 +5,23 @@ import killPortProcess from 'kill-port';
 const killed = new Set<number | string>();
 
 export async function killPortProcessImmediatelyAndOnExit(port: number): Promise<void> {
-  await killPortProcess(port);
+  await killPortProcessHandlingErrors(port);
   const killFunc = async (): Promise<void> => {
     if (killed.has(port)) return;
 
     killed.add(port);
-    await killPortProcess(port);
+    await killPortProcessHandlingErrors(port);
   };
   process.on('beforeExit', killFunc);
   process.on('SIGINT', killFunc);
+}
+
+async function killPortProcessHandlingErrors(port: number): Promise<void> {
+  try {
+    await killPortProcess(port);
+  } catch (error) {
+    console.warn(`Failed to kill port process (${port}) due to:`, error instanceof Error ? error.stack : error);
+  }
 }
 
 export function spawnSyncOnExit(command: string): void {
