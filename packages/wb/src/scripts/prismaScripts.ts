@@ -46,7 +46,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 
   seed(): string {
     if (project.packageJson.dependencies?.['blitz']) return `YARN blitz db seed`;
-    if ((project.packageJson.prisma as Record<string, string> | undefined)?.['seed']) return `YARN prisma seed`;
+    if ((project.packageJson.prisma as Record<string, string> | undefined)?.['seed']) return `YARN prisma db seed`;
     return `if [ -e "prisma/seeds.ts" ]; then YARN build-ts run prisma/seeds.ts; fi`;
   }
 
