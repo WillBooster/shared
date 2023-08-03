@@ -5956,7 +5956,7 @@ __metadata:
     blitz: "npm:2.0.0-beta.31"
     build-ts: "npm:8.1.0"
     eslint: "npm:8.46.0"
-    eslint-config-prettier: "npm:8.9.0"
+    eslint-config-prettier: "npm:8.10.0"
     eslint-import-resolver-typescript: "npm:3.5.5"
     eslint-plugin-import: "npm:2.28.0"
     eslint-plugin-sort-class-members: "npm:1.18.0"
@@ -5964,7 +5964,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:48.0.1"
     lint-staged: "npm:13.2.3"
     micromatch: "npm:4.0.5"
-    prettier: "npm:3.0.0"
+    prettier: "npm:3.0.1"
     sort-package-json: "npm:2.5.1"
     typescript: "npm:5.1.6"
     vitest: "npm:0.34.1"
@@ -5996,7 +5996,7 @@ __metadata:
     build-ts: "npm:8.1.0"
     dotenv: "npm:16.3.1"
     eslint: "npm:8.46.0"
-    eslint-config-prettier: "npm:8.9.0"
+    eslint-config-prettier: "npm:8.10.0"
     eslint-import-resolver-typescript: "npm:3.5.5"
     eslint-plugin-import: "npm:2.28.0"
     eslint-plugin-sort-class-members: "npm:1.18.0"
@@ -6004,7 +6004,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:48.0.1"
     lint-staged: "npm:13.2.3"
     micromatch: "npm:4.0.5"
-    prettier: "npm:3.0.0"
+    prettier: "npm:3.0.1"
     sort-package-json: "npm:2.5.1"
     tree-kill: "npm:1.2.2"
     typescript: "npm:5.1.6"
@@ -6039,7 +6039,7 @@ __metadata:
     babel-loader: "npm:9.1.3"
     build-ts: "npm:8.1.0"
     eslint: "npm:8.46.0"
-    eslint-config-prettier: "npm:8.9.0"
+    eslint-config-prettier: "npm:8.10.0"
     eslint-import-resolver-typescript: "npm:3.5.5"
     eslint-plugin-import: "npm:2.28.0"
     eslint-plugin-react: "npm:7.33.1"
@@ -6050,7 +6050,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:48.0.1"
     lint-staged: "npm:13.2.3"
     micromatch: "npm:4.0.5"
-    prettier: "npm:3.0.0"
+    prettier: "npm:3.0.1"
     react: "npm:18.2.0"
     react-dom: "npm:18.2.0"
     sort-package-json: "npm:2.5.1"
@@ -6075,7 +6075,7 @@ __metadata:
     "@willbooster/prettier-config": "npm:9.1.1"
     build-ts: "npm:8.1.0"
     eslint: "npm:8.46.0"
-    eslint-config-prettier: "npm:8.9.0"
+    eslint-config-prettier: "npm:8.10.0"
     eslint-import-resolver-typescript: "npm:3.5.5"
     eslint-plugin-import: "npm:2.28.0"
     eslint-plugin-sort-class-members: "npm:1.18.0"
@@ -6083,7 +6083,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:48.0.1"
     lint-staged: "npm:13.2.3"
     micromatch: "npm:4.0.5"
-    prettier: "npm:3.0.0"
+    prettier: "npm:3.0.1"
     sort-package-json: "npm:2.5.1"
     typescript: "npm:5.1.6"
     vitest: "npm:0.34.1"
@@ -6107,7 +6107,7 @@ __metadata:
     chalk: "npm:5.3.0"
     dotenv: "npm:16.3.1"
     eslint: "npm:8.46.0"
-    eslint-config-prettier: "npm:8.9.0"
+    eslint-config-prettier: "npm:8.10.0"
     eslint-import-resolver-typescript: "npm:3.5.5"
     eslint-plugin-import: "npm:2.28.0"
     eslint-plugin-sort-class-members: "npm:1.18.0"
@@ -6117,7 +6117,7 @@ __metadata:
     lint-staged: "npm:13.2.3"
     micromatch: "npm:4.0.5"
     minimal-promise-pool: "npm:3.0.1"
-    prettier: "npm:3.0.0"
+    prettier: "npm:3.0.1"
     sort-package-json: "npm:2.5.1"
     tree-kill: "npm:1.2.2"
     type-fest: "npm:4.1.0"
@@ -10055,14 +10055,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint-config-prettier@npm:8.9.0":
-  version: 8.9.0
-  resolution: "eslint-config-prettier@npm:8.9.0"
+"eslint-config-prettier@npm:8.10.0":
+  version: 8.10.0
+  resolution: "eslint-config-prettier@npm:8.10.0"
   peerDependencies:
     eslint: ">=7.0.0"
   bin:
     eslint-config-prettier: bin/cli.js
-  checksum: 75388ef59acd24b23a55ca7d662e639a75b0982fcc95da546a01f0ab9a38c67e35a6b06d9f72ebb274f569d06dcaa1ab3e7016900c34a1df3e29664c3f1ce777
+  checksum: 19f8c497d9bdc111a17a61b25ded97217be3755bbc4714477dfe535ed539dddcaf42ef5cf8bb97908b058260cf89a3d7c565cb0be31096cbcd39f4c2fa5fe43c
   languageName: node
   linkType: hard
 
@@ -16243,12 +16243,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"prettier@npm:3.0.0":
-  version: 3.0.0
-  resolution: "prettier@npm:3.0.0"
+"prettier@npm:3.0.1":
+  version: 3.0.1
+  resolution: "prettier@npm:3.0.1"
   bin:
     prettier: bin/prettier.cjs
-  checksum: 113e2828c6487f10e19e7c30598e8810684b827f2a1b7747f113728d1049da15583b77cc5e907f37b371b08c49cfdd900aebe5c2a2077be3f0cccb73cca1133b
+  checksum: 7231768b6e0f0f17cbaa83a4f7cdb100df0229ef1910b0b2cf72ce5ed8ee25ae7ec0d30cde20dcd898a002c6d1fcdb8a6ab0f8f5d8fc1275b7c29ea9e56305f2
   languageName: node
   linkType: hard
 
@@ -20529,7 +20529,7 @@ __metadata:
     lint-staged: "npm:13.2.3"
     micromatch: "npm:4.0.5"
     pinst: "npm:3.0.0"
-    prettier: "npm:3.0.0"
+    prettier: "npm:3.0.1"
     sort-package-json: "npm:2.5.1"
     typescript: "npm:5.1.6"
   languageName: unknown
