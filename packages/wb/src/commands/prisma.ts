@@ -41,7 +41,7 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
 
 const deployForceBuilder = {
   ...builder,
-  backup: {
+  'backup-path': {
     description: 'Whether to skip actual command execution',
     demandOption: true,
     type: 'string',
@@ -50,11 +50,11 @@ const deployForceBuilder = {
 } as const;
 
 const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof deployForceBuilder>> = {
-  command: 'deploy-force',
+  command: 'deploy-force <backup-path>',
   describe: "Force to apply migration to DB utilizing Litestream's backup without initializing it",
   builder: deployForceBuilder,
   async handler(argv) {
-    await runWithSpawn(prismaScripts.deployForce(argv.backup), argv);
+    await runWithSpawn(prismaScripts.deployForce(argv.backupPath), argv);
   },
 };
 
@@ -103,13 +103,13 @@ const restoreBuilder = {
 } as const;
 
 const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreBuilder>> = {
-  command: 'restore',
+  command: 'restore <backup-path>',
   describe: "Restore DB from Litestream's backup",
   builder: restoreBuilder,
   async handler(argv) {
     const output =
       argv.output || (project.packageJson.dependencies?.['blitz'] ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3');
-    await runWithSpawn(prismaScripts.restore(argv.backup, output), argv);
+    await runWithSpawn(prismaScripts.restore(argv.backupPath, output), argv);
   },
 };
 
