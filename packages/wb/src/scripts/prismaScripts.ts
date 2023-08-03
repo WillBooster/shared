@@ -13,7 +13,8 @@ class PrismaScripts {
   }
 
   deployForce(backupPath: string): string {
-    return `rm -Rf db/mount/prod.sqlite3*; PRISMA migrate reset --force && rm -Rf db/mount/prod.sqlite3* && litestream restore -o db/mount/prod.sqlite3 ${backupPath} && PRISMA migrate deploy`;
+    const dirName = project.packageJson.dependencies?.['blitz'] ? 'db' : 'prisma';
+    return `rm -Rf ${dirName}/mount/prod.sqlite3*; PRISMA migrate reset --force && rm -Rf ${dirName}/mount/prod.sqlite3* && litestream restore -o ${dirName}/mount/prod.sqlite3 ${backupPath} && PRISMA migrate deploy`;
   }
 
   litestream(): string {
@@ -41,7 +42,8 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
   }
 
   restore(backupPath: string, outputPath: string): string {
-    return `rm -Rf db/restored.sqlite3; GOOGLE_APPLICATION_CREDENTIALS=gcp-sa-key.json litestream restore -o ${outputPath} ${backupPath}`;
+    const dirName = project.packageJson.dependencies?.['blitz'] ? 'db' : 'prisma';
+    return `rm -Rf ${dirName}/restored.sqlite3; GOOGLE_APPLICATION_CREDENTIALS=gcp-sa-key.json litestream restore -o ${outputPath} ${backupPath}`;
   }
 
   seed(): string {
