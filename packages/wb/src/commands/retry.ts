@@ -2,10 +2,10 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { runWithSpawn } from '../scripts/run.js';
-import { sharedOptions } from '../sharedOptions.js';
+import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
-  ...sharedOptions,
+  ...sharedOptionsBuilder,
   retry: {
     description: 'A maximum retry count',
     type: 'number',

@@ -7,7 +7,7 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
-import type { sharedOptions } from '../sharedOptions.js';
+import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { killPortProcessImmediatelyAndOnExit } from '../utils.js';
 
 interface Options {
@@ -20,7 +20,7 @@ const defaultOptions: Options = {
 };
 export async function runWithSpawn(
   script: string,
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>,
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
   opts: Options = defaultOptions
 ): Promise<number> {
   const [printableScript, runnableScript] = normalizeScript(script);
@@ -50,7 +50,7 @@ export async function runWithSpawn(
 }
 
 export async function runOnEachWorkspaceIfNeeded(
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>
 ): Promise<void> {
   if (!project.packageJson.workspaces) return;
 
@@ -71,7 +71,7 @@ export async function runOnEachWorkspaceIfNeeded(
 
 export function runWithSpawnInParallel(
   script: string,
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>,
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
   opts: Options = defaultOptions
 ): Promise<void> {
   return promisePool.run(async () => {

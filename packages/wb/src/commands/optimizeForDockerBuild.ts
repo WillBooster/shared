@@ -6,10 +6,10 @@ import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import { sharedOptions } from '../sharedOptions.js';
+import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
-  ...sharedOptions,
+  ...sharedOptionsBuilder,
   outside: {
     description: 'Whether the optimization is executed outside a docker container or not',
     type: 'boolean',

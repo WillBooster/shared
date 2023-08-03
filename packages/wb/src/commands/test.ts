@@ -12,10 +12,10 @@ import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runOnEachWorkspaceIfNeeded, runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
-import { sharedOptions } from '../sharedOptions.js';
+import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
-  ...sharedOptions,
+  ...sharedOptionsBuilder,
   ci: {
     description: 'Whether to run tests on CI',
     type: 'boolean',

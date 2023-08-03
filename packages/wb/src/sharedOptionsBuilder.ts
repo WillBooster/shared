@@ -1,6 +1,6 @@
 import { yargsOptionsBuilderForEnv } from '@willbooster/shared-lib-node/src';
 
-export const sharedOptions = {
+export const sharedOptionsBuilder = {
   ...yargsOptionsBuilderForEnv,
   'working-dir': {
     description: 'A working directory',
