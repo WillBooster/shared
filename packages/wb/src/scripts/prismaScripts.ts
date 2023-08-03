@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { project } from '../project.js';
 
 /**
@@ -37,8 +39,8 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     // return `true $(rm -Rf db/**/*.sqlite* 2> /dev/null) && true $(rm -Rf prisma/**/*.sqlite* 2> /dev/null) && PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
   }
 
-  restore(backupPath: string): string {
-    return `rm -Rf db/restored.sqlite3; GOOGLE_APPLICATION_CREDENTIALS=gcp-sa-key.json litestream restore -o db/restored.sqlite3 ${backupPath}`;
+  restore(backupPath: string, outputPath: string): string {
+    return `rm -Rf db/restored.sqlite3; GOOGLE_APPLICATION_CREDENTIALS=gcp-sa-key.json litestream restore -o ${outputPath} ${backupPath}`;
   }
 
   seed(): string {
@@ -46,8 +48,19 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     return `if [ -e "prisma/seeds.ts" ]; then YARN build-ts run prisma/seeds.ts; fi`;
   }
 
-  studio(): string {
-    return `PRISMA studio`;
+  studio(dbUrlOrPath?: string): string {
+    let prefix = '';
+    if (dbUrlOrPath) {
+      try {
+        new URL(dbUrlOrPath);
+        prefix = `DATABASE_URL=${dbUrlOrPath} `;
+      } catch {
+        const absolutePath = path.resolve(dbUrlOrPath);
+        console.info(dbUrlOrPath, absolutePath);
+        prefix = `DATABASE_URL=file://${absolutePath} `;
+      }
+    }
+    return `${prefix}PRISMA studio`;
   }
 }
 

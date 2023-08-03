@@ -1,5 +1,6 @@
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
+import { project } from '../project.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
@@ -38,21 +39,22 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
   },
 };
 
-const deployForceAndRestoreBuilder = {
+const deployForceBuilder = {
   ...sharedOptions,
-  'backup-path': {
+  backup: {
     description: 'Whether to skip actual command execution',
     demandOption: true,
     type: 'string',
+    alias: 'b',
   },
 } as const;
 
-const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof deployForceAndRestoreBuilder>> = {
+const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof deployForceBuilder>> = {
   command: 'deploy-force',
   describe: "Force to apply migration to DB utilizing Litestream's backup without initializing it",
-  builder: deployForceAndRestoreBuilder,
+  builder: deployForceBuilder,
   async handler(argv) {
-    await runWithSpawn(prismaScripts.deployForce(argv.backupPath), argv);
+    await runWithSpawn(prismaScripts.deployForce(argv.backup), argv);
   },
 };
 
@@ -92,12 +94,22 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
   },
 };
 
-const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof deployForceAndRestoreBuilder>> = {
+const restoreBuilder = {
+  ...deployForceBuilder,
+  output: {
+    description: 'Output path of the restored database. Defaults to "<db|prisma>/restored.sqlite3".',
+    type: 'string',
+  },
+} as const;
+
+const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreBuilder>> = {
   command: 'restore',
   describe: "Restore DB from Litestream's backup",
-  builder: deployForceAndRestoreBuilder,
+  builder: restoreBuilder,
   async handler(argv) {
-    await runWithSpawn(prismaScripts.restore(argv.backupPath), argv);
+    const output =
+      argv.output || (project.packageJson.dependencies?.['blitz'] ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3');
+    await runWithSpawn(prismaScripts.restore(argv.backup, output), argv);
   },
 };
 
@@ -110,11 +122,31 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
   },
 };
 
-const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
-  command: 'studio',
+const studioBuilder = {
+  ...sharedOptions,
+  'db-url-or-path': {
+    description: 'URL or path to the database',
+    type: 'string',
+  },
+  restored: {
+    description: 'Whether to open the default restored database (<db|prisma>/restored.sqlite3).',
+    type: 'boolean',
+  },
+} as const;
+
+const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBuilder>> = {
+  command: 'studio [db-url-or-path]',
   describe: 'Open Prisma Studio',
-  builder,
+  builder: studioBuilder,
   async handler(argv) {
-    await runWithSpawn(prismaScripts.studio(), argv);
+    if (argv.restored && argv.dbUrlOrPath) {
+      throw new Error('You cannot specify both --restored and --db-url-or-path.');
+    }
+    const dbUrlOrPath = argv.restored
+      ? project.packageJson.dependencies?.['blitz']
+        ? 'db/restored.sqlite3'
+        : 'prisma/restored.sqlite3'
+      : argv.dbUrlOrPath?.toString();
+    await runWithSpawn(prismaScripts.studio(dbUrlOrPath), argv);
   },
 };

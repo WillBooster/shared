@@ -18,7 +18,10 @@ export async function calculateHashFromFiles(...paths: string[]): Promise<string
         if (dirent.isFile()) {
           // Node.js 18.17.0 or later has `dirent.path`
           hash.update(
-            await fs.promises.readFile(path.join((dirent as unknown as { path: string }).path, dirent.name), 'utf8')
+            await fs.promises.readFile(
+              path.join((dirent as unknown as Record<'path', string>).path, dirent.name),
+              'utf8'
+            )
           );
         }
       }
