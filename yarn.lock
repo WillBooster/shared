@@ -5114,6 +5114,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/kill-port@npm:2.0.0":
+  version: 2.0.0
+  resolution: "@types/kill-port@npm:2.0.0"
+  dependencies:
+    "@types/node": "npm:*"
+    shell-exec: "npm:^1"
+  checksum: 33fa3cee58477a5ee3ce086d5ddfc80dc32d26933c0d4f2e1a8a5aa9dac6bd641c800d1ea85ad7847972f7fc8d0b76e1b0eb61a8ce07c3e20291234ff8cf245b
+  languageName: node
+  linkType: hard
+
 "@types/lodash@npm:^4.14.167":
   version: 4.14.196
   resolution: "@types/lodash@npm:4.14.196"
@@ -6085,6 +6095,7 @@ __metadata:
   resolution: "@willbooster/wb@workspace:packages/wb"
   dependencies:
     "@types/eslint": "npm:8.44.1"
+    "@types/kill-port": "npm:2.0.0"
     "@types/micromatch": "npm:4.0.2"
     "@types/node": "npm:18.17.1"
     "@types/yargs": "npm:17.0.24"
@@ -6102,7 +6113,7 @@ __metadata:
     eslint-plugin-sort-class-members: "npm:1.18.0"
     eslint-plugin-sort-destructure-keys: "npm:1.5.0"
     eslint-plugin-unicorn: "npm:48.0.1"
-    kill-port-process: "npm:3.1.0"
+    kill-port: "npm:2.0.1"
     lint-staged: "npm:13.2.3"
     micromatch: "npm:4.0.5"
     minimal-promise-pool: "npm:3.0.1"
@@ -8675,17 +8686,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"cross-spawn@npm:^5.0.1":
-  version: 5.1.0
-  resolution: "cross-spawn@npm:5.1.0"
-  dependencies:
-    lru-cache: "npm:^4.0.1"
-    shebang-command: "npm:^1.2.0"
-    which: "npm:^1.2.9"
-  checksum: 1918621fddb9f8c61e02118b2dbf81f611ccd1544ceaca0d026525341832b8511ce2504c60f935dbc06b35e5ef156fe8c1e72708c27dd486f034e9c0e1e07201
-  languageName: node
-  linkType: hard
-
 "cross-spawn@npm:^6.0.0":
   version: 6.0.5
   resolution: "cross-spawn@npm:6.0.5"
@@ -10419,21 +10419,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"execa@npm:^0.9.0":
-  version: 0.9.0
-  resolution: "execa@npm:0.9.0"
-  dependencies:
-    cross-spawn: "npm:^5.0.1"
-    get-stream: "npm:^3.0.0"
-    is-stream: "npm:^1.1.0"
-    npm-run-path: "npm:^2.0.0"
-    p-finally: "npm:^1.0.0"
-    signal-exit: "npm:^3.0.0"
-    strip-eof: "npm:^1.0.0"
-  checksum: 463c4be42bf2dfc518df74948e81665808e4681cdb1946195c21326dde69de8db50a07219aedcb531f3c7531c14db8eff784e0c3ef889cce1fe00605d65074ab
-  languageName: node
-  linkType: hard
-
 "execa@npm:^1.0.0":
   version: 1.0.0
   resolution: "execa@npm:1.0.0"
@@ -11320,13 +11305,6 @@ __metadata:
   version: 9.0.0
   resolution: "get-stdin@npm:9.0.0"
   checksum: 7ef2edc0c81a0644ca9f051aad8a96ae9373d901485abafaabe59fd347a1c378689d8a3d8825fb3067415d1d09dfcaa43cb9b9516ecac6b74b3138b65a8ccc6b
-  languageName: node
-  linkType: hard
-
-"get-stream@npm:^3.0.0":
-  version: 3.0.0
-  resolution: "get-stream@npm:3.0.0"
-  checksum: 003f5f3b8870da59c6aafdf6ed7e7b07b48c2f8629cd461bd3900726548b6b8cfa2e14d6b7814fbb08f07a42f4f738407fa70b989928b2783a76b278505bba22
   languageName: node
   linkType: hard
 
@@ -13371,15 +13349,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"kill-port-process@npm:3.1.0":
-  version: 3.1.0
-  resolution: "kill-port-process@npm:3.1.0"
+"kill-port@npm:2.0.1":
+  version: 2.0.1
+  resolution: "kill-port@npm:2.0.1"
   dependencies:
     get-them-args: "npm:1.3.2"
-    pid-from-port: "npm:1.1.3"
+    shell-exec: "npm:1.0.2"
   bin:
-    kill-port: dist/bin/kill-port-process.js
-  checksum: 648a7fa5d2d920a138f358c6e3d81ed727210b718884e2db0983b37e587acaa2cb7f16920fdc277fcc56c8b507bf4ec755f6851fec2189be1f731207ba7e7a39
+    kill-port: cli.js
+  checksum: fcbcea8e950f564e0a0b3a986390ecbd8ef1cac00f365cc2bf1f42dd972dc3a714fc2fbe362068deba2bec11cf10a7d3edb7aaf2d12e48390a2c26d73f85b4f7
   languageName: node
   linkType: hard
 
@@ -13883,16 +13861,6 @@ __metadata:
   version: 2.0.0
   resolution: "lowercase-keys@npm:2.0.0"
   checksum: f82a2b3568910509da4b7906362efa40f5b54ea14c2584778ddb313226f9cbf21020a5db35f9b9a0e95847a9b781d548601f31793d736b22a2b8ae8eb9ab1082
-  languageName: node
-  linkType: hard
-
-"lru-cache@npm:^4.0.1":
-  version: 4.1.5
-  resolution: "lru-cache@npm:4.1.5"
-  dependencies:
-    pseudomap: "npm:^1.0.2"
-    yallist: "npm:^2.1.2"
-  checksum: 1ca5306814e5add9ec63556d6fd9b24a4ecdeaef8e9cea52cbf30301e6b88c8d8ddc7cab45b59b56eb763e6c45af911585dc89925a074ab65e1502e3fe8103cf
   languageName: node
   linkType: hard
 
@@ -16029,15 +15997,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"pid-from-port@npm:1.1.3":
-  version: 1.1.3
-  resolution: "pid-from-port@npm:1.1.3"
-  dependencies:
-    execa: "npm:^0.9.0"
-  checksum: 50307ed989ec7a5db6d96046319805efd95d29ee8b136666b69c1a5219efdea0cac38d1e4f214732bc8ea394f1cca219b7fc5e88da9cd03090c7b2e1a3d6f027
-  languageName: node
-  linkType: hard
-
 "pidtree@npm:^0.6.0":
   version: 0.6.0
   resolution: "pidtree@npm:0.6.0"
@@ -16492,13 +16451,6 @@ __metadata:
   version: 1.0.1
   resolution: "prr@npm:1.0.1"
   checksum: 5b9272c602e4f4472a215e58daff88f802923b84bc39c8860376bb1c0e42aaf18c25d69ad974bd06ec6db6f544b783edecd5502cd3d184748d99080d68e4be5f
-  languageName: node
-  linkType: hard
-
-"pseudomap@npm:^1.0.2":
-  version: 1.0.2
-  resolution: "pseudomap@npm:1.0.2"
-  checksum: 5a91ce114c64ed3a6a553aa7d2943868811377388bb31447f9d8028271bae9b05b340fe0b6961a64e45b9c72946aeb0a4ab635e8f7cb3715ffd0ff2beeb6a679
   languageName: node
   linkType: hard
 
@@ -18024,6 +17976,20 @@ __metadata:
   version: 3.0.0
   resolution: "shebang-regex@npm:3.0.0"
   checksum: 1dbed0726dd0e1152a92696c76c7f06084eb32a90f0528d11acd764043aacf76994b2fb30aa1291a21bd019d6699164d048286309a278855ee7bec06cf6fb690
+  languageName: node
+  linkType: hard
+
+"shell-exec@npm:1.0.2":
+  version: 1.0.2
+  resolution: "shell-exec@npm:1.0.2"
+  checksum: 3733ed251bc025340a373da151c44d36e69d37f570e94f5dd6a968427e8d9f751a58dd87c5a01bf0ad1289ad1de963a425aaf14ad3a06f8aee56f776462b63ca
+  languageName: node
+  linkType: hard
+
+"shell-exec@npm:^1":
+  version: 1.1.2
+  resolution: "shell-exec@npm:1.1.2"
+  checksum: d03cdcaf1a7462397d70efde4f43df46a6776bff27d46c83a9f985898b738366236185e79958717356f19b54a1766597d86dfab4d1d8dbe18c07cd5586d2d27c
   languageName: node
   linkType: hard
 
@@ -20707,13 +20673,6 @@ __metadata:
   version: 5.0.8
   resolution: "y18n@npm:5.0.8"
   checksum: 4df2842c36e468590c3691c894bc9cdbac41f520566e76e24f59401ba7d8b4811eb1e34524d57e54bc6d864bcb66baab7ffd9ca42bf1eda596618f9162b91249
-  languageName: node
-  linkType: hard
-
-"yallist@npm:^2.1.2":
-  version: 2.1.2
-  resolution: "yallist@npm:2.1.2"
-  checksum: 0b9e25aa00adf19e01d2bcd4b208aee2b0db643d9927131797b7af5ff69480fc80f1c3db738cbf3946f0bddf39d8f2d0a5709c644fd42d4aa3a4e6e786c087b5
   languageName: node
   linkType: hard
 

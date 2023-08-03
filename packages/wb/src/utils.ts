@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 
-import { killPortProcess } from 'kill-port-process';
+import killPortProcess from 'kill-port';
 
 const killed = new Set<number | string>();
 
