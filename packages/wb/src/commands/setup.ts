@@ -7,10 +7,9 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
-import { preprocessedOptions, sharedOptions } from '../sharedOptions.js';
+import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
-  ...preprocessedOptions,
   ...sharedOptions,
 } as const;
 
@@ -23,9 +22,7 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   },
 };
 
-export async function setup(
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptions>>>
-): Promise<void> {
+export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
   const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
   if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
     await runWithSpawn('asdf install', argv);

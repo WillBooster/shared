@@ -9,12 +9,29 @@ interface Options {
   verbose?: boolean;
 }
 
+export const yargsOptionsBuilderForEnv = {
+  env: {
+    description: '.env files to be loaded.',
+    type: 'array',
+  },
+  'cascade-env': {
+    description:
+      'environment to load cascading .env files (e.g., `.env`, `.env.<environment>`, `.env.local` and `.env.<environment>.local`)',
+    type: 'string',
+  },
+  'cascade-node-env': {
+    description:
+      'environment to load cascading .env files (e.g., `.env`, `.env.<NODE_ENV>`, `.env.local` and `.env.<NODE_ENV>.local`). If NODE_ENV is falsy, "development" is applied. Preferred over `cascade`.',
+    type: 'boolean',
+  },
+} as const;
+
 /**
  * This function loads environment variables from `.env` files.
  * */
 export function loadEnvironmentVariables(argv: Options, cwd: string): Record<string, string> {
   let envPaths = (argv.env ?? []).map((envPath) => envPath.toString());
-  const cascade = argv.cascadeNodeEnv ? process.env.NODE_ENV ?? '' : argv.cascadeEnv;
+  const cascade = argv.cascadeNodeEnv ? process.env.NODE_ENV || 'development' : argv.cascadeEnv;
   if (typeof cascade === 'string') {
     if (envPaths.length === 0) envPaths.push('.env');
     envPaths = envPaths.flatMap((envPath) =>

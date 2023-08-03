@@ -5,13 +5,13 @@ import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
+  ...sharedOptions,
   retry: {
     description: 'A maximum retry count',
     type: 'number',
     alias: 'r',
     default: 3,
   },
-  ...sharedOptions,
 } as const;
 
 export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {

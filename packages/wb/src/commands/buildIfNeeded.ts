@@ -7,10 +7,9 @@ import path from 'node:path';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import { preprocessedOptions, sharedOptions } from '../sharedOptions.js';
+import { sharedOptions } from '../sharedOptions.js';
 
 const builder = {
-  ...preprocessedOptions,
   ...sharedOptions,
   command: {
     description: 'A build command',

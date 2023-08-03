@@ -40,7 +40,7 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
 };
 
 const deployForceBuilder = {
-  ...sharedOptions,
+  ...builder,
   backup: {
     description: 'Whether to skip actual command execution',
     demandOption: true,
@@ -123,7 +123,7 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> =
 };
 
 const studioBuilder = {
-  ...sharedOptions,
+  ...builder,
   'db-url-or-path': {
     description: 'URL or path to the database',
     type: 'string',

@@ -13,11 +13,11 @@ import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { project } from './project.js';
-import { preprocessedOptions } from './sharedOptions.js';
+import { sharedOptions } from './sharedOptions.js';
 
 await yargs(hideBin(process.argv))
   .scriptName('wb')
-  .options(preprocessedOptions)
+  .options(sharedOptions)
   .middleware((argv) => {
     const workingDir = argv['working-dir'];
     if (workingDir) {
