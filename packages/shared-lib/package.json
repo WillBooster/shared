@@ -43,7 +43,7 @@
     "@typescript-eslint/parser": "6.2.1",
     "@willbooster/eslint-config-ts": "10.4.0",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "8.1.0",
+    "build-ts": "8.2.0",
     "eslint": "8.46.0",
     "eslint-config-prettier": "8.10.0",
     "eslint-import-resolver-typescript": "3.5.5",
