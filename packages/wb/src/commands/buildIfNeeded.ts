@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
@@ -79,7 +80,7 @@ export async function canSkipBuild(): Promise<[boolean, string, string]> {
   try {
     const cachedContentHash = await fs.readFile(cacheFilePath, 'utf8');
     if (cachedContentHash === contentHash) {
-      console.info('Skip to build production code.');
+      console.info(chalk.green('Skip to build code 💫'));
       return [true, cacheFilePath, contentHash];
     }
   } catch {
