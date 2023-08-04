@@ -54,8 +54,16 @@ export function loadEnvironmentVariables(argv: Options, cwd: string): Record<str
 /**
  * This function removes environment variables related to npm and yarn from the given environment variables.
  * */
-export function removeNpmAndYarnEnvironmentVariables(envVars: Record<string, unknown>): void {
+export function removeNpmAndYarnEnvironmentVariables(envVars: Record<string, string | undefined>): void {
   // Remove npm & yarn environment variables from process.env
+  if (envVars.PATH && envVars.BERRY_BIN_FOLDER) {
+    envVars.PATH = envVars.PATH.replace(`${envVars.BERRY_BIN_FOLDER}:`, '')
+      // Temporary directory in macOS
+      .replaceAll(/\/private\/var\/folders\/[^:]+:/g, '')
+      // Temporary directories in Linux
+      .replaceAll(/\/var\/tmp\/[^:]+:/g, '')
+      .replaceAll(/\/tmp\/[^:]+:/g, '');
+  }
   for (const key of Object.keys(envVars)) {
     const lowerKey = key.toLowerCase();
     if (lowerKey.startsWith('npm_') || lowerKey.startsWith('yarn_') || lowerKey.startsWith('berry_')) {

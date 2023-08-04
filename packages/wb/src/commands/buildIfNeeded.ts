@@ -66,7 +66,9 @@ export async function canSkipBuild(): Promise<[boolean, string, string]> {
   hash.update(commitHash);
 
   const environmentJson = JSON.stringify(
-    Object.entries(process.env).sort(([key1], [key2]) => key1.localeCompare(key2))
+    Object.entries(process.env)
+      .filter(([key]) => key !== 'TMPDIR')
+      .sort(([key1], [key2]) => key1.localeCompare(key2))
   );
   hash.update(environmentJson);
 
