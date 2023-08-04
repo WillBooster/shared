@@ -56,6 +56,8 @@ export async function buildIfNeeded(
   return true;
 }
 
+const ignoringEnvVarNames = new Set(['TMPDIR', 'PWDEBUG']);
+
 export async function canSkipBuild(): Promise<[boolean, string, string]> {
   const cacheDirectoryPath = path.resolve(project.dirPath, 'node_modules', '.cache', 'build');
   const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
@@ -68,7 +70,7 @@ export async function canSkipBuild(): Promise<[boolean, string, string]> {
 
   const environmentJson = JSON.stringify(
     Object.entries(process.env)
-      .filter(([key]) => key !== 'TMPDIR')
+      .filter(([key]) => !ignoringEnvVarNames.has(key))
       .sort(([key1], [key2]) => key1.localeCompare(key2))
   );
   hash.update(environmentJson);
