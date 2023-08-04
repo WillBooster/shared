@@ -19,8 +19,8 @@ export async function killPortProcessImmediatelyAndOnExit(port: number): Promise
 async function killPortProcessHandlingErrors(port: number): Promise<void> {
   try {
     await killPortProcess(port);
-  } catch (error) {
-    console.warn(`Failed to kill port process (${port}) due to:`, error instanceof Error ? error.stack : error);
+  } catch {
+    // do nothing
   }
 }
 
