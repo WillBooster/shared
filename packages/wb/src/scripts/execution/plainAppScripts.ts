@@ -1,3 +1,4 @@
+import { project } from '../../project.js';
 import { dockerScripts } from '../dockerScripts.js';
 
 import { ExecutionScripts } from './executionScripts.js';
@@ -20,7 +21,7 @@ class PlainAppScripts extends ExecutionScripts {
   }
 
   override startProduction(_ = 8080, additionalArgs = ''): string {
-    return `NODE_ENV=production yarn build && NODE_ENV=production node dist/index.js ${additionalArgs}`;
+    return `NODE_ENV=production ${project.buildCommand} && NODE_ENV=production node dist/index.js ${additionalArgs}`;
   }
 
   override testE2E(): string {

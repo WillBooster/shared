@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { PackageJson } from 'type-fest';
 
 class Project {
+  private _buildCommand: string | undefined;
   private _dirPath: string;
   private _dockerfile: string | undefined;
   private _dockerfilePath: string | undefined;
@@ -15,6 +16,12 @@ class Project {
 
   constructor() {
     this._dirPath = process.cwd();
+  }
+
+  get buildCommand(): string {
+    return (this._buildCommand ??= this.packageJson.scripts?.build?.includes('buildIfNeeded')
+      ? 'yarn build'
+      : 'YARN wb buildIfNeeded');
   }
 
   get dirPath(): string {

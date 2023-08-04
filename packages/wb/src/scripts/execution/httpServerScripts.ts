@@ -1,3 +1,4 @@
+import { project } from '../../project.js';
 import { dockerScripts } from '../dockerScripts.js';
 
 import { ExecutionScripts } from './executionScripts.js';
@@ -20,7 +21,7 @@ class HttpServerScripts extends ExecutionScripts {
   }
 
   override startProduction(port = 8080, additionalArgs = ''): string {
-    return `NODE_ENV=production yarn build && NODE_ENV=production PORT=\${PORT:-${port}} node dist/index.js ${additionalArgs}`;
+    return `NODE_ENV=production ${project.buildCommand} && NODE_ENV=production PORT=\${PORT:-${port}} node dist/index.js ${additionalArgs}`;
   }
 
   override testE2E({

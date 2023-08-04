@@ -1,3 +1,4 @@
+import { project } from '../../project.js';
 import { prismaScripts } from '../prismaScripts.js';
 
 import { ExecutionScripts } from './executionScripts.js';
@@ -19,13 +20,15 @@ class BlitzScripts extends ExecutionScripts {
 
   override startProduction(port = 8080, additionalArgs = ''): string {
     return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
-      "${prismaScripts.reset()} && yarn build && PORT=${port} pm2-runtime start ecosystem.config.cjs ${additionalArgs}"
+      "${prismaScripts.reset()} && ${
+        project.buildCommand
+      } && PORT=${port} pm2-runtime start ecosystem.config.cjs ${additionalArgs}"
       "${this.waitAndOpenApp(port)}"`;
   }
 
   override testE2E({
     playwrightArgs = 'test tests/e2e',
-    startCommand = `${prismaScripts.reset()} && yarn build && pm2-runtime start ecosystem.config.cjs`,
+    startCommand = `${prismaScripts.reset()} && ${project.buildCommand} && pm2-runtime start ecosystem.config.cjs`,
   }): string {
     return super.testE2E({ playwrightArgs, prismaDirectory: 'db', startCommand });
   }
