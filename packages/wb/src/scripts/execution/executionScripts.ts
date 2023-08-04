@@ -63,6 +63,6 @@ export abstract class ExecutionScripts {
   }
 
   protected waitAndOpenApp(port = this.defaultPort): string {
-    return `${this.waitApp(port)} && open-cli http://localhost:${port}`;
+    return `${this.waitApp(port)} || wait-on http://127.0.0.1:${port} && open-cli http://localhost:${port}`;
   }
 }
