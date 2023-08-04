@@ -35,7 +35,6 @@ export async function buildIfNeeded(
   const [canSkip, cacheFilePath, contentHash] = await canSkipBuild();
   if (canSkip) return false;
 
-  console.info('Start building production code.');
   if (!argv.dryRun) {
     const [command, ...args] = (argv.command ?? '').split(' ');
     const ret = child_process.spawnSync(command, args, {
@@ -43,20 +42,18 @@ export async function buildIfNeeded(
       stdio: 'inherit',
     });
     if (ret.status !== 0) {
-      console.info('Failed to build production code.');
       process.exitCode = ret.status ?? 1;
       return false;
     }
   }
 
-  console.info('Finished building production code.');
   if (!argv.dryRun) {
     await fs.writeFile(cacheFilePath, contentHash, 'utf8');
   }
   return true;
 }
 
-const ignoringEnvVarNames = new Set(['TMPDIR', 'PWDEBUG']);
+const ignoringEnvVarNames = new Set(['CI', 'PWDEBUG', 'TMPDIR']);
 
 export async function canSkipBuild(): Promise<[boolean, string, string]> {
   const cacheDirectoryPath = path.resolve(project.dirPath, 'node_modules', '.cache', 'build');
