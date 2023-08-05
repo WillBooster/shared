@@ -25,7 +25,7 @@ class DockerScripts {
   }
   start(additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop());
-    return `docker run --rm -it -p 8080:8080 --name ${project.name} ${additionalOptions} ${project.name} ${additionalArgs}`;
+    return `docker run --rm -it -p 8080:8080 -v ~/.yarn/berry:/root/.yarn/berry --name ${project.name} ${additionalOptions} ${project.name} ${additionalArgs}`;
   }
 
   stop(): string {
