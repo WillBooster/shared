@@ -25,7 +25,13 @@ class DockerScripts {
   }
   start(additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop());
-    return `docker run --rm -it -p 8080:8080 -v ~/.yarn/berry:/root/.yarn/berry --name ${project.name} ${additionalOptions} ${project.name} ${additionalArgs}`;
+    let mount = '-v ~/.yarn/berry:/root/.yarn/berry';
+    if (process.platform === 'darwin') {
+      mount += ' -v ~/Library/Caches/pypoetry:/root/.cache/pypoetry';
+    } else if (process.platform === 'linux') {
+      mount += ' -v ~/.cache/pypoetry:/root/.cache/pypoetry';
+    }
+    return `docker run --rm -it -p 8080:8080 ${mount} --name ${project.name} ${additionalOptions} ${project.name} ${additionalArgs}`;
   }
 
   stop(): string {
