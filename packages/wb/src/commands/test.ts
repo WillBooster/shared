@@ -22,7 +22,7 @@ const builder = {
   },
   e2e: {
     description:
-      'Whether to run e2e tests. You may pass mode as argument: none | headless (default) | headless-dev | headed | headed-dev | docker | debug | generate | trace',
+      'Whether to run e2e tests. You may pass mode as argument: none | headless (default) | headless-dev | headed | headed-dev | docker | docker-debug | debug | generate | trace',
     type: 'string',
   },
   start: {
@@ -116,15 +116,11 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
       return;
     }
     case 'docker': {
-      await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
-      process.exitCode = await runWithSpawn(
-        scripts.testE2E({
-          startCommand: dockerScripts.stopAndStart(true),
-        }),
-        argv,
-        { exitIfFailed: false }
-      );
-      await runWithSpawn(dockerScripts.stop(), argv);
+      await testOnDocker(argv, scripts);
+      return;
+    }
+    case 'docker-debug': {
+      await testOnDocker(argv, scripts, 'PWDEBUG=1 ');
       return;
     }
   }
@@ -153,4 +149,20 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     }
   }
   throw new Error(`Unknown e2e mode: ${argv.e2e}`);
+}
+
+async function testOnDocker(
+  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>,
+  scripts: ExecutionScripts,
+  prefix = ''
+): Promise<void> {
+  await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
+  process.exitCode = await runWithSpawn(
+    `${prefix}${scripts.testE2E({
+      startCommand: dockerScripts.stopAndStart(true),
+    })}`,
+    argv,
+    { exitIfFailed: false }
+  );
+  await runWithSpawn(dockerScripts.stop(), argv);
 }
