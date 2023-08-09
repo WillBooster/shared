@@ -30,11 +30,16 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
 };
 
 export async function buildIfNeeded(
+  // Test code requires Partial<...>
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
-): Promise<boolean> {
+): Promise<boolean | undefined> {
   const [canSkip, cacheFilePath, contentHash] = await canSkipBuild();
-  if (canSkip) return false;
+  if (canSkip) {
+    console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
+    return false;
+  }
 
+  console.info(chalk.green(`Run '${argv.command}'`));
   if (!argv.dryRun) {
     const [command, ...args] = (argv.command ?? '').split(' ');
     const ret = child_process.spawnSync(command, args, {
@@ -43,7 +48,7 @@ export async function buildIfNeeded(
     });
     if (ret.status !== 0) {
       process.exitCode = ret.status ?? 1;
-      return false;
+      return;
     }
   }
 
@@ -79,7 +84,6 @@ export async function canSkipBuild(): Promise<[boolean, string, string]> {
   try {
     const cachedContentHash = await fs.readFile(cacheFilePath, 'utf8');
     if (cachedContentHash === contentHash) {
-      console.info(chalk.green('Skip to build code 💫'));
       return [true, cacheFilePath, contentHash];
     }
   } catch {

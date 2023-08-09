@@ -22,6 +22,7 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   },
 };
 
+// Test code requires Partial<...>
 export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
   const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
   if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
