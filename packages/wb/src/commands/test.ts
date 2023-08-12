@@ -6,8 +6,8 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
+import type { BaseScripts } from '../scripts/execution/baseScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
-import type { ExecutionScripts } from '../scripts/execution/executionScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
@@ -49,11 +49,12 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
 };
 
 export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>): Promise<void> {
+  process.env['FORCE_COLOR'] = '3';
   await runOnEachWorkspaceIfNeeded(argv);
 
   const deps = project.packageJson.dependencies || {};
   const devDeps = project.packageJson.devDependencies || {};
-  let scripts: ExecutionScripts;
+  let scripts: BaseScripts;
   if (deps['blitz']) {
     scripts = blitzScripts;
   } else if (devDeps['@remix-run/dev']) {
@@ -153,7 +154,7 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
 
 async function testOnDocker(
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>,
-  scripts: ExecutionScripts,
+  scripts: BaseScripts,
   prefix = ''
 ): Promise<void> {
   await runWithSpawn(`${scripts.buildDocker('test')}`, argv);

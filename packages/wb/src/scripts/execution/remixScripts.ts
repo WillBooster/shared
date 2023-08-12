@@ -1,13 +1,13 @@
 import { project } from '../../project.js';
 import { prismaScripts } from '../prismaScripts.js';
 
-import { ExecutionScripts } from './executionScripts.js';
+import { BaseScripts } from './baseScripts.js';
 
 /**
  * A collection of scripts for executing Remix commands.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class RemixScripts extends ExecutionScripts {
+class RemixScripts extends BaseScripts {
   constructor() {
     super();
   }

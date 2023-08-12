@@ -4,7 +4,7 @@ import { dockerScripts } from '../dockerScripts.js';
  * A collection of scripts for executing an app.
  * Note that YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-export abstract class ExecutionScripts {
+export abstract class BaseScripts {
   protected constructor(private readonly defaultPort = 3000) {}
 
   buildDocker(wbEnv = 'local'): string {

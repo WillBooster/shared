@@ -60,8 +60,8 @@ export async function runOnEachWorkspaceIfNeeded(
     args.splice(index, 2);
   }
 
+  // Disable interactive mode
   process.env['CI'] = '1';
-  process.env['FORCE_COLOR'] = '3';
   await runWithSpawn(
     ['yarn', 'workspaces', 'foreach', '--exclude', project.name, '--verbose', 'run', 'wb', ...args].join(' '),
     argv
