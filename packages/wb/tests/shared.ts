@@ -5,7 +5,6 @@ import path from 'node:path';
 import { project } from '../src/project.js';
 
 export const tempDir = path.join(os.tmpdir(), 'shared');
-console.info('tempDir:', tempDir);
 
 export async function initializeProjectDirectory(): Promise<void> {
   await fs.promises.rm(project.dirPath, { recursive: true, force: true });

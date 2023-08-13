@@ -19,7 +19,7 @@ export const typeCheckCommand: CommandModule<unknown, InferredOptionTypes<typeof
   async handler(argv) {
     const commands: string[] = [];
     if (project.packageJson.workspaces) {
-      commands.push('yarn workspaces foreach --parallel --verbose run typecheck');
+      commands.push(`yarn workspaces foreach --parallel --exclude ${project.name} --verbose run typecheck`);
     } else {
       if (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript) {
         commands.push('tsc --noEmit --Pretty');
