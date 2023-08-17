@@ -3,6 +3,38 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /**
+ * Check whether seed command can be skipped or not and update hash file if needed.
+ * Note that process.env.ALLOW_TO_SKIP_SEED should be set to '1' or 'true' to skip seed.
+ * @param hashFilePath Path to the hash file.
+ * @param paths Paths to the files or directories.
+ * @returns Whether seed command can be skipped.
+ */
+export async function canSkipSeed(hashFilePath: string, ...paths: string[]): Promise<boolean> {
+  if (process.env.ALLOW_TO_SKIP_SEED !== '1' && process.env.ALLOW_TO_SKIP_SEED !== 'true') return false;
+  return await updateHashFromFiles(hashFilePath, ...paths);
+}
+
+/**
+ * Update hash file if the hash is different from the current one.
+ * @param hashFilePath Path to the hash file.
+ * @param paths Paths to the files or directories.
+ * @returns Whether the hash file was updated.
+ */
+export async function updateHashFromFiles(hashFilePath: string, ...paths: string[]): Promise<boolean> {
+  let oldHash = '';
+  try {
+    oldHash = await fs.promises.readFile(hashFilePath, 'utf8');
+  } catch {
+    // do nothing
+  }
+  const newHash = await calculateHashFromFiles(...paths);
+  if (oldHash === newHash) return false;
+
+  await fs.promises.writeFile(hashFilePath, newHash, 'utf8');
+  return true;
+}
+
+/**
  * Calculate hash from files.
  * @param paths Paths to the files or directories.
  * @returns Hash string.
@@ -30,24 +62,4 @@ export async function calculateHashFromFiles(...paths: string[]): Promise<string
     }
   }
   return hash.digest('hex');
-}
-
-/**
- * Update hash file if the hash is different from the current one.
- * @param hashFilePath Path to the hash file.
- * @param paths Paths to the files or directories.
- * @returns Whether the hash file was updated.
- */
-export async function updateHashFromFiles(hashFilePath: string, ...paths: string[]): Promise<boolean> {
-  let oldHash = '';
-  try {
-    oldHash = await fs.promises.readFile(hashFilePath, 'utf8');
-  } catch {
-    // do nothing
-  }
-  const newHash = await calculateHashFromFiles(...paths);
-  if (oldHash === newHash) return false;
-
-  await fs.promises.writeFile(hashFilePath, newHash, 'utf8');
-  return true;
 }
