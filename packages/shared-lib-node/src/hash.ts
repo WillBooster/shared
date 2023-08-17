@@ -11,7 +11,7 @@ import path from 'node:path';
  */
 export async function canSkipSeed(hashFilePath: string, ...paths: string[]): Promise<boolean> {
   if (process.env.ALLOW_TO_SKIP_SEED !== '1' && process.env.ALLOW_TO_SKIP_SEED !== 'true') return false;
-  return await updateHashFromFiles(hashFilePath, ...paths);
+  return !(await updateHashFromFiles(hashFilePath, ...paths));
 }
 
 /**
