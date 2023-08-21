@@ -12,17 +12,17 @@
     "schema": "db/schema.prisma"
   },
   "dependencies": {
-    "@blitzjs/auth": "2.0.0-beta.31",
-    "@blitzjs/next": "2.0.0-beta.31",
+    "@blitzjs/auth": "2.0.0-beta.32",
+    "@blitzjs/next": "2.0.0-beta.32",
     "@prisma/client": "5.1.1",
-    "blitz": "2.0.0-beta.31",
+    "blitz": "2.0.0-beta.32",
     "next": "13.3.4",
     "prisma": "5.1.1",
     "react": "18.2.0",
     "react-dom": "18.2.0"
   },
   "devDependencies": {
-    "@types/node": "18.17.5",
+    "@types/node": "18.17.6",
     "@types/react": "18.2.20",
     "typescript": "5.1.6"
   }
