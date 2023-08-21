@@ -9,36 +9,36 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "yarn workspaces foreach --parallel --verbose run build",
+    "build": "yarn workspaces foreach --all --parallel --verbose run build",
     "cleanup": "yarn format && yarn lint-fix",
-    "format": "sort-package-json && yarn prettify && yarn workspaces foreach --parallel --verbose run format",
+    "format": "sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format",
     "postinstall": "husky install",
-    "lint": "yarn workspaces foreach --parallel --verbose run lint",
-    "lint-fix": "yarn workspaces foreach --parallel --verbose run lint-fix",
+    "lint": "yarn workspaces foreach --all --parallel --verbose run lint",
+    "lint-fix": "yarn workspaces foreach --all --parallel --verbose run lint-fix",
     "prepack": "pinst --disable",
     "postpack": "pinst --enable",
     "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,js,json,json5,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/packages/**\" \"!**/test-fixtures/**\"",
     "release": "yarn multi-semantic-release --debug",
-    "test": "CI=1 FORCE_COLOR=3 yarn workspaces foreach --verbose run test",
-    "typecheck": "yarn workspaces foreach --parallel --verbose run typecheck"
+    "test": "CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test",
+    "typecheck": "yarn workspaces foreach --all --parallel --verbose run typecheck"
   },
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@qiwi/multi-semantic-release": "7.0.0",
     "@types/eslint": "8.44.2",
-    "@typescript-eslint/parser": "6.3.0",
+    "@typescript-eslint/parser": "6.4.0",
     "@willbooster/prettier-config": "9.1.1",
     "conventional-changelog-conventionalcommits": "6.1.0",
     "eslint": "8.47.0",
     "husky": "8.0.3",
-    "lint-staged": "13.2.3",
+    "lint-staged": "14.0.1",
     "micromatch": "4.0.5",
     "pinst": "3.0.0",
-    "prettier": "3.0.1",
+    "prettier": "3.0.2",
     "sort-package-json": "2.5.1",
     "typescript": "5.1.6"
   },
-  "packageManager": "yarn@4.0.0-rc.48",
+  "packageManager": "yarn@4.0.0-rc.49",
   "engines": {
     "node": ">= 18"
   }

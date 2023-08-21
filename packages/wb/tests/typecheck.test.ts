@@ -18,6 +18,8 @@ describe('typecheck', () => {
         shell: true,
         stdio: 'inherit',
         cwd: project.dirPath,
+        // CI blocks 'yarn install'
+        env: { ...process.env, CI: '' },
       });
       child_process.spawnSync('yarn build', {
         shell: true,

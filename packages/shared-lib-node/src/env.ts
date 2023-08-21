@@ -65,8 +65,14 @@ export function removeNpmAndYarnEnvironmentVariables(envVars: Record<string, str
       .replaceAll(/\/tmp\/[^:]+:/g, '');
   }
   for (const key of Object.keys(envVars)) {
-    const lowerKey = key.toLowerCase();
-    if (lowerKey.startsWith('npm_') || lowerKey.startsWith('yarn_') || lowerKey.startsWith('berry_')) {
+    const upperKey = key.toUpperCase();
+    if (
+      upperKey.startsWith('NPM_') ||
+      upperKey.startsWith('YARN_') ||
+      upperKey.startsWith('BERRY_') ||
+      upperKey === 'PROJECT_CWD' ||
+      upperKey === 'INIT_CWD'
+    ) {
       delete envVars[key];
     }
   }

@@ -44,4 +44,4 @@ describe('buildIfNeeded', () => {
     );
     expect(await buildIfNeeded({ command })).toBe(false);
   });
-});
+}, 30_000);
