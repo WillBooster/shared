@@ -63,7 +63,7 @@ export async function runOnEachWorkspaceIfNeeded(
   // Disable interactive mode
   process.env['CI'] = '1';
   await runWithSpawn(
-    ['yarn', 'workspaces', 'foreach', '--exclude', project.name, '--verbose', 'run', 'wb', ...args].join(' '),
+    ['yarn', 'workspaces', 'foreach', '--all', '--exclude', project.name, '--verbose', 'run', 'wb', ...args].join(' '),
     argv
   );
   process.exit(0);
