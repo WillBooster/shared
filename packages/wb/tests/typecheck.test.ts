@@ -14,12 +14,11 @@ describe('typecheck', () => {
       project.dirPath = path.join(tempDir, 'monorepo');
       await initializeProjectDirectory();
 
-      child_process.spawnSync('yarn', {
+      // '--no-immutable' avoid blocking 'yarn install' even on CI
+      child_process.spawnSync('yarn --no-immutable', {
         shell: true,
         stdio: 'inherit',
         cwd: project.dirPath,
-        // CI blocks 'yarn install'
-        env: { ...process.env, CI: '' },
       });
       child_process.spawnSync('yarn build', {
         shell: true,
