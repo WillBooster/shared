@@ -17021,15 +17021,15 @@ __metadata:
   linkType: hard
 
 "recast@npm:^0.23.1":
-  version: 0.23.3
-  resolution: "recast@npm:0.23.3"
+  version: 0.23.4
+  resolution: "recast@npm:0.23.4"
   dependencies:
     assert: "npm:^2.0.0"
     ast-types: "npm:^0.16.1"
     esprima: "npm:~4.0.0"
     source-map: "npm:~0.6.1"
     tslib: "npm:^2.0.1"
-  checksum: 2f2d0ce271b187e29f8ea15bf3c319e708376145aaef2797e9a9d3e337e12178bd0d05d607baf601bb607075fbc040ca51f2d58a8bd566d8069c8a9d4b334608
+  checksum: d719633be8029e28f23b8191d4a525c5dbdac721792ab3cb5e9dfcf1694fb93f3c147b186916195a9c7fa0711f1e4990ba457cdcee02faed3899d4a80da1bd1f
   languageName: node
   linkType: hard
 
