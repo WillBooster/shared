@@ -6,6 +6,7 @@ interface Options {
   env?: (string | number)[];
   cascadeEnv?: string;
   cascadeNodeEnv?: boolean;
+  autoCascadeEnv?: boolean;
   verbose?: boolean;
 }
 
@@ -16,13 +17,19 @@ export const yargsOptionsBuilderForEnv = {
   },
   'cascade-env': {
     description:
-      'environment to load cascading .env files (e.g., `.env`, `.env.<environment>`, `.env.local` and `.env.<environment>.local`)',
+      'Environment to load cascading .env files (e.g., `.env`, `.env.<environment>`, `.env.local` and `.env.<environment>.local`). Preferred over `auto-cascade-env`',
     type: 'string',
   },
   'cascade-node-env': {
     description:
-      'environment to load cascading .env files (e.g., `.env`, `.env.<NODE_ENV>`, `.env.local` and `.env.<NODE_ENV>.local`). If NODE_ENV is falsy, "development" is applied. Preferred over `cascade`.',
+      'Same with --cascade-env=<NODE_ENV>. If NODE_ENV is falsy, "development" is applied. Preferred over `cascade-env` and `auto-cascade-env`.',
     type: 'boolean',
+  },
+  'auto-cascade-env': {
+    description:
+      'Same with --cascade-env=<WB_ENV || APP_ENV || NODE_ENV>. If they are falsy, "development" is applied.',
+    type: 'boolean',
+    default: true,
   },
 } as const;
 
