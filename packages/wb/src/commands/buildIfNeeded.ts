@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -80,18 +81,10 @@ export async function canSkipBuild(
   hash.update(environmentJson);
 
   await updateHashWithDiffResult(argv, hash);
-
   const contentHash = hash.digest('hex');
 
-  try {
-    const cachedContentHash = await fs.readFile(cacheFilePath, 'utf8');
-    if (cachedContentHash === contentHash) {
-      return [true, cacheFilePath, contentHash];
-    }
-  } catch {
-    // do nothing
-  }
-  return [false, cacheFilePath, contentHash];
+  const cachedContentHash = await ignoreEnoentAsync(() => fs.readFile(cacheFilePath, 'utf8'));
+  return [cachedContentHash === contentHash, cacheFilePath, contentHash];
 }
 
 const includePatterns = ['src/', 'public/'];
