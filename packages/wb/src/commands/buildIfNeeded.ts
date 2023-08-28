@@ -139,6 +139,10 @@ async function updateHashWithDiffResult(
     const proc = child_process.spawn('git', ['diff', '--', ...filteredFilePaths], { cwd: project.dirPath });
     proc.stdout?.on('data', (data) => {
       hash.update(data);
+      if (argv.verbose) {
+        console.info(data.toString());
+        console.info('Hash:', hash.copy().digest('hex'));
+      }
     });
     proc.on('close', () => {
       resolve();
