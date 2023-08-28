@@ -1,4 +1,5 @@
 import { project } from '../../project.js';
+import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
 import { BaseExecutionScripts } from './baseExecutionScripts.js';
@@ -12,16 +13,18 @@ class PlainAppScripts extends BaseExecutionScripts {
     super();
   }
 
-  override start(watch?: boolean, additionalArgs = ''): string {
-    return `YARN build-ts run src/index.ts ${watch ? '--watch' : ''} ${additionalArgs}`;
+  override start(argv: ScriptArgv): string {
+    return `YARN build-ts run src/index.ts ${argv.watch ? '--watch' : ''} -- ${argv.normalizedArgsText ?? ''}`;
   }
 
-  override startDocker(additionalArgs = ''): string {
-    return `${this.buildDocker()} && ${dockerScripts.stopAndStart(false, '', additionalArgs)}`;
+  override startDocker(argv: ScriptArgv): string {
+    return `${this.buildDocker(argv)} && ${dockerScripts.stopAndStart(false, '', argv.normalizedArgsText ?? '')}`;
   }
 
-  override startProduction(_ = 8080, additionalArgs = ''): string {
-    return `NODE_ENV=production ${project.buildCommand} && NODE_ENV=production node dist/index.js ${additionalArgs}`;
+  override startProduction(argv: ScriptArgv): string {
+    return `NODE_ENV=production ${project.getBuildCommand(argv)} && NODE_ENV=production node dist/index.js ${
+      argv.normalizedArgsText ?? ''
+    }`;
   }
 
   override testE2E(): string {

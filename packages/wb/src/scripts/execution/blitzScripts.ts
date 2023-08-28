@@ -1,6 +1,8 @@
 import { project } from '../../project.js';
+import type { ScriptArgv } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
 
+import type { TestE2EDevOptions, TestE2EOptions } from './baseExecutionScripts.js';
 import { BaseExecutionScripts } from './baseExecutionScripts.js';
 
 /**
@@ -12,33 +14,45 @@ class BlitzScripts extends BaseExecutionScripts {
     super();
   }
 
-  override start(watch?: boolean, additionalArgs = ''): string {
+  override start(argv: ScriptArgv): string {
     return `YARN concurrently --raw --kill-others-on-fail
-      "blitz dev ${additionalArgs}"
-      "${this.waitAndOpenApp()}"`;
+      "blitz dev ${argv.normalizedArgsText ?? ''}"
+      "${this.waitAndOpenApp(argv)}"`;
   }
 
-  override startProduction(port = 8080, additionalArgs = ''): string {
+  override startProduction(argv: ScriptArgv, port: number): string {
     return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
-      "${prismaScripts.reset()} && ${
-        project.buildCommand
-      } && PORT=${port} pm2-runtime start ecosystem.config.cjs ${additionalArgs}"
-      "${this.waitAndOpenApp(port)}"`;
+      "${prismaScripts.reset()} && ${project.getBuildCommand(
+        argv
+      )} && PORT=${port} pm2-runtime start ecosystem.config.cjs ${argv.normalizedArgsText ?? ''}"
+      "${this.waitAndOpenApp(argv, port)}"`;
   }
 
-  override testE2E({
-    playwrightArgs = 'test tests/e2e',
-    startCommand = `${prismaScripts.reset()} && ${project.buildCommand} && pm2-runtime start ecosystem.config.cjs`,
-  }): string {
-    return super.testE2E({ playwrightArgs, prismaDirectory: 'db', startCommand });
+  override testE2E(
+    argv: ScriptArgv,
+    {
+      playwrightArgs = 'test tests/e2e',
+      startCommand = `${prismaScripts.reset()} && ${project.getBuildCommand(
+        argv
+      )} && pm2-runtime start ecosystem.config.cjs`,
+    }: TestE2EOptions
+  ): string {
+    return super.testE2E(argv, {
+      playwrightArgs,
+      prismaDirectory: 'db',
+      startCommand,
+    });
   }
 
-  override testE2EDev({ playwrightArgs = 'test tests/e2e', startCommand = 'blitz dev -p 8080' }): string {
-    return super.testE2EDev({ playwrightArgs, startCommand });
+  override testE2EDev(
+    argv: ScriptArgv,
+    { playwrightArgs = 'test tests/e2e', startCommand = 'blitz dev -p 8080' }: TestE2EDevOptions
+  ): string {
+    return super.testE2EDev(argv, { playwrightArgs, startCommand });
   }
 
-  override testStart(): string {
-    return `YARN concurrently --kill-others --raw --success first "blitz dev" "${this.waitApp()}"`;
+  override testStart(argv: ScriptArgv): string {
+    return `YARN concurrently --kill-others --raw --success first "blitz dev" "${this.waitApp(argv)}"`;
   }
 }
 

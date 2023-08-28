@@ -72,33 +72,33 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
 
     await runWithSpawnInParallel(dockerScripts.stopAll(), argv);
     if (argv.unit !== false && (await unitTestsExistPromise)) {
-      await runWithSpawnInParallel(scripts.testUnit(), argv, { timeout: argv.unitTimeout });
+      await runWithSpawnInParallel(scripts.testUnit(argv), argv, { timeout: argv.unitTimeout });
     }
     if (argv.start !== false) {
-      await runWithSpawnInParallel(scripts.testStart(), argv);
+      await runWithSpawnInParallel(scripts.testStart(argv), argv);
     }
     await promisePool.promiseAll();
     // Check playwright installation because --ci includes --e2e implicitly
     if (argv.e2e !== 'none' && (await e2eTestsExistPromise)) {
       if (project.hasDockerfile) {
-        await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
+        await runWithSpawn(`${scripts.buildDocker(argv, 'test')}`, argv);
       }
       const options = project.hasDockerfile
         ? {
             startCommand: dockerScripts.stopAndStart(true),
           }
         : {};
-      process.exitCode = await runWithSpawn(scripts.testE2E(options), argv, { exitIfFailed: false });
+      process.exitCode = await runWithSpawn(scripts.testE2E(argv, options), argv, { exitIfFailed: false });
       await runWithSpawn(dockerScripts.stop(), argv);
     }
     return;
   }
 
   if (argv.unit || (!argv.start && argv.e2e === undefined)) {
-    promises.push(runWithSpawn(scripts.testUnit(), argv, { timeout: argv.unitTimeout }));
+    promises.push(runWithSpawn(scripts.testUnit(argv), argv, { timeout: argv.unitTimeout }));
   }
   if (argv.start) {
-    promises.push(runWithSpawn(scripts.testStart(), argv));
+    promises.push(runWithSpawn(scripts.testStart(argv), argv));
   }
   await Promise.all(promises);
   // Don't check playwright installation because --e2e is set explicitly
@@ -109,11 +109,11 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     }
     case '':
     case 'headless': {
-      await runWithSpawn(scripts.testE2E({}), argv);
+      await runWithSpawn(scripts.testE2E(argv, {}), argv);
       return;
     }
     case 'headless-dev': {
-      await runWithSpawn(scripts.testE2EDev({}), argv);
+      await runWithSpawn(scripts.testE2EDev(argv, {}), argv);
       return;
     }
     case 'docker': {
@@ -128,19 +128,19 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
   if (deps['blitz'] || devDeps['@remix-run/dev']) {
     switch (argv.e2e) {
       case 'headed': {
-        await runWithSpawn(scripts.testE2E({ playwrightArgs: 'test tests/e2e --headed' }), argv);
+        await runWithSpawn(scripts.testE2E(argv, { playwrightArgs: 'test tests/e2e --headed' }), argv);
         return;
       }
       case 'headed-dev': {
-        await runWithSpawn(scripts.testE2EDev({ playwrightArgs: 'test tests/e2e --headed' }), argv);
+        await runWithSpawn(scripts.testE2EDev(argv, { playwrightArgs: 'test tests/e2e --headed' }), argv);
         return;
       }
       case 'debug': {
-        await runWithSpawn(`PWDEBUG=1 ${scripts.testE2E({})}`, argv);
+        await runWithSpawn(`PWDEBUG=1 ${scripts.testE2E(argv, {})}`, argv);
         return;
       }
       case 'generate': {
-        await runWithSpawn(scripts.testE2E({ playwrightArgs: 'codegen http://localhost:8080' }), argv);
+        await runWithSpawn(scripts.testE2E(argv, { playwrightArgs: 'codegen http://localhost:8080' }), argv);
         return;
       }
       case 'trace': {
@@ -157,9 +157,9 @@ async function testOnDocker(
   scripts: BaseExecutionScripts,
   prefix = ''
 ): Promise<void> {
-  await runWithSpawn(`${scripts.buildDocker('test')}`, argv);
+  await runWithSpawn(`${scripts.buildDocker(argv, 'test')}`, argv);
   process.exitCode = await runWithSpawn(
-    `${prefix}${scripts.testE2E({
+    `${prefix}${scripts.testE2E(argv, {
       startCommand: dockerScripts.stopAndStart(true),
     })}`,
     argv,

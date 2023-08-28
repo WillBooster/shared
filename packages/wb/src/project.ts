@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import type { PackageJson } from 'type-fest';
 
+import type { ScriptArgv } from './scripts/builder.js';
+
 class Project {
   private _buildCommand: string | undefined;
   private _dirPath: string;
@@ -18,10 +20,10 @@ class Project {
     this._dirPath = process.cwd();
   }
 
-  get buildCommand(): string {
+  getBuildCommand(argv?: ScriptArgv): string {
     return (this._buildCommand ??= this.packageJson.scripts?.build?.includes('buildIfNeeded')
       ? 'yarn build'
-      : 'YARN wb buildIfNeeded');
+      : `YARN wb buildIfNeeded ${argv?.verbose ? '--verbose' : ''}}`);
   }
 
   get dirPath(): string {
