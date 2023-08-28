@@ -8,6 +8,7 @@ import type { ScriptArgv } from './scripts/builder.js';
 class Project {
   private _buildCommand: string | undefined;
   private _dirPath: string;
+  private _rootDirPath: string | undefined;
   private _dockerfile: string | undefined;
   private _dockerfilePath: string | undefined;
   private _hasDockerfile: boolean | undefined;
@@ -32,6 +33,11 @@ class Project {
 
   set dirPath(newDirPath: string) {
     this._dirPath = path.resolve(newDirPath);
+  }
+
+  get rootDirPath(): string {
+    const candidatePath = path.resolve(this.dirPath, '..', '..', 'package.json');
+    return (this._rootDirPath ??= fs.existsSync(candidatePath) ? candidatePath : this.dirPath);
   }
 
   get dockerfile(): string {
@@ -71,9 +77,10 @@ class Project {
   }
 
   get rootPackageJson(): PackageJson {
-    return (this._rootPackageJson ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
-      ? JSON.parse(fs.readFileSync(path.join(this.dirPath, '..', '..', 'package.json'), 'utf8'))
-      : this.packageJson);
+    return (this._rootPackageJson ??=
+      this.rootDirPath === this.dirPath
+        ? this.packageJson
+        : JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8')));
   }
 
   get dockerPackageJson(): PackageJson {
