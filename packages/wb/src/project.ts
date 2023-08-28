@@ -36,8 +36,9 @@ class Project {
   }
 
   get rootDirPath(): string {
-    const candidatePath = path.resolve(this.dirPath, '..', '..', 'package.json');
-    return (this._rootDirPath ??= fs.existsSync(candidatePath) ? candidatePath : this.dirPath);
+    return (this._rootDirPath ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
+      ? path.resolve(this.dirPath, '..', '..')
+      : this.dirPath);
   }
 
   get dockerfile(): string {
