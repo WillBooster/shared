@@ -24,7 +24,7 @@ class Project {
   getBuildCommand(argv?: ScriptArgv): string {
     return (this._buildCommand ??= this.packageJson.scripts?.build?.includes('buildIfNeeded')
       ? 'yarn build'
-      : `YARN wb buildIfNeeded ${argv?.verbose ? '--verbose' : ''}}`);
+      : `YARN wb buildIfNeeded ${argv?.verbose ? '--verbose' : ''}`);
   }
 
   get dirPath(): string {
