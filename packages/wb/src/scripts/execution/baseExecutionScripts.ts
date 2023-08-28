@@ -29,7 +29,7 @@ export abstract class BaseExecutionScripts {
   startDocker(argv: ScriptArgv): string {
     return `${this.buildDocker(argv)}
       && YARN concurrently --raw --kill-others-on-fail
-        "${dockerScripts.stopAndStart(false, '', argv.normalizedArgsText ?? '')}"
+        "${dockerScripts.stopAndStart(false, argv.normalizedDockerArgsText ?? '', argv.normalizedArgsText ?? '')}"
         "${this.waitAndOpenApp(argv, 8080)}"`;
   }
 

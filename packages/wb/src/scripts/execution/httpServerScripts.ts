@@ -19,7 +19,11 @@ class HttpServerScripts extends BaseExecutionScripts {
   }
 
   override startDocker(argv: ScriptArgv): string {
-    return `${this.buildDocker(argv)} && ${dockerScripts.stopAndStart(false, '', argv.normalizedArgsText ?? '')}`;
+    return `${this.buildDocker(argv)} && ${dockerScripts.stopAndStart(
+      false,
+      argv.normalizedDockerArgsText ?? '',
+      argv.normalizedArgsText ?? ''
+    )}`;
   }
 
   override startProduction(argv: ScriptArgv, port = 8080): string {
