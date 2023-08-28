@@ -1,13 +1,13 @@
 import { project } from '../../project.js';
 import { prismaScripts } from '../prismaScripts.js';
 
-import { BaseScripts } from './baseScripts.js';
+import { BaseExecutionScripts } from './baseExecutionScripts.js';
 
 /**
  * A collection of scripts for executing Blitz.js commands.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class BlitzScripts extends BaseScripts {
+class BlitzScripts extends BaseExecutionScripts {
   constructor() {
     super();
   }

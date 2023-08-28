@@ -33,7 +33,7 @@ export async function buildIfNeeded(
   // Test code requires Partial<...>
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
 ): Promise<boolean | undefined> {
-  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild();
+  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(argv);
   if (canSkip) {
     console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
     return false;
@@ -60,7 +60,9 @@ export async function buildIfNeeded(
 
 const ignoringEnvVarNames = new Set(['CI', 'PWDEBUG', 'TMPDIR']);
 
-export async function canSkipBuild(): Promise<[boolean, string, string]> {
+export async function canSkipBuild(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
+): Promise<[boolean, string, string]> {
   const cacheDirectoryPath = path.resolve(project.dirPath, 'node_modules', '.cache', 'build');
   const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
   await fs.mkdir(cacheDirectoryPath, { recursive: true });
@@ -77,7 +79,7 @@ export async function canSkipBuild(): Promise<[boolean, string, string]> {
   );
   hash.update(environmentJson);
 
-  await updateHashWithDiffResult(hash);
+  await updateHashWithDiffResult(argv, hash);
 
   const contentHash = hash.digest('hex');
 
@@ -108,7 +110,10 @@ const includeSuffix = [
 ];
 const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'package.json'];
 
-async function updateHashWithDiffResult(hash: Hash): Promise<void> {
+async function updateHashWithDiffResult(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
+  hash: Hash
+): Promise<void> {
   return new Promise((resolve) => {
     const ret = child_process.spawnSync('git', ['diff', '--name-only'], {
       cwd: project.dirPath,
@@ -127,6 +132,9 @@ async function updateHashWithDiffResult(hash: Hash): Promise<void> {
           includeSuffix.some((suffix) => filePath.endsWith(suffix))) &&
         !excludePatterns.some((pattern) => filePath.includes(pattern))
     );
+    if (argv.verbose) {
+      console.info(`Changed files: ${filteredFilePaths.join(', ')}`);
+    }
 
     const proc = child_process.spawn('git', ['diff', '--', ...filteredFilePaths], { cwd: project.dirPath });
     proc.stdout?.on('data', (data) => {

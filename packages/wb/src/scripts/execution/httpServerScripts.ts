@@ -1,13 +1,13 @@
 import { project } from '../../project.js';
 import { dockerScripts } from '../dockerScripts.js';
 
-import { BaseScripts } from './baseScripts.js';
+import { BaseExecutionScripts } from './baseExecutionScripts.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class HttpServerScripts extends BaseScripts {
+class HttpServerScripts extends BaseExecutionScripts {
   constructor() {
     super();
   }

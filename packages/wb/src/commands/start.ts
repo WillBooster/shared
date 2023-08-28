@@ -1,7 +1,7 @@
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import type { BaseScripts } from '../scripts/execution/baseScripts.js';
+import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
@@ -34,7 +34,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   async handler(argv) {
     const deps = project.packageJson.dependencies || {};
     const devDeps = project.packageJson.devDependencies || {};
-    let scripts: BaseScripts;
+    let scripts: BaseExecutionScripts;
     if (deps['blitz']) {
       scripts = blitzScripts;
     } else if (devDeps['@remix-run/dev']) {
