@@ -1,3 +1,17 @@
+/**
+ * Convert an object to an error.
+ * @param obj The object to convert.
+ */
+export function errorify(obj: unknown): Error {
+  if (obj instanceof Error) return obj;
+  if (typeof obj === 'string') return new Error(obj);
+  try {
+    return new Error(JSON.stringify(obj));
+  } catch {
+    return new Error(String(obj));
+  }
+}
+
 export function ignoreError<T>(fn: () => T): T | undefined {
   try {
     return fn();
