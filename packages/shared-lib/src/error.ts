@@ -1,3 +1,5 @@
+import { sleep } from './sleep.js';
+
 /**
  * Convert an object to an error.
  * @param obj The object to convert.
@@ -50,21 +52,40 @@ export async function ignoreEnoentAsync<T>(fn: () => Promise<T>): Promise<T | un
   }
 }
 
+/**
+ * Retry the given function.
+ * @param func The function to retry.
+ * @param beforeRetry The function to call immediately before retrying.
+ * @param handleError The function to call when an error occurs.
+ * @param retryCount The maximum number of retries.
+ * @param retryLogger The function to log retrying.
+ * @param sleepMilliseconds The number of milliseconds to sleep before retrying.
+ */
 export async function withRetry<T>(
   func: (failedCount: number) => Promise<T>,
-  retryCount = 3,
-  log?: (message: string) => void
+  {
+    beforeRetry = undefined as ((error: unknown) => Promise<void>) | undefined,
+    handleError = undefined as ((error: unknown) => Promise<void>) | undefined,
+    retryCount = 3,
+    retryLogger = undefined as ((message: string) => void) | undefined,
+    sleepMilliseconds = 0,
+  }
 ): Promise<T> {
   let failedCount = 0;
   for (;;) {
     try {
       return await func(failedCount);
     } catch (error) {
+      await handleError?.(error);
       failedCount++;
       if (failedCount >= retryCount) {
         throw error;
       }
-      log?.(`Retry due to: ${error instanceof Error ? error.stack : error}`);
+      if (sleepMilliseconds > 0) {
+        await sleep(sleepMilliseconds);
+      }
+      retryLogger?.(`Retry due to: ${error instanceof Error ? error.stack : error}`);
+      await beforeRetry?.(error);
     }
   }
 }
