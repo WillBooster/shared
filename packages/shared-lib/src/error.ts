@@ -53,11 +53,11 @@ export async function ignoreEnoentAsync<T>(fn: () => Promise<T>): Promise<T | un
 }
 
 export interface RetryOptions {
-  beforeRetry: ((error: unknown) => Promise<void>) | undefined;
-  handleError: ((error: unknown) => Promise<void>) | undefined;
-  retryCount: number;
-  retryLogger: ((message: string) => void) | undefined;
-  sleepMilliseconds: number;
+  beforeRetry?: (error: unknown) => Promise<void>;
+  handleError?: (error: unknown) => Promise<void>;
+  retryCount?: number;
+  retryLogger?: (message: string) => void;
+  sleepMilliseconds?: number;
 }
 
 /**
@@ -71,13 +71,7 @@ export interface RetryOptions {
  */
 export async function withRetry<T>(
   func: (failedCount: number) => Promise<T>,
-  {
-    beforeRetry = undefined,
-    handleError = undefined,
-    retryCount = 3,
-    retryLogger = undefined,
-    sleepMilliseconds = 0,
-  }: RetryOptions
+  { beforeRetry, handleError, retryCount = 3, retryLogger, sleepMilliseconds = 0 }: RetryOptions
 ): Promise<T> {
   let failedCount = 0;
   for (;;) {
