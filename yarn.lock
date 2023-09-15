@@ -6012,10 +6012,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:18.17.12":
-  version: 18.17.12
-  resolution: "@types/node@npm:18.17.12"
-  checksum: 4208e89153248a86a2e4f23dcff89bef121e723a494aa57bd1d922e78fe2cfcd103ea2dd0687c348fe6bcc3e87b12a3ecb4e4a8698da8f4e98f967803ad574e7
+"@types/node@npm:18.17.15":
+  version: 18.17.15
+  resolution: "@types/node@npm:18.17.15"
+  checksum: d2a34687ef948e66e478a24cee81ddd47eba15f3b39067816fc938d201f28da3ccda02ef7cfc875d65e83800d3f0029231e5e0fe88b290bb111397530c1d067e
   languageName: node
   linkType: hard
 
@@ -6780,7 +6780,7 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:8.44.2"
     "@types/micromatch": "npm:4.0.2"
-    "@types/node": "npm:18.17.12"
+    "@types/node": "npm:18.17.15"
     "@typescript-eslint/eslint-plugin": "npm:6.7.0"
     "@typescript-eslint/parser": "npm:6.7.0"
     "@willbooster/eslint-config-ts": "npm:10.5.0"
@@ -6887,7 +6887,7 @@ __metadata:
     "@types/eslint": "npm:8.44.2"
     "@types/kill-port": "npm:2.0.1"
     "@types/micromatch": "npm:4.0.2"
-    "@types/node": "npm:18.17.12"
+    "@types/node": "npm:18.17.15"
     "@types/yargs": "npm:17.0.24"
     "@typescript-eslint/eslint-plugin": "npm:6.7.0"
     "@typescript-eslint/parser": "npm:6.7.0"
