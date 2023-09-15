@@ -1,12 +1,14 @@
-import type { ComponentStory, ComponentMeta } from '@storybook/react';
+import type { Meta, StoryFn } from '@storybook/react';
 
 import { VersionOverlay } from './VersionOverlay.jsx';
 
-export default {
+const meta: Meta<typeof VersionOverlay> = {
   title: 'VersionOverlay',
   component: VersionOverlay,
-} as ComponentMeta<typeof VersionOverlay>;
+};
 
-const Template: ComponentStory<typeof VersionOverlay> = (args) => <VersionOverlay {...args} />;
+const Template: StoryFn<typeof VersionOverlay> = (args) => <VersionOverlay {...args} />;
 
-export const Default = Template.bind({});
+export const Default: StoryFn<typeof VersionOverlay> = Template.bind({});
+
+export default meta;
