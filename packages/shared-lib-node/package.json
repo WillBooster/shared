@@ -8,8 +8,8 @@
   "exports": {
     ".": {
       "require": "./dist/cjs/index.cjs",
-      "import": "./dist/esm/index.js",
-      "types": "./dist/esm/index.d.ts"
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     },
     "./src": {
       "require": "./src/index.ts",
@@ -18,8 +18,8 @@
     }
   },
   "main": "dist/cjs/index.cjs",
-  "module": "dist/esm/index.js",
-  "types": "dist/esm/index.d.ts",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "files": [
     "bin/",
     "dist/"
@@ -47,7 +47,7 @@
     "@typescript-eslint/parser": "6.7.0",
     "@willbooster/eslint-config-ts": "10.5.0",
     "@willbooster/prettier-config": "9.1.1",
-    "build-ts": "8.4.3",
+    "build-ts": "9.1.4",
     "eslint": "8.49.0",
     "eslint-config-prettier": "9.0.0",
     "eslint-import-resolver-typescript": "3.6.0",
@@ -60,7 +60,7 @@
     "prettier": "3.0.3",
     "sort-package-json": "2.5.1",
     "typescript": "5.2.2",
-    "vitest": "0.34.3"
+    "vitest": "0.34.4"
   },
   "publishConfig": {
     "access": "public"
