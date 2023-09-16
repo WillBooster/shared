@@ -39,13 +39,15 @@ export abstract class BaseExecutionScripts {
     // So we use `yarn playwright` instead of `playwright` here.
     return `APP_ENV=production WB_ENV=test PORT=8080 YARN dotenv -c production -- concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && yarn playwright ${playwrightArgs}"`;
+      "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http://127.0.0.1:8080' 'yarn playwright install --with-deps'
+        && yarn playwright ${playwrightArgs}"`;
   }
 
   testE2EDev(argv: ScriptArgv, { playwrightArgs, startCommand }: TestE2EDevOptions): string {
     return `APP_ENV=development WB_ENV=test NEXT_PUBLIC_WB_ENV=test PORT=8080 YARN dotenv -c development -- concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && yarn playwright ${playwrightArgs}"`;
+      "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http://127.0.0.1:8080' 'yarn playwright install --with-deps'
+        && yarn playwright ${playwrightArgs}"`;
   }
 
   abstract testStart(argv: ScriptArgv): string;
