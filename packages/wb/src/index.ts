@@ -19,7 +19,6 @@ await yargs(hideBin(process.argv))
   .scriptName('wb')
   .options(sharedOptionsBuilder)
   .middleware((argv) => {
-    console.log(argv);
     const workingDir = argv['working-dir'];
     if (workingDir) {
       const dirPath = path.resolve(workingDir);
