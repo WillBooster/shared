@@ -5,7 +5,7 @@
     "declaration": true,
     "esModuleInterop": true,
     "importHelpers": false,
-    "module": "ESNext",
+    "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "outDir": "dist",
     "resolveJsonModule": true,

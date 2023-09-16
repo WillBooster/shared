@@ -3,9 +3,12 @@ import path from 'node:path';
 
 import type { PackageJson } from 'type-fest';
 
+import type { ScriptArgv } from './scripts/builder.js';
+
 class Project {
   private _buildCommand: string | undefined;
   private _dirPath: string;
+  private _rootDirPath: string | undefined;
   private _dockerfile: string | undefined;
   private _dockerfilePath: string | undefined;
   private _hasDockerfile: boolean | undefined;
@@ -18,10 +21,10 @@ class Project {
     this._dirPath = process.cwd();
   }
 
-  get buildCommand(): string {
+  getBuildCommand(argv?: ScriptArgv): string {
     return (this._buildCommand ??= this.packageJson.scripts?.build?.includes('buildIfNeeded')
       ? 'yarn build'
-      : 'YARN wb buildIfNeeded');
+      : `YARN wb buildIfNeeded ${argv?.verbose ? '--verbose' : ''}`);
   }
 
   get dirPath(): string {
@@ -30,6 +33,12 @@ class Project {
 
   set dirPath(newDirPath: string) {
     this._dirPath = path.resolve(newDirPath);
+  }
+
+  get rootDirPath(): string {
+    return (this._rootDirPath ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
+      ? path.resolve(this.dirPath, '..', '..')
+      : this.dirPath);
   }
 
   get dockerfile(): string {
@@ -69,9 +78,10 @@ class Project {
   }
 
   get rootPackageJson(): PackageJson {
-    return (this._rootPackageJson ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
-      ? JSON.parse(fs.readFileSync(path.join(this.dirPath, '..', '..', 'package.json'), 'utf8'))
-      : this.packageJson);
+    return (this._rootPackageJson ??=
+      this.rootDirPath === this.dirPath
+        ? this.packageJson
+        : JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8')));
   }
 
   get dockerPackageJson(): PackageJson {

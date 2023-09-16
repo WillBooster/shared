@@ -1,67 +1,59 @@
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import type { BaseScripts } from '../scripts/execution/baseScripts.js';
+import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
+import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
-import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
-  ...sharedOptionsBuilder,
-  watch: {
-    description: 'Whether to watch files',
-    type: 'boolean',
-  },
+  ...scriptOptionsBuilder,
   mode: {
     description: 'Start mode: dev[elopment] (default) | prod[uction] | docker',
     type: 'string',
     alias: 'm',
   },
-  args: {
-    description: 'Arguments text for start command',
-    type: 'string',
-    alias: 'a',
-  },
 } as const;
 
 export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
-  command: 'start',
+  command: 'start [args..]',
   describe: 'Start app',
   builder,
   async handler(argv) {
+    normalizeArgs(argv);
+
     const deps = project.packageJson.dependencies || {};
     const devDeps = project.packageJson.devDependencies || {};
-    let scripts: BaseScripts;
+    let scripts: BaseExecutionScripts;
     if (deps['blitz']) {
       scripts = blitzScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
     } else if (
       ((deps['express'] || deps['fastify']) && !deps['firebase-functions']) ||
-      /EXPOSE\s+8080/.test(project.dockerfile)
+      (project.hasDockerfile && /EXPOSE\s+8080/.test(project.dockerfile))
     ) {
       scripts = httpServerScripts;
     } else {
       scripts = plainAppScripts;
     }
 
-    const argsText = argv.args ?? '';
     switch (argv.mode || 'dev') {
       case 'dev':
       case 'development': {
-        await runWithSpawn(scripts.start(argv.watch, argsText), argv);
+        await runWithSpawn(scripts.start(argv), argv);
         break;
       }
       case 'prod':
       case 'production': {
-        await runWithSpawn(scripts.startProduction(8080, argsText), argv);
+        await runWithSpawn(scripts.startProduction(argv, 8080), argv);
         break;
       }
       case 'docker': {
-        await runWithSpawn(scripts.startDocker(argsText), argv);
+        await runWithSpawn(scripts.startDocker(argv), argv);
         break;
       }
       default: {

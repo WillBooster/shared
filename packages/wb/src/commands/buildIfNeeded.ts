@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -33,7 +34,7 @@ export async function buildIfNeeded(
   // Test code requires Partial<...>
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
 ): Promise<boolean | undefined> {
-  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild();
+  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(argv);
   if (canSkip) {
     console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
     return false;
@@ -60,7 +61,9 @@ export async function buildIfNeeded(
 
 const ignoringEnvVarNames = new Set(['CI', 'PWDEBUG', 'TMPDIR']);
 
-export async function canSkipBuild(): Promise<[boolean, string, string]> {
+export async function canSkipBuild(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
+): Promise<[boolean, string, string]> {
   const cacheDirectoryPath = path.resolve(project.dirPath, 'node_modules', '.cache', 'build');
   const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
   await fs.mkdir(cacheDirectoryPath, { recursive: true });
@@ -77,19 +80,11 @@ export async function canSkipBuild(): Promise<[boolean, string, string]> {
   );
   hash.update(environmentJson);
 
-  await updateHashWithDiffResult(hash);
-
+  await updateHashWithDiffResult(argv, hash);
   const contentHash = hash.digest('hex');
 
-  try {
-    const cachedContentHash = await fs.readFile(cacheFilePath, 'utf8');
-    if (cachedContentHash === contentHash) {
-      return [true, cacheFilePath, contentHash];
-    }
-  } catch {
-    // do nothing
-  }
-  return [false, cacheFilePath, contentHash];
+  const cachedContentHash = await ignoreEnoentAsync(() => fs.readFile(cacheFilePath, 'utf8'));
+  return [cachedContentHash === contentHash, cacheFilePath, contentHash];
 }
 
 const includePatterns = ['src/', 'public/'];
@@ -108,7 +103,10 @@ const includeSuffix = [
 ];
 const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'package.json'];
 
-async function updateHashWithDiffResult(hash: Hash): Promise<void> {
+async function updateHashWithDiffResult(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
+  hash: Hash
+): Promise<void> {
   return new Promise((resolve) => {
     const ret = child_process.spawnSync('git', ['diff', '--name-only'], {
       cwd: project.dirPath,
@@ -127,10 +125,18 @@ async function updateHashWithDiffResult(hash: Hash): Promise<void> {
           includeSuffix.some((suffix) => filePath.endsWith(suffix))) &&
         !excludePatterns.some((pattern) => filePath.includes(pattern))
     );
+    if (argv.verbose) {
+      console.info(`Changed files: ${filteredFilePaths.join(', ')}`);
+    }
 
-    const proc = child_process.spawn('git', ['diff', '--', ...filteredFilePaths], { cwd: project.dirPath });
+    // 'git diff --' works only on rootDirPath
+    const proc = child_process.spawn('git', ['diff', '--', ...filteredFilePaths], { cwd: project.rootDirPath });
     proc.stdout?.on('data', (data) => {
       hash.update(data);
+      if (argv.verbose) {
+        console.info(data.toString());
+        console.info('Hash:', hash.copy().digest('hex'));
+      }
     });
     proc.on('close', () => {
       resolve();

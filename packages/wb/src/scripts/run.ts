@@ -18,6 +18,7 @@ interface Options {
 const defaultOptions: Options = {
   exitIfFailed: true,
 };
+
 export async function runWithSpawn(
   script: string,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
