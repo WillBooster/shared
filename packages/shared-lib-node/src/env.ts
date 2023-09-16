@@ -7,6 +7,7 @@ interface Options {
   cascadeEnv?: string;
   cascadeNodeEnv?: boolean;
   autoCascadeEnv?: boolean;
+  checkEnv?: string;
   verbose?: boolean;
 }
 
@@ -30,6 +31,11 @@ export const yargsOptionsBuilderForEnv = {
       'Same with --cascade-env=<WB_ENV || APP_ENV || NODE_ENV>. If they are falsy, "development" is applied.',
     type: 'boolean',
     default: true,
+  },
+  'check-env': {
+    description: 'Check whether the keys of the loaded .env files are same with the given .env file.',
+    type: 'string',
+    default: '.env.example',
   },
 } as const;
 
@@ -60,6 +66,15 @@ export function loadEnvironmentVariables(argv: Options, cwd: string): Record<str
   let envVars = {};
   for (const envPath of envPaths) {
     envVars = { ...config({ path: path.join(cwd, envPath) }).parsed, ...envVars };
+  }
+
+  if (argv.checkEnv) {
+    const exampleKeys = Object.keys(config({ path: path.join(cwd, argv.checkEnv) }).parsed || {});
+    for (const key of exampleKeys) {
+      if (!(key in envVars)) {
+        throw new Error(`Missing environment variable: ${key}`);
+      }
+    }
   }
   return envVars;
 }
