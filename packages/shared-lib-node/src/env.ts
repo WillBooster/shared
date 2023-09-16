@@ -6,6 +6,7 @@ interface Options {
   env?: (string | number)[];
   cascadeEnv?: string;
   cascadeNodeEnv?: boolean;
+  autoCascadeEnv?: boolean;
   verbose?: boolean;
 }
 
@@ -16,13 +17,19 @@ export const yargsOptionsBuilderForEnv = {
   },
   'cascade-env': {
     description:
-      'environment to load cascading .env files (e.g., `.env`, `.env.<environment>`, `.env.local` and `.env.<environment>.local`)',
+      'Environment to load cascading .env files (e.g., `.env`, `.env.<environment>`, `.env.local` and `.env.<environment>.local`). Preferred over `cascade-node-env` and `auto-cascade-env`.',
     type: 'string',
   },
   'cascade-node-env': {
     description:
-      'environment to load cascading .env files (e.g., `.env`, `.env.<NODE_ENV>`, `.env.local` and `.env.<NODE_ENV>.local`). If NODE_ENV is falsy, "development" is applied. Preferred over `cascade`.',
+      'Same with --cascade-env=<NODE_ENV>. If NODE_ENV is falsy, "development" is applied. Preferred over `auto-cascade-env`.',
     type: 'boolean',
+  },
+  'auto-cascade-env': {
+    description:
+      'Same with --cascade-env=<WB_ENV || APP_ENV || NODE_ENV>. If they are falsy, "development" is applied.',
+    type: 'boolean',
+    default: true,
   },
 } as const;
 
@@ -31,7 +38,13 @@ export const yargsOptionsBuilderForEnv = {
  * */
 export function loadEnvironmentVariables(argv: Options, cwd: string): Record<string, string> {
   let envPaths = (argv.env ?? []).map((envPath) => envPath.toString());
-  const cascade = argv.cascadeNodeEnv ? process.env.NODE_ENV || 'development' : argv.cascadeEnv;
+  const cascade =
+    argv.cascadeEnv ??
+    (argv.cascadeNodeEnv
+      ? process.env.NODE_ENV || 'development'
+      : argv.autoCascadeEnv
+      ? process.env.WB_ENV || process.env.APP_ENV || process.env.NODE_ENV || 'development'
+      : undefined);
   if (typeof cascade === 'string') {
     if (envPaths.length === 0) envPaths.push('.env');
     envPaths = envPaths.flatMap((envPath) =>
