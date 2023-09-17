@@ -7,7 +7,7 @@
   "type": "module",
   "exports": {
     ".": {
-      "require": "./dist/cjs/index.cjs",
+      "require": "./dist/index.cjs",
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
@@ -17,7 +17,7 @@
       "types": "./src/index.ts"
     }
   },
-  "main": "dist/cjs/index.cjs",
+  "main": "dist/index.cjs",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

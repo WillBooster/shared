@@ -11803,7 +11803,7 @@ __metadata:
     minipass: "npm:^5.0.0 || ^6.0.2 || ^7.0.0"
     path-scurry: "npm:^1.10.1"
   bin:
-    glob: dist/cjs/src/bin.js
+    glob: dist/src/bin.js
   checksum: fe075f8109749cb0c264fd6eee8bf0cc8bb23a02305619b7a88bf1f79766218cc3ef66a3e8f3cd2e826006f047a3a8833c1694f167e978a6e37c34a8c053e48e
   languageName: node
   linkType: hard
