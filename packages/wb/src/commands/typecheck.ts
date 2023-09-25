@@ -14,7 +14,7 @@ const builder = {
 
 export const typeCheckCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'typecheck',
-  describe: 'Run type checking',
+  describe: 'Run type checking. .env-related options are ignored.',
   builder,
   async handler(argv) {
     const commands: string[] = [];

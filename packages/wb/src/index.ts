@@ -27,6 +27,8 @@ await yargs(hideBin(process.argv))
     }
 
     removeNpmAndYarnEnvironmentVariables(process.env);
+
+    if (['tc', 'typecheck'].includes(argv._[0].toString())) return;
     loadEnvironmentVariables(argv, project.dirPath);
   })
   .command(buildIfNeededCommand)
