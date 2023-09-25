@@ -70,11 +70,8 @@ export function loadEnvironmentVariables(argv: Options, cwd: string): Record<str
 
   if (argv.checkEnv) {
     const exampleKeys = Object.keys(config({ path: path.join(cwd, argv.checkEnv) }).parsed || {});
-    for (const key of exampleKeys) {
-      if (!(key in envVars)) {
-        throw new Error(`Missing environment variable: ${key}`);
-      }
-    }
+    const missingKeys = exampleKeys.filter((key) => !(key in envVars));
+    throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
   }
   return envVars;
 }
