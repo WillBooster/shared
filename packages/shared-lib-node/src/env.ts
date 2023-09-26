@@ -42,8 +42,8 @@ export const yargsOptionsBuilderForEnv = {
 /**
  * This function loads environment variables from `.env` files.
  * */
-export function loadEnvironmentVariables(argv: Options, cwd: string): Record<string, string> {
-  let envPaths = (argv.env ?? []).map((envPath) => envPath.toString());
+export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: string): Record<string, string> {
+  let envPaths = (argv.env ?? []).map((envPath) => path.resolve(orgCwd ?? cwd, envPath.toString()));
   const cascade =
     argv.cascadeEnv ??
     (argv.cascadeNodeEnv
@@ -52,20 +52,32 @@ export function loadEnvironmentVariables(argv: Options, cwd: string): Record<str
       ? process.env.WB_ENV || process.env.APP_ENV || process.env.NODE_ENV || 'development'
       : undefined);
   if (typeof cascade === 'string') {
-    if (envPaths.length === 0) envPaths.push('.env');
+    if (envPaths.length === 0) envPaths.push(path.join(cwd, '.env'));
     envPaths = envPaths.flatMap((envPath) =>
       cascade
         ? [`${envPath}.${cascade}.local`, `${envPath}.local`, `${envPath}.${cascade}`, envPath]
         : [`${envPath}.local`, envPath]
     );
   }
+  envPaths = envPaths.map((envPath) => path.relative(cwd, envPath));
   if (argv.verbose) {
     console.info('Loading env files:', envPaths);
   }
 
-  let envVars = {};
+  let envVars: Record<string, string> = {};
+  const orgEnvVars = { ...process.env };
   for (const envPath of envPaths) {
     envVars = { ...config({ path: path.join(cwd, envPath) }).parsed, ...envVars };
+    let count = 0;
+    for (const [key, value] of Object.entries(envVars)) {
+      if (orgEnvVars[key] !== value) {
+        orgEnvVars[key] = value;
+        count++;
+      }
+    }
+    if (count > 0) {
+      console.info(`Updated ${count} environment variables:`, envPath);
+    }
   }
 
   if (argv.checkEnv) {
