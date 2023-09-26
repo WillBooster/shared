@@ -30,6 +30,7 @@ export async function updateHashFromFiles(hashFilePath: string, ...paths: string
   const newHash = await calculateHashFromFiles(...paths);
   if (oldHash === newHash) return false;
 
+  await fs.promises.mkdir(path.dirname(hashFilePath), { recursive: true });
   await fs.promises.writeFile(hashFilePath, newHash, 'utf8');
   return true;
 }
