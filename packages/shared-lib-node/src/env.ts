@@ -22,13 +22,11 @@ export const yargsOptionsBuilderForEnv = {
     type: 'string',
   },
   'cascade-node-env': {
-    description:
-      'Same with --cascade-env=<NODE_ENV>. If NODE_ENV is falsy, "development" is applied. Preferred over `auto-cascade-env`.',
+    description: 'Same with --cascade-env=<NODE_ENV || "development">. Preferred over `auto-cascade-env`.',
     type: 'boolean',
   },
   'auto-cascade-env': {
-    description:
-      'Same with --cascade-env=<WB_ENV || APP_ENV || NODE_ENV>. If they are falsy, "development" is applied.',
+    description: 'Same with --cascade-env=<WB_ENV || APP_ENV || NODE_ENV || "">.',
     type: 'boolean',
     default: true,
   },
