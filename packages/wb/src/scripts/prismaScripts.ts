@@ -48,8 +48,10 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     return `rm -Rf ${dirName}/restored.sqlite3; GOOGLE_APPLICATION_CREDENTIALS=gcp-sa-key.json litestream restore -o ${outputPath} ${backupPath}`;
   }
 
-  seed(): string {
-    if (project.packageJson.dependencies?.['blitz']) return `YARN blitz db seed`;
+  seed(scriptPath?: string): string {
+    if (project.packageJson.dependencies?.['blitz'])
+      return `YARN blitz db seed${scriptPath ? ` -f ${scriptPath}` : ''}`;
+    if (scriptPath) return 'YARN build-ts run prisma/seeds.ts';
     if ((project.packageJson.prisma as Record<string, string> | undefined)?.['seed']) return `YARN prisma db seed`;
     return `if [ -e "prisma/seeds.ts" ]; then YARN build-ts run prisma/seeds.ts; fi`;
   }

@@ -113,12 +113,21 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
   },
 };
 
-const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+const seedBuilder = {
+  ...builder,
+  file: {
+    alias: 'f',
+    description: 'Path of the seed script.',
+    type: 'string',
+  },
+} as const;
+
+const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder>> = {
   command: 'seed',
   describe: 'Populate DB with seed data',
-  builder,
+  builder: seedBuilder,
   async handler(argv) {
-    await runWithSpawn(prismaScripts.seed(), argv);
+    await runWithSpawn(prismaScripts.seed(argv.file), argv);
   },
 };
 
