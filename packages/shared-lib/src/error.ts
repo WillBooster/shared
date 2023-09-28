@@ -71,7 +71,7 @@ export interface RetryOptions {
  */
 export async function withRetry<T>(
   func: (failedCount: number) => Promise<T>,
-  { beforeRetry, handleError, retryCount = 3, retryLogger, sleepMilliseconds = 0 }: RetryOptions
+  { beforeRetry, handleError, retryCount = 3, retryLogger, sleepMilliseconds = 0 }: RetryOptions = {}
 ): Promise<T> {
   let failedCount = 0;
   for (;;) {
