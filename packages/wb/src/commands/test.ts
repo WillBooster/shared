@@ -9,6 +9,7 @@ import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
+import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runOnEachWorkspaceIfNeeded, runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
@@ -57,6 +58,8 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
   let scripts: BaseExecutionScripts;
   if (deps['blitz']) {
     scripts = blitzScripts;
+  } else if (deps['next']) {
+    scripts = nextScripts;
   } else if (devDeps['@remix-run/dev']) {
     scripts = remixScripts;
   } else if ((deps['express'] || deps['fastify']) && !deps['firebase-functions']) {
@@ -125,7 +128,7 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
       return;
     }
   }
-  if (deps['blitz'] || devDeps['@remix-run/dev']) {
+  if (deps['blitz'] || deps['next'] || devDeps['@remix-run/dev']) {
     switch (argv.e2e) {
       case 'headed': {
         await runWithSpawn(scripts.testE2E(argv, { playwrightArgs: 'test tests/e2e --headed' }), argv);

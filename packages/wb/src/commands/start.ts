@@ -5,6 +5,7 @@ import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
+import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -30,6 +31,8 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     let scripts: BaseExecutionScripts;
     if (deps['blitz']) {
       scripts = blitzScripts;
+    } else if (deps['next']) {
+      scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
     } else if (

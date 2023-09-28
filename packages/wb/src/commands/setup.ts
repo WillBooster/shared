@@ -51,7 +51,7 @@ export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes
   const scripts = project.packageJson.scripts ?? {};
   const newDeps: string[] = [];
   const newDevDeps: string[] = [];
-  if (deps['blitz']) {
+  if (deps['blitz'] || deps['next']) {
     newDeps.push('pm2');
     newDevDeps.push('concurrently', 'dotenv-cli', 'open-cli', 'vitest', 'wait-on');
   } else if (devDeps['@remix-run/dev']) {
