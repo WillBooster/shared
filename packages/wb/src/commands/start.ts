@@ -1,3 +1,4 @@
+import { loadEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
@@ -13,7 +14,7 @@ import { runWithSpawn } from '../scripts/run.js';
 const builder = {
   ...scriptOptionsBuilder,
   mode: {
-    description: 'Start mode: dev[elopment] (default) | prod[uction] | docker',
+    description: 'Start mode: dev[elopment] (default) | stg | staging | docker',
     type: 'string',
     alias: 'm',
   },
@@ -47,16 +48,22 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     switch (argv.mode || 'dev') {
       case 'dev':
       case 'development': {
-        await runWithSpawn(scripts.start(argv), argv);
+        process.env.WB_ENV ||= 'development';
+        loadEnvironmentVariables(argv, project.dirPath);
+        await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.start(argv)}`, argv);
         break;
       }
-      case 'prod':
-      case 'production': {
-        await runWithSpawn(scripts.startProduction(argv, 8080), argv);
+      case 'stg':
+      case 'staging': {
+        process.env.WB_ENV ||= 'staging';
+        loadEnvironmentVariables(argv, project.dirPath);
+        await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.startProduction(argv, 8080)}`, argv);
         break;
       }
       case 'docker': {
-        await runWithSpawn(scripts.startDocker(argv), argv);
+        process.env.WB_ENV ||= 'staging';
+        loadEnvironmentVariables(argv, project.dirPath);
+        await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.startDocker(argv)}`, argv);
         break;
       }
       default: {

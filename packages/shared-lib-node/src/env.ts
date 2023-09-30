@@ -26,7 +26,7 @@ export const yargsOptionsBuilderForEnv = {
     type: 'boolean',
   },
   'auto-cascade-env': {
-    description: 'Same with --cascade-env=<WB_ENV || APP_ENV || NODE_ENV || "development">.',
+    description: 'Same with --cascade-env=<WB_ENV || NODE_ENV || "development">.',
     type: 'boolean',
     default: true,
   },
@@ -47,7 +47,7 @@ export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: st
     (argv.cascadeNodeEnv
       ? process.env.NODE_ENV || 'development'
       : argv.autoCascadeEnv
-      ? process.env.WB_ENV || process.env.APP_ENV || process.env.NODE_ENV || 'development'
+      ? process.env.WB_ENV || process.env.NODE_ENV || 'development'
       : undefined);
   if (typeof cascade === 'string') {
     if (envPaths.length === 0) envPaths.push(path.join(cwd, '.env'));
@@ -74,7 +74,7 @@ export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: st
       }
     }
     if (count > 0) {
-      console.info(`Updated ${count} environment variables:`, envPath);
+      console.info(`Loaded ${count} environment variables:`, envPath);
     }
   }
 
