@@ -12,7 +12,7 @@ export interface TestE2EOptions extends TestE2EDevOptions {
 }
 
 /**
- * A collection of scripts for executing an app.
+ * A collection of scripts for executing an app1.
  * Note that YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 export abstract class BaseExecutionScripts {

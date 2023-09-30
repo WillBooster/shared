@@ -6,7 +6,7 @@ import type { TestE2EDevOptions, TestE2EOptions } from './baseExecutionScripts.j
 import { BaseExecutionScripts } from './baseExecutionScripts.js';
 
 /**
- * A collection of scripts for executing an app that utilizes an HTTP server like express.
+ * A collection of scripts for executing an app1 that utilizes an HTTP server like express.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class HttpServerScripts extends BaseExecutionScripts {
