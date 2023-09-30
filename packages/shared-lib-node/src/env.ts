@@ -28,7 +28,7 @@ export const yargsOptionsBuilderForEnv = {
   'auto-cascade-env': {
     description: 'Same with --cascade-env=<WB_ENV || APP_ENV || NODE_ENV || "development">.',
     type: 'boolean',
-    default: false,
+    default: true,
   },
   'check-env': {
     description: 'Check whether the keys of the loaded .env files are same with the given .env file.',
