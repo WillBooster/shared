@@ -53,9 +53,9 @@ export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes
   const newDevDeps: string[] = [];
   if (deps['blitz'] || deps['next']) {
     newDeps.push('pm2');
-    newDevDeps.push('concurrently', 'dotenv-cli', 'open-cli', 'vitest', 'wait-on');
+    newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
   } else if (devDeps['@remix-run/dev']) {
-    newDeps.push('dotenv-cli', 'pm2');
+    newDeps.push('pm2');
     newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
   } else if (deps['express'] || deps['fastify']) {
     newDeps.push('pm2');

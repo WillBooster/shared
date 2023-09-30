@@ -16,12 +16,12 @@ class RemixScripts extends BaseExecutionScripts {
 
   override start(argv: ScriptArgv): string {
     return `YARN concurrently --raw --kill-others-on-fail
-      "dotenv -c development -- remix dev ${argv.normalizedArgsText ?? ''}"
+      "remix dev ${argv.normalizedArgsText ?? ''}"
       "${this.waitAndOpenApp(argv)}"`;
   }
 
   override startProduction(argv: ScriptArgv, port: number): string {
-    return `NODE_ENV=production YARN dotenv -c production -- concurrently --raw --kill-others-on-fail
+    return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
       "${prismaScripts.reset()} && ${project.getBuildCommand(
         argv
       )} && PORT=${port} pm2-runtime start ecosystem.config.cjs ${argv.normalizedArgsText ?? ''}"
@@ -48,9 +48,7 @@ class RemixScripts extends BaseExecutionScripts {
   }
 
   override testStart(argv: ScriptArgv): string {
-    return `YARN concurrently --kill-others --raw --success first "dotenv -c development -- remix dev" "${this.waitApp(
-      argv
-    )}"`;
+    return `YARN concurrently --kill-others --raw --success first "remix dev" "${this.waitApp(argv)}"`;
   }
 }
 
