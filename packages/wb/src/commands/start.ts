@@ -22,7 +22,7 @@ const builder = {
 
 export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'start [args..]',
-  describe: 'Start app1',
+  describe: 'Start app',
   builder,
   async handler(argv) {
     normalizeArgs(argv);

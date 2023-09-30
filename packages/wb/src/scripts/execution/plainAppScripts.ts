@@ -5,7 +5,7 @@ import { dockerScripts } from '../dockerScripts.js';
 import { BaseExecutionScripts } from './baseExecutionScripts.js';
 
 /**
- * A collection of scripts for executing an app1 that utilizes an HTTP server like express.
+ * A collection of scripts for executing an app that utilizes an HTTP server like express.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PlainAppScripts extends BaseExecutionScripts {
