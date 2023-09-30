@@ -14,7 +14,7 @@ import { runWithSpawn } from '../scripts/run.js';
 const builder = {
   ...scriptOptionsBuilder,
   mode: {
-    description: 'Start mode: dev[elopment] (default) | stg | staging | docker',
+    description: 'Start mode: dev[elopment] (default) | staging | docker',
     type: 'string',
     alias: 'm',
   },
@@ -53,7 +53,6 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.start(argv)}`, argv);
         break;
       }
-      case 'stg':
       case 'staging': {
         process.env.WB_ENV ||= 'staging';
         loadEnvironmentVariables(argv, project.dirPath);
