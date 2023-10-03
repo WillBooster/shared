@@ -1,9 +1,6 @@
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
-import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-
 export const scriptOptionsBuilder = {
-  ...sharedOptionsBuilder,
   watch: {
     description: 'Whether to watch files',
     type: 'boolean',
@@ -17,7 +14,6 @@ export const scriptOptionsBuilder = {
   'docker-args': {
     description: 'Arguments for "docker run"',
     type: 'array',
-    alias: 'a',
     default: [],
   },
 } as const;

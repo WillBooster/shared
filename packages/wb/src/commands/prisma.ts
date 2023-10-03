@@ -3,11 +3,8 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 import { project } from '../project.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
-import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
-const builder = {
-  ...sharedOptionsBuilder,
-} as const;
+const builder = {} as const;
 
 export const prismaCommand: CommandModule = {
   command: 'prisma',

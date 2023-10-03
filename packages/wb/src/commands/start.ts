@@ -2,7 +2,7 @@ import { loadEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
+import { normalizeArgs } from '../scripts/builder.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
@@ -10,9 +10,9 @@ import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
+import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
-  ...scriptOptionsBuilder,
   mode: {
     description: 'Start mode: dev[elopment] (default) | staging | docker',
     type: 'string',
@@ -20,7 +20,7 @@ const builder = {
   },
 } as const;
 
-export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
   command: 'start [args..]',
   describe: 'Start app',
   builder,

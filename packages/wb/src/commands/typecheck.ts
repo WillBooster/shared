@@ -6,11 +6,8 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
 import { runWithSpawn } from '../scripts/run.js';
-import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
-const builder = {
-  ...sharedOptionsBuilder,
-} as const;
+const builder = {} as const;
 
 export const typeCheckCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'typecheck',

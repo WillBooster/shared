@@ -9,10 +9,8 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
-  ...sharedOptionsBuilder,
   command: {
     description: 'A build command',
     type: 'string',

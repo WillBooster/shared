@@ -7,11 +7,8 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
-import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
-const builder = {
-  ...sharedOptionsBuilder,
-} as const;
+const builder = {} as const;
 
 export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'setup',
