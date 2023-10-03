@@ -2,7 +2,7 @@ import { loadEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { project } from '../project.js';
-import { normalizeArgs } from '../scripts/builder.js';
+import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
@@ -13,6 +13,7 @@ import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
+  ...scriptOptionsBuilder,
   mode: {
     description: 'Start mode: dev[elopment] (default) | staging | docker',
     type: 'string',
