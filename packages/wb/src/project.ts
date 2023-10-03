@@ -13,6 +13,7 @@ class Project {
   private _dockerfilePath: string | undefined;
   private _hasDockerfile: boolean | undefined;
   private _name: string | undefined;
+  private _nameWithoutNamespace: string | undefined;
   private _rootPackageJson: PackageJson | undefined;
   private _dockerPackageJson: PackageJson | undefined;
   private _packageJson: PackageJson | undefined;
@@ -71,6 +72,15 @@ class Project {
 
   get name(): string {
     return (this._name ??= project.rootPackageJson.name || 'unknown');
+  }
+
+  get nameWithoutNamespace(): string {
+    if (this._nameWithoutNamespace === undefined) {
+      const name = project.rootPackageJson.name || 'unknown';
+      const index = name.lastIndexOf('/');
+      this._nameWithoutNamespace = index === -1 ? name : name.slice(index + 1);
+    }
+    return this._nameWithoutNamespace;
   }
 
   get packageJson(): PackageJson {
