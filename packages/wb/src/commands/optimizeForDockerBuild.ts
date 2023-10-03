@@ -45,14 +45,11 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       if (deps['@discord-bot/llm'] && deps['@discord-bot/llm'] !== 'workspace:*') {
         deps['@discord-bot/llm'] = './@discord-bot/llm';
       }
-      if (deps['@moti-components/go-e-mon']) {
-        deps['@moti-components/go-e-mon'] = './@moti-components/go-e-mon';
-      }
-      if (deps['@online-judge/shared']) {
-        deps['@online-judge/shared'] = './@online-judge/shared';
-      }
-      if (deps['program-executor']) {
-        deps['program-executor'] = './program-executor';
+      const depNames = ['@moti-components/go-e-mon', '@online-judge/shared', 'program-executor', 'judge'];
+      for (const depName of depNames) {
+        if (deps[depName]) {
+          deps[depName] = `./${depName}`;
+        }
       }
       // TODO: remove after migrating from online-judge-shared to @online-judge/shared
       if (deps['online-judge-shared']) {
