@@ -41,19 +41,14 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
     for (const packageJsonPath of packageJsonPaths) {
       const packageJson: PackageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-      const deps = packageJson.dependencies || {};
-      if (deps['@discord-bot/llm'] && deps['@discord-bot/llm'] !== 'workspace:*') {
-        deps['@discord-bot/llm'] = './@discord-bot/llm';
-      }
-      const depNames = ['@moti-components/go-e-mon', '@online-judge/shared', 'program-executor', 'judge'];
-      for (const depName of depNames) {
-        if (deps[depName]) {
-          deps[depName] = `./${depName}`;
+      const keys = ['dependencies', 'devDependencies'] as const;
+      for (const key of keys) {
+        const deps = packageJson[key] || {};
+        for (const [name, value] of Object.entries(deps)) {
+          if (value?.startsWith('git@github.com:')) {
+            deps[name] = `./${name}`;
+          }
         }
-      }
-      // TODO: remove after migrating from online-judge-shared to @online-judge/shared
-      if (deps['online-judge-shared']) {
-        deps['online-judge-shared'] = './online-judge-shared';
       }
 
       optimizeDevDependencies(argv, packageJson);
