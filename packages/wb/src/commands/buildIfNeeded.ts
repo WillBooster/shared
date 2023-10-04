@@ -1,7 +1,7 @@
 import child_process from 'node:child_process';
 import type { Hash } from 'node:crypto';
 import { createHash } from 'node:crypto';
-import fs from 'node:fs/promises';
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
@@ -32,27 +32,36 @@ export async function buildIfNeeded(
   // Test code requires Partial<...>
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
 ): Promise<boolean | undefined> {
+  if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
+    build(argv);
+    return true;
+  }
+
   const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(argv);
   if (canSkip) {
     console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
     return false;
   }
 
+  if (!build(argv)) return;
+
+  if (!argv.dryRun) {
+    await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
+  }
+  return true;
+}
+
+function build(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
   console.info(chalk.green(`Run '${argv.command}'`));
   if (!argv.dryRun) {
-    const [command, ...args] = (argv.command ?? '').split(' ');
-    const ret = child_process.spawnSync(command, args, {
+    const ret = child_process.spawnSync(argv.command ?? '', {
       cwd: project.dirPath,
       stdio: 'inherit',
     });
     if (ret.status !== 0) {
       process.exitCode = ret.status ?? 1;
-      return;
+      return false;
     }
-  }
-
-  if (!argv.dryRun) {
-    await fs.writeFile(cacheFilePath, contentHash, 'utf8');
   }
   return true;
 }
@@ -64,7 +73,7 @@ export async function canSkipBuild(
 ): Promise<[boolean, string, string]> {
   const cacheDirectoryPath = path.resolve(project.dirPath, 'node_modules', '.cache', 'build');
   const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
-  await fs.mkdir(cacheDirectoryPath, { recursive: true });
+  await fs.promises.mkdir(cacheDirectoryPath, { recursive: true });
 
   const hash = createHash('sha256');
 
@@ -81,7 +90,7 @@ export async function canSkipBuild(
   await updateHashWithDiffResult(argv, hash);
   const contentHash = hash.digest('hex');
 
-  const cachedContentHash = await ignoreEnoentAsync(() => fs.readFile(cacheFilePath, 'utf8'));
+  const cachedContentHash = await ignoreEnoentAsync(() => fs.promises.readFile(cacheFilePath, 'utf8'));
   return [cachedContentHash === contentHash, cacheFilePath, contentHash];
 }
 
