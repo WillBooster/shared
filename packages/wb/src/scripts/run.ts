@@ -27,7 +27,7 @@ export async function runWithSpawn(
   const [printableScript, runnableScript] = normalizeScript(script);
   printStart(printableScript);
   if (argv.verbose) {
-    printStart(printableScript, 'Start (detailed)', true);
+    printStart(runnableScript, 'Start (raw)', true);
   }
   if (argv.dryRun) {
     printFinishedAndExitIfNeeded(printableScript, 0, opts);
@@ -79,7 +79,10 @@ export function runWithSpawnInParallel(
     const [printableScript, runnableScript] = normalizeScript(script);
     printStart(printableScript, 'Start (parallel)', true);
     if (argv.dryRun) {
-      printStart(printableScript, 'Start (log)');
+      printStart(printableScript, 'Started (log)');
+      if (argv.verbose) {
+        printStart(runnableScript, 'Started (raw)', true);
+      }
       printFinishedAndExitIfNeeded(printableScript, 0, opts);
       return;
     }
@@ -93,7 +96,10 @@ export function runWithSpawnInParallel(
       killOnExit: true,
       verbose: argv.verbose,
     });
-    printStart(printableScript, 'Start (log)');
+    printStart(printableScript, 'Started (log)');
+    if (argv.verbose) {
+      printStart(runnableScript, 'Started (raw)', true);
+    }
     const out = ret.stdout.trim();
     if (out) console.info(out);
     printFinishedAndExitIfNeeded(printableScript, ret.status, opts);

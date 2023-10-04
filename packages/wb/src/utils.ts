@@ -33,7 +33,7 @@ export function spawnSyncOnExit(command: string): void {
     if (killed.has(command)) return;
 
     killed.add(command);
-    printStart(command, 'Start', true);
+    printStart(command);
     const { status } = spawnSync(command, { cwd: project.dirPath, shell: true, stdio: 'inherit' });
     printFinishedAndExitIfNeeded(command, status, {});
   };
