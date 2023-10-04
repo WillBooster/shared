@@ -2,6 +2,9 @@ import { spawnSync } from 'node:child_process';
 
 import killPortProcess from 'kill-port';
 
+import { project } from './project.js';
+import { printFinishedAndExitIfNeeded, printStart } from './scripts/run.js';
+
 const killed = new Set<number | string>();
 
 export async function killPortProcessImmediatelyAndOnExit(port: number): Promise<void> {
@@ -12,8 +15,9 @@ export async function killPortProcessImmediatelyAndOnExit(port: number): Promise
     killed.add(port);
     await killPortProcessHandlingErrors(port);
   };
-  process.on('beforeExit', killFunc);
-  process.on('SIGINT', killFunc);
+  for (const signal of ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT']) {
+    process.on(signal, killFunc);
+  }
 }
 
 async function killPortProcessHandlingErrors(port: number): Promise<void> {
@@ -29,8 +33,11 @@ export function spawnSyncOnExit(command: string): void {
     if (killed.has(command)) return;
 
     killed.add(command);
-    spawnSync(command, { shell: true, stdio: 'inherit' });
+    printStart(command, 'Start', true);
+    const { status } = spawnSync(command, { cwd: project.dirPath, shell: true, stdio: 'inherit' });
+    printFinishedAndExitIfNeeded(command, status, {});
   };
-  process.on('beforeExit', killFunc);
-  process.on('SIGINT', killFunc);
+  for (const signal of ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT']) {
+    process.on(signal, killFunc);
+  }
 }

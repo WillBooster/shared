@@ -30,7 +30,7 @@ export async function runWithSpawn(
     printStart(printableScript, 'Start (detailed)', true);
   }
   if (argv.dryRun) {
-    finishedScript(printableScript, 0, opts);
+    printFinishedAndExitIfNeeded(printableScript, 0, opts);
     return 0;
   }
 
@@ -46,7 +46,7 @@ export async function runWithSpawn(
     killOnExit: true,
     verbose: argv.verbose,
   });
-  finishedScript(printableScript, ret.status, opts);
+  printFinishedAndExitIfNeeded(printableScript, ret.status, opts);
   return ret.status ?? 1;
 }
 
@@ -80,7 +80,7 @@ export function runWithSpawnInParallel(
     printStart(printableScript, 'Start (parallel)', true);
     if (argv.dryRun) {
       printStart(printableScript, 'Start (log)');
-      finishedScript(printableScript, 0, opts);
+      printFinishedAndExitIfNeeded(printableScript, 0, opts);
       return;
     }
 
@@ -96,7 +96,7 @@ export function runWithSpawnInParallel(
     printStart(printableScript, 'Start (log)');
     const out = ret.stdout.trim();
     if (out) console.info(out);
-    finishedScript(printableScript, ret.status, opts);
+    printFinishedAndExitIfNeeded(printableScript, ret.status, opts);
   });
 }
 
@@ -110,7 +110,7 @@ function normalizeScript(script: string): [string, string] {
   return [newScript.replaceAll('YARN ', 'yarn '), newScript.replaceAll('YARN ', binExists ? '' : 'yarn ')];
 }
 
-function printStart(normalizedScript: string, prefix = 'Start', weak = false): void {
+export function printStart(normalizedScript: string, prefix = 'Start', weak = false): void {
   console.info(
     '\n' +
       (weak ? chalk.gray : chalk.cyan)(chalk.bold(`${prefix}:`), normalizedScript) +
@@ -118,7 +118,11 @@ function printStart(normalizedScript: string, prefix = 'Start', weak = false): v
   );
 }
 
-function finishedScript(script: string, exitCode: number | null, opts: Omit<Options, 'timeout'>): void {
+export function printFinishedAndExitIfNeeded(
+  script: string,
+  exitCode: number | null,
+  opts: Omit<Options, 'timeout'>
+): void {
   if (exitCode === 0) {
     console.info(chalk.green(chalk.bold('Finished:'), script));
   } else {
