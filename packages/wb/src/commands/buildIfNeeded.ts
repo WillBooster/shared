@@ -56,6 +56,7 @@ function build(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof build
   if (!argv.dryRun) {
     const ret = child_process.spawnSync(argv.command ?? '', {
       cwd: project.dirPath,
+      shell: true,
       stdio: 'inherit',
     });
     if (ret.status !== 0) {
