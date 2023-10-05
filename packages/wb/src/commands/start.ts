@@ -49,20 +49,17 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     switch (argv.mode || 'dev') {
       case 'dev':
       case 'development': {
-        process.env.WB_ENV ||= 'development';
-        loadEnvironmentVariables(argv, project.dirPath);
+        configureEnvironmentVariables(argv, deps, 'development');
         await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.start(argv)}`, argv);
         break;
       }
       case 'staging': {
-        process.env.WB_ENV ||= 'staging';
-        loadEnvironmentVariables(argv, project.dirPath);
+        configureEnvironmentVariables(argv, deps, 'staging');
         await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.startProduction(argv, 8080)}`, argv);
         break;
       }
       case 'docker': {
-        process.env.WB_ENV ||= 'staging';
-        loadEnvironmentVariables(argv, project.dirPath);
+        configureEnvironmentVariables(argv, deps, 'docker');
         await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.startDocker(argv)}`, argv);
         break;
       }
@@ -72,3 +69,18 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     }
   },
 };
+
+function configureEnvironmentVariables(
+  argv: InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>,
+  deps: Partial<Record<string, string>>,
+  env: string
+): string {
+  process.env.WB_ENV ||= env;
+  let prefix = `WB_ENV=${process.env.WB_ENV} `;
+  if (deps['next']) {
+    process.env.NEXT_PUBLIC_WB_ENV = process.env.WB_ENV;
+    prefix += `NEXT_PUBLIC_WB_ENV=${process.env.WB_ENV} `;
+  }
+  loadEnvironmentVariables(argv, project.dirPath);
+  return prefix;
+}
