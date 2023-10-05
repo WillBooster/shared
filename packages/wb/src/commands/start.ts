@@ -49,18 +49,18 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     switch (argv.mode || 'dev') {
       case 'dev':
       case 'development': {
-        configureEnvironmentVariables(argv, deps, 'development');
-        await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.start(argv)}`, argv);
+        const prefix = configureEnvironmentVariables(argv, deps, 'development');
+        await runWithSpawn(`${prefix}${scripts.start(argv)}`, argv);
         break;
       }
       case 'staging': {
-        configureEnvironmentVariables(argv, deps, 'staging');
-        await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.startProduction(argv, 8080)}`, argv);
+        const prefix = configureEnvironmentVariables(argv, deps, 'staging');
+        await runWithSpawn(`${prefix}${scripts.startProduction(argv, 8080)}`, argv);
         break;
       }
       case 'docker': {
-        configureEnvironmentVariables(argv, deps, 'docker');
-        await runWithSpawn(`WB_ENV=${process.env.WB_ENV} ${scripts.startDocker(argv)}`, argv);
+        const prefix = configureEnvironmentVariables(argv, deps, 'docker');
+        await runWithSpawn(`${prefix}${scripts.startDocker(argv)}`, argv);
         break;
       }
       default: {
