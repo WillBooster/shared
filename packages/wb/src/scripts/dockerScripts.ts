@@ -13,7 +13,7 @@ class DockerScripts {
     const prefix = project.dockerPackageJson.scripts?.['docker/build/prepare']
       ? 'yarn run docker/build/prepare && '
       : '';
-    return `cd ${path.dirname(project.dockerfilePath)}
+    return `cd ${path.dirname(project.findFile('Dockerfile'))}
     && ${prefix}YARN wb optimizeForDockerBuild --outside
     && YARN wb retry -- docker build -t ${project.nameWithoutNamespace}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)

@@ -10,13 +10,13 @@ class Project {
   private _dirPath: string;
   private _rootDirPath: string | undefined;
   private _dockerfile: string | undefined;
-  private _dockerfilePath: string | undefined;
   private _hasDockerfile: boolean | undefined;
   private _name: string | undefined;
   private _nameWithoutNamespace: string | undefined;
   private _rootPackageJson: PackageJson | undefined;
   private _dockerPackageJson: PackageJson | undefined;
   private _packageJson: PackageJson | undefined;
+  private _pathByName = new Map<string, string>();
 
   constructor() {
     this._dirPath = process.cwd();
@@ -43,27 +43,14 @@ class Project {
   }
 
   get dockerfile(): string {
-    return (this._dockerfile ??= fs.readFileSync(this.dockerfilePath, 'utf8'));
-  }
-
-  get dockerfilePath(): string {
-    if (this._dockerfilePath) return this._dockerfilePath;
-
-    if (fs.existsSync(path.join(this.dirPath, 'Dockerfile'))) {
-      this._dockerfilePath = path.join(this.dirPath, 'Dockerfile');
-    } else if (fs.existsSync(path.join(this.dirPath, '..', '..', 'Dockerfile'))) {
-      this._dockerfilePath = path.join(this.dirPath, '..', '..', 'Dockerfile');
-    } else {
-      throw new Error('Dockerfile not found');
-    }
-    return this._dockerfilePath;
+    return (this._dockerfile ??= fs.readFileSync(this.findFile('Dockerfile'), 'utf8'));
   }
 
   get hasDockerfile(): boolean {
     if (this._hasDockerfile !== undefined) return this._hasDockerfile;
 
     try {
-      this._hasDockerfile = !!this.dockerfilePath;
+      this._hasDockerfile = !!this.findFile('Dockerfile');
     } catch {
       this._hasDockerfile = false;
     }
@@ -96,9 +83,21 @@ class Project {
 
   get dockerPackageJson(): PackageJson {
     return (this._dockerPackageJson ??=
-      path.dirname(this.dockerfilePath) === this.dirPath
+      path.dirname(this.findFile('Dockerfile')) === this.dirPath
         ? this.packageJson
-        : JSON.parse(fs.readFileSync(path.join(path.dirname(this.dockerfilePath), 'package.json'), 'utf8')));
+        : JSON.parse(fs.readFileSync(path.join(path.dirname(this.findFile('Dockerfile')), 'package.json'), 'utf8')));
+  }
+
+  findFile(fileName: string): string {
+    let filePath = this._pathByName.get(fileName);
+    if (filePath) return filePath;
+
+    filePath = [fileName, path.join('..', '..', fileName)].find((p) => fs.existsSync(p));
+    if (!filePath) {
+      throw new Error(`File not found: ${fileName}`);
+    }
+    this._pathByName.set(fileName, filePath);
+    return filePath;
   }
 }
 
