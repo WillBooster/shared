@@ -8,7 +8,7 @@ import { spawnSyncOnExit } from '../utils.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class DockerScripts {
-  buildDevImage(wbEnv = 'local'): string {
+  buildDevImage(): string {
     // e.g. coding-booster uses `"docker/build/prepare": "touch drill-users.csv",`
     const prefix = project.dockerPackageJson.scripts?.['docker/build/prepare']
       ? 'yarn run docker/build/prepare && '
@@ -17,7 +17,7 @@ class DockerScripts {
     && ${prefix}YARN wb optimizeForDockerBuild --outside
     && YARN wb retry -- docker build -t ${project.nameWithoutNamespace}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
-        --build-arg WB_ENV=${wbEnv}
+        --build-arg WB_ENV=${process.env.WB_ENV}
         --build-arg WB_VERSION=dev .`;
   }
   stopAndStart(unbuffer = false, additionalOptions = '', additionalArgs = ''): string {

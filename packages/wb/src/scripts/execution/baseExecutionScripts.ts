@@ -18,8 +18,8 @@ export interface TestE2EOptions extends TestE2EDevOptions {
 export abstract class BaseExecutionScripts {
   protected constructor(private readonly defaultPort = 3000) {}
 
-  buildDocker(argv: ScriptArgv, wbEnv = 'local'): string {
-    return dockerScripts.buildDevImage(wbEnv);
+  buildDocker(): string {
+    return dockerScripts.buildDevImage();
   }
 
   abstract start(argv: ScriptArgv): string;
@@ -27,7 +27,7 @@ export abstract class BaseExecutionScripts {
   abstract startProduction(argv: ScriptArgv, port: number): string;
 
   startDocker(argv: ScriptArgv): string {
-    return `${this.buildDocker(argv)}
+    return `${this.buildDocker()}
       && YARN concurrently --raw --kill-others-on-fail
         "${dockerScripts.stopAndStart(false, argv.normalizedDockerArgsText ?? '', argv.normalizedArgsText ?? '')}"
         "${this.waitAndOpenApp(argv, 8080)}"`;

@@ -82,7 +82,7 @@ export async function test(argv: ArgumentsCamelCase<InferredOptionTypes<typeof b
     // Check playwright installation because --ci includes --e2e implicitly
     if (argv.e2e !== 'none' && (await e2eTestsExistPromise)) {
       if (project.hasDockerfile) {
-        await runWithSpawn(`${scripts.buildDocker(argv, 'test')}`, argv);
+        await runWithSpawn(`${scripts.buildDocker()}`, argv);
       }
       const options = project.hasDockerfile
         ? {
@@ -158,7 +158,7 @@ async function testOnDocker(
   scripts: BaseExecutionScripts,
   prefix = ''
 ): Promise<void> {
-  await runWithSpawn(`${scripts.buildDocker(argv, 'test')}`, argv);
+  await runWithSpawn(`${scripts.buildDocker()}`, argv);
   process.exitCode = await runWithSpawn(
     `${prefix}${scripts.testE2E(argv, {
       startCommand: dockerScripts.stopAndStart(true),
