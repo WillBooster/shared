@@ -53,6 +53,8 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
       optimizeScripts(packageJson);
 
+      optimizeRootProps(packageJson);
+
       if (argv.dryRun) continue;
 
       const distDirPath = argv.outside
@@ -113,4 +115,10 @@ function optimizeScripts(packageJson: PackageJson): void {
       delete scripts[name];
     }
   }
+}
+
+function optimizeRootProps(packageJson: PackageJson): void {
+  delete packageJson.private;
+  delete packageJson.publishConfig;
+  delete packageJson.prettier;
 }

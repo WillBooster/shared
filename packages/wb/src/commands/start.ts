@@ -59,7 +59,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         break;
       }
       case 'docker': {
-        const prefix = configureEnvironmentVariables(argv, deps, 'docker');
+        const prefix = configureEnvironmentVariables(argv, deps, 'staging');
         await runWithSpawn(`${prefix}${scripts.startDocker(argv)}`, argv);
         break;
       }

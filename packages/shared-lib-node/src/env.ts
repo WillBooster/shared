@@ -59,6 +59,7 @@ export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: st
   }
   envPaths = envPaths.map((envPath) => path.relative(cwd, envPath));
   if (argv.verbose) {
+    console.info(`WB_ENV: ${process.env.WB_ENV}, NODE_ENV: ${process.env.NODE_ENV}`);
     console.info('Loading env files:', envPaths);
   }
 
