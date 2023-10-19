@@ -4,14 +4,17 @@ import path from 'node:path';
 
 /**
  * Check whether seed command can be skipped or not and update hash file if needed.
- * Note that process.env.ALLOW_TO_SKIP_SEED should be set to '1' or 'true' to skip seed.
+ * Note that process.env.ALLOW_TO_SKIP_SEED should be set to non-zero number or 'true' to skip seed.
  * @param hashFilePath Path to the hash file.
  * @param paths Paths to the files or directories.
  * @returns Whether seed command can be skipped.
  */
 export async function canSkipSeed(hashFilePath: string, ...paths: string[]): Promise<boolean> {
-  if (process.env.ALLOW_TO_SKIP_SEED !== '1' && process.env.ALLOW_TO_SKIP_SEED !== 'true') return false;
-  return !(await updateHashFromFiles(hashFilePath, ...paths));
+  return (
+    !!Number(process.env.ALLOW_TO_SKIP_SEED) ||
+    (process.env.ALLOW_TO_SKIP_SEED || '').toLowerCase() === 'true' ||
+    !(await updateHashFromFiles(hashFilePath, ...paths))
+  );
 }
 
 /**
