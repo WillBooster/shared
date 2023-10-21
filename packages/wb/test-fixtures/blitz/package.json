@@ -16,7 +16,7 @@
     "@blitzjs/next": "2.0.0-beta.34",
     "@prisma/client": "5.4.2",
     "blitz": "2.0.0-beta.34",
-    "next": "13.3.4",
+    "next": "13.5.6",
     "prisma": "5.4.2",
     "react": "18.2.0",
     "react-dom": "18.2.0"
