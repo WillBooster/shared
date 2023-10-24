@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { project } from '../project.js';
+import { Project } from '../project.js';
 import { spawnSyncOnExit } from '../utils.js';
 
 /**
@@ -8,7 +8,7 @@ import { spawnSyncOnExit } from '../utils.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class DockerScripts {
-  buildDevImage(): string {
+  buildDevImage(project: Project): string {
     // e.g. coding-booster uses `"docker/build/prepare": "touch drill-users.csv",`
     const prefix = project.dockerPackageJson.scripts?.['docker/build/prepare']
       ? 'yarn run docker/build/prepare && '
@@ -20,15 +20,15 @@ class DockerScripts {
         --build-arg WB_ENV=${process.env.WB_ENV}
         --build-arg WB_VERSION=dev .`;
   }
-  stopAndStart(unbuffer = false, additionalOptions = '', additionalArgs = ''): string {
-    return `${this.stop()} && ${unbuffer ? 'unbuffer ' : ''}${this.start(additionalOptions, additionalArgs)}`;
+  stopAndStart(project: Project, unbuffer = false, additionalOptions = '', additionalArgs = ''): string {
+    return `${this.stop(project)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(project, additionalOptions, additionalArgs)}`;
   }
-  start(additionalOptions = '', additionalArgs = ''): string {
-    spawnSyncOnExit(this.stop());
+  start(project: Project, additionalOptions = '', additionalArgs = ''): string {
+    spawnSyncOnExit(this.stop(project));
     return `docker run --rm -it -p 8080:8080 --name ${project.nameWithoutNamespace} ${additionalOptions} ${project.nameWithoutNamespace} ${additionalArgs}`;
   }
 
-  stop(): string {
+  stop(project: Project): string {
     return `true $(docker rm -f $(docker container ls -q -f name=${project.nameWithoutNamespace}) 2> /dev/null)`;
   }
 

@@ -1,31 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { memoizeOne } from 'at-decorators';
 import type { PackageJson } from 'type-fest';
 
 import type { ScriptArgv } from './scripts/builder.js';
 
-class Project {
-  private _buildCommand: string | undefined;
+export class Project {
   private _dirPath: string;
-  private _rootDirPath: string | undefined;
-  private _dockerfile: string | undefined;
-  private _hasDockerfile: boolean | undefined;
-  private _name: string | undefined;
-  private _nameWithoutNamespace: string | undefined;
-  private _rootPackageJson: PackageJson | undefined;
-  private _dockerPackageJson: PackageJson | undefined;
-  private _packageJson: PackageJson | undefined;
   private _pathByName = new Map<string, string>();
 
-  constructor() {
-    this._dirPath = process.cwd();
+  constructor(dirPath: string) {
+    this._dirPath = dirPath;
   }
 
+  @memoizeOne
   getBuildCommand(argv?: ScriptArgv): string {
-    return (this._buildCommand ??= this.packageJson.scripts?.build?.includes('buildIfNeeded')
+    return this.packageJson.scripts?.build?.includes('buildIfNeeded')
       ? 'yarn build'
-      : `YARN wb buildIfNeeded ${argv?.verbose ? '--verbose' : ''}`);
+      : `YARN wb buildIfNeeded ${argv?.verbose ? '--verbose' : ''}`;
   }
 
   get dirPath(): string {
@@ -36,56 +29,56 @@ class Project {
     this._dirPath = path.resolve(newDirPath);
   }
 
+  @memoizeOne
   get rootDirPath(): string {
-    return (this._rootDirPath ??= fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
+    return fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
       ? path.resolve(this.dirPath, '..', '..')
-      : this.dirPath);
+      : this.dirPath;
   }
 
+  @memoizeOne
   get dockerfile(): string {
-    return (this._dockerfile ??= fs.readFileSync(this.findFile('Dockerfile'), 'utf8'));
+    return fs.readFileSync(this.findFile('Dockerfile'), 'utf8');
   }
 
+  @memoizeOne
   get hasDockerfile(): boolean {
-    if (this._hasDockerfile !== undefined) return this._hasDockerfile;
-
     try {
-      this._hasDockerfile = !!this.findFile('Dockerfile');
+      return !!this.findFile('Dockerfile');
     } catch {
-      this._hasDockerfile = false;
+      return false;
     }
-    return this._hasDockerfile;
   }
 
+  @memoizeOne
   get name(): string {
-    return (this._name ??= project.rootPackageJson.name || 'unknown');
+    return this.rootPackageJson.name || 'unknown';
   }
 
+  @memoizeOne
   get nameWithoutNamespace(): string {
-    if (this._nameWithoutNamespace === undefined) {
-      const name = project.rootPackageJson.name || 'unknown';
-      const index = name.lastIndexOf('/');
-      this._nameWithoutNamespace = index === -1 ? name : name.slice(index + 1);
-    }
-    return this._nameWithoutNamespace;
+    const name = this.rootPackageJson.name || 'unknown';
+    const index = name.lastIndexOf('/');
+    return index === -1 ? name : name.slice(index + 1);
   }
 
+  @memoizeOne
   get packageJson(): PackageJson {
-    return (this._packageJson ??= JSON.parse(fs.readFileSync(path.join(this.dirPath, 'package.json'), 'utf8')));
+    return JSON.parse(fs.readFileSync(path.join(this.dirPath, 'package.json'), 'utf8'));
   }
 
+  @memoizeOne
   get rootPackageJson(): PackageJson {
-    return (this._rootPackageJson ??=
-      this.rootDirPath === this.dirPath
-        ? this.packageJson
-        : JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8')));
+    return this.rootDirPath === this.dirPath
+      ? this.packageJson
+      : JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8'));
   }
 
+  @memoizeOne
   get dockerPackageJson(): PackageJson {
-    return (this._dockerPackageJson ??=
-      path.dirname(this.findFile('Dockerfile')) === this.dirPath
-        ? this.packageJson
-        : JSON.parse(fs.readFileSync(path.join(path.dirname(this.findFile('Dockerfile')), 'package.json'), 'utf8')));
+    return path.dirname(this.findFile('Dockerfile')) === this.dirPath
+      ? this.packageJson
+      : JSON.parse(fs.readFileSync(path.join(path.dirname(this.findFile('Dockerfile')), 'package.json'), 'utf8'));
   }
 
   findFile(fileName: string): string {
@@ -100,5 +93,3 @@ class Project {
     return filePath;
   }
 }
-
-export const project = new Project();

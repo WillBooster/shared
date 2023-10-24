@@ -1,4 +1,4 @@
-import { project } from '../../project.js';
+import { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
@@ -14,28 +14,31 @@ class HttpServerScripts extends BaseExecutionScripts {
     super();
   }
 
-  override start(argv: ScriptArgv): string {
+  override start(project: Project, argv: ScriptArgv): string {
     return `YARN build-ts run src/index.ts ${argv.watch ? '--watch' : ''} -- ${argv.normalizedArgsText ?? ''}`;
   }
 
-  override startDocker(argv: ScriptArgv): string {
-    return `${this.buildDocker()} && ${dockerScripts.stopAndStart(
+  override startDocker(project: Project, argv: ScriptArgv): string {
+    return `${this.buildDocker(project)} && ${dockerScripts.stopAndStart(
+      project,
       false,
       argv.normalizedDockerArgsText ?? '',
       argv.normalizedArgsText ?? ''
     )}`;
   }
 
-  override startProduction(argv: ScriptArgv, port = 8080): string {
+  override startProduction(project: Project, argv: ScriptArgv, port = 8080): string {
     return `NODE_ENV=production ${project.getBuildCommand(
       argv
     )} && NODE_ENV=production PORT=\${PORT:-${port}} node dist/index.js ${argv.normalizedArgsText ?? ''}`;
   }
 
   override testE2E(
+    project: Project,
     argv: ScriptArgv,
     {
       startCommand = `if [ -e "prisma" ]; then prisma migrate reset --force --skip-generate; fi && (${this.startProduction(
+        project,
         argv
       )})`,
     }: TestE2EOptions
@@ -45,16 +48,19 @@ class HttpServerScripts extends BaseExecutionScripts {
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run tests/e2e --color --passWithNoTests"`;
   }
 
-  override testE2EDev(argv: ScriptArgv, { startCommand }: TestE2EDevOptions): string {
+  override testE2EDev(project: Project, argv: ScriptArgv, { startCommand }: TestE2EDevOptions): string {
     return `NODE_ENV=production WB_ENV=${
       process.env.WB_ENV
     } PORT=8080 YARN concurrently --kill-others --raw --success first
-      "${startCommand || this.start(argv)} && exit 1"
+      "${startCommand || this.start(project, argv)} && exit 1"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run tests/e2e --color --passWithNoTests"`;
   }
 
-  override testStart(argv: ScriptArgv): string {
-    return `YARN concurrently --kill-others --raw --success first "${this.start(argv)}" "${this.waitApp(argv)}"`;
+  override testStart(project: Project, argv: ScriptArgv): string {
+    return `YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(
+      project,
+      argv
+    )}"`;
   }
 }
 

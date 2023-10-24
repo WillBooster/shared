@@ -2,8 +2,8 @@ import { spawnSync } from 'node:child_process';
 
 import killPortProcess from 'kill-port';
 
-import { project } from './project.js';
 import { printFinishedAndExitIfNeeded, printStart } from './scripts/run.js';
+import { Project } from './project.js';
 
 const killed = new Set<number | string>();
 
@@ -28,7 +28,7 @@ async function killPortProcessHandlingErrors(port: number): Promise<void> {
   }
 }
 
-export function spawnSyncOnExit(command: string): void {
+export function spawnSyncOnExit(project: Project, command: string): void {
   const killFunc = async (): Promise<void> => {
     if (killed.has(command)) return;
 

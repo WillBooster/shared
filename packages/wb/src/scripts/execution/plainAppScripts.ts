@@ -1,4 +1,4 @@
-import { project } from '../../project.js';
+import { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
@@ -13,33 +13,34 @@ class PlainAppScripts extends BaseExecutionScripts {
     super();
   }
 
-  override start(argv: ScriptArgv): string {
+  override start(project: Project, argv: ScriptArgv): string {
     return `YARN build-ts run src/index.ts ${argv.watch ? '--watch' : ''} -- ${argv.normalizedArgsText ?? ''}`;
   }
 
-  override startDocker(argv: ScriptArgv): string {
-    return `${this.buildDocker()} && ${dockerScripts.stopAndStart(
+  override startDocker(project: Project, argv: ScriptArgv): string {
+    return `${this.buildDocker(project)} && ${dockerScripts.stopAndStart(
+      project,
       false,
       argv.normalizedDockerArgsText ?? '',
       argv.normalizedArgsText ?? ''
     )}`;
   }
 
-  override startProduction(argv: ScriptArgv): string {
+  override startProduction(project: Project, argv: ScriptArgv): string {
     return `NODE_ENV=production ${project.getBuildCommand(argv)} && NODE_ENV=production node dist/index.js ${
       argv.normalizedArgsText ?? ''
     }`;
   }
 
-  override testE2E(): string {
+  override testE2E(_: Project): string {
     return `echo 'do nothing.'`;
   }
 
-  override testE2EDev(): string {
+  override testE2EDev(_: Project): string {
     return `echo 'do nothing.'`;
   }
 
-  override testStart(): string {
+  override testStart(_: Project): string {
     return `echo 'do nothing.'`;
   }
 }

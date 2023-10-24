@@ -8,8 +8,6 @@ import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { project } from '../project.js';
-
 const builder = {
   command: {
     description: 'A build command',

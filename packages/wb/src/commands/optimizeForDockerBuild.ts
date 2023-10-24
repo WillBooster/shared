@@ -5,8 +5,6 @@ import path from 'node:path';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { project } from '../project.js';
-
 const builder = {
   outside: {
     description: 'Whether the optimization is executed outside a docker container or not',
