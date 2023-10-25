@@ -27,7 +27,7 @@
     "@qiwi/multi-semantic-release": "7.1.1",
     "@types/eslint": "8.44.6",
     "@typescript-eslint/parser": "6.9.0",
-    "@willbooster/prettier-config": "9.1.1",
+    "@willbooster/prettier-config": "9.1.2",
     "conventional-changelog-conventionalcommits": "6.1.0",
     "eslint": "8.52.0",
     "husky": "8.0.3",

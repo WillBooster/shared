@@ -1,6 +1,6 @@
+import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
-import { Project } from '../../project.js';
 
 export interface TestE2EDevOptions {
   // '--e2e generate' calls 'codegen http://localhost:8080'

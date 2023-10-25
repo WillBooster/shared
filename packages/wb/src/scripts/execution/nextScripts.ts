@@ -1,4 +1,4 @@
-import { Project } from '../../project.js';
+import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
 

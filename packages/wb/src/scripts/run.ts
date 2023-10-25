@@ -5,10 +5,10 @@ import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
+import { killPortProcessImmediatelyAndOnExit } from '../processUtils.js';
 import { project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { killPortProcessImmediatelyAndOnExit } from '../utils.js';
 
 interface Options {
   exitIfFailed?: boolean;

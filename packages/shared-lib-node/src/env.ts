@@ -3,12 +3,12 @@ import path from 'node:path';
 import { config } from 'dotenv';
 
 interface Options {
-  env?: (string | number)[];
-  cascadeEnv?: string;
-  cascadeNodeEnv?: boolean;
-  autoCascadeEnv?: boolean;
-  checkEnv?: string;
-  verbose?: boolean;
+  env: (string | number)[];
+  cascadeEnv: string;
+  cascadeNodeEnv: boolean;
+  autoCascadeEnv: boolean;
+  checkEnv: string;
+  verbose: boolean;
 }
 
 export const yargsOptionsBuilderForEnv = {
@@ -40,8 +40,8 @@ export const yargsOptionsBuilderForEnv = {
 /**
  * This function loads environment variables from `.env` files.
  * */
-export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: string): Record<string, string> {
-  let envPaths = (argv.env ?? []).map((envPath) => path.resolve(orgCwd ?? cwd, envPath.toString()));
+export function loadEnvironmentVariables(argv: Partial<Options>, cwd: string): Record<string, string> {
+  let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
   const cascade =
     argv.cascadeEnv ??
     (argv.cascadeNodeEnv
@@ -112,6 +112,33 @@ export function removeNpmAndYarnEnvironmentVariables(envVars: Record<string, str
       upperKey === 'INIT_CWD'
     ) {
       delete envVars[key];
+    }
+  }
+}
+
+const savedEnvVars: Map<string, string | undefined> = new Map();
+
+/**
+ * This function saves the current state of environment variables.
+ * It can be used to restore the environment variables to this state later.
+ */
+export function saveEnvironmentVariables(): void {
+  savedEnvVars.clear();
+  for (const [key, value] of Object.entries(process.env)) {
+    savedEnvVars.set(key, value);
+  }
+}
+
+/**
+ * Restores the environment variables to the state saved by `saveEnvironmentVariables`.
+ * If a variable was not saved, it will be deleted.
+ */
+export function restoreEnvironmentVariables(): void {
+  for (const [key, value] of savedEnvVars.entries()) {
+    if (savedEnvVars.has(key)) {
+      process.env[key] = value;
+    } else {
+      delete process.env[key];
     }
   }
 }

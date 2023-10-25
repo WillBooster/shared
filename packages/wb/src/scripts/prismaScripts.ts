@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { Project } from '../project.js';
+import type { Project } from '../project.js';
 
 /**
  * A collection of scripts for executing Prisma commands.

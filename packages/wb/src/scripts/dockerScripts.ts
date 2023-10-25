@@ -1,7 +1,7 @@
 import path from 'node:path';
 
-import { Project } from '../project.js';
-import { spawnSyncOnExit } from '../utils.js';
+import { spawnSyncOnExit } from '../processUtils.js';
+import type { Project } from '../project.js';
 
 /**
  * A collection of scripts for executing Docker commands.
@@ -21,7 +21,11 @@ class DockerScripts {
         --build-arg WB_VERSION=dev .`;
   }
   stopAndStart(project: Project, unbuffer = false, additionalOptions = '', additionalArgs = ''): string {
-    return `${this.stop(project)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(project, additionalOptions, additionalArgs)}`;
+    return `${this.stop(project)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(
+      project,
+      additionalOptions,
+      additionalArgs
+    )}`;
   }
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop(project));

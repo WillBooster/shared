@@ -8,6 +8,12 @@ import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
+import type { Project} from '../project.js';
+import { findAllProjects } from '../project.js';
+import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+
+import { prepareForRunningCommand } from './commandUtils.js';
+
 const builder = {
   command: {
     description: 'A build command',
@@ -28,28 +34,39 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
 
 export async function buildIfNeeded(
   // Test code requires Partial<...>
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>>
 ): Promise<boolean | undefined> {
-  if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
-    build(argv);
-    return true;
-  }
+  const projects = await findAllProjects();
+  if (!projects) return true;
 
-  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(argv);
-  if (canSkip) {
-    console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
-    return false;
-  }
+  const isGitRepo = fs.existsSync(path.join(projects.root.dirPath, '.git'));
 
-  if (!build(argv)) return;
+  let built = false;
 
-  if (!argv.dryRun) {
-    await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
+  for (const project of prepareForRunningCommand('buildIfNeeded', projects.root, projects.all, argv)) {
+    if (!isGitRepo) {
+      if (!build(project, argv)) return;
+      built = true;
+      continue;
+    }
+
+    const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(project, argv);
+    if (canSkip) {
+      console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
+      continue;
+    }
+
+    if (!build(project, argv)) return;
+    built = true;
+
+    if (!argv.dryRun) {
+      await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
+    }
   }
-  return true;
+  return built;
 }
 
-function build(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
+function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
   console.info(chalk.green(`Run '${argv.command}'`));
   if (!argv.dryRun) {
     const ret = child_process.spawnSync(argv.command ?? '', {
@@ -68,6 +85,7 @@ function build(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof build
 const ignoringEnvVarNames = new Set(['CI', 'PWDEBUG', 'TMPDIR']);
 
 export async function canSkipBuild(
+  project: Project,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
 ): Promise<[boolean, string, string]> {
   const cacheDirectoryPath = path.resolve(project.dirPath, 'node_modules', '.cache', 'build');
@@ -86,7 +104,7 @@ export async function canSkipBuild(
   );
   hash.update(environmentJson);
 
-  await updateHashWithDiffResult(argv, hash);
+  await updateHashWithDiffResult(project, argv, hash);
   const contentHash = hash.digest('hex');
 
   const cachedContentHash = await ignoreEnoentAsync(() => fs.promises.readFile(cacheFilePath, 'utf8'));
@@ -110,6 +128,7 @@ const includeSuffix = [
 const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'package.json'];
 
 async function updateHashWithDiffResult(
+  project: Project,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
   hash: Hash
 ): Promise<void> {

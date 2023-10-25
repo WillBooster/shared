@@ -1,4 +1,4 @@
-import { Project } from '../../project.js';
+import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 

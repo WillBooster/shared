@@ -4,7 +4,7 @@ import os from 'node:os';
 
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { project } from '../project.js';
+import { findAllProjects, project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 
@@ -21,50 +21,58 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
 
 // Test code requires Partial<...>
 export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
-  const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
-  if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
-    await runWithSpawn('asdf install', argv);
-  }
-  if (dirents.some((d) => d.isFile() && d.name === 'pyproject.toml')) {
-    await runWithSpawnInParallel('poetry config virtualenvs.in-project true', argv);
-    await runWithSpawnInParallel('poetry config virtualenvs.prefer-active-python true', argv);
-    const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
-    await runWithSpawnInParallel(`poetry env use ${version}`, argv);
-    await promisePool.promiseAll();
-    await runWithSpawn('poetry run pip install --upgrade pip', argv);
-    await runWithSpawn('poetry install --ansi', argv);
-  }
+  const projects = await findAllProjects();
+  if (!projects) return;
 
-  if (os.platform() === 'darwin') {
-    const packages = ['pstree'];
-    if (project.hasDockerfile) {
-      packages.push('expect');
+  for (const project of projects.all) {
+    const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
+    if (project === projects.root) {
+      if (os.platform() === 'darwin') {
+        const packages = ['pstree'];
+        if (project.hasDockerfile) {
+          packages.push('expect');
+        }
+        await runWithSpawnInParallel(`brew install ${packages.join(' ')}`, argv);
+      }
+
+      if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
+        await runWithSpawn('asdf install', argv);
+      }
     }
-    await runWithSpawnInParallel(`brew install ${packages.join(' ')}`, argv);
-  }
 
-  const deps = project.packageJson.dependencies ?? {};
-  const devDeps = project.packageJson.devDependencies || {};
-  const scripts = project.packageJson.scripts ?? {};
-  const newDeps: string[] = [];
-  const newDevDeps: string[] = [];
-  if (deps['blitz'] || deps['next']) {
-    newDeps.push('pm2');
-    newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
-  } else if (devDeps['@remix-run/dev']) {
-    newDeps.push('pm2');
-    newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
-  } else if (deps['express'] || deps['fastify']) {
-    newDeps.push('pm2');
-    newDevDeps.push('concurrently', 'vitest', 'wait-on');
-  }
-  if (newDeps.length > 0) {
-    await runWithSpawn(`yarn add ${newDeps.join(' ')}`, argv);
-  }
-  if (newDevDeps.length > 0) {
-    await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`, argv);
-  }
-  if (scripts['gen-code']) {
-    await runWithSpawn('yarn gen-code', argv);
+    if (dirents.some((d) => d.isFile() && d.name === 'pyproject.toml')) {
+      await runWithSpawnInParallel('poetry config virtualenvs.in-project true', argv);
+      await runWithSpawnInParallel('poetry config virtualenvs.prefer-active-python true', argv);
+      const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
+      await runWithSpawnInParallel(`poetry env use ${version}`, argv);
+      await promisePool.promiseAll();
+      await runWithSpawn('poetry run pip install --upgrade pip', argv);
+      await runWithSpawn('poetry install --ansi', argv);
+    }
+
+    const deps = project.packageJson.dependencies ?? {};
+    const devDeps = project.packageJson.devDependencies || {};
+    const scripts = project.packageJson.scripts ?? {};
+    const newDeps: string[] = [];
+    const newDevDeps: string[] = [];
+    if (deps['blitz'] || deps['next']) {
+      newDeps.push('pm2');
+      newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
+    } else if (devDeps['@remix-run/dev']) {
+      newDeps.push('pm2');
+      newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
+    } else if (deps['express'] || deps['fastify']) {
+      newDeps.push('pm2');
+      newDevDeps.push('concurrently', 'vitest', 'wait-on');
+    }
+    if (newDeps.length > 0) {
+      await runWithSpawn(`yarn add ${newDeps.join(' ')}`, argv);
+    }
+    if (newDevDeps.length > 0) {
+      await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`, argv);
+    }
+    if (scripts['gen-code']) {
+      await runWithSpawn('yarn gen-code', argv);
+    }
   }
 }

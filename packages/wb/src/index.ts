@@ -1,6 +1,10 @@
 import path from 'node:path';
 
-import { loadEnvironmentVariables, removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import {
+  loadEnvironmentVariables,
+  removeNpmAndYarnEnvironmentVariables,
+  saveEnvironmentVariables,
+} from '@willbooster/shared-lib-node/src';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -12,7 +16,6 @@ import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
-import { project } from './project.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
 await yargs(hideBin(process.argv))
@@ -23,17 +26,17 @@ await yargs(hideBin(process.argv))
     if (workingDir) {
       const dirPath = path.resolve(workingDir);
       process.chdir(dirPath);
-      project.dirPath = dirPath;
     }
 
     removeNpmAndYarnEnvironmentVariables(process.env);
+    saveEnvironmentVariables();
 
-    const command = argv._[0].toString();
-    if (['start', 'tc', 'typecheck'].includes(command)) return;
-    if (command === 'test') {
-      process.env.WB_ENV ||= 'test';
-    }
-    loadEnvironmentVariables(argv, project.dirPath);
+    // const command = argv._[0].toString();
+    // if (['start', 'tc', 'typecheck'].includes(command)) return;
+    // if (command === 'test') {
+    //   process.env.WB_ENV ||= 'test';
+    // }
+    // loadEnvironmentVariables(argv, project.dirPath);
   })
   .command(buildIfNeededCommand)
   .command(optimizeForDockerBuildCommand)

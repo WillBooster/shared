@@ -1,7 +1,10 @@
+import { loadEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
+import { findAllProjects, findRootAndSelfProjects } from '../project.js';
 import { runWithSpawn } from '../scripts/run.js';
+import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
   retry: {
@@ -12,11 +15,20 @@ const builder = {
   },
 } as const;
 
-export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
   command: 'retry',
   describe: 'Retry the given command until it succeeds',
   builder,
   async handler(argv) {
+    const projects = findRootAndSelfProjects();
+    if (!projects) return;
+
+    const project = projects.self;
+    loadEnvironmentVariables(argv, project.dirPath);
+    if (projects.root !== project) {
+      loadEnvironmentVariables(argv, projects.root.dirPath);
+    }
+
     const cmdAndArgs = argv._.slice(1);
     let lastStatus = 0;
     for (let i = 0; i < argv.retry; i++) {

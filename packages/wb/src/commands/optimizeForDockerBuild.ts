@@ -5,6 +5,10 @@ import path from 'node:path';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
+import { findAllProjects } from '../project.js';
+
+import { prepareForRunningCommand } from './commandUtils.js';
+
 const builder = {
   outside: {
     description: 'Whether the optimization is executed outside a docker container or not',
@@ -18,25 +22,15 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
   describe: 'Optimize configuration when building a Docker image',
   builder,
   async handler(argv) {
+    const projects = await findAllProjects();
+    if (!projects) return;
+
     const opts = {
       stdio: 'inherit',
     } as const;
 
-    const packageJsonPaths = ['package.json'];
-    if (project.packageJson.workspaces) {
-      const packageDirs = await fs.promises.readdir('packages', { withFileTypes: true });
-      for (const packageDir of packageDirs) {
-        if (!packageDir.isDirectory()) continue;
-
-        const packageJsonPath = path.join('packages', packageDir.name, 'package.json');
-        if (!fs.existsSync(packageJsonPath)) continue;
-
-        packageJsonPaths.push(packageJsonPath);
-      }
-    }
-
-    for (const packageJsonPath of packageJsonPaths) {
-      const packageJson: PackageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.root, projects.all, argv)) {
+      const packageJson: PackageJson = project.packageJson;
       const keys = ['dependencies', 'devDependencies'] as const;
       for (const key of keys) {
         const deps = packageJson[key] || {};
@@ -55,9 +49,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
       if (argv.dryRun) continue;
 
-      const distDirPath = argv.outside
-        ? path.join(path.dirname(packageJsonPath), 'dist')
-        : path.dirname(packageJsonPath);
+      const distDirPath = argv.outside ? path.join(project.dirPath, 'dist') : project.dirPath;
       await fs.promises.mkdir(distDirPath, { recursive: true });
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
     }
