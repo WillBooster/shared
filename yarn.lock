@@ -2578,7 +2578,19 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mdx-js/react@npm:2.3.0, @mdx-js/react@npm:^2.1.5":
+"@mdx-js/react@npm:3.0.0":
+  version: 3.0.0
+  resolution: "@mdx-js/react@npm:3.0.0"
+  dependencies:
+    "@types/mdx": "npm:^2.0.0"
+  peerDependencies:
+    "@types/react": ">=16"
+    react: ">=16"
+  checksum: 865f6ebc7ae83c6cb9f7e92db4eddd3f85cd1664391643b4736887ddc32b0ddb5aec012db6fbc9b486b552e08e6d5ad800450fcd9d51c20665667ff0f174d966
+  languageName: node
+  linkType: hard
+
+"@mdx-js/react@npm:^2.1.5":
   version: 2.3.0
   resolution: "@mdx-js/react@npm:2.3.0"
   dependencies:
@@ -6407,7 +6419,7 @@ __metadata:
   resolution: "@willbooster/shared-lib-react@workspace:packages/shared-lib-react"
   dependencies:
     "@babel/core": "npm:7.23.2"
-    "@mdx-js/react": "npm:2.3.0"
+    "@mdx-js/react": "npm:3.0.0"
     "@storybook/addon-actions": "npm:7.5.1"
     "@storybook/addon-docs": "npm:7.5.1"
     "@storybook/addon-essentials": "npm:7.5.1"
