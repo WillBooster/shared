@@ -34,7 +34,7 @@
     "@types/eslint": "8.44.6",
     "@types/kill-port": "2.0.2",
     "@types/micromatch": "4.0.4",
-    "@types/node": "20.8.8",
+    "@types/node": "20.8.9",
     "@types/yargs": "17.0.29",
     "@typescript-eslint/eslint-plugin": "6.9.0",
     "@typescript-eslint/parser": "6.9.0",
@@ -52,7 +52,7 @@
     "micromatch": "4.0.5",
     "prettier": "3.0.3",
     "sort-package-json": "2.6.0",
-    "type-fest": "4.5.0",
+    "type-fest": "4.6.0",
     "typescript": "5.2.2",
     "vitest": "0.34.6",
     "yargs": "17.7.2"
