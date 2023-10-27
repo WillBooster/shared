@@ -14,16 +14,16 @@
   "dependencies": {
     "@blitzjs/auth": "2.0.0-beta.34",
     "@blitzjs/next": "2.0.0-beta.34",
-    "@prisma/client": "5.4.2",
+    "@prisma/client": "5.5.2",
     "blitz": "2.0.0-beta.34",
     "next": "13.5.6",
-    "prisma": "5.4.2",
+    "prisma": "5.5.2",
     "react": "18.2.0",
     "react-dom": "18.2.0"
   },
   "devDependencies": {
-    "@types/node": "18.18.6",
-    "@types/react": "18.2.31",
+    "@types/node": "18.18.7",
+    "@types/react": "18.2.33",
     "typescript": "5.2.2"
   }
 }
