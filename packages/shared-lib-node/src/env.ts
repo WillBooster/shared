@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { DotenvPopulateInput } from 'dotenv';
-import { parse, populate } from 'dotenv';
+import { config } from 'dotenv';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 export const yargsOptionsBuilderForEnv = {
@@ -112,8 +111,8 @@ export function readAndApplyEnvironmentVariables(
   cache = true
 ): Record<string, string | undefined> {
   const envVars = readEnvironmentVariables(argv, cwd, cache);
-  populate(process.env as DotenvPopulateInput, envVars);
-  return process.env;
+  Object.assign(process.env, envVars);
+  return envVars;
 }
 
 const cachedEnvVars = new Map<string, Record<string, string>>();
@@ -122,7 +121,7 @@ function readEnvFile(filePath: string, cache = true): Record<string, string> {
   const cached = cache && cachedEnvVars.get(filePath);
   if (cached) return cached;
 
-  const parsed = parse(filePath);
+  const parsed = config({ path: path.resolve(filePath), processEnv: {} }).parsed ?? {};
   if (cache) {
     cachedEnvVars.set(filePath, parsed);
   }
