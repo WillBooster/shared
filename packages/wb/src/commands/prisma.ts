@@ -1,3 +1,4 @@
+import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
@@ -35,9 +36,9 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
   describe: 'Apply migration to DB without initializing it',
   builder,
   async handler(argv) {
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma deploy', root, allProjects, argv)) {
-      await runWithSpawn(prismaScripts.deploy(project), argv);
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma deploy', allProjects)) {
+      await runWithSpawn(prismaScripts.deploy(project), project, argv);
     }
   },
 };
@@ -57,9 +58,9 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof depl
   describe: "Force to apply migration to DB utilizing Litestream's backup without initializing it",
   builder: deployForceBuilder,
   async handler(argv) {
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma deploy-force', root, allProjects, argv)) {
-      await runWithSpawn(prismaScripts.deployForce(project, argv.backupPath), argv);
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma deploy-force', allProjects)) {
+      await runWithSpawn(prismaScripts.deployForce(project, argv.backupPath), project, argv);
     }
   },
 };
@@ -69,9 +70,9 @@ const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof build
   describe: 'Setup DB for Litestream',
   builder,
   async handler(argv) {
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma litestream', root, allProjects, argv)) {
-      await runWithSpawn(prismaScripts.litestream(project), argv);
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
+      await runWithSpawn(prismaScripts.litestream(project), project, argv);
     }
   },
 };
@@ -81,9 +82,9 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>
   describe: 'Apply migration to DB with initializing it',
   builder,
   async handler(argv) {
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma migrate', root, allProjects, argv)) {
-      await runWithSpawn(prismaScripts.migrate(project), argv);
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma migrate', allProjects)) {
+      await runWithSpawn(prismaScripts.migrate(project), project, argv);
     }
   },
 };
@@ -93,9 +94,9 @@ const migrateDevCommand: CommandModule<unknown, InferredOptionTypes<typeof build
   describe: 'Create a migration file',
   builder,
   async handler(argv) {
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma migrate-dev', root, allProjects, argv)) {
-      await runWithSpawn(prismaScripts.migrateDev(project), argv);
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma migrate-dev', allProjects)) {
+      await runWithSpawn(prismaScripts.migrateDev(project), project, argv);
     }
   },
 };
@@ -105,9 +106,9 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
   describe: 'Reset DB',
   builder,
   async handler(argv) {
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma reset', root, allProjects, argv)) {
-      await runWithSpawn(prismaScripts.reset(project), argv);
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma reset', allProjects)) {
+      await runWithSpawn(prismaScripts.reset(project), project, argv);
     }
   },
 };
@@ -125,12 +126,12 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
   describe: "Restore DB from Litestream's backup",
   builder: restoreBuilder,
   async handler(argv) {
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma restore', root, allProjects, argv)) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma restore', allProjects)) {
       const output =
         argv.output ||
         (project.packageJson.dependencies?.['blitz'] ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3');
-      await runWithSpawn(prismaScripts.restore(project, argv.backupPath, output), argv);
+      await runWithSpawn(prismaScripts.restore(project, argv.backupPath, output), project, argv);
     }
   },
 };
@@ -149,9 +150,9 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
   describe: 'Populate DB with seed data',
   builder: seedBuilder,
   async handler(argv) {
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma seed', root, allProjects, argv)) {
-      await runWithSpawn(prismaScripts.seed(project, argv.file), argv);
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma seed', allProjects)) {
+      await runWithSpawn(prismaScripts.seed(project, argv.file), project, argv);
     }
   },
 };
@@ -177,24 +178,23 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
       throw new Error('You cannot specify both --restored and --db-url-or-path.');
     }
 
-    const [root, ...allProjects] = await findPrismaProjects();
-    for (const project of prepareForRunningCommand('prisma studio', root, allProjects, argv)) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma studio', allProjects)) {
       const dbUrlOrPath = argv.restored
         ? project.packageJson.dependencies?.['blitz']
           ? 'db/restored.sqlite3'
           : 'prisma/restored.sqlite3'
         : argv.dbUrlOrPath?.toString();
-      await runWithSpawn(prismaScripts.studio(project, dbUrlOrPath), argv);
+      await runWithSpawn(prismaScripts.studio(project, dbUrlOrPath), project, argv);
     }
   },
 };
 
-async function findPrismaProjects(): Promise<Project[]> {
-  const projects = await findAllProjects();
+async function findPrismaProjects(argv: EnvReaderOptions): Promise<Project[]> {
+  const projects = await findAllProjects(argv);
   if (!projects) return [];
 
-  const prismaProjects = projects.all.filter(
+  return projects.all.filter(
     (project) => project.packageJson.dependencies?.['prisma'] || project.packageJson.devDependencies?.['prisma']
   );
-  return [projects.root, ...prismaProjects];
 }

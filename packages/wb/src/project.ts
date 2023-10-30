@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
+import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import { memoizeOne } from 'at-decorators';
 import type { PackageJson } from 'type-fest';
 
@@ -9,9 +11,11 @@ import type { ScriptArgv } from './scripts/builder.js';
 export class Project {
   private _dirPath: string;
   private _pathByName = new Map<string, string>();
+  private _argv: EnvReaderOptions;
 
-  constructor(dirPath: string) {
+  constructor(dirPath: string, argv: EnvReaderOptions) {
     this._dirPath = path.resolve(dirPath);
+    this._argv = argv;
   }
 
   @memoizeOne
@@ -63,6 +67,11 @@ export class Project {
   }
 
   @memoizeOne
+  get env(): Record<string, string | undefined> {
+    return readEnvironmentVariables(this._argv, this.dirPath);
+  }
+
+  @memoizeOne
   get packageJson(): PackageJson {
     return JSON.parse(fs.readFileSync(path.join(this.dirPath, 'package.json'), 'utf8'));
   }
@@ -100,29 +109,46 @@ export interface FoundProjects {
   all: Project[];
 }
 
-export function findRootAndSelfProjects(): Omit<FoundProjects, 'all'> | undefined {
+export function findSelfProject(argv: EnvReaderOptions): Project | undefined {
   const dirPath = process.cwd();
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
 
-  const thisProject = new Project(dirPath);
+  return new Project(dirPath, argv);
+}
+
+export async function findAllProjects(argv: EnvReaderOptions, dirPath?: string): Promise<FoundProjects | undefined> {
+  const rootAndSelfProjects = findRootAndSelfProjects(argv, dirPath);
+  if (!rootAndSelfProjects) return;
+
+  return {
+    ...rootAndSelfProjects,
+    all:
+      rootAndSelfProjects.root === rootAndSelfProjects.self
+        ? await getAllProjects(argv, rootAndSelfProjects.root)
+        : [rootAndSelfProjects.self],
+  };
+}
+
+export function findRootAndSelfProjects(
+  argv: EnvReaderOptions,
+  dirPath?: string
+): Omit<FoundProjects, 'all'> | undefined {
+  // Tests pass dirPath
+  dirPath ??= process.cwd();
+  if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
+
+  const thisProject = new Project(dirPath, argv);
   let rootProject = thisProject;
   if (!thisProject.packageJson.workspaces && path.dirname(dirPath) === 'packages') {
     const rootDirPath = path.resolve(dirPath, '..', '..');
     if (fs.existsSync(path.join(rootDirPath, 'package.json'))) {
-      rootProject = new Project(rootDirPath);
+      rootProject = new Project(rootDirPath, argv);
     }
   }
   return { root: rootProject, self: thisProject };
 }
 
-export async function findAllProjects(): Promise<FoundProjects | undefined> {
-  const rootAndSelfProjects = findRootAndSelfProjects();
-  if (!rootAndSelfProjects) return;
-
-  return { ...rootAndSelfProjects, all: await getAllProjects(rootAndSelfProjects.root) };
-}
-
-async function getAllProjects(rootProject: Project): Promise<Project[]> {
+async function getAllProjects(argv: EnvReaderOptions, rootProject: Project): Promise<Project[]> {
   const allProjects = [rootProject];
   const packageDirPath = path.join(rootProject.dirPath, 'packages');
   const packageDirs = await fs.promises.readdir(packageDirPath, { withFileTypes: true });
@@ -132,7 +158,7 @@ async function getAllProjects(rootProject: Project): Promise<Project[]> {
     const packageJsonPath = path.join(packageDirPath, 'package.json');
     if (!fs.existsSync(packageJsonPath)) continue;
 
-    allProjects.push(new Project(packageJsonPath));
+    allProjects.push(new Project(packageJsonPath, argv));
   }
   return allProjects;
 }

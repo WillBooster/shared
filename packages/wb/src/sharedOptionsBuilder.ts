@@ -13,9 +13,4 @@ export const sharedOptionsBuilder = {
     type: 'boolean',
     alias: 'd',
   },
-  verbose: {
-    description: 'Whether to show verbose information',
-    type: 'boolean',
-    alias: 'v',
-  },
 } as const;

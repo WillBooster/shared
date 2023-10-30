@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { removeNpmAndYarnEnvironmentVariables, saveEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -25,14 +25,6 @@ await yargs(hideBin(process.argv))
     }
 
     removeNpmAndYarnEnvironmentVariables(process.env);
-    saveEnvironmentVariables();
-
-    // const command = argv._[0].toString();
-    // if (['start', 'tc', 'typecheck'].includes(command)) return;
-    // if (command === 'test') {
-    //   process.env.WB_ENV ||= 'test';
-    // }
-    // loadEnvironmentVariables(argv, project.dirPath);
   })
   .command(buildIfNeededCommand)
   .command(optimizeForDockerBuildCommand)

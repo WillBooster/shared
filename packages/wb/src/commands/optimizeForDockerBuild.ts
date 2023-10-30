@@ -22,14 +22,14 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
   describe: 'Optimize configuration when building a Docker image',
   builder,
   async handler(argv) {
-    const projects = await findAllProjects();
+    const projects = await findAllProjects(argv);
     if (!projects) return;
 
     const opts = {
       stdio: 'inherit',
     } as const;
 
-    for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.root, projects.all, argv)) {
+    for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.all)) {
       const packageJson: PackageJson = project.packageJson;
       const keys = ['dependencies', 'devDependencies'] as const;
       for (const key of keys) {

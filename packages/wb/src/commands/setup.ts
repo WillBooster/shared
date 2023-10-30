@@ -21,7 +21,7 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
 
 // Test code requires Partial<...>
 export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
-  const projects = await findAllProjects();
+  const projects = await findAllProjects(argv);
   if (!projects) return;
 
   for (const project of projects.all) {
@@ -32,22 +32,22 @@ export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes
         if (project.hasDockerfile) {
           packages.push('expect');
         }
-        await runWithSpawnInParallel(`brew install ${packages.join(' ')}`, argv);
+        await runWithSpawnInParallel(`brew install ${packages.join(' ')}`, project, argv);
       }
 
       if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
-        await runWithSpawn('asdf install', argv);
+        await runWithSpawn('asdf install', project, argv);
       }
     }
 
     if (dirents.some((d) => d.isFile() && d.name === 'pyproject.toml')) {
-      await runWithSpawnInParallel('poetry config virtualenvs.in-project true', argv);
-      await runWithSpawnInParallel('poetry config virtualenvs.prefer-active-python true', argv);
+      await runWithSpawnInParallel('poetry config virtualenvs.in-project true', project, argv);
+      await runWithSpawnInParallel('poetry config virtualenvs.prefer-active-python true', project, argv);
       const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
-      await runWithSpawnInParallel(`poetry env use ${version}`, argv);
+      await runWithSpawnInParallel(`poetry env use ${version}`, project, argv);
       await promisePool.promiseAll();
-      await runWithSpawn('poetry run pip install --upgrade pip', argv);
-      await runWithSpawn('poetry install --ansi', argv);
+      await runWithSpawn('poetry run pip install --upgrade pip', project, argv);
+      await runWithSpawn('poetry install --ansi', project, argv);
     }
 
     const deps = project.packageJson.dependencies ?? {};
@@ -66,13 +66,13 @@ export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes
       newDevDeps.push('concurrently', 'vitest', 'wait-on');
     }
     if (newDeps.length > 0) {
-      await runWithSpawn(`yarn add ${newDeps.join(' ')}`, argv);
+      await runWithSpawn(`yarn add ${newDeps.join(' ')}`, project, argv);
     }
     if (newDevDeps.length > 0) {
-      await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`, argv);
+      await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`, project, argv);
     }
     if (scripts['gen-code']) {
-      await runWithSpawn('yarn gen-code', argv);
+      await runWithSpawn('yarn gen-code', project, argv);
     }
   }
 }

@@ -1,8 +1,7 @@
-import { loadEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findRootAndSelfProjects } from '../project.js';
+import { findSelfProject } from '../project.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -20,14 +19,8 @@ export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   describe: 'Retry the given command until it succeeds',
   builder,
   async handler(argv) {
-    const projects = findRootAndSelfProjects();
-    if (!projects) return;
-
-    const project = projects.self;
-    loadEnvironmentVariables(argv, project.dirPath);
-    if (projects.root !== project) {
-      loadEnvironmentVariables(argv, projects.root.dirPath);
-    }
+    const project = findSelfProject(argv);
+    if (!project) return;
 
     const cmdAndArgs = argv._.slice(1);
     let lastStatus = 0;
@@ -36,7 +29,7 @@ export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         console.info(`\n${chalk.yellow(`#${i} Retrying: ${cmdAndArgs.join(' ')}`)}`);
       }
       // TODO: should we add single quotes around each argument?
-      lastStatus = await runWithSpawn(cmdAndArgs.join(' '), argv, {
+      lastStatus = await runWithSpawn(cmdAndArgs.join(' '), project, argv, {
         exitIfFailed: false,
       });
       if (lastStatus === 0) return;

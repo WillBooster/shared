@@ -28,7 +28,7 @@ class DockerScripts {
     )}`;
   }
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
-    spawnSyncOnExit(this.stop(project));
+    spawnSyncOnExit(this.stop(project), project);
     return `docker run --rm -it -p 8080:8080 --name ${project.nameWithoutNamespace} ${additionalOptions} ${project.nameWithoutNamespace} ${additionalArgs}`;
   }
 

@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import { killPortProcessImmediatelyAndOnExit } from '../processUtils.js';
-import { project } from '../project.js';
+import type { Project } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -21,13 +21,14 @@ const defaultOptions: Options = {
 
 export async function runWithSpawn(
   script: string,
+  project: Project,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
   opts: Options = defaultOptions
 ): Promise<number> {
-  const [printableScript, runnableScript] = normalizeScript(script);
-  printStart(printableScript);
+  const [printableScript, runnableScript] = normalizeScript(script, project);
+  printStart(printableScript, project);
   if (argv.verbose) {
-    printStart(runnableScript, 'Start (raw)', true);
+    printStart(runnableScript, project, 'Start (raw)', true);
   }
   if (argv.dryRun) {
     printFinishedAndExitIfNeeded(printableScript, 0, opts);
@@ -40,6 +41,7 @@ export async function runWithSpawn(
   }
   const ret = await spawnAsync(runnableScript, undefined, {
     cwd: project.dirPath,
+    env: project.env,
     shell: true,
     stdio: 'inherit',
     timeout: opts?.timeout,
@@ -50,38 +52,19 @@ export async function runWithSpawn(
   return ret.status ?? 1;
 }
 
-export async function runOnEachWorkspaceIfNeeded(
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>
-): Promise<void> {
-  if (!project.packageJson.workspaces) return;
-
-  const args = process.argv.slice(2);
-  const index = args.findIndex((arg) => ['-w', '--working-dir', '--workingDir'].includes(arg));
-  if (index >= 0) {
-    args.splice(index, 2);
-  }
-
-  // Disable interactive mode
-  process.env['CI'] = '1';
-  await runWithSpawn(
-    ['yarn', 'workspaces', 'foreach', '--all', '--exclude', project.name, '--verbose', 'run', 'wb', ...args].join(' '),
-    argv
-  );
-  process.exit(0);
-}
-
 export function runWithSpawnInParallel(
   script: string,
+  project: Project,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
   opts: Options = defaultOptions
 ): Promise<void> {
   return promisePool.run(async () => {
-    const [printableScript, runnableScript] = normalizeScript(script);
-    printStart(printableScript, 'Start (parallel)', true);
+    const [printableScript, runnableScript] = normalizeScript(script, project);
+    printStart(printableScript, project, 'Start (parallel)', true);
     if (argv.dryRun) {
-      printStart(printableScript, 'Started (log)');
+      printStart(printableScript, project, 'Started (log)');
       if (argv.verbose) {
-        printStart(runnableScript, 'Started (raw)', true);
+        printStart(runnableScript, project, 'Started (raw)', true);
       }
       printFinishedAndExitIfNeeded(printableScript, 0, opts);
       return;
@@ -89,6 +72,7 @@ export function runWithSpawnInParallel(
 
     const ret = await spawnAsync(runnableScript, undefined, {
       cwd: project.dirPath,
+      env: project.env,
       shell: true,
       stdio: 'pipe',
       timeout: opts?.timeout,
@@ -96,9 +80,9 @@ export function runWithSpawnInParallel(
       killOnExit: true,
       verbose: argv.verbose,
     });
-    printStart(printableScript, 'Started (log)');
+    printStart(printableScript, project, 'Started (log)');
     if (argv.verbose) {
-      printStart(runnableScript, 'Started (raw)', true);
+      printStart(runnableScript, project, 'Started (raw)', true);
     }
     const out = ret.stdout.trim();
     if (out) console.info(out);
@@ -106,8 +90,8 @@ export function runWithSpawnInParallel(
   });
 }
 
-function normalizeScript(script: string): [string, string] {
-  const binExists = addBinPathsToEnv();
+function normalizeScript(script: string, project: Project): [string, string] {
+  const binExists = addBinPathsToEnv(project);
   const newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
@@ -116,7 +100,7 @@ function normalizeScript(script: string): [string, string] {
   return [newScript.replaceAll('YARN ', 'yarn '), newScript.replaceAll('YARN ', binExists ? '' : 'yarn ')];
 }
 
-export function printStart(normalizedScript: string, prefix = 'Start', weak = false): void {
+export function printStart(normalizedScript: string, project: Project, prefix = 'Start', weak = false): void {
   console.info(
     '\n' +
       (weak ? chalk.gray : chalk.cyan)(chalk.bold(`${prefix}:`), normalizedScript) +
@@ -142,7 +126,7 @@ export function printFinishedAndExitIfNeeded(
 let addedBinPaths = false;
 let binFound = false;
 
-function addBinPathsToEnv(): boolean {
+function addBinPathsToEnv(project: Project): boolean {
   if (addedBinPaths) return binFound;
   addedBinPaths = true;
 
@@ -150,7 +134,7 @@ function addBinPathsToEnv(): boolean {
   for (;;) {
     const binPath = path.join(currentPath, 'node_modules', '.bin');
     if (fs.existsSync(binPath)) {
-      process.env.PATH = `${binPath}:${process.env.PATH}`;
+      project.env.PATH = `${binPath}:${project.env.PATH}`;
       binFound = true;
     }
 

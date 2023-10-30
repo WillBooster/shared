@@ -34,16 +34,16 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
 
 export async function buildIfNeeded(
   // Test code requires Partial<...>
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>>
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>>,
+  dirPath?: string
 ): Promise<boolean | undefined> {
-  const projects = await findAllProjects();
+  const projects = await findAllProjects(argv, dirPath);
   if (!projects) return true;
 
   const isGitRepo = fs.existsSync(path.join(projects.root.dirPath, '.git'));
 
   let built = false;
-
-  for (const project of prepareForRunningCommand('buildIfNeeded', projects.root, projects.all, argv)) {
+  for (const project of prepareForRunningCommand('buildIfNeeded', projects.all)) {
     if (!isGitRepo) {
       if (!build(project, argv)) return;
       built = true;
@@ -98,7 +98,7 @@ export async function canSkipBuild(
   hash.update(commitHash);
 
   const environmentJson = JSON.stringify(
-    Object.entries(process.env)
+    Object.entries(project.env)
       .filter(([key]) => !ignoringEnvVarNames.has(key))
       .sort(([key1], [key2]) => key1.localeCompare(key2))
   );
@@ -142,7 +142,7 @@ async function updateHashWithDiffResult(
       .trim()
       .split('\n')
       .map((filePath) =>
-        process.env.WB_ENV === 'test' ? filePath.replace(/packages\/scripts\/test-fixtures\/[^/]+\//, '') : filePath
+        project.env.WB_ENV === 'test' ? filePath.replace(/packages\/scripts\/test-fixtures\/[^/]+\//, '') : filePath
       );
     const filteredFilePaths = filePaths.filter(
       (filePath) =>

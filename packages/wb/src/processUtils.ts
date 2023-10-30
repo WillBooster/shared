@@ -28,14 +28,14 @@ async function killPortProcessHandlingErrors(port: number): Promise<void> {
   }
 }
 
-export function spawnSyncOnExit(project: Project, command: string): void {
+export function spawnSyncOnExit(script: string, project: Project): void {
   const killFunc = async (): Promise<void> => {
-    if (killed.has(command)) return;
+    if (killed.has(script)) return;
 
-    killed.add(command);
-    printStart(command);
-    const { status } = spawnSync(command, { cwd: project.dirPath, shell: true, stdio: 'inherit' });
-    printFinishedAndExitIfNeeded(command, status, {});
+    killed.add(script);
+    printStart(script, project);
+    const { status } = spawnSync(script, { cwd: project.dirPath, shell: true, stdio: 'inherit' });
+    printFinishedAndExitIfNeeded(script, status, {});
   };
   for (const signal of ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT']) {
     process.on(signal, killFunc);

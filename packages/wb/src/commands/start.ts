@@ -1,5 +1,4 @@
-import { loadEnvironmentVariables, restoreEnvironmentVariables } from '@willbooster/shared-lib-node/src';
-import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findAllProjects } from '../project.js';
@@ -29,7 +28,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   async handler(argv) {
     normalizeArgs(argv);
 
-    const projects = await findAllProjects();
+    const projects = await findAllProjects(argv);
     if (!projects) return;
 
     for (const project of projects.all) {
@@ -54,18 +53,18 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       switch (argv.mode || 'dev') {
         case 'dev':
         case 'development': {
-          const prefix = configureEnvironmentVariables(project, projects.root, argv, deps, 'development');
-          await runWithSpawn(`${prefix}${scripts.start(project, argv)}`, argv);
+          const prefix = configureEnvironmentVariables(project, deps, 'development');
+          await runWithSpawn(`${prefix}${scripts.start(project, argv)}`, project, argv);
           break;
         }
         case 'staging': {
-          const prefix = configureEnvironmentVariables(project, projects.root, argv, deps, 'staging');
-          await runWithSpawn(`${prefix}${scripts.startProduction(project, argv, 8080)}`, argv);
+          const prefix = configureEnvironmentVariables(project, deps, 'staging');
+          await runWithSpawn(`${prefix}${scripts.startProduction(project, argv, 8080)}`, project, argv);
           break;
         }
         case 'docker': {
-          const prefix = configureEnvironmentVariables(project, projects.root, argv, deps, 'staging');
-          await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, argv);
+          const prefix = configureEnvironmentVariables(project, deps, 'staging');
+          await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
           break;
         }
         default: {
@@ -76,23 +75,12 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   },
 };
 
-function configureEnvironmentVariables(
-  project: Project,
-  rootProject: Project,
-  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>,
-  deps: Partial<Record<string, string>>,
-  env: string
-): string {
-  restoreEnvironmentVariables();
-  process.env.WB_ENV ||= env;
-  let prefix = `WB_ENV=${process.env.WB_ENV} `;
+function configureEnvironmentVariables(project: Project, deps: Partial<Record<string, string>>, wbEnv: string): string {
+  project.env.WB_ENV ||= wbEnv;
+  let prefix = `WB_ENV=${project.env.WB_ENV} `;
   if (deps['next']) {
-    process.env.NEXT_PUBLIC_WB_ENV = process.env.WB_ENV;
-    prefix += `NEXT_PUBLIC_WB_ENV=${process.env.WB_ENV} `;
-  }
-  loadEnvironmentVariables(argv, project.dirPath);
-  if (project !== rootProject) {
-    loadEnvironmentVariables(argv, rootProject.dirPath);
+    project.env.NEXT_PUBLIC_WB_ENV = project.env.WB_ENV;
+    prefix += `NEXT_PUBLIC_WB_ENV=${project.env.WB_ENV} `;
   }
   return prefix;
 }

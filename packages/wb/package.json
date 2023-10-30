@@ -23,7 +23,6 @@
   },
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
-    "at-decorators": "1.2.0",
     "chalk": "5.3.0",
     "dotenv": "16.3.1",
     "kill-port": "2.0.1",
@@ -40,6 +39,7 @@
     "@typescript-eslint/parser": "6.9.0",
     "@willbooster/eslint-config-ts": "10.5.1",
     "@willbooster/prettier-config": "9.1.2",
+    "at-decorators": "1.2.0",
     "build-ts": "11.0.8",
     "eslint": "8.52.0",
     "eslint-config-prettier": "9.0.0",
