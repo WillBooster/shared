@@ -22,13 +22,13 @@ export const typeCheckCommand: CommandModule<
     if (!projects) return;
 
     for (const project of projects.all) {
-      console.info(`Running "typecheck" for ${project.name} ...`);
+      console.info(`Running typecheck for ${project.name} ...`);
 
       if (projects.all.length > 1) {
         // Disable interactive mode
         project.env['CI'] = '1';
       }
-      project.env['FORCE_COLOR'] = '3';
+      project.env['FORCE_COLOR'] ||= '3';
 
       const commands: string[] = [];
       if (project.packageJson.workspaces) {

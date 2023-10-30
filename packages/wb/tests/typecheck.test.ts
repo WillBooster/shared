@@ -26,6 +26,7 @@ describe('typecheck', () => {
         shell: true,
         stdio: 'inherit',
       });
+      console.log(ret);
       expect(ret.status).toBe(0);
     },
     5 * 60 * 1000
