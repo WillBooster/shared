@@ -45,7 +45,11 @@ export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<ty
 /**
  * This function reads environment variables from `.env` files. Note it does not assign them in `process.env`.
  * */
-export function readEnvironmentVariables(argv: EnvReaderOptions, cwd: string, cache = true): Record<string, string> {
+export function readEnvironmentVariables(
+  argv: EnvReaderOptions,
+  cwd: string,
+  cacheEnabled = true
+): Record<string, string> {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
   const cascade =
     argv.cascadeEnv ??
@@ -79,7 +83,7 @@ export function readEnvironmentVariables(argv: EnvReaderOptions, cwd: string, ca
   let envVars: Record<string, string> = {};
   const orgEnvVars = { ...process.env };
   for (const envPath of envPaths) {
-    envVars = { ...readEnvFile(path.join(cwd, envPath), cache), ...envVars };
+    envVars = { ...readEnvFile(path.join(cwd, envPath), cacheEnabled), ...envVars };
     let count = 0;
     for (const [key, value] of Object.entries(envVars)) {
       if (orgEnvVars[key] !== value) {
@@ -93,7 +97,7 @@ export function readEnvironmentVariables(argv: EnvReaderOptions, cwd: string, ca
   }
 
   if (argv.checkEnv) {
-    const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv), cache) || {});
+    const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv), cacheEnabled) || {});
     const missingKeys = exampleKeys.filter((key) => !(key in envVars));
     if (missingKeys.length > 0) {
       throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
@@ -108,21 +112,21 @@ export function readEnvironmentVariables(argv: EnvReaderOptions, cwd: string, ca
 export function readAndApplyEnvironmentVariables(
   argv: EnvReaderOptions,
   cwd: string,
-  cache = true
+  cacheEnabled = true
 ): Record<string, string | undefined> {
-  const envVars = readEnvironmentVariables(argv, cwd, cache);
+  const envVars = readEnvironmentVariables(argv, cwd, cacheEnabled);
   Object.assign(process.env, envVars);
   return envVars;
 }
 
 const cachedEnvVars = new Map<string, Record<string, string>>();
 
-function readEnvFile(filePath: string, cache = true): Record<string, string> {
-  const cached = cache && cachedEnvVars.get(filePath);
+function readEnvFile(filePath: string, cacheEnabled = true): Record<string, string> {
+  const cached = cacheEnabled && cachedEnvVars.get(filePath);
   if (cached) return cached;
 
   const parsed = config({ path: path.resolve(filePath), processEnv: {} }).parsed ?? {};
-  if (cache) {
+  if (cacheEnabled) {
     cachedEnvVars.set(filePath, parsed);
   }
   return parsed;
