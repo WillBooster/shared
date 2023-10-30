@@ -1,10 +1,6 @@
 import path from 'node:path';
 
-import {
-  loadEnvironmentVariables,
-  removeNpmAndYarnEnvironmentVariables,
-  saveEnvironmentVariables,
-} from '@willbooster/shared-lib-node/src';
+import { removeNpmAndYarnEnvironmentVariables, saveEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 

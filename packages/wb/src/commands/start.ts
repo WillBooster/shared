@@ -1,7 +1,7 @@
 import { loadEnvironmentVariables, restoreEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import type { Project} from '../project.js';
+import type { Project } from '../project.js';
 import { findAllProjects } from '../project.js';
 import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';

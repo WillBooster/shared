@@ -4,7 +4,7 @@ import os from 'node:os';
 
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findAllProjects, project } from '../project.js';
+import { findAllProjects } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 

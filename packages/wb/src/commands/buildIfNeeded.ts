@@ -8,7 +8,7 @@ import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import type { Project} from '../project.js';
+import type { Project } from '../project.js';
 import { findAllProjects } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 

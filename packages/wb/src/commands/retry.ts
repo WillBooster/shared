@@ -2,7 +2,7 @@ import { loadEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findAllProjects, findRootAndSelfProjects } from '../project.js';
+import { findRootAndSelfProjects } from '../project.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 

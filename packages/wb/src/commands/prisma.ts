@@ -1,7 +1,7 @@
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import type { Project} from '../project.js';
-import { FoundProjects, findAllProjects, project } from '../project.js';
+import type { Project } from '../project.js';
+import { findAllProjects } from '../project.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 
