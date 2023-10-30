@@ -1,6 +1,6 @@
 export {
   readEnvironmentVariables,
-  readAndUpdateEnvironmentVariables,
+  readAndApplyEnvironmentVariables,
   removeNpmAndYarnEnvironmentVariables,
   yargsOptionsBuilderForEnv,
 } from './env.js';
