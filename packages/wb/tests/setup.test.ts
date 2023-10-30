@@ -14,7 +14,7 @@ describe('setup', () => {
       const dirPath = path.join(tempDir, 'blitz');
       await initializeProjectDirectory(dirPath);
 
-      await setup({});
+      await setup({}, dirPath);
       const ret = child_process.spawnSync(`yarn start test -w ${dirPath} --ci`, {
         shell: true,
         stdio: 'inherit',

@@ -32,12 +32,28 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
   },
 };
 
+function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
+  console.info(chalk.green(`Run '${argv.command}'`));
+  if (!argv.dryRun) {
+    const ret = child_process.spawnSync(argv.command ?? '', {
+      cwd: project.dirPath,
+      shell: true,
+      stdio: 'inherit',
+    });
+    if (ret.status !== 0) {
+      process.exitCode = ret.status ?? 1;
+      return false;
+    }
+  }
+  return true;
+}
+
 export async function buildIfNeeded(
   // Test code requires Partial<...>
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>>,
-  dirPath?: string
+  projectPathForTesting?: string
 ): Promise<boolean | undefined> {
-  const projects = await findAllProjects(argv, dirPath);
+  const projects = await findAllProjects(argv, projectPathForTesting);
   if (!projects) return true;
 
   const isGitRepo = fs.existsSync(path.join(projects.root.dirPath, '.git'));
@@ -64,22 +80,6 @@ export async function buildIfNeeded(
     }
   }
   return built;
-}
-
-function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
-  console.info(chalk.green(`Run '${argv.command}'`));
-  if (!argv.dryRun) {
-    const ret = child_process.spawnSync(argv.command ?? '', {
-      cwd: project.dirPath,
-      shell: true,
-      stdio: 'inherit',
-    });
-    if (ret.status !== 0) {
-      process.exitCode = ret.status ?? 1;
-      return false;
-    }
-  }
-  return true;
 }
 
 const ignoringEnvVarNames = new Set(['CI', 'PWDEBUG', 'TMPDIR']);

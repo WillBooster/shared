@@ -20,8 +20,11 @@ export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
 };
 
 // Test code requires Partial<...>
-export async function setup(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): Promise<void> {
-  const projects = await findAllProjects(argv);
+export async function setup(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
+  projectPathForTesting?: string
+): Promise<void> {
+  const projects = await findAllProjects(argv, projectPathForTesting);
   if (!projects) return;
 
   for (const project of projects.all) {
