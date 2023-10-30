@@ -205,6 +205,8 @@ export function findRootAndSelfProjects(
 async function getAllProjects(argv: EnvReaderOptions, rootProject: Project): Promise<Project[]> {
   const allProjects = [rootProject];
   const packageDirPath = path.join(rootProject.dirPath, 'packages');
+  if (!fs.existsSync(packageDirPath)) return [];
+
   const packageDirs = await fs.promises.readdir(packageDirPath, { withFileTypes: true });
   for (const packageDir of packageDirs) {
     if (!packageDir.isDirectory()) continue;
