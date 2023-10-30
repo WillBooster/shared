@@ -38,11 +38,7 @@ describe('loadEnvironmentVariables()', () => {
   it('should load env vars with --env=test-fixtures/app2/.env --auto-cascade-env, WB_ENV=test and NODE_ENV=production', () => {
     process.env.WB_ENV = 'test';
     process.env.NODE_ENV = 'production';
-    const envVars = loadEnvironmentVariables(
-      { autoCascadeEnv: true, env: ['.env'] },
-      'test-fixtures/app1',
-      'test-fixtures/app2'
-    );
+    const envVars = loadEnvironmentVariables({ autoCascadeEnv: true, env: ['../app2/.env'] }, 'test-fixtures/app1');
     expect(envVars).toEqual({ NAME: 'app2', ENV: 'test2' });
   });
 });
