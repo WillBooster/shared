@@ -47,7 +47,7 @@ export abstract class BaseExecutionScripts {
     // Basically, `playwright` (not `yarn playwright`) should work,
     // but it doesn't work on a project depending on `artillery-engine-playwright`.
     // So we use `yarn playwright` instead of `playwright` here.
-    const env = process.env.WB_ENV;
+    const env = project.env.WB_ENV;
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
       "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http://127.0.0.1:8080' 'yarn playwright install --with-deps'
@@ -55,7 +55,7 @@ export abstract class BaseExecutionScripts {
   }
 
   testE2EDev(project: Project, argv: ScriptArgv, { playwrightArgs, startCommand }: TestE2EDevOptions): string {
-    const env = process.env.WB_ENV;
+    const env = project.env.WB_ENV;
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http://127.0.0.1:8080' 'yarn playwright install --with-deps'
@@ -64,9 +64,9 @@ export abstract class BaseExecutionScripts {
 
   abstract testStart(project: Project, argv: ScriptArgv): string;
 
-  testUnit(_: Project, _2: ScriptArgv): string {
+  testUnit(project: Project, _2: ScriptArgv): string {
     // Since this command is referred to from other commands, we have to use "vitest run".
-    return `WB_ENV=${process.env.WB_ENV} YARN vitest run tests/unit --color --passWithNoTests`;
+    return `WB_ENV=${project.env.WB_ENV} YARN vitest run tests/unit --color --passWithNoTests`;
   }
 
   protected waitApp(project: Project, argv: ScriptArgv, port = this.defaultPort): string {

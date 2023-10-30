@@ -15,14 +15,14 @@ class BlitzScripts extends BaseExecutionScripts {
   }
 
   override start(project: Project, argv: ScriptArgv): string {
-    const appEnv = process.env.WB_ENV ? `APP_ENV=${process.env.WB_ENV} ` : '';
+    const appEnv = project.env.WB_ENV ? `APP_ENV=${project.env.WB_ENV} ` : '';
     return `${appEnv}YARN concurrently --raw --kill-others-on-fail
       "blitz dev ${argv.normalizedArgsText ?? ''}"
       "${this.waitAndOpenApp(project, argv)}"`;
   }
 
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {
-    const appEnv = process.env.WB_ENV ? `APP_ENV=${process.env.WB_ENV} ` : '';
+    const appEnv = project.env.WB_ENV ? `APP_ENV=${project.env.WB_ENV} ` : '';
     return `${appEnv}NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
       "${prismaScripts.reset(project)} && ${project.getBuildCommand(
         argv

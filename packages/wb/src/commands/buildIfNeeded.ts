@@ -9,10 +9,8 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findAllProjects } from '../project.js';
+import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-
-import { prepareForRunningCommand } from './commandUtils.js';
 
 const builder = {
   command: {
@@ -53,33 +51,26 @@ export async function buildIfNeeded(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>>,
   projectPathForTesting?: string
 ): Promise<boolean | undefined> {
-  const projects = await findAllProjects(argv, projectPathForTesting);
-  if (!projects) return true;
+  const project = await findSelfProject(argv, projectPathForTesting);
+  if (!project) return true;
 
-  const isGitRepo = fs.existsSync(path.join(projects.root.dirPath, '.git'));
-
-  let built = false;
-  for (const project of prepareForRunningCommand('buildIfNeeded', projects.all)) {
-    if (!isGitRepo) {
-      if (!build(project, argv)) return;
-      built = true;
-      continue;
-    }
-
-    const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(project, argv);
-    if (canSkip) {
-      console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
-      continue;
-    }
-
-    if (!build(project, argv)) return;
-    built = true;
-
-    if (!argv.dryRun) {
-      await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
-    }
+  if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
+    build(project, argv);
+    return true;
   }
-  return built;
+
+  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(project, argv);
+  if (canSkip) {
+    console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
+    return false;
+  }
+
+  if (!build(project, argv)) return;
+
+  if (!argv.dryRun) {
+    await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
+  }
+  return true;
 }
 
 const ignoringEnvVarNames = new Set(['CI', 'PWDEBUG', 'TMPDIR']);

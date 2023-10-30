@@ -8,6 +8,8 @@ import { findAllProjects } from '../project.js';
 import { promisePool } from '../promisePool.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 
+import { prepareForRunningCommand } from './commandUtils.js';
+
 const builder = {} as const;
 
 export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
@@ -27,7 +29,7 @@ export async function setup(
   const projects = await findAllProjects(argv, projectPathForTesting);
   if (!projects) return;
 
-  for (const project of projects.all) {
+  for (const project of prepareForRunningCommand('setup', projects.all)) {
     const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
     if (project === projects.root) {
       if (os.platform() === 'darwin') {

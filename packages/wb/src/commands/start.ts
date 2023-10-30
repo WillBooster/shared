@@ -46,9 +46,12 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         (project.hasDockerfile && /EXPOSE\s+8080/.test(project.dockerfile))
       ) {
         scripts = httpServerScripts;
-      } else {
+      } else if (deps['build-ts'] || devDeps['build-ts']) {
         scripts = plainAppScripts;
+      } else {
+        continue;
       }
+      console.info(`Running "start" for ${project.name} ...`);
 
       switch (argv.mode || 'dev') {
         case 'dev':

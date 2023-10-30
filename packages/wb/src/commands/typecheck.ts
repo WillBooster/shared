@@ -22,18 +22,8 @@ export const typeCheckCommand: CommandModule<
     if (!projects) return;
 
     for (const project of projects.all) {
-      console.info(`Running typecheck for ${project.name} ...`);
-
-      if (projects.all.length > 1) {
-        // Disable interactive mode
-        project.env['CI'] = '1';
-      }
-      project.env['FORCE_COLOR'] ||= '3';
-
       const commands: string[] = [];
-      if (project.packageJson.workspaces) {
-        commands.push(`yarn workspaces foreach --all --parallel --exclude ${project.name} --verbose run typecheck`);
-      } else {
+      if (!project.packageJson.workspaces) {
         if (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript) {
           commands.push('tsc --noEmit --Pretty');
         }
@@ -41,6 +31,16 @@ export const typeCheckCommand: CommandModule<
           commands.push('pyright');
         }
       }
+      if (commands.length === 0) continue;
+
+      console.info(`Running "typecheck" for ${project.name} ...`);
+
+      if (projects.all.length > 1) {
+        // Disable interactive mode
+        project.env['CI'] = '1';
+      }
+      project.env['FORCE_COLOR'] ||= '3';
+
       const exitCode = await runWithSpawn(commands.join(' && '), project, argv);
       if (exitCode !== 0) {
         const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;

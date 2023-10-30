@@ -43,14 +43,14 @@ class HttpServerScripts extends BaseExecutionScripts {
       )})`,
     }: TestE2EOptions
   ): string {
-    return `NODE_ENV=production WB_ENV=${process.env.WB_ENV} PORT=8080 YARN concurrently --kill-others --raw --success first
+    return `NODE_ENV=production WB_ENV=${project.env.WB_ENV} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run tests/e2e --color --passWithNoTests"`;
   }
 
   override testE2EDev(project: Project, argv: ScriptArgv, { startCommand }: TestE2EDevOptions): string {
     return `NODE_ENV=production WB_ENV=${
-      process.env.WB_ENV
+      project.env.WB_ENV
     } PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand || this.start(project, argv)} && exit 1"
       "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run tests/e2e --color --passWithNoTests"`;

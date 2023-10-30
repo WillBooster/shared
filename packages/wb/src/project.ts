@@ -109,18 +109,15 @@ export interface FoundProjects {
   all: Project[];
 }
 
-export function findSelfProject(argv: EnvReaderOptions): Project | undefined {
-  const dirPath = process.cwd();
+export function findSelfProject(argv: EnvReaderOptions, dirPath?: string): Project | undefined {
+  dirPath ??= process.cwd();
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
 
   return new Project(dirPath, argv);
 }
 
-export async function findAllProjects(
-  argv: EnvReaderOptions,
-  projectPathForTesting?: string
-): Promise<FoundProjects | undefined> {
-  const rootAndSelfProjects = findRootAndSelfProjects(argv, projectPathForTesting);
+export async function findAllProjects(argv: EnvReaderOptions, dirPath?: string): Promise<FoundProjects | undefined> {
+  const rootAndSelfProjects = findRootAndSelfProjects(argv, dirPath);
   if (!rootAndSelfProjects) return;
 
   return {
@@ -134,15 +131,15 @@ export async function findAllProjects(
 
 export function findRootAndSelfProjects(
   argv: EnvReaderOptions,
-  projectPathForTesting?: string
+  dirPath?: string
 ): Omit<FoundProjects, 'all'> | undefined {
-  projectPathForTesting ??= process.cwd();
-  if (!fs.existsSync(path.join(projectPathForTesting, 'package.json'))) return;
+  dirPath ??= process.cwd();
+  if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
 
-  const thisProject = new Project(projectPathForTesting, argv);
+  const thisProject = new Project(dirPath, argv);
   let rootProject = thisProject;
-  if (!thisProject.packageJson.workspaces && path.dirname(projectPathForTesting).endsWith('/packages')) {
-    const rootDirPath = path.resolve(projectPathForTesting, '..', '..');
+  if (!thisProject.packageJson.workspaces && path.dirname(dirPath).endsWith('/packages')) {
+    const rootDirPath = path.resolve(dirPath, '..', '..');
     if (fs.existsSync(path.join(rootDirPath, 'package.json'))) {
       rootProject = new Project(rootDirPath, argv);
     }

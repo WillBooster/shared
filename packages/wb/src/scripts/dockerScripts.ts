@@ -17,7 +17,7 @@ class DockerScripts {
     && ${prefix}YARN wb optimizeForDockerBuild --outside
     && YARN wb retry -- docker build -t ${project.nameWithoutNamespace}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
-        --build-arg WB_ENV=${process.env.WB_ENV}
+        --build-arg WB_ENV=${project.env.WB_ENV}
         --build-arg WB_VERSION=dev .`;
   }
   stopAndStart(project: Project, unbuffer = false, additionalOptions = '', additionalArgs = ''): string {
