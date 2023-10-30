@@ -109,7 +109,7 @@ export function readEnvironmentVariables(
 /**
  * This function read environment variables from `.env` files and assign them in `process.env`.
  * */
-export function readAndApplyEnvironmentVariables(
+export function readAndUpdateEnvironmentVariables(
   argv: EnvReaderOptions,
   cwd: string,
   cacheEnabled = true
