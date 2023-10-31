@@ -8,7 +8,9 @@ import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { project } from '../project.js';
+import type { Project } from '../project.js';
+import { findSelfProject } from '../project.js';
+import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
   command: {
@@ -28,30 +30,7 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
   },
 };
 
-export async function buildIfNeeded(
-  // Test code requires Partial<...>
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
-): Promise<boolean | undefined> {
-  if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
-    build(argv);
-    return true;
-  }
-
-  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(argv);
-  if (canSkip) {
-    console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
-    return false;
-  }
-
-  if (!build(argv)) return;
-
-  if (!argv.dryRun) {
-    await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
-  }
-  return true;
-}
-
-function build(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
+function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
   console.info(chalk.green(`Run '${argv.command}'`));
   if (!argv.dryRun) {
     const ret = child_process.spawnSync(argv.command ?? '', {
@@ -67,9 +46,37 @@ function build(argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof build
   return true;
 }
 
+export async function buildIfNeeded(
+  // Test code requires Partial<...>
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>>,
+  projectPathForTesting?: string
+): Promise<boolean | undefined> {
+  const project = await findSelfProject(argv, projectPathForTesting);
+  if (!project) return true;
+
+  if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
+    build(project, argv);
+    return true;
+  }
+
+  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(project, argv);
+  if (canSkip) {
+    console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
+    return false;
+  }
+
+  if (!build(project, argv)) return;
+
+  if (!argv.dryRun) {
+    await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
+  }
+  return true;
+}
+
 const ignoringEnvVarNames = new Set(['CI', 'PWDEBUG', 'TMPDIR']);
 
 export async function canSkipBuild(
+  project: Project,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
 ): Promise<[boolean, string, string]> {
   const cacheDirectoryPath = path.resolve(project.dirPath, 'node_modules', '.cache', 'build');
@@ -82,13 +89,13 @@ export async function canSkipBuild(
   hash.update(commitHash);
 
   const environmentJson = JSON.stringify(
-    Object.entries(process.env)
+    Object.entries(project.env)
       .filter(([key]) => !ignoringEnvVarNames.has(key))
       .sort(([key1], [key2]) => key1.localeCompare(key2))
   );
   hash.update(environmentJson);
 
-  await updateHashWithDiffResult(argv, hash);
+  await updateHashWithDiffResult(project, argv, hash);
   const contentHash = hash.digest('hex');
 
   const cachedContentHash = await ignoreEnoentAsync(() => fs.promises.readFile(cacheFilePath, 'utf8'));
@@ -112,6 +119,7 @@ const includeSuffix = [
 const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'package.json'];
 
 async function updateHashWithDiffResult(
+  project: Project,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
   hash: Hash
 ): Promise<void> {
@@ -125,7 +133,7 @@ async function updateHashWithDiffResult(
       .trim()
       .split('\n')
       .map((filePath) =>
-        process.env.WB_ENV === 'test' ? filePath.replace(/packages\/scripts\/test-fixtures\/[^/]+\//, '') : filePath
+        project.env.WB_ENV === 'test' ? filePath.replace(/packages\/scripts\/test-fixtures\/[^/]+\//, '') : filePath
       );
     const filteredFilePaths = filePaths.filter(
       (filePath) =>

@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { project } from '../project.js';
+import type { Project } from '../project.js';
 
 /**
  * A collection of scripts for executing Prisma commands.
@@ -8,18 +8,18 @@ import { project } from '../project.js';
  * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PrismaScripts {
-  deploy(): string {
+  deploy(_: Project): string {
     return 'PRISMA migrate deploy';
   }
 
-  deployForce(backupPath: string): string {
+  deployForce(project: Project, backupPath: string): string {
     const dirName = project.packageJson.dependencies?.['blitz'] ? 'db' : 'prisma';
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
     return `rm -Rf ${dirName}/mount/prod.sqlite3*; PRISMA migrate reset --force && rm -Rf ${dirName}/mount/prod.sqlite3*
       && litestream restore -o ${dirName}/mount/prod.sqlite3 ${backupPath} && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
-  litestream(): string {
+  litestream(_: Project): string {
     return `node -e '
 const { PrismaClient } = require("@prisma/client");
 new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
@@ -27,28 +27,28 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 '`;
   }
 
-  migrate(): string {
-    return `PRISMA migrate deploy && PRISMA generate && ${this.seed()}`;
+  migrate(project: Project): string {
+    return `PRISMA migrate deploy && PRISMA generate && ${this.seed(project)}`;
   }
 
-  migrateDev(): string {
+  migrateDev(_: Project): string {
     return `PRISMA migrate dev`;
   }
 
-  reset(): string {
+  reset(project: Project): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
     // Blitz does not trigger seed automatically, so we need to run it manually.
-    return `PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
+    return `PRISMA migrate reset --force --skip-seed && ${this.seed(project)}`;
     // I'm not sure why we need to remove all sqlite files, so I commented out the following line.
     // return `true $(rm -Rf db/**/*.sqlite* 2> /dev/null) && true $(rm -Rf prisma/**/*.sqlite* 2> /dev/null) && PRISMA migrate reset --force --skip-seed && ${this.seed()}`;
   }
 
-  restore(backupPath: string, outputPath: string): string {
+  restore(project: Project, backupPath: string, outputPath: string): string {
     const dirName = project.packageJson.dependencies?.['blitz'] ? 'db' : 'prisma';
     return `rm -Rf ${dirName}/restored.sqlite3; GOOGLE_APPLICATION_CREDENTIALS=gcp-sa-key.json litestream restore -o ${outputPath} ${backupPath}`;
   }
 
-  seed(scriptPath?: string): string {
+  seed(project: Project, scriptPath?: string): string {
     if (project.packageJson.dependencies?.['blitz'])
       return `YARN blitz db seed${scriptPath ? ` -f ${scriptPath}` : ''}`;
     if (scriptPath) return 'YARN build-ts run prisma/seeds.ts';
@@ -56,7 +56,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     return `if [ -e "prisma/seeds.ts" ]; then YARN build-ts run prisma/seeds.ts; fi`;
   }
 
-  studio(dbUrlOrPath?: string): string {
+  studio(_: Project, dbUrlOrPath?: string): string {
     let prefix = '';
     if (dbUrlOrPath) {
       try {

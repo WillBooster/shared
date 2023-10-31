@@ -4,7 +4,6 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { setup } from '../src/commands/setup.js';
-import { project } from '../src/project.js';
 
 import { initializeProjectDirectory, tempDir } from './shared.js';
 
@@ -12,11 +11,11 @@ describe('setup', () => {
   it(
     'blitz',
     async () => {
-      project.dirPath = path.join(tempDir, 'blitz');
-      await initializeProjectDirectory();
+      const dirPath = path.join(tempDir, 'blitz');
+      await initializeProjectDirectory(dirPath);
 
-      await setup({});
-      const ret = child_process.spawnSync(`yarn start test -w ${project.dirPath} --ci`, {
+      await setup({}, dirPath);
+      const ret = child_process.spawnSync(`yarn start test -w ${dirPath} --ci`, {
         shell: true,
         stdio: 'inherit',
       });

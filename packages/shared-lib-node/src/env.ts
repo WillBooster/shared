@@ -1,15 +1,8 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { config } from 'dotenv';
-
-interface Options {
-  env?: (string | number)[];
-  cascadeEnv?: string;
-  cascadeNodeEnv?: boolean;
-  autoCascadeEnv?: boolean;
-  checkEnv?: string;
-  verbose?: boolean;
-}
+import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 export const yargsOptionsBuilderForEnv = {
   env: {
@@ -30,18 +23,34 @@ export const yargsOptionsBuilderForEnv = {
     type: 'boolean',
     default: true,
   },
+  'include-root-env': {
+    description: 'Include .env files in root directory if the project is in a monorepo and --env option is not used.',
+    type: 'boolean',
+    default: true,
+  },
   'check-env': {
     description: 'Check whether the keys of the loaded .env files are same with the given .env file.',
     type: 'string',
     default: '.env.example',
   },
+  verbose: {
+    description: 'Whether to show verbose information',
+    type: 'boolean',
+    alias: 'v',
+  },
 } as const;
 
+export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof yargsOptionsBuilderForEnv>>>;
+
 /**
- * This function loads environment variables from `.env` files.
+ * This function reads environment variables from `.env` files. Note it does not assign them in `process.env`.
  * */
-export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: string): Record<string, string> {
-  let envPaths = (argv.env ?? []).map((envPath) => path.resolve(orgCwd ?? cwd, envPath.toString()));
+export function readEnvironmentVariables(
+  argv: EnvReaderOptions,
+  cwd: string,
+  cacheEnabled = true
+): Record<string, string> {
+  let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
   const cascade =
     argv.cascadeEnv ??
     (argv.cascadeNodeEnv
@@ -50,7 +59,15 @@ export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: st
       ? process.env.WB_ENV || process.env.NODE_ENV || 'development'
       : undefined);
   if (typeof cascade === 'string') {
-    if (envPaths.length === 0) envPaths.push(path.join(cwd, '.env'));
+    if (envPaths.length === 0) {
+      envPaths.push(path.join(cwd, '.env'));
+      if (argv.includeRootEnv) {
+        const rootPath = path.resolve(cwd, '..', '..');
+        if (fs.existsSync(path.join(rootPath, 'package.json'))) {
+          envPaths.push(path.join(rootPath, '.env'));
+        }
+      }
+    }
     envPaths = envPaths.flatMap((envPath) =>
       cascade
         ? [`${envPath}.${cascade}.local`, `${envPath}.local`, `${envPath}.${cascade}`, envPath]
@@ -60,13 +77,13 @@ export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: st
   envPaths = envPaths.map((envPath) => path.relative(cwd, envPath));
   if (argv.verbose) {
     console.info(`WB_ENV: ${process.env.WB_ENV}, NODE_ENV: ${process.env.NODE_ENV}`);
-    console.info('Loading env files:', envPaths);
+    console.info('Reading env files:', envPaths);
   }
 
   let envVars: Record<string, string> = {};
   const orgEnvVars = { ...process.env };
   for (const envPath of envPaths) {
-    envVars = { ...config({ path: path.join(cwd, envPath) }).parsed, ...envVars };
+    envVars = { ...readEnvFile(path.join(cwd, envPath), cacheEnabled), ...envVars };
     let count = 0;
     for (const [key, value] of Object.entries(envVars)) {
       if (orgEnvVars[key] !== value) {
@@ -75,18 +92,44 @@ export function loadEnvironmentVariables(argv: Options, cwd: string, orgCwd?: st
       }
     }
     if (count > 0) {
-      console.info(`Loaded ${count} environment variables:`, envPath);
+      console.info(`Read ${count} environment variables:`, envPath);
     }
   }
 
   if (argv.checkEnv) {
-    const exampleKeys = Object.keys(config({ path: path.join(cwd, argv.checkEnv) }).parsed || {});
+    const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv), cacheEnabled) || {});
     const missingKeys = exampleKeys.filter((key) => !(key in envVars));
     if (missingKeys.length > 0) {
       throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
     }
   }
   return envVars;
+}
+
+/**
+ * This function read environment variables from `.env` files and assign them in `process.env`.
+ * */
+export function readAndApplyEnvironmentVariables(
+  argv: EnvReaderOptions,
+  cwd: string,
+  cacheEnabled = true
+): Record<string, string | undefined> {
+  const envVars = readEnvironmentVariables(argv, cwd, cacheEnabled);
+  Object.assign(process.env, envVars);
+  return envVars;
+}
+
+const cachedEnvVars = new Map<string, Record<string, string>>();
+
+function readEnvFile(filePath: string, cacheEnabled = true): Record<string, string> {
+  const cached = cacheEnabled && cachedEnvVars.get(filePath);
+  if (cached) return cached;
+
+  const parsed = config({ path: path.resolve(filePath), processEnv: {} }).parsed ?? {};
+  if (cacheEnabled) {
+    cachedEnvVars.set(filePath, parsed);
+  }
+  return parsed;
 }
 
 /**

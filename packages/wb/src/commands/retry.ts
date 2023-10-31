@@ -1,7 +1,9 @@
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
+import { findSelfProject } from '../project.js';
 import { runWithSpawn } from '../scripts/run.js';
+import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
   retry: {
@@ -12,11 +14,14 @@ const builder = {
   },
 } as const;
 
-export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
   command: 'retry',
   describe: 'Retry the given command until it succeeds',
   builder,
   async handler(argv) {
+    const project = findSelfProject(argv);
+    if (!project) return;
+
     const cmdAndArgs = argv._.slice(1);
     let lastStatus = 0;
     for (let i = 0; i < argv.retry; i++) {
@@ -24,7 +29,7 @@ export const retryCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         console.info(`\n${chalk.yellow(`#${i} Retrying: ${cmdAndArgs.join(' ')}`)}`);
       }
       // TODO: should we add single quotes around each argument?
-      lastStatus = await runWithSpawn(cmdAndArgs.join(' '), argv, {
+      lastStatus = await runWithSpawn(cmdAndArgs.join(' '), project, argv, {
         exitIfFailed: false,
       });
       if (lastStatus === 0) return;
