@@ -100,7 +100,7 @@ export async function test(
         }
         const options = project.hasDockerfile
           ? {
-              startCommand: dockerScripts.stopAndStart(project),
+              startCommand: dockerScripts.stopAndStart(project, true),
             }
           : {};
         process.exitCode = await runWithSpawn(scripts.testE2E(project, argv, options), project, argv, {
@@ -191,7 +191,7 @@ async function testOnDocker(
   await runWithSpawn(`${scripts.buildDocker(project)}`, project, argv);
   process.exitCode = await runWithSpawn(
     `${prefix}${scripts.testE2E(project, argv, {
-      startCommand: dockerScripts.stopAndStart(project),
+      startCommand: dockerScripts.stopAndStart(project, true),
     })}`,
     project,
     argv,
