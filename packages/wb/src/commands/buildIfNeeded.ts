@@ -51,7 +51,7 @@ export async function buildIfNeeded(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>>,
   projectPathForTesting?: string
 ): Promise<boolean | undefined> {
-  const project = await findSelfProject(argv, projectPathForTesting);
+  const project = await findSelfProject(argv, true, projectPathForTesting);
   if (!project) return true;
 
   if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {

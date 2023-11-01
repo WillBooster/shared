@@ -14,7 +14,7 @@ const builder = {} as const;
 
 export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'setup',
-  describe: 'Setup development environment',
+  describe: 'Setup development environment. .env files are ignored.',
   builder,
   async handler(argv) {
     await setup(argv);
@@ -26,7 +26,7 @@ export async function setup(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
   projectPathForTesting?: string
 ): Promise<void> {
-  const projects = await findAllProjects(argv, projectPathForTesting);
+  const projects = await findAllProjects(argv, false, projectPathForTesting);
   if (!projects) return;
 
   for (const project of prepareForRunningCommand('setup', projects.all)) {

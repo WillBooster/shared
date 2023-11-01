@@ -9,13 +9,15 @@ import type { PackageJson } from 'type-fest';
 import type { ScriptArgv } from './scripts/builder.js';
 
 export class Project {
+  private readonly argv: EnvReaderOptions;
+  private readonly loadEnv: boolean;
   private _dirPath: string;
   private _pathByName = new Map<string, string>();
-  private _argv: EnvReaderOptions;
 
-  constructor(dirPath: string, argv: EnvReaderOptions) {
+  constructor(dirPath: string, argv: EnvReaderOptions, loadEnv: boolean) {
     this._dirPath = path.resolve(dirPath);
-    this._argv = argv;
+    this.argv = argv;
+    this.loadEnv = loadEnv;
   }
 
   @memoizeOne
@@ -68,7 +70,7 @@ export class Project {
 
   @memoizeOne
   get env(): Record<string, string | undefined> {
-    return { ...readEnvironmentVariables(this._argv, this.dirPath), ...process.env };
+    return this.loadEnv ? { ...readEnvironmentVariables(this.argv, this.dirPath), ...process.env } : process.env;
   }
 
   @memoizeOne
@@ -109,45 +111,50 @@ export interface FoundProjects {
   all: Project[];
 }
 
-export function findSelfProject(argv: EnvReaderOptions, dirPath?: string): Project | undefined {
+export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?: string): Project | undefined {
   dirPath ??= process.cwd();
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
 
-  return new Project(dirPath, argv);
+  return new Project(dirPath, argv, loadEnv);
 }
 
-export async function findAllProjects(argv: EnvReaderOptions, dirPath?: string): Promise<FoundProjects | undefined> {
-  const rootAndSelfProjects = findRootAndSelfProjects(argv, dirPath);
+export async function findAllProjects(
+  argv: EnvReaderOptions,
+  loadEnv = true,
+  dirPath?: string
+): Promise<FoundProjects | undefined> {
+  const rootAndSelfProjects = findRootAndSelfProjects(argv, loadEnv, dirPath);
   if (!rootAndSelfProjects) return;
 
   return {
     ...rootAndSelfProjects,
     all:
       rootAndSelfProjects.root === rootAndSelfProjects.self
-        ? await getAllProjects(argv, rootAndSelfProjects.root)
+        ? await getAllProjects(argv, rootAndSelfProjects.root, loadEnv)
         : [rootAndSelfProjects.self],
   };
 }
 
 export function findRootAndSelfProjects(
   argv: EnvReaderOptions,
+  loadEnv = true,
   dirPath?: string
 ): Omit<FoundProjects, 'all'> | undefined {
   dirPath ??= process.cwd();
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
 
-  const thisProject = new Project(dirPath, argv);
+  const thisProject = new Project(dirPath, argv, loadEnv);
   let rootProject = thisProject;
   if (!thisProject.packageJson.workspaces && path.dirname(dirPath).endsWith('/packages')) {
     const rootDirPath = path.resolve(dirPath, '..', '..');
     if (fs.existsSync(path.join(rootDirPath, 'package.json'))) {
-      rootProject = new Project(rootDirPath, argv);
+      rootProject = new Project(rootDirPath, argv, loadEnv);
     }
   }
   return { root: rootProject, self: thisProject };
 }
 
-async function getAllProjects(argv: EnvReaderOptions, rootProject: Project): Promise<Project[]> {
+async function getAllProjects(argv: EnvReaderOptions, rootProject: Project, loadEnv: boolean): Promise<Project[]> {
   const allProjects = [rootProject];
   const packageDirPath = path.join(rootProject.dirPath, 'packages');
   if (!fs.existsSync(packageDirPath)) return allProjects;
@@ -159,7 +166,7 @@ async function getAllProjects(argv: EnvReaderOptions, rootProject: Project): Pro
     const packageJsonPath = path.join(packageDirPath, 'package.json');
     if (!fs.existsSync(packageJsonPath)) continue;
 
-    allProjects.push(new Project(packageJsonPath, argv));
+    allProjects.push(new Project(packageJsonPath, argv, loadEnv));
   }
   return allProjects;
 }

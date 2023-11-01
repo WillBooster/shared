@@ -15,10 +15,10 @@ export const typeCheckCommand: CommandModule<
   InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>
 > = {
   command: 'typecheck',
-  describe: 'Run type checking. .env-related options are ignored.',
+  describe: 'Run type checking. .env files are ignored.',
   builder,
   async handler(argv) {
-    const projects = await findAllProjects(argv);
+    const projects = await findAllProjects(argv, false);
     if (!projects) return;
 
     for (const project of projects.all) {
