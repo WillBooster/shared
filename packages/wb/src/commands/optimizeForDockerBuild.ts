@@ -67,6 +67,7 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
 
   const devDeps = packageJson.devDependencies || {};
   const nameWordsToBeRemoved = [
+    'artillery',
     'concurrently',
     'conventional-changelog-conventionalcommits',
     'eslint',
