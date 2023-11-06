@@ -156,17 +156,18 @@ export function findRootAndSelfProjects(
 
 async function getAllProjects(argv: EnvReaderOptions, rootProject: Project, loadEnv: boolean): Promise<Project[]> {
   const allProjects = [rootProject];
-  const packageDirPath = path.join(rootProject.dirPath, 'packages');
-  if (!fs.existsSync(packageDirPath)) return allProjects;
+  const packagesDirPath = path.join(rootProject.dirPath, 'packages');
+  if (!fs.existsSync(packagesDirPath)) return allProjects;
 
-  const packageDirs = await fs.promises.readdir(packageDirPath, { withFileTypes: true });
-  for (const packageDir of packageDirs) {
-    if (!packageDir.isDirectory()) continue;
+  const packageDirs = await fs.promises.readdir(packagesDirPath, { withFileTypes: true });
+  for (const subPackageDir of packageDirs) {
+    if (!subPackageDir.isDirectory()) continue;
 
-    const packageJsonPath = path.join(packageDirPath, 'package.json');
-    if (!fs.existsSync(packageJsonPath)) continue;
+    const subPackageDirPath = path.join(packagesDirPath, subPackageDir.name);
+    const subPackageJsonPath = path.join(subPackageDirPath, 'package.json');
+    if (!fs.existsSync(subPackageJsonPath)) continue;
 
-    allProjects.push(new Project(packageJsonPath, argv, loadEnv));
+    allProjects.push(new Project(subPackageJsonPath, argv, loadEnv));
   }
   return allProjects;
 }
