@@ -15,7 +15,7 @@ class DockerScripts {
       : '';
     return `cd ${path.dirname(project.findFile('Dockerfile'))}
     && ${prefix}YARN wb optimizeForDockerBuild --outside
-    && YARN wb retry -- docker build -t ${project.nameWithoutNamespace}
+    && YARN wb retry -- docker build -t ${project.dockerImageName}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
         --build-arg WB_ENV=${project.env.WB_ENV}
         --build-arg WB_VERSION=dev .`;
@@ -29,11 +29,11 @@ class DockerScripts {
   }
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop(project), project);
-    return `docker run --rm -it -p 8080:8080 --name ${project.nameWithoutNamespace} ${additionalOptions} ${project.nameWithoutNamespace} ${additionalArgs}`;
+    return `docker run --rm -it -p 8080:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
   }
 
   stop(project: Project): string {
-    return `true $(docker rm -f $(docker container ls -q -f name=${project.nameWithoutNamespace}) 2> /dev/null)`;
+    return `true $(docker rm -f $(docker container ls -q -f name=${project.dockerImageName}) 2> /dev/null)`;
   }
 
   stopAll(): string {

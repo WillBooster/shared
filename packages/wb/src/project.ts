@@ -58,14 +58,13 @@ export class Project {
 
   @memoizeOne
   get name(): string {
-    return this.rootPackageJson.name || 'unknown';
+    return this.packageJson.name || 'unknown';
   }
 
   @memoizeOne
-  get nameWithoutNamespace(): string {
-    const name = this.rootPackageJson.name || 'unknown';
-    const index = name.lastIndexOf('/');
-    return index === -1 ? name : name.slice(index + 1);
+  get dockerImageName(): string {
+    const name = this.packageJson.name || 'unknown';
+    return name.replaceAll('@', '').replaceAll('/', '-');
   }
 
   @memoizeOne
