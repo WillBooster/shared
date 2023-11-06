@@ -55,6 +55,13 @@ export async function test(
   const projects = await findAllProjects(argv);
   if (!projects) return;
 
+  if (projects.all.length > 1) {
+    // Disable interactive mode
+    process.env.CI = '1';
+  }
+  process.env.FORCE_COLOR ||= '3';
+  process.env.WB_ENV ||= 'test';
+
   for (const project of projects.all) {
     const deps = project.packageJson.dependencies || {};
     const devDeps = project.packageJson.devDependencies || {};
@@ -72,13 +79,6 @@ export async function test(
     }
 
     console.info(`Running "test" for ${project.name} ...`);
-
-    if (projects.all.length > 1) {
-      // Disable interactive mode
-      project.env['CI'] = '1';
-    }
-    project.env['FORCE_COLOR'] ||= '3';
-    project.env.WB_ENV ||= 'test';
 
     const promises: Promise<unknown>[] = [];
     if (argv.ci) {

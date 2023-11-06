@@ -1,6 +1,5 @@
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import type { Project } from '../project.js';
 import { findAllProjects } from '../project.js';
 import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
@@ -56,17 +55,17 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       switch (argv.mode || 'dev') {
         case 'dev':
         case 'development': {
-          const prefix = configureEnvironmentVariables(project, deps, 'development');
+          const prefix = configureEnvironmentVariables(deps, 'development');
           await runWithSpawn(`${prefix}${scripts.start(project, argv)}`, project, argv);
           break;
         }
         case 'staging': {
-          const prefix = configureEnvironmentVariables(project, deps, 'staging');
+          const prefix = configureEnvironmentVariables(deps, 'staging');
           await runWithSpawn(`${prefix}${scripts.startProduction(project, argv, 8080)}`, project, argv);
           break;
         }
         case 'docker': {
-          const prefix = configureEnvironmentVariables(project, deps, 'staging');
+          const prefix = configureEnvironmentVariables(deps, 'staging');
           await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
           break;
         }
@@ -78,12 +77,12 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   },
 };
 
-function configureEnvironmentVariables(project: Project, deps: Partial<Record<string, string>>, wbEnv: string): string {
-  project.env.WB_ENV ||= wbEnv;
-  let prefix = `WB_ENV=${project.env.WB_ENV} `;
+function configureEnvironmentVariables(deps: Partial<Record<string, string>>, wbEnv: string): string {
+  process.env.WB_ENV ||= wbEnv;
+  let prefix = `WB_ENV=${process.env.WB_ENV} `;
   if (deps['next']) {
-    project.env.NEXT_PUBLIC_WB_ENV = project.env.WB_ENV;
-    prefix += `NEXT_PUBLIC_WB_ENV=${project.env.WB_ENV} `;
+    process.env.NEXT_PUBLIC_WB_ENV = process.env.WB_ENV;
+    prefix += `NEXT_PUBLIC_WB_ENV=${process.env.WB_ENV} `;
   }
   return prefix;
 }
