@@ -35,6 +35,7 @@ function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOption
   if (!argv.dryRun) {
     const ret = child_process.spawnSync(argv.command ?? '', {
       cwd: project.dirPath,
+      env: project.env,
       shell: true,
       stdio: 'inherit',
     });
@@ -126,6 +127,7 @@ async function updateHashWithDiffResult(
   return new Promise((resolve) => {
     const ret = child_process.spawnSync('git', ['diff', '--name-only'], {
       cwd: project.dirPath,
+      env: project.env,
       stdio: 'pipe',
       encoding: 'utf8',
     });

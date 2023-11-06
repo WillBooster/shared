@@ -25,10 +25,6 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     const projects = await findAllProjects(argv);
     if (!projects) return;
 
-    const opts = {
-      stdio: 'inherit',
-    } as const;
-
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.all)) {
       const packageJson: PackageJson = project.packageJson;
       const keys = ['dependencies', 'devDependencies'] as const;
@@ -54,7 +50,9 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
     }
     if (!argv.dryRun && !argv.outside) {
-      child_process.spawnSync('yarn', opts);
+      child_process.spawnSync('yarn', {
+        stdio: 'inherit',
+      });
     }
   },
 };
