@@ -164,10 +164,9 @@ async function getAllProjects(argv: EnvReaderOptions, rootProject: Project, load
     if (!subPackageDir.isDirectory()) continue;
 
     const subPackageDirPath = path.join(packagesDirPath, subPackageDir.name);
-    const subPackageJsonPath = path.join(subPackageDirPath, 'package.json');
-    if (!fs.existsSync(subPackageJsonPath)) continue;
+    if (!fs.existsSync(path.join(subPackageDirPath, 'package.json'))) continue;
 
-    allProjects.push(new Project(subPackageJsonPath, argv, loadEnv));
+    allProjects.push(new Project(subPackageDirPath, argv, loadEnv));
   }
   return allProjects;
 }
