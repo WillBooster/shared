@@ -3,15 +3,17 @@ import path from 'node:path';
 
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import { memoizeFactory } from 'at-decorators';
 import type { PackageJson } from 'type-fest';
 
-import type { ScriptArgv } from './scripts/builder.js';
+const memoize = memoizeFactory(Number.MAX_SAFE_INTEGER, 1);
 
 export class Project {
   private readonly argv: EnvReaderOptions;
   private readonly loadEnv: boolean;
-  private _dirPath: string;
-  private _pathByName = new Map<string, string>();
+  private readonly pathByName = new Map<string, string>();
+
+  private readonly _dirPath: string;
 
   constructor(dirPath: string, argv: EnvReaderOptions, loadEnv: boolean) {
     this._dirPath = path.resolve(dirPath);
@@ -19,30 +21,30 @@ export class Project {
     this.loadEnv = loadEnv;
   }
 
-  getBuildCommand(argv?: ScriptArgv): string {
+  @memoize
+  get buildCommand(): string {
     return this.packageJson.scripts?.build?.includes('buildIfNeeded')
       ? 'yarn build'
-      : `YARN wb buildIfNeeded ${argv?.verbose ? '--verbose' : ''}`;
+      : `YARN wb buildIfNeeded ${this.argv.verbose ? '--verbose' : ''}`;
   }
 
   get dirPath(): string {
     return this._dirPath;
   }
 
-  set dirPath(newDirPath: string) {
-    this._dirPath = path.resolve(newDirPath);
-  }
-
+  @memoize
   get rootDirPath(): string {
     return fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
       ? path.resolve(this.dirPath, '..', '..')
       : this.dirPath;
   }
 
+  @memoize
   get dockerfile(): string {
     return fs.readFileSync(this.findFile('Dockerfile'), 'utf8');
   }
 
+  @memoize
   get hasDockerfile(): boolean {
     try {
       return !!this.findFile('Dockerfile');
@@ -51,44 +53,66 @@ export class Project {
     }
   }
 
+  @memoize
   get name(): string {
     return this.packageJson.name || 'unknown';
   }
 
+  @memoize
   get dockerImageName(): string {
     const name = this.packageJson.name || 'unknown';
     return name.replaceAll('@', '').replaceAll('/', '-');
   }
 
+  @memoize
   get env(): Record<string, string | undefined> {
     return this.loadEnv ? { ...readEnvironmentVariables(this.argv, this.dirPath), ...process.env } : process.env;
   }
 
+  @memoize
   get packageJson(): PackageJson {
     return JSON.parse(fs.readFileSync(path.join(this.dirPath, 'package.json'), 'utf8'));
   }
 
-  get rootPackageJson(): PackageJson {
-    return this.rootDirPath === this.dirPath
-      ? this.packageJson
-      : JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8'));
-  }
-
+  @memoize
   get dockerPackageJson(): PackageJson {
     return path.dirname(this.findFile('Dockerfile')) === this.dirPath
       ? this.packageJson
       : JSON.parse(fs.readFileSync(path.join(path.dirname(this.findFile('Dockerfile')), 'package.json'), 'utf8'));
   }
 
+  @memoize
+  get binExists(): boolean {
+    let binFound = false;
+    let currentPath = this.dirPath;
+    for (;;) {
+      const binPath = path.join(currentPath, 'node_modules', '.bin');
+      if (fs.existsSync(binPath)) {
+        this.env.PATH = `${binPath}:${this.env.PATH}`;
+        binFound = true;
+      }
+
+      if (fs.existsSync(path.join(currentPath, '.git'))) {
+        break;
+      }
+      const parentPath = path.dirname(currentPath);
+      if (currentPath === parentPath) {
+        break;
+      }
+      currentPath = parentPath;
+    }
+    return binFound;
+  }
+
   findFile(fileName: string): string {
-    let filePath = this._pathByName.get(fileName);
+    let filePath = this.pathByName.get(fileName);
     if (filePath) return filePath;
 
     filePath = [fileName, path.join('..', '..', fileName)].find((p) => fs.existsSync(p));
     if (!filePath) {
       throw new Error(`File not found: ${fileName}`);
     }
-    this._pathByName.set(fileName, filePath);
+    this.pathByName.set(fileName, filePath);
     return filePath;
   }
 }

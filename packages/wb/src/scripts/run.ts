@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
@@ -91,13 +88,12 @@ export function runWithSpawnInParallel(
 }
 
 function normalizeScript(script: string, project: Project): [string, string] {
-  const binExists = addBinPathsToEnv(project);
   const newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
     .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
     .trim();
-  return [newScript.replaceAll('YARN ', 'yarn '), newScript.replaceAll('YARN ', binExists ? '' : 'yarn ')];
+  return [newScript.replaceAll('YARN ', 'yarn '), newScript.replaceAll('YARN ', project.binExists ? '' : 'yarn ')];
 }
 
 export function printStart(normalizedScript: string, project: Project, prefix = 'Start', weak = false): void {
@@ -121,31 +117,4 @@ export function printFinishedAndExitIfNeeded(
       process.exit(exitCode ?? 1);
     }
   }
-}
-
-let addedBinPaths = false;
-let binFound = false;
-
-function addBinPathsToEnv(project: Project): boolean {
-  if (addedBinPaths) return binFound;
-  addedBinPaths = true;
-
-  let currentPath = project.dirPath;
-  for (;;) {
-    const binPath = path.join(currentPath, 'node_modules', '.bin');
-    if (fs.existsSync(binPath)) {
-      project.env.PATH = `${binPath}:${project.env.PATH}`;
-      binFound = true;
-    }
-
-    if (fs.existsSync(path.join(currentPath, '.git'))) {
-      break;
-    }
-    const parentPath = path.dirname(currentPath);
-    if (currentPath === parentPath) {
-      break;
-    }
-    currentPath = parentPath;
-  }
-  return binFound;
 }

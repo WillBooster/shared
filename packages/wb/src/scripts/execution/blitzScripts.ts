@@ -24,9 +24,9 @@ class BlitzScripts extends BaseExecutionScripts {
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {
     const appEnv = project.env.WB_ENV ? `APP_ENV=${project.env.WB_ENV} ` : '';
     return `${appEnv}NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
-      "${prismaScripts.reset(project)} && ${project.getBuildCommand(
-        argv
-      )} && PORT=${port} pm2-runtime start ${project.findFile('ecosystem.config.cjs')} ${argv.normalizedArgsText ?? ''}"
+      "${prismaScripts.reset(project)} && ${project.buildCommand} && PORT=${port} pm2-runtime start ${project.findFile(
+        'ecosystem.config.cjs'
+      )} ${argv.normalizedArgsText ?? ''}"
       "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
@@ -35,9 +35,9 @@ class BlitzScripts extends BaseExecutionScripts {
     argv: ScriptArgv,
     {
       playwrightArgs = 'test tests/e2e',
-      startCommand = `${prismaScripts.reset(project)} && ${project.getBuildCommand(
-        argv
-      )} && pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
+      startCommand = `${prismaScripts.reset(project)} && ${
+        project.buildCommand
+      } && pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
     }: TestE2EOptions
   ): string {
     return super.testE2E(project, argv, {

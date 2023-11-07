@@ -27,7 +27,7 @@ class PlainAppScripts extends BaseExecutionScripts {
   }
 
   override startProduction(project: Project, argv: ScriptArgv): string {
-    return `NODE_ENV=production ${project.getBuildCommand(argv)} && NODE_ENV=production node dist/index.js ${
+    return `NODE_ENV=production ${project.buildCommand} && NODE_ENV=production node dist/index.js ${
       argv.normalizedArgsText ?? ''
     }`;
   }
