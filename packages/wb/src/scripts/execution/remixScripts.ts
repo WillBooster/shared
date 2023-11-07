@@ -22,9 +22,9 @@ class RemixScripts extends BaseExecutionScripts {
 
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {
     return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
-      "${prismaScripts.reset(project)} && ${project.getBuildCommand(
-        argv
-      )} && PORT=${port} pm2-runtime start ${project.findFile('ecosystem.config.cjs')} ${argv.normalizedArgsText ?? ''}"
+      "${prismaScripts.reset(project)} && ${project.buildCommand} && PORT=${port} pm2-runtime start ${project.findFile(
+        'ecosystem.config.cjs'
+      )} ${argv.normalizedArgsText ?? ''}"
       "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
@@ -33,9 +33,9 @@ class RemixScripts extends BaseExecutionScripts {
     argv: ScriptArgv,
     {
       playwrightArgs = 'test tests/e2e',
-      startCommand = `${prismaScripts.reset(project)} && ${project.getBuildCommand(
-        argv
-      )} && pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
+      startCommand = `${prismaScripts.reset(project)} && ${
+        project.buildCommand
+      } && pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
     }: TestE2EOptions
   ): string {
     return super.testE2E(project, argv, { playwrightArgs, prismaDirectory: 'prisma', startCommand });

@@ -28,9 +28,9 @@ class HttpServerScripts extends BaseExecutionScripts {
   }
 
   override startProduction(project: Project, argv: ScriptArgv, port = 8080): string {
-    return `NODE_ENV=production ${project.getBuildCommand(
-      argv
-    )} && NODE_ENV=production PORT=\${PORT:-${port}} node dist/index.js ${argv.normalizedArgsText ?? ''}`;
+    return `NODE_ENV=production ${
+      project.buildCommand
+    } && NODE_ENV=production PORT=\${PORT:-${port}} node dist/index.js ${argv.normalizedArgsText ?? ''}`;
   }
 
   override testE2E(
