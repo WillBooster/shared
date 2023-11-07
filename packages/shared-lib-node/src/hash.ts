@@ -51,7 +51,13 @@ export async function calculateHashFromFiles(...paths: string[]): Promise<string
       const dirents = await fs.promises.readdir(fileOrDirPath, { withFileTypes: true, recursive: true });
       for (const dirent of dirents.sort((d1, d2) => d1.name.localeCompare(d2.name))) {
         if (dirent.isFile()) {
-          hash.update(await fs.promises.readFile(path.join(fileOrDirPath, dirent.name), 'utf8'));
+          // Node.js 18.17.0 or later has `dirent.path`
+          hash.update(
+            await fs.promises.readFile(
+              path.join((dirent as unknown as Record<'path', string>).path, dirent.name),
+              'utf8'
+            )
+          );
         }
       }
     } else if (stat.isFile()) {
