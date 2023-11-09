@@ -18,12 +18,10 @@ const argumentsBuilder = {
   command: {
     description: 'A command to retry',
     type: 'string',
-    demand: true,
   },
   args: {
     description: 'Arguments for the command',
     type: 'array',
-    default: [],
   },
 } as const;
 
@@ -31,7 +29,7 @@ export const retryCommand: CommandModule<
   unknown,
   InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
 > = {
-  command: 'retry <command> [args...]',
+  command: 'retry [command] [args...]',
   describe: 'Retry the given command until it succeeds',
   builder,
   async handler(argv) {
@@ -41,7 +39,7 @@ export const retryCommand: CommandModule<
       process.exit(1);
     }
 
-    const cmdAndArgs = [argv.command, ...argv.args];
+    const cmdAndArgs = [argv.command, ...(argv.args ?? []), ...argv._.slice(1)].filter(Boolean);
     let lastStatus = 0;
     for (let i = 0; i < argv.retry; i++) {
       if (i > 0) {
