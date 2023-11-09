@@ -1,3 +1,4 @@
+import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findAllProjects } from '../project.js';
@@ -28,7 +29,10 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     normalizeArgs(argv);
 
     const projects = await findAllProjects(argv);
-    if (!projects) return;
+    if (!projects) {
+      console.error(chalk.red('No project found.'));
+      process.exit(1);
+    }
 
     for (const project of projects.all) {
       const deps = project.packageJson.dependencies || {};

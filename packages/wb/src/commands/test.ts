@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { existsAsync } from '@willbooster/shared-lib-node/src';
+import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
@@ -53,7 +54,10 @@ export async function test(
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>
 ): Promise<void> {
   const projects = await findAllProjects(argv);
-  if (!projects) return;
+  if (!projects) {
+    console.error(chalk.red('No project found.'));
+    process.exit(1);
+  }
 
   if (projects.all.length > 1) {
     // Disable interactive mode

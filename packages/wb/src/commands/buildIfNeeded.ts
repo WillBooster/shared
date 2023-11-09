@@ -53,7 +53,10 @@ export async function buildIfNeeded(
   projectPathForTesting?: string
 ): Promise<boolean | undefined> {
   const project = await findSelfProject(argv, true, projectPathForTesting);
-  if (!project) return true;
+  if (!project) {
+    console.error(chalk.red('No project found.'));
+    return true;
+  }
 
   if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
     build(project, argv);

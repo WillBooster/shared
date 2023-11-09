@@ -19,7 +19,10 @@ export const typeCheckCommand: CommandModule<
   builder,
   async handler(argv) {
     const projects = await findAllProjects(argv, false);
-    if (!projects) return;
+    if (!projects) {
+      console.error(chalk.red('No project found.'));
+      process.exit(1);
+    }
 
     for (const project of projects.all) {
       const commands: string[] = [];

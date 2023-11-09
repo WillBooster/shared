@@ -1,4 +1,5 @@
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
+import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
@@ -192,7 +193,10 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
 
 async function findPrismaProjects(argv: EnvReaderOptions): Promise<Project[]> {
   const projects = await findAllProjects(argv);
-  if (!projects) return [];
+  if (!projects) {
+    console.error(chalk.red('No project found.'));
+    process.exit(1);
+  }
 
   return projects.all.filter(
     (project) => project.packageJson.dependencies?.['prisma'] || project.packageJson.devDependencies?.['prisma']

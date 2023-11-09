@@ -2,6 +2,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -23,7 +24,10 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
   builder,
   async handler(argv) {
     const projects = await findAllProjects(argv);
-    if (!projects) return;
+    if (!projects) {
+      console.error(chalk.red('No project found.'));
+      process.exit(1);
+    }
 
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.all)) {
       const packageJson: PackageJson = project.packageJson;

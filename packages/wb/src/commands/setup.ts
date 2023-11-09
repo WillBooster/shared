@@ -2,6 +2,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 
+import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findAllProjects } from '../project.js';
@@ -27,7 +28,10 @@ export async function setup(
   projectPathForTesting?: string
 ): Promise<void> {
   const projects = await findAllProjects(argv, false, projectPathForTesting);
-  if (!projects) return;
+  if (!projects) {
+    console.error(chalk.red('No project found.'));
+    process.exit(1);
+  }
 
   for (const project of prepareForRunningCommand('setup', projects.all)) {
     const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
