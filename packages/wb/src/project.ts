@@ -75,6 +75,11 @@ export class Project {
   }
 
   @memoize
+  get hasPrisma(): boolean {
+    return !!this.packageJson.dependencies?.['prisma'];
+  }
+
+  @memoize
   get dockerPackageJson(): PackageJson {
     return path.dirname(this.findFile('Dockerfile')) === this.dirPath
       ? this.packageJson

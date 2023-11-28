@@ -22,26 +22,25 @@ class NextScripts extends BaseExecutionScripts {
 
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {
     return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
-      "${prismaScripts.reset(project)} && ${project.buildCommand} && PORT=${port} pm2-runtime start ${project.findFile(
-        'ecosystem.config.cjs'
-      )} ${argv.normalizedArgsText ?? ''}"
+      "${[
+        ...(project.hasPrisma ? [prismaScripts.reset(project)] : []),
+        project.buildCommand,
+        `PORT=${port} pm2-runtime start ${project.findFile('ecosystem.config.cjs')} ${argv.normalizedArgsText ?? ''}`,
+      ].join(' && ')}"
       "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
-  override testE2E(
-    project: Project,
-    argv: ScriptArgv,
-    {
-      playwrightArgs = 'test tests/e2e',
-      startCommand = `${prismaScripts.reset(project)} && ${
-        project.buildCommand
-      } && pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
-    }: TestE2EOptions
-  ): string {
+  override testE2E(project: Project, argv: ScriptArgv, options: TestE2EOptions): string {
     return super.testE2E(project, argv, {
-      playwrightArgs,
+      playwrightArgs: options.playwrightArgs ?? 'test tests/e2e',
       prismaDirectory: 'db',
-      startCommand,
+      startCommand:
+        options.startCommand ??
+        [
+          ...(project.hasPrisma ? [prismaScripts.reset(project)] : []),
+          project.buildCommand,
+          `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
+        ].join(' && '),
     });
   }
 
