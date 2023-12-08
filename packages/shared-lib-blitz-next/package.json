@@ -43,7 +43,7 @@
     "@willbooster/eslint-config-ts": "10.5.1",
     "@willbooster/prettier-config": "9.1.2",
     "blitz": "2.0.0-beta.36",
-    "build-ts": "11.0.15",
+    "build-ts": "11.0.17",
     "eslint": "8.55.0",
     "eslint-config-prettier": "9.1.0",
     "eslint-import-resolver-typescript": "3.6.1",
