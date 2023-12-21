@@ -7388,7 +7388,7 @@ __metadata:
     eslint-plugin-import: "npm:2.29.1"
     eslint-plugin-sort-class-members: "npm:1.19.0"
     eslint-plugin-sort-destructure-keys: "npm:1.5.0"
-    eslint-plugin-unicorn: "npm:49.0.0"
+    eslint-plugin-unicorn: "npm:50.0.1"
     lint-staged: "npm:15.2.0"
     micromatch: "npm:4.0.5"
     prettier: "npm:3.1.1"
@@ -7427,7 +7427,7 @@ __metadata:
     eslint-plugin-import: "npm:2.29.1"
     eslint-plugin-sort-class-members: "npm:1.19.0"
     eslint-plugin-sort-destructure-keys: "npm:1.5.0"
-    eslint-plugin-unicorn: "npm:49.0.0"
+    eslint-plugin-unicorn: "npm:50.0.1"
     lint-staged: "npm:15.2.0"
     micromatch: "npm:4.0.5"
     prettier: "npm:3.1.1"
@@ -7472,7 +7472,7 @@ __metadata:
     eslint-plugin-sort-class-members: "npm:1.19.0"
     eslint-plugin-sort-destructure-keys: "npm:1.5.0"
     eslint-plugin-storybook: "npm:0.6.15"
-    eslint-plugin-unicorn: "npm:49.0.0"
+    eslint-plugin-unicorn: "npm:50.0.1"
     lint-staged: "npm:15.2.0"
     micromatch: "npm:4.0.5"
     prettier: "npm:3.1.1"
@@ -7504,7 +7504,7 @@ __metadata:
     eslint-plugin-import: "npm:2.29.1"
     eslint-plugin-sort-class-members: "npm:1.19.0"
     eslint-plugin-sort-destructure-keys: "npm:1.5.0"
-    eslint-plugin-unicorn: "npm:49.0.0"
+    eslint-plugin-unicorn: "npm:50.0.1"
     lint-staged: "npm:15.2.0"
     micromatch: "npm:4.0.5"
     prettier: "npm:3.1.1"
@@ -7537,7 +7537,7 @@ __metadata:
     eslint-plugin-import: "npm:2.29.1"
     eslint-plugin-sort-class-members: "npm:1.19.0"
     eslint-plugin-sort-destructure-keys: "npm:1.5.0"
-    eslint-plugin-unicorn: "npm:49.0.0"
+    eslint-plugin-unicorn: "npm:50.0.1"
     kill-port: "npm:2.0.1"
     lint-staged: "npm:15.2.0"
     micromatch: "npm:4.0.5"
@@ -9443,6 +9443,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ci-info@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "ci-info@npm:4.0.0"
+  checksum: ecc003e5b60580bd081d83dd61d398ddb8607537f916313e40af4667f9c92a1243bd8e8a591a5aa78e418afec245dbe8e90a0e26e39ca0825129a99b978dd3f9
+  languageName: node
+  linkType: hard
+
 "cidr-regex@npm:^3.1.1":
   version: 3.1.1
   resolution: "cidr-regex@npm:3.1.1"
@@ -10051,6 +10058,15 @@ __metadata:
   dependencies:
     browserslist: "npm:^4.22.1"
   checksum: 9c7361b370eac30756e6ec52469988d62c6110759efa1c85edd15e6b30f05ace8319a9cc0671bf596a98e7e81c67ad693ceaab2691b85cb62c636da1afe8feb9
+  languageName: node
+  linkType: hard
+
+"core-js-compat@npm:^3.34.0":
+  version: 3.34.0
+  resolution: "core-js-compat@npm:3.34.0"
+  dependencies:
+    browserslist: "npm:^4.22.2"
+  checksum: d2a46d977aa331df9e9d7372f309841403d6f158dbcf5bf7e358ea547bd5ccc93f9447e93d66b74eb4b19c647874e794511238c40cee495716a5f8a74a605ac1
   languageName: node
   linkType: hard
 
@@ -11767,14 +11783,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint-plugin-unicorn@npm:49.0.0":
-  version: 49.0.0
-  resolution: "eslint-plugin-unicorn@npm:49.0.0"
+"eslint-plugin-unicorn@npm:50.0.1":
+  version: 50.0.1
+  resolution: "eslint-plugin-unicorn@npm:50.0.1"
   dependencies:
     "@babel/helper-validator-identifier": "npm:^7.22.20"
     "@eslint-community/eslint-utils": "npm:^4.4.0"
-    ci-info: "npm:^3.8.0"
+    "@eslint/eslintrc": "npm:^2.1.4"
+    ci-info: "npm:^4.0.0"
     clean-regexp: "npm:^1.0.0"
+    core-js-compat: "npm:^3.34.0"
     esquery: "npm:^1.5.0"
     indent-string: "npm:^4.0.0"
     is-builtin-module: "npm:^3.2.1"
@@ -11786,8 +11804,8 @@ __metadata:
     semver: "npm:^7.5.4"
     strip-indent: "npm:^3.0.0"
   peerDependencies:
-    eslint: ">=8.52.0"
-  checksum: e5dea3f3aeef197bfdb17b69bed955d18b8c19cef95fb66292d340899a1132fdee1a1de1ef2806f6055d95fd23b7e6140299183790f06a673919dd751ecb8bfd
+    eslint: ">=8.56.0"
+  checksum: 645992a210066810bae4fc7557606a1f23b89a2b300c7a32d390c600a12a3283013a201a035a0943da605a38c4b7a5556086962b9ec785d45cf8c65c6a50cbcd
   languageName: node
   linkType: hard
 
