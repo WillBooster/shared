@@ -106,6 +106,8 @@ export class Project {
       }
       currentPath = parentPath;
     }
+    console.info('this.env.PATH:', this.env.PATH);
+    console.info('binFound:', binFound);
     return binFound;
   }
 
