@@ -18,6 +18,7 @@ describe('setup', () => {
       await setup({}, dirPath);
       expect(
         child_process.spawnSync(`yarn concurrently --version`, {
+          cwd: dirPath,
           env: removeNpmAndYarnEnvironmentVariables(process.env),
           shell: true,
           stdio: 'inherit',
