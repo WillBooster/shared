@@ -94,7 +94,8 @@ export class Project {
       const binPath = path.join(currentPath, 'node_modules', '.bin');
       if (fs.existsSync(binPath)) {
         this.env.PATH = `${binPath}:${this.env.PATH}`;
-        console.info('fs.readdirSync(binPath):', fs.readdirSync(binPath));
+        console.info(`fs.readdirSync("${binPath}"):`, fs.readdirSync(binPath));
+        console.info(`this.env.PATH:`, this.env.PATH);
         binFound = true;
       }
 
