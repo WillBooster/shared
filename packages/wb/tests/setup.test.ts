@@ -1,6 +1,7 @@
 import child_process from 'node:child_process';
 import path from 'node:path';
 
+import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import { describe, expect, it } from 'vitest';
 
 import { setup } from '../src/commands/setup.js';
@@ -15,6 +16,14 @@ describe('setup', () => {
       await initializeProjectDirectory(dirPath);
 
       await setup({}, dirPath);
+      expect(
+        child_process.spawnSync(`yarn concurrently --version`, {
+          cwd: dirPath,
+          env: removeNpmAndYarnEnvironmentVariables(process.env),
+          shell: true,
+          stdio: 'inherit',
+        }).status
+      ).toBe(0);
       const ret = child_process.spawnSync(`yarn start test -w ${dirPath} --ci`, {
         shell: true,
         stdio: 'inherit',

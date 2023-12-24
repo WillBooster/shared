@@ -43,7 +43,7 @@
     "@willbooster/eslint-config-ts": "10.5.1",
     "@willbooster/prettier-config": "9.1.2",
     "blitz": "2.0.0-beta.36",
-    "build-ts": "11.0.20",
+    "build-ts": "12.0.0",
     "eslint": "8.56.0",
     "eslint-config-prettier": "9.1.0",
     "eslint-import-resolver-typescript": "3.6.1",
@@ -56,7 +56,7 @@
     "prettier": "3.1.1",
     "sort-package-json": "2.6.0",
     "typescript": "5.3.3",
-    "vitest": "0.34.6"
+    "vitest": "1.1.0"
   },
   "publishConfig": {
     "access": "public"
