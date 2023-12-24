@@ -93,13 +93,7 @@ export class Project {
     for (;;) {
       const binPath = path.join(currentPath, 'node_modules', '.bin');
       if (fs.existsSync(binPath)) {
-        console.info(`process.env.PATH (before):`, process.env.PATH);
-        console.info(`this.env.PATH (before):`, this.env.PATH);
-        process.env.PATH = `${binPath}:${process.env.PATH}`;
         this.env.PATH = `${binPath}:${this.env.PATH}`;
-        console.info(`process.env.PATH (after):`, process.env.PATH);
-        console.info(`this.env.PATH (after):`, this.env.PATH);
-        console.info(`fs.readdirSync("${binPath}"):`, fs.readdirSync(binPath));
         binFound = true;
       }
 
@@ -112,8 +106,6 @@ export class Project {
       }
       currentPath = parentPath;
     }
-    console.info('this.env.PATH:', this.env.PATH);
-    console.info('binFound:', binFound);
     return binFound;
   }
 
