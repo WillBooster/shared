@@ -6709,14 +6709,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/react@npm:18.2.45":
-  version: 18.2.45
-  resolution: "@types/react@npm:18.2.45"
+"@types/react@npm:18.2.46":
+  version: 18.2.46
+  resolution: "@types/react@npm:18.2.46"
   dependencies:
     "@types/prop-types": "npm:*"
     "@types/scheduler": "npm:*"
     csstype: "npm:^3.0.2"
-  checksum: 4cc650c47ffb88baac29fb7a74e842e4af4a55f437086ef70250fdc75f0a5f2fcf8adc272d05ab2e00b1de6e14613296881271caee037dadf9130fdeb498c59e
+  checksum: 814cc67107e5e69501d65bfc371cc2c716665d2a3608d395a2f81e24c3a2875db28e2cad717dfb17017eabcffd1d68ee2c9e09ecaba3f7108d5b7fbb9888ebab
   languageName: node
   linkType: hard
 
@@ -7456,7 +7456,7 @@ __metadata:
     "@storybook/testing-library": "npm:0.2.2"
     "@types/eslint": "npm:8.56.0"
     "@types/micromatch": "npm:4.0.6"
-    "@types/react": "npm:18.2.45"
+    "@types/react": "npm:18.2.46"
     "@types/react-dom": "npm:18.2.18"
     "@typescript-eslint/eslint-plugin": "npm:6.16.0"
     "@typescript-eslint/parser": "npm:6.16.0"
@@ -7546,7 +7546,7 @@ __metadata:
     prettier: "npm:3.1.1"
     sort-package-json: "npm:2.6.0"
     tree-kill: "npm:1.2.2"
-    type-fest: "npm:4.8.3"
+    type-fest: "npm:4.9.0"
     typescript: "npm:5.3.3"
     vitest: "npm:0.34.6"
     yargs: "npm:17.7.2"
@@ -21189,10 +21189,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"type-fest@npm:4.8.3":
-  version: 4.8.3
-  resolution: "type-fest@npm:4.8.3"
-  checksum: 978edf5d00651e944b8c4d50f765a4cc09126e7fb90b46ed157265012e2f8aeb178c0ca493a175213ffa1705a795e4b5579c2ef4bc27bdd3462cdceccbf386f7
+"type-fest@npm:4.9.0":
+  version: 4.9.0
+  resolution: "type-fest@npm:4.9.0"
+  checksum: 7e6423f7337928a7323ce8a68cfbbaf30ecb70b9c635207899e58297d219c71be4a8c50b52afb9fe09c9f44b2c4276d0a44bb95acabab7bc942455f980aad267
   languageName: node
   linkType: hard
 
