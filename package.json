@@ -26,19 +26,19 @@
   "devDependencies": {
     "@qiwi/multi-semantic-release": "7.1.1",
     "@types/eslint": "8.56.2",
-    "@typescript-eslint/parser": "6.19.1",
+    "@typescript-eslint/parser": "6.20.0",
     "@willbooster/prettier-config": "9.1.2",
     "conventional-changelog-conventionalcommits": "6.1.0",
     "eslint": "8.56.0",
     "husky": "8.0.3",
-    "lint-staged": "15.2.0",
+    "lint-staged": "15.2.1",
     "micromatch": "4.0.5",
     "pinst": "3.0.0",
     "prettier": "3.2.4",
-    "sort-package-json": "2.6.0",
+    "sort-package-json": "2.7.0",
     "typescript": "5.3.3"
   },
-  "packageManager": "yarn@4.0.2",
+  "packageManager": "yarn@4.1.0",
   "engines": {
     "node": ">= 18"
   }
