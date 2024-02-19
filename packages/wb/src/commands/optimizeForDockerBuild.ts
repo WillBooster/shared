@@ -103,7 +103,8 @@ function optimizeScripts(packageJson: PackageJson): void {
   for (const [name, content] of Object.entries(scripts)) {
     if (
       nameWordsOfUnnecessaryScripts.some((word) => name.includes(word)) ||
-      contentWordsOfUnnecessaryScripts.some((word) => content.includes(word))
+      // Support "husky" since husky v9 requires `"postinstall": "husky"`
+      contentWordsOfUnnecessaryScripts.some((word) => content.includes(word) || content.trim() === word.trim())
     ) {
       delete scripts[name];
     }
