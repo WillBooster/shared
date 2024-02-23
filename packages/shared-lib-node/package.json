@@ -36,18 +36,18 @@
   },
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
-    "dotenv": "16.4.4",
+    "dotenv": "16.4.5",
     "tree-kill": "1.2.2"
   },
   "devDependencies": {
-    "@types/eslint": "8.56.2",
+    "@types/eslint": "8.56.3",
     "@types/micromatch": "4.0.6",
-    "@types/node": "20.11.19",
+    "@types/node": "20.11.20",
     "@typescript-eslint/eslint-plugin": "7.0.2",
     "@typescript-eslint/parser": "7.0.2",
     "@willbooster/eslint-config-ts": "10.5.1",
     "@willbooster/prettier-config": "9.1.2",
-    "build-ts": "12.0.7",
+    "build-ts": "12.0.8",
     "eslint": "8.56.0",
     "eslint-config-prettier": "9.1.0",
     "eslint-import-resolver-typescript": "3.6.1",
