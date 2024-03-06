@@ -198,7 +198,12 @@ async function findPrismaProjects(argv: EnvReaderOptions): Promise<Project[]> {
     process.exit(1);
   }
 
-  return projects.all.filter(
+  const filtered = projects.all.filter(
     (project) => project.packageJson.dependencies?.['prisma'] || project.packageJson.devDependencies?.['prisma']
   );
+  if (filtered.length === 0) {
+    console.error(chalk.red('No prisma project found.'));
+    process.exit(1);
+  }
+  return filtered;
 }
