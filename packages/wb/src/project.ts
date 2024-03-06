@@ -76,7 +76,7 @@ export class Project {
 
   @memoize
   get hasPrisma(): boolean {
-    return !!this.packageJson.dependencies?.['prisma'];
+    return !!(this.packageJson.dependencies?.['prisma'] || this.packageJson.devDependencies?.['prisma']);
   }
 
   @memoize
