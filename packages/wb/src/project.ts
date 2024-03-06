@@ -113,7 +113,9 @@ export class Project {
     let filePath = this.pathByName.get(fileName);
     if (filePath) return filePath;
 
-    filePath = [fileName, path.join('..', '..', fileName)].find((p) => fs.existsSync(path.join(this.dirPath, p)));
+    filePath = [fileName, path.join('..', '..', fileName)]
+      .map((p) => path.resolve(this.dirPath, p))
+      .find((p) => fs.existsSync(p));
     if (!filePath) {
       throw new Error(`File not found: ${fileName}`);
     }
