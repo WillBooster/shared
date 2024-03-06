@@ -112,7 +112,7 @@ export async function test(
         });
         await runWithSpawn(dockerScripts.stop(project), project, argv);
       }
-      return;
+      continue;
     }
 
     if (argv.unit || (!argv.start && argv.e2e === undefined)) {
@@ -126,24 +126,24 @@ export async function test(
     switch (argv.e2e) {
       case undefined:
       case 'none': {
-        return;
+        continue;
       }
       case '':
       case 'headless': {
         await runWithSpawn(scripts.testE2E(project, argv, {}), project, argv);
-        return;
+        continue;
       }
       case 'headless-dev': {
         await runWithSpawn(scripts.testE2EDev(project, argv, {}), project, argv);
-        return;
+        continue;
       }
       case 'docker': {
         await testOnDocker(project, argv, scripts);
-        return;
+        continue;
       }
       case 'docker-debug': {
         await testOnDocker(project, argv, scripts, 'PWDEBUG=1 ');
-        return;
+        continue;
       }
     }
     if (deps['blitz'] || deps['next'] || devDeps['@remix-run/dev']) {
@@ -154,7 +154,7 @@ export async function test(
             project,
             argv
           );
-          return;
+          continue;
         }
         case 'headed-dev': {
           await runWithSpawn(
@@ -162,11 +162,11 @@ export async function test(
             project,
             argv
           );
-          return;
+          continue;
         }
         case 'debug': {
           await runWithSpawn(`PWDEBUG=1 ${scripts.testE2E(project, argv, {})}`, project, argv);
-          return;
+          continue;
         }
         case 'generate': {
           await runWithSpawn(
@@ -174,11 +174,11 @@ export async function test(
             project,
             argv
           );
-          return;
+          continue;
         }
         case 'trace': {
           await runWithSpawn(`playwright show-trace`, project, argv);
-          return;
+          continue;
         }
       }
     }
