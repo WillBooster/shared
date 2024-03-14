@@ -8,7 +8,7 @@ import type { Project } from '../project.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class DockerScripts {
-  buildDevImage(project: Project): string {
+  buildDevImage(project: Project, version: string): string {
     // e.g. coding-booster uses `"docker/build/prepare": "touch drill-users.csv",`
     const prefix = project.dockerPackageJson.scripts?.['docker/build/prepare']
       ? 'yarn run docker/build/prepare && '
@@ -18,7 +18,7 @@ class DockerScripts {
     && YARN wb retry -- docker build -t ${project.dockerImageName}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
         --build-arg WB_ENV=${project.env.WB_ENV}
-        --build-arg WB_VERSION=dev .`;
+        --build-arg WB_VERSION=${version} .`;
   }
   stopAndStart(project: Project, unbuffer = false, additionalOptions = '', additionalArgs = ''): string {
     return `${this.stop(project)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(

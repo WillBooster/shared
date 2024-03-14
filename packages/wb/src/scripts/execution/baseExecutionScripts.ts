@@ -19,8 +19,8 @@ export interface TestE2EOptions extends TestE2EDevOptions {
 export abstract class BaseExecutionScripts {
   protected constructor(private readonly defaultPort = 3000) {}
 
-  buildDocker(project: Project): string {
-    return dockerScripts.buildDevImage(project);
+  buildDocker(project: Project, version = 'development'): string {
+    return dockerScripts.buildDevImage(project, version);
   }
 
   abstract start(project: Project, argv: ScriptArgv): string;
