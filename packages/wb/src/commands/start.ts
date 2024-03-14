@@ -15,7 +15,7 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 const builder = {
   ...scriptOptionsBuilder,
   mode: {
-    description: 'Start mode: dev[elopment] (default) | staging | docker',
+    description: 'Start mode: dev[elopment] (default) | staging | docker | docker-debug',
     type: 'string',
     alias: 'm',
   },
@@ -70,6 +70,12 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         }
         case 'docker': {
           const prefix = configureEnvironmentVariables(deps, 'staging');
+          await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
+          break;
+        }
+        case 'docker-debug': {
+          const prefix = configureEnvironmentVariables(deps, 'staging');
+          argv.normalizedDockerArgsText = '/bin/bash';
           await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
           break;
         }
