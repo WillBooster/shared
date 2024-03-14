@@ -11,7 +11,7 @@ export const scriptOptionsBuilder = {
     alias: 'a',
     default: [],
   },
-  'docker-args': {
+  'docker-options': {
     description: 'Arguments for "docker run"',
     type: 'array',
     default: [],
@@ -20,7 +20,7 @@ export const scriptOptionsBuilder = {
 
 export type ScriptArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof scriptOptionsBuilder>>> & {
   normalizedArgsText?: string;
-  normalizedDockerArgsText?: string;
+  normalizedDockerOptionsText?: string;
 };
 
 export function normalizeArgs(
@@ -29,5 +29,5 @@ export function normalizeArgs(
   (argv as ScriptArgv).normalizedArgsText = [...(argv.args ?? []), ...(argv._?.slice(1) ?? [])]
     .map((arg) => `'${arg}'`)
     .join(' ');
-  (argv as ScriptArgv).normalizedDockerArgsText = (argv.dockerArgs ?? []).map((arg) => `'${arg}'`).join(' ');
+  (argv as ScriptArgv).normalizedDockerOptionsText = (argv.dockerOptions ?? []).map((arg) => `'${arg}'`).join(' ');
 }

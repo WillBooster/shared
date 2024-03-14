@@ -75,7 +75,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         }
         case 'docker-debug': {
           const prefix = configureEnvironmentVariables(deps, 'staging');
-          argv.normalizedDockerArgsText = '/bin/bash';
+          argv.normalizedDockerArgsText = `'/bin/bash'`;
           await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
           break;
         }

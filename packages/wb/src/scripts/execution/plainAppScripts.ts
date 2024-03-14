@@ -21,7 +21,7 @@ class PlainAppScripts extends BaseExecutionScripts {
     return `${this.buildDocker(project)} && ${dockerScripts.stopAndStart(
       project,
       false,
-      argv.normalizedDockerArgsText ?? '',
+      argv.normalizedDockerOptionsText ?? '',
       argv.normalizedArgsText ?? ''
     )}`;
   }

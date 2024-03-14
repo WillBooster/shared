@@ -33,7 +33,7 @@ export abstract class BaseExecutionScripts {
         "${dockerScripts.stopAndStart(
           project,
           false,
-          argv.normalizedDockerArgsText ?? '',
+          argv.normalizedDockerOptionsText ?? '',
           argv.normalizedArgsText ?? ''
         )}"
         "${this.waitAndOpenApp(project, argv, 8080)}"`;
