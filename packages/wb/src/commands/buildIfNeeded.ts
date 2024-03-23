@@ -121,7 +121,7 @@ const includeSuffix = [
   'package.json',
   'yarn.lock',
 ];
-const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'package.json'];
+const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/'];
 
 async function updateHashWithDiffResult(
   project: Project,
