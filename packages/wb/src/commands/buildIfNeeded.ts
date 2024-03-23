@@ -118,6 +118,7 @@ const includeSuffix = [
   '.tsx',
   '.json',
   '.browserslistrc',
+  'package.json',
   'yarn.lock',
 ];
 const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'package.json'];
