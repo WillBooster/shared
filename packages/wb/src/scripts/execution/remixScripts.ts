@@ -32,16 +32,21 @@ class RemixScripts extends BaseExecutionScripts {
     project: Project,
     argv: ScriptArgv,
     {
+      playwrightArgs,
       startCommand = `${prismaScripts.reset(project)} && ${
         project.buildCommand
       } && pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
     }: TestE2EOptions
   ): string {
-    return super.testE2E(project, argv, { prismaDirectory: 'prisma', startCommand });
+    return super.testE2E(project, argv, { playwrightArgs, prismaDirectory: 'prisma', startCommand });
   }
 
-  override testE2EDev(project: Project, argv: ScriptArgv, { startCommand = 'remix dev' }: TestE2EDevOptions): string {
-    return super.testE2EDev(project, argv, { startCommand });
+  override testE2EDev(
+    project: Project,
+    argv: ScriptArgv,
+    { playwrightArgs, startCommand = 'remix dev' }: TestE2EDevOptions
+  ): string {
+    return super.testE2EDev(project, argv, { playwrightArgs, startCommand });
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {
