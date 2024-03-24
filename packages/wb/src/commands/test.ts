@@ -199,8 +199,8 @@ async function testOnDocker(
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);
   process.exitCode = await runWithSpawn(
     `${scripts.testE2E(project, argv, {
-      startCommand: dockerScripts.stopAndStart(project, true),
       playwrightArgs,
+      startCommand: dockerScripts.stopAndStart(project, true),
     })}`,
     project,
     argv,
