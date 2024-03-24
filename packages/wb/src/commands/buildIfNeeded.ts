@@ -118,6 +118,7 @@ const includeSuffix = [
   '.tsx',
   '.json',
   '.browserslistrc',
+  // Because some build commands affected by changes in `package.json`
   'package.json',
   'yarn.lock',
 ];

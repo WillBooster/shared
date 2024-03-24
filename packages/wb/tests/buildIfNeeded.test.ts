@@ -41,6 +41,6 @@ describe('buildIfNeeded', () => {
         2
       )
     );
-    expect(await buildIfNeeded({ command }, dirPath)).toBe(false);
+    expect(await buildIfNeeded({ command }, dirPath)).toBe(true);
   });
 }, 30_000);
