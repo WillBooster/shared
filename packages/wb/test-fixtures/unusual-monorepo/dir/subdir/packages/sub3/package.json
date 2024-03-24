@@ -1,5 +1,5 @@
 {
-  "name": "@unusual-monorepo/sub1",
+  "name": "@unusual-monorepo/sub3",
   "devDependencies": {
     "typescript": "5.4.3"
   }

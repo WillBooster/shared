@@ -180,8 +180,16 @@ async function getAllProjects(argv: EnvReaderOptions, rootProject: Project, load
   const workspace = rootProject.packageJson.workspaces;
   if (!Array.isArray(workspace)) return allProjects;
 
-  const globPattern = workspace.map((ws: string) => path.join(rootProject.dirPath, ws));
-  const packageDirs = await globby(globPattern, { dot: true, onlyDirectories: true });
+  const globPattern: string[] = [];
+  const packageDirs: string[] = [];
+  for (const workspacePath of workspace.map((ws: string) => path.join(rootProject.dirPath, ws))) {
+    if (fs.existsSync(workspacePath)) {
+      packageDirs.push(workspacePath);
+    } else {
+      globPattern.push(workspacePath);
+    }
+  }
+  packageDirs.push(...(await globby(globPattern, { dot: true, onlyDirectories: true })));
   for (const subPackageDirPath of packageDirs) {
     if (!fs.existsSync(path.join(subPackageDirPath, 'package.json'))) continue;
 

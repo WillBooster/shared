@@ -1,7 +1,8 @@
 {
   "name": "unusual-monorepo",
   "workspaces": [
-    "dir/subdir/packages/*"
+    "dir/subdir/packages/sub1",
+    "dir/subdir/*/sub2"
   ],
   "devDependencies": {
     "typescript": "5.4.3"
