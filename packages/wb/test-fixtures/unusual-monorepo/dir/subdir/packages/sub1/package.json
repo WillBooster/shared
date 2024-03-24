@@ -1,0 +1,6 @@
+{
+  "name": "@monorepo/sub1",
+  "devDependencies": {
+    "typescript": "5.4.3"
+  }
+}

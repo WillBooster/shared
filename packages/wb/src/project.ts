@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import { memoizeFactory } from 'at-decorators';
+import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 
 const memoize = memoizeFactory(Number.MAX_SAFE_INTEGER, 1);
@@ -175,14 +176,13 @@ export function findRootAndSelfProjects(
 
 async function getAllProjects(argv: EnvReaderOptions, rootProject: Project, loadEnv: boolean): Promise<Project[]> {
   const allProjects = [rootProject];
-  const packagesDirPath = path.join(rootProject.dirPath, 'packages');
-  if (!fs.existsSync(packagesDirPath)) return allProjects;
 
-  const packageDirs = await fs.promises.readdir(packagesDirPath, { withFileTypes: true });
-  for (const subPackageDir of packageDirs) {
-    if (!subPackageDir.isDirectory()) continue;
+  const workspace = rootProject.packageJson.workspaces;
+  if (!Array.isArray(workspace)) return allProjects;
 
-    const subPackageDirPath = path.join(packagesDirPath, subPackageDir.name);
+  const globPattern = workspace.map((ws: string) => path.join(rootProject.dirPath, ws));
+  const packageDirs = await globby(globPattern, { dot: true, onlyDirectories: true });
+  for (const subPackageDirPath of packageDirs) {
     if (!fs.existsSync(path.join(subPackageDirPath, 'package.json'))) continue;
 
     allProjects.push(new Project(subPackageDirPath, argv, loadEnv));

@@ -1,0 +1,9 @@
+{
+  "name": "unusual-monorepo",
+  "workspaces": [
+    "dir/subdir/packages/*"
+  ],
+  "devDependencies": {
+    "typescript": "5.4.3"
+  }
+}
