@@ -71,7 +71,7 @@
     "react-dom": "18.2.0",
     "sort-package-json": "2.8.0",
     "typescript": "5.4.3",
-    "vitest": "0.34.6"
+    "vitest": "1.4.0"
   },
   "peerDependencies": {
     "react": "~18.2.0",
