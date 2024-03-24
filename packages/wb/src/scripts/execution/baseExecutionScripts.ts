@@ -42,7 +42,7 @@ export abstract class BaseExecutionScripts {
   testE2E(
     project: Project,
     argv: ScriptArgv,
-    { playwrightArgs, prismaDirectory, startCommand }: TestE2EOptions
+    { playwrightArgs = 'test tests/e2e', prismaDirectory, startCommand }: TestE2EOptions
   ): string {
     // Basically, `playwright` (not `yarn playwright`) should work,
     // but it doesn't work on a project depending on `artillery-engine-playwright`.
@@ -54,7 +54,11 @@ export abstract class BaseExecutionScripts {
         && yarn playwright ${playwrightArgs}"`;
   }
 
-  testE2EDev(project: Project, argv: ScriptArgv, { playwrightArgs, startCommand }: TestE2EDevOptions): string {
+  testE2EDev(
+    project: Project,
+    argv: ScriptArgv,
+    { playwrightArgs = 'test tests/e2e', startCommand }: TestE2EDevOptions
+  ): string {
     const env = project.env.WB_ENV;
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"

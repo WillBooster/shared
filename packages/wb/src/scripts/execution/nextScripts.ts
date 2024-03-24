@@ -32,7 +32,7 @@ class NextScripts extends BaseExecutionScripts {
 
   override testE2E(project: Project, argv: ScriptArgv, options: TestE2EOptions): string {
     return super.testE2E(project, argv, {
-      playwrightArgs: options.playwrightArgs ?? 'test tests/e2e',
+      playwrightArgs: options.playwrightArgs,
       prismaDirectory: 'db',
       startCommand:
         options.startCommand ??
@@ -47,9 +47,9 @@ class NextScripts extends BaseExecutionScripts {
   override testE2EDev(
     project: Project,
     argv: ScriptArgv,
-    { playwrightArgs = 'test tests/e2e', startCommand = 'next dev -p 8080' }: TestE2EDevOptions
+    { startCommand = 'next dev -p 8080' }: TestE2EDevOptions
   ): string {
-    return super.testE2EDev(project, argv, { playwrightArgs, startCommand });
+    return super.testE2EDev(project, argv, { startCommand });
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {
