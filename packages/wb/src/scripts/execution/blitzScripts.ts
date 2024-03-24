@@ -34,7 +34,7 @@ class BlitzScripts extends BaseExecutionScripts {
     project: Project,
     argv: ScriptArgv,
     {
-      playwrightArgs = 'test tests/e2e',
+      playwrightArgs,
       startCommand = `${prismaScripts.reset(project)} && ${
         project.buildCommand
       } && pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
@@ -50,7 +50,7 @@ class BlitzScripts extends BaseExecutionScripts {
   override testE2EDev(
     project: Project,
     argv: ScriptArgv,
-    { playwrightArgs = 'test tests/e2e', startCommand = 'blitz dev -p 8080' }: TestE2EDevOptions
+    { playwrightArgs, startCommand = 'blitz dev -p 8080' }: TestE2EDevOptions
   ): string {
     return super.testE2EDev(project, argv, { playwrightArgs, startCommand });
   }

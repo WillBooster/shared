@@ -142,7 +142,7 @@ export async function test(
         continue;
       }
       case 'docker-debug': {
-        await testOnDocker(project, argv, scripts, 'PWDEBUG=1 ');
+        await testOnDocker(project, argv, scripts, 'test tests/e2e --debug');
         continue;
       }
     }
@@ -165,7 +165,11 @@ export async function test(
           continue;
         }
         case 'debug': {
-          await runWithSpawn(`PWDEBUG=1 ${scripts.testE2E(project, argv, {})}`, project, argv);
+          await runWithSpawn(
+            scripts.testE2E(project, argv, { playwrightArgs: 'test tests/e2e --debug' }),
+            project,
+            argv
+          );
           continue;
         }
         case 'generate': {
@@ -190,11 +194,12 @@ async function testOnDocker(
   project: Project,
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>,
   scripts: BaseExecutionScripts,
-  prefix = ''
+  playwrightArgs?: string
 ): Promise<void> {
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);
   process.exitCode = await runWithSpawn(
-    `${prefix}${scripts.testE2E(project, argv, {
+    `${scripts.testE2E(project, argv, {
+      playwrightArgs,
       startCommand: dockerScripts.stopAndStart(project, true),
     })}`,
     project,
