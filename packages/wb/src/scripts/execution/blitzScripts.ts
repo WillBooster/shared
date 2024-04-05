@@ -1,3 +1,4 @@
+import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
@@ -32,7 +33,7 @@ class BlitzScripts extends BaseExecutionScripts {
 
   override testE2E(
     project: Project,
-    argv: ScriptArgv,
+    argv: TestArgv,
     {
       playwrightArgs,
       startCommand = `${prismaScripts.reset(project)} && ${
@@ -49,7 +50,7 @@ class BlitzScripts extends BaseExecutionScripts {
 
   override testE2EDev(
     project: Project,
-    argv: ScriptArgv,
+    argv: TestArgv,
     { playwrightArgs, startCommand = 'blitz dev -p 8080' }: TestE2EDevOptions
   ): string {
     return super.testE2EDev(project, argv, { playwrightArgs, startCommand });

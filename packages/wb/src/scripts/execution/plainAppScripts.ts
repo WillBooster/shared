@@ -32,15 +32,15 @@ class PlainAppScripts extends BaseExecutionScripts {
     }`;
   }
 
-  override testE2E(_: Project): string {
+  override testE2E(): string {
     return `echo 'do nothing.'`;
   }
 
-  override testE2EDev(_: Project): string {
+  override testE2EDev(): string {
     return `echo 'do nothing.'`;
   }
 
-  override testStart(_: Project): string {
+  override testStart(): string {
     return `echo 'do nothing.'`;
   }
 }

@@ -1,3 +1,4 @@
+import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
@@ -41,7 +42,7 @@ export abstract class BaseExecutionScripts {
 
   testE2E(
     project: Project,
-    argv: ScriptArgv,
+    argv: TestArgv,
     { playwrightArgs = 'test tests/e2e', prismaDirectory, startCommand }: TestE2EOptions
   ): string {
     // Basically, `playwright` (not `yarn playwright`) should work,
@@ -51,26 +52,26 @@ export abstract class BaseExecutionScripts {
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
       "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http://127.0.0.1:8080' 'yarn playwright install --with-deps'
-        && yarn playwright ${playwrightArgs}"`;
+        && yarn playwright ${playwrightArgs.replace('tests/e2e', argv.target || 'tests/e2e')}"`;
   }
 
   testE2EDev(
     project: Project,
-    argv: ScriptArgv,
+    argv: TestArgv,
     { playwrightArgs = 'test tests/e2e', startCommand }: TestE2EDevOptions
   ): string {
     const env = project.env.WB_ENV;
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http://127.0.0.1:8080' 'yarn playwright install --with-deps'
-        && yarn playwright ${playwrightArgs}"`;
+        && yarn playwright ${playwrightArgs.replace('tests/e2e', argv.target || 'tests/e2e')}"`;
   }
 
   abstract testStart(project: Project, argv: ScriptArgv): string;
 
-  testUnit(project: Project, _2: ScriptArgv): string {
-    // Since this command is referred to from other commands, we have to use "vitest run".
-    return `WB_ENV=${project.env.WB_ENV} YARN vitest run tests/unit --color --passWithNoTests`;
+  testUnit(project: Project, argv: TestArgv): string {
+    // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
+    return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${argv.target || 'tests/unit'} --color --passWithNoTests`;
   }
 
   protected waitApp(project: Project, argv: ScriptArgv, port = this.defaultPort): string {

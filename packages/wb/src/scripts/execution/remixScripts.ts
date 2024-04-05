@@ -1,3 +1,4 @@
+import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
@@ -30,7 +31,7 @@ class RemixScripts extends BaseExecutionScripts {
 
   override testE2E(
     project: Project,
-    argv: ScriptArgv,
+    argv: TestArgv,
     {
       playwrightArgs,
       startCommand = `${prismaScripts.reset(project)} && ${
@@ -43,7 +44,7 @@ class RemixScripts extends BaseExecutionScripts {
 
   override testE2EDev(
     project: Project,
-    argv: ScriptArgv,
+    argv: TestArgv,
     { playwrightArgs, startCommand = 'remix dev' }: TestE2EDevOptions
   ): string {
     return super.testE2EDev(project, argv, { playwrightArgs, startCommand });

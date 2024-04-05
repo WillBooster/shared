@@ -7,6 +7,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import type { Project } from '../project.js';
 import { findAllProjects } from '../project.js';
 import { promisePool } from '../promisePool.js';
+import type { scriptOptionsBuilder } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
@@ -39,7 +40,14 @@ const builder = {
     description: 'Timeout for unit tests',
     type: 'number',
   },
+  target: {
+    description: 'Test target',
+    type: 'string',
+    alias: 't',
+  },
 } as const;
+
+export type TestArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder>>>;
 
 export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
   command: 'test',
