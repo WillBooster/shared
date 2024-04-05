@@ -7,6 +7,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import type { Project } from '../project.js';
 import { findAllProjects } from '../project.js';
 import { promisePool } from '../promisePool.js';
+import type { scriptOptionsBuilder } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
@@ -39,7 +40,14 @@ const builder = {
     description: 'Timeout for unit tests',
     type: 'number',
   },
+  target: {
+    description: 'Test target',
+    type: 'string',
+    alias: 't',
+  },
 } as const;
+
+export type TestArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder>>>;
 
 export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
   command: 'test',
@@ -142,7 +150,7 @@ export async function test(
         continue;
       }
       case 'docker-debug': {
-        await testOnDocker(project, argv, scripts, 'test tests/e2e --debug');
+        await testOnDocker(project, argv, scripts, `test ${argv.target || 'tests/e2e'} --debug`);
         continue;
       }
     }
@@ -150,7 +158,7 @@ export async function test(
       switch (argv.e2e) {
         case 'headed': {
           await runWithSpawn(
-            scripts.testE2E(project, argv, { playwrightArgs: 'test tests/e2e --headed' }),
+            scripts.testE2E(project, argv, { playwrightArgs: `test ${argv.target || 'tests/e2e'} --headed` }),
             project,
             argv
           );
@@ -158,7 +166,7 @@ export async function test(
         }
         case 'headed-dev': {
           await runWithSpawn(
-            scripts.testE2EDev(project, argv, { playwrightArgs: 'test tests/e2e --headed' }),
+            scripts.testE2EDev(project, argv, { playwrightArgs: `test ${argv.target || 'tests/e2e'} --headed` }),
             project,
             argv
           );
@@ -166,7 +174,7 @@ export async function test(
         }
         case 'debug': {
           await runWithSpawn(
-            scripts.testE2E(project, argv, { playwrightArgs: 'test tests/e2e --debug' }),
+            scripts.testE2E(project, argv, { playwrightArgs: `test ${argv.target || 'tests/e2e'} --debug` }),
             project,
             argv
           );

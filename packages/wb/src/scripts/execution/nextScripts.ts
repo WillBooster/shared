@@ -1,3 +1,4 @@
+import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
@@ -30,7 +31,7 @@ class NextScripts extends BaseExecutionScripts {
       "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
-  override testE2E(project: Project, argv: ScriptArgv, options: TestE2EOptions): string {
+  override testE2E(project: Project, argv: TestArgv, options: TestE2EOptions): string {
     return super.testE2E(project, argv, {
       playwrightArgs: options.playwrightArgs,
       prismaDirectory: 'db',
@@ -46,7 +47,7 @@ class NextScripts extends BaseExecutionScripts {
 
   override testE2EDev(
     project: Project,
-    argv: ScriptArgv,
+    argv: TestArgv,
     { startCommand = 'next dev -p 8080' }: TestE2EDevOptions
   ): string {
     return super.testE2EDev(project, argv, { startCommand });
