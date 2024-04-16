@@ -74,6 +74,7 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
     'conventional-changelog-conventionalcommits',
     'eslint',
     'husky',
+    'imagemin',
     'jest',
     'kill-port',
     'lint-staged',
