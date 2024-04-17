@@ -38,8 +38,8 @@
   "devDependencies": {
     "@types/eslint": "8.56.9",
     "@types/micromatch": "4.0.6",
-    "@typescript-eslint/eslint-plugin": "7.6.0",
-    "@typescript-eslint/parser": "7.6.0",
+    "@typescript-eslint/eslint-plugin": "7.7.0",
+    "@typescript-eslint/parser": "7.7.0",
     "@willbooster/eslint-config-ts": "10.5.1",
     "@willbooster/prettier-config": "9.1.2",
     "build-ts": "13.0.4",
