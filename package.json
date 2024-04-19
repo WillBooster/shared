@@ -25,7 +25,7 @@
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@qiwi/multi-semantic-release": "7.1.1",
-    "@types/eslint": "8.56.9",
+    "@types/eslint": "8.56.10",
     "@typescript-eslint/parser": "7.7.0",
     "@willbooster/prettier-config": "9.1.2",
     "conventional-changelog-conventionalcommits": "6.1.0",
