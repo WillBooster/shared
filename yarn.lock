@@ -1938,9 +1938,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@blitzjs/generator@npm:2.0.7":
-  version: 2.0.7
-  resolution: "@blitzjs/generator@npm:2.0.7"
+"@blitzjs/generator@npm:2.0.8":
+  version: 2.0.8
+  resolution: "@blitzjs/generator@npm:2.0.8"
   dependencies:
     "@babel/core": "npm:7.12.10"
     "@babel/plugin-transform-typescript": "npm:7.12.1"
@@ -1969,7 +1969,7 @@ __metadata:
     username: "npm:5.1.0"
     vinyl: "npm:2.2.1"
     zod: "npm:3.20.2"
-  checksum: 10c0/e20c5212f81b162f058f0a449dec2814937d4b5062cad40129da1e25cb99697237d2d85d215d27f67ad4077ed9b804f0ac45348316d338563a10117880808715
+  checksum: 10c0/351b98524d2eda9e95d824e61a4292c9517785d344a199a32f8087be5f9644a0805adc431316331988d91bd0c37b9c5e917933f8650c8da1332cc9079ec3a4d8
   languageName: node
   linkType: hard
 
@@ -4437,90 +4437,90 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@swc/core-darwin-arm64@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-darwin-arm64@npm:1.4.13"
+"@swc/core-darwin-arm64@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-darwin-arm64@npm:1.4.16"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@swc/core-darwin-x64@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-darwin-x64@npm:1.4.13"
+"@swc/core-darwin-x64@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-darwin-x64@npm:1.4.16"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@swc/core-linux-arm-gnueabihf@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-linux-arm-gnueabihf@npm:1.4.13"
+"@swc/core-linux-arm-gnueabihf@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-linux-arm-gnueabihf@npm:1.4.16"
   conditions: os=linux & cpu=arm
   languageName: node
   linkType: hard
 
-"@swc/core-linux-arm64-gnu@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-linux-arm64-gnu@npm:1.4.13"
+"@swc/core-linux-arm64-gnu@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-linux-arm64-gnu@npm:1.4.16"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@swc/core-linux-arm64-musl@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-linux-arm64-musl@npm:1.4.13"
+"@swc/core-linux-arm64-musl@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-linux-arm64-musl@npm:1.4.16"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@swc/core-linux-x64-gnu@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-linux-x64-gnu@npm:1.4.13"
+"@swc/core-linux-x64-gnu@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-linux-x64-gnu@npm:1.4.16"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@swc/core-linux-x64-musl@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-linux-x64-musl@npm:1.4.13"
+"@swc/core-linux-x64-musl@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-linux-x64-musl@npm:1.4.16"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@swc/core-win32-arm64-msvc@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-win32-arm64-msvc@npm:1.4.13"
+"@swc/core-win32-arm64-msvc@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-win32-arm64-msvc@npm:1.4.16"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@swc/core-win32-ia32-msvc@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-win32-ia32-msvc@npm:1.4.13"
+"@swc/core-win32-ia32-msvc@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-win32-ia32-msvc@npm:1.4.16"
   conditions: os=win32 & cpu=ia32
   languageName: node
   linkType: hard
 
-"@swc/core-win32-x64-msvc@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core-win32-x64-msvc@npm:1.4.13"
+"@swc/core-win32-x64-msvc@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core-win32-x64-msvc@npm:1.4.16"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"@swc/core@npm:1.4.13":
-  version: 1.4.13
-  resolution: "@swc/core@npm:1.4.13"
+"@swc/core@npm:1.4.16":
+  version: 1.4.16
+  resolution: "@swc/core@npm:1.4.16"
   dependencies:
-    "@swc/core-darwin-arm64": "npm:1.4.13"
-    "@swc/core-darwin-x64": "npm:1.4.13"
-    "@swc/core-linux-arm-gnueabihf": "npm:1.4.13"
-    "@swc/core-linux-arm64-gnu": "npm:1.4.13"
-    "@swc/core-linux-arm64-musl": "npm:1.4.13"
-    "@swc/core-linux-x64-gnu": "npm:1.4.13"
-    "@swc/core-linux-x64-musl": "npm:1.4.13"
-    "@swc/core-win32-arm64-msvc": "npm:1.4.13"
-    "@swc/core-win32-ia32-msvc": "npm:1.4.13"
-    "@swc/core-win32-x64-msvc": "npm:1.4.13"
+    "@swc/core-darwin-arm64": "npm:1.4.16"
+    "@swc/core-darwin-x64": "npm:1.4.16"
+    "@swc/core-linux-arm-gnueabihf": "npm:1.4.16"
+    "@swc/core-linux-arm64-gnu": "npm:1.4.16"
+    "@swc/core-linux-arm64-musl": "npm:1.4.16"
+    "@swc/core-linux-x64-gnu": "npm:1.4.16"
+    "@swc/core-linux-x64-musl": "npm:1.4.16"
+    "@swc/core-win32-arm64-msvc": "npm:1.4.16"
+    "@swc/core-win32-ia32-msvc": "npm:1.4.16"
+    "@swc/core-win32-x64-msvc": "npm:1.4.16"
     "@swc/counter": "npm:^0.1.2"
     "@swc/types": "npm:^0.1.5"
   peerDependencies:
@@ -4549,7 +4549,7 @@ __metadata:
   peerDependenciesMeta:
     "@swc/helpers":
       optional: true
-  checksum: 10c0/fa65a2e32a4a31c0fc42fec8991aa92fe96c0a66ab3339acc481a570f0be017e3ee672d5359ca2992c11256780985e81a19b7a2f6c9d56b859d57779cb0ea63b
+  checksum: 10c0/ffe16577ddab24d91fffc6c6c5f11c90fd7a6eda34827d2f898e90060a5a710271acba136bf6e2aa80055cb5e9c5b4108f89a543bbe4e404a318a3d9928d0014
   languageName: node
   linkType: hard
 
@@ -4754,13 +4754,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/eslint@npm:8.56.9":
-  version: 8.56.9
-  resolution: "@types/eslint@npm:8.56.9"
+"@types/eslint@npm:8.56.10":
+  version: 8.56.10
+  resolution: "@types/eslint@npm:8.56.10"
   dependencies:
     "@types/estree": "npm:*"
     "@types/json-schema": "npm:*"
-  checksum: 10c0/a800e3d10bd12fc837773101c35a65c189528e306bc41eca9f30176f5ede4d35944a0c0e16b668971db3521df2f2bef62ab2471740eadc72aeb39dbaba6c9101
+  checksum: 10c0/674349d6c342c3864d70f4d5a9965f96fb253801532752c8c500ad6a1c2e8b219e01ccff5dc8791dcb58b5483012c495708bb9f3ff929f5c9322b3da126c15d3
   languageName: node
   linkType: hard
 
@@ -4903,12 +4903,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/micromatch@npm:4.0.6":
-  version: 4.0.6
-  resolution: "@types/micromatch@npm:4.0.6"
+"@types/micromatch@npm:4.0.7":
+  version: 4.0.7
+  resolution: "@types/micromatch@npm:4.0.7"
   dependencies:
     "@types/braces": "npm:*"
-  checksum: 10c0/deba87b2bb740cb3f206c006baddc2d3f411fdba48e47452fb189a2a1a73cc3d6f6f2e6f52b970d1383e988afd9f12046e50f902ad740f1f8afa3faa273ab2a0
+  checksum: 10c0/972cdc349b611f18e3e43123865a46c053490f16cbd1d97e95c7d04ff7c8aef69bbae831249518d374e7bc0378e51ba088da9950422fbfced4b5bedde9738d13
   languageName: node
   linkType: hard
 
@@ -5049,13 +5049,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/react@npm:18.2.77":
-  version: 18.2.77
-  resolution: "@types/react@npm:18.2.77"
+"@types/react@npm:18.2.79":
+  version: 18.2.79
+  resolution: "@types/react@npm:18.2.79"
   dependencies:
     "@types/prop-types": "npm:*"
     csstype: "npm:^3.0.2"
-  checksum: 10c0/9114149933dbee3fdf5900786e660afe3146e8e277424aaf94dca50e29f1de56802b38a83bb65166ff53da086062bb8d001af563a6c906fe3540bdc46554d05a
+  checksum: 10c0/c8a8a005d8830a48cc1ef93c3510c4935a2a03e5557dbecaa8f1038450cbfcb18eb206fa7fba7077d54b8da21faeb25577e897a333392770a7797f625b62c78a
   languageName: node
   linkType: hard
 
@@ -5722,13 +5722,13 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-blitz-next@workspace:packages/shared-lib-blitz-next"
   dependencies:
-    "@types/eslint": "npm:8.56.9"
-    "@types/micromatch": "npm:4.0.6"
+    "@types/eslint": "npm:8.56.10"
+    "@types/micromatch": "npm:4.0.7"
     "@typescript-eslint/eslint-plugin": "npm:7.7.0"
     "@typescript-eslint/parser": "npm:7.7.0"
     "@willbooster/eslint-config-ts": "npm:10.5.1"
     "@willbooster/prettier-config": "npm:9.1.2"
-    blitz: "npm:2.0.7"
+    blitz: "npm:2.0.8"
     build-ts: "npm:13.0.4"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:9.1.0"
@@ -5760,8 +5760,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-node@workspace:packages/shared-lib-node"
   dependencies:
-    "@types/eslint": "npm:8.56.9"
-    "@types/micromatch": "npm:4.0.6"
+    "@types/eslint": "npm:8.56.10"
+    "@types/micromatch": "npm:4.0.7"
     "@types/node": "npm:20.12.7"
     "@typescript-eslint/eslint-plugin": "npm:7.7.0"
     "@typescript-eslint/parser": "npm:7.7.0"
@@ -5801,9 +5801,9 @@ __metadata:
     "@storybook/manager-webpack4": "npm:6.5.16"
     "@storybook/react": "npm:8.0.8"
     "@storybook/testing-library": "npm:0.2.2"
-    "@types/eslint": "npm:8.56.9"
-    "@types/micromatch": "npm:4.0.6"
-    "@types/react": "npm:18.2.77"
+    "@types/eslint": "npm:8.56.10"
+    "@types/micromatch": "npm:4.0.7"
+    "@types/react": "npm:18.2.79"
     "@types/react-dom": "npm:18.2.25"
     "@typescript-eslint/eslint-plugin": "npm:7.7.0"
     "@typescript-eslint/parser": "npm:7.7.0"
@@ -5839,8 +5839,8 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib@workspace:packages/shared-lib"
   dependencies:
-    "@types/eslint": "npm:8.56.9"
-    "@types/micromatch": "npm:4.0.6"
+    "@types/eslint": "npm:8.56.10"
+    "@types/micromatch": "npm:4.0.7"
     "@typescript-eslint/eslint-plugin": "npm:7.7.0"
     "@typescript-eslint/parser": "npm:7.7.0"
     "@willbooster/eslint-config-ts": "npm:10.5.1"
@@ -5867,10 +5867,10 @@ __metadata:
   resolution: "@willbooster/wb@workspace:packages/wb"
   dependencies:
     "@rollup/plugin-swc": "npm:0.3.0"
-    "@swc/core": "npm:1.4.13"
-    "@types/eslint": "npm:8.56.9"
+    "@swc/core": "npm:1.4.16"
+    "@types/eslint": "npm:8.56.10"
     "@types/kill-port": "npm:2.0.3"
-    "@types/micromatch": "npm:4.0.6"
+    "@types/micromatch": "npm:4.0.7"
     "@types/node": "npm:20.12.7"
     "@types/yargs": "npm:17.0.32"
     "@typescript-eslint/eslint-plugin": "npm:7.7.0"
@@ -6969,11 +6969,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"blitz@npm:2.0.7":
-  version: 2.0.7
-  resolution: "blitz@npm:2.0.7"
+"blitz@npm:2.0.8":
+  version: 2.0.8
+  resolution: "blitz@npm:2.0.8"
   dependencies:
-    "@blitzjs/generator": "npm:2.0.7"
+    "@blitzjs/generator": "npm:2.0.8"
     "@mrleebo/prisma-ast": "npm:0.2.6"
     "@types/global-agent": "npm:2.1.1"
     arg: "npm:5.0.1"
@@ -7023,7 +7023,7 @@ __metadata:
     watchpack: "npm:2.1.1"
   bin:
     blitz: bin/blitz
-  checksum: 10c0/84a672b162b612becbe644e576ce8595b40e42944d0666aa25a9bc258d93b2c33f85dd4732c894dfeecf49c80e83fcb47ab8148237aa58c1f9fd5a7680ae10dc
+  checksum: 10c0/879f6228ede29ae7536f6a5384b8c20843f91785046638b9a07c8ef260ba834cb3bdf6e2240398d08dca222e4312d36b744ef9bef60fcf930f5dbdf22c52b0ef
   languageName: node
   linkType: hard
 
@@ -20587,7 +20587,7 @@ __metadata:
   resolution: "willbooster-shared@workspace:."
   dependencies:
     "@qiwi/multi-semantic-release": "npm:7.1.1"
-    "@types/eslint": "npm:8.56.9"
+    "@types/eslint": "npm:8.56.10"
     "@typescript-eslint/parser": "npm:7.7.0"
     "@willbooster/prettier-config": "npm:9.1.2"
     conventional-changelog-conventionalcommits: "npm:6.1.0"

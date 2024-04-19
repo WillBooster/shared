@@ -40,8 +40,8 @@
     "tree-kill": "1.2.2"
   },
   "devDependencies": {
-    "@types/eslint": "8.56.9",
-    "@types/micromatch": "4.0.6",
+    "@types/eslint": "8.56.10",
+    "@types/micromatch": "4.0.7",
     "@types/node": "20.12.7",
     "@typescript-eslint/eslint-plugin": "7.7.0",
     "@typescript-eslint/parser": "7.7.0",
