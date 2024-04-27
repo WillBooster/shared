@@ -23,6 +23,11 @@ export class Project {
   }
 
   @memoize
+  get isBun(): boolean {
+    return fs.existsSync(path.join(this.rootDirPath, 'bunfig.toml'));
+  }
+
+  @memoize
   get buildCommand(): string {
     return this.packageJson.scripts?.build?.includes('buildIfNeeded')
       ? 'yarn build'
@@ -52,6 +57,11 @@ export class Project {
     } catch {
       return false;
     }
+  }
+
+  @memoize
+  get hasSourceCode(): boolean {
+    return fs.existsSync(path.join(this.dirPath, 'src'));
   }
 
   @memoize

@@ -28,11 +28,16 @@ export const typeCheckCommand: CommandModule<
       const commands: string[] = [];
       if (!project.packageJson.workspaces) {
         if (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript) {
-          commands.push('tsc --noEmit --Pretty');
+          commands.push('YARN tsc --noEmit --Pretty');
         }
         if (project.packageJson.devDependencies?.pyright) {
-          commands.push('pyright');
+          commands.push('YARN pyright');
         }
+      } else if (
+        project.hasSourceCode &&
+        (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript)
+      ) {
+        commands.push('YARN tsc --noEmit --Pretty');
       }
       if (commands.length === 0) continue;
 
