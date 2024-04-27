@@ -38,9 +38,11 @@ export async function spawnAsync(
   return new Promise((resolve, reject) => {
     try {
       const proc = spawn(command, args ?? [], options ?? {});
+      proc.stdout?.setEncoding('utf8');
+      proc.stderr?.setEncoding('utf8');
+
       let stdout = '';
       let stderr = '';
-
       if (options?.input) {
         proc.stdin?.write(options.input);
         proc.stdin?.end();
