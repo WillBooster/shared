@@ -74,12 +74,14 @@ export async function spawnAsync(
       }
 
       proc.on('error', (error) => {
-        process.removeListener('exit', stopProcess);
+        process.removeListener('beforeExit', stopProcess);
+        process.removeListener('SIGINT', stopProcess);
         proc.removeAllListeners('close');
         reject(error);
       });
       proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-        process.removeListener('exit', stopProcess);
+        process.removeListener('beforeExit', stopProcess);
+        process.removeListener('SIGINT', stopProcess);
         if (proc.pid === undefined) {
           reject(new Error('Process has no pid.'));
         } else {
