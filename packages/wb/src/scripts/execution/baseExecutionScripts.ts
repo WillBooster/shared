@@ -71,7 +71,7 @@ export abstract class BaseExecutionScripts {
 
   testUnit(project: Project, argv: TestArgv): string {
     // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-    return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${argv.target || 'tests/unit'} --color --passWithNoTests`;
+    return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${argv.target || 'tests/unit'} --color --passWithNoTests --allowOnly`;
   }
 
   protected waitApp(project: Project, argv: ScriptArgv, port = this.defaultPort): string {

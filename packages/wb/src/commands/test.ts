@@ -99,7 +99,9 @@ export async function test(
 
       await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
       if (argv.unit !== false && (await unitTestsExistPromise)) {
-        await runWithSpawnInParallel(scripts.testUnit(project, argv), project, argv, { timeout: argv.unitTimeout });
+        await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv, {
+          timeout: argv.unitTimeout,
+        });
       }
       if (argv.start !== false) {
         await runWithSpawnInParallel(scripts.testStart(project, argv), project, argv);
@@ -115,9 +117,14 @@ export async function test(
               startCommand: dockerScripts.stopAndStart(project, true),
             }
           : {};
-        process.exitCode = await runWithSpawn(scripts.testE2E(project, argv, options), project, argv, {
-          exitIfFailed: false,
-        });
+        process.exitCode = await runWithSpawn(
+          scripts.testE2E(project, argv, options).replaceAll(' --allowOnly', ''),
+          project,
+          argv,
+          {
+            exitIfFailed: false,
+          }
+        );
         await runWithSpawn(dockerScripts.stop(project), project, argv);
       }
       continue;
