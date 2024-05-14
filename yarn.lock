@@ -5784,7 +5784,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:7.9.0"
     "@willbooster/eslint-config-ts": "npm:10.6.0"
     "@willbooster/prettier-config": "npm:9.1.2"
-    at-decorators: "npm:1.4.3"
+    at-decorators: "npm:2.0.0"
     build-ts: "npm:13.0.6"
     chalk: "npm:5.3.0"
     dotenv: "npm:16.4.5"
@@ -6628,10 +6628,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"at-decorators@npm:1.4.3":
-  version: 1.4.3
-  resolution: "at-decorators@npm:1.4.3"
-  checksum: 10c0/c00223f58d251bcb8952b41a90521592c29b7794eb7595512b9442482a6bf6c8caa9359f7a354a3fc918228e64d5ee212d274cc91cbc7de4c1d1231cb065541a
+"at-decorators@npm:2.0.0":
+  version: 2.0.0
+  resolution: "at-decorators@npm:2.0.0"
+  checksum: 10c0/cca7a15d7bb53c87a2d87224790ad276524dfb737c86fb7dd5ad8d8d177ec3bb076899b140b32890ef7e278bdba96e19a27dbffd6a885db63a0f41d2d49fe3c1
   languageName: node
   linkType: hard
 
