@@ -7,7 +7,7 @@ import { memoizeFactory } from 'at-decorators';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 
-const memoize = memoizeFactory(Number.MAX_SAFE_INTEGER, 1);
+const memoize = memoizeFactory({ maxCachedThisSize: Number.MAX_SAFE_INTEGER, maxCachedArgsSize: 1 });
 
 export class Project {
   private readonly argv: EnvReaderOptions;
