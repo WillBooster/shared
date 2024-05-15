@@ -6,8 +6,8 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findAllProjects } from '../project.js';
-import { promisePool } from '../promisePool.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
+import { promisePool } from '../utils/promisePool.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 

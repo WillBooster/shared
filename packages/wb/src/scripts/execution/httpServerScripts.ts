@@ -1,5 +1,6 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { runtimeWithArgs } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
@@ -31,7 +32,7 @@ class HttpServerScripts extends BaseExecutionScripts {
   override startProduction(project: Project, argv: ScriptArgv, port = 8080): string {
     return `NODE_ENV=production ${
       project.buildCommand
-    } && NODE_ENV=production PORT=\${PORT:-${port}} node dist/index.js ${argv.normalizedArgsText ?? ''}`;
+    } && NODE_ENV=production PORT=\${PORT:-${port}} ${runtimeWithArgs} dist/index.js ${argv.normalizedArgsText ?? ''}`;
   }
 
   override testE2E(

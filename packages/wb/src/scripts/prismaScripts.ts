@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import type { Project } from '../project.js';
+import { runtimeWithArgs } from '../utils/runtime.js';
 
 /**
  * A collection of scripts for executing Prisma commands.
@@ -20,7 +21,7 @@ class PrismaScripts {
   }
 
   litestream(_: Project): string {
-    return `node -e '
+    return `${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
 new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
   .catch((error) => { console.log("Failed due to:", error); process.exit(1); });

@@ -1,7 +1,7 @@
 import path from 'node:path';
 
-import { spawnSyncOnExit } from '../processUtils.js';
 import type { Project } from '../project.js';
+import { spawnSyncOnExit } from '../utils/process.js';
 
 /**
  * A collection of scripts for executing Docker commands.

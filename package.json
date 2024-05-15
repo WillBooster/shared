@@ -24,6 +24,9 @@
     "typecheck": "yarn workspaces foreach --all --parallel --verbose run typecheck"
   },
   "prettier": "@willbooster/prettier-config",
+  "resolutions": {
+    "esbuild": "0.21.2"
+  },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "7.1.1",
     "@types/eslint": "8.56.10",

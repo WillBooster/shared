@@ -2,8 +2,8 @@ import { spawnSync } from 'node:child_process';
 
 import killPortProcess from 'kill-port';
 
-import type { Project } from './project.js';
-import { printFinishedAndExitIfNeeded, printStart } from './scripts/run.js';
+import type { Project } from '../project.js';
+import { printFinishedAndExitIfNeeded, printStart } from '../scripts/run.js';
 
 const killed = new Set<number | string>();
 

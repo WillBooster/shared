@@ -2,10 +2,11 @@ import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
-import { killPortProcessImmediatelyAndOnExit } from '../processUtils.js';
 import type { Project } from '../project.js';
-import { promisePool } from '../promisePool.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { killPortProcessImmediatelyAndOnExit } from '../utils/process.js';
+import { promisePool } from '../utils/promisePool.js';
+import { isRunningOnBun, packageManagerWithArgs } from '../utils/runtime.js';
 
 interface Options {
   exitIfFailed?: boolean;
@@ -93,10 +94,10 @@ function normalizeScript(script: string, project: Project): [string, string] {
     .replaceAll(/\s\s+/g, ' ')
     .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
     .trim();
-  if (project.isBun) {
-    return [newScript.replaceAll('YARN ', 'bun '), newScript.replaceAll('YARN ', 'bun ')];
-  }
-  return [newScript.replaceAll('YARN ', 'yarn '), newScript.replaceAll('YARN ', project.binExists ? '' : 'yarn ')];
+  return [
+    newScript.replaceAll('YARN ', `${packageManagerWithArgs} `),
+    newScript.replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithArgs} `),
+  ];
 }
 
 export function printStart(normalizedScript: string, project: Project, prefix = 'Start', weak = false): void {

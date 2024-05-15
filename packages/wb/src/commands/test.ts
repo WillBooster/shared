@@ -6,7 +6,6 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 
 import type { Project } from '../project.js';
 import { findAllProjects } from '../project.js';
-import { promisePool } from '../promisePool.js';
 import type { scriptOptionsBuilder } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
@@ -17,6 +16,7 @@ import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { promisePool } from '../utils/promisePool.js';
 
 const builder = {
   ci: {

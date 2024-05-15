@@ -25,6 +25,7 @@ export const prismaCommand: CommandModule = {
       .command(restoreCommand)
       .command(seedCommand)
       .command(studioCommand)
+      .command(defaultCommand)
       .demandCommand();
   },
   handler() {
@@ -187,6 +188,21 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
           : 'prisma/restored.sqlite3'
         : argv.dbUrlOrPath?.toString();
       await runWithSpawn(prismaScripts.studio(project, dbUrlOrPath), project, argv);
+    }
+  },
+};
+
+const defaultCommandBuilder = { args: { type: 'array' } } as const;
+
+const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultCommandBuilder>> = {
+  command: '$0 [args..]',
+  describe: 'Pass the command and arguments to prisma as is',
+  builder: defaultCommandBuilder,
+  async handler(argv) {
+    const allProjects = await findPrismaProjects(argv);
+    const script = `${argv.args?.join(' ') ?? ''}`.trimEnd();
+    for (const project of prepareForRunningCommand(`prisma ${script}`, allProjects)) {
+      await runWithSpawn(`PRISMA ${script}`, project, argv);
     }
   },
 };

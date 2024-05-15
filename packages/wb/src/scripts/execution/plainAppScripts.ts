@@ -1,4 +1,5 @@
 import type { Project } from '../../project.js';
+import { runtimeWithArgs } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
@@ -27,7 +28,7 @@ class PlainAppScripts extends BaseExecutionScripts {
   }
 
   override startProduction(project: Project, argv: ScriptArgv): string {
-    return `NODE_ENV=production ${project.buildCommand} && NODE_ENV=production node dist/index.js ${
+    return `NODE_ENV=production ${project.buildCommand} && NODE_ENV=production ${runtimeWithArgs} dist/index.js ${
       argv.normalizedArgsText ?? ''
     }`;
   }
