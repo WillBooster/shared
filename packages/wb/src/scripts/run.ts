@@ -93,6 +93,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
     .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
+    .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun ' : 'YARN ')
     .trim();
   return [
     newScript.replaceAll('YARN ', `${packageManagerWithArgs} `),

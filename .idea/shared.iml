@@ -8,6 +8,7 @@
       <excludeFolder url="file://$MODULE_DIR$/packages/wb/dist" />
       <excludeFolder url="file://$MODULE_DIR$/packages/wb/temp" />
       <excludeFolder url="file://$MODULE_DIR$/packages/wb/test-fixtures" />
+      <excludeFolder url="file://$MODULE_DIR$/.idea/copilot/chatSessions" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
