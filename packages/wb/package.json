@@ -37,7 +37,7 @@
     "@types/eslint": "8.56.10",
     "@types/kill-port": "2.0.3",
     "@types/micromatch": "4.0.7",
-    "@types/node": "20.12.13",
+    "@types/node": "20.13.0",
     "@types/yargs": "17.0.32",
     "@typescript-eslint/eslint-plugin": "7.11.0",
     "@typescript-eslint/parser": "7.11.0",
