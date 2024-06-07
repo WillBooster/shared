@@ -7,6 +7,7 @@ import type {
   StdioPipe,
 } from 'node:child_process';
 import { spawn } from 'node:child_process';
+import { setTimeout } from 'node:timers/promises';
 
 import treeKill from 'tree-kill';
 
@@ -25,6 +26,7 @@ export type SpawnAsyncOptions = (
   | SpawnOptions
 ) & {
   input?: string;
+  inputs?: { data: string; time: number }[];
   mergeOutAndError?: boolean;
   killOnExit?: boolean;
   verbose?: boolean;
@@ -47,6 +49,16 @@ export async function spawnAsync(
       if (options?.input) {
         proc.stdin?.write(options.input);
         proc.stdin?.end();
+      } else if (options?.inputs) {
+        const inputs = options.inputs.sort((a, b) => a.time - b.time);
+        void (async () => {
+          const startTime = Date.now();
+          for (const { data, time } of inputs) {
+            await setTimeout(time - (Date.now() - startTime));
+            proc.stdin?.write(data);
+          }
+          proc.stdin?.end();
+        })();
       }
       proc.stdout?.on('data', (data) => {
         stdout += data;
