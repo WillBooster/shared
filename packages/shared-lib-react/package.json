@@ -6,10 +6,25 @@
   "sideEffects": false,
   "type": "module",
   "exports": {
-    ".": {
-      "require": "./dist/index.cjs",
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+    "useInterval": {
+      "require": "./dist/hooks/useInterval.cjs",
+      "import": "./dist/hooks/useInterval.js",
+      "types": "./dist/hooks/useInterval.d.ts"
+    },
+    "useLocalStorage": {
+      "require": "./dist/hooks/useLocalStorage.cjs",
+      "import": "./dist/hooks/useLocalStorage.js",
+      "types": "./dist/hooks/useLocalStorage.d.ts"
+    },
+    "useSessionStorage": {
+      "require": "./dist/hooks/useSessionStorage.cjs",
+      "import": "./dist/hooks/useSessionStorage.js",
+      "types": "./dist/hooks/useSessionStorage.d.ts"
+    },
+    "VersionOverlay": {
+      "require": "./dist/VersionOverlay.cjs",
+      "import": "./dist/VersionOverlay.js",
+      "types": "./dist/VersionOverlay.d.ts"
     }
   },
   "main": "dist/index.cjs",
