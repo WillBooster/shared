@@ -1,12 +1,15 @@
 import type React from 'react';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
+export type UseStorageOptions<T> = {
+  parseAfterJsonParse?: (value: unknown) => T;
+} & ({ ssrValue: T } | Record<string, never>);
+
 export function useStorage<T>(
   storageType: 'localStorage' | 'sessionStorage',
   key: string,
   initialValue: T,
-  ssrValue: T,
-  parseAfterJsonParse?: (value: unknown) => T
+  immutableOptions: UseStorageOptions<T> = {}
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
   const value = useSyncExternalStore<T>(
     subscribeStorageEvent,
@@ -15,14 +18,14 @@ export function useStorage<T>(
       try {
         if (jsonText) {
           const json = JSON.parse(jsonText);
-          return parseAfterJsonParse ? parseAfterJsonParse(json) : json;
+          return immutableOptions?.parseAfterJsonParse ? immutableOptions?.parseAfterJsonParse(json) : json;
         }
       } catch {
         // do nothing
       }
       return initialValue;
     },
-    () => ssrValue
+    () => ('ssrValue' in immutableOptions ? immutableOptions.ssrValue : initialValue)
   );
 
   const setState = useCallback(
