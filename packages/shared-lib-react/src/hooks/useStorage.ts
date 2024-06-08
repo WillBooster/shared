@@ -15,7 +15,13 @@ export function useStorage<T>(
   nonReactiveOptions: UseStorageOptions<T> = {}
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
   const jsonText = useSyncExternalStore(
-    subscribeStorageEvent,
+    (callback) => {
+      const newCallback = (event: StorageEvent): void => {
+        if (event.key === key) callback();
+      };
+      window.addEventListener('storage', newCallback);
+      return () => window.removeEventListener('storage', newCallback);
+    },
     () => window[nonReactiveStorageType].getItem(key),
     () => 'ssrJsonText' in nonReactiveOptions && nonReactiveOptions.ssrJsonText
   );
@@ -34,17 +40,17 @@ export function useStorage<T>(
 
   const setState = useCallback(
     (valueOrFunc: T | ((prevState: T) => T)) => {
-      try {
-        const nextState = typeof valueOrFunc === 'function' ? (valueOrFunc as (prevState: T) => T)(value) : valueOrFunc;
+      const nextState = typeof valueOrFunc === 'function' ? (valueOrFunc as (prevState: T) => T)(value) : valueOrFunc;
 
-        if (nextState === undefined || nextState === null) {
-          window[nonReactiveStorageType].removeItem(key);
-        } else {
-          window[nonReactiveStorageType].setItem(key, JSON.stringify(nextState));
-        }
-      } catch (error) {
-        console.warn(error);
+      // eslint-disable-next-line unicorn/no-null
+      let newValue: string | null = null;
+      if (nextState === undefined || nextState === null) {
+        window[nonReactiveStorageType].removeItem(key);
+      } else {
+        newValue = JSON.stringify(nextState);
+        window[nonReactiveStorageType].setItem(key, newValue);
       }
+      window.dispatchEvent(new StorageEvent('storage', { key, newValue }));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key, value]
@@ -58,9 +64,4 @@ export function useStorage<T>(
   }, [key, initialValue]);
 
   return [value, setState];
-}
-
-function subscribeStorageEvent(callback: (this: Window, ev: StorageEvent) => unknown) {
-  window.addEventListener('storage', callback);
-  return () => window.removeEventListener('storage', callback);
 }
