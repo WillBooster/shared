@@ -1,9 +1,12 @@
 import type React from 'react';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
-export type UseStorageOptions<T> = {
-  parseAfterJsonParse?: (value: unknown) => T;
-} & ({ ssrValue: T } | Record<string, never>);
+export type UseStorageOptions<T> =
+  | {
+      parseAfterJsonParse?: (value: unknown) => T;
+      ssrValue: T;
+    }
+  | { parseAfterJsonParse?: (value: unknown) => T };
 
 export function useStorage<T>(
   storageType: 'localStorage' | 'sessionStorage',
