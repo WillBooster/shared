@@ -6,7 +6,7 @@ import { useStorage } from './useStorage.js';
 export function useSessionStorage<T>(
   key: string,
   initialValue: T,
-  immutableOptions: UseStorageOptions<T> = {}
+  nonReactiveOptions: UseStorageOptions<T> = {}
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
-  return useStorage('sessionStorage', key, initialValue, immutableOptions);
+  return useStorage('sessionStorage', key, initialValue, nonReactiveOptions);
 }
