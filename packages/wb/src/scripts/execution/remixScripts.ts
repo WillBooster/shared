@@ -3,14 +3,14 @@ import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
 
-import type { TestE2EDevOptions, TestE2EOptions } from './baseExecutionScripts.js';
-import { BaseExecutionScripts } from './baseExecutionScripts.js';
+import type { TestE2EDevOptions, TestE2EOptions } from './baseScripts.js';
+import { BaseScripts } from './baseScripts.js';
 
 /**
  * A collection of scripts for executing Remix commands.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class RemixScripts extends BaseExecutionScripts {
+class RemixScripts extends BaseScripts {
   constructor() {
     super();
   }

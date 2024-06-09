@@ -3,13 +3,13 @@ import { runtimeWithArgs } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
-import { BaseExecutionScripts } from './baseExecutionScripts.js';
+import { BaseScripts } from './baseScripts.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class PlainAppScripts extends BaseExecutionScripts {
+class PlainAppScripts extends BaseScripts {
   constructor() {
     super();
   }

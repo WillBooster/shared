@@ -23,11 +23,6 @@ export class Project {
   }
 
   @memoize
-  get isBunProject(): boolean {
-    return fs.existsSync(path.join(this.rootDirPath, 'bunfig.toml'));
-  }
-
-  @memoize
   get isBunAvailable(): boolean {
     try {
       return /(^|\n)bun\s/.test(fs.readFileSync(path.join(this.rootDirPath, '.tool-versions'), 'utf8'));

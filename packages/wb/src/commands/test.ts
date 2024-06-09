@@ -8,7 +8,7 @@ import type { Project } from '../project.js';
 import { findAllProjects } from '../project.js';
 import type { scriptOptionsBuilder } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import type { BaseExecutionScripts } from '../scripts/execution/baseExecutionScripts.js';
+import type { BaseScripts } from '../scripts/execution/baseScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
@@ -77,7 +77,7 @@ export async function test(
   for (const project of projects.all) {
     const deps = project.packageJson.dependencies || {};
     const devDeps = project.packageJson.devDependencies || {};
-    let scripts: BaseExecutionScripts;
+    let scripts: BaseScripts;
     if (deps['blitz']) {
       scripts = blitzScripts;
     } else if (deps['next']) {
@@ -208,7 +208,7 @@ export async function test(
 async function testOnDocker(
   project: Project,
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>,
-  scripts: BaseExecutionScripts,
+  scripts: BaseScripts,
   playwrightArgs?: string
 ): Promise<void> {
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);

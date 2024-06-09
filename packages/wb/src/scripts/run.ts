@@ -89,12 +89,17 @@ export function runWithSpawnInParallel(
 }
 
 function normalizeScript(script: string, project: Project): [string, string] {
-  const newScript = script
+  let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
     .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
-    .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun ' : 'YARN ')
-    .trim();
+    .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun ' : 'YARN ');
+  if (isRunningOnBun) {
+    newScript = newScript
+      .replaceAll(/(YARN )?vitest run/g, 'bun test')
+      .replaceAll(' --color --passWithNoTests --allowOnly', '');
+  }
+  newScript = newScript.trim();
   return [
     newScript.replaceAll('YARN ', `${packageManagerWithArgs} `),
     newScript.replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithArgs} `),

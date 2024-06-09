@@ -8,6 +8,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { findAllProjects } from '../project.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { promisePool } from '../utils/promisePool.js';
+import { isRunningOnBun } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -63,7 +64,7 @@ export async function setup(
     const devDeps = project.packageJson.devDependencies || {};
     const scripts = project.packageJson.scripts ?? {};
     const newDeps: string[] = [];
-    const newDevDeps: string[] = [];
+    let newDevDeps: string[] = [];
     if (deps['blitz'] || deps['next']) {
       newDeps.push('pm2');
       newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
@@ -73,6 +74,9 @@ export async function setup(
     } else if (deps['express'] || deps['fastify']) {
       newDeps.push('pm2');
       newDevDeps.push('concurrently', 'vitest', 'wait-on');
+    }
+    if (isRunningOnBun) {
+      newDevDeps = newDevDeps.filter((dep) => dep !== 'vitest');
     }
     if (newDeps.length > 0) {
       await runWithSpawn(`yarn add ${newDeps.join(' ')}`, project, argv);

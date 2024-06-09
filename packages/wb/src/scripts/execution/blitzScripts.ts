@@ -3,14 +3,14 @@ import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
 
-import type { TestE2EDevOptions, TestE2EOptions } from './baseExecutionScripts.js';
-import { BaseExecutionScripts } from './baseExecutionScripts.js';
+import type { TestE2EDevOptions, TestE2EOptions } from './baseScripts.js';
+import { BaseScripts } from './baseScripts.js';
 
 /**
  * A collection of scripts for executing Blitz.js commands.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class BlitzScripts extends BaseExecutionScripts {
+class BlitzScripts extends BaseScripts {
   constructor() {
     super();
   }
