@@ -51,7 +51,7 @@ export abstract class BaseScripts {
     const env = project.env.WB_ENV;
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
-      "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http://127.0.0.1:8080' 'BUN playwright install --with-deps'
+      "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080' 'BUN playwright install --with-deps'
         && BUN playwright ${playwrightArgs.replace('tests/e2e', argv.target || 'tests/e2e')}"`;
   }
 
@@ -63,7 +63,7 @@ export abstract class BaseScripts {
     const env = project.env.WB_ENV;
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
-      "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http://127.0.0.1:8080' 'BUN playwright install --with-deps'
+      "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080' 'BUN playwright install --with-deps'
         && BUN playwright ${playwrightArgs.replace('tests/e2e', argv.target || 'tests/e2e')}"`;
   }
 
@@ -75,12 +75,12 @@ export abstract class BaseScripts {
   }
 
   protected waitApp(project: Project, argv: ScriptArgv, port = this.defaultPort): string {
-    return `wait-on -t 10000 http://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 500 http://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 1000 http://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 2000 http://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 20000 -i 4000 http://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 60000 -i 5000 http://127.0.0.1:${port}`;
+    return `wait-on -t 10000 http-get://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 10000 -i 500 http-get://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 10000 -i 1000 http-get://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 10000 -i 2000 http-get://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 20000 -i 4000 http-get://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 60000 -i 5000 http-get://127.0.0.1:${port}`;
   }
 
   protected waitAndOpenApp(project: Project, argv: ScriptArgv, port = this.defaultPort): string {
@@ -88,6 +88,6 @@ export abstract class BaseScripts {
       project,
       argv,
       port
-    )} || wait-on http://127.0.0.1:${port} && open-cli "http://\${HOST:-localhost}:${port}"`;
+    )} || wait-on http-get://127.0.0.1:${port} && open-cli "http://\${HOST:-localhost}:${port}"`;
   }
 }

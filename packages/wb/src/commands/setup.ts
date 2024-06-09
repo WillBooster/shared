@@ -11,6 +11,7 @@ import { promisePool } from '../utils/promisePool.js';
 import { isRunningOnBun } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
+import { httpServerPackages } from './constants.js';
 
 const builder = {} as const;
 
@@ -71,7 +72,7 @@ export async function setup(
     } else if (devDeps['@remix-run/dev']) {
       newDeps.push('pm2');
       newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
-    } else if (deps['express'] || deps['fastify']) {
+    } else if (httpServerPackages.some((p) => deps[p])) {
       newDeps.push('pm2');
       newDevDeps.push('concurrently', 'vitest', 'wait-on');
     }

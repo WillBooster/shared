@@ -12,6 +12,8 @@ import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
+import { httpServerPackages } from './constants.js';
+
 const builder = {
   ...scriptOptionsBuilder,
   mode: {
@@ -45,7 +47,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       } else if (devDeps['@remix-run/dev']) {
         scripts = remixScripts;
       } else if (
-        ((deps['express'] || deps['fastify']) && !deps['firebase-functions']) ||
+        (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) ||
         (project.hasDockerfile && /EXPOSE\s+8080/.test(project.dockerfile))
       ) {
         scripts = httpServerScripts;

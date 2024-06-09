@@ -18,6 +18,8 @@ import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { promisePool } from '../utils/promisePool.js';
 
+import { httpServerPackages } from './constants.js';
+
 const builder = {
   ci: {
     description: 'Whether to run tests on CI',
@@ -84,7 +86,7 @@ export async function test(
       scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
-    } else if ((deps['express'] || deps['fastify']) && !deps['firebase-functions']) {
+    } else if (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) {
       scripts = httpServerScripts;
     } else {
       scripts = plainAppScripts;

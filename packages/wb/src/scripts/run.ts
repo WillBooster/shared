@@ -33,7 +33,7 @@ export async function runWithSpawn(
     return 0;
   }
 
-  const port = runnableScript.match(/http:\/\/127.0.0.1:(\d+)/)?.[1];
+  const port = runnableScript.match(/http-get:\/\/127.0.0.1:(\d+)/)?.[1];
   if (runnableScript.includes('wait-on') && port && !runnableScript.includes('docker run')) {
     await killPortProcessImmediatelyAndOnExit(Number(port));
   }
@@ -93,9 +93,11 @@ function normalizeScript(script: string, project: Project): [string, string] {
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
     .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
-    .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun ' : 'YARN ');
+    .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ');
   if (isRunningOnBun) {
     newScript = newScript
+      .replaceAll('build-ts run', 'bun --bun run')
+      .replaceAll('dist/index.js', 'src/index.ts')
       .replaceAll(/(YARN )?vitest run/g, 'bun test')
       .replaceAll(' --color --passWithNoTests --allowOnly', '');
   }

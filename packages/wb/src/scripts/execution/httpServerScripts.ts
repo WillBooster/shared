@@ -47,7 +47,7 @@ class HttpServerScripts extends BaseScripts {
   ): string {
     return `NODE_ENV=production WB_ENV=${project.env.WB_ENV} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run ${argv.target || 'tests/e2e'} --color --passWithNoTests --allowOnly"`;
+      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080 && vitest run ${argv.target || 'tests/e2e'} --color --passWithNoTests --allowOnly"`;
   }
 
   override testE2EDev(project: Project, argv: TestArgv, { startCommand }: TestE2EDevOptions): string {
@@ -55,7 +55,7 @@ class HttpServerScripts extends BaseScripts {
       project.env.WB_ENV
     } PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand || this.start(project, argv)} && exit 1"
-      "wait-on -t 600000 -i 2000 http://127.0.0.1:8080 && vitest run ${argv.target || 'tests/e2e'} --color --passWithNoTests --allowOnly"`;
+      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080 && vitest run ${argv.target || 'tests/e2e'} --color --passWithNoTests --allowOnly"`;
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {
