@@ -64,7 +64,7 @@
     "eslint-plugin-sort-destructure-keys": "2.0.0",
     "eslint-plugin-storybook": "0.8.0",
     "eslint-plugin-unicorn": "53.0.0",
-    "lint-staged": "15.2.5",
+    "lint-staged": "15.2.6",
     "micromatch": "4.0.7",
     "prettier": "3.3.2",
     "react": "18.3.1",
