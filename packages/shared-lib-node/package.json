@@ -42,7 +42,7 @@
   "devDependencies": {
     "@types/eslint": "8.56.10",
     "@types/micromatch": "4.0.7",
-    "@types/node": "20.14.2",
+    "@types/node": "20.14.7",
     "@typescript-eslint/eslint-plugin": "7.13.1",
     "@typescript-eslint/parser": "7.13.1",
     "@willbooster/eslint-config-ts": "10.6.0",
@@ -59,7 +59,7 @@
     "micromatch": "4.0.7",
     "prettier": "3.3.2",
     "sort-package-json": "2.10.0",
-    "typescript": "5.4.5",
+    "typescript": "5.5.2",
     "vitest": "1.6.0"
   },
   "publishConfig": {
