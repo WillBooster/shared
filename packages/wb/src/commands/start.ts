@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findAllProjects } from '../project.js';
+import { findDescendantProjects } from '../project.js';
 import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
@@ -30,13 +30,13 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
   async handler(argv) {
     normalizeArgs(argv);
 
-    const projects = await findAllProjects(argv);
+    const projects = await findDescendantProjects(argv);
     if (!projects) {
       console.error(chalk.red('No project found.'));
       process.exit(1);
     }
 
-    for (const project of projects.all) {
+    for (const project of projects.descendants) {
       const deps = project.packageJson.dependencies || {};
       const devDeps = project.packageJson.devDependencies || {};
       let scripts: BaseScripts;

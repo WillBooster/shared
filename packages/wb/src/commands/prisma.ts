@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findAllProjects } from '../project.js';
+import { findDescendantProjects } from '../project.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 
@@ -208,13 +208,13 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
 };
 
 async function findPrismaProjects(argv: EnvReaderOptions): Promise<Project[]> {
-  const projects = await findAllProjects(argv);
+  const projects = await findDescendantProjects(argv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
     process.exit(1);
   }
 
-  const filtered = projects.all.filter(
+  const filtered = projects.descendants.filter(
     (project) => project.packageJson.dependencies?.['prisma'] || project.packageJson.devDependencies?.['prisma']
   );
   if (filtered.length === 0) {

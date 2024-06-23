@@ -5,6 +5,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
+import { lintCommand } from './commands/lint.js';
 import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
 import { prismaCommand } from './commands/prisma.js';
 import { retryCommand } from './commands/retry.js';
@@ -27,6 +28,7 @@ await yargs(hideBin(process.argv))
     removeNpmAndYarnEnvironmentVariables(process.env);
   })
   .command(buildIfNeededCommand)
+  .command(lintCommand)
   .command(optimizeForDockerBuildCommand)
   .command(prismaCommand)
   .command(retryCommand)

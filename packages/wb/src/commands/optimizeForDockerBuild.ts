@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findAllProjects } from '../project.js';
+import { findDescendantProjects } from '../project.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -23,13 +23,13 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
   describe: 'Optimize configuration when building a Docker image',
   builder,
   async handler(argv) {
-    const projects = await findAllProjects(argv);
+    const projects = await findDescendantProjects(argv);
     if (!projects) {
       console.error(chalk.red('No project found.'));
       process.exit(1);
     }
 
-    for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.all)) {
+    for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
       const keys = ['dependencies', 'devDependencies'] as const;
       for (const key of keys) {

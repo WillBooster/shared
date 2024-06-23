@@ -5,7 +5,7 @@ import os from 'node:os';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findAllProjects } from '../project.js';
+import { findDescendantProjects } from '../project.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isRunningOnBun } from '../utils/runtime.js';
@@ -29,13 +29,13 @@ export async function setup(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
   projectPathForTesting?: string
 ): Promise<void> {
-  const projects = await findAllProjects(argv, false, projectPathForTesting);
+  const projects = await findDescendantProjects(argv, false, projectPathForTesting);
   if (!projects) {
     console.error(chalk.red('No project found.'));
     process.exit(1);
   }
 
-  for (const project of prepareForRunningCommand('setup', projects.all)) {
+  for (const project of prepareForRunningCommand('setup', projects.descendants)) {
     const dirents = await fs.readdir(project.dirPath, { withFileTypes: true });
     if (project === projects.root) {
       if (os.platform() === 'darwin') {

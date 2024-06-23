@@ -11,6 +11,6 @@ export const sharedOptionsBuilder = {
   'dry-run': {
     description: 'Whether to skip actual command execution',
     type: 'boolean',
-    alias: 'd',
+    alias: ['dry', 'd'],
   },
 } as const;

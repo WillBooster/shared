@@ -55,8 +55,8 @@ export function runWithSpawnInParallel(
   project: Project,
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
   opts: Options = defaultOptions
-): Promise<void> {
-  return promisePool.run(async () => {
+): Promise<number> {
+  return promisePool.runAndWaitForReturnValue(async () => {
     const [printableScript, runnableScript] = normalizeScript(script, project);
     printStart(printableScript, project, 'Start (parallel)', true);
     if (argv.dryRun) {
@@ -65,7 +65,7 @@ export function runWithSpawnInParallel(
         printStart(runnableScript, project, 'Started (raw)', true);
       }
       printFinishedAndExitIfNeeded(printableScript, 0, opts);
-      return;
+      return 0;
     }
 
     const ret = await spawnAsync(runnableScript, undefined, {
@@ -83,8 +83,9 @@ export function runWithSpawnInParallel(
       printStart(runnableScript, project, 'Started (raw)', true);
     }
     const out = ret.stdout.trim();
-    if (out) console.info(out);
+    if (out) process.stdout.write(out);
     printFinishedAndExitIfNeeded(printableScript, ret.status, opts);
+    return ret.status ?? 1;
   });
 }
 

@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findAllProjects } from '../project.js';
+import { findDescendantProjects } from '../project.js';
 import type { scriptOptionsBuilder } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
@@ -63,20 +63,20 @@ export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
 export async function test(
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>
 ): Promise<void> {
-  const projects = await findAllProjects(argv);
+  const projects = await findDescendantProjects(argv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
     process.exit(1);
   }
 
-  if (projects.all.length > 1) {
+  if (projects.descendants.length > 1) {
     // Disable interactive mode
     process.env.CI = '1';
   }
   process.env.FORCE_COLOR ||= '3';
   process.env.WB_ENV ||= 'test';
 
-  for (const project of projects.all) {
+  for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies || {};
     const devDeps = project.packageJson.devDependencies || {};
     let scripts: BaseScripts;

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { findAllProjects } from '../src/project.js';
+import { findDescendantProjects } from '../src/project.js';
 
 import { initializeProjectDirectory, tempDir } from './shared.js';
 
@@ -18,8 +18,8 @@ describe('project', () => {
       const dirPath = path.join(tempDir, dirName);
       await initializeProjectDirectory(dirPath);
 
-      const projects = await findAllProjects({}, false, dirPath);
-      expect(projects?.all.length).toBe(expected);
+      const projects = await findDescendantProjects({}, false, dirPath);
+      expect(projects?.descendants.length).toBe(expected);
     },
     5 * 60 * 1000
   );

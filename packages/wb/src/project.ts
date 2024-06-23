@@ -146,7 +146,7 @@ export class Project {
 export interface FoundProjects {
   root: Project;
   self: Project;
-  all: Project[];
+  descendants: Project[];
 }
 
 export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?: string): Project | undefined {
@@ -156,7 +156,7 @@ export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?
   return new Project(dirPath, argv, loadEnv);
 }
 
-export async function findAllProjects(
+export async function findDescendantProjects(
   argv: EnvReaderOptions,
   loadEnv = true,
   dirPath?: string
@@ -166,9 +166,9 @@ export async function findAllProjects(
 
   return {
     ...rootAndSelfProjects,
-    all:
+    descendants:
       rootAndSelfProjects.root === rootAndSelfProjects.self
-        ? await getAllProjects(argv, rootAndSelfProjects.root, loadEnv)
+        ? await getAllDescendantProjects(argv, rootAndSelfProjects.root, loadEnv)
         : [rootAndSelfProjects.self],
   };
 }
@@ -177,7 +177,7 @@ export function findRootAndSelfProjects(
   argv: EnvReaderOptions,
   loadEnv = true,
   dirPath?: string
-): Omit<FoundProjects, 'all'> | undefined {
+): Omit<FoundProjects, 'descendants'> | undefined {
   dirPath ??= process.cwd();
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
 
@@ -192,11 +192,15 @@ export function findRootAndSelfProjects(
   return { root: rootProject, self: thisProject };
 }
 
-async function getAllProjects(argv: EnvReaderOptions, rootProject: Project, loadEnv: boolean): Promise<Project[]> {
-  const allProjects = [rootProject];
+async function getAllDescendantProjects(
+  argv: EnvReaderOptions,
+  rootProject: Project,
+  loadEnv: boolean
+): Promise<Project[]> {
+  const projects = [rootProject];
 
   const workspace = rootProject.packageJson.workspaces;
-  if (!Array.isArray(workspace)) return allProjects;
+  if (!Array.isArray(workspace)) return projects;
 
   const globPattern: string[] = [];
   const packageDirs: string[] = [];
@@ -211,7 +215,7 @@ async function getAllProjects(argv: EnvReaderOptions, rootProject: Project, load
   for (const subPackageDirPath of packageDirs) {
     if (!fs.existsSync(path.join(subPackageDirPath, 'package.json'))) continue;
 
-    allProjects.push(new Project(subPackageDirPath, argv, loadEnv));
+    projects.push(new Project(subPackageDirPath, argv, loadEnv));
   }
-  return allProjects;
+  return projects;
 }

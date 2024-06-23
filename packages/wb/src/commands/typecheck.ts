@@ -1,11 +1,8 @@
-import fs from 'node:fs/promises';
-
 import chalk from 'chalk';
-import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findAllProjects } from '../project.js';
-import { runWithSpawn } from '../scripts/run.js';
+import { findDescendantProjects } from '../project.js';
+import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {} as const;
@@ -18,13 +15,13 @@ export const typeCheckCommand: CommandModule<
   describe: 'Run type checking. .env files are ignored.',
   builder,
   async handler(argv) {
-    const projects = await findAllProjects(argv, false);
+    const projects = await findDescendantProjects(argv, false);
     if (!projects) {
       console.error(chalk.red('No project found.'));
       process.exit(1);
     }
 
-    for (const project of projects.all) {
+    const promises = projects.descendants.map((project) => {
       const commands: string[] = [];
       if (!project.packageJson.workspaces) {
         if (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript) {
@@ -39,25 +36,28 @@ export const typeCheckCommand: CommandModule<
       ) {
         commands.push('BUN tsc --noEmit --Pretty');
       }
-      if (commands.length === 0) continue;
+      if (commands.length > 0) {
+        if (projects.descendants.length > 1) {
+          // Disable interactive mode
+          project.env['CI'] = '1';
+        }
+        project.env['FORCE_COLOR'] ||= '3';
 
-      console.info(`Running "typecheck" for ${project.name} ...`);
-
-      if (projects.all.length > 1) {
-        // Disable interactive mode
-        project.env['CI'] = '1';
+        return runWithSpawnInParallel(commands.join(' && '), project, argv);
       }
-      project.env['FORCE_COLOR'] ||= '3';
-
-      const exitCode = await runWithSpawn(commands.join(' && '), project, argv);
-      if (exitCode !== 0) {
-        const packageJson = JSON.parse(await fs.readFile('package.json', 'utf8')) as PackageJson;
-        const deps = packageJson.dependencies || {};
+    });
+    const exitCodes = await Promise.all(promises);
+    let finalExitCode = 0;
+    for (const [i, exitCode] of exitCodes.entries()) {
+      if (exitCode) {
+        const deps = projects.descendants[i].packageJson.dependencies || {};
         if (deps['blitz']) {
           console.info(chalk.yellow('Please try "yarn gen-code" if you face unknown type errors.'));
         }
+        finalExitCode = exitCode;
       }
     }
+    if (finalExitCode) process.exit(finalExitCode);
   },
 };
 
