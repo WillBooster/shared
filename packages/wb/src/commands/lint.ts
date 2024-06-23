@@ -111,7 +111,7 @@ export const lintCommand: CommandModule<
     if (argv.format) {
       if (prettierArgsText) {
         void runWithSpawnInParallel(
-          `bun --bun prettier --cache --color --write ${prettierArgsText}`,
+          `bun --bun prettier --cache --color --no-error-on-unmatched-pattern --write ${prettierArgsText}`,
           projects.self,
           argv,
           { forceColor: true }
