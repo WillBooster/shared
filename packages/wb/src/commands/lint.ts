@@ -8,8 +8,6 @@ import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isRunningOnBun } from '../utils/runtime.js';
 
-import { prepareForRunningCommand } from './commandUtils.js';
-
 const builder = {
   fix: {
     description: 'Fix the linting errors',
@@ -55,7 +53,7 @@ export const lintCommand: CommandModule<
   InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
 > = {
   command: 'lint [files...]',
-  describe: 'Lint the code',
+  describe: 'Lint code on Bun',
   builder,
   async handler(argv) {
     if (!isRunningOnBun) {
@@ -69,42 +67,61 @@ export const lintCommand: CommandModule<
       process.exit(1);
     }
 
-    const files =
-      argv.files
-        ?.map(String)
-        .filter(
-          (f) =>
-            f !== 'test-fixtures' &&
-            !f.startsWith('test-fixtures/') &&
-            !f.endsWith('/test-fixtures') &&
-            !f.includes('/test-fixtures/')
-        )
-        .map((f) => `"${path.resolve(f)}"`) ?? [];
-    const filesArg = files.join(' ');
-    let biomeCommand: string;
-    if (argv.fix && argv.format) {
-      biomeCommand = 'check --fix';
-    } else if (argv.fix) {
-      biomeCommand = 'lint --fix';
-    } else {
-      biomeCommand = 'lint';
-    }
-    void runWithSpawnInParallel(
-      `bun --bun biome ${biomeCommand} --no-errors-on-unmatched --files-ignore-unknown=true ${filesArg}`,
-      projects.self,
-      argv
-    );
+    const files = argv.files ?? [];
+    let biomeArgsText: string;
+    let prettierArgsText: string;
+    let sortPackageJsonArgsText: string;
+    if (files.length > 0) {
+      const filePathsToBeCheckedByBiome: string[] = [];
+      const filePathsToBeFormattedByPrettier: string[] = [];
+      const packageJsonFilePaths: string[] = [];
+      for (const file of files) {
+        const filePath = path.resolve(String(file));
+        if (filePath.endsWith('/test-fixtures') || filePath.includes('/test-fixtures/')) {
+          continue;
+        }
 
-    const hasArgs = (argv.files ?? []).length > 0;
-    if (!hasArgs && argv.format) {
-      for (const project of prepareForRunningCommand('lint', projects.descendants)) {
-        void runWithSpawnInParallel('bun --bun sort-package-json', project, argv);
+        const extension = path.extname(filePath).slice(1);
+        if (filePath.endsWith('/package.json')) {
+          packageJsonFilePaths.push(filePath);
+        } else if (biomeExtensions.has(extension)) {
+          filePathsToBeCheckedByBiome.push(filePath);
+        } else if (prettierExtensions.has(extension)) {
+          filePathsToBeFormattedByPrettier.push(filePath);
+        }
       }
+      biomeArgsText = filePathsToBeCheckedByBiome.map((f) => `"${f}"`).join(' ');
+      prettierArgsText = filePathsToBeFormattedByPrettier.map((f) => `"${f}"`).join(' ');
+      sortPackageJsonArgsText = packageJsonFilePaths.map((f) => `"${f}"`).join(' ');
+    } else {
+      biomeArgsText = '';
+      prettierArgsText = `"**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}" "!**/test-fixtures/**"`;
+      sortPackageJsonArgsText = projects.descendants.map((p) => `"${p.packageJsonPath}"`).join(' ');
+    }
+
+    const biomeCommand = argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : 'lint';
+    if (biomeArgsText || files.length === 0) {
       void runWithSpawnInParallel(
-        `bun --bun prettier --cache --color --write "**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}" "!**/test-fixtures/**"`,
+        `bun --bun biome ${biomeCommand} --no-errors-on-unmatched --files-ignore-unknown=true ${biomeArgsText}`,
         projects.self,
-        argv
+        argv,
+        { forceColor: true }
       );
+    }
+    if (argv.format) {
+      if (prettierArgsText) {
+        void runWithSpawnInParallel(
+          `bun --bun prettier --cache --color --write ${prettierArgsText}`,
+          projects.self,
+          argv,
+          { forceColor: true }
+        );
+      }
+      if (sortPackageJsonArgsText) {
+        void runWithSpawnInParallel(`bun --bun sort-package-json ${sortPackageJsonArgsText}`, projects.self, argv, {
+          forceColor: true,
+        });
+      }
     }
   },
 };

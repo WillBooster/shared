@@ -37,13 +37,11 @@ export const typeCheckCommand: CommandModule<
         commands.push('BUN tsc --noEmit --Pretty');
       }
       if (commands.length > 0) {
-        if (projects.descendants.length > 1) {
+        return runWithSpawnInParallel(commands.join(' && '), project, argv, {
           // Disable interactive mode
-          project.env['CI'] = '1';
-        }
-        project.env['FORCE_COLOR'] ||= '3';
-
-        return runWithSpawnInParallel(commands.join(' && '), project, argv);
+          ci: projects.descendants.length > 1,
+          forceColor: true,
+        });
       }
     });
     const exitCodes = await Promise.all(promises);

@@ -90,7 +90,12 @@ export class Project {
 
   @memoize
   get packageJson(): PackageJson {
-    return JSON.parse(fs.readFileSync(path.join(this.dirPath, 'package.json'), 'utf8'));
+    return JSON.parse(fs.readFileSync(this.packageJsonPath, 'utf8'));
+  }
+
+  @memoize
+  get packageJsonPath(): string {
+    return path.join(this.dirPath, 'package.json');
   }
 
   @memoize

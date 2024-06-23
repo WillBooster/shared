@@ -9,7 +9,9 @@ import { promisePool } from '../utils/promisePool.js';
 import { isRunningOnBun, packageManagerWithArgs } from '../utils/runtime.js';
 
 interface Options {
+  ci?: boolean;
   exitIfFailed?: boolean;
+  forceColor?: boolean;
   timeout?: number;
 }
 
@@ -39,7 +41,7 @@ export async function runWithSpawn(
   }
   const ret = await spawnAsync(runnableScript, undefined, {
     cwd: project.dirPath,
-    env: project.env,
+    env: configureEnv(project.env, opts),
     shell: true,
     stdio: 'inherit',
     timeout: opts?.timeout,
@@ -70,7 +72,7 @@ export function runWithSpawnInParallel(
 
     const ret = await spawnAsync(runnableScript, undefined, {
       cwd: project.dirPath,
-      env: project.env,
+      env: configureEnv(project.env, opts),
       shell: true,
       stdio: 'pipe',
       timeout: opts?.timeout,
@@ -83,7 +85,10 @@ export function runWithSpawnInParallel(
       printStart(runnableScript, project, 'Started (raw)', true);
     }
     const out = ret.stdout.trim();
-    if (out) process.stdout.write(out);
+    if (out) {
+      process.stdout.write(out);
+      process.stdout.write('\n');
+    }
     printFinishedAndExitIfNeeded(printableScript, ret.status, opts);
     return ret.status ?? 1;
   });
@@ -130,4 +135,15 @@ export function printFinishedAndExitIfNeeded(
       process.exit(exitCode ?? 1);
     }
   }
+}
+
+function configureEnv(env: Record<string, string | undefined>, opts: Options): Record<string, string | undefined> {
+  const newEnv = { ...env };
+  if (opts.ci) {
+    newEnv['CI'] = '1';
+  }
+  if (opts.forceColor) {
+    newEnv['FORCE_COLOR'] = '3';
+  }
+  return newEnv;
 }
