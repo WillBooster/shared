@@ -102,7 +102,7 @@ export const lintCommand: CommandModule<
     const biomeCommand = argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : 'lint';
     if (biomeArgsText || files.length === 0) {
       void runWithSpawnInParallel(
-        `bun --bun biome ${biomeCommand} --no-errors-on-unmatched --files-ignore-unknown=true ${biomeArgsText}`,
+        `bun --bun biome ${biomeCommand} --colors=force --no-errors-on-unmatched --files-ignore-unknown=true ${biomeArgsText}`,
         projects.self,
         argv,
         { forceColor: true }
