@@ -37,7 +37,7 @@
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@types/eslint": "8.56.10",
-    "@types/micromatch": "4.0.7",
+    "@types/micromatch": "4.0.8",
     "@typescript-eslint/eslint-plugin": "7.14.1",
     "@typescript-eslint/parser": "7.14.1",
     "@willbooster/eslint-config-ts": "10.6.0",
