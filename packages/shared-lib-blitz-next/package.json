@@ -38,8 +38,8 @@
   "devDependencies": {
     "@types/eslint": "8.56.10",
     "@types/micromatch": "4.0.8",
-    "@typescript-eslint/eslint-plugin": "7.14.1",
-    "@typescript-eslint/parser": "7.14.1",
+    "@typescript-eslint/eslint-plugin": "7.15.0",
+    "@typescript-eslint/parser": "7.15.0",
     "@willbooster/eslint-config-ts": "10.6.0",
     "@willbooster/prettier-config": "9.1.2",
     "blitz": "2.0.10",
@@ -55,7 +55,7 @@
     "micromatch": "4.0.7",
     "prettier": "3.3.2",
     "sort-package-json": "2.10.0",
-    "typescript": "5.5.2",
+    "typescript": "5.5.3",
     "vitest": "1.6.0"
   },
   "publishConfig": {
