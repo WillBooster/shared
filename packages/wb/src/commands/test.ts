@@ -100,7 +100,7 @@ export async function test(
       const e2eTestsExistPromise = existsAsync(path.join(project.dirPath, 'tests', 'e2e'));
 
       await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
-      if (argv.unit !== false && (await unitTestsExistPromise)) {
+      if (argv.unit !== false && (await unitTestsExistPromise) && !argv.target?.includes('/e2e/')) {
         await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv, {
           timeout: argv.unitTimeout,
         });
@@ -110,7 +110,7 @@ export async function test(
       }
       await promisePool.promiseAll();
       // Check playwright installation because --ci includes --e2e implicitly
-      if (argv.e2e !== 'none' && (await e2eTestsExistPromise)) {
+      if (argv.e2e !== 'none' && (await e2eTestsExistPromise) && !argv.target?.includes('/unit/')) {
         if (project.hasDockerfile) {
           await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);
         }
