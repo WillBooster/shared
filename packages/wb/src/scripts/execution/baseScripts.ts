@@ -52,7 +52,7 @@ export abstract class BaseScripts {
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
       "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080' 'BUN playwright install --with-deps'
-        && BUN playwright ${playwrightArgs.replace('tests/e2e', argv.target || 'tests/e2e')}"`;
+        && BUN playwright ${playwrightArgs === 'test tests/e2e' && argv.target ? playwrightArgs.replace('tests/e2e', argv.target) : playwrightArgs}"`;
   }
 
   testE2EDev(
@@ -64,7 +64,7 @@ export abstract class BaseScripts {
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080' 'BUN playwright install --with-deps'
-        && BUN playwright ${playwrightArgs.replace('tests/e2e', argv.target || 'tests/e2e')}"`;
+        && BUN playwright ${playwrightArgs === 'test tests/e2e' && argv.target ? playwrightArgs.replace('tests/e2e', argv.target) : playwrightArgs}"`;
   }
 
   abstract testStart(project: Project, argv: ScriptArgv): string;
