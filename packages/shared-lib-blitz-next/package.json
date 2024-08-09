@@ -36,7 +36,7 @@
   },
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
-    "@types/eslint": "8.56.10",
+    "@types/eslint": "8.56.11",
     "@types/micromatch": "4.0.9",
     "@typescript-eslint/eslint-plugin": "7.18.0",
     "@typescript-eslint/parser": "7.18.0",
@@ -51,7 +51,7 @@
     "eslint-plugin-sort-class-members": "1.20.0",
     "eslint-plugin-sort-destructure-keys": "2.0.0",
     "eslint-plugin-unicorn": "55.0.0",
-    "lint-staged": "15.2.7",
+    "lint-staged": "15.2.8",
     "micromatch": "4.0.7",
     "prettier": "3.3.3",
     "sort-package-json": "2.10.0",
