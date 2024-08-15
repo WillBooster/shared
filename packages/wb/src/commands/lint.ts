@@ -100,8 +100,9 @@ export const lintCommand: CommandModule<
     }
 
     const biomeCommand = argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : 'lint';
+    let biomePromise: Promise<number> | undefined;
     if (biomeArgsText || files.length === 0) {
-      void runWithSpawnInParallel(
+      biomePromise = runWithSpawnInParallel(
         `bun --bun biome ${biomeCommand} --colors=force --no-errors-on-unmatched --files-ignore-unknown=true ${biomeArgsText}`,
         projects.self,
         argv,
@@ -118,6 +119,7 @@ export const lintCommand: CommandModule<
         );
       }
       if (sortPackageJsonArgsText) {
+        await biomePromise;
         void runWithSpawnInParallel(`bun --bun sort-package-json ${sortPackageJsonArgsText}`, projects.self, argv, {
           forceColor: true,
         });
