@@ -6,7 +6,7 @@ import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { killPortProcessImmediatelyAndOnExit } from '../utils/process.js';
 import { promisePool } from '../utils/promisePool.js';
-import { isRunningOnBun, packageManagerWithArgs } from '../utils/runtime.js';
+import { isRunningOnBun, packageManagerWithRun } from '../utils/runtime.js';
 
 interface Options {
   ci?: boolean;
@@ -109,8 +109,8 @@ function normalizeScript(script: string, project: Project): [string, string] {
   }
   newScript = newScript.trim();
   return [
-    newScript.replaceAll('YARN ', `${packageManagerWithArgs} `),
-    newScript.replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithArgs} `),
+    newScript.replaceAll('YARN ', `${packageManagerWithRun} `),
+    newScript.replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `),
   ];
 }
 

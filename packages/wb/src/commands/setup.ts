@@ -8,7 +8,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { findDescendantProjects } from '../project.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { promisePool } from '../utils/promisePool.js';
-import { isRunningOnBun } from '../utils/runtime.js';
+import { isRunningOnBun, packageManagerWithRun, packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 import { httpServerPackages } from './constants.js';
@@ -80,13 +80,13 @@ export async function setup(
       newDevDeps = newDevDeps.filter((dep) => dep !== 'vitest');
     }
     if (newDeps.length > 0) {
-      await runWithSpawn(`yarn add ${newDeps.join(' ')}`, project, argv);
+      await runWithSpawn(`${packageManager} add ${newDeps.join(' ')}`, project, argv);
     }
     if (newDevDeps.length > 0) {
-      await runWithSpawn(`yarn add -D ${newDevDeps.join(' ')}`, project, argv);
+      await runWithSpawn(`${packageManager} add -D ${newDevDeps.join(' ')}`, project, argv);
     }
     if (scripts['gen-code']) {
-      await runWithSpawn('yarn gen-code', project, argv);
+      await runWithSpawn(`${packageManagerWithRun} gen-code`, project, argv);
     }
   }
 }

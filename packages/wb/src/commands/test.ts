@@ -1,6 +1,6 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
-import { existsAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -53,7 +53,7 @@ export type TestArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof bui
 
 export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
   command: 'test',
-  describe: 'Test project',
+  describe: 'Test project. If you pass no arguments, it will run all tests.',
   builder,
   async handler(argv) {
     await test(argv);
@@ -76,6 +76,8 @@ export async function test(
   process.env.FORCE_COLOR ||= '3';
   process.env.WB_ENV ||= 'test';
 
+  const shouldRunAllTests = !argv.e2e && argv.start === undefined && argv.unit === undefined;
+
   for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies || {};
     const devDeps = project.packageJson.devDependencies || {};
@@ -92,25 +94,34 @@ export async function test(
       scripts = plainAppScripts;
     }
 
+    if (shouldRunAllTests) {
+      argv = {
+        ...argv,
+        e2e:
+          fs.existsSync(path.join(project.dirPath, 'tests', 'e2e')) && !argv.target?.includes('/unit/')
+            ? 'headless'
+            : 'none',
+        start: true,
+        unit: fs.existsSync(path.join(project.dirPath, 'tests', 'unit')) && !argv.target?.includes('/e2e/'),
+      };
+    }
+
     console.info(`Running "test" for ${project.name} ...`);
 
     const promises: Promise<unknown>[] = [];
     if (argv.ci) {
-      const unitTestsExistPromise = existsAsync(path.join(project.dirPath, 'tests', 'unit'));
-      const e2eTestsExistPromise = existsAsync(path.join(project.dirPath, 'tests', 'e2e'));
-
       await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
-      if (argv.unit !== false && (await unitTestsExistPromise) && !argv.target?.includes('/e2e/')) {
+      if (argv.unit) {
+        // CI mode disallows `only` to avoid including debug tests
         await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv, {
           timeout: argv.unitTimeout,
         });
       }
-      if (argv.start !== false) {
+      if (argv.start) {
         await runWithSpawnInParallel(scripts.testStart(project, argv), project, argv);
       }
       await promisePool.promiseAll();
-      // Check playwright installation because --ci includes --e2e implicitly
-      if (argv.e2e !== 'none' && (await e2eTestsExistPromise) && !argv.target?.includes('/unit/')) {
+      if (argv.e2e !== 'none') {
         if (project.hasDockerfile) {
           await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);
         }
@@ -120,6 +131,7 @@ export async function test(
             }
           : {};
         process.exitCode = await runWithSpawn(
+          // CI mode disallows `only` to avoid including debug tests
           scripts.testE2E(project, argv, options).replaceAll(' --allowOnly', ''),
           project,
           argv,
@@ -132,14 +144,13 @@ export async function test(
       continue;
     }
 
-    if (argv.unit || (!argv.start && argv.e2e === undefined)) {
+    if (argv.unit) {
       promises.push(runWithSpawn(scripts.testUnit(project, argv), project, argv, { timeout: argv.unitTimeout }));
     }
     if (argv.start) {
       promises.push(runWithSpawn(scripts.testStart(project, argv), project, argv));
     }
     await Promise.all(promises);
-    // Don't check playwright installation because --e2e is set explicitly
     switch (argv.e2e) {
       case undefined:
       case 'none': {
