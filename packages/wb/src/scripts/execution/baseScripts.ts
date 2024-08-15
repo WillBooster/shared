@@ -88,6 +88,6 @@ export abstract class BaseScripts {
       project,
       argv,
       port
-    )} || wait-on http-get://127.0.0.1:${port} && open-cli "http://\${HOST:-localhost}:${port}"`;
+    )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
   }
 }
