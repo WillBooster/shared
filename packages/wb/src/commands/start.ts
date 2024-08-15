@@ -62,23 +62,23 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         case 'dev':
         case 'development': {
           const prefix = configureEnvironmentVariables(deps, 'development');
-          await runWithSpawn(`${prefix}${scripts.start(project, argv)}`, project, argv);
+          await runWithSpawn(`${prefix}${fixBunCommand(scripts.start(project, argv))}`, project, argv);
           break;
         }
         case 'staging': {
           const prefix = configureEnvironmentVariables(deps, 'staging');
-          await runWithSpawn(`${prefix}${scripts.startProduction(project, argv, 8080)}`, project, argv);
+          await runWithSpawn(`${prefix}${fixBunCommand(scripts.startProduction(project, argv, 8080))}`, project, argv);
           break;
         }
         case 'docker': {
           const prefix = configureEnvironmentVariables(deps, 'staging');
-          await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
+          await runWithSpawn(`${prefix}${fixBunCommand(scripts.startDocker(project, argv))}`, project, argv);
           break;
         }
         case 'docker-debug': {
           const prefix = configureEnvironmentVariables(deps, 'staging');
           argv.normalizedArgsText = `'/bin/bash'`;
-          await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
+          await runWithSpawn(`${prefix}${fixBunCommand(scripts.startDocker(project, argv))}`, project, argv);
           break;
         }
         default: {
@@ -97,4 +97,8 @@ function configureEnvironmentVariables(deps: Partial<Record<string, string>>, wb
     prefix += `NEXT_PUBLIC_WB_ENV=${process.env.WB_ENV} `;
   }
   return prefix;
+}
+
+function fixBunCommand(command: string): string {
+  return command.includes('next dev') ? command.replaceAll('bun --bun', 'bun') : command;
 }
