@@ -109,8 +109,10 @@ function normalizeScript(script: string, project: Project): [string, string] {
   }
   newScript = newScript.trim();
   return [
-    newScript.replaceAll('YARN ', `${packageManagerWithRun} `),
-    newScript.replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `),
+    fixBunCommand(newScript.replaceAll('YARN ', `${packageManagerWithRun} `)),
+    fixBunCommand(
+      newScript.replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `)
+    ),
   ];
 }
 
@@ -146,4 +148,8 @@ function configureEnv(env: Record<string, string | undefined>, opts: Options): R
     newEnv['FORCE_COLOR'] = '3';
   }
   return newEnv;
+}
+
+function fixBunCommand(command: string): string {
+  return command.includes('next dev') ? command.replaceAll('bun --bun', 'bun') : command;
 }
