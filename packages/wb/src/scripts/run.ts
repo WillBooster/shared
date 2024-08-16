@@ -103,6 +103,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
   if (isRunningOnBun) {
     newScript = newScript
       .replaceAll('build-ts run', 'bun --bun run')
+      .replaceAll('bun --bun run bun --bun run', 'bun --bun run')
       .replaceAll('dist/index.js', 'src/index.ts')
       .replaceAll(/(YARN )?vitest run/g, 'bun test')
       .replaceAll(' --color --passWithNoTests --allowOnly', '');
