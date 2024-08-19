@@ -39,7 +39,7 @@ class HttpServerScripts extends BaseScripts {
     project: Project,
     argv: TestArgv,
     {
-      startCommand = `if [ -e "prisma" ]; then prisma migrate reset --force --skip-generate; fi && (${this.startProduction(
+      startCommand = `${project.hasPrisma ? 'prisma migrate reset --force --skip-generate && ' : ''}(${this.startProduction(
         project,
         argv
       )})`,

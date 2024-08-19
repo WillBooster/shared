@@ -7,6 +7,8 @@ import { memoizeFactory } from 'at-decorators';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 
+import { isRunningOnBun } from './utils/runtime.js';
+
 const memoize = memoizeFactory({ maxCachedThisSize: Number.MAX_SAFE_INTEGER, maxCachedArgsSize: 1 });
 
 export class Project {
@@ -34,7 +36,9 @@ export class Project {
   @memoize
   get buildCommand(): string {
     return this.packageJson.scripts?.build?.includes('buildIfNeeded')
-      ? 'YARN run build'
+      ? isRunningOnBun
+        ? "echo 'No build script'"
+        : 'YARN run build'
       : `YARN wb buildIfNeeded ${this.argv.verbose ? '--verbose' : ''}`;
   }
 

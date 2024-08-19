@@ -11,12 +11,12 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import type { Project } from '../project.js';
 import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { isRunningOnBun } from '../utils/runtime.js';
 
 const builder = {
   command: {
-    description: 'A build command',
+    description: 'A build command (default: yarn|bun build)',
     type: 'string',
-    default: 'yarn build',
     alias: 'c',
   },
 } as const;
@@ -31,6 +31,7 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
 };
 
 function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
+  argv = { ...argv, command: argv.command ?? (isRunningOnBun ? 'bun run build' : 'yarn build') };
   console.info(chalk.green(`Run '${argv.command}'`));
   if (!argv.dryRun) {
     const ret = child_process.spawnSync(argv.command ?? '', {

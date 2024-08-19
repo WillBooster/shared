@@ -109,6 +109,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
     newScript = newScript
       .replaceAll('build-ts run', 'bun --bun run')
       .replaceAll('bun --bun run bun --bun run', 'bun --bun run')
+      // Because bun can run src/index.ts directly.
       .replaceAll('dist/index.js', 'src/index.ts')
       .replaceAll(/(?:YARN )?vitest run/g, 'bun test')
       // '--allowOnly' is sometimes removed.
