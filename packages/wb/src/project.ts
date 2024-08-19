@@ -34,7 +34,7 @@ export class Project {
   @memoize
   get buildCommand(): string {
     return this.packageJson.scripts?.build?.includes('buildIfNeeded')
-      ? 'YARN build'
+      ? 'YARN run build'
       : `YARN wb buildIfNeeded ${this.argv.verbose ? '--verbose' : ''}`;
   }
 

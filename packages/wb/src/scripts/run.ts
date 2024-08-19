@@ -94,19 +94,25 @@ export function runWithSpawnInParallel(
   });
 }
 
+/**
+ * Replace capitalized commands (e.g., YARN, PRISMA, BUN) with suitable commands.
+ */
 function normalizeScript(script: string, project: Project): [string, string] {
   let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
     .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
-    .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ');
+    .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ')
+    // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`
+    .replaceAll('YARN run ', project.isBunAvailable ? 'bun --bun run ' : 'yarn run ');
   if (isRunningOnBun) {
     newScript = newScript
       .replaceAll('build-ts run', 'bun --bun run')
       .replaceAll('bun --bun run bun --bun run', 'bun --bun run')
       .replaceAll('dist/index.js', 'src/index.ts')
-      .replaceAll(/(YARN )?vitest run/g, 'bun test')
-      .replaceAll(' --color --passWithNoTests --allowOnly', '');
+      .replaceAll(/(?:YARN )?vitest run/g, 'bun test')
+      // '--allowOnly' is sometimes removed.
+      .replaceAll(/ --color --passWithNoTests(?: --allowOnly)?/g, '');
   }
   newScript = newScript.trim();
   return [
