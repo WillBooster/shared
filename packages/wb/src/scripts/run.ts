@@ -119,7 +119,10 @@ function normalizeScript(script: string, project: Project): [string, string] {
   return [
     fixBunCommand(newScript.replaceAll('YARN ', `${packageManagerWithRun} `)),
     fixBunCommand(
-      newScript.replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `)
+      newScript
+        // Because we need to use `yarn playwright` in a project depending on `artillery-engine-playwright`.
+        .replaceAll('YARN playwright ', `${packageManagerWithRun} playwright `)
+        .replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `)
     ),
   ];
 }

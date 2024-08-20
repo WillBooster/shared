@@ -45,9 +45,6 @@ export abstract class BaseScripts {
     argv: TestArgv,
     { playwrightArgs = 'test tests/e2e', prismaDirectory, startCommand }: TestE2EOptions
   ): string {
-    // Basically, `playwright` (not `yarn playwright`) should work,
-    // but it doesn't work on a project depending on `artillery-engine-playwright`.
-    // So we use `yarn playwright` instead of `playwright` here.
     const env = project.env.WB_ENV;
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
