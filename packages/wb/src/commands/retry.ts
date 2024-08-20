@@ -14,6 +14,7 @@ const builder = {
   },
 } as const;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const argumentsBuilder = {
   command: {
     description: 'A command to retry',

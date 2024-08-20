@@ -19,6 +19,7 @@ const builder = {
   },
 } as const;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const argumentsBuilder = {
   files: {
     description: 'File and directory paths to lint',
