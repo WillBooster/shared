@@ -76,7 +76,7 @@ export async function test(
   process.env.FORCE_COLOR ||= '3';
   process.env.WB_ENV ||= 'test';
 
-  const shouldRunAllTests = !argv.e2e && argv.start === undefined && argv.unit === undefined;
+  const shouldRunAllTests = argv.e2e === undefined && argv.start === undefined && argv.unit === undefined;
 
   for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies || {};
