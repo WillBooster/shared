@@ -7,7 +7,7 @@ const meta: Meta<typeof VersionOverlay> = {
   component: VersionOverlay,
 };
 
-const Template: StoryFn<typeof VersionOverlay> = (args) => <VersionOverlay {...args} />;
+const Template: StoryFn<typeof VersionOverlay> = (args: Record<string, never>) => <VersionOverlay {...args} />;
 
 export const Default: StoryFn<typeof VersionOverlay> = Template.bind({});
 
