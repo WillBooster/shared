@@ -25,24 +25,24 @@
   },
   "prettier": "@willbooster/prettier-config",
   "resolutions": {
-    "esbuild": "0.23.0"
+    "esbuild": "0.23.1"
   },
   "devDependencies": {
-    "@qiwi/multi-semantic-release": "7.1.1",
+    "@qiwi/multi-semantic-release": "7.1.2",
     "@types/eslint": "8.56.10",
     "@typescript-eslint/parser": "7.18.0",
     "@willbooster/prettier-config": "9.1.2",
     "conventional-changelog-conventionalcommits": "6.1.0",
     "eslint": "8.57.0",
-    "husky": "9.1.4",
-    "lint-staged": "15.2.7",
+    "husky": "9.1.5",
+    "lint-staged": "15.2.9",
     "micromatch": "4.0.7",
     "pinst": "3.0.0",
     "prettier": "3.3.3",
     "sort-package-json": "2.10.0",
     "typescript": "5.5.4"
   },
-  "packageManager": "yarn@4.3.1",
+  "packageManager": "yarn@4.4.0",
   "engines": {
     "node": ">= 18"
   }
