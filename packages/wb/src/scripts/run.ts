@@ -107,7 +107,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
     .replaceAll('YARN run ', project.isBunAvailable ? 'bun --bun run ' : 'yarn run ');
   if (isRunningOnBun) {
     newScript = newScript
-      .replaceAll('build-ts run', 'bun --bun run')
+      .replaceAll('YARN build-ts run', 'bun --bun run')
       .replaceAll('bun --bun run bun --bun run', 'bun --bun run')
       // Because bun can run src/index.ts directly.
       .replaceAll('dist/index.js', 'src/index.ts')

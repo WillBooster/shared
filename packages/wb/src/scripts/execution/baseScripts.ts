@@ -49,10 +49,11 @@ export abstract class BaseScripts {
     // but it doesn't work on a project depending on `artillery-engine-playwright`.
     // So we use `yarn playwright` instead of `playwright` here.
     const env = project.env.WB_ENV;
+    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
       "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080' 'BUN playwright install --with-deps'
-        && BUN playwright ${playwrightArgs === 'test tests/e2e' && argv.target ? playwrightArgs.replace('tests/e2e', argv.target) : playwrightArgs}"`;
+        && BUN playwright ${playwrightArgs === 'test tests/e2e' && argv.target ? playwrightArgs.replace('tests/e2e', argv.target) : playwrightArgs}${suffix}"`;
   }
 
   testE2EDev(
@@ -61,10 +62,11 @@ export abstract class BaseScripts {
     { playwrightArgs = 'test tests/e2e', startCommand }: TestE2EDevOptions
   ): string {
     const env = project.env.WB_ENV;
+    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "concurrently --kill-others-on-fail --raw 'wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080' 'BUN playwright install --with-deps'
-        && BUN playwright ${playwrightArgs === 'test tests/e2e' && argv.target ? playwrightArgs.replace('tests/e2e', argv.target) : playwrightArgs}"`;
+        && BUN playwright ${playwrightArgs === 'test tests/e2e' && argv.target ? playwrightArgs.replace('tests/e2e', argv.target) : playwrightArgs}${suffix}"`;
   }
 
   abstract testStart(project: Project, argv: ScriptArgv): string;
