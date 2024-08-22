@@ -54,7 +54,7 @@
     "lint-staged": "15.2.9",
     "micromatch": "4.0.7",
     "prettier": "3.3.3",
-    "sort-package-json": "2.10.0",
+    "sort-package-json": "2.10.1",
     "typescript": "5.5.4",
     "vitest": "2.0.5"
   },
