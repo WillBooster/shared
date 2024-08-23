@@ -54,7 +54,7 @@
     "eslint-plugin-sort-destructure-keys": "2.0.0",
     "eslint-plugin-unicorn": "55.0.0",
     "lint-staged": "15.2.9",
-    "micromatch": "4.0.7",
+    "micromatch": "4.0.8",
     "prettier": "3.3.3",
     "prisma": "5.18.0",
     "sort-package-json": "2.10.1",

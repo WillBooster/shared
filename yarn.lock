@@ -4997,13 +4997,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/react@npm:*, @types/react@npm:18.3.3, @types/react@npm:^16.8.0 || ^17.0.0 || ^18.0.0":
+"@types/react@npm:*, @types/react@npm:^16.8.0 || ^17.0.0 || ^18.0.0":
   version: 18.3.3
   resolution: "@types/react@npm:18.3.3"
   dependencies:
     "@types/prop-types": "npm:*"
     csstype: "npm:^3.0.2"
   checksum: 10c0/fe455f805c5da13b89964c3d68060cebd43e73ec15001a68b34634604a78140e6fc202f3f61679b9d809dde6d7a7c2cb3ed51e0fd1462557911db09879b55114
+  languageName: node
+  linkType: hard
+
+"@types/react@npm:18.3.4":
+  version: 18.3.4
+  resolution: "@types/react@npm:18.3.4"
+  dependencies:
+    "@types/prop-types": "npm:*"
+    csstype: "npm:^3.0.2"
+  checksum: 10c0/5c52e1e6f540cff21e3c2a5212066d02e005f6fb21e4a536a29097fae878db9f407cd7a4b43778f51359349c5f692e08bc77ddb5f5cecbfca9ca4d4e3c91a48e
   languageName: node
   linkType: hard
 
@@ -5667,7 +5677,7 @@ __metadata:
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:55.0.0"
     lint-staged: "npm:15.2.9"
-    micromatch: "npm:4.0.7"
+    micromatch: "npm:4.0.8"
     prettier: "npm:3.3.3"
     sort-package-json: "npm:2.10.1"
     typescript: "npm:5.5.4"
@@ -5706,7 +5716,7 @@ __metadata:
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:55.0.0"
     lint-staged: "npm:15.2.9"
-    micromatch: "npm:4.0.7"
+    micromatch: "npm:4.0.8"
     prettier: "npm:3.3.3"
     sort-package-json: "npm:2.10.1"
     tree-kill: "npm:1.2.2"
@@ -5732,7 +5742,7 @@ __metadata:
     "@storybook/testing-library": "npm:0.2.2"
     "@types/eslint": "npm:8.56.10"
     "@types/micromatch": "npm:4.0.9"
-    "@types/react": "npm:18.3.3"
+    "@types/react": "npm:18.3.4"
     "@types/react-dom": "npm:18.3.0"
     "@typescript-eslint/eslint-plugin": "npm:8.2.0"
     "@typescript-eslint/parser": "npm:8.2.0"
@@ -5751,7 +5761,7 @@ __metadata:
     eslint-plugin-storybook: "npm:0.8.0"
     eslint-plugin-unicorn: "npm:55.0.0"
     lint-staged: "npm:15.2.9"
-    micromatch: "npm:4.0.7"
+    micromatch: "npm:4.0.8"
     prettier: "npm:3.3.3"
     react: "npm:18.3.1"
     react-dom: "npm:18.3.1"
@@ -5783,7 +5793,7 @@ __metadata:
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:55.0.0"
     lint-staged: "npm:15.2.9"
-    micromatch: "npm:4.0.7"
+    micromatch: "npm:4.0.8"
     prettier: "npm:3.3.3"
     sort-package-json: "npm:2.10.1"
     typescript: "npm:5.5.4"
@@ -5820,7 +5830,7 @@ __metadata:
     globby: "npm:14.0.2"
     kill-port: "npm:2.0.1"
     lint-staged: "npm:15.2.9"
-    micromatch: "npm:4.0.7"
+    micromatch: "npm:4.0.8"
     minimal-promise-pool: "npm:4.1.1"
     prettier: "npm:3.3.3"
     prisma: "npm:5.18.0"
@@ -13771,13 +13781,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"micromatch@npm:4.0.7, micromatch@npm:^4.0.2, micromatch@npm:^4.0.4, micromatch@npm:~4.0.7":
-  version: 4.0.7
-  resolution: "micromatch@npm:4.0.7"
+"micromatch@npm:4.0.8":
+  version: 4.0.8
+  resolution: "micromatch@npm:4.0.8"
   dependencies:
     braces: "npm:^3.0.3"
     picomatch: "npm:^2.3.1"
-  checksum: 10c0/58fa99bc5265edec206e9163a1d2cec5fabc46a5b473c45f4a700adce88c2520456ae35f2b301e4410fb3afb27e9521fb2813f6fc96be0a48a89430e0916a772
+  checksum: 10c0/166fa6eb926b9553f32ef81f5f531d27b4ce7da60e5baf8c021d043b27a388fb95e46a8038d5045877881e673f8134122b59624d5cecbd16eb50a42e7a6b5ca8
   languageName: node
   linkType: hard
 
@@ -13799,6 +13809,16 @@ __metadata:
     snapdragon: "npm:^0.8.1"
     to-regex: "npm:^3.0.2"
   checksum: 10c0/531a32e7ac92bef60657820202be71b63d0f945c08a69cc4c239c0b19372b751483d464a850a2e3a5ff6cc9060641e43d44c303af104c1a27493d137d8af017f
+  languageName: node
+  linkType: hard
+
+"micromatch@npm:^4.0.2, micromatch@npm:^4.0.4, micromatch@npm:~4.0.7":
+  version: 4.0.7
+  resolution: "micromatch@npm:4.0.7"
+  dependencies:
+    braces: "npm:^3.0.3"
+    picomatch: "npm:^2.3.1"
+  checksum: 10c0/58fa99bc5265edec206e9163a1d2cec5fabc46a5b473c45f4a700adce88c2520456ae35f2b301e4410fb3afb27e9521fb2813f6fc96be0a48a89430e0916a772
   languageName: node
   linkType: hard
 
@@ -20156,7 +20176,7 @@ __metadata:
     eslint: "npm:8.57.0"
     husky: "npm:9.1.5"
     lint-staged: "npm:15.2.9"
-    micromatch: "npm:4.0.7"
+    micromatch: "npm:4.0.8"
     pinst: "npm:3.0.0"
     prettier: "npm:3.3.3"
     sort-package-json: "npm:2.10.1"
