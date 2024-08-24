@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@rollup/plugin-swc": "0.3.1",
-    "@swc/core": "1.7.14",
+    "@swc/core": "1.7.18",
     "@types/eslint": "8.56.10",
     "@types/kill-port": "2.0.3",
     "@types/micromatch": "4.0.9",
