@@ -45,7 +45,7 @@
     "build-ts": "13.1.8",
     "eslint": "8.57.0",
     "eslint-config-prettier": "9.1.0",
-    "eslint-import-resolver-typescript": "3.6.1",
+    "eslint-import-resolver-typescript": "3.6.3",
     "eslint-plugin-import": "2.29.1",
     "eslint-plugin-sort-class-members": "1.20.0",
     "eslint-plugin-sort-destructure-keys": "2.0.0",
