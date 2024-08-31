@@ -58,6 +58,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       child_process.spawnSync(packageManager, ['install'], {
         stdio: 'inherit',
       });
+      console.info('Installed dependencies.');
     }
   },
 };
@@ -65,6 +66,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
   if (!argv.outside) {
     delete packageJson.devDependencies;
+    console.info('Removed all devDependencies.');
     return;
   }
 
@@ -88,20 +90,24 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
     'semantic-release',
     'vitest',
   ];
+  const removedDeps: string[] = [];
   for (const name of Object.keys(devDeps)) {
     if (
       nameWordsToBeRemoved.some((word) => name.includes(word)) ||
       (!argv.outside && name.includes('willbooster') && name.includes('config'))
     ) {
       delete devDeps[name];
+      removedDeps.push(name);
     }
   }
+  console.info('Removed devDependencies:', removedDeps.join(', ') || 'none');
 }
 
 function optimizeScripts(packageJson: PackageJson): void {
   const nameWordsOfUnnecessaryScripts = ['check', 'deploy', 'format', 'lint', 'start', 'test'];
   const contentWordsOfUnnecessaryScripts = ['pinst ', 'husky '];
   const scripts = (packageJson.scripts || {}) as Record<string, string>;
+  const removedScripts: string[] = [];
   for (const [name, content] of Object.entries(scripts)) {
     if (
       nameWordsOfUnnecessaryScripts.some((word) => name.includes(word)) ||
@@ -109,8 +115,10 @@ function optimizeScripts(packageJson: PackageJson): void {
       contentWordsOfUnnecessaryScripts.some((word) => content.includes(word) || content.trim() === word.trim())
     ) {
       delete scripts[name];
+      removedScripts.push(name);
     }
   }
+  console.info('Removed scripts:', removedScripts.join(', ') || 'none');
 }
 
 function optimizeRootProps(packageJson: PackageJson): void {
