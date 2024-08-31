@@ -83,9 +83,15 @@ export class Project {
 
   @memoize
   get env(): Record<string, string | undefined> {
+    if (!this.loadEnv) return process.env;
+
+    const [envVars, envPathAndLoadedEnvVarCountPairs] = readEnvironmentVariables(this.argv, this.dirPath);
+    for (const [envPath, count] of envPathAndLoadedEnvVarCountPairs) {
+      console.info(`Loaded ${count} environment variables from ${envPath}`);
+    }
     // Overwrite environment variables even though this behavior is non-standard
     // because `bun wb ...` will load .env and .env.local before `wb` loads other variables.
-    return this.loadEnv ? { ...process.env, ...readEnvironmentVariables(this.argv, this.dirPath) } : process.env;
+    return { ...process.env, ...envVars };
   }
 
   @memoize

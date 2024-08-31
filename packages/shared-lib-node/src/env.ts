@@ -43,9 +43,14 @@ export const yargsOptionsBuilderForEnv = {
 export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof yargsOptionsBuilderForEnv>>>;
 
 /**
- * This function reads environment variables from `.env` files. Note it does not assign them in `process.env`.
+ * This function reads environment variables from `.env` files.
+ * Note it does not assign them in `process.env`.
+ * @return [envVars, [envPaths, envVarCount][]]
  * */
-export function readEnvironmentVariables(argv: EnvReaderOptions, cwd: string): Record<string, string> {
+export function readEnvironmentVariables(
+  argv: EnvReaderOptions,
+  cwd: string
+): [Record<string, string>, [string, number][]] {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
   const cascade =
     argv.cascadeEnv ??
@@ -76,30 +81,30 @@ export function readEnvironmentVariables(argv: EnvReaderOptions, cwd: string): R
     console.info('Reading env files:', envPaths.join(', '));
   }
 
-  const orgEnvVars = { ...process.env };
-  let loadedEnvVars: Record<string, string> = {};
+  const envPathAndEnvVarCountPairs: [string, number][] = [];
+  const envVars: Record<string, string> = {};
   for (const envPath of envPaths) {
-    loadedEnvVars = { ...readEnvFile(path.join(cwd, envPath)), ...loadedEnvVars };
     let count = 0;
-    for (const [key, value] of Object.entries(loadedEnvVars)) {
-      if (orgEnvVars[key] !== value) {
-        orgEnvVars[key] = value;
+    for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
+      if (envVars[key] !== value) {
+        envVars[key] = value;
         count++;
       }
     }
+    envPathAndEnvVarCountPairs.push([envPath, count]);
     if (argv.verbose && count > 0) {
-      console.info(`Loaded ${count} environment variables from ${envPath}`);
+      console.info(`Read ${count} environment variables from ${envPath}`);
     }
   }
 
   if (argv.checkEnv) {
     const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv)) || {});
-    const missingKeys = exampleKeys.filter((key) => !(key in loadedEnvVars));
+    const missingKeys = exampleKeys.filter((key) => !(key in envVars));
     if (missingKeys.length > 0) {
       throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
     }
   }
-  return loadedEnvVars;
+  return [envVars, envPathAndEnvVarCountPairs];
 }
 
 /**
@@ -109,7 +114,7 @@ export function readAndApplyEnvironmentVariables(
   argv: EnvReaderOptions,
   cwd: string
 ): Record<string, string | undefined> {
-  const envVars = readEnvironmentVariables(argv, cwd);
+  const [envVars] = readEnvironmentVariables(argv, cwd);
   Object.assign(process.env, envVars);
   return envVars;
 }
