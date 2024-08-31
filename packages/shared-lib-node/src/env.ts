@@ -91,7 +91,7 @@ export function readEnvironmentVariables(
         count++;
       }
     }
-    if (count > 0) {
+    if (argv.verbose || count > 0) {
       console.info(`Read ${count} environment variables:`, envPath);
     }
   }
