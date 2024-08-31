@@ -83,7 +83,9 @@ export class Project {
 
   @memoize
   get env(): Record<string, string | undefined> {
-    return this.loadEnv ? { ...readEnvironmentVariables(this.argv, this.dirPath), ...process.env } : process.env;
+    // Overwrite environment variables even though this behavior is non-standard
+    // because `bun wb ...` will load .env and .env.local before `wb` loads other variables.
+    return this.loadEnv ? { ...process.env, ...readEnvironmentVariables(this.argv, this.dirPath) } : process.env;
   }
 
   @memoize

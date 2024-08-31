@@ -45,11 +45,7 @@ export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<ty
 /**
  * This function reads environment variables from `.env` files. Note it does not assign them in `process.env`.
  * */
-export function readEnvironmentVariables(
-  argv: EnvReaderOptions,
-  cwd: string,
-  cacheEnabled = true
-): Record<string, string> {
+export function readEnvironmentVariables(argv: EnvReaderOptions, cwd: string): Record<string, string> {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
   const cascade =
     argv.cascadeEnv ??
@@ -80,30 +76,30 @@ export function readEnvironmentVariables(
     console.info('Reading env files:', envPaths.join(', '));
   }
 
-  let envVars: Record<string, string> = {};
   const orgEnvVars = { ...process.env };
+  let loadedEnvVars: Record<string, string> = {};
   for (const envPath of envPaths) {
-    envVars = { ...readEnvFile(path.join(cwd, envPath), cacheEnabled), ...envVars };
+    loadedEnvVars = { ...readEnvFile(path.join(cwd, envPath)), ...loadedEnvVars };
     let count = 0;
-    for (const [key, value] of Object.entries(envVars)) {
+    for (const [key, value] of Object.entries(loadedEnvVars)) {
       if (orgEnvVars[key] !== value) {
         orgEnvVars[key] = value;
         count++;
       }
     }
-    if (argv.verbose || count > 0) {
-      console.info(`Read ${count} environment variables:`, envPath);
+    if (argv.verbose && count > 0) {
+      console.info(`Loaded ${count} environment variables from ${envPath}`);
     }
   }
 
   if (argv.checkEnv) {
-    const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv), cacheEnabled) || {});
-    const missingKeys = exampleKeys.filter((key) => !(key in envVars));
+    const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv)) || {});
+    const missingKeys = exampleKeys.filter((key) => !(key in loadedEnvVars));
     if (missingKeys.length > 0) {
       throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
     }
   }
-  return envVars;
+  return loadedEnvVars;
 }
 
 /**
@@ -111,24 +107,21 @@ export function readEnvironmentVariables(
  * */
 export function readAndApplyEnvironmentVariables(
   argv: EnvReaderOptions,
-  cwd: string,
-  cacheEnabled = true
+  cwd: string
 ): Record<string, string | undefined> {
-  const envVars = readEnvironmentVariables(argv, cwd, cacheEnabled);
+  const envVars = readEnvironmentVariables(argv, cwd);
   Object.assign(process.env, envVars);
   return envVars;
 }
 
 const cachedEnvVars = new Map<string, Record<string, string>>();
 
-function readEnvFile(filePath: string, cacheEnabled = true): Record<string, string> {
-  const cached = cacheEnabled && cachedEnvVars.get(filePath);
+function readEnvFile(filePath: string): Record<string, string> {
+  const cached = cachedEnvVars.get(filePath);
   if (cached) return cached;
 
   const parsed = config({ path: path.resolve(filePath), processEnv: {} }).parsed ?? {};
-  if (cacheEnabled) {
-    cachedEnvVars.set(filePath, parsed);
-  }
+  cachedEnvVars.set(filePath, parsed);
   return parsed;
 }
 
