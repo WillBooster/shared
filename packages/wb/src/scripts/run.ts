@@ -162,7 +162,5 @@ function configureEnv(env: Record<string, string | undefined>, opts: Options): R
 }
 
 function fixBunCommand(command: string): string {
-  return command.includes('next dev') || command.includes('pm2-runtime') || command.includes('test/e2e-additional')
-    ? command.replaceAll('bun --bun', 'bun')
-    : command;
+  return command.includes('test/e2e-additional') ? command.replaceAll('bun --bun', 'bun') : command;
 }
