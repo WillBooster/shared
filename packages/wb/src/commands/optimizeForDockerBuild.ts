@@ -7,6 +7,7 @@ import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findDescendantProjects } from '../project.js';
+import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -54,7 +55,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
     }
     if (!argv.dryRun && !argv.outside) {
-      child_process.spawnSync('yarn', {
+      child_process.spawnSync(packageManager, ['install'], {
         stdio: 'inherit',
       });
     }
