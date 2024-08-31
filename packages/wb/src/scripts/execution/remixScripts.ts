@@ -51,7 +51,7 @@ class RemixScripts extends BaseScripts {
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {
-    return `YARN concurrently --kill-others --raw --success first "remix dev" "${this.waitApp(project, argv)}"`;
+    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "remix dev" "${this.waitApp(project, argv)}"`;
   }
 }
 

@@ -61,7 +61,7 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {
-    return `YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(
+    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(
       project,
       argv
     )}"`;

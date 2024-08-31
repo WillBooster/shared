@@ -77,8 +77,8 @@ export function readEnvironmentVariables(
   envPaths = envPaths.filter((envPath) => fs.existsSync(envPath)).map((envPath) => path.relative(cwd, envPath));
   if (argv.verbose) {
     console.info(`WB_ENV: ${process.env.WB_ENV}, NODE_ENV: ${process.env.NODE_ENV}`);
+    console.info('Reading env files:', envPaths.join(', '));
   }
-  console.info('Reading env files:', envPaths.join(', '));
 
   let envVars: Record<string, string> = {};
   const orgEnvVars = { ...process.env };
