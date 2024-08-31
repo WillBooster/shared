@@ -86,7 +86,7 @@ export function readEnvironmentVariables(
   for (const envPath of envPaths) {
     let count = 0;
     for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
-      if (envVars[key] !== value) {
+      if (!(key in envVars)) {
         envVars[key] = value;
         count++;
       }
