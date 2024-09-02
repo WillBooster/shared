@@ -8,10 +8,9 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { findDescendantProjects } from '../project.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { promisePool } from '../utils/promisePool.js';
-import { isRunningOnBun, packageManagerWithRun, packageManager } from '../utils/runtime.js';
+import { packageManagerWithRun } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
-import { httpServerPackages } from './constants.js';
 
 const builder = {} as const;
 
@@ -61,32 +60,16 @@ export async function setup(
       await runWithSpawn('poetry install --ansi', project, argv);
     }
 
-    const deps = project.packageJson.dependencies ?? {};
-    const devDeps = project.packageJson.devDependencies || {};
-    const scripts = project.packageJson.scripts ?? {};
-    const newDeps: string[] = [];
-    let newDevDeps: string[] = [];
-    if (deps['blitz'] || deps['next']) {
-      newDeps.push('pm2');
-      newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
-    } else if (devDeps['@remix-run/dev']) {
-      newDeps.push('pm2');
-      newDevDeps.push('concurrently', 'open-cli', 'vitest', 'wait-on');
-    } else if (httpServerPackages.some((p) => deps[p])) {
-      newDeps.push('pm2');
-      newDevDeps.push('concurrently', 'vitest', 'wait-on');
-    }
-    if (isRunningOnBun) {
-      newDevDeps = newDevDeps.filter((dep) => dep !== 'vitest');
-    }
-    if (newDeps.length > 0) {
-      await runWithSpawn(`${packageManager} add ${newDeps.join(' ')}`, project, argv);
-    }
-    if (newDevDeps.length > 0) {
-      await runWithSpawn(`${packageManager} add -D ${newDevDeps.join(' ')}`, project, argv);
-    }
-    if (scripts['gen-code']) {
+    if (
+      (project === projects.root || !projects.root.packageJson.scripts?.['gen-code']) &&
+      project.packageJson.scripts?.['gen-code']
+    ) {
       await runWithSpawn(`${packageManagerWithRun} gen-code`, project, argv);
     }
+  }
+
+  const project = projects.descendants.find((p) => p.packageJson.devDependencies?.playwright);
+  if (project) {
+    await runWithSpawn(`${packageManagerWithRun} playwright install --with-deps`, project, argv);
   }
 }
