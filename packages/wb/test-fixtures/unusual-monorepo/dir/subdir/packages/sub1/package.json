@@ -1,6 +1,6 @@
 {
   "name": "@unusual-monorepo/sub1",
   "devDependencies": {
-    "typescript": "5.5.4"
+    "typescript": "5.6.3"
   }
 }
