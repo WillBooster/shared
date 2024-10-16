@@ -19,8 +19,8 @@ export function useStorage<T>(
       const newCallback = (event: StorageEvent): void => {
         if (event.key === key) callback();
       };
-      window.addEventListener('storage', newCallback);
-      return () => window.removeEventListener('storage', newCallback);
+      globalThis.addEventListener('storage', newCallback);
+      return () => globalThis.removeEventListener('storage', newCallback);
     },
     () => window[nonReactiveStorageType].getItem(key),
     () => 'ssrJsonText' in nonReactiveOptions && nonReactiveOptions.ssrJsonText
@@ -50,7 +50,7 @@ export function useStorage<T>(
         newValue = JSON.stringify(nextState);
         window[nonReactiveStorageType].setItem(key, newValue);
       }
-      window.dispatchEvent(new StorageEvent('storage', { key, newValue }));
+      globalThis.dispatchEvent(new StorageEvent('storage', { key, newValue }));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key, value]

@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-export function useInterval(nonReactiveCallback: () => void, milliseconds: number): () => void {
-  const timerId = useRef<number>();
+export function useInterval(nonReactiveCallback: () => void, reactiveMilliseconds?: number): () => void {
+  const timerId = useRef<number | NodeJS.Timeout>();
 
   const clearInterval = useCallback(() => {
-    window.clearInterval(timerId.current);
+    globalThis.clearInterval(timerId.current);
   }, []);
 
   useEffect(() => {
-    timerId.current = window.setInterval(nonReactiveCallback, milliseconds);
+    if (reactiveMilliseconds !== undefined) {
+      timerId.current = globalThis.setInterval(nonReactiveCallback, reactiveMilliseconds);
+    }
     return clearInterval;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [milliseconds]);
+  }, [reactiveMilliseconds]);
 
   return clearInterval;
 }
