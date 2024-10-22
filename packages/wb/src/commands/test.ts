@@ -209,7 +209,7 @@ export async function test(
           continue;
         }
         case 'trace': {
-          await runWithSpawn(`YARN playwright show-trace`, project, argv);
+          await runWithSpawn(`BUN playwright show-trace`, project, argv);
           continue;
         }
       }
