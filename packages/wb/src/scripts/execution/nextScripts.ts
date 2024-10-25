@@ -17,7 +17,7 @@ class NextScripts extends BaseScripts {
 
   override start(project: Project, argv: ScriptArgv): string {
     return `YARN concurrently --raw --kill-others-on-fail
-      "next dev --turbo ${argv.normalizedArgsText ?? ''}"
+      "next dev --turbopack ${argv.normalizedArgsText ?? ''}"
       "${this.waitAndOpenApp(project, argv)}"`;
   }
 
@@ -48,13 +48,13 @@ class NextScripts extends BaseScripts {
   override testE2EDev(
     project: Project,
     argv: TestArgv,
-    { startCommand = 'next dev --turbo -p 8080' }: TestE2EDevOptions
+    { startCommand = 'next dev --turbopack -p 8080' }: TestE2EDevOptions
   ): string {
     return super.testE2EDev(project, argv, { startCommand });
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {
-    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "next dev --turbo" "${this.waitApp(project, argv)}"`;
+    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "next dev --turbopack" "${this.waitApp(project, argv)}"`;
   }
 }
 
