@@ -165,6 +165,7 @@ function fixBunCommand(command: string): string {
   return command.includes('next dev') ||
     command.includes('playwright') ||
     command.includes('pm2-runtime') ||
+    command.includes('prisma') ||
     command.includes('test/e2e-additional')
     ? command.replaceAll('bun --bun', 'bun')
     : command;
