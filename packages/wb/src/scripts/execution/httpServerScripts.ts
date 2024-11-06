@@ -17,7 +17,7 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override start(project: Project, argv: ScriptArgv): string {
-    return `YARN build-ts run src/index.ts ${argv.watch ? '--watch' : ''} -- ${argv.normalizedArgsText ?? ''}`;
+    return `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }
 
   override startDocker(project: Project, argv: ScriptArgv): string {
