@@ -195,7 +195,7 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
 const defaultCommandBuilder = { args: { type: 'array' } } as const;
 
 const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultCommandBuilder>> = {
-  command: '$0 [args..]',
+  command: '$0 <args..>',
   describe: 'Pass the command and arguments to prisma as is',
   builder: defaultCommandBuilder,
   async handler(argv) {
