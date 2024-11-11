@@ -163,7 +163,11 @@ function configureEnv(env: Record<string, string | undefined>, opts: Options): R
 
 function fixBunCommand(command: string): string {
   // cf. https://github.com/oven-sh/bun/issues/14359
-  return command.includes('next dev') || command.includes('playwright') || command.includes('test/e2e-additional')
+  return command.includes('next dev') ||
+    command.includes('playwright') ||
+    // "bun --bun prisma generate" doesn't work
+    command.includes('prisma') ||
+    command.includes('test/e2e-additional')
     ? command.replaceAll('bun --bun', 'bun')
     : command;
 }
