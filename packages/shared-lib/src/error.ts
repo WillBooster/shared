@@ -86,7 +86,8 @@ export async function withRetry<T>(
       if (sleepMilliseconds > 0) {
         await sleep(sleepMilliseconds);
       }
-      retryLogger?.(`Retry due to: ${error instanceof Error ? error.stack : error}`);
+      retryLogger?.(`Retry due to: ${error}
+${error instanceof Error ? '---\n' + error.stack : ''}`);
       await beforeRetry?.(error);
     }
   }
