@@ -123,6 +123,7 @@ export async function test(
       await promisePool.promiseAll();
       if (argv.e2e !== 'none') {
         if (project.hasDockerfile) {
+          process.env.WB_DOCKER ||= '1';
           await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);
         }
         const options = project.hasDockerfile
@@ -224,6 +225,7 @@ async function testOnDocker(
   scripts: BaseScripts,
   playwrightArgs?: string
 ): Promise<void> {
+  process.env.WB_DOCKER ||= '1';
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);
   process.exitCode = await runWithSpawn(
     `${scripts.testE2E(project, argv, {
