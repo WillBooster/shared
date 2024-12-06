@@ -16,14 +16,14 @@
     "@blitzjs/next": "2.1.1",
     "@prisma/client": "5.22.0",
     "blitz": "2.1.1",
-    "next": "14.2.18",
+    "next": "14.2.20",
     "prisma": "5.22.0",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   },
   "devDependencies": {
     "@types/node": "22.10.1",
-    "@types/react": "18.3.12",
+    "@types/react": "18.3.14",
     "concurrently": "9.1.0",
     "typescript": "5.7.2",
     "wait-on": "8.0.1"
