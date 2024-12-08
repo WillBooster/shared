@@ -52,7 +52,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
   seed(project: Project, scriptPath?: string): string {
     if (project.packageJson.dependencies?.['blitz'])
       return `YARN blitz db seed${scriptPath ? ` -f ${scriptPath}` : ''}`;
-    if (scriptPath) return 'BUN build-ts run prisma/seeds.ts';
+    if (scriptPath) return `BUN build-ts run ${scriptPath}`;
     if ((project.packageJson.prisma as Record<string, string> | undefined)?.['seed']) return `YARN prisma db seed`;
     return `if [ -e "prisma/seeds.ts" ]; then BUN build-ts run prisma/seeds.ts; fi`;
   }
