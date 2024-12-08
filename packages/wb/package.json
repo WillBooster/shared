@@ -44,7 +44,7 @@
     "@typescript-eslint/parser": "8.17.0",
     "@willbooster/eslint-config-ts": "10.6.1",
     "@willbooster/prettier-config": "9.1.3",
-    "at-decorators": "2.2.1",
+    "at-decorators": "3.0.0",
     "build-ts": "13.1.8",
     "eslint": "8.57.0",
     "eslint-config-prettier": "9.1.0",

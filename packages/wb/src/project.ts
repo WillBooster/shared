@@ -3,11 +3,9 @@ import path from 'node:path';
 
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
-import { memoizeFactory } from 'at-decorators';
+import { memoizeOne } from 'at-decorators';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
-
-const memoize = memoizeFactory({ maxCachedThisSize: Number.MAX_SAFE_INTEGER, maxCachedArgsSize: 1 });
 
 export class Project {
   private readonly argv: EnvReaderOptions;
@@ -22,7 +20,7 @@ export class Project {
     this.loadEnv = loadEnv;
   }
 
-  @memoize
+  @memoizeOne
   get isBunAvailable(): boolean {
     try {
       return /(^|\n)bun\s/.test(fs.readFileSync(path.join(this.rootDirPath, '.tool-versions'), 'utf8'));
@@ -31,7 +29,7 @@ export class Project {
     }
   }
 
-  @memoize
+  @memoizeOne
   get buildCommand(): string {
     return this.packageJson.scripts?.build?.includes('buildIfNeeded')
       ? 'YARN run build'
@@ -44,19 +42,19 @@ export class Project {
     return this._dirPath;
   }
 
-  @memoize
+  @memoizeOne
   get rootDirPath(): string {
     return fs.existsSync(path.join(this.dirPath, '..', '..', 'package.json'))
       ? path.resolve(this.dirPath, '..', '..')
       : this.dirPath;
   }
 
-  @memoize
+  @memoizeOne
   get dockerfile(): string {
     return fs.readFileSync(this.findFile('Dockerfile'), 'utf8');
   }
 
-  @memoize
+  @memoizeOne
   get hasDockerfile(): boolean {
     try {
       return !!this.findFile('Dockerfile');
@@ -65,23 +63,23 @@ export class Project {
     }
   }
 
-  @memoize
+  @memoizeOne
   get hasSourceCode(): boolean {
     return fs.existsSync(path.join(this.dirPath, 'src'));
   }
 
-  @memoize
+  @memoizeOne
   get name(): string {
     return this.packageJson.name || 'unknown';
   }
 
-  @memoize
+  @memoizeOne
   get dockerImageName(): string {
     const name = this.packageJson.name || 'unknown';
     return name.replaceAll('@', '').replaceAll('/', '-');
   }
 
-  @memoize
+  @memoizeOne
   get env(): Record<string, string | undefined> {
     if (!this.loadEnv) return process.env;
 
@@ -94,29 +92,29 @@ export class Project {
     return { ...process.env, ...envVars };
   }
 
-  @memoize
+  @memoizeOne
   get packageJson(): PackageJson {
     return JSON.parse(fs.readFileSync(this.packageJsonPath, 'utf8'));
   }
 
-  @memoize
+  @memoizeOne
   get packageJsonPath(): string {
     return path.join(this.dirPath, 'package.json');
   }
 
-  @memoize
+  @memoizeOne
   get hasPrisma(): boolean {
     return !!(this.packageJson.dependencies?.['prisma'] || this.packageJson.devDependencies?.['prisma']);
   }
 
-  @memoize
+  @memoizeOne
   get dockerPackageJson(): PackageJson {
     return path.dirname(this.findFile('Dockerfile')) === this.dirPath
       ? this.packageJson
       : JSON.parse(fs.readFileSync(path.join(path.dirname(this.findFile('Dockerfile')), 'package.json'), 'utf8'));
   }
 
-  @memoize
+  @memoizeOne
   get binExists(): boolean {
     let binFound = false;
     let currentPath = this.dirPath;

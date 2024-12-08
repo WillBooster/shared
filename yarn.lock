@@ -2046,9 +2046,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@blitzjs/generator@npm:2.1.1":
-  version: 2.1.1
-  resolution: "@blitzjs/generator@npm:2.1.1"
+"@blitzjs/generator@npm:2.1.3":
+  version: 2.1.3
+  resolution: "@blitzjs/generator@npm:2.1.3"
   dependencies:
     "@babel/core": "npm:7.12.10"
     "@babel/plugin-transform-typescript": "npm:7.12.1"
@@ -2076,8 +2076,8 @@ __metadata:
     tslog: "npm:4.9.0"
     username: "npm:5.1.0"
     vinyl: "npm:2.2.1"
-    zod: "npm:3.20.2"
-  checksum: 10c0/d1bfa89efd267f14c1ae16517d35cc141725f259a7671f62993f026a8ade1d0f273f99148cbeb1f536c13a964b2fac2b32cb2e2c5f2c3d5be109e5076400fa74
+    zod: "npm:3.23.8"
+  checksum: 10c0/0f77a2c6f79af2ea21637d9c69f6002c7fbf1c1012bcde6f6cb7d714e260f16e4cf5c0bbd6c87847c9e4624ce43880c80ae04afbd2e1ba0d6187f2a85102486d
   languageName: node
   linkType: hard
 
@@ -2452,15 +2452,6 @@ __metadata:
     "@types/react": ">=16"
     react: ">=16"
   checksum: 10c0/381ed1211ba2b8491bf0ad9ef0d8d1badcdd114e1931d55d44019d4b827cc2752586708f9c7d2f9c3244150ed81f1f671a6ca95fae0edd5797fb47a22e06ceca
-  languageName: node
-  linkType: hard
-
-"@mrleebo/prisma-ast@npm:0.2.6":
-  version: 0.2.6
-  resolution: "@mrleebo/prisma-ast@npm:0.2.6"
-  dependencies:
-    chevrotain: "npm:^9.0.1"
-  checksum: 10c0/88eb17a7c0fd820ac37932120d5b2205a1d926b6dd3cfabdda8c7aaa46361b6d9d318ce436e257bb141b0e6b693f2c21236cdeade29f04951968a553c4b8b2c6
   languageName: node
   linkType: hard
 
@@ -5588,7 +5579,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:8.17.0"
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
-    blitz: "npm:2.1.1"
+    blitz: "npm:2.1.3"
     build-ts: "npm:13.1.8"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:9.1.0"
@@ -5737,7 +5728,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:8.17.0"
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
-    at-decorators: "npm:2.2.1"
+    at-decorators: "npm:3.0.0"
     build-ts: "npm:13.1.8"
     chalk: "npm:5.3.0"
     dotenv: "npm:16.4.7"
@@ -6530,10 +6521,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"at-decorators@npm:2.2.1":
-  version: 2.2.1
-  resolution: "at-decorators@npm:2.2.1"
-  checksum: 10c0/9bc0e6f8269cdd3d89501d8f553d6a56cb6e5e6792dde10501ac17d85b2610bf94fc6c9cb2ae6dae0a03f1e072e6cd7a1cd07d992c3c70c96d93c1fee1652222
+"at-decorators@npm:3.0.0":
+  version: 3.0.0
+  resolution: "at-decorators@npm:3.0.0"
+  checksum: 10c0/1a30ceccdd897b1ecd41e9a3c77800c958eeb7b2bcf18c3355ca6c98005a7e419cded683468076e4f308b58ab765092bd50f2984fa4a59bc557ddf29c0899c15
   languageName: node
   linkType: hard
 
@@ -6790,12 +6781,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"blitz@npm:2.1.1":
-  version: 2.1.1
-  resolution: "blitz@npm:2.1.1"
+"blitz@npm:2.1.3":
+  version: 2.1.3
+  resolution: "blitz@npm:2.1.3"
   dependencies:
-    "@blitzjs/generator": "npm:2.1.1"
-    "@mrleebo/prisma-ast": "npm:0.2.6"
+    "@blitzjs/generator": "npm:2.1.3"
+    "@mrleebo/prisma-ast": "npm:0.4.1"
     "@types/global-agent": "npm:2.1.1"
     arg: "npm:5.0.1"
     ast-types: "npm:0.14.2"
@@ -6844,7 +6835,7 @@ __metadata:
     watchpack: "npm:2.1.1"
   bin:
     blitz: bin/blitz
-  checksum: 10c0/c3105dc087aca086dd42ceca325a34ab814d712821fe647db92dcdeb9cf9cabb2c92ce10fea330eb8cfcb2430af8308c946c101064050216ee2231d4c503f449
+  checksum: 10c0/d98a1bafdbdf6cf3551e2e09ad43f7a1cf7a0040025de198e5ec3abb3f8722a1248af4927a4e23d18733a9d4aa93b1c1b5ea9628e0be667f37e9a007b236691b
   languageName: node
   linkType: hard
 
@@ -20100,9 +20091,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:3.20.2":
-  version: 3.20.2
-  resolution: "zod@npm:3.20.2"
-  checksum: 10c0/127e3f153401d3d39bad446bf095f609ce15e76244995fc0524936740976c2e2ea4285f2d11b9ae5511f00021443c92acf746f0239852c6d68838df6de9a9541
+"zod@npm:3.23.8":
+  version: 3.23.8
+  resolution: "zod@npm:3.23.8"
+  checksum: 10c0/8f14c87d6b1b53c944c25ce7a28616896319d95bc46a9660fe441adc0ed0a81253b02b5abdaeffedbeb23bdd25a0bf1c29d2c12dd919aef6447652dd295e3e69
   languageName: node
   linkType: hard
