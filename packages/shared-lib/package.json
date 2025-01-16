@@ -50,7 +50,7 @@
     "eslint-plugin-sort-class-members": "1.21.0",
     "eslint-plugin-sort-destructure-keys": "2.0.0",
     "eslint-plugin-unicorn": "56.0.1",
-    "lint-staged": "15.3.0",
+    "lint-staged": "15.4.0",
     "micromatch": "4.0.8",
     "prettier": "3.4.2",
     "sort-package-json": "2.14.0",
