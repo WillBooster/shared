@@ -10,8 +10,14 @@ import { spawn } from 'node:child_process';
 
 import treeKill from 'tree-kill';
 
+/**
+ * Return type for spawnAsync function, based on SpawnSyncReturns but without output and error properties
+ */
 export type SpawnAsyncReturns = Omit<SpawnSyncReturns<string>, 'output' | 'error'>;
 
+/**
+ * Options for spawnAsync function, extending various Node.js spawn options with additional functionality
+ */
 export type SpawnAsyncOptions = (
   | SpawnOptionsWithoutStdio
   | SpawnOptionsWithStdioTuple<StdioPipe, StdioPipe, StdioPipe>
@@ -24,12 +30,38 @@ export type SpawnAsyncOptions = (
   | SpawnOptionsWithStdioTuple<StdioNull, StdioNull, StdioNull>
   | SpawnOptions
 ) & {
+  /** Input string to write to the spawned process's stdin */
   input?: string;
+  /** If true, stderr output will be merged into stdout */
   mergeOutAndError?: boolean;
+  /** If true, the spawned process will be killed when the parent process exits */
   killOnExit?: boolean;
+  /** If true, enables verbose logging of process operations */
   verbose?: boolean;
 };
 
+/**
+ * Spawns a child process asynchronously and returns a promise that resolves with the process results
+ *
+ * This function provides a Promise-based wrapper around Node.js's spawn function with additional features:
+ * - Automatic encoding of stdout/stderr as UTF-8
+ * - Option to merge stderr into stdout
+ * - Option to automatically kill the process on parent exit
+ * - Option to provide input via stdin
+ * - Verbose logging capability
+ *
+ * @param command - The command to run
+ * @param args - List of string arguments
+ * @param options - Configuration options for the spawned process
+ * @returns Promise that resolves with the process results including pid, stdout, stderr, status, and signal
+ * @throws Will reject the promise if the process fails to spawn or encounters an error
+ *
+ * @example
+ * ```typescript
+ * const result = await spawnAsync('ls', ['-la'], { verbose: true });
+ * console.log(result.stdout);
+ * ```
+ */
 export async function spawnAsync(
   command: string,
   args?: ReadonlyArray<string>,
