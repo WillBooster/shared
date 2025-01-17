@@ -30,24 +30,6 @@ export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<ty
   },
 };
 
-function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
-  argv = { ...argv, command: argv.command ?? (isRunningOnBun ? 'bun run build' : 'yarn build') };
-  console.info(chalk.green(`Run '${argv.command}'`));
-  if (!argv.dryRun) {
-    const ret = child_process.spawnSync(argv.command ?? '', {
-      cwd: project.dirPath,
-      env: project.env,
-      shell: true,
-      stdio: 'inherit',
-    });
-    if (ret.status !== 0) {
-      process.exitCode = ret.status ?? 1;
-      return false;
-    }
-  }
-  return true;
-}
-
 export async function buildIfNeeded(
   // Test code requires Partial<...>
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>>,
@@ -58,6 +40,8 @@ export async function buildIfNeeded(
     console.error(chalk.red('No project found.'));
     return true;
   }
+
+  argv = { ...argv, command: argv.command ?? (isRunningOnBun ? 'bun run build' : 'yarn build') };
 
   if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
     build(project, argv);
@@ -74,6 +58,23 @@ export async function buildIfNeeded(
 
   if (!argv.dryRun) {
     await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
+  }
+  return true;
+}
+
+function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
+  console.info(chalk.green(`Run '${argv.command}'`));
+  if (!argv.dryRun) {
+    const ret = child_process.spawnSync(argv.command ?? '', {
+      cwd: project.dirPath,
+      env: project.env,
+      shell: true,
+      stdio: 'inherit',
+    });
+    if (ret.status !== 0) {
+      process.exitCode = ret.status ?? 1;
+      return false;
+    }
   }
   return true;
 }
