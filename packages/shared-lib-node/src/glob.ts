@@ -28,8 +28,9 @@ export async function* glob(
 ): NodeJS.AsyncIterator<NodeJsDirentLike> {
   // cf. https://bun.sh/guides/util/detect-bun
   if (process.versions.bun) {
-    const bun = await import('bun');
-    const bunGlob = new bun.Glob(pattern);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports,unicorn/prefer-module
+    const bun = require(String('bun'));
+    const bunGlob = new bun.Glob(pattern) as Glob;
     for await (const direntPath of bunGlob.scan({ cwd: options.cwd, onlyFiles: options.onlyFiles })) {
       const parsedDirentPath = path.parse(direntPath);
       const dirent = {
@@ -71,7 +72,7 @@ export function globSync(
   // cf. https://bun.sh/guides/util/detect-bun
   if (process.versions.bun) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports,unicorn/prefer-module
-    const bun = require('bun');
+    const bun = require(String('bun'));
     const bunGlob = new bun.Glob(pattern) as Glob;
     const dirents: NodeJsDirentLike[] = [];
     for (const direntPath of bunGlob.scanSync({ cwd: options.cwd, onlyFiles: options.onlyFiles })) {
