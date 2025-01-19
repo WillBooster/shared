@@ -4327,6 +4327,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/bun@npm:1.1.17":
+  version: 1.1.17
+  resolution: "@types/bun@npm:1.1.17"
+  dependencies:
+    bun-types: "npm:1.1.44"
+  checksum: 10c0/6f794670cbb230ddb6a6cbf8b1eb077e9e96024fd9afca143e946e415cde14fb06d0f5e9b65b4b3f57370cc17afe5f94c88d259a055305266ee283cd9c29fbcf
+  languageName: node
+  linkType: hard
+
 "@types/cacheable-request@npm:^6.0.1":
   version: 6.0.3
   resolution: "@types/cacheable-request@npm:6.0.3"
@@ -4496,6 +4505,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/node@npm:~20.12.8":
+  version: 20.12.14
+  resolution: "@types/node@npm:20.12.14"
+  dependencies:
+    undici-types: "npm:~5.26.4"
+  checksum: 10c0/d6e383a09139efdedd91f4e8b584bb9b7537382d3dd276296a68b20a7819a562ae651efdd007a60036116f286b9c9a8a31af698f93b4024e569b0d129f293165
+  languageName: node
+  linkType: hard
+
 "@types/normalize-package-data@npm:^2.4.0, @types/normalize-package-data@npm:^2.4.1":
   version: 2.4.4
   resolution: "@types/normalize-package-data@npm:2.4.4"
@@ -4647,6 +4665,15 @@ __metadata:
     anymatch: "npm:^3.0.0"
     source-map: "npm:^0.6.0"
   checksum: 10c0/ecd530e5db4c21ec61795eec538026f96c126323836249a83e72805afd1d0b1141fc781f14d4a59d77f877523384b4c5d79dc391cfb901e7a781a9aa085f8198
+  languageName: node
+  linkType: hard
+
+"@types/ws@npm:~8.5.10":
+  version: 8.5.13
+  resolution: "@types/ws@npm:8.5.13"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/a5430aa479bde588e69cb9175518d72f9338b6999e3b2ae16fc03d3bdcff8347e486dc031e4ed14601260463c07e1f9a0d7511dfc653712b047c439c680b0b34
   languageName: node
   linkType: hard
 
@@ -5274,6 +5301,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-node@workspace:packages/shared-lib-node"
   dependencies:
+    "@types/bun": "npm:1.1.17"
     "@types/eslint": "npm:8.56.10"
     "@types/micromatch": "npm:4.0.9"
     "@types/node": "npm:22.10.7"
@@ -6835,6 +6863,16 @@ __metadata:
   version: 3.0.0
   resolution: "builtin-status-codes@npm:3.0.0"
   checksum: 10c0/c37bbba11a34c4431e56bd681b175512e99147defbe2358318d8152b3a01df7bf25e0305873947e5b350073d5ef41a364a22b37e48f1fb6d2fe6d5286a0f348c
+  languageName: node
+  linkType: hard
+
+"bun-types@npm:1.1.44":
+  version: 1.1.44
+  resolution: "bun-types@npm:1.1.44"
+  dependencies:
+    "@types/node": "npm:~20.12.8"
+    "@types/ws": "npm:~8.5.10"
+  checksum: 10c0/a924d3608a54816215c82c09b4a480902b2ce68feb8f167c37be9d1fa16587b68d7620eaef572d3c52df832e7f987ce5772e5695b1c75e39f5a413ad6806da7c
   languageName: node
   linkType: hard
 
@@ -18848,6 +18886,13 @@ __metadata:
     has-symbols: "npm:^1.1.0"
     which-boxed-primitive: "npm:^1.1.1"
   checksum: 10c0/7dbd35ab02b0e05fe07136c72cb9355091242455473ec15057c11430129bab38b7b3624019b8778d02a881c13de44d63cd02d122ee782fb519e1de7775b5b982
+  languageName: node
+  linkType: hard
+
+"undici-types@npm:~5.26.4":
+  version: 5.26.5
+  resolution: "undici-types@npm:5.26.5"
+  checksum: 10c0/bb673d7876c2d411b6eb6c560e0c571eef4a01c1c19925175d16e3a30c4c428181fb8d7ae802a261f283e4166a0ac435e2f505743aa9e45d893f9a3df017b501
   languageName: node
   linkType: hard
 
