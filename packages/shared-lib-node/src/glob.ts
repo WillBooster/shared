@@ -28,6 +28,7 @@ export async function* glob(
 ): NodeJS.AsyncIterator<NodeJsDirentLike> {
   // cf. https://bun.sh/guides/util/detect-bun
   if (process.versions.bun) {
+    // Use require & String to avoid loading bun on Next.js
     // eslint-disable-next-line @typescript-eslint/no-require-imports,unicorn/prefer-module
     const bun = require(String('bun'));
     const bunGlob = new bun.Glob(pattern) as Glob;
@@ -71,6 +72,7 @@ export function globSync(
 ): NodeJsDirentLike[] {
   // cf. https://bun.sh/guides/util/detect-bun
   if (process.versions.bun) {
+    // Use require & String to avoid loading bun on Next.js
     // eslint-disable-next-line @typescript-eslint/no-require-imports,unicorn/prefer-module
     const bun = require(String('bun'));
     const bunGlob = new bun.Glob(pattern) as Glob;
