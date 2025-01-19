@@ -48,7 +48,7 @@ test('should respect excludes option', async () => {
   for await (const file of glob('**/*', {
     cwd: rootDirPath,
     onlyFiles: true,
-    excludes: ['/node_modules/'],
+    excludes: [/\/node_modules(?:\/|$)/],
   })) {
     files.push(path.join(file.parentPath, file.name));
   }
@@ -60,11 +60,41 @@ test('should handle multiple exclude patterns', async () => {
   for await (const file of glob('**/*', {
     cwd: rootDirPath,
     onlyFiles: true,
-    excludes: ['/node_modules/', '/src/'],
+    excludes: [/\/node_modules(?:\/|$)/, /\/src(?:\/|$)/],
   })) {
     files.push(path.join(file.parentPath, file.name));
   }
   expect(files.sort()).toEqual([rootFilePath].sort());
+});
+
+test('should include directories when onlyFiles is false', async () => {
+  const entries = [];
+  for await (const entry of glob('**/*', { cwd: rootDirPath, onlyFiles: false })) {
+    entries.push(path.join(entry.parentPath, entry.name));
+  }
+  expect(entries.sort()).toEqual(
+    [
+      rootFilePath,
+      srcFilePath,
+      nodeModuleFilePath,
+      packageFilePath,
+      srcDirPath,
+      nodeModuleDirPath,
+      packageDirPath,
+    ].sort()
+  );
+});
+
+test('should respect excludes with directories', async () => {
+  const entries = [];
+  for await (const entry of glob('**/*', {
+    cwd: rootDirPath,
+    onlyFiles: false,
+    excludes: [/\/node_modules(?:\/|$)/],
+  })) {
+    entries.push(path.join(entry.parentPath, entry.name));
+  }
+  expect(entries.sort()).toEqual([rootFilePath, srcFilePath, srcDirPath].sort());
 });
 
 test('should glob all files with **/* pattern (sync)', () => {
@@ -85,7 +115,7 @@ test('should respect excludes option (sync)', () => {
   const files = globSync('**/*', {
     cwd: rootDirPath,
     onlyFiles: true,
-    excludes: ['/node_modules/'],
+    excludes: [/\/node_modules(?:\/|$)/],
   }).map((file) => path.join(file.parentPath, file.name));
   expect(files.sort()).toEqual([rootFilePath, srcFilePath].sort());
 });
@@ -94,7 +124,33 @@ test('should handle multiple exclude patterns (sync)', () => {
   const files = globSync('**/*', {
     cwd: rootDirPath,
     onlyFiles: true,
-    excludes: ['/node_modules/', '/src/'],
+    excludes: [/\/node_modules(?:\/|$)/, /\/src(?:\/|$)/],
   }).map((file) => path.join(file.parentPath, file.name));
   expect(files.sort()).toEqual([rootFilePath].sort());
+});
+
+test('should include directories when onlyFiles is false (sync)', () => {
+  const entries = globSync('**/*', { cwd: rootDirPath, onlyFiles: false }).map((entry) =>
+    path.join(entry.parentPath, entry.name)
+  );
+  expect(entries.sort()).toEqual(
+    [
+      rootFilePath,
+      srcFilePath,
+      nodeModuleFilePath,
+      packageFilePath,
+      srcDirPath,
+      nodeModuleDirPath,
+      packageDirPath,
+    ].sort()
+  );
+});
+
+test('should respect excludes with directories (sync)', () => {
+  const entries = globSync('**/*', {
+    cwd: rootDirPath,
+    onlyFiles: false,
+    excludes: [/\/node_modules(?:\/|$)/],
+  }).map((entry) => path.join(entry.parentPath, entry.name));
+  expect(entries.sort()).toEqual([rootFilePath, srcFilePath, srcDirPath].sort());
 });

@@ -7,7 +7,7 @@ import { calculateHashFromFiles, updateHashFromFiles } from '../src/hash.js';
 
 const dirPath1 = path.resolve('test-fixtures', 'test1');
 const dirPath2 = path.resolve('test-fixtures', 'test2');
-const hashDirPath = path.resolve('test-fixtures', 'temp');
+const hashDirPath = path.resolve('test-fixtures', 'temp', 'hash');
 fs.rmSync(hashDirPath, { force: true, recursive: true });
 fs.mkdirSync(hashDirPath, { recursive: true });
 
