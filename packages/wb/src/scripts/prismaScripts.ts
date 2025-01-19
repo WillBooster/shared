@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import type { Project } from '../project.js';
@@ -57,9 +58,10 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     return `if [ -e "prisma/seeds.ts" ]; then BUN build-ts run prisma/seeds.ts; fi`;
   }
 
-  studio(_: Project, dbUrlOrPath?: string): string {
-    const FILE_SCHEMA = 'file://';
+  studio(project: Project, dbUrlOrPath?: string): string {
+    const FILE_SCHEMA = 'file:';
     let prefix = '';
+    // Deal with Prisma issue: https://github.com/prisma/studio/issues/1273
     if (dbUrlOrPath) {
       try {
         new URL(dbUrlOrPath);
@@ -68,9 +70,23 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
         const absolutePath = path.resolve(dbUrlOrPath);
         prefix = `DATABASE_URL=${FILE_SCHEMA}${absolutePath} `;
       }
-    } else if (process.env.DATABASE_URL?.startsWith(FILE_SCHEMA)) {
-      const absolutePath = path.resolve(process.env.DATABASE_URL.slice(FILE_SCHEMA.length));
-      prefix = `DATABASE_URL=${FILE_SCHEMA}${absolutePath} `;
+    } else if (project.env.DATABASE_URL?.startsWith(FILE_SCHEMA)) {
+      const POSSIBLE_PATHS = [
+        { schemaPath: path.join('prisma', 'schema.prisma'), dbPath: 'prisma' },
+        { schemaPath: path.join('prisma', 'schema'), dbPath: path.join('prisma', 'schema') },
+        { schemaPath: path.join('db', 'schema.prisma'), dbPath: 'db' },
+      ];
+      for (const { dbPath, schemaPath } of POSSIBLE_PATHS) {
+        if (fs.existsSync(path.resolve(project.dirPath, schemaPath))) {
+          const absolutePath = path.resolve(
+            project.dirPath,
+            dbPath,
+            project.env.DATABASE_URL.slice(FILE_SCHEMA.length)
+          );
+          prefix = `DATABASE_URL=${FILE_SCHEMA}${absolutePath} `;
+          break;
+        }
+      }
     }
     return `${prefix}PRISMA studio`;
   }
