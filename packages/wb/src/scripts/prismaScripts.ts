@@ -58,6 +58,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
   }
 
   studio(_: Project, dbUrlOrPath?: string): string {
+    const FILE_SCHEMA = 'file://';
     let prefix = '';
     if (dbUrlOrPath) {
       try {
@@ -65,9 +66,11 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
         prefix = `DATABASE_URL=${dbUrlOrPath} `;
       } catch {
         const absolutePath = path.resolve(dbUrlOrPath);
-        console.info(dbUrlOrPath, absolutePath);
-        prefix = `DATABASE_URL=file://${absolutePath} `;
+        prefix = `DATABASE_URL=${FILE_SCHEMA}${absolutePath} `;
       }
+    } else if (process.env.DATABASE_URL?.startsWith(FILE_SCHEMA)) {
+      const absolutePath = path.resolve(process.env.DATABASE_URL.slice(FILE_SCHEMA.length));
+      prefix = `DATABASE_URL=${FILE_SCHEMA}${absolutePath} `;
     }
     return `${prefix}PRISMA studio`;
   }
