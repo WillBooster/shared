@@ -52,7 +52,6 @@ export async function setup(
 
     if (dirents.some((d) => d.isFile() && d.name === 'pyproject.toml')) {
       await runWithSpawnInParallel('poetry config virtualenvs.in-project true', project, argv);
-      await runWithSpawnInParallel('poetry config virtualenvs.prefer-active-python true', project, argv);
       const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
       await runWithSpawnInParallel(`poetry env use ${version}`, project, argv);
       await promisePool.promiseAll();
