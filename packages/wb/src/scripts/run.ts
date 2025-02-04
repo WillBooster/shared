@@ -164,6 +164,7 @@ function configureEnv(env: Record<string, string | undefined>, opts: Options): R
 function fixBunCommand(command: string): string {
   // cf. https://github.com/oven-sh/bun/issues/14359
   return command.includes('next dev') ||
+    // cf. https://github.com/oven-sh/bun/issues/8222
     command.includes('playwright') ||
     // "bun --bun prisma generate" doesn't work
     command.includes('prisma') ||
