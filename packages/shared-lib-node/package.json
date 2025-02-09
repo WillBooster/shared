@@ -26,6 +26,7 @@
   ],
   "scripts": {
     "build": "build-ts lib",
+    "check-all": "yarn cleanup && yarn typecheck && yarn test",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify",
     "lint": "eslint --color \"./{scripts,src,tests}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}\"",
@@ -58,7 +59,7 @@
     "eslint-plugin-unicorn": "56.0.1",
     "lint-staged": "15.4.3",
     "micromatch": "4.0.8",
-    "prettier": "3.4.2",
+    "prettier": "3.5.0",
     "sort-package-json": "2.14.0",
     "typescript": "5.7.3",
     "vitest": "3.0.5"
