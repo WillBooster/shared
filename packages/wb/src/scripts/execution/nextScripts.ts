@@ -24,7 +24,7 @@ class NextScripts extends BaseScripts {
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {
     return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
       "${[
-        ...(project.hasPrisma ? [prismaScripts.reset(project)] : []),
+        ...(project.hasPrisma ? [prismaScripts.seed(project)] : []),
         project.buildCommand,
         `PORT=${port} pm2-runtime start ${project.findFile('ecosystem.config.cjs')} ${argv.normalizedArgsText ?? ''}`,
       ].join(' && ')}"

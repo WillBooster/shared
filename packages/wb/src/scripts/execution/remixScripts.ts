@@ -23,7 +23,7 @@ class RemixScripts extends BaseScripts {
 
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {
     return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
-      "${prismaScripts.reset(project)} && ${project.buildCommand} && PORT=${port} pm2-runtime start ${project.findFile(
+      "${prismaScripts.seed(project)} && ${project.buildCommand} && PORT=${port} pm2-runtime start ${project.findFile(
         'ecosystem.config.cjs'
       )} ${argv.normalizedArgsText ?? ''}"
       "${this.waitAndOpenApp(project, argv, port)}"`;
