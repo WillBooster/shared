@@ -69,8 +69,13 @@ export abstract class BaseScripts {
   abstract testStart(project: Project, argv: ScriptArgv): string;
 
   testUnit(project: Project, argv: TestArgv): string {
-    // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-    return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${argv.target || 'tests/unit'} --color --passWithNoTests --allowOnly`;
+    if (project.hasVitest) {
+      // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
+      return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${argv.target || 'tests/unit'} --color --passWithNoTests --allowOnly`;
+    } else if (project.isBunAvailable) {
+      return `WB_ENV=${project.env.WB_ENV} bun test ${argv.target || 'tests/unit'}`;
+    }
+    return 'echo "No tests."';
   }
 
   protected waitApp(project: Project, argv: ScriptArgv, port = this.defaultPort): string {

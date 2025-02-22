@@ -108,6 +108,11 @@ export class Project {
   }
 
   @memoizeOne
+  get hasVitest(): boolean {
+    return !!(this.packageJson.dependencies?.['vitest'] || this.packageJson.devDependencies?.['vitest']);
+  }
+
+  @memoizeOne
   get dockerPackageJson(): PackageJson {
     return path.dirname(this.findFile('Dockerfile')) === this.dirPath
       ? this.packageJson
