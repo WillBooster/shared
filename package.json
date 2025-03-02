@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "build": "yarn workspaces foreach --all --parallel --verbose run build",
+    "check-all": "yarn cleanup && yarn typecheck && yarn test",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format",
     "postinstall": "husky || true",
@@ -42,7 +43,7 @@
     "sort-package-json": "2.15.1",
     "typescript": "5.8.2"
   },
-  "packageManager": "yarn@4.6.0",
+  "packageManager": "yarn@4.7.0",
   "engines": {
     "node": ">= 22"
   }
