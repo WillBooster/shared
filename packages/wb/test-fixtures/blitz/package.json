@@ -14,10 +14,10 @@
   "dependencies": {
     "@blitzjs/auth": "2.1.1",
     "@blitzjs/next": "2.1.1",
-    "@prisma/client": "6.4.1",
+    "@prisma/client": "6.5.0",
     "blitz": "2.1.1",
-    "next": "15.2.1",
-    "prisma": "6.4.1",
+    "next": "15.2.2",
+    "prisma": "6.5.0",
     "react": "19.0.0",
     "react-dom": "19.0.0"
   },
@@ -26,6 +26,6 @@
     "@types/react": "19.0.10",
     "concurrently": "9.1.2",
     "typescript": "5.8.2",
-    "wait-on": "8.0.2"
+    "wait-on": "8.0.3"
   }
 }

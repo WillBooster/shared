@@ -25,17 +25,17 @@
   },
   "prettier": "@willbooster/prettier-config",
   "resolutions": {
-    "esbuild": "0.25.0"
+    "esbuild": "0.25.1"
   },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "7.1.2",
     "@types/eslint": "8.56.10",
-    "@typescript-eslint/parser": "8.26.0",
+    "@typescript-eslint/parser": "8.26.1",
     "@willbooster/prettier-config": "9.1.3",
     "conventional-changelog-conventionalcommits": "6.1.0",
     "eslint": "8.57.0",
     "husky": "9.1.7",
-    "lint-staged": "15.4.3",
+    "lint-staged": "15.5.0",
     "micromatch": "4.0.8",
     "pinst": "3.0.0",
     "prettier": "3.5.3",
