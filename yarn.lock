@@ -5543,7 +5543,7 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
     blitz: "npm:2.1.3"
-    build-ts: "npm:13.1.30"
+    build-ts: "npm:13.1.32"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:10.1.1"
     eslint-import-resolver-typescript: "npm:3.9.1"
@@ -5582,7 +5582,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:8.27.0"
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
-    build-ts: "npm:13.1.30"
+    build-ts: "npm:13.1.32"
     dotenv: "npm:16.4.7"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:10.1.1"
@@ -5625,7 +5625,7 @@ __metadata:
     "@willbooster/eslint-config-ts-react": "npm:10.2.1"
     "@willbooster/prettier-config": "npm:9.1.3"
     babel-loader: "npm:9.2.1"
-    build-ts: "npm:13.1.30"
+    build-ts: "npm:13.1.32"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:10.1.1"
     eslint-import-resolver-typescript: "npm:3.9.1"
@@ -5660,7 +5660,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:8.27.0"
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
-    build-ts: "npm:13.1.30"
+    build-ts: "npm:13.1.32"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:10.1.1"
     eslint-import-resolver-typescript: "npm:3.9.1"
@@ -5693,7 +5693,7 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
     at-decorators: "npm:4.2.0"
-    build-ts: "npm:13.1.30"
+    build-ts: "npm:13.1.32"
     chalk: "npm:5.4.1"
     dotenv: "npm:16.4.7"
     eslint: "npm:8.57.0"
@@ -7097,9 +7097,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"build-ts@npm:13.1.30":
-  version: 13.1.30
-  resolution: "build-ts@npm:13.1.30"
+"build-ts@npm:13.1.32":
+  version: 13.1.32
+  resolution: "build-ts@npm:13.1.32"
   dependencies:
     "@babel/core": "npm:7.26.10"
     "@babel/plugin-proposal-decorators": "npm:7.25.9"
@@ -7137,7 +7137,7 @@ __metadata:
     yargs: "npm:17.7.2"
   bin:
     build-ts: bin/index.js
-  checksum: 10c0/e77b834da8218a81fac7184f4e7ac0b66b141c825ef5182e425924259a330fe135023e3a6247d0574d6c3786cd8080ae4f38071c3a81c0bcd8048cc9e18b0c0c
+  checksum: 10c0/212938e56fcfebca436605a60a1c09881fcf746874ee12f119d01ac1f808de7f4f128c184ecc353423fd4364a5961d422a4ed691fe5526b19ff1c935da738c72
   languageName: node
   linkType: hard
 
