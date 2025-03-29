@@ -35,7 +35,7 @@ export function useStorage<T>(
       // do nothing
     }
     return initialValue;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [jsonText, initialValue]);
 
   const setState = useCallback(
@@ -52,7 +52,7 @@ export function useStorage<T>(
       }
       globalThis.dispatchEvent(new StorageEvent('storage', { key, newValue }));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [key, value]
   );
 
@@ -60,7 +60,7 @@ export function useStorage<T>(
     if (window[nonReactiveStorageType].getItem(key) === null && initialValue !== undefined) {
       window[nonReactiveStorageType].setItem(key, JSON.stringify(initialValue));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [key, initialValue]);
 
   return [value, setState];
