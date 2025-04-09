@@ -57,6 +57,7 @@ export interface RetryOptions {
   handleError?: (error: unknown) => Promise<void>;
   retryCount?: number;
   retryLogger?: (message: string) => void;
+  shouldRetry?: (error: unknown) => boolean;
   sleepMilliseconds?: number;
 }
 
@@ -71,7 +72,7 @@ export interface RetryOptions {
  */
 export async function withRetry<T>(
   func: (failedCount: number) => T | Promise<T>,
-  { beforeRetry, handleError, retryCount = 3, retryLogger, sleepMilliseconds = 0 }: RetryOptions = {}
+  { beforeRetry, handleError, retryCount = 3, retryLogger, shouldRetry, sleepMilliseconds = 0 }: RetryOptions = {}
 ): Promise<T> {
   let failedCount = 0;
   for (;;) {
@@ -81,6 +82,9 @@ export async function withRetry<T>(
       await handleError?.(error);
       failedCount++;
       if (failedCount >= retryCount) {
+        throw error;
+      }
+      if (shouldRetry && !shouldRetry(error)) {
         throw error;
       }
       if (sleepMilliseconds > 0) {
