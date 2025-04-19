@@ -5419,7 +5419,7 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
     blitz: "npm:2.1.3"
-    build-ts: "npm:13.1.38"
+    build-ts: "npm:13.1.39"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:10.1.2"
     eslint-import-resolver-typescript: "npm:3.10.0"
@@ -5436,13 +5436,13 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/shared-lib-node@npm:6.1.14":
-  version: 6.1.14
-  resolution: "@willbooster/shared-lib-node@npm:6.1.14"
+"@willbooster/shared-lib-node@npm:6.1.15":
+  version: 6.1.15
+  resolution: "@willbooster/shared-lib-node@npm:6.1.15"
   dependencies:
     dotenv: "npm:16.5.0"
     tree-kill: "npm:1.2.2"
-  checksum: 10c0/59a5b3ccab7b13b4f93136427f89fa9edd182ec6b5ccd29f25ae5a1aa4b6faec0797a7a61e03c5c9f21fe981ce8af6d0de471e05068a41b9c70e3d0c054e3610
+  checksum: 10c0/b8adb77db4a26692c28dfbff74953028e9f5693eddda5aa79439de74e18818819681f6c7338ab96c0160945005d5ff5443e16efde568a700ae8282924183a3dd
   languageName: node
   linkType: hard
 
@@ -5458,7 +5458,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:8.30.1"
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
-    build-ts: "npm:13.1.38"
+    build-ts: "npm:13.1.39"
     dotenv: "npm:16.5.0"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:10.1.2"
@@ -5501,7 +5501,7 @@ __metadata:
     "@willbooster/eslint-config-ts-react": "npm:10.2.1"
     "@willbooster/prettier-config": "npm:9.1.3"
     babel-loader: "npm:10.0.0"
-    build-ts: "npm:13.1.38"
+    build-ts: "npm:13.1.39"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:10.1.2"
     eslint-import-resolver-typescript: "npm:3.10.0"
@@ -5536,7 +5536,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:8.30.1"
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
-    build-ts: "npm:13.1.38"
+    build-ts: "npm:13.1.39"
     eslint: "npm:8.57.0"
     eslint-config-prettier: "npm:10.1.2"
     eslint-import-resolver-typescript: "npm:3.10.0"
@@ -5569,7 +5569,7 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:10.6.1"
     "@willbooster/prettier-config": "npm:9.1.3"
     at-decorators: "npm:4.2.0"
-    build-ts: "npm:13.1.38"
+    build-ts: "npm:13.1.39"
     chalk: "npm:5.4.1"
     dotenv: "npm:16.5.0"
     eslint: "npm:8.57.0"
@@ -6935,9 +6935,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"build-ts@npm:13.1.38":
-  version: 13.1.38
-  resolution: "build-ts@npm:13.1.38"
+"build-ts@npm:13.1.39":
+  version: 13.1.39
+  resolution: "build-ts@npm:13.1.39"
   dependencies:
     "@babel/core": "npm:7.26.10"
     "@babel/plugin-proposal-decorators": "npm:7.25.9"
@@ -6954,7 +6954,7 @@ __metadata:
     "@rollup/plugin-replace": "npm:6.0.2"
     "@rollup/plugin-terser": "npm:0.4.4"
     "@rollup/pluginutils": "npm:5.1.4"
-    "@willbooster/shared-lib-node": "npm:6.1.14"
+    "@willbooster/shared-lib-node": "npm:6.1.15"
     babel-plugin-polyfill-corejs3: "npm:0.12.0"
     babel-plugin-transform-remove-console: "npm:6.9.4"
     chalk: "npm:5.4.1"
@@ -6975,7 +6975,7 @@ __metadata:
     yargs: "npm:17.7.2"
   bin:
     build-ts: bin/index.js
-  checksum: 10c0/0f76e3b2a64a774fe565fbe097f5947dc208f4b8f86ca9fcf08091470581323cc56c3e460aa17d7e9c2caf508425b83f78e329d95dc5585bfc3146633cf7605a
+  checksum: 10c0/d12d7a3666a170fdbe2385d67219ca273e2ecb585b2f34972ca10f96a26a996556a0596c0928d68f59645d012b7c4ad88e246c99ba3b6d9ae3c04deaff3503f9
   languageName: node
   linkType: hard
 
