@@ -57,7 +57,7 @@
     "micromatch": "4.0.8",
     "prettier": "3.5.3",
     "prisma": "6.6.0",
-    "sort-package-json": "2.15.1",
+    "sort-package-json": "3.0.0",
     "type-fest": "4.40.0",
     "typescript": "5.8.3",
     "vitest": "3.1.1"
