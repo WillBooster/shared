@@ -52,7 +52,7 @@
     "@typescript-eslint/parser": "8.30.1",
     "@willbooster/eslint-config-ts-react": "10.2.1",
     "@willbooster/prettier-config": "9.1.3",
-    "babel-loader": "9.2.1",
+    "babel-loader": "10.0.0",
     "build-ts": "13.1.38",
     "eslint": "8.57.0",
     "eslint-config-prettier": "10.1.2",
