@@ -23,23 +23,23 @@ describe('BasicAuthMiddleware', () => {
     mockNext = vitest.fn();
   });
 
-  test('authorized', () => {
+  test('authorized', async () => {
     mockRequest.headers = {
       authorization: `Basic ${Buffer.from('username:password').toString('base64')}`,
     };
 
-    basicAuthMiddleware(mockRequest as IncomingMessage, mockResponse as ServerResponse, mockNext);
+    await basicAuthMiddleware(mockRequest as IncomingMessage, mockResponse as ServerResponse, mockNext);
 
     expect(mockResponse.setHeader).toBeCalledTimes(0);
     expect(mockNext).toBeCalledTimes(1);
   });
 
-  test('incorrect password', () => {
+  test('incorrect password', async () => {
     mockRequest.headers = {
       authorization: `Basic ${Buffer.from('username:incorrect').toString('base64')}`,
     };
 
-    basicAuthMiddleware(mockRequest as IncomingMessage, mockResponse as ServerResponse, mockNext);
+    await basicAuthMiddleware(mockRequest as IncomingMessage, mockResponse as ServerResponse, mockNext);
 
     expect(mockResponse.setHeader).toBeCalledWith('WWW-Authenticate', "Basic realm='realm'");
     expect(mockResponse.statusCode).toBe(401);
@@ -47,8 +47,8 @@ describe('BasicAuthMiddleware', () => {
     expect(mockNext).toBeCalledTimes(0);
   });
 
-  test('no authorization header', () => {
-    basicAuthMiddleware(mockRequest as IncomingMessage, mockResponse as ServerResponse, mockNext);
+  test('no authorization header', async () => {
+    await basicAuthMiddleware(mockRequest as IncomingMessage, mockResponse as ServerResponse, mockNext);
 
     expect(mockResponse.setHeader).toBeCalledWith('WWW-Authenticate', "Basic realm='realm'");
     expect(mockResponse.statusCode).toBe(401);

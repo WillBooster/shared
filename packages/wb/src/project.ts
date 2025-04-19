@@ -94,7 +94,7 @@ export class Project {
 
   @memoizeOne
   get packageJson(): PackageJson {
-    return JSON.parse(fs.readFileSync(this.packageJsonPath, 'utf8'));
+    return JSON.parse(fs.readFileSync(this.packageJsonPath, 'utf8')) as PackageJson;
   }
 
   @memoizeOne
@@ -116,7 +116,9 @@ export class Project {
   get dockerPackageJson(): PackageJson {
     return path.dirname(this.findFile('Dockerfile')) === this.dirPath
       ? this.packageJson
-      : JSON.parse(fs.readFileSync(path.join(path.dirname(this.findFile('Dockerfile')), 'package.json'), 'utf8'));
+      : (JSON.parse(
+          fs.readFileSync(path.join(path.dirname(this.findFile('Dockerfile')), 'package.json'), 'utf8')
+        ) as PackageJson);
   }
 
   @memoizeOne

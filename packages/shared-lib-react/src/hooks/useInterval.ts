@@ -32,7 +32,6 @@ export function useInterval(callback: () => void, milliseconds?: number): () => 
       timerId.current = globalThis.setInterval(() => callbackRef.current(), milliseconds);
     }
     return clearInterval;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [milliseconds]);
 
   return clearInterval;

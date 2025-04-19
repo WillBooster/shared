@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "build": "yarn workspaces foreach --all --parallel --verbose run build",
+    "check-all": "yarn cleanup && yarn typecheck && yarn test",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format",
     "postinstall": "husky || true",
@@ -30,10 +31,9 @@
   "devDependencies": {
     "@qiwi/multi-semantic-release": "7.1.2",
     "@types/eslint": "8.56.10",
-    "@typescript-eslint/parser": "8.30.1",
-    "@willbooster/prettier-config": "9.1.3",
+    "@willbooster/prettier-config": "10.0.0",
     "conventional-changelog-conventionalcommits": "6.1.0",
-    "eslint": "8.57.0",
+    "eslint": "9.25.0",
     "husky": "9.1.7",
     "lint-staged": "15.5.1",
     "micromatch": "4.0.8",

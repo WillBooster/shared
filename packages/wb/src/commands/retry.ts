@@ -14,8 +14,7 @@ const builder = {
   },
 } as const;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const argumentsBuilder = {
+const _argumentsBuilder = {
   command: {
     description: 'A command to retry',
     type: 'string',
@@ -28,7 +27,7 @@ const argumentsBuilder = {
 
 export const retryCommand: CommandModule<
   unknown,
-  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
+  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>
 > = {
   command: 'retry [command] [args...]',
   describe: 'Retry the given command until it succeeds',
