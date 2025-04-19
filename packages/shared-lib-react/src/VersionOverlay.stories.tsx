@@ -9,6 +9,7 @@ const meta: Meta<typeof VersionOverlay> = {
 
 const Template: StoryFn<typeof VersionOverlay> = (args: Record<string, never>) => <VersionOverlay {...args} />;
 
+// eslint-disable-next-line
 export const Default: StoryFn<typeof VersionOverlay> = Template.bind({});
 
 export default meta;

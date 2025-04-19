@@ -129,6 +129,7 @@ export async function spawnAsync(
         proc.stdin?.end();
       }
     } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
       reject(error);
     }
   });

@@ -29,7 +29,7 @@ async function killPortProcessHandlingErrors(port: number): Promise<void> {
 }
 
 export function spawnSyncOnExit(script: string, project: Project): void {
-  const killFunc = async (): Promise<void> => {
+  const killFunc = (): void => {
     if (killed.has(script)) return;
 
     killed.add(script);

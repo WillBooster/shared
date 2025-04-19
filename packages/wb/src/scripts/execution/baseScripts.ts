@@ -18,7 +18,11 @@ export interface TestE2EOptions extends TestE2EDevOptions {
  * Note that YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 export abstract class BaseScripts {
-  protected constructor(private readonly defaultPort = Number(process.env.PORT) || 3000) {}
+  private readonly defaultPort;
+
+  protected constructor(defaultPort = Number(process.env.PORT) || 3000) {
+    this.defaultPort = defaultPort;
+  }
 
   buildDocker(project: Project, version = 'development'): string {
     return dockerScripts.buildDevImage(project, version);

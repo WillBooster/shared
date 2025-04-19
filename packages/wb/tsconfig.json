@@ -3,6 +3,7 @@
     "allowSyntheticDefaultImports": true,
     "alwaysStrict": true,
     "declaration": true,
+    "erasableSyntaxOnly": true,
     "esModuleInterop": true,
     "importHelpers": false,
     "module": "NodeNext",
@@ -15,5 +16,5 @@
     "target": "ES2022",
     "typeRoots": ["../../node_modules/@types", "../../@types", "./@types"]
   },
-  "include": ["scripts/**/*", "src/**/*", "tests/**/*"]
+  "include": ["vitest.config.ts", "scripts/**/*", "src/**/*", "tests/**/*"]
 }

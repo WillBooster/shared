@@ -1,5 +1,7 @@
-import { defineConfig } from 'vitest/config';
+/* eslint-disable */
+
 import swc from '@rollup/plugin-swc';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   esbuild: false,

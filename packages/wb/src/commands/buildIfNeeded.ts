@@ -1,5 +1,5 @@
 import child_process from 'node:child_process';
-import type { Hash } from 'node:crypto';
+import type { BinaryLike, Hash } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -156,10 +156,10 @@ async function updateHashWithDiffResult(
 
     // 'git diff --' works only on rootDirPath
     const proc = child_process.spawn('git', ['diff', '--', ...filteredFilePaths], { cwd: project.rootDirPath });
-    proc.stdout?.on('data', (data) => {
+    proc.stdout?.on('data', (data: BinaryLike) => {
       hash.update(data);
       if (argv.verbose) {
-        console.info(data.toString());
+        console.info('Data:', data);
         console.info('Hash:', hash.copy().digest('hex'));
       }
     });

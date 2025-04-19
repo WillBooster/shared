@@ -19,8 +19,7 @@ const builder = {
   },
 } as const;
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const argumentsBuilder = {
+const _argumentsBuilder = {
   files: {
     description: 'File and directory paths to lint',
     type: 'array',
@@ -51,7 +50,7 @@ const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !
 
 export const lintCommand: CommandModule<
   unknown,
-  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
+  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>
 > = {
   command: 'lint [files...]',
   describe: 'Lint code on Bun',

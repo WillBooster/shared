@@ -29,8 +29,9 @@ export async function* glob(
   // cf. https://bun.sh/guides/util/detect-bun
   if (process.versions.bun) {
     // Use require & String to avoid loading bun on Next.js
-    // eslint-disable-next-line @typescript-eslint/no-require-imports,unicorn/prefer-module
+    // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-unsafe-assignment,unicorn/prefer-module
     const bun = require(String('bun'));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-member-access
     const bunGlob = new bun.Glob(pattern) as Glob;
     for await (const direntPath of bunGlob.scan({ cwd: options.cwd, onlyFiles: options.onlyFiles })) {
       const parsedDirentPath = path.parse(direntPath);
@@ -73,8 +74,9 @@ export function globSync(
   // cf. https://bun.sh/guides/util/detect-bun
   if (process.versions.bun) {
     // Use require & String to avoid loading bun on Next.js
-    // eslint-disable-next-line @typescript-eslint/no-require-imports,unicorn/prefer-module
+    // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-unsafe-assignment,unicorn/prefer-module
     const bun = require(String('bun'));
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-member-access
     const bunGlob = new bun.Glob(pattern) as Glob;
     const dirents: NodeJsDirentLike[] = [];
     for (const direntPath of bunGlob.scanSync({ cwd: options.cwd, onlyFiles: options.onlyFiles })) {
