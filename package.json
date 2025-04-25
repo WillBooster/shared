@@ -26,7 +26,7 @@
   },
   "prettier": "@willbooster/prettier-config",
   "resolutions": {
-    "esbuild": "0.25.2"
+    "esbuild": "0.25.3"
   },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "7.1.2",
