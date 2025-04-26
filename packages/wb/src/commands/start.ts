@@ -12,7 +12,7 @@ import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
-import { httpServerPackages } from './constants.js';
+import { httpServerPackages } from './httpServerPackages.js';
 
 const builder = {
   ...scriptOptionsBuilder,

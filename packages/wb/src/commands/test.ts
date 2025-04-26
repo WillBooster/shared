@@ -18,7 +18,7 @@ import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { promisePool } from '../utils/promisePool.js';
 
-import { httpServerPackages } from './constants.js';
+import { httpServerPackages } from './httpServerPackages.js';
 
 const builder = {
   ci: {
