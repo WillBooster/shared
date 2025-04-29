@@ -7996,12 +7996,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"conventional-changelog-conventionalcommits@npm:6.1.0":
-  version: 6.1.0
-  resolution: "conventional-changelog-conventionalcommits@npm:6.1.0"
+"conventional-changelog-conventionalcommits@npm:8.0.0":
+  version: 8.0.0
+  resolution: "conventional-changelog-conventionalcommits@npm:8.0.0"
   dependencies:
     compare-func: "npm:^2.0.0"
-  checksum: 10c0/b313f5c0160d109f58d976566e1331ede3a25ab19fbf43f86763b280659195de00a68551f7f3930bf1cbf39a5e707d94f2a25b79996e59043fa9ee0bed68a79f
+  checksum: 10c0/368ee2245094579b38e1beac110577f75d82ab341d1bc6943052d5243f8bacc9ea08222a91a595a17f5f4ccc321b926211da00dd25b43877a3c51d8218bc76f0
   languageName: node
   linkType: hard
 
@@ -19936,7 +19936,7 @@ __metadata:
     "@qiwi/multi-semantic-release": "npm:7.1.2"
     "@types/eslint": "npm:8.56.10"
     "@willbooster/prettier-config": "npm:10.0.0"
-    conventional-changelog-conventionalcommits: "npm:6.1.0"
+    conventional-changelog-conventionalcommits: "npm:8.0.0"
     eslint: "npm:9.25.1"
     husky: "npm:9.1.7"
     lint-staged: "npm:15.5.1"
