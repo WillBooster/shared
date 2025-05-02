@@ -42,13 +42,13 @@
     "tree-kill": "1.2.2"
   },
   "devDependencies": {
-    "@types/bun": "1.2.10",
+    "@types/bun": "1.2.11",
     "@types/eslint": "8.56.10",
     "@types/micromatch": "4.0.9",
-    "@types/node": "22.15.2",
+    "@types/node": "22.15.3",
     "@willbooster/eslint-config-ts": "11.2.0",
     "@willbooster/prettier-config": "10.0.0",
-    "build-ts": "13.1.40",
+    "build-ts": "13.2.1",
     "eslint": "9.25.1",
     "eslint-config-flat-gitignore": "2.1.0",
     "eslint-config-prettier": "10.1.2",
