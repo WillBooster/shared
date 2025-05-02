@@ -11,6 +11,7 @@
   "scripts": {
     "build": "yarn workspaces foreach --all --parallel --verbose run build",
     "check-all": "yarn cleanup && yarn typecheck && yarn test",
+    "check-for-ai": "yarn format > /dev/null && yarn lint-fix && yarn typecheck && yarn test --silent",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format",
     "postinstall": "husky || true",

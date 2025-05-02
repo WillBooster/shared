@@ -12,6 +12,7 @@
   "scripts": {
     "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
     "check-all": "yarn cleanup && yarn typecheck && yarn test",
+    "check-for-ai": "yarn format > /dev/null && yarn lint-fix && yarn typecheck && yarn test --silent",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify",
     "gen-code": "prisma generate",

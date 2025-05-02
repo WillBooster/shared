@@ -13,11 +13,12 @@ test-fixtures/
 .yarn/
 .pnp.js
 !.keep
+.aider*
 .env.production
-*/mount/*.hash
 .idea/AugmentWebviewStateStore.xml
 .idea/copilot/chatSessions/
 .devcontainer/
+*/mount/*.hash
 dist/
 temp/
 
