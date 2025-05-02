@@ -1,6 +1,7 @@
 import type { Project } from '../../project.js';
 import { runtimeWithArgs } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
+import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
 import { BaseScripts } from './baseScripts.js';
@@ -14,12 +15,12 @@ class PlainAppScripts extends BaseScripts {
     super();
   }
 
-  override start(project: Project, argv: ScriptArgv): string {
+  override start(_: Project, argv: ScriptArgv): string {
     return `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }
 
   override startDocker(project: Project, argv: ScriptArgv): string {
-    return `${this.buildDocker(project)} && ${dockerScripts.stopAndStart(
+    return `${this.buildDocker(project)}${toDevNull(argv)} && ${dockerScripts.stopAndStart(
       project,
       false,
       argv.normalizedDockerOptionsText ?? '',

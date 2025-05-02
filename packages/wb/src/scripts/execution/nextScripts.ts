@@ -1,6 +1,7 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
+import { toDevNull } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
 
 import type { TestE2EDevOptions, TestE2EOptions } from './baseScripts.js';
@@ -38,23 +39,25 @@ class NextScripts extends BaseScripts {
       startCommand:
         options.startCommand ??
         [
-          ...(project.hasPrisma ? [prismaScripts.reset(project)] : []),
+          ...(project.hasPrisma ? prismaScripts.reset(project).split('&&') : []),
           project.buildCommand,
           `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
-        ].join(' && '),
+        ]
+          .map((c) => `${c.trim()}${toDevNull(argv)}`)
+          .join(' && '),
     });
   }
 
   override testE2EDev(
     project: Project,
     argv: TestArgv,
-    { startCommand = 'next dev --turbopack -p 8080' }: TestE2EDevOptions
+    { startCommand = `next dev --turbopack -p 8080${toDevNull(argv)}` }: TestE2EDevOptions
   ): string {
     return super.testE2EDev(project, argv, { startCommand });
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {
-    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "next dev --turbopack" "${this.waitApp(project, argv)}"`;
+    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "next dev --turbopack${toDevNull(argv)}" "${this.waitApp(project, argv)}"`;
   }
 }
 

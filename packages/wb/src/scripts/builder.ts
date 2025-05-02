@@ -31,3 +31,7 @@ export function normalizeArgs(
     .join(' ');
   (argv as ScriptArgv).normalizedDockerOptionsText = (argv.dockerOptions ?? []).map((arg) => `'${arg}'`).join(' ');
 }
+
+export function toDevNull(argv: unknown): string {
+  return (argv as { silent: boolean }).silent ? ` > /dev/null` : '';
+}

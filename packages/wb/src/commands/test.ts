@@ -7,6 +7,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import type { scriptOptionsBuilder } from '../scripts/builder.js';
+import { toDevNull } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
@@ -29,6 +30,10 @@ const builder = {
     description:
       'Whether to run e2e tests. You may pass mode as argument: none | headless (default) | headless-dev | headed | headed-dev | docker | docker-debug | debug | generate | trace',
     type: 'string',
+  },
+  silent: {
+    description: 'Reduce redundant outputs',
+    type: 'boolean',
   },
   start: {
     description: 'Whether to run start tests',
@@ -124,7 +129,7 @@ export async function test(
       if (argv.e2e !== 'none') {
         if (project.hasDockerfile) {
           process.env.WB_DOCKER ||= '1';
-          await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);
+          await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
         }
         const options = project.hasDockerfile
           ? {
@@ -226,11 +231,11 @@ async function testOnDocker(
   playwrightArgs?: string
 ): Promise<void> {
   process.env.WB_DOCKER ||= '1';
-  await runWithSpawn(`${scripts.buildDocker(project, 'test')}`, project, argv);
+  await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
   process.exitCode = await runWithSpawn(
     `${scripts.testE2E(project, argv, {
       playwrightArgs,
-      startCommand: dockerScripts.stopAndStart(project, true),
+      startCommand: `${dockerScripts.stopAndStart(project, true)}${toDevNull(argv)}`,
     })}`,
     project,
     argv,

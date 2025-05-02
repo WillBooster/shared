@@ -1,6 +1,7 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import type { ScriptArgv } from '../builder.js';
+import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
 export interface TestE2EDevOptions {
@@ -33,7 +34,7 @@ export abstract class BaseScripts {
   abstract startProduction(project: Project, argv: ScriptArgv, port: number): string;
 
   startDocker(project: Project, argv: ScriptArgv): string {
-    return `${this.buildDocker(project)}
+    return `${this.buildDocker(project)}${toDevNull(argv)}
       && YARN concurrently --raw --kill-others-on-fail
         "${dockerScripts.stopAndStart(
           project,

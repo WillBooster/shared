@@ -2,6 +2,7 @@ import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import { runtimeWithArgs } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
+import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
 import type { TestE2EDevOptions, TestE2EOptions } from './baseScripts.js';
@@ -21,7 +22,7 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override startDocker(project: Project, argv: ScriptArgv): string {
-    return `${this.buildDocker(project)} && ${dockerScripts.stopAndStart(
+    return `${this.buildDocker(project)}${toDevNull(argv)} && ${dockerScripts.stopAndStart(
       project,
       false,
       argv.normalizedDockerOptionsText ?? '',
@@ -32,7 +33,7 @@ class HttpServerScripts extends BaseScripts {
   override startProduction(project: Project, argv: ScriptArgv, port = 8080): string {
     return `NODE_ENV=production ${
       project.buildCommand
-    } && NODE_ENV=production PORT=\${PORT:-${port}} ${runtimeWithArgs} dist/index.js ${argv.normalizedArgsText ?? ''}`;
+    }${toDevNull(argv)} && NODE_ENV=production PORT=\${PORT:-${port}} ${runtimeWithArgs} dist/index.js ${argv.normalizedArgsText ?? ''}`;
   }
 
   override testE2E(

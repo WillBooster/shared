@@ -20,6 +20,7 @@ class DockerScripts {
         --build-arg WB_ENV=${project.env.WB_ENV}
         --build-arg WB_VERSION=${version} .`;
   }
+
   stopAndStart(project: Project, unbuffer = false, additionalOptions = '', additionalArgs = ''): string {
     return `${this.stop(project)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(
       project,
@@ -27,6 +28,7 @@ class DockerScripts {
       additionalArgs
     )}`;
   }
+
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop(project), project);
     return `docker run --rm -it -p 8080:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
