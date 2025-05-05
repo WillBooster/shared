@@ -40,7 +40,7 @@
     "micromatch": "4.0.8",
     "pinst": "3.0.0",
     "prettier": "3.5.3",
-    "sort-package-json": "3.1.0",
+    "sort-package-json": "3.2.0",
     "typescript": "5.8.3"
   },
   "packageManager": "yarn@4.9.1",
