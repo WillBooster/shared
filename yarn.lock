@@ -5543,7 +5543,7 @@ __metadata:
     lint-staged: "npm:15.5.2"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.5.3"
-    sort-package-json: "npm:3.2.0"
+    sort-package-json: "npm:3.2.1"
     typescript: "npm:5.8.3"
     typescript-eslint: "npm:8.32.0"
     vitest: "npm:3.1.2"
@@ -5585,7 +5585,7 @@ __metadata:
     lint-staged: "npm:15.5.2"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.5.3"
-    sort-package-json: "npm:3.2.0"
+    sort-package-json: "npm:3.2.1"
     tree-kill: "npm:1.2.2"
     typescript: "npm:5.8.3"
     typescript-eslint: "npm:8.32.0"
@@ -5634,7 +5634,7 @@ __metadata:
     prettier: "npm:3.5.3"
     react: "npm:19.1.0"
     react-dom: "npm:19.1.0"
-    sort-package-json: "npm:3.2.0"
+    sort-package-json: "npm:3.2.1"
     typescript: "npm:5.8.3"
     typescript-eslint: "npm:8.32.0"
     vitest: "npm:3.1.2"
@@ -5666,7 +5666,7 @@ __metadata:
     lint-staged: "npm:15.5.2"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.5.3"
-    sort-package-json: "npm:3.2.0"
+    sort-package-json: "npm:3.2.1"
     typescript: "npm:5.8.3"
     typescript-eslint: "npm:8.32.0"
     vitest: "npm:3.1.2"
@@ -5707,7 +5707,7 @@ __metadata:
     minimal-promise-pool: "npm:4.1.2"
     prettier: "npm:3.5.3"
     prisma: "npm:6.7.0"
-    sort-package-json: "npm:3.2.0"
+    sort-package-json: "npm:3.2.1"
     tree-kill: "npm:1.2.2"
     type-fest: "npm:4.40.1"
     typescript: "npm:5.8.3"
@@ -17818,9 +17818,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"sort-package-json@npm:3.2.0":
-  version: 3.2.0
-  resolution: "sort-package-json@npm:3.2.0"
+"sort-package-json@npm:3.2.1":
+  version: 3.2.1
+  resolution: "sort-package-json@npm:3.2.1"
   dependencies:
     detect-indent: "npm:^7.0.1"
     detect-newline: "npm:^4.0.1"
@@ -17831,7 +17831,7 @@ __metadata:
     tinyglobby: "npm:^0.2.12"
   bin:
     sort-package-json: cli.js
-  checksum: 10c0/14c210c6f07ae326cebd006a9d5bbe76951d7689124806abc70a668124cd380e0488be0a351b22274e5e5a8862255e70c9c985fc9fe512e9c2a78a51218601bc
+  checksum: 10c0/383a62dbea96a030e90f9c3ac42fa4fb7700904f125a50700a1f75b048bb319d4104c57a989ef8f7b7a8f1553fe7b10e49ebcfd13a5ca08658541fd0bdcd202f
   languageName: node
   linkType: hard
 
@@ -20203,7 +20203,7 @@ __metadata:
     micromatch: "npm:4.0.8"
     pinst: "npm:3.0.0"
     prettier: "npm:3.5.3"
-    sort-package-json: "npm:3.2.0"
+    sort-package-json: "npm:3.2.1"
     typescript: "npm:5.8.3"
   languageName: unknown
   linkType: soft

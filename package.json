@@ -10,7 +10,6 @@
   ],
   "scripts": {
     "build": "yarn workspaces foreach --all --parallel --verbose run build",
-    "check-all": "yarn cleanup && yarn typecheck && yarn test",
     "check-for-ai": "yarn format > /dev/null && yarn lint-fix && yarn typecheck && yarn test --silent",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format",
@@ -40,7 +39,7 @@
     "micromatch": "4.0.8",
     "pinst": "3.0.0",
     "prettier": "3.5.3",
-    "sort-package-json": "3.2.0",
+    "sort-package-json": "3.2.1",
     "typescript": "5.8.3"
   },
   "packageManager": "yarn@4.9.1",
