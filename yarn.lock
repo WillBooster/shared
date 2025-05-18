@@ -5762,8 +5762,8 @@ __metadata:
     eslint: "npm:9.27.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.3.4"
-    eslint-plugin-import-x: "npm:4.11.1"
+    eslint-import-resolver-typescript: "npm:4.3.5"
+    eslint-plugin-import-x: "npm:4.12.2"
     eslint-plugin-sort-class-members: "npm:1.21.0"
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:59.0.1"
@@ -5804,8 +5804,8 @@ __metadata:
     eslint: "npm:9.27.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.3.4"
-    eslint-plugin-import-x: "npm:4.11.1"
+    eslint-import-resolver-typescript: "npm:4.3.5"
+    eslint-plugin-import-x: "npm:4.12.2"
     eslint-plugin-sort-class-members: "npm:1.21.0"
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:59.0.1"
@@ -5848,8 +5848,8 @@ __metadata:
     eslint: "npm:9.27.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.3.4"
-    eslint-plugin-import-x: "npm:4.11.1"
+    eslint-import-resolver-typescript: "npm:4.3.5"
+    eslint-plugin-import-x: "npm:4.12.2"
     eslint-plugin-react: "npm:7.37.5"
     eslint-plugin-react-hooks: "npm:5.2.0"
     eslint-plugin-sort-class-members: "npm:1.21.0"
@@ -5885,8 +5885,8 @@ __metadata:
     eslint: "npm:9.27.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.3.4"
-    eslint-plugin-import-x: "npm:4.11.1"
+    eslint-import-resolver-typescript: "npm:4.3.5"
+    eslint-plugin-import-x: "npm:4.12.2"
     eslint-plugin-sort-class-members: "npm:1.21.0"
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:59.0.1"
@@ -5922,8 +5922,8 @@ __metadata:
     eslint: "npm:9.27.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.3.4"
-    eslint-plugin-import-x: "npm:4.11.1"
+    eslint-import-resolver-typescript: "npm:4.3.5"
+    eslint-plugin-import-x: "npm:4.12.2"
     eslint-plugin-sort-class-members: "npm:1.21.0"
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:59.0.1"
@@ -9727,9 +9727,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint-import-resolver-typescript@npm:4.3.4":
-  version: 4.3.4
-  resolution: "eslint-import-resolver-typescript@npm:4.3.4"
+"eslint-import-resolver-typescript@npm:4.3.5":
+  version: 4.3.5
+  resolution: "eslint-import-resolver-typescript@npm:4.3.5"
   dependencies:
     debug: "npm:^4.4.0"
     get-tsconfig: "npm:^4.10.0"
@@ -9746,13 +9746,13 @@ __metadata:
       optional: true
     eslint-plugin-import-x:
       optional: true
-  checksum: 10c0/dba14e699855a7c32756e5c5258075e787a6e7938123ace553d69e8f84cefb4e6364fb1935d6d5500f96de82cee79662fee1e826fa45c0672a83841c27cf6abe
+  checksum: 10c0/cc8f6e858b45d3a261dce4fec250a82f07c7356784ac8234cda9706386408a96c767599f2d0b9b84492bc79bed0eb24f6f376825662b8c4c66397738b5acba67
   languageName: node
   linkType: hard
 
-"eslint-plugin-import-x@npm:4.11.1":
-  version: 4.11.1
-  resolution: "eslint-plugin-import-x@npm:4.11.1"
+"eslint-plugin-import-x@npm:4.12.2":
+  version: 4.12.2
+  resolution: "eslint-plugin-import-x@npm:4.12.2"
   dependencies:
     "@typescript-eslint/utils": "npm:^8.31.0"
     comment-parser: "npm:^1.4.1"
@@ -9767,7 +9767,7 @@ __metadata:
     unrs-resolver: "npm:^1.7.0"
   peerDependencies:
     eslint: ^8.57.0 || ^9.0.0
-  checksum: 10c0/9b0cde9ba76eac4252ee7cf6fd7f2dae5051c85cb40c64909db6bdfa53b619bc145357aa637f98381053331c2e0f50f888409b34e17d69468d16685967d680d9
+  checksum: 10c0/c4a9eb3432e6591d6fa5f105f74db1836b5533585c57fd42e38f14d870bfeb99c7b4bad35f7e8ceab9792f86a93ddef5f43166b320ec622e7c567bbcb475dd88
   languageName: node
   linkType: hard
 
