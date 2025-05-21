@@ -59,6 +59,7 @@ export interface RetryOptions {
   retryLogger?: (message: string) => void;
   shouldRetry?: (error: unknown) => boolean;
   sleepMilliseconds?: number;
+  updateSleepMilliseconds?: (sleepMilliseconds: number) => number;
 }
 
 /**
@@ -69,10 +70,19 @@ export interface RetryOptions {
  * @param retryCount The maximum number of retries.
  * @param retryLogger The function to log retrying.
  * @param sleepMilliseconds The number of milliseconds to sleep before retrying.
+ * @param updateSleepMilliseconds The function to update sleep milliseconds after each retry.
  */
 export async function withRetry<T>(
   func: (failedCount: number) => T | Promise<T>,
-  { beforeRetry, handleError, retryCount = 3, retryLogger, shouldRetry, sleepMilliseconds = 0 }: RetryOptions = {}
+  {
+    beforeRetry,
+    handleError,
+    retryCount = 3,
+    retryLogger,
+    shouldRetry,
+    sleepMilliseconds = 0,
+    updateSleepMilliseconds,
+  }: RetryOptions = {}
 ): Promise<T> {
   let failedCount = 0;
   for (;;) {
@@ -89,6 +99,9 @@ export async function withRetry<T>(
       }
       if (sleepMilliseconds > 0) {
         await sleep(sleepMilliseconds);
+      }
+      if (updateSleepMilliseconds) {
+        sleepMilliseconds = updateSleepMilliseconds(sleepMilliseconds);
       }
       retryLogger?.(`Retry due to: ${error}
 ${error instanceof Error ? '---\n' + error.stack : ''}`);
