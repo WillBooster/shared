@@ -5,8 +5,8 @@ import { useStorage } from './useStorage.js';
 
 export function useLocalStorage<T>(
   key: string,
-  initialValue: T,
+  initialValueOrFunc: T | (() => T),
   nonReactiveOptions: UseStorageOptions<T> = {}
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
-  return useStorage('localStorage', key, initialValue, nonReactiveOptions);
+  return useStorage('localStorage', key, initialValueOrFunc, nonReactiveOptions);
 }

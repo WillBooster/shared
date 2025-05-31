@@ -11,7 +11,7 @@ export type UseStorageOptions<T> =
 export function useStorage<T>(
   nonReactiveStorageType: 'localStorage' | 'sessionStorage',
   key: string,
-  initialValue: T,
+  initialValueOrFunc: T | (() => T),
   nonReactiveOptions: UseStorageOptions<T> = {}
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
   const jsonText = useSyncExternalStore(
@@ -34,8 +34,8 @@ export function useStorage<T>(
     } catch {
       // do nothing
     }
-    return initialValue;
-  }, [jsonText, initialValue]);
+    return typeof initialValueOrFunc === 'function' ? (initialValueOrFunc as () => T)() : initialValueOrFunc;
+  }, [jsonText, initialValueOrFunc]);
 
   const setState = useCallback(
     (valueOrFunc: T | ((prevState: T) => T)) => {
@@ -56,10 +56,12 @@ export function useStorage<T>(
   );
 
   useEffect(() => {
-    if (window[nonReactiveStorageType].getItem(key) === null && initialValue !== undefined) {
-      window[nonReactiveStorageType].setItem(key, JSON.stringify(initialValue));
+    const resolvedInitialValue =
+      typeof initialValueOrFunc === 'function' ? (initialValueOrFunc as () => T)() : initialValueOrFunc;
+    if (window[nonReactiveStorageType].getItem(key) === null && resolvedInitialValue !== undefined) {
+      window[nonReactiveStorageType].setItem(key, JSON.stringify(resolvedInitialValue));
     }
-  }, [key, initialValue]);
+  }, [key, initialValueOrFunc]);
 
   return [value, setState];
 }
