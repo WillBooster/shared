@@ -51,6 +51,7 @@ export const typeCheckCommand: CommandModule<
         const nextDirPath = path.join(project.dirPath, '.next');
         if (exitCode && fs.existsSync(nextDirPath)) {
           fs.rmSync(nextDirPath, { force: true, recursive: true });
+          console.info(chalk.yellow('Removed `.next` directory. We will re-try type checking.'));
           continue;
         }
 
