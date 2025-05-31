@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -21,7 +24,7 @@ export const typeCheckCommand: CommandModule<
       process.exit(1);
     }
 
-    const promises = projects.descendants.map((project) => {
+    const promises = projects.descendants.map(async (project) => {
       const commands: string[] = [];
       if (!project.packageJson.workspaces) {
         if (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript) {
@@ -36,12 +39,21 @@ export const typeCheckCommand: CommandModule<
       ) {
         commands.push('BUN tsc --noEmit --Pretty');
       }
-      if (commands.length > 0) {
-        return runWithSpawnInParallel(commands.join(' && '), project, argv, {
+      while (commands.length > 0) {
+        const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {
           // Disable interactive mode
           ci: projects.descendants.length > 1,
           forceColor: true,
         });
+
+        // Re-try type checking after removing `.next` directory
+        const nextDirPath = path.join(project.dirPath, '.next');
+        if (exitCode && fs.existsSync(nextDirPath)) {
+          fs.rmSync(nextDirPath, { force: true, recursive: true });
+          continue;
+        }
+
+        return exitCode;
       }
     });
     const exitCodes = await Promise.all(promises);
