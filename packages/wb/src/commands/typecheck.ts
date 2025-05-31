@@ -43,6 +43,7 @@ export const typeCheckCommand: CommandModule<
         const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {
           // Disable interactive mode
           ci: projects.descendants.length > 1,
+          exitIfFailed: false,
           forceColor: true,
         });
 
