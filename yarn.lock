@@ -5673,9 +5673,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-js-react@npm:11.2.0":
-  version: 11.2.0
-  resolution: "@willbooster/eslint-config-js-react@npm:11.2.0"
+"@willbooster/eslint-config-js-react@npm:11.3.0":
+  version: 11.3.0
+  resolution: "@willbooster/eslint-config-js-react@npm:11.3.0"
   dependencies:
     "@willbooster/eslint-config-js": "npm:11.2.0"
   peerDependencies:
@@ -5685,13 +5685,14 @@ __metadata:
     eslint-config-prettier: ">=10"
     eslint-plugin-import-x: ">=4"
     eslint-plugin-react: ">=7"
+    eslint-plugin-react-compiler: ">=19"
     eslint-plugin-react-hooks: ">=5"
     eslint-plugin-sort-class-members: ">=1.21"
     eslint-plugin-sort-destructure-keys: ">=2"
     eslint-plugin-unicorn: ">=57"
     eslint-plugin-unused-imports: ">=4"
     globals: ">=16"
-  checksum: 10c0/e64eeb10f76c9470542d37714d599572cb28580f627c8d2346b7f0f2b707cd43474bb31f0eb7ea3737b8b38e047ae9d4113a7911e9631e0452424befc4c0b648
+  checksum: 10c0/53541fccf54143e6c9c9602c52ccea912eb4d205d044bcdfa33783ed28a78b0666048fdfa2106fd72dea7404fea153e53dbec434549eb37688b1e6942214a257
   languageName: node
   linkType: hard
 
@@ -5713,11 +5714,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts-react@npm:11.2.0":
-  version: 11.2.0
-  resolution: "@willbooster/eslint-config-ts-react@npm:11.2.0"
+"@willbooster/eslint-config-ts-react@npm:11.3.0":
+  version: 11.3.0
+  resolution: "@willbooster/eslint-config-ts-react@npm:11.3.0"
   dependencies:
-    "@willbooster/eslint-config-js-react": "npm:11.2.0"
+    "@willbooster/eslint-config-js-react": "npm:11.3.0"
     "@willbooster/eslint-config-ts": "npm:11.2.0"
   peerDependencies:
     "@eslint/js": ">=9"
@@ -5735,7 +5736,7 @@ __metadata:
     globals: ">=16"
     typescript: ">=5"
     typescript-eslint: ">=8"
-  checksum: 10c0/7561b4285543e57d6849ea1c39bda4e6893d28a3a2aff8e1963adac46281ff1969f5c53ec12fbc6a6211c3930aa089822a272729858bb9ab9377970921c63cb9
+  checksum: 10c0/30d26cae0694d28b64ccb3f25797512967392e84e576cb21c8ac3359c24b3db9bf723f9b9aedd0684cbdf22a79063705236993bd376e97766fbd06493dc44537
   languageName: node
   linkType: hard
 
@@ -5863,7 +5864,7 @@ __metadata:
     "@types/micromatch": "npm:4.0.9"
     "@types/react": "npm:19.1.6"
     "@types/react-dom": "npm:19.1.5"
-    "@willbooster/eslint-config-ts-react": "npm:11.2.0"
+    "@willbooster/eslint-config-ts-react": "npm:11.3.0"
     "@willbooster/prettier-config": "npm:10.0.0"
     babel-loader: "npm:10.0.0"
     build-ts: "npm:15.0.1"
