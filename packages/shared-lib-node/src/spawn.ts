@@ -38,6 +38,10 @@ export type SpawnAsyncOptions = (
   killOnExit?: boolean;
   /** If true, enables verbose logging of process operations */
   verbose?: boolean;
+  /** If true, stdout data will be printed to console as it's received */
+  printingStdout?: boolean;
+  /** If true, stderr data will be printed to console as it's received */
+  printingStderr?: boolean;
 };
 
 /**
@@ -76,14 +80,20 @@ export async function spawnAsync(
 
       let stdout = '';
       let stderr = '';
-      proc.stdout?.on('data', (data) => {
+      proc.stdout?.on('data', (data: string) => {
         stdout += data;
+        if (options?.printingStdout) {
+          process.stdout.write(data);
+        }
       });
-      proc.stderr?.on('data', (data) => {
+      proc.stderr?.on('data', (data: string) => {
         if (options?.mergeOutAndError) {
           stdout += data;
         } else {
           stderr += data;
+        }
+        if (options?.printingStderr) {
+          process.stderr.write(data);
         }
       });
 
