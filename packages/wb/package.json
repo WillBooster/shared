@@ -31,7 +31,7 @@
     "kill-port": "2.0.1",
     "minimal-promise-pool": "4.1.2",
     "tree-kill": "1.2.2",
-    "yargs": "17.7.2"
+    "yargs": "18.0.0"
   },
   "devDependencies": {
     "@rollup/plugin-swc": "0.4.0",
