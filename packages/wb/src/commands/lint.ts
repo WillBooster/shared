@@ -99,7 +99,8 @@ export const lintCommand: CommandModule<
       sortPackageJsonArgsText = projects.descendants.map((p) => `"${p.packageJsonPath}"`).join(' ');
     }
 
-    const biomeCommand = argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : 'lint';
+    const biomeCommand =
+      argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : argv.format ? 'format --fix' : 'lint';
     let biomePromise: Promise<number> | undefined;
     if (biomeArgsText || files.length === 0) {
       biomePromise = runWithSpawnInParallel(
