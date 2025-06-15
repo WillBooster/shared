@@ -5893,7 +5893,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:59.0.1"
     eslint-plugin-unused-imports: "npm:4.1.4"
     globals: "npm:16.2.0"
-    lint-staged: "npm:16.1.1"
+    lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.5.3"
     sort-package-json: "npm:3.2.1"
@@ -5935,7 +5935,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:59.0.1"
     eslint-plugin-unused-imports: "npm:4.1.4"
     globals: "npm:16.2.0"
-    lint-staged: "npm:16.1.1"
+    lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.5.3"
     sort-package-json: "npm:3.2.1"
@@ -5983,7 +5983,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:59.0.1"
     eslint-plugin-unused-imports: "npm:4.1.4"
     globals: "npm:16.2.0"
-    lint-staged: "npm:16.1.1"
+    lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.5.3"
     react: "npm:19.1.0"
@@ -6017,7 +6017,7 @@ __metadata:
     eslint-plugin-unicorn: "npm:59.0.1"
     eslint-plugin-unused-imports: "npm:4.1.4"
     globals: "npm:16.2.0"
-    lint-staged: "npm:16.1.1"
+    lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.5.3"
     sort-package-json: "npm:3.2.1"
@@ -6056,7 +6056,7 @@ __metadata:
     globals: "npm:16.2.0"
     globby: "npm:14.1.0"
     kill-port: "npm:2.0.1"
-    lint-staged: "npm:16.1.1"
+    lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
     minimal-promise-pool: "npm:5.0.0"
     prettier: "npm:3.5.3"
@@ -13366,9 +13366,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lint-staged@npm:16.1.1":
-  version: 16.1.1
-  resolution: "lint-staged@npm:16.1.1"
+"lint-staged@npm:16.1.2":
+  version: 16.1.2
+  resolution: "lint-staged@npm:16.1.2"
   dependencies:
     chalk: "npm:^5.4.1"
     commander: "npm:^14.0.0"
@@ -13382,7 +13382,7 @@ __metadata:
     yaml: "npm:^2.8.0"
   bin:
     lint-staged: bin/lint-staged.js
-  checksum: 10c0/80b1945b4e7c9d6c2e08f05bd2c175465f7b8b08a7f512582027ef7da5f2e961b96d4db3e50f9946d4d11a8068658d8fd2ac946655b30883a0adaf64acbc5613
+  checksum: 10c0/2a299fc0d56e0a64ed0af8caf937e00eac47cb270df2917e2d4b939074eaa63ecd7f16d3b70b7e5e57bff75ffbbbf8aae5768dedf3dfd45e3ca1b9caaf7740cc
   languageName: node
   linkType: hard
 
@@ -20551,7 +20551,7 @@ __metadata:
     conventional-changelog-conventionalcommits: "npm:9.0.0"
     eslint: "npm:9.29.0"
     husky: "npm:9.1.7"
-    lint-staged: "npm:16.1.1"
+    lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
     pinst: "npm:3.0.0"
     prettier: "npm:3.5.3"
