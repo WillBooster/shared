@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@rollup/plugin-swc": "0.4.0",
-    "@swc/core": "1.12.4",
+    "@swc/core": "1.12.5",
     "@types/eslint": "8.56.10",
     "@types/kill-port": "2.0.3",
     "@types/micromatch": "4.0.9",
@@ -44,7 +44,7 @@
     "@willbooster/eslint-config-ts": "11.2.0",
     "@willbooster/prettier-config": "10.0.0",
     "at-decorators": "5.0.2",
-    "build-ts": "15.0.5",
+    "build-ts": "15.0.6",
     "eslint": "9.29.0",
     "eslint-config-flat-gitignore": "2.1.0",
     "eslint-config-prettier": "10.1.5",
