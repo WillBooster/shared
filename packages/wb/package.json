@@ -17,7 +17,7 @@
     "gen-code": "prisma generate",
     "lint": "eslint --color",
     "lint-fix": "yarn lint --fix",
-    "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test-fixtures/**\"",
+    "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test{-,/}fixtures/**\"",
     "start": "build-ts run src/index.ts --",
     "start-prod": "yarn build && yarn wb",
     "test": "WB_ENV=test vitest run tests",
@@ -59,10 +59,10 @@
     "micromatch": "4.0.8",
     "prettier": "3.6.0",
     "prisma": "6.10.1",
-    "sort-package-json": "3.2.2",
+    "sort-package-json": "3.3.0",
     "type-fest": "4.41.0",
     "typescript": "5.8.3",
-    "typescript-eslint": "8.34.1",
+    "typescript-eslint": "8.35.0",
     "vitest": "3.2.4"
   },
   "engines": {
