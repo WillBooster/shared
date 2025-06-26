@@ -64,7 +64,6 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof depl
   builder: deployForceBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv, ['backup-path', 'backupPath', 'b']);
     for (const project of prepareForRunningCommand('prisma deploy-force', allProjects)) {
       await runWithSpawn(prismaScripts.deployForce(project, argv.backupPath), project, argv);
     }
@@ -77,7 +76,6 @@ const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof build
   builder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv);
     for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
       await runWithSpawn(prismaScripts.litestream(project), project, argv);
     }
@@ -137,7 +135,6 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
   builder: restoreBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv, ['backup-path', 'backupPath', 'b', 'output']);
     for (const project of prepareForRunningCommand('prisma restore', allProjects)) {
       const output =
         argv.output ||
@@ -162,7 +159,6 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
   builder: seedBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv, ['file', 'f']);
     for (const project of prepareForRunningCommand('prisma seed', allProjects)) {
       await runWithSpawn(prismaScripts.seed(project, argv.file), project, argv);
     }
