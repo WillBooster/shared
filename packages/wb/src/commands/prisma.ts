@@ -6,6 +6,7 @@ import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
+import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -26,7 +27,8 @@ export const prismaCommand: CommandModule = {
       .command(seedCommand)
       .command(studioCommand)
       .command(defaultCommand)
-      .demandCommand();
+      .demandCommand()
+      .strict(false); // Allow unknown options to be passed through
   },
   handler() {
     // Do nothing
@@ -39,8 +41,9 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
   builder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv);
     for (const project of prepareForRunningCommand('prisma deploy', allProjects)) {
-      await runWithSpawn(prismaScripts.deploy(project), project, argv);
+      await runWithSpawn(prismaScripts.deploy(project, unknownOptions), project, argv);
     }
   },
 };
@@ -61,6 +64,7 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof depl
   builder: deployForceBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv, ['backup-path', 'backupPath', 'b']);
     for (const project of prepareForRunningCommand('prisma deploy-force', allProjects)) {
       await runWithSpawn(prismaScripts.deployForce(project, argv.backupPath), project, argv);
     }
@@ -73,6 +77,7 @@ const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof build
   builder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv);
     for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
       await runWithSpawn(prismaScripts.litestream(project), project, argv);
     }
@@ -85,8 +90,9 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>
   builder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv);
     for (const project of prepareForRunningCommand('prisma migrate', allProjects)) {
-      await runWithSpawn(prismaScripts.migrate(project), project, argv);
+      await runWithSpawn(prismaScripts.migrate(project, unknownOptions), project, argv);
     }
   },
 };
@@ -97,8 +103,9 @@ const migrateDevCommand: CommandModule<unknown, InferredOptionTypes<typeof build
   builder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv);
     for (const project of prepareForRunningCommand('prisma migrate-dev', allProjects)) {
-      await runWithSpawn(prismaScripts.migrateDev(project), project, argv);
+      await runWithSpawn(prismaScripts.migrateDev(project, unknownOptions), project, argv);
     }
   },
 };
@@ -109,8 +116,9 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
   builder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv);
     for (const project of prepareForRunningCommand('prisma reset', allProjects)) {
-      await runWithSpawn(prismaScripts.reset(project), project, argv);
+      await runWithSpawn(prismaScripts.reset(project, unknownOptions), project, argv);
     }
   },
 };
@@ -129,6 +137,7 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
   builder: restoreBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv, ['backup-path', 'backupPath', 'b', 'output']);
     for (const project of prepareForRunningCommand('prisma restore', allProjects)) {
       const output =
         argv.output ||
@@ -153,6 +162,7 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
   builder: seedBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv, ['file', 'f']);
     for (const project of prepareForRunningCommand('prisma seed', allProjects)) {
       await runWithSpawn(prismaScripts.seed(project, argv.file), project, argv);
     }
@@ -181,13 +191,14 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
     }
 
     const allProjects = await findPrismaProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv, ['db-url-or-path', 'restored']);
     for (const project of prepareForRunningCommand('prisma studio', allProjects)) {
       const dbUrlOrPath = argv.restored
         ? project.packageJson.dependencies?.['blitz']
           ? 'db/restored.sqlite3'
           : 'prisma/restored.sqlite3'
         : argv.dbUrlOrPath?.toString();
-      await runWithSpawn(prismaScripts.studio(project, dbUrlOrPath), project, argv);
+      await runWithSpawn(prismaScripts.studio(project, dbUrlOrPath, unknownOptions), project, argv);
     }
   },
 };
@@ -201,8 +212,10 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
     const script = `${argv.args?.join(' ') ?? ''}`.trimEnd();
-    for (const project of prepareForRunningCommand(`prisma ${script}`, allProjects)) {
-      await runWithSpawn(`PRISMA ${script}`, project, argv);
+    const unknownOptions = extractUnknownOptions(argv, ['args']);
+    const fullCommand = [script, unknownOptions].filter(Boolean).join(' ');
+    for (const project of prepareForRunningCommand(`prisma ${fullCommand}`, allProjects)) {
+      await runWithSpawn(`PRISMA ${fullCommand}`, project, argv);
     }
   },
 };
@@ -222,4 +235,64 @@ async function findPrismaProjects(argv: EnvReaderOptions): Promise<Project[]> {
     process.exit(1);
   }
   return filtered;
+}
+
+/**
+ * Extract unknown options from argv to pass to prisma command
+ */
+export function extractUnknownOptions(argv: Record<string, unknown>, knownOptions: string[] = []): string {
+  const unknownOptions: string[] = [];
+
+  // Build list of known options from shared options builders
+  const sharedOptionKeys = Object.keys(sharedOptionsBuilder);
+  const sharedOptionAliases = Object.values(sharedOptionsBuilder)
+    .flatMap((option) => {
+      if ('alias' in option && option.alias) {
+        return Array.isArray(option.alias) ? option.alias : [option.alias];
+      }
+      return [];
+    })
+    .map(String);
+
+  const allKnownOptions = new Set([
+    ...knownOptions,
+    ...sharedOptionKeys,
+    ...sharedOptionAliases,
+    // Internal yargs properties
+    '_',
+    '$0',
+  ]);
+
+  for (const [key, value] of Object.entries(argv)) {
+    if (!allKnownOptions.has(key) && !key.includes('-')) {
+      // Handle boolean flags
+      if (typeof value === 'boolean' && value) {
+        unknownOptions.push(`--${key}`);
+      }
+      // Handle string/number values
+      else if (typeof value === 'string' || typeof value === 'number') {
+        unknownOptions.push(`--${key}`, String(value));
+      }
+      // Handle arrays
+      else if (Array.isArray(value)) {
+        for (const item of value) {
+          unknownOptions.push(`--${key}`, String(item));
+        }
+      }
+    }
+    // Handle kebab-case options
+    else if (key.includes('-') && !allKnownOptions.has(key)) {
+      if (typeof value === 'boolean' && value) {
+        unknownOptions.push(`--${key}`);
+      } else if (typeof value === 'string' || typeof value === 'number') {
+        unknownOptions.push(`--${key}`, String(value));
+      } else if (Array.isArray(value)) {
+        for (const item of value) {
+          unknownOptions.push(`--${key}`, String(item));
+        }
+      }
+    }
+  }
+
+  return unknownOptions.join(' ');
 }

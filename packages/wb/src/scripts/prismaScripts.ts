@@ -10,8 +10,8 @@ import { runtimeWithArgs } from '../utils/runtime.js';
  * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PrismaScripts {
-  deploy(_: Project): string {
-    return 'PRISMA migrate deploy';
+  deploy(_: Project, additionalOptions = ''): string {
+    return `PRISMA migrate deploy${additionalOptions ? ` ${additionalOptions}` : ''}`;
   }
 
   deployForce(project: Project, backupPath: string): string {
@@ -29,18 +29,18 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 '`;
   }
 
-  migrate(project: Project): string {
-    return `PRISMA migrate deploy && PRISMA generate && ${this.seed(project)}`;
+  migrate(project: Project, additionalOptions = ''): string {
+    return `PRISMA migrate deploy${additionalOptions ? ` ${additionalOptions}` : ''} && PRISMA generate && ${this.seed(project)}`;
   }
 
-  migrateDev(_: Project): string {
-    return `PRISMA migrate dev`;
+  migrateDev(_: Project, additionalOptions = ''): string {
+    return `PRISMA migrate dev${additionalOptions ? ` ${additionalOptions}` : ''}`;
   }
 
-  reset(project: Project): string {
+  reset(project: Project, additionalOptions = ''): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
     // Blitz does not trigger seed automatically, so we need to run it manually.
-    return `PRISMA migrate reset --force --skip-seed && ${this.seed(project)}`;
+    return `PRISMA migrate reset --force --skip-seed${additionalOptions ? ` ${additionalOptions}` : ''} && ${this.seed(project)}`;
   }
 
   restore(project: Project, backupPath: string, outputPath: string): string {
@@ -56,7 +56,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     return `if [ -e "prisma/seeds.ts" ]; then BUN build-ts run prisma/seeds.ts; fi`;
   }
 
-  studio(project: Project, dbUrlOrPath?: string): string {
+  studio(project: Project, dbUrlOrPath?: string, additionalOptions = ''): string {
     const FILE_SCHEMA = 'file:';
     let prefix = '';
     // Deal with Prisma issue: https://github.com/prisma/studio/issues/1273
@@ -86,7 +86,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
         }
       }
     }
-    return `${prefix}PRISMA studio`;
+    return `${prefix}PRISMA studio${additionalOptions ? ` ${additionalOptions}` : ''}`;
   }
 }
 
