@@ -264,7 +264,14 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
   ]);
 
   for (const [key, value] of Object.entries(argv)) {
-    if (!allKnownOptions.has(key) && !key.includes('-')) {
+    if (!allKnownOptions.has(key)) {
+      // Skip camelCase versions of kebab-case options to avoid duplication
+      // If we have both 'create-only' and 'createOnly', prefer the kebab-case version
+      const kebabCaseKey = key.replaceAll(/[A-Z]/g, (match) => `-${match.toLowerCase()}`);
+      if (kebabCaseKey !== key && argv[kebabCaseKey] !== undefined) {
+        continue; // Skip camelCase version if kebab-case exists
+      }
+
       // Handle boolean flags
       if (typeof value === 'boolean' && value) {
         unknownOptions.push(`--${key}`);
@@ -275,18 +282,6 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
       }
       // Handle arrays
       else if (Array.isArray(value)) {
-        for (const item of value) {
-          unknownOptions.push(`--${key}`, String(item));
-        }
-      }
-    }
-    // Handle kebab-case options
-    else if (key.includes('-') && !allKnownOptions.has(key)) {
-      if (typeof value === 'boolean' && value) {
-        unknownOptions.push(`--${key}`);
-      } else if (typeof value === 'string' || typeof value === 'number') {
-        unknownOptions.push(`--${key}`, String(value));
-      } else if (Array.isArray(value)) {
         for (const item of value) {
           unknownOptions.push(`--${key}`, String(item));
         }
