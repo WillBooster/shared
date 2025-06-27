@@ -64,7 +64,6 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof depl
   builder: deployForceBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv, ['backup-path', 'backupPath', 'b']);
     for (const project of prepareForRunningCommand('prisma deploy-force', allProjects)) {
       await runWithSpawn(prismaScripts.deployForce(project, argv.backupPath), project, argv);
     }
@@ -77,7 +76,6 @@ const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof build
   builder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv);
     for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
       await runWithSpawn(prismaScripts.litestream(project), project, argv);
     }
@@ -137,7 +135,6 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
   builder: restoreBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv, ['backup-path', 'backupPath', 'b', 'output']);
     for (const project of prepareForRunningCommand('prisma restore', allProjects)) {
       const output =
         argv.output ||
@@ -162,7 +159,6 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
   builder: seedBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv, ['file', 'f']);
     for (const project of prepareForRunningCommand('prisma seed', allProjects)) {
       await runWithSpawn(prismaScripts.seed(project, argv.file), project, argv);
     }
@@ -264,7 +260,14 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
   ]);
 
   for (const [key, value] of Object.entries(argv)) {
-    if (!allKnownOptions.has(key) && !key.includes('-')) {
+    if (!allKnownOptions.has(key)) {
+      // Skip camelCase versions of kebab-case options to avoid duplication
+      // If we have both 'create-only' and 'createOnly', prefer the kebab-case version
+      const kebabCaseKey = key.replaceAll(/[A-Z]/g, (match) => `-${match.toLowerCase()}`);
+      if (kebabCaseKey !== key && argv[kebabCaseKey] !== undefined) {
+        continue; // Skip camelCase version if kebab-case exists
+      }
+
       // Handle boolean flags
       if (typeof value === 'boolean' && value) {
         unknownOptions.push(`--${key}`);
@@ -275,18 +278,6 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
       }
       // Handle arrays
       else if (Array.isArray(value)) {
-        for (const item of value) {
-          unknownOptions.push(`--${key}`, String(item));
-        }
-      }
-    }
-    // Handle kebab-case options
-    else if (key.includes('-') && !allKnownOptions.has(key)) {
-      if (typeof value === 'boolean' && value) {
-        unknownOptions.push(`--${key}`);
-      } else if (typeof value === 'string' || typeof value === 'number') {
-        unknownOptions.push(`--${key}`, String(value));
-      } else if (Array.isArray(value)) {
         for (const item of value) {
           unknownOptions.push(`--${key}`, String(item));
         }
