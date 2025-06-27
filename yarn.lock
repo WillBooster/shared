@@ -1855,10 +1855,52 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@chevrotain/cst-dts-gen@npm:11.0.3":
+  version: 11.0.3
+  resolution: "@chevrotain/cst-dts-gen@npm:11.0.3"
+  dependencies:
+    "@chevrotain/gast": "npm:11.0.3"
+    "@chevrotain/types": "npm:11.0.3"
+    lodash-es: "npm:4.17.21"
+  checksum: 10c0/9e945a0611386e4e08af34c2d0b3af36c1af08f726b58145f11310f2aeafcb2d65264c06ec65a32df6b6a65771e6a55be70580c853afe3ceb51487e506967104
+  languageName: node
+  linkType: hard
+
+"@chevrotain/gast@npm:11.0.3":
+  version: 11.0.3
+  resolution: "@chevrotain/gast@npm:11.0.3"
+  dependencies:
+    "@chevrotain/types": "npm:11.0.3"
+    lodash-es: "npm:4.17.21"
+  checksum: 10c0/54fc44d7b4a7b0323f49d957dd88ad44504922d30cb226d93b430b0e09925efe44e0726068581d777f423fabfb878a2238ed2c87b690c0c0014ebd12b6968354
+  languageName: node
+  linkType: hard
+
+"@chevrotain/regexp-to-ast@npm:11.0.3":
+  version: 11.0.3
+  resolution: "@chevrotain/regexp-to-ast@npm:11.0.3"
+  checksum: 10c0/6939c5c94fbfb8c559a4a37a283af5ded8e6147b184a7d7bcf5ad1404d9d663c78d81602bd8ea8458ec497358a9e1671541099c511835d0be2cad46f00c62b3f
+  languageName: node
+  linkType: hard
+
+"@chevrotain/types@npm:11.0.3":
+  version: 11.0.3
+  resolution: "@chevrotain/types@npm:11.0.3"
+  checksum: 10c0/72fe8f0010ebef848e47faea14a88c6fdc3cdbafaef6b13df4a18c7d33249b1b675e37b05cb90a421700c7016dae7cd4187ab6b549e176a81cea434f69cd2503
+  languageName: node
+  linkType: hard
+
 "@chevrotain/types@npm:^9.1.0":
   version: 9.1.0
   resolution: "@chevrotain/types@npm:9.1.0"
   checksum: 10c0/eba764fde0a2953ca80653aaa8491027b758a0bb077d606936c6655386a04e03d3373598d5aafdde7ee27b7cc35cc91b010577f733601475c70c2bedcf2629df
+  languageName: node
+  linkType: hard
+
+"@chevrotain/utils@npm:11.0.3":
+  version: 11.0.3
+  resolution: "@chevrotain/utils@npm:11.0.3"
+  checksum: 10c0/b31972d1b2d444eef1499cf9b7576fc1793e8544910de33a3c18e07c270cfad88067f175d0ee63e7bc604713ebed647f8190db45cc8311852cd2d4fe2ef14068
   languageName: node
   linkType: hard
 
@@ -4959,7 +5001,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript-eslint/types@npm:8.34.1, @typescript-eslint/types@npm:^8.34.0, @typescript-eslint/types@npm:^8.34.1":
+"@typescript-eslint/types@npm:8.34.1, @typescript-eslint/types@npm:^8.34.1":
   version: 8.34.1
   resolution: "@typescript-eslint/types@npm:8.34.1"
   checksum: 10c0/db1b3dce6a70b28ddb13c76fbb5983240d9395656df5f7cbd99bfd9905e39c0dab2132870f01dbc406b48739c437f7d344a879a824cedaba81b91a53110dc23a
@@ -5070,9 +5112,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-android-arm-eabi@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-android-arm-eabi@npm:1.9.2"
+  conditions: os=android & cpu=arm
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-android-arm64@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-android-arm64@npm:1.9.1"
+  conditions: os=android & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-android-arm64@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-android-arm64@npm:1.9.2"
   conditions: os=android & cpu=arm64
   languageName: node
   linkType: hard
@@ -5084,9 +5140,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-darwin-arm64@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-darwin-arm64@npm:1.9.2"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-darwin-x64@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-darwin-x64@npm:1.9.1"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-darwin-x64@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-darwin-x64@npm:1.9.2"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
@@ -5098,9 +5168,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-freebsd-x64@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-freebsd-x64@npm:1.9.2"
+  conditions: os=freebsd & cpu=x64
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-linux-arm-gnueabihf@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-linux-arm-gnueabihf@npm:1.9.1"
+  conditions: os=linux & cpu=arm
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-linux-arm-gnueabihf@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-arm-gnueabihf@npm:1.9.2"
   conditions: os=linux & cpu=arm
   languageName: node
   linkType: hard
@@ -5112,9 +5196,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-linux-arm-musleabihf@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-arm-musleabihf@npm:1.9.2"
+  conditions: os=linux & cpu=arm
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-linux-arm64-gnu@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-linux-arm64-gnu@npm:1.9.1"
+  conditions: os=linux & cpu=arm64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-linux-arm64-gnu@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-arm64-gnu@npm:1.9.2"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
@@ -5126,9 +5224,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-linux-arm64-musl@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-arm64-musl@npm:1.9.2"
+  conditions: os=linux & cpu=arm64 & libc=musl
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-linux-ppc64-gnu@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-linux-ppc64-gnu@npm:1.9.1"
+  conditions: os=linux & cpu=ppc64 & libc=glibc
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-linux-ppc64-gnu@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-ppc64-gnu@npm:1.9.2"
   conditions: os=linux & cpu=ppc64 & libc=glibc
   languageName: node
   linkType: hard
@@ -5140,9 +5252,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-linux-riscv64-gnu@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-riscv64-gnu@npm:1.9.2"
+  conditions: os=linux & cpu=riscv64 & libc=glibc
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-linux-riscv64-musl@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-linux-riscv64-musl@npm:1.9.1"
+  conditions: os=linux & cpu=riscv64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-linux-riscv64-musl@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-riscv64-musl@npm:1.9.2"
   conditions: os=linux & cpu=riscv64 & libc=musl
   languageName: node
   linkType: hard
@@ -5154,6 +5280,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-linux-s390x-gnu@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-s390x-gnu@npm:1.9.2"
+  conditions: os=linux & cpu=s390x & libc=glibc
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-linux-x64-gnu@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-linux-x64-gnu@npm:1.9.1"
@@ -5161,9 +5294,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-linux-x64-gnu@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-x64-gnu@npm:1.9.2"
+  conditions: os=linux & cpu=x64 & libc=glibc
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-linux-x64-musl@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-linux-x64-musl@npm:1.9.1"
+  conditions: os=linux & cpu=x64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-linux-x64-musl@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-linux-x64-musl@npm:1.9.2"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
@@ -5177,9 +5324,25 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-wasm32-wasi@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-wasm32-wasi@npm:1.9.2"
+  dependencies:
+    "@napi-rs/wasm-runtime": "npm:^0.2.11"
+  conditions: cpu=wasm32
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-win32-arm64-msvc@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-win32-arm64-msvc@npm:1.9.1"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-win32-arm64-msvc@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-win32-arm64-msvc@npm:1.9.2"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
@@ -5191,9 +5354,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@unrs/resolver-binding-win32-ia32-msvc@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-win32-ia32-msvc@npm:1.9.2"
+  conditions: os=win32 & cpu=ia32
+  languageName: node
+  linkType: hard
+
 "@unrs/resolver-binding-win32-x64-msvc@npm:1.9.1":
   version: 1.9.1
   resolution: "@unrs/resolver-binding-win32-x64-msvc@npm:1.9.1"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@unrs/resolver-binding-win32-x64-msvc@npm:1.9.2":
+  version: 1.9.2
+  resolution: "@unrs/resolver-binding-win32-x64-msvc@npm:1.9.2"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
@@ -5531,11 +5708,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-js-react@npm:11.3.2":
-  version: 11.3.2
-  resolution: "@willbooster/eslint-config-js-react@npm:11.3.2"
+"@willbooster/eslint-config-js-react@npm:11.4.3":
+  version: 11.4.3
+  resolution: "@willbooster/eslint-config-js-react@npm:11.4.3"
   dependencies:
-    "@willbooster/eslint-config-js": "npm:11.2.1"
+    "@willbooster/eslint-config-js": "npm:11.3.3"
   peerDependencies:
     "@eslint/js": ">=9"
     eslint: ">=9"
@@ -5550,13 +5727,13 @@ __metadata:
     eslint-plugin-unicorn: ">=57"
     eslint-plugin-unused-imports: ">=4"
     globals: ">=16"
-  checksum: 10c0/9e83dfc718d00d493c160a2c2643f936d133b66d772c8a932ce30c8987225209cce37f7fdef2faced4f2b1516ae94f44adabb661895dc9456df1d9181c209543
+  checksum: 10c0/6d1a50b3b439806a4d0abd6761800a9043e426948b0ab7125c0d2a9ddddc78051d182928bcd91718c57bd09fd0d5dc9477ee0285579b6087ef279594ea70fa43
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-js@npm:11.2.1":
-  version: 11.2.1
-  resolution: "@willbooster/eslint-config-js@npm:11.2.1"
+"@willbooster/eslint-config-js@npm:11.3.3":
+  version: 11.3.3
+  resolution: "@willbooster/eslint-config-js@npm:11.3.3"
   peerDependencies:
     "@eslint/js": ">=9"
     eslint: ">=9"
@@ -5568,16 +5745,16 @@ __metadata:
     eslint-plugin-unicorn: ">=57"
     eslint-plugin-unused-imports: ">=4"
     globals: ">=16"
-  checksum: 10c0/1b43ccc25f4db54522ffbdd9b8d9d55f7f4fac58776b5870e7895d8b2f5d1ee32a0b22804ae1af8addf24d36ef812df8164d0003ec6062f817274ab27c994bbe
+  checksum: 10c0/0800949c1fc418b9fda819c3dfb61ac7ee81af8e09592bb9306acffbc0f6fdc3d04a5f91775962e43bc61ca0e95275aae9ef1b09c2a7eb5fe94faa69e1ff1fd0
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts-react@npm:11.3.2":
-  version: 11.3.2
-  resolution: "@willbooster/eslint-config-ts-react@npm:11.3.2"
+"@willbooster/eslint-config-ts-react@npm:11.4.3":
+  version: 11.4.3
+  resolution: "@willbooster/eslint-config-ts-react@npm:11.4.3"
   dependencies:
-    "@willbooster/eslint-config-js-react": "npm:11.3.2"
-    "@willbooster/eslint-config-ts": "npm:11.2.2"
+    "@willbooster/eslint-config-js-react": "npm:11.4.3"
+    "@willbooster/eslint-config-ts": "npm:11.3.3"
   peerDependencies:
     "@eslint/js": ">=9"
     eslint: ">=9"
@@ -5595,15 +5772,15 @@ __metadata:
     globals: ">=16"
     typescript: ">=5"
     typescript-eslint: ">=8"
-  checksum: 10c0/d3abc05f2448bf497f91b242e85a96ffc1eee2aa28f7b1f7391cac861a9231dd3f16f6a1e005c52f89f2a8a914abff5c2a5ff8a96656c5cb9a5ee0c08ee03a02
+  checksum: 10c0/4782794e3468407912e47bbd8ec77cf2b77c68a6b3c7d305b9ab7287c033b0ecce576d15a10fed023f750b8386aa04300f4f313cdd9b97befa947d809774e97d
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts@npm:11.2.2":
-  version: 11.2.2
-  resolution: "@willbooster/eslint-config-ts@npm:11.2.2"
+"@willbooster/eslint-config-ts@npm:11.3.3":
+  version: 11.3.3
+  resolution: "@willbooster/eslint-config-ts@npm:11.3.3"
   dependencies:
-    "@willbooster/eslint-config-js": "npm:11.2.1"
+    "@willbooster/eslint-config-js": "npm:11.3.3"
   peerDependencies:
     "@eslint/js": ">=9"
     eslint: ">=9"
@@ -5618,16 +5795,17 @@ __metadata:
     globals: ">=16"
     typescript: ">=5"
     typescript-eslint: ">=8"
-  checksum: 10c0/27608c04fd5fb93bfeba670bcbf68123d9d1bd61eda7895c87707e9b3ef6f7c9046eba2df621ebb50986cc1c1fb45eab66ce4bd1ccdac5ed31567416e6dea78e
+  checksum: 10c0/f91145f6faae559c01c97130cc7a5afb00956bcfdd8ae22103cecaafd709a48c8f1ed9c58ee743209a465f24152016d6a977f230b8fbb2c54e579f5dbeb4738a
   languageName: node
   linkType: hard
 
-"@willbooster/prettier-config@npm:10.0.1":
-  version: 10.0.1
-  resolution: "@willbooster/prettier-config@npm:10.0.1"
+"@willbooster/prettier-config@npm:10.1.3":
+  version: 10.1.3
+  resolution: "@willbooster/prettier-config@npm:10.1.3"
   peerDependencies:
     prettier: ">=3"
-  checksum: 10c0/9f0d64a94e3e3298a4cf4f71523283619a5d43b0e76b5dc4fdc21567376326462199097cf54837b36f07584940e62c236da1651f43eb6bdd107b41fa7c9aef3e
+    prettier-plugin-java: ">=2.6"
+  checksum: 10c0/9b62d874d9eab320e643e5cb6e3fcbb35bba0dfe03e32baed9da79803f0a884fe06e35884538ea1b81b2429dbe70bd53343c7c753b5dc80a9c2e343397e5c704
   languageName: node
   linkType: hard
 
@@ -5637,15 +5815,15 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:8.56.10"
     "@types/micromatch": "npm:4.0.9"
-    "@willbooster/eslint-config-ts": "npm:11.2.2"
-    "@willbooster/prettier-config": "npm:10.0.1"
+    "@willbooster/eslint-config-ts": "npm:11.3.3"
+    "@willbooster/prettier-config": "npm:10.1.3"
     blitz: "npm:2.1.3"
     build-ts: "npm:15.0.6"
     eslint: "npm:9.29.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.4.3"
-    eslint-plugin-import-x: "npm:4.16.0"
+    eslint-import-resolver-typescript: "npm:4.4.4"
+    eslint-plugin-import-x: "npm:4.16.1"
     eslint-plugin-sort-class-members: "npm:1.21.0"
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:59.0.1"
@@ -5653,7 +5831,8 @@ __metadata:
     globals: "npm:16.2.0"
     lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
-    prettier: "npm:3.6.1"
+    prettier: "npm:3.6.2"
+    prettier-plugin-java: "npm:2.6.8"
     sort-package-json: "npm:3.3.1"
     typescript: "npm:5.8.3"
     typescript-eslint: "npm:8.35.0"
@@ -5679,15 +5858,15 @@ __metadata:
     "@types/eslint": "npm:8.56.10"
     "@types/micromatch": "npm:4.0.9"
     "@types/node": "npm:22.15.32"
-    "@willbooster/eslint-config-ts": "npm:11.2.2"
-    "@willbooster/prettier-config": "npm:10.0.1"
+    "@willbooster/eslint-config-ts": "npm:11.3.3"
+    "@willbooster/prettier-config": "npm:10.1.3"
     build-ts: "npm:15.0.6"
     dotenv: "npm:16.5.0"
     eslint: "npm:9.29.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.4.3"
-    eslint-plugin-import-x: "npm:4.16.0"
+    eslint-import-resolver-typescript: "npm:4.4.4"
+    eslint-plugin-import-x: "npm:4.16.1"
     eslint-plugin-sort-class-members: "npm:1.21.0"
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:59.0.1"
@@ -5695,7 +5874,8 @@ __metadata:
     globals: "npm:16.2.0"
     lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
-    prettier: "npm:3.6.1"
+    prettier: "npm:3.6.2"
+    prettier-plugin-java: "npm:2.6.8"
     sort-package-json: "npm:3.3.1"
     tree-kill: "npm:1.2.2"
     typescript: "npm:5.8.3"
@@ -5723,15 +5903,15 @@ __metadata:
     "@types/micromatch": "npm:4.0.9"
     "@types/react": "npm:19.1.8"
     "@types/react-dom": "npm:19.1.6"
-    "@willbooster/eslint-config-ts-react": "npm:11.3.2"
-    "@willbooster/prettier-config": "npm:10.0.1"
+    "@willbooster/eslint-config-ts-react": "npm:11.4.3"
+    "@willbooster/prettier-config": "npm:10.1.3"
     babel-loader: "npm:10.0.0"
     build-ts: "npm:15.0.6"
     eslint: "npm:9.29.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.4.3"
-    eslint-plugin-import-x: "npm:4.16.0"
+    eslint-import-resolver-typescript: "npm:4.4.4"
+    eslint-plugin-import-x: "npm:4.16.1"
     eslint-plugin-react: "npm:7.37.5"
     eslint-plugin-react-compiler: "npm:19.1.0-rc.2"
     eslint-plugin-react-hooks: "npm:5.2.0"
@@ -5743,7 +5923,8 @@ __metadata:
     globals: "npm:16.2.0"
     lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
-    prettier: "npm:3.6.1"
+    prettier: "npm:3.6.2"
+    prettier-plugin-java: "npm:2.6.8"
     react: "npm:19.1.0"
     react-dom: "npm:19.1.0"
     sort-package-json: "npm:3.3.1"
@@ -5762,14 +5943,14 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:8.56.10"
     "@types/micromatch": "npm:4.0.9"
-    "@willbooster/eslint-config-ts": "npm:11.2.2"
-    "@willbooster/prettier-config": "npm:10.0.1"
+    "@willbooster/eslint-config-ts": "npm:11.3.3"
+    "@willbooster/prettier-config": "npm:10.1.3"
     build-ts: "npm:15.0.6"
     eslint: "npm:9.29.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.4.3"
-    eslint-plugin-import-x: "npm:4.16.0"
+    eslint-import-resolver-typescript: "npm:4.4.4"
+    eslint-plugin-import-x: "npm:4.16.1"
     eslint-plugin-sort-class-members: "npm:1.21.0"
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:59.0.1"
@@ -5777,7 +5958,8 @@ __metadata:
     globals: "npm:16.2.0"
     lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
-    prettier: "npm:3.6.1"
+    prettier: "npm:3.6.2"
+    prettier-plugin-java: "npm:2.6.8"
     sort-package-json: "npm:3.3.1"
     typescript: "npm:5.8.3"
     typescript-eslint: "npm:8.35.0"
@@ -5796,8 +5978,8 @@ __metadata:
     "@types/micromatch": "npm:4.0.9"
     "@types/node": "npm:22.15.32"
     "@types/yargs": "npm:17.0.33"
-    "@willbooster/eslint-config-ts": "npm:11.2.2"
-    "@willbooster/prettier-config": "npm:10.0.1"
+    "@willbooster/eslint-config-ts": "npm:11.3.3"
+    "@willbooster/prettier-config": "npm:10.1.3"
     at-decorators: "npm:5.0.2"
     build-ts: "npm:15.0.6"
     chalk: "npm:5.4.1"
@@ -5805,8 +5987,8 @@ __metadata:
     eslint: "npm:9.29.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
     eslint-config-prettier: "npm:10.1.5"
-    eslint-import-resolver-typescript: "npm:4.4.3"
-    eslint-plugin-import-x: "npm:4.16.0"
+    eslint-import-resolver-typescript: "npm:4.4.4"
+    eslint-plugin-import-x: "npm:4.16.1"
     eslint-plugin-sort-class-members: "npm:1.21.0"
     eslint-plugin-sort-destructure-keys: "npm:2.0.0"
     eslint-plugin-unicorn: "npm:59.0.1"
@@ -5817,7 +5999,8 @@ __metadata:
     lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
     minimal-promise-pool: "npm:5.0.0"
-    prettier: "npm:3.6.1"
+    prettier: "npm:3.6.2"
+    prettier-plugin-java: "npm:2.6.8"
     prisma: "npm:6.10.1"
     sort-package-json: "npm:3.3.1"
     tree-kill: "npm:1.2.2"
@@ -7546,6 +7729,31 @@ __metadata:
   version: 2.1.1
   resolution: "check-error@npm:2.1.1"
   checksum: 10c0/979f13eccab306cf1785fa10941a590b4e7ea9916ea2a4f8c87f0316fc3eab07eabefb6e587424ef0f88cbcd3805791f172ea739863ca3d7ce2afc54641c7f0e
+  languageName: node
+  linkType: hard
+
+"chevrotain-allstar@npm:0.3.1":
+  version: 0.3.1
+  resolution: "chevrotain-allstar@npm:0.3.1"
+  dependencies:
+    lodash-es: "npm:^4.17.21"
+  peerDependencies:
+    chevrotain: ^11.0.0
+  checksum: 10c0/5cadedffd3114eb06b15fd3939bb1aa6c75412dbd737fe302b52c5c24334f9cb01cee8edc1d1067d98ba80dddf971f1d0e94b387de51423fc6cf3c5d8b7ef27a
+  languageName: node
+  linkType: hard
+
+"chevrotain@npm:11.0.3":
+  version: 11.0.3
+  resolution: "chevrotain@npm:11.0.3"
+  dependencies:
+    "@chevrotain/cst-dts-gen": "npm:11.0.3"
+    "@chevrotain/gast": "npm:11.0.3"
+    "@chevrotain/regexp-to-ast": "npm:11.0.3"
+    "@chevrotain/types": "npm:11.0.3"
+    "@chevrotain/utils": "npm:11.0.3"
+    lodash-es: "npm:4.17.21"
+  checksum: 10c0/ffd425fa321e3f17e9833d7f44cd39f2743f066e92ca74b226176080ca5d455f853fe9091cdfd86354bd899d85c08b3bdc3f55b267e7d07124b048a88349765f
   languageName: node
   linkType: hard
 
@@ -9642,15 +9850,30 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint-import-resolver-typescript@npm:4.4.3":
-  version: 4.4.3
-  resolution: "eslint-import-resolver-typescript@npm:4.4.3"
+"eslint-import-context@npm:^0.1.9":
+  version: 0.1.9
+  resolution: "eslint-import-context@npm:0.1.9"
+  dependencies:
+    get-tsconfig: "npm:^4.10.1"
+    stable-hash-x: "npm:^0.2.0"
+  peerDependencies:
+    unrs-resolver: ^1.0.0
+  peerDependenciesMeta:
+    unrs-resolver:
+      optional: true
+  checksum: 10c0/07851103443b70af681c5988e2702e681ff9b956e055e11d4bd9b2322847fa0d9e8da50c18fc7cb1165106b043f34fbd0384d7011c239465c4645c52132e56f3
+  languageName: node
+  linkType: hard
+
+"eslint-import-resolver-typescript@npm:4.4.4":
+  version: 4.4.4
+  resolution: "eslint-import-resolver-typescript@npm:4.4.4"
   dependencies:
     debug: "npm:^4.4.1"
     eslint-import-context: "npm:^0.1.8"
     get-tsconfig: "npm:^4.10.1"
     is-bun-module: "npm:^2.0.0"
-    stable-hash-x: "npm:^0.1.1"
+    stable-hash-x: "npm:^0.2.0"
     tinyglobby: "npm:^0.2.14"
     unrs-resolver: "npm:^1.7.11"
   peerDependencies:
@@ -9662,23 +9885,23 @@ __metadata:
       optional: true
     eslint-plugin-import-x:
       optional: true
-  checksum: 10c0/c00c5e422e71fa3448007509ff49ac44c6917eabfeca72094f67d8dd5202f1aa7d8ec12344cf502268b71d3a9104e7b0072ed97e6301966115d02f3cce6f61d7
+  checksum: 10c0/3bf8ad77c21660f77a0e455555ab179420f68ae7a132906c85a217ccce51cb6680cf70027cab32a358d193e5b9e476f6ba2e595585242aa97d4f6435ca22104e
   languageName: node
   linkType: hard
 
-"eslint-plugin-import-x@npm:4.16.0":
-  version: 4.16.0
-  resolution: "eslint-plugin-import-x@npm:4.16.0"
+"eslint-plugin-import-x@npm:4.16.1":
+  version: 4.16.1
+  resolution: "eslint-plugin-import-x@npm:4.16.1"
   dependencies:
-    "@typescript-eslint/types": "npm:^8.34.0"
+    "@typescript-eslint/types": "npm:^8.35.0"
     comment-parser: "npm:^1.4.1"
     debug: "npm:^4.4.1"
-    eslint-import-context: "npm:^0.1.8"
+    eslint-import-context: "npm:^0.1.9"
     is-glob: "npm:^4.0.3"
     minimatch: "npm:^9.0.3 || ^10.0.1"
     semver: "npm:^7.7.2"
-    stable-hash-x: "npm:^0.1.1"
-    unrs-resolver: "npm:^1.9.0"
+    stable-hash-x: "npm:^0.2.0"
+    unrs-resolver: "npm:^1.9.2"
   peerDependencies:
     "@typescript-eslint/utils": ^8.0.0
     eslint: ^8.57.0 || ^9.0.0
@@ -9688,7 +9911,7 @@ __metadata:
       optional: true
     eslint-import-resolver-node:
       optional: true
-  checksum: 10c0/ab8b97f75d1ece5e6e47711ae7f135cf2e009c3cb483b1def9155de38f55379f426c45a35174dcf6fcb4f08a3ea963d6718db81ccaa6c5ac128ce9caa01a9555
+  checksum: 10c0/19cae9bf7b0e457747d5a5846b4198d83b02be43c02d2d49190ba3887ff019a307e3c486b5fc6feec7e9ed24a15e321012742fbbcbe96ad7e3bd24a31ee1450c
   languageName: node
   linkType: hard
 
@@ -12642,6 +12865,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"java-parser@npm:2.3.4":
+  version: 2.3.4
+  resolution: "java-parser@npm:2.3.4"
+  dependencies:
+    chevrotain: "npm:11.0.3"
+    chevrotain-allstar: "npm:0.3.1"
+    lodash: "npm:4.17.21"
+  checksum: 10c0/0b0c2eacd7d962535c278f980b02fd0030b268d67d41f59a3967bd309ba469217d98774691acd1617102037b080149a800e2d697925a7e85295e02d434224be0
+  languageName: node
+  linkType: hard
+
 "java-properties@npm:^1.0.2":
   version: 1.0.2
   resolution: "java-properties@npm:1.0.2"
@@ -13233,7 +13467,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lodash-es@npm:^4.17.21":
+"lodash-es@npm:4.17.21, lodash-es@npm:^4.17.21":
   version: 4.17.21
   resolution: "lodash-es@npm:4.17.21"
   checksum: 10c0/fb407355f7e6cd523a9383e76e6b455321f0f153a6c9625e21a8827d10c54c2a2341bd2ae8d034358b60e07325e1330c14c224ff582d04612a46a4f0479ff2f2
@@ -13296,7 +13530,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lodash@npm:^4.17.15, lodash@npm:^4.17.19, lodash@npm:^4.17.20, lodash@npm:^4.17.21":
+"lodash@npm:4.17.21, lodash@npm:^4.17.15, lodash@npm:^4.17.19, lodash@npm:^4.17.20, lodash@npm:^4.17.21":
   version: 4.17.21
   resolution: "lodash@npm:4.17.21"
   checksum: 10c0/d8cbea072bb08655bb4c989da418994b073a608dffa608b09ac04b43a791b12aeae7cd7ad919aa4c925f33b48490b5cfe6c1f71d827956071dae2e7bb3a6b74c
@@ -14269,7 +14503,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"napi-postinstall@npm:^0.2.2":
+"napi-postinstall@npm:^0.2.2, napi-postinstall@npm:^0.2.4":
   version: 0.2.4
   resolution: "napi-postinstall@npm:0.2.4"
   bin:
@@ -15860,12 +16094,24 @@ __metadata:
   languageName: node
   linkType: hard
 
-"prettier@npm:3.6.1":
-  version: 3.6.1
-  resolution: "prettier@npm:3.6.1"
+"prettier-plugin-java@npm:2.6.8":
+  version: 2.6.8
+  resolution: "prettier-plugin-java@npm:2.6.8"
+  dependencies:
+    java-parser: "npm:2.3.4"
+    lodash: "npm:4.17.21"
+  peerDependencies:
+    prettier: ^3.0.0
+  checksum: 10c0/be34fe5a91b121c0e1c74d9be20e8d38a894bccebcf1ea4adffb02eea9e44307eaea505b63b51102fafd5d8ed8c415048862c1b2aa47a846d307ed2072c75dce
+  languageName: node
+  linkType: hard
+
+"prettier@npm:3.6.2":
+  version: 3.6.2
+  resolution: "prettier@npm:3.6.2"
   bin:
     prettier: bin/prettier.cjs
-  checksum: 10c0/cf54254b9ddf1a8dff12f84bf0089e6aef3eeb9d0ce9d0344e39549ddc4f5c290fc5060d7d5a597848b9617e53e05b33a4118e37cd560f9e132ecc19c211300a
+  checksum: 10c0/488cb2f2b99ec13da1e50074912870217c11edaddedeadc649b1244c749d15ba94e846423d062e2c4c9ae683e2d65f754de28889ba06e697ac4f988d44f45812
   languageName: node
   linkType: hard
 
@@ -17993,6 +18239,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"stable-hash-x@npm:^0.2.0":
+  version: 0.2.0
+  resolution: "stable-hash-x@npm:0.2.0"
+  checksum: 10c0/c757df58366ee4bb266a9486b8932eab7c1ba730469eaf4b68d2dee404814e9f84089c44c9b5205f8c7d99a0ab036cce2af69139ce5ed44b635923c011a8aea8
+  languageName: node
+  linkType: hard
+
 "stable@npm:^0.1.8":
   version: 0.1.8
   resolution: "stable@npm:0.1.8"
@@ -19427,7 +19680,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"unrs-resolver@npm:^1.7.11, unrs-resolver@npm:^1.9.0":
+"unrs-resolver@npm:^1.7.11":
   version: 1.9.1
   resolution: "unrs-resolver@npm:1.9.1"
   dependencies:
@@ -19491,6 +19744,73 @@ __metadata:
     "@unrs/resolver-binding-win32-x64-msvc":
       optional: true
   checksum: 10c0/fded9251b6c180c92c0510abe63e4fa9a5a4adcdcf3c9f7920507dc9f1ec756de5e71d1258f12bf4a32f7042e1fe142b6dc1003d8a6fb4d0bf1234226c879b01
+  languageName: node
+  linkType: hard
+
+"unrs-resolver@npm:^1.9.2":
+  version: 1.9.2
+  resolution: "unrs-resolver@npm:1.9.2"
+  dependencies:
+    "@unrs/resolver-binding-android-arm-eabi": "npm:1.9.2"
+    "@unrs/resolver-binding-android-arm64": "npm:1.9.2"
+    "@unrs/resolver-binding-darwin-arm64": "npm:1.9.2"
+    "@unrs/resolver-binding-darwin-x64": "npm:1.9.2"
+    "@unrs/resolver-binding-freebsd-x64": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-arm-gnueabihf": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-arm-musleabihf": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-arm64-gnu": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-arm64-musl": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-ppc64-gnu": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-riscv64-gnu": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-riscv64-musl": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-s390x-gnu": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-x64-gnu": "npm:1.9.2"
+    "@unrs/resolver-binding-linux-x64-musl": "npm:1.9.2"
+    "@unrs/resolver-binding-wasm32-wasi": "npm:1.9.2"
+    "@unrs/resolver-binding-win32-arm64-msvc": "npm:1.9.2"
+    "@unrs/resolver-binding-win32-ia32-msvc": "npm:1.9.2"
+    "@unrs/resolver-binding-win32-x64-msvc": "npm:1.9.2"
+    napi-postinstall: "npm:^0.2.4"
+  dependenciesMeta:
+    "@unrs/resolver-binding-android-arm-eabi":
+      optional: true
+    "@unrs/resolver-binding-android-arm64":
+      optional: true
+    "@unrs/resolver-binding-darwin-arm64":
+      optional: true
+    "@unrs/resolver-binding-darwin-x64":
+      optional: true
+    "@unrs/resolver-binding-freebsd-x64":
+      optional: true
+    "@unrs/resolver-binding-linux-arm-gnueabihf":
+      optional: true
+    "@unrs/resolver-binding-linux-arm-musleabihf":
+      optional: true
+    "@unrs/resolver-binding-linux-arm64-gnu":
+      optional: true
+    "@unrs/resolver-binding-linux-arm64-musl":
+      optional: true
+    "@unrs/resolver-binding-linux-ppc64-gnu":
+      optional: true
+    "@unrs/resolver-binding-linux-riscv64-gnu":
+      optional: true
+    "@unrs/resolver-binding-linux-riscv64-musl":
+      optional: true
+    "@unrs/resolver-binding-linux-s390x-gnu":
+      optional: true
+    "@unrs/resolver-binding-linux-x64-gnu":
+      optional: true
+    "@unrs/resolver-binding-linux-x64-musl":
+      optional: true
+    "@unrs/resolver-binding-wasm32-wasi":
+      optional: true
+    "@unrs/resolver-binding-win32-arm64-msvc":
+      optional: true
+    "@unrs/resolver-binding-win32-ia32-msvc":
+      optional: true
+    "@unrs/resolver-binding-win32-x64-msvc":
+      optional: true
+  checksum: 10c0/e3481cc19ea4b25f888e2412bbd80a729b13527a41b035e784b71d1a7d4e2109b58b174adce989085eb75c787435e80ffb385db2b1598288474f53beb01438c0
   languageName: node
   linkType: hard
 
@@ -20185,14 +20505,15 @@ __metadata:
   dependencies:
     "@qiwi/multi-semantic-release": "npm:7.1.2"
     "@types/eslint": "npm:8.56.10"
-    "@willbooster/prettier-config": "npm:10.0.1"
+    "@willbooster/prettier-config": "npm:10.1.3"
     conventional-changelog-conventionalcommits: "npm:9.0.0"
     eslint: "npm:9.29.0"
     husky: "npm:9.1.7"
     lint-staged: "npm:16.1.2"
     micromatch: "npm:4.0.8"
     pinst: "npm:3.0.0"
-    prettier: "npm:3.6.1"
+    prettier: "npm:3.6.2"
+    prettier-plugin-java: "npm:2.6.8"
     sort-package-json: "npm:3.3.1"
     typescript: "npm:5.8.3"
   languageName: unknown
