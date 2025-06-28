@@ -5,7 +5,8 @@
     "declaration": true,
     "esModuleInterop": true,
     "importHelpers": false,
-    "module": "NodeNext",
+    "jsx": "react-jsx",
+    "module": "ESNext",
     "moduleResolution": "NodeNext",
     "outDir": "dist",
     "resolveJsonModule": true,
@@ -13,7 +14,14 @@
     "sourceMap": true,
     "strict": true,
     "target": "ESNext",
-    "typeRoots": ["../../node_modules/@types", "../../@types", "./@types"]
+    "typeRoots": ["./node_modules/@types", "./@types"]
   },
-  "include": ["scripts/**/*", "src/**/*", "tests/**/*"]
+  "include": [
+    "packages/*/scripts/**/*",
+    "packages/*/src/**/*",
+    "packages/*/test/**/*",
+    "scripts/**/*",
+    "src/**/*",
+    "test/**/*"
+  ]
 }

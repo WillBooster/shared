@@ -15,5 +15,5 @@
     "target": "ESNext",
     "typeRoots": ["../../node_modules/@types", "../../@types", "./@types"]
   },
-  "include": ["scripts/**/*", "src/**/*", "tests/**/*"]
+  "include": ["scripts/**/*", "src/**/*", "test/**/*"]
 }

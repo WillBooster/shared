@@ -28,14 +28,14 @@ describe('buildIfNeeded', () => {
     expect(await buildIfNeeded({ command }, dirPath)).toBe(true);
     expect(await buildIfNeeded({ command }, dirPath)).toBe(false);
 
-    await fs.promises.writeFile(path.join(dirPath, 'README.md'), `# test-fixtures/app/`);
+    await fs.promises.writeFile(path.join(dirPath, 'README.md'), `# test/fixtures/app/`);
     expect(await buildIfNeeded({ command }, dirPath)).toBe(false);
 
     await fs.promises.writeFile(
       path.join(dirPath, 'package.json'),
       JSON.stringify(
         {
-          name: '@test-fixtures/app2',
+          name: '@test/fixtures/app2',
         },
         undefined,
         2

@@ -5,7 +5,7 @@ import { beforeAll, expect, test } from 'vitest';
 
 import { glob, globSync } from '../src/glob.js';
 
-const rootDirPath = path.resolve('test-fixtures', 'temp', 'glob1');
+const rootDirPath = path.resolve('test/fixtures', 'temp', 'glob1');
 const srcDirPath = path.resolve(rootDirPath, 'src');
 const nodeModuleDirPath = path.resolve(rootDirPath, 'node_modules');
 const packageDirPath = path.resolve(nodeModuleDirPath, 'package1');
