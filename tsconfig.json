@@ -24,5 +24,6 @@
     "scripts/**/*",
     "src/**/*",
     "test/**/*"
-  ]
+  ],
+  "exclude": ["packages/*/test/fixtures/**/*", "test/fixtures/**/*"]
 }
