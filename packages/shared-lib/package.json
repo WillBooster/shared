@@ -39,7 +39,7 @@
   "devDependencies": {
     "@types/eslint": "8.56.10",
     "@types/micromatch": "4.0.9",
-    "@willbooster/eslint-config-ts": "11.3.3",
+    "@willbooster/eslint-config-ts": "11.3.4",
     "@willbooster/prettier-config": "10.1.3",
     "build-ts": "15.0.7",
     "eslint": "9.29.0",
