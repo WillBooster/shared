@@ -124,7 +124,7 @@ const includeSuffix = [
   'package.json',
   'yarn.lock',
 ];
-const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/'];
+const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'test/fixtures/'];
 
 async function updateHashWithDiffResult(
   project: Project,
@@ -142,7 +142,7 @@ async function updateHashWithDiffResult(
       .trim()
       .split('\n')
       .map((filePath) =>
-        project.env.WB_ENV === 'test' ? filePath.replace(/packages\/scripts\/test-fixtures\/[^/]+\//, '') : filePath
+        project.env.WB_ENV === 'test' ? filePath.replace(/packages\/wb\/test\/fixtures\/[^/]+\//, '') : filePath
       );
     const filteredFilePaths = filePaths.filter(
       (filePath) =>

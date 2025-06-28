@@ -10,7 +10,8 @@
   ],
   "scripts": {
     "build": "yarn workspaces foreach --all --parallel --verbose run build",
-    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null && yarn lint-fix --quiet && yarn typecheck && yarn test --silent",
+    "check-all-for-ai": "yarn check-for-ai && yarn test --silent",
+    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null && yarn lint-fix --quiet && yarn typecheck",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format",
     "postinstall": "husky || true",
@@ -30,10 +31,10 @@
   },
   "devDependencies": {
     "@qiwi/multi-semantic-release": "7.1.2",
-    "@types/eslint": "8.56.10",
+    "@types/eslint": "9.6.1",
     "@willbooster/prettier-config": "10.1.3",
     "conventional-changelog-conventionalcommits": "9.0.0",
-    "eslint": "9.29.0",
+    "eslint": "9.30.0",
     "husky": "9.1.7",
     "lint-staged": "16.1.2",
     "micromatch": "4.0.8",

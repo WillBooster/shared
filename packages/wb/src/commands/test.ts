@@ -103,11 +103,11 @@ export async function test(
       argv = {
         ...argv,
         e2e:
-          fs.existsSync(path.join(project.dirPath, 'tests', 'e2e')) && !argv.target?.includes('/unit/')
+          fs.existsSync(path.join(project.dirPath, 'test', 'e2e')) && !argv.target?.includes('/unit/')
             ? 'headless'
             : 'none',
         start: true,
-        unit: fs.existsSync(path.join(project.dirPath, 'tests', 'unit')) && !argv.target?.includes('/e2e/'),
+        unit: fs.existsSync(path.join(project.dirPath, 'test', 'unit')) && !argv.target?.includes('/e2e/'),
       };
     }
 
@@ -176,7 +176,7 @@ export async function test(
         continue;
       }
       case 'docker-debug': {
-        await testOnDocker(project, argv, scripts, `test ${argv.target || 'tests/e2e/'} --debug`);
+        await testOnDocker(project, argv, scripts, `test ${argv.target || 'test/e2e/'} --debug`);
         continue;
       }
     }
@@ -184,7 +184,7 @@ export async function test(
       switch (argv.e2e) {
         case 'headed': {
           await runWithSpawn(
-            scripts.testE2E(project, argv, { playwrightArgs: `test ${argv.target || 'tests/e2e/'} --headed` }),
+            scripts.testE2E(project, argv, { playwrightArgs: `test ${argv.target || 'test/e2e/'} --headed` }),
             project,
             argv
           );
@@ -192,7 +192,7 @@ export async function test(
         }
         case 'headed-dev': {
           await runWithSpawn(
-            scripts.testE2EDev(project, argv, { playwrightArgs: `test ${argv.target || 'tests/e2e/'} --headed` }),
+            scripts.testE2EDev(project, argv, { playwrightArgs: `test ${argv.target || 'test/e2e/'} --headed` }),
             project,
             argv
           );
@@ -200,7 +200,7 @@ export async function test(
         }
         case 'debug': {
           await runWithSpawn(
-            scripts.testE2E(project, argv, { playwrightArgs: `test ${argv.target || 'tests/e2e/'} --debug` }),
+            scripts.testE2E(project, argv, { playwrightArgs: `test ${argv.target || 'test/e2e/'} --debug` }),
             project,
             argv
           );

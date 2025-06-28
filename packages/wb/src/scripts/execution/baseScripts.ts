@@ -48,27 +48,27 @@ export abstract class BaseScripts {
   testE2E(
     project: Project,
     argv: TestArgv,
-    { playwrightArgs = 'test tests/e2e/', prismaDirectory, startCommand }: TestE2EOptions
+    { playwrightArgs = 'test test/e2e/', prismaDirectory, startCommand }: TestE2EOptions
   ): string {
     const env = project.env.WB_ENV;
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080
-        && BUN playwright ${playwrightArgs === 'test tests/e2e/' && argv.target ? playwrightArgs.replace('tests/e2e/', argv.target) : playwrightArgs}${suffix}"`;
+        && BUN playwright ${playwrightArgs === 'test test/e2e/' && argv.target ? playwrightArgs.replace('test/e2e/', argv.target) : playwrightArgs}${suffix}"`;
   }
 
   testE2EDev(
     project: Project,
     argv: TestArgv,
-    { playwrightArgs = 'test tests/e2e/', startCommand }: TestE2EDevOptions
+    { playwrightArgs = 'test test/e2e/', startCommand }: TestE2EDevOptions
   ): string {
     const env = project.env.WB_ENV;
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080
-        && BUN playwright ${playwrightArgs === 'test tests/e2e/' && argv.target ? playwrightArgs.replace('tests/e2e/', argv.target) : playwrightArgs}${suffix}"`;
+        && BUN playwright ${playwrightArgs === 'test test/e2e/' && argv.target ? playwrightArgs.replace('test/e2e/', argv.target) : playwrightArgs}${suffix}"`;
   }
 
   abstract testStart(project: Project, argv: ScriptArgv): string;
@@ -76,9 +76,9 @@ export abstract class BaseScripts {
   testUnit(project: Project, argv: TestArgv): string {
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-      return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${argv.target || 'tests/unit/'} --color --passWithNoTests --allowOnly`;
+      return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${argv.target || 'test/unit/'} --color --passWithNoTests --allowOnly`;
     } else if (project.isBunAvailable) {
-      return `WB_ENV=${project.env.WB_ENV} bun test ${argv.target || 'tests/unit/'}`;
+      return `WB_ENV=${project.env.WB_ENV} bun test ${argv.target || 'test/unit/'}`;
     }
     return 'echo "No tests."';
   }

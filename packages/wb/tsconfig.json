@@ -16,5 +16,5 @@
     "target": "ES2022",
     "typeRoots": ["../../node_modules/@types", "../../@types", "./@types"]
   },
-  "include": ["scripts/**/*", "src/**/*", "tests/**/*", "vitest.config.ts"]
+  "include": ["scripts/**/*", "src/**/*", "test/**/*", "vitest.config.ts"]
 }

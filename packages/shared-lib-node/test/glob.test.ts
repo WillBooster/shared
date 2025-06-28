@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { beforeAll, expect, test } from 'bun:test';
+import { beforeAll, expect, test } from 'vitest';
 
 import { glob, globSync } from '../src/glob.js';
 
