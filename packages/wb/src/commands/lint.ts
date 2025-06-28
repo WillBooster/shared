@@ -77,7 +77,12 @@ export const lintCommand: CommandModule<
       const packageJsonFilePaths: string[] = [];
       for (const file of files) {
         const filePath = path.resolve(String(file));
-        if (filePath.endsWith('/test/fixtures') || filePath.includes('/test/fixtures/')) {
+        if (
+          filePath.endsWith('/test/fixtures') ||
+          filePath.includes('/test/fixtures/') ||
+          filePath.endsWith('/test-fixtures') ||
+          filePath.includes('/test-fixtures/')
+        ) {
           continue;
         }
 
@@ -95,7 +100,7 @@ export const lintCommand: CommandModule<
       sortPackageJsonArgsText = packageJsonFilePaths.map((f) => `"${f}"`).join(' ');
     } else {
       biomeArgsText = '';
-      prettierArgsText = `"**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}" "!**/test/fixtures/**"`;
+      prettierArgsText = `"**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}" "!**/test{-,/}fixtures/**"`;
       sortPackageJsonArgsText = projects.descendants.map((p) => `"${p.packageJsonPath}"`).join(' ');
     }
 
