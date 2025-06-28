@@ -16,5 +16,6 @@
     "target": "ES2022",
     "typeRoots": ["../../node_modules/@types", "../../@types", "./@types"]
   },
+  "exclude": ["test/fixtures/**/*"],
   "include": ["scripts/**/*", "src/**/*", "test/**/*"]
 }
