@@ -26,7 +26,7 @@
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.4.1",
-    "dotenv": "16.5.0",
+    "dotenv": "16.6.1",
     "globby": "14.1.0",
     "kill-port": "2.0.1",
     "minimal-promise-pool": "5.0.0",
@@ -35,11 +35,11 @@
   },
   "devDependencies": {
     "@rollup/plugin-swc": "0.4.0",
-    "@swc/core": "1.12.5",
+    "@swc/core": "1.12.7",
     "@types/eslint": "8.56.10",
     "@types/kill-port": "2.0.3",
     "@types/micromatch": "4.0.9",
-    "@types/node": "22.15.32",
+    "@types/node": "22.15.33",
     "@types/yargs": "17.0.33",
     "@willbooster/eslint-config-ts": "11.3.3",
     "@willbooster/prettier-config": "10.1.3",
