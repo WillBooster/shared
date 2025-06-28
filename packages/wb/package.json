@@ -26,7 +26,7 @@
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.4.1",
-    "dotenv": "16.6.1",
+    "dotenv": "17.0.0",
     "globby": "14.1.0",
     "kill-port": "2.0.1",
     "minimal-promise-pool": "5.0.0",
