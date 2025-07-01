@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 module.exports = {
-  './**/*.{cjs,css,cts,htm,html,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}': (files) => {
+  './**/*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}': (files) => {
     let filteredFiles = files.filter(
       (file) => !file.includes('/test-fixtures/') && !file.includes('/test/fixtures/') && !file.includes('/packages/')
     );

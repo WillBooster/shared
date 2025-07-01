@@ -8,7 +8,7 @@ module.exports = {
     'node ../../node_modules/.bin/eslint --fix',
     'node ../../node_modules/.bin/prettier --cache --write',
   ],
-  './**/*.{cjs,css,cts,htm,html,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}': (files) => {
+  './**/*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}': (files) => {
     let filteredFiles = files.filter((file) => !file.includes('/test-fixtures/') && !file.includes('/test/fixtures/'));
 
     filteredFiles = filteredFiles.map((file) => path.relative('', file));
