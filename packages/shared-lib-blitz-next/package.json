@@ -43,7 +43,7 @@
     "@willbooster/eslint-config-ts": "11.4.0",
     "@willbooster/prettier-config": "10.2.0",
     "blitz": "2.2.2",
-    "build-ts": "15.0.10",
+    "build-ts": "15.0.11",
     "eslint": "9.30.1",
     "eslint-config-flat-gitignore": "2.1.0",
     "eslint-config-prettier": "10.1.5",
