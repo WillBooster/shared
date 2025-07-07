@@ -1,4 +1,4 @@
-# Project Information
+## Project Information
 
 - Name: willbooster-shared
 - Description: undefined
