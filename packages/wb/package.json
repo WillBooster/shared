@@ -64,7 +64,7 @@
     "sort-package-json": "3.4.0",
     "type-fest": "4.41.0",
     "typescript": "5.8.3",
-    "typescript-eslint": "8.35.1",
+    "typescript-eslint": "8.36.0",
     "vitest": "3.2.4"
   },
   "engines": {
