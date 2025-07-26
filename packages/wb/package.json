@@ -45,7 +45,7 @@
     "@willbooster/eslint-config-ts": "11.4.1",
     "@willbooster/prettier-config": "10.2.0",
     "at-decorators": "5.0.2",
-    "build-ts": "15.0.14",
+    "build-ts": "15.0.15",
     "eslint": "9.30.1",
     "eslint-config-flat-gitignore": "2.1.0",
     "eslint-config-prettier": "10.1.8",
