@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
@@ -39,7 +40,19 @@ await yargs(hideBin(process.argv))
   .command(tcCommand)
   .demandCommand()
   .strict()
+  .version(getVersion())
   .help().argv;
+
+function getVersion(): string {
+  let packageJsonDir = path.dirname(new URL(import.meta.url).pathname);
+  while (!fs.existsSync(path.join(packageJsonDir, 'package.json'))) {
+    packageJsonDir = path.dirname(packageJsonDir);
+  }
+  const packageJson = JSON.parse(fs.readFileSync(path.join(packageJsonDir, 'package.json'), 'utf8')) as {
+    version: string;
+  };
+  return packageJson.version;
+}
 
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
   process.on(signal, () => process.exit());
