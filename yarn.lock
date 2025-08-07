@@ -9024,9 +9024,9 @@ __metadata:
   linkType: hard
 
 "electron-to-chromium@npm:^1.5.173":
-  version: 1.5.197
-  resolution: "electron-to-chromium@npm:1.5.197"
-  checksum: 10c0/2e48557a78bb17f1becdbcb4352ac570025cf7e304e5ad4657548a020c16646d1d5b00ffa149db3ebffb42a72981431305c566e7d7f971adaf5d15b9cb4c744a
+  version: 1.5.198
+  resolution: "electron-to-chromium@npm:1.5.198"
+  checksum: 10c0/745ded4c4bf73c96d6a491c4ab6e573903242f3e414ebbaa27efbee7001a7a07e8f0f95bfea1b572e93e70a355caa65e5090f95a146e90bc397e8276d2da30de
   languageName: node
   linkType: hard
 
@@ -16732,7 +16732,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rollup@npm:4.46.2, rollup@npm:^4.40.0":
+"rollup@npm:4.46.2, rollup@npm:^4.43.0":
   version: 4.46.2
   resolution: "rollup@npm:4.46.2"
   dependencies:
@@ -17638,9 +17638,9 @@ __metadata:
   linkType: hard
 
 "spdx-license-ids@npm:^3.0.0":
-  version: 3.0.21
-  resolution: "spdx-license-ids@npm:3.0.21"
-  checksum: 10c0/ecb24c698d8496aa9efe23e0b1f751f8a7a89faedcdfcbfabae772b546c2db46ccde8f3bc447a238eb86bbcd4f73fea88720ef3b8394f7896381bec3d7736411
+  version: 3.0.22
+  resolution: "spdx-license-ids@npm:3.0.22"
+  checksum: 10c0/4a85e44c2ccfc06eebe63239193f526508ebec1abc7cf7bca8ee43923755636234395447c2c87f40fb672cf580a9c8e684513a676bfb2da3d38a4983684bbb38
   languageName: node
   linkType: hard
 
@@ -19438,15 +19438,15 @@ __metadata:
   linkType: hard
 
 "vite@npm:^5.0.0 || ^6.0.0 || ^7.0.0-0":
-  version: 7.0.6
-  resolution: "vite@npm:7.0.6"
+  version: 7.1.0
+  resolution: "vite@npm:7.1.0"
   dependencies:
     esbuild: "npm:^0.25.0"
     fdir: "npm:^6.4.6"
     fsevents: "npm:~2.3.3"
     picomatch: "npm:^4.0.3"
     postcss: "npm:^8.5.6"
-    rollup: "npm:^4.40.0"
+    rollup: "npm:^4.43.0"
     tinyglobby: "npm:^0.2.14"
   peerDependencies:
     "@types/node": ^20.19.0 || >=22.12.0
@@ -19488,7 +19488,7 @@ __metadata:
       optional: true
   bin:
     vite: bin/vite.js
-  checksum: 10c0/3b14dfa661281b4843789884199ba2a9cca940a7666970036fe3fb1abff52b88e63e8be5ab419dd04d9f96c0415ee0f1e3ec8ebe357041648af7ccd8e348b6ad
+  checksum: 10c0/65737215e1ec98e1e7c99abc576fbc4dd2623c264d04950e004a1f96f7af84d4236a9dc8a25f1546711b99b91a2b2e446c184f1be38ca63c1ab9f6385c15a130
   languageName: node
   linkType: hard
 
