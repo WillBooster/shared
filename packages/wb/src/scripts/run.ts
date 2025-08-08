@@ -104,7 +104,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
     .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
     .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ')
     // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`
-    .replaceAll('YARN run ', project.isBunAvailable ? 'bun --bun run ' : 'yarn run ');
+    .replaceAll('YARN run ', isRunningOnBun ? 'bun --bun run ' : 'yarn run ');
   if (isRunningOnBun) {
     newScript = newScript
       .replaceAll('YARN build-ts run', 'bun --bun run')
