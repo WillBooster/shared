@@ -6,12 +6,12 @@ import type { Glob } from 'bun';
 /**
  * Represents a file system entry with name and parent path information.
  */
-type NodeJsDirentLike = {
+interface NodeJsDirentLike {
   /** The name of the file or directory */
   name: string;
   /** The absolute path to the parent directory */
   parentPath: string;
-};
+}
 
 /**
  * Asynchronously glob for files and directories.
