@@ -87,9 +87,9 @@ export async function test(
     const deps = project.packageJson.dependencies || {};
     const devDeps = project.packageJson.devDependencies || {};
     let scripts: BaseScripts;
-    if (deps['blitz']) {
+    if (deps.blitz) {
       scripts = blitzScripts;
-    } else if (deps['next']) {
+    } else if (deps.next) {
       scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
@@ -180,7 +180,7 @@ export async function test(
         continue;
       }
     }
-    if (deps['blitz'] || deps['next'] || devDeps['@remix-run/dev']) {
+    if (deps.blitz || deps.next || devDeps['@remix-run/dev']) {
       switch (argv.e2e) {
         case 'headed': {
           await runWithSpawn(
@@ -233,10 +233,10 @@ async function testOnDocker(
   process.env.WB_DOCKER ||= '1';
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
   process.exitCode = await runWithSpawn(
-    `${scripts.testE2E(project, argv, {
+    scripts.testE2E(project, argv, {
       playwrightArgs,
       startCommand: `${dockerScripts.stopAndStart(project, true)}${toDevNull(argv)}`,
-    })}`,
+    }),
     project,
     argv,
     { exitIfFailed: false }

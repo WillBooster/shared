@@ -29,7 +29,7 @@ export function useInterval(callback: () => void, milliseconds?: number): () => 
 
   useEffect(() => {
     if (milliseconds !== undefined) {
-      timerId.current = globalThis.setInterval(() => callbackRef.current(), milliseconds);
+      timerId.current = globalThis.setInterval(() => { callbackRef.current(); }, milliseconds);
     }
     return clearInterval;
   }, [milliseconds]);

@@ -20,7 +20,7 @@ export function useStorage<T>(
         if (event.key === key) callback();
       };
       globalThis.addEventListener('storage', newCallback);
-      return () => globalThis.removeEventListener('storage', newCallback);
+      return () => { globalThis.removeEventListener('storage', newCallback); };
     },
     () => window[nonReactiveStorageType].getItem(key),
     () => 'ssrJsonText' in nonReactiveOptions && nonReactiveOptions.ssrJsonText

@@ -68,7 +68,7 @@ export type SpawnAsyncOptions = (
  */
 export async function spawnAsync(
   command: string,
-  args?: ReadonlyArray<string>,
+  args?: readonly string[],
   options?: SpawnAsyncOptions
 ): Promise<SpawnAsyncReturns> {
   return new Promise((resolve, reject) => {
