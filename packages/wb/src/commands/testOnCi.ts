@@ -46,7 +46,7 @@ export async function testOnCi(
     process.env.CI = '1';
   }
   process.env.FORCE_COLOR ??= '3';
-  process.env.WB_ENV ??= 'test';
+  process.env.WB_ENV ||= 'test';
 
   for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies ?? {};

@@ -90,7 +90,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
 };
 
 function configureEnvironmentVariables(deps: Partial<Record<string, string>>, wbEnv: string): string {
-  process.env.WB_ENV ??= wbEnv;
+  process.env.WB_ENV ||= wbEnv;
   let prefix = `WB_ENV=${process.env.WB_ENV} `;
   if (deps.next) {
     process.env.NEXT_PUBLIC_WB_ENV = process.env.WB_ENV;

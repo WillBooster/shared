@@ -84,8 +84,8 @@ export async function test(
     // Disable interactive mode
     process.env.CI = '1';
   }
-  process.env.FORCE_COLOR ??= '3';
-  process.env.WB_ENV ??= 'test';
+  process.env.FORCE_COLOR ||= '3';
+  process.env.WB_ENV ||= 'test';
 
   // Get test targets from positional arguments
   const testTargets = (argv.targets ?? []) as string[];
