@@ -12,10 +12,6 @@ import { BaseScripts } from './baseScripts.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class BlitzScripts extends BaseScripts {
-  constructor() {
-    super();
-  }
-
   override start(project: Project, argv: ScriptArgv): string {
     const appEnv = project.env.WB_ENV ? `APP_ENV=${project.env.WB_ENV} ` : '';
     return `${appEnv}YARN concurrently --raw --kill-others-on-fail

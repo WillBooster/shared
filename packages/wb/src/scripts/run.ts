@@ -35,7 +35,7 @@ export async function runWithSpawn(
     return 0;
   }
 
-  const port = runnableScript.match(/http-get:\/\/127.0.0.1:(\d+)/)?.[1];
+  const port = /http-get:\/\/127.0.0.1:(\d+)/.exec(runnableScript)?.[1];
   if (runnableScript.includes('wait-on') && port && !runnableScript.includes('docker run')) {
     await killPortProcessImmediatelyAndOnExit(Number(port));
   }
@@ -44,7 +44,7 @@ export async function runWithSpawn(
     env: configureEnv(project.env, opts),
     shell: true,
     stdio: 'inherit',
-    timeout: opts?.timeout,
+    timeout: opts.timeout,
     killOnExit: true,
     verbose: argv.verbose,
   });
@@ -75,7 +75,7 @@ export function runWithSpawnInParallel(
       env: configureEnv(project.env, opts),
       shell: true,
       stdio: 'pipe',
-      timeout: opts?.timeout,
+      timeout: opts.timeout,
       mergeOutAndError: true,
       killOnExit: true,
       verbose: argv.verbose,
@@ -101,7 +101,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
   let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
-    .replaceAll('PRISMA ', project.packageJson.dependencies?.['blitz'] ? 'YARN blitz prisma ' : 'YARN prisma ')
+    .replaceAll('PRISMA ', project.packageJson.dependencies?.blitz ? 'YARN blitz prisma ' : 'YARN prisma ')
     .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ')
     // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`
     .replaceAll('YARN run ', isRunningOnBun ? 'bun --bun run ' : 'yarn run ');
@@ -153,10 +153,10 @@ export function printFinishedAndExitIfNeeded(
 function configureEnv(env: Record<string, string | undefined>, opts: Options): Record<string, string | undefined> {
   const newEnv = { ...env };
   if (opts.ci) {
-    newEnv['CI'] = '1';
+    newEnv.CI = '1';
   }
   if (opts.forceColor) {
-    newEnv['FORCE_COLOR'] = '3';
+    newEnv.FORCE_COLOR = '3';
   }
   return newEnv;
 }

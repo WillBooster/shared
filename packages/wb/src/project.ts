@@ -70,12 +70,12 @@ export class Project {
 
   @memoizeOne
   get name(): string {
-    return this.packageJson.name || 'unknown';
+    return this.packageJson.name ?? 'unknown';
   }
 
   @memoizeOne
   get dockerImageName(): string {
-    const name = this.packageJson.name || 'unknown';
+    const name = this.packageJson.name ?? 'unknown';
     return name.replaceAll('@', '').replaceAll('/', '-');
   }
 
@@ -104,12 +104,12 @@ export class Project {
 
   @memoizeOne
   get hasPrisma(): boolean {
-    return !!(this.packageJson.dependencies?.['prisma'] || this.packageJson.devDependencies?.['prisma']);
+    return !!(this.packageJson.dependencies?.prisma ?? this.packageJson.devDependencies?.prisma);
   }
 
   @memoizeOne
   get hasVitest(): boolean {
-    return !!(this.packageJson.dependencies?.['vitest'] || this.packageJson.devDependencies?.['vitest']);
+    return !!(this.packageJson.dependencies?.vitest ?? this.packageJson.devDependencies?.vitest);
   }
 
   @memoizeOne

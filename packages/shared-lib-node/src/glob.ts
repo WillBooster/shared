@@ -6,12 +6,12 @@ import type { Glob } from 'bun';
 /**
  * Represents a file system entry with name and parent path information.
  */
-type NodeJsDirentLike = {
+interface NodeJsDirentLike {
   /** The name of the file or directory */
   name: string;
   /** The absolute path to the parent directory */
   parentPath: string;
-};
+}
 
 /**
  * Asynchronously glob for files and directories.
@@ -30,7 +30,7 @@ export async function* glob(
   if (process.versions.bun) {
     // Use require & String to avoid loading bun on Next.js
     // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-unsafe-assignment,unicorn/prefer-module
-    const bun = require(String('bun'));
+    const bun = require('bun');
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-member-access
     const bunGlob = new bun.Glob(pattern) as Glob;
     for await (const direntPath of bunGlob.scan({ cwd: options.cwd, onlyFiles: options.onlyFiles })) {
@@ -75,7 +75,7 @@ export function globSync(
   if (process.versions.bun) {
     // Use require & String to avoid loading bun on Next.js
     // eslint-disable-next-line @typescript-eslint/no-require-imports,@typescript-eslint/no-unsafe-assignment,unicorn/prefer-module
-    const bun = require(String('bun'));
+    const bun = require('bun');
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call,@typescript-eslint/no-unsafe-member-access
     const bunGlob = new bun.Glob(pattern) as Glob;
     const dirents: NodeJsDirentLike[] = [];
