@@ -147,13 +147,13 @@ export async function test(
         continue;
       }
       case 'docker-debug': {
-        const e2eTarget = e2eTargets.length > 0 ? e2eTargets[0] : 'test/e2e/';
+        const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
         await testOnDocker(project, e2eArgv, scripts, `test ${e2eTarget} --debug`);
         continue;
       }
     }
     if (deps['blitz'] || deps['next'] || devDeps['@remix-run/dev']) {
-      const e2eTarget = e2eTargets.length > 0 ? e2eTargets[0] : 'test/e2e/';
+      const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
       switch (e2eMode) {
         case 'headed': {
           await runWithSpawn(

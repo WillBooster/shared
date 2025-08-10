@@ -52,7 +52,7 @@ export abstract class BaseScripts {
   ): string {
     const env = project.env.WB_ENV;
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets[0] : 'test/e2e/';
+    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080
@@ -66,7 +66,7 @@ export abstract class BaseScripts {
   ): string {
     const env = project.env.WB_ENV;
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets[0] : 'test/e2e/';
+    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080
