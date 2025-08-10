@@ -25,6 +25,18 @@ const builder = {
     description:
       'E2e test mode: headless (default) | headless-dev | headed | headed-dev | docker | docker-debug | debug | generate | trace',
     type: 'string',
+    choices: [
+      'headless',
+      'headless-dev',
+      'headed',
+      'headed-dev',
+      'docker',
+      'docker-debug',
+      'debug',
+      'generate',
+      'trace',
+    ],
+    default: 'headless',
   },
   silent: {
     description: 'Reduce redundant outputs',
@@ -75,15 +87,9 @@ export async function test(
   process.env.FORCE_COLOR ||= '3';
   process.env.WB_ENV ||= 'test';
 
-  // Validate e2e option - disallow undefined and 'none'
-  let e2eMode = argv.e2e;
-  if (e2eMode === undefined || e2eMode === 'none') {
-    e2eMode = undefined;
-  }
-
   // Get test targets from positional arguments
   const testTargets = (argv.targets || []) as string[];
-  const shouldRunAllTests = testTargets.length === 0 && e2eMode === undefined;
+  const shouldRunAllTests = testTargets.length === 0;
 
   // Detect test modes from target paths
   const hasE2eTargets = testTargets.some((target) => target.includes('/e2e'));
@@ -107,11 +113,6 @@ export async function test(
       scripts = plainAppScripts;
     }
 
-    // Set e2e mode if running all tests and e2e directory exists
-    if (shouldRunAllTests && shouldRunE2e && fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
-      e2eMode = 'headless';
-    }
-
     console.info(`Running "test" for ${project.name} ...`);
 
     // Run unit tests if needed
@@ -129,11 +130,7 @@ export async function test(
     const e2eTargets = testTargets.filter((target) => target.includes('/e2e'));
     const e2eArgv = { ...argv, targets: e2eTargets.length > 0 ? e2eTargets : undefined };
 
-    switch (e2eMode) {
-      case undefined: {
-        continue;
-      }
-      case '':
+    switch (argv.e2e) {
       case 'headless': {
         await runWithSpawn(scripts.testE2E(project, e2eArgv, {}), project, argv);
         continue;
@@ -154,14 +151,14 @@ export async function test(
     }
     if (deps['blitz'] || deps['next'] || devDeps['@remix-run/dev']) {
       const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
-      switch (e2eMode) {
+      switch (argv.e2e) {
         case 'headed': {
           await runWithSpawn(
             scripts.testE2E(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
             project,
             argv
           );
-          continue;
+          break;
         }
         case 'headed-dev': {
           await runWithSpawn(
@@ -169,7 +166,7 @@ export async function test(
             project,
             argv
           );
-          continue;
+          break;
         }
         case 'debug': {
           await runWithSpawn(
@@ -177,7 +174,7 @@ export async function test(
             project,
             argv
           );
-          continue;
+          break;
         }
         case 'generate': {
           await runWithSpawn(
@@ -185,15 +182,14 @@ export async function test(
             project,
             argv
           );
-          continue;
+          break;
         }
         case 'trace': {
           await runWithSpawn(`BUN playwright show-trace`, project, argv);
-          continue;
+          break;
         }
       }
     }
-    throw new Error(`Unknown e2e mode: ${e2eMode}`);
   }
 }
 
