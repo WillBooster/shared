@@ -34,7 +34,7 @@ export function useInterval(callback: () => void, milliseconds?: number): () => 
       }, milliseconds);
     }
     return clearInterval;
-  }, [milliseconds, clearInterval]);
+  }, [milliseconds]);
 
   return clearInterval;
 }
