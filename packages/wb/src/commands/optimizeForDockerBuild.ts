@@ -92,7 +92,10 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
   ];
   const removedDeps: string[] = [];
   for (const name of Object.keys(devDeps)) {
-    if (nameWordsToBeRemoved.some((word) => name.includes(word))) {
+    if (
+      nameWordsToBeRemoved.some((word) => name.includes(word)) ||
+      (name.includes('willbooster') && name.includes('config'))
+    ) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete devDeps[name];
       removedDeps.push(name);

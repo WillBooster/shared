@@ -34,7 +34,7 @@
     "@types/eslint": "9.6.1",
     "@willbooster/prettier-config": "10.2.0",
     "conventional-changelog-conventionalcommits": "9.1.0",
-    "eslint": "9.32.0",
+    "eslint": "9.33.0",
     "husky": "9.1.7",
     "lint-staged": "16.1.5",
     "micromatch": "4.0.8",

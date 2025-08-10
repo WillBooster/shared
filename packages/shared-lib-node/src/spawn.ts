@@ -75,8 +75,10 @@ export async function spawnAsync(
     try {
       const proc = spawn(command, args ?? [], options ?? {});
       // `setEncoding` is undefined in Bun
-      proc.stdout?.setEncoding('utf8');
-      proc.stderr?.setEncoding('utf8');
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      proc.stdout?.setEncoding?.('utf8');
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      proc.stderr?.setEncoding?.('utf8');
 
       let stdout = '';
       let stderr = '';

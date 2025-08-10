@@ -62,7 +62,7 @@ export const typeCheckCommand: CommandModule<
     let finalExitCode = 0;
     for (const [i, exitCode] of exitCodes.entries()) {
       if (exitCode) {
-        const deps = projects.descendants[i].packageJson.dependencies ?? {};
+        const deps = projects.descendants[i]?.packageJson.dependencies ?? {};
         if (deps.blitz) {
           console.info(chalk.yellow('Please try "yarn gen-code" if you face unknown type errors.'));
         }

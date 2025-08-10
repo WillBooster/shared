@@ -20,7 +20,7 @@ export function BasicAuthMiddleware(options: BasicAuthMiddlewareOptions): Reques
       requestUsername !== options.username ||
       requestPassword !== options.password
     ) {
-      response.setHeader('WWW-Authenticate', `Basic realm='${options.realm ?? 'Secure Area'}'`);
+      response.setHeader('WWW-Authenticate', `Basic realm='${options.realm || 'Secure Area'}'`);
       response.statusCode = 401;
       response.end('Unauthorized');
       return;

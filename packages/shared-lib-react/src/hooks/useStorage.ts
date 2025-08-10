@@ -37,7 +37,7 @@ export function useStorage<T>(
       // do nothing
     }
     return typeof initialValueOrFunc === 'function' ? (initialValueOrFunc as () => T)() : initialValueOrFunc;
-  }, [jsonText, initialValueOrFunc, nonReactiveOptions]);
+  }, [jsonText, initialValueOrFunc]);
 
   const setState = useCallback(
     (valueOrFunc: T | ((prevState: T) => T)) => {
@@ -54,7 +54,7 @@ export function useStorage<T>(
       globalThis.dispatchEvent(new StorageEvent('storage', { key, newValue }));
     },
 
-    [key, value, nonReactiveStorageType]
+    [key, value]
   );
 
   useEffect(() => {
@@ -63,7 +63,7 @@ export function useStorage<T>(
     if (window[nonReactiveStorageType].getItem(key) === null && resolvedInitialValue !== undefined) {
       window[nonReactiveStorageType].setItem(key, JSON.stringify(resolvedInitialValue));
     }
-  }, [key, initialValueOrFunc, nonReactiveStorageType]);
+  }, [key, initialValueOrFunc]);
 
   return [value, setState];
 }

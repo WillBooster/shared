@@ -70,12 +70,12 @@ export class Project {
 
   @memoizeOne
   get name(): string {
-    return this.packageJson.name ?? 'unknown';
+    return this.packageJson.name || 'unknown';
   }
 
   @memoizeOne
   get dockerImageName(): string {
-    const name = this.packageJson.name ?? 'unknown';
+    const name = this.packageJson.name || 'unknown';
     return name.replaceAll('@', '').replaceAll('/', '-');
   }
 
