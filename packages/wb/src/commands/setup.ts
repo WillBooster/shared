@@ -46,7 +46,7 @@ export async function setup(
       }
 
       if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
-        await runWithSpawn('asdf install', project, argv);
+        await runWithSpawn('asdf install', project, argv, { exitIfFailed: false });
       }
     }
 
