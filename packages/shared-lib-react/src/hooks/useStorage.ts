@@ -37,7 +37,7 @@ export function useStorage<T>(
       // do nothing
     }
     return typeof initialValueOrFunc === 'function' ? (initialValueOrFunc as () => T)() : initialValueOrFunc;
-  }, [jsonText, initialValueOrFunc]);
+  }, [jsonText, initialValueOrFunc]); // Don't add nonReactiveOptions to deps because it's not allowed to change.
 
   const setState = useCallback(
     (valueOrFunc: T | ((prevState: T) => T)) => {
@@ -54,7 +54,7 @@ export function useStorage<T>(
       globalThis.dispatchEvent(new StorageEvent('storage', { key, newValue }));
     },
 
-    [key, value]
+    [key, value] // Don't add nonReactiveStorageType to deps because it's not allowed to change.
   );
 
   useEffect(() => {
@@ -63,7 +63,7 @@ export function useStorage<T>(
     if (window[nonReactiveStorageType].getItem(key) === null && resolvedInitialValue !== undefined) {
       window[nonReactiveStorageType].setItem(key, JSON.stringify(resolvedInitialValue));
     }
-  }, [key, initialValueOrFunc]);
+  }, [key, initialValueOrFunc]); // Don't add nonReactiveStorageType to deps because it's not allowed to change.
 
   return [value, setState];
 }
