@@ -12,7 +12,8 @@ import { prismaCommand } from './commands/prisma.js';
 import { retryCommand } from './commands/retry.js';
 import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
-import { testCommand, testOnCiCommand } from './commands/test.js';
+import { testCommand } from './commands/test.js';
+import { testOnCiCommand } from './commands/testOnCi.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
