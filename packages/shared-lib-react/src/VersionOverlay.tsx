@@ -22,8 +22,8 @@ export const VersionOverlay: React.FC = () => (
         fontSize: '0.75rem',
       }}
     >
-      {process.env.NEXT_PUBLIC_WB_VERSION ?? process.env.WB_VERSION ?? 'dev'} on{' '}
-      {process.env.NEXT_PUBLIC_WB_ENV ?? process.env.WB_ENV ?? 'local'}
+      {process.env.NEXT_PUBLIC_WB_VERSION || process.env.WB_VERSION || 'dev'} on{' '}
+      {process.env.NEXT_PUBLIC_WB_ENV || process.env.WB_ENV || 'local'}
     </div>
   </>
 );
