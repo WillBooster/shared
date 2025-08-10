@@ -55,9 +55,9 @@ export function readEnvironmentVariables(
   const cascade =
     argv.cascadeEnv ??
     (argv.cascadeNodeEnv
-      ? (process.env.NODE_ENV ?? 'development')
+      ? process.env.NODE_ENV || 'development'
       : argv.autoCascadeEnv
-        ? (process.env.WB_ENV ?? process.env.NODE_ENV ?? 'development')
+        ? process.env.WB_ENV || process.env.NODE_ENV || 'development'
         : undefined);
   if (typeof cascade === 'string') {
     if (envPaths.length === 0) {
