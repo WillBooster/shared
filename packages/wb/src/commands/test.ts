@@ -15,58 +15,64 @@ import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
-import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
+import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { promisePool } from '../utils/promisePool.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
 
 const builder = {
-  ci: {
-    description: 'Whether to run tests on CI',
-    type: 'boolean',
-  },
   e2e: {
     description:
-      'Whether to run e2e tests. You may pass mode as argument: none | headless (default) | headless-dev | headed | headed-dev | docker | docker-debug | debug | generate | trace',
+      'E2e test mode: headless (default) | headless-dev | headed | headed-dev | docker | docker-debug | debug | generate | trace',
     type: 'string',
+    choices: [
+      'headless',
+      'headless-dev',
+      'headed',
+      'headed-dev',
+      'docker',
+      'docker-debug',
+      'debug',
+      'generate',
+      'trace',
+    ],
+    default: 'headless',
   },
   silent: {
     description: 'Reduce redundant outputs',
-    type: 'boolean',
-  },
-  start: {
-    description: 'Whether to run start tests',
-    type: 'boolean',
-  },
-  unit: {
-    description: 'Whether to run unit tests',
     type: 'boolean',
   },
   'unit-timeout': {
     description: 'Timeout for unit tests',
     type: 'number',
   },
-  target: {
-    description: 'Test target',
-    type: 'string',
-    alias: 't',
+} as const;
+
+const argumentsBuilder = {
+  targets: {
+    description: 'Test target paths',
+    type: 'array',
   },
 } as const;
 
-export type TestArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder>>>;
+export type TestArgv = Partial<
+  ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof argumentsBuilder>>
+>;
 
-export const testCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
-  command: 'test',
+export const testCommand: CommandModule<
+  unknown,
+  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
+> = {
+  command: 'test [targets...]',
   describe: 'Test project. If you pass no arguments, it will run all tests.',
-  builder,
+  builder: { ...builder, ...argumentsBuilder },
   async handler(argv) {
     await test(argv);
   },
 };
 
 export async function test(
-  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>
+  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>>
 ): Promise<void> {
   const projects = await findDescendantProjects(argv);
   if (!projects) {
@@ -81,7 +87,15 @@ export async function test(
   process.env.FORCE_COLOR ||= '3';
   process.env.WB_ENV ||= 'test';
 
-  const shouldRunAllTests = argv.e2e === undefined && argv.start === undefined && argv.unit === undefined;
+  // Get test targets from positional arguments
+  const testTargets = (argv.targets || []) as string[];
+  const shouldRunAllTests = testTargets.length === 0;
+
+  // Detect test modes from target paths
+  const hasE2eTargets = testTargets.some((target) => target.includes('/e2e'));
+  const hasUnitTargets = testTargets.some((target) => target.includes('/unit'));
+  const shouldRunUnit = shouldRunAllTests || hasUnitTargets;
+  const shouldRunE2e = shouldRunAllTests || hasE2eTargets;
 
   for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies || {};
@@ -99,134 +113,89 @@ export async function test(
       scripts = plainAppScripts;
     }
 
-    if (shouldRunAllTests) {
-      argv = {
-        ...argv,
-        e2e:
-          fs.existsSync(path.join(project.dirPath, 'test', 'e2e')) && !argv.target?.includes('/unit/')
-            ? 'headless'
-            : 'none',
-        start: true,
-        unit: fs.existsSync(path.join(project.dirPath, 'test', 'unit')) && !argv.target?.includes('/e2e/'),
-      };
-    }
-
     console.info(`Running "test" for ${project.name} ...`);
 
-    const promises: Promise<unknown>[] = [];
-    if (argv.ci) {
-      await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
-      if (argv.unit) {
-        // CI mode disallows `only` to avoid including debug tests
-        await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv, {
-          timeout: argv.unitTimeout,
-        });
-      }
-      if (argv.start) {
-        await runWithSpawnInParallel(scripts.testStart(project, argv), project, argv);
-      }
-      await promisePool.promiseAll();
-      if (argv.e2e !== 'none') {
-        if (project.hasDockerfile) {
-          process.env.WB_DOCKER ||= '1';
-          await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
-        }
-        const options = project.hasDockerfile
-          ? {
-              startCommand: dockerScripts.stopAndStart(project, true),
-            }
-          : {};
-        process.exitCode = await runWithSpawn(
-          // CI mode disallows `only` to avoid including debug tests
-          scripts.testE2E(project, argv, options).replaceAll(' --allowOnly', ''),
-          project,
-          argv,
-          {
-            exitIfFailed: false,
-          }
-        );
-        await runWithSpawn(dockerScripts.stop(project), project, argv);
-      }
+    // Run unit tests if needed
+    if (shouldRunUnit && fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) {
+      const unitTargets = testTargets.filter((target) => target.includes('/unit'));
+      const unitArgv = { ...argv, targets: unitTargets.length > 0 ? unitTargets : undefined };
+      await runWithSpawn(scripts.testUnit(project, unitArgv), project, argv, { timeout: argv.unitTimeout });
+    }
+    // Skip e2e tests if not needed or no e2e directory exists
+    if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       continue;
     }
 
-    if (argv.unit) {
-      promises.push(runWithSpawn(scripts.testUnit(project, argv), project, argv, { timeout: argv.unitTimeout }));
-    }
-    if (argv.start) {
-      promises.push(runWithSpawn(scripts.testStart(project, argv), project, argv));
-    }
-    await Promise.all(promises);
+    // Get e2e targets for this project
+    const e2eTargets = testTargets.filter((target) => target.includes('/e2e'));
+    const e2eArgv = { ...argv, targets: e2eTargets.length > 0 ? e2eTargets : undefined };
+
     switch (argv.e2e) {
-      case undefined:
-      case 'none': {
-        continue;
-      }
-      case '':
       case 'headless': {
-        await runWithSpawn(scripts.testE2E(project, argv, {}), project, argv);
+        await runWithSpawn(scripts.testE2E(project, e2eArgv, {}), project, argv);
         continue;
       }
       case 'headless-dev': {
-        await runWithSpawn(scripts.testE2EDev(project, argv, {}), project, argv);
+        await runWithSpawn(scripts.testE2EDev(project, e2eArgv, {}), project, argv);
         continue;
       }
       case 'docker': {
-        await testOnDocker(project, argv, scripts);
+        await testOnDocker(project, e2eArgv, scripts);
         continue;
       }
       case 'docker-debug': {
-        await testOnDocker(project, argv, scripts, `test ${argv.target || 'test/e2e/'} --debug`);
+        const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
+        await testOnDocker(project, e2eArgv, scripts, `test ${e2eTarget} --debug`);
         continue;
       }
     }
     if (deps['blitz'] || deps['next'] || devDeps['@remix-run/dev']) {
+      const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
       switch (argv.e2e) {
         case 'headed': {
           await runWithSpawn(
-            scripts.testE2E(project, argv, { playwrightArgs: `test ${argv.target || 'test/e2e/'} --headed` }),
+            scripts.testE2E(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
             project,
             argv
           );
-          continue;
+          break;
         }
         case 'headed-dev': {
           await runWithSpawn(
-            scripts.testE2EDev(project, argv, { playwrightArgs: `test ${argv.target || 'test/e2e/'} --headed` }),
+            scripts.testE2EDev(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
             project,
             argv
           );
-          continue;
+          break;
         }
         case 'debug': {
           await runWithSpawn(
-            scripts.testE2E(project, argv, { playwrightArgs: `test ${argv.target || 'test/e2e/'} --debug` }),
+            scripts.testE2E(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --debug` }),
             project,
             argv
           );
-          continue;
+          break;
         }
         case 'generate': {
           await runWithSpawn(
-            scripts.testE2E(project, argv, { playwrightArgs: 'codegen http://localhost:8080' }),
+            scripts.testE2E(project, e2eArgv, { playwrightArgs: 'codegen http://localhost:8080' }),
             project,
             argv
           );
-          continue;
+          break;
         }
         case 'trace': {
           await runWithSpawn(`BUN playwright show-trace`, project, argv);
-          continue;
+          break;
         }
       }
     }
-    throw new Error(`Unknown e2e mode: ${argv.e2e}`);
   }
 }
 
 async function testOnDocker(
   project: Project,
-  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder>>,
+  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof argumentsBuilder>>,
   scripts: BaseScripts,
   playwrightArgs?: string
 ): Promise<void> {
