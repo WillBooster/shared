@@ -31,7 +31,7 @@ export function useStorage<T>(
     try {
       if (jsonText) {
         const json = JSON.parse(jsonText) as unknown as T;
-        return nonReactiveOptions?.parseAfterJsonParse ? nonReactiveOptions.parseAfterJsonParse(json) : json;
+        return nonReactiveOptions?.parseAfterJsonParse?.(json) ?? json;
       }
     } catch {
       // do nothing
