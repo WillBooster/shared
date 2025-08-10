@@ -9,5 +9,5 @@ export function humanizeNumber(value: number, { base = 1000, units = ['K', 'M', 
     unitIndex++;
   }
 
-  return value.toFixed(2) + (unitIndex >= 0 ? units[unitIndex] : '');
+  return value.toFixed(2) + (units[unitIndex] ?? '');
 }

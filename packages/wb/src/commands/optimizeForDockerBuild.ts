@@ -34,7 +34,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       const packageJson: PackageJson = project.packageJson;
       const keys = ['dependencies', 'devDependencies'] as const;
       for (const key of keys) {
-        const deps = packageJson[key] || {};
+        const deps = packageJson[key] ?? {};
         for (const [name, value] of Object.entries(deps)) {
           if (value?.startsWith('git@github.com:')) {
             deps[name] = `./${name}`;
@@ -70,7 +70,7 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
     return;
   }
 
-  const devDeps = packageJson.devDependencies || {};
+  const devDeps = packageJson.devDependencies ?? {};
   const nameWordsToBeRemoved = [
     'artillery',
     'concurrently',
@@ -94,8 +94,9 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
   for (const name of Object.keys(devDeps)) {
     if (
       nameWordsToBeRemoved.some((word) => name.includes(word)) ||
-      (!argv.outside && name.includes('willbooster') && name.includes('config'))
+      (name.includes('willbooster') && name.includes('config'))
     ) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete devDeps[name];
       removedDeps.push(name);
     }
@@ -106,7 +107,7 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
 function optimizeScripts(packageJson: PackageJson): void {
   const nameWordsOfUnnecessaryScripts = ['check', 'deploy', 'format', 'lint', 'start', 'test'];
   const contentWordsOfUnnecessaryScripts = ['pinst ', 'husky '];
-  const scripts = (packageJson.scripts || {}) as Record<string, string>;
+  const scripts = (packageJson.scripts ?? {}) as Record<string, string>;
   const removedScripts: string[] = [];
   for (const [name, content] of Object.entries(scripts)) {
     if (
@@ -114,6 +115,7 @@ function optimizeScripts(packageJson: PackageJson): void {
       // Support "husky" since husky v9 requires `"postinstall": "husky"`
       contentWordsOfUnnecessaryScripts.some((word) => content.includes(word) || content.trim() === word.trim())
     ) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete scripts[name];
       removedScripts.push(name);
     }

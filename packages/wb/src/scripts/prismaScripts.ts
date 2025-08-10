@@ -15,7 +15,7 @@ class PrismaScripts {
   }
 
   deployForce(project: Project, backupPath: string): string {
-    const dirName = project.packageJson.dependencies?.['blitz'] ? 'db' : 'prisma';
+    const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
     return `rm -Rf ${dirName}/mount/prod.sqlite3*; PRISMA migrate reset --force && rm -Rf ${dirName}/mount/prod.sqlite3*
       && litestream restore -o ${dirName}/mount/prod.sqlite3 ${backupPath} && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
@@ -44,15 +44,14 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
   }
 
   restore(project: Project, backupPath: string, outputPath: string): string {
-    const dirName = project.packageJson.dependencies?.['blitz'] ? 'db' : 'prisma';
+    const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
     return `rm -Rf ${dirName}/restored.sqlite3; GOOGLE_APPLICATION_CREDENTIALS=gcp-sa-key.json litestream restore -o ${outputPath} ${backupPath}`;
   }
 
   seed(project: Project, scriptPath?: string): string {
-    if (project.packageJson.dependencies?.['blitz'])
-      return `YARN blitz db seed${scriptPath ? ` -f ${scriptPath}` : ''}`;
+    if (project.packageJson.dependencies?.blitz) return `YARN blitz db seed${scriptPath ? ` -f ${scriptPath}` : ''}`;
     if (scriptPath) return `BUN build-ts run ${scriptPath}`;
-    if ((project.packageJson.prisma as Record<string, string> | undefined)?.['seed']) return `YARN prisma db seed`;
+    if ((project.packageJson.prisma as Record<string, string> | undefined)?.seed) return `YARN prisma db seed`;
     return `if [ -e "prisma/seeds.ts" ]; then BUN build-ts run prisma/seeds.ts; fi`;
   }
 

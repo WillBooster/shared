@@ -37,12 +37,12 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     }
 
     for (const project of projects.descendants) {
-      const deps = project.packageJson.dependencies || {};
-      const devDeps = project.packageJson.devDependencies || {};
+      const deps = project.packageJson.dependencies ?? {};
+      const devDeps = project.packageJson.devDependencies ?? {};
       let scripts: BaseScripts;
-      if (deps['blitz']) {
+      if (deps.blitz) {
         scripts = blitzScripts;
-      } else if (deps['next']) {
+      } else if (deps.next) {
         scripts = nextScripts;
       } else if (devDeps['@remix-run/dev']) {
         scripts = remixScripts;
@@ -58,7 +58,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       }
       console.info(`Running "start" for ${project.name} ...`);
 
-      switch (argv.mode || 'dev') {
+      switch (argv.mode ?? 'dev') {
         case 'dev':
         case 'development': {
           const prefix = configureEnvironmentVariables(deps, 'development');
@@ -92,7 +92,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
 function configureEnvironmentVariables(deps: Partial<Record<string, string>>, wbEnv: string): string {
   process.env.WB_ENV ||= wbEnv;
   let prefix = `WB_ENV=${process.env.WB_ENV} `;
-  if (deps['next']) {
+  if (deps.next) {
     process.env.NEXT_PUBLIC_WB_ENV = process.env.WB_ENV;
     prefix += `NEXT_PUBLIC_WB_ENV=${process.env.WB_ENV} `;
   }

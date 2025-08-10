@@ -137,8 +137,7 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
     const allProjects = await findPrismaProjects(argv);
     for (const project of prepareForRunningCommand('prisma restore', allProjects)) {
       const output =
-        argv.output ||
-        (project.packageJson.dependencies?.['blitz'] ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3');
+        argv.output ?? (project.packageJson.dependencies?.blitz ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3');
       await runWithSpawn(prismaScripts.restore(project, argv.backupPath, output), project, argv);
     }
   },
@@ -190,7 +189,7 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
     const unknownOptions = extractUnknownOptions(argv, ['db-url-or-path', 'restored']);
     for (const project of prepareForRunningCommand('prisma studio', allProjects)) {
       const dbUrlOrPath = argv.restored
-        ? project.packageJson.dependencies?.['blitz']
+        ? project.packageJson.dependencies?.blitz
           ? 'db/restored.sqlite3'
           : 'prisma/restored.sqlite3'
         : argv.dbUrlOrPath?.toString();
@@ -207,7 +206,7 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
   builder: defaultCommandBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
-    const script = `${argv.args?.join(' ') ?? ''}`.trimEnd();
+    const script = (argv.args?.join(' ') ?? '').trimEnd();
     const unknownOptions = extractUnknownOptions(argv, ['args']);
     const fullCommand = [script, unknownOptions].filter(Boolean).join(' ');
     for (const project of prepareForRunningCommand(`prisma ${fullCommand}`, allProjects)) {
@@ -224,7 +223,7 @@ async function findPrismaProjects(argv: EnvReaderOptions): Promise<Project[]> {
   }
 
   const filtered = projects.descendants.filter(
-    (project) => project.packageJson.dependencies?.['prisma'] || project.packageJson.devDependencies?.['prisma']
+    (project) => project.packageJson.dependencies?.prisma ?? project.packageJson.devDependencies?.prisma
   );
   if (filtered.length === 0) {
     console.error(chalk.red('No prisma project found.'));
@@ -243,7 +242,7 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
   const sharedOptionKeys = Object.keys(sharedOptionsBuilder);
   const sharedOptionAliases = Object.values(sharedOptionsBuilder)
     .flatMap((option) => {
-      if ('alias' in option && option.alias) {
+      if ('alias' in option) {
         return Array.isArray(option.alias) ? option.alias : [option.alias];
       }
       return [];

@@ -20,7 +20,9 @@ export function useStorage<T>(
         if (event.key === key) callback();
       };
       globalThis.addEventListener('storage', newCallback);
-      return () => globalThis.removeEventListener('storage', newCallback);
+      return () => {
+        globalThis.removeEventListener('storage', newCallback);
+      };
     },
     () => window[nonReactiveStorageType].getItem(key),
     () => 'ssrJsonText' in nonReactiveOptions && nonReactiveOptions.ssrJsonText
@@ -29,13 +31,13 @@ export function useStorage<T>(
     try {
       if (jsonText) {
         const json = JSON.parse(jsonText) as unknown as T;
-        return nonReactiveOptions?.parseAfterJsonParse ? nonReactiveOptions?.parseAfterJsonParse(json) : json;
+        return nonReactiveOptions.parseAfterJsonParse?.(json) ?? json;
       }
     } catch {
       // do nothing
     }
     return typeof initialValueOrFunc === 'function' ? (initialValueOrFunc as () => T)() : initialValueOrFunc;
-  }, [jsonText, initialValueOrFunc]);
+  }, [jsonText, initialValueOrFunc]); // Don't add nonReactiveOptions to deps because it's not allowed to change.
 
   const setState = useCallback(
     (valueOrFunc: T | ((prevState: T) => T)) => {
@@ -52,7 +54,7 @@ export function useStorage<T>(
       globalThis.dispatchEvent(new StorageEvent('storage', { key, newValue }));
     },
 
-    [key, value]
+    [key, value] // Don't add nonReactiveStorageType to deps because it's not allowed to change.
   );
 
   useEffect(() => {
@@ -61,7 +63,7 @@ export function useStorage<T>(
     if (window[nonReactiveStorageType].getItem(key) === null && resolvedInitialValue !== undefined) {
       window[nonReactiveStorageType].setItem(key, JSON.stringify(resolvedInitialValue));
     }
-  }, [key, initialValueOrFunc]);
+  }, [key, initialValueOrFunc]); // Don't add nonReactiveStorageType to deps because it's not allowed to change.
 
   return [value, setState];
 }

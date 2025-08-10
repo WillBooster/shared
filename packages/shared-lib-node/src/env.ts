@@ -98,7 +98,7 @@ export function readEnvironmentVariables(
   }
 
   if (argv.checkEnv) {
-    const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv)) || {});
+    const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv)));
     const missingKeys = exampleKeys.filter((key) => !(key in envVars));
     if (missingKeys.length > 0) {
       throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
@@ -152,6 +152,7 @@ export function removeNpmAndYarnEnvironmentVariables(envVars: Record<string, str
       upperKey === 'PROJECT_CWD' ||
       upperKey === 'INIT_CWD'
     ) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete envVars[key];
     }
   }

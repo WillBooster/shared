@@ -104,12 +104,12 @@ export class Project {
 
   @memoizeOne
   get hasPrisma(): boolean {
-    return !!(this.packageJson.dependencies?.['prisma'] || this.packageJson.devDependencies?.['prisma']);
+    return !!(this.packageJson.dependencies?.prisma ?? this.packageJson.devDependencies?.prisma);
   }
 
   @memoizeOne
   get hasVitest(): boolean {
-    return !!(this.packageJson.dependencies?.['vitest'] || this.packageJson.devDependencies?.['vitest']);
+    return !!(this.packageJson.dependencies?.vitest ?? this.packageJson.devDependencies?.vitest);
   }
 
   @memoizeOne

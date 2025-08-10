@@ -45,16 +45,16 @@ export async function testOnCi(
     // Disable interactive mode
     process.env.CI = '1';
   }
-  process.env.FORCE_COLOR ||= '3';
+  process.env.FORCE_COLOR ??= '3';
   process.env.WB_ENV ||= 'test';
 
   for (const project of projects.descendants) {
-    const deps = project.packageJson.dependencies || {};
-    const devDeps = project.packageJson.devDependencies || {};
+    const deps = project.packageJson.dependencies ?? {};
+    const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;
-    if (deps['blitz']) {
+    if (deps.blitz) {
       scripts = blitzScripts;
-    } else if (deps['next']) {
+    } else if (deps.next) {
       scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
@@ -75,7 +75,7 @@ export async function testOnCi(
     await promisePool.promiseAll();
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       if (project.hasDockerfile) {
-        process.env.WB_DOCKER ||= '1';
+        process.env.WB_DOCKER ??= '1';
         await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
       }
       const options = project.hasDockerfile
