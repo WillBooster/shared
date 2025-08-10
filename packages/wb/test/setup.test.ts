@@ -21,7 +21,7 @@ describe('setup', () => {
       });
 
       await setup({}, dirPath);
-      const ret = child_process.spawnSync(`yarn start test -w ${dirPath} --ci`, {
+      const ret = child_process.spawnSync(`yarn start test-on-ci -w ${dirPath}`, {
         shell: true,
         stdio: 'inherit',
       });
