@@ -156,7 +156,7 @@ async function updateHashWithDiffResult(
 
     // 'git diff --' works only on rootDirPath
     const proc = child_process.spawn('git', ['diff', '--', ...filteredFilePaths], { cwd: project.rootDirPath });
-    proc.stdout?.on('data', (data: BinaryLike) => {
+    proc.stdout.on('data', (data: BinaryLike) => {
       hash.update(data);
       if (argv.verbose) {
         console.info('Data:', data);

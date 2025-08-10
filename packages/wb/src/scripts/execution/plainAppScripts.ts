@@ -11,10 +11,6 @@ import { BaseScripts } from './baseScripts.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PlainAppScripts extends BaseScripts {
-  constructor() {
-    super();
-  }
-
   override start(_: Project, argv: ScriptArgv): string {
     return `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }

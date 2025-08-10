@@ -4,7 +4,7 @@ import { spawnAsync } from '../src/spawn.js';
 
 describe('spawn', () => {
   it.each([['ls'], ['ls -al']])('spawn "%s" successfully', async (commandWithArgs) => {
-    const [command, ...args] = commandWithArgs.split(' ');
+    const [command, ...args] = commandWithArgs.split(' ') as [string, ...string[]];
     const ret = await spawnAsync(command, args);
     expect(ret.pid).to.greaterThan(0);
     expect(ret.stdout).toBeTruthy();
@@ -23,7 +23,7 @@ describe('spawn', () => {
   });
 
   it.each([['ls ----']])('get non-zero code from "%s"', async (commandWithArgs) => {
-    const [command, ...args] = commandWithArgs.split(' ');
+    const [command, ...args] = commandWithArgs.split(' ') as [string, ...string[]];
     const ret = await spawnAsync(command, args);
     expect(ret.pid).to.greaterThan(0);
     expect(ret.stdout).toBeFalsy();

@@ -44,7 +44,7 @@
     "@willbooster/prettier-config": "10.2.0",
     "blitz": "2.2.2",
     "build-ts": "15.0.19",
-    "eslint": "9.32.0",
+    "eslint": "9.33.0",
     "eslint-config-flat-gitignore": "2.1.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-import-resolver-typescript": "4.4.4",

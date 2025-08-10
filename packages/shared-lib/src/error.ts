@@ -104,7 +104,7 @@ export async function withRetry<T>(
         sleepMilliseconds = updateSleepMilliseconds(sleepMilliseconds);
       }
       retryLogger?.(`Retry due to: ${error}
-${error instanceof Error ? '---\n' + error.stack : ''}`);
+${error instanceof Error ? '---\n' + (error.stack ?? '') : ''}`);
       await beforeRetry?.(error);
     }
   }

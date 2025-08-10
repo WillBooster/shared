@@ -13,10 +13,6 @@ import { BaseScripts } from './baseScripts.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class HttpServerScripts extends BaseScripts {
-  constructor() {
-    super();
-  }
-
   override start(project: Project, argv: ScriptArgv): string {
     return `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }
@@ -59,7 +55,7 @@ class HttpServerScripts extends BaseScripts {
     return `NODE_ENV=production WB_ENV=${
       project.env.WB_ENV
     } PORT=8080 YARN concurrently --kill-others --raw --success first
-      "${startCommand || this.start(project, argv)} && exit 1"
+      "${startCommand ?? this.start(project, argv)} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080 && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
   }
 

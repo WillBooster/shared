@@ -12,10 +12,6 @@ import { BaseScripts } from './baseScripts.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class RemixScripts extends BaseScripts {
-  constructor() {
-    super();
-  }
-
   override start(project: Project, argv: ScriptArgv): string {
     return `YARN concurrently --raw --kill-others-on-fail
       "remix dev ${argv.normalizedArgsText ?? ''}"

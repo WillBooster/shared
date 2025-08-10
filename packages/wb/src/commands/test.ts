@@ -84,11 +84,11 @@ export async function test(
     // Disable interactive mode
     process.env.CI = '1';
   }
-  process.env.FORCE_COLOR ||= '3';
-  process.env.WB_ENV ||= 'test';
+  process.env.FORCE_COLOR ??= '3';
+  process.env.WB_ENV ??= 'test';
 
   // Get test targets from positional arguments
-  const testTargets = (argv.targets || []) as string[];
+  const testTargets = (argv.targets ?? []) as string[];
   const shouldRunAllTests = testTargets.length === 0;
 
   // Detect test modes from target paths
@@ -98,12 +98,12 @@ export async function test(
   const shouldRunE2e = shouldRunAllTests || hasE2eTargets;
 
   for (const project of projects.descendants) {
-    const deps = project.packageJson.dependencies || {};
-    const devDeps = project.packageJson.devDependencies || {};
+    const deps = project.packageJson.dependencies ?? {};
+    const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;
-    if (deps['blitz']) {
+    if (deps.blitz) {
       scripts = blitzScripts;
-    } else if (deps['next']) {
+    } else if (deps.next) {
       scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
@@ -149,7 +149,7 @@ export async function test(
         continue;
       }
     }
-    if (deps['blitz'] || deps['next'] || devDeps['@remix-run/dev']) {
+    if (deps.blitz || deps.next || devDeps['@remix-run/dev']) {
       const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
       switch (argv.e2e) {
         case 'headed': {
@@ -199,13 +199,13 @@ async function testOnDocker(
   scripts: BaseScripts,
   playwrightArgs?: string
 ): Promise<void> {
-  process.env.WB_DOCKER ||= '1';
+  process.env.WB_DOCKER ??= '1';
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
   process.exitCode = await runWithSpawn(
-    `${scripts.testE2E(project, argv, {
+    scripts.testE2E(project, argv, {
       playwrightArgs,
       startCommand: `${dockerScripts.stopAndStart(project, true)}${toDevNull(argv)}`,
-    })}`,
+    }),
     project,
     argv,
     { exitIfFailed: false }

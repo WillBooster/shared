@@ -68,14 +68,16 @@ export type SpawnAsyncOptions = (
  */
 export async function spawnAsync(
   command: string,
-  args?: ReadonlyArray<string>,
+  args?: readonly string[],
   options?: SpawnAsyncOptions
 ): Promise<SpawnAsyncReturns> {
   return new Promise((resolve, reject) => {
     try {
       const proc = spawn(command, args ?? [], options ?? {});
       // `setEncoding` is undefined in Bun
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       proc.stdout?.setEncoding?.('utf8');
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       proc.stderr?.setEncoding?.('utf8');
 
       let stdout = '';

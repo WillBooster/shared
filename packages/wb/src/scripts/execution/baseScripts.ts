@@ -21,7 +21,7 @@ export interface TestE2EOptions extends TestE2EDevOptions {
 export abstract class BaseScripts {
   private readonly defaultPort;
 
-  protected constructor(defaultPort = Number(process.env.PORT) || 3000) {
+  constructor(defaultPort = Number(process.env.PORT) || 3000) {
     this.defaultPort = defaultPort;
   }
 
