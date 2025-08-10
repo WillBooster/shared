@@ -50,17 +50,7 @@ const builder = {
   },
 } as const;
 
-const testOnCiBuilder = {
-  target: {
-    description: 'Test target',
-    type: 'string',
-    alias: 't',
-  },
-  'unit-timeout': {
-    description: 'Timeout for unit tests',
-    type: 'number',
-  },
-} as const;
+const testOnCiBuilder = {} as const;
 
 export type TestArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder>>>;
 
@@ -243,12 +233,9 @@ export async function testOnCi(
     // Always run all tests in CI mode
     const ciArgv = {
       ...argv,
-      e2e:
-        fs.existsSync(path.join(project.dirPath, 'test', 'e2e')) && !argv.target?.includes('/unit/')
-          ? 'headless'
-          : 'none',
+      e2e: fs.existsSync(path.join(project.dirPath, 'test', 'e2e')) ? 'headless' : 'none',
       start: true,
-      unit: fs.existsSync(path.join(project.dirPath, 'test', 'unit')) && !argv.target?.includes('/e2e/'),
+      unit: fs.existsSync(path.join(project.dirPath, 'test', 'unit')),
     };
 
     console.info(`Running "test-on-ci" for ${project.name} ...`);
@@ -256,9 +243,7 @@ export async function testOnCi(
     await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
     if (ciArgv.unit) {
       // CI mode disallows `only` to avoid including debug tests
-      await runWithSpawnInParallel(scripts.testUnit(project, ciArgv).replaceAll(' --allowOnly', ''), project, argv, {
-        timeout: argv.unitTimeout,
-      });
+      await runWithSpawnInParallel(scripts.testUnit(project, ciArgv).replaceAll(' --allowOnly', ''), project, argv);
     }
     if (ciArgv.start) {
       await runWithSpawnInParallel(scripts.testStart(project, ciArgv), project, argv);
