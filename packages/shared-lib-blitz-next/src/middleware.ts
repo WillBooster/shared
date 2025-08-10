@@ -10,7 +10,7 @@ export function BasicAuthMiddleware(options: BasicAuthMiddlewareOptions): Reques
   return async (request, response, next) => {
     const authorizationHeader = request.headers.authorization ?? '';
     const [type, encodedCredentials] = authorizationHeader.split(' ');
-    const credentials = Buffer.from(encodedCredentials || '', 'base64').toString();
+    const credentials = Buffer.from(encodedCredentials ?? '', 'base64').toString();
     const [requestUsername, requestPassword] = credentials.split(':');
 
     if (
