@@ -1,6 +1,6 @@
 import type { RequestMiddleware } from 'blitz';
 
-interface BasicAuthMiddlewareOptions {
+type BasicAuthMiddlewareOptions = {
   password: string;
   realm?: string;
   username: string;

@@ -4,15 +4,15 @@ import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
-export interface TestE2EDevOptions {
+export type TestE2EDevOptions = {
   // '--e2e generate' calls 'codegen http://localhost:8080'
   playwrightArgs?: string;
   startCommand?: string;
 }
 
-export interface TestE2EOptions extends TestE2EDevOptions {
+export type TestE2EOptions = {
   prismaDirectory?: string;
-}
+} & TestE2EDevOptions
 
 /**
  * A collection of scripts for executing an app.

@@ -50,7 +50,7 @@
     "@types/micromatch": "4.0.9",
     "@types/react": "19.1.9",
     "@types/react-dom": "19.1.7",
-    "@willbooster/eslint-config-ts-react": "11.5.4",
+    "@willbooster/eslint-config-ts-react": "11.5.5",
     "@willbooster/prettier-config": "10.2.0",
     "babel-loader": "10.0.0",
     "build-ts": "15.0.19",
@@ -76,7 +76,7 @@
     "react-dom": "19.1.1",
     "sort-package-json": "3.4.0",
     "typescript": "5.9.2",
-    "typescript-eslint": "8.39.0",
+    "typescript-eslint": "8.39.1",
     "vitest": "3.2.4"
   },
   "peerDependencies": {

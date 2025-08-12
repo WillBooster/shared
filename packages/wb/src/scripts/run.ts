@@ -8,7 +8,7 @@ import { killPortProcessImmediatelyAndOnExit } from '../utils/process.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isRunningOnBun, packageManagerWithRun } from '../utils/runtime.js';
 
-interface Options {
+type Options = {
   ci?: boolean;
   exitIfFailed?: boolean;
   forceColor?: boolean;

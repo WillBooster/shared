@@ -159,7 +159,7 @@ export class Project {
   }
 }
 
-export interface FoundProjects {
+export type FoundProjects = {
   root: Project;
   self: Project;
   descendants: Project[];
