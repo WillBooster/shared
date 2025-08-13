@@ -4,7 +4,7 @@ type BasicAuthMiddlewareOptions = {
   password: string;
   realm?: string;
   username: string;
-}
+};
 
 export function BasicAuthMiddleware(options: BasicAuthMiddlewareOptions): RequestMiddleware {
   return async (request, response, next) => {

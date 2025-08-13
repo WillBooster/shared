@@ -60,7 +60,7 @@ export type RetryOptions = {
   shouldRetry?: (error: unknown) => boolean;
   sleepMilliseconds?: number;
   updateSleepMilliseconds?: (sleepMilliseconds: number) => number;
-}
+};
 
 /**
  * Retry the given function.

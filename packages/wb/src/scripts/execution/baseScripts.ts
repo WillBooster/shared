@@ -8,11 +8,11 @@ export type TestE2EDevOptions = {
   // '--e2e generate' calls 'codegen http://localhost:8080'
   playwrightArgs?: string;
   startCommand?: string;
-}
+};
 
 export type TestE2EOptions = {
   prismaDirectory?: string;
-} & TestE2EDevOptions
+} & TestE2EDevOptions;
 
 /**
  * A collection of scripts for executing an app.

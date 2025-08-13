@@ -13,7 +13,7 @@ type Options = {
   exitIfFailed?: boolean;
   forceColor?: boolean;
   timeout?: number;
-}
+};
 
 const defaultOptions: Options = {
   exitIfFailed: true,

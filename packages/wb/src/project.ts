@@ -163,7 +163,7 @@ export type FoundProjects = {
   root: Project;
   self: Project;
   descendants: Project[];
-}
+};
 
 export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?: string): Project | undefined {
   dirPath ??= process.cwd();
