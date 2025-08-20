@@ -100,7 +100,7 @@ export const lintCommand: CommandModule<
       sortPackageJsonArgsText = packageJsonFilePaths.map((f) => `"${f}"`).join(' ');
     } else {
       biomeArgsText = '';
-      prettierArgsText = `"**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}" "!**/test{-,/}fixtures/**"`;
+      prettierArgsText = `"**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}" "!**/test{-,/}fixtures/**"`;
       sortPackageJsonArgsText = projects.descendants.map((p) => `"${p.packageJsonPath}"`).join(' ');
     }
 

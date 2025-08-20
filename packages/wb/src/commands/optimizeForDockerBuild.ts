@@ -85,9 +85,10 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
     'playwright',
     'prettier',
     'pinst',
+    'railway',
+    'semantic-release',
     'sort-package-json',
     'wait-on',
-    'semantic-release',
     'vitest',
   ];
   const removedDeps: string[] = [];
