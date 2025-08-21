@@ -1,12 +1,11 @@
 import type React from 'react';
 import { useMemo, useCallback, useEffect, useSyncExternalStore } from 'react';
 
-export type UseStorageOptions<T> =
-  | {
-      parseAfterJsonParse?: (value: unknown) => T;
-      ssrJsonText: string;
-    }
-  | { parseAfterJsonParse?: (value: unknown) => T };
+export type UseStorageOptions<T> = {
+  parseAfterJsonParse?: (value: unknown) => T;
+  ssrJsonText?: string;
+  validValues?: Set<T>;
+};
 
 export function useStorage<T>(
   nonReactiveStorageType: 'localStorage' | 'sessionStorage',
@@ -31,7 +30,8 @@ export function useStorage<T>(
     try {
       if (jsonText) {
         const json = JSON.parse(jsonText) as unknown as T;
-        return nonReactiveOptions.parseAfterJsonParse?.(json) ?? json;
+        const value = nonReactiveOptions.parseAfterJsonParse?.(json) ?? json;
+        if (!nonReactiveOptions.validValues || nonReactiveOptions.validValues.has(value)) return value;
       }
     } catch {
       // do nothing
