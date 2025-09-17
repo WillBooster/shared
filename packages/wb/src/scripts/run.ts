@@ -116,15 +116,16 @@ function normalizeScript(script: string, project: Project): [string, string] {
       .replaceAll(/ --color --passWithNoTests(?: --allowOnly)?/g, '');
   }
   newScript = newScript.trim();
-  return [
-    fixBunCommand(newScript.replaceAll('YARN ', `${packageManagerWithRun} `)),
-    fixBunCommand(
-      newScript
-        // Because we need to use `yarn playwright` in a project depending on `artillery-engine-playwright`.
-        .replaceAll('YARN playwright ', `${packageManagerWithRun} playwright `)
-        .replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `)
-    ),
-  ];
+  const printableScript = fixBunCommand(newScript.replaceAll('YARN ', `${packageManagerWithRun} `));
+  const runnableScript = fixBunCommand(
+    newScript
+      // Because we need to use `yarn playwright` in a project depending on `artillery-engine-playwright`.
+      .replaceAll('YARN playwright ', `${packageManagerWithRun} playwright `)
+      .replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `)
+  );
+  // Add cascade option when WB_ENV is defined
+  const cascadeOption = process.env.WB_ENV ? ` --cascade-env=${process.env.NODE_ENV || 'development'}` : '';
+  return [`dotenv${cascadeOption} ${printableScript}`, runnableScript];
 }
 
 export function printStart(normalizedScript: string, project: Project, prefix = 'Start', weak = false): void {
