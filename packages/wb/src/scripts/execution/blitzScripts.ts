@@ -1,6 +1,5 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
-import { pm2Command } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
@@ -26,7 +25,7 @@ class BlitzScripts extends BaseScripts {
       "${[
         prismaScripts.migrate(project),
         project.buildCommand,
-        `PORT=${port} ${pm2Command} start ${project.findFile('ecosystem.config.cjs')} ${argv.normalizedArgsText ?? ''}`,
+        `PORT=${port} pm2-runtime start ${project.findFile('ecosystem.config.cjs')} ${argv.normalizedArgsText ?? ''}`,
       ].join(' && ')}"
       "${this.waitAndOpenApp(project, argv, port)}"`;
   }
@@ -40,7 +39,7 @@ class BlitzScripts extends BaseScripts {
         [
           ...prismaScripts.reset(project).split('&&'),
           project.buildCommand,
-          `${pm2Command} start ${project.findFile('ecosystem.config.cjs')}`,
+          `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
         ]
           .map((c) => `${c.trim()}${toDevNull(argv)}`)
           .join(' && '),
