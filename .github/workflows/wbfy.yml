@@ -7,4 +7,4 @@ jobs:
   wbfy:
     uses: WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main
     secrets:
-      GH_TOKEN: ${{ secrets.PUBLIC_GH_BOT_PAT }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
