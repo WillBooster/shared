@@ -17,7 +17,7 @@ import { httpServerPackages } from './httpServerPackages.js';
 const builder = {
   ...scriptOptionsBuilder,
   mode: {
-    description: 'Start mode: dev[elopment] (default) | staging | docker | docker-debug',
+    description: 'Start mode: dev[elopment] (default) | staging | docker | docker-debug | test',
     type: 'string',
     alias: 'm',
   },
@@ -79,6 +79,11 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
           const prefix = configureEnvironmentVariables(deps, 'staging');
           argv.normalizedArgsText = `'/bin/bash'`;
           await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
+          break;
+        }
+        case 'test': {
+          const prefix = configureEnvironmentVariables(deps, 'test');
+          await runWithSpawn(`${prefix}${scripts.startTest(project, argv)}`, project, argv);
           break;
         }
         default: {

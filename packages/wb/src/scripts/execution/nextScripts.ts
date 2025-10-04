@@ -52,6 +52,18 @@ class NextScripts extends BaseScripts {
     return super.testE2EDev(project, argv, { startCommand });
   }
 
+  override startTest(project: Project, argv: ScriptArgv): string {
+    return `YARN concurrently --raw --kill-others-on-fail
+      "${[
+        ...(project.hasPrisma ? prismaScripts.reset(project).split('&&') : []),
+        project.buildCommand,
+        `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
+      ]
+        .map((c) => `${c.trim()}${toDevNull(argv)}`)
+        .join(' && ')}"
+      "${this.waitApp(project, argv, 8080)}"`;
+  }
+
   override testStart(project: Project, argv: ScriptArgv): string {
     return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "next dev --turbopack${toDevNull(argv)}" "${this.waitApp(project, argv)}"`;
   }
