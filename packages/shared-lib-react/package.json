@@ -53,7 +53,7 @@
     "@willbooster/eslint-config-ts-react": "11.5.6",
     "@willbooster/prettier-config": "10.2.0",
     "babel-loader": "10.0.0",
-    "build-ts": "16.0.6",
+    "build-ts": "16.0.7",
     "eslint": "9.33.0",
     "eslint-config-flat-gitignore": "2.1.0",
     "eslint-config-prettier": "10.1.8",
