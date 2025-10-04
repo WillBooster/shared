@@ -33,6 +33,8 @@ export abstract class BaseScripts {
 
   abstract startProduction(project: Project, argv: ScriptArgv, port: number): string;
 
+  abstract startTest(project: Project, argv: ScriptArgv): string;
+
   startDocker(project: Project, argv: ScriptArgv): string {
     return `${this.buildDocker(project)}${toDevNull(argv)}
       && YARN concurrently --raw --kill-others-on-fail

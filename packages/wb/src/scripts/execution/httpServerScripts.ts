@@ -59,6 +59,14 @@ class HttpServerScripts extends BaseScripts {
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080 && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
   }
 
+  override startTest(project: Project, argv: ScriptArgv): string {
+    const startCommand = `${project.hasPrisma ? 'prisma migrate reset --force --skip-generate && ' : ''}(${this.startProduction(
+      project,
+      argv
+    )})`;
+    return startCommand;
+  }
+
   override testStart(project: Project, argv: ScriptArgv): string {
     return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(
       project,

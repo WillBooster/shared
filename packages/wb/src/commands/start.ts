@@ -83,7 +83,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         }
         case 'test': {
           const prefix = configureEnvironmentVariables(deps, 'test');
-          await runWithSpawn(`${prefix}${scripts.testStart(project, argv)}`, project, argv);
+          await runWithSpawn(`${prefix}${scripts.startTest(project, argv)}`, project, argv);
           break;
         }
         default: {

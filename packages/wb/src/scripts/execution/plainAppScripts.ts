@@ -38,6 +38,10 @@ class PlainAppScripts extends BaseScripts {
     return `echo 'do nothing.'`;
   }
 
+  override startTest(): string {
+    return `echo 'do nothing.'`;
+  }
+
   override testStart(): string {
     return `echo 'do nothing.'`;
   }
