@@ -16,7 +16,7 @@ class DockerScripts {
     return `cd ${path.dirname(project.findFile('Dockerfile'))}
     && ${prefix}YARN wb optimizeForDockerBuild --outside
     && YARN wb retry -- docker build -t ${project.dockerImageName}
-        --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo amd64)
+        --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo x86_64)
         --build-arg WB_ENV=${project.env.WB_ENV}
         --build-arg WB_VERSION=${version} .`;
   }
