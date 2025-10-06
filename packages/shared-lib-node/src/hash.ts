@@ -44,12 +44,12 @@ export async function updateHashFromFiles(hashFilePath: string, ...paths: string
  */
 export async function calculateHashFromFiles(...paths: string[]): Promise<string> {
   const hash = crypto.createHash('sha512');
-  for (const fileOrDirPath of paths.sort()) {
+  for (const fileOrDirPath of paths.toSorted()) {
     const stat = await fs.promises.stat(fileOrDirPath);
     if (stat.isDirectory()) {
       // Get all files in the directory recursively
       const dirents = await fs.promises.readdir(fileOrDirPath, { withFileTypes: true, recursive: true });
-      for (const dirent of dirents.sort((d1, d2) => d1.name.localeCompare(d2.name))) {
+      for (const dirent of dirents.toSorted((d1, d2) => d1.name.localeCompare(d2.name))) {
         if (dirent.isFile()) {
           // Use parentPath property which is available in Node.js 18.17.0 or later
           hash.update(

@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [
     (swc as any)({
       jsc: {
-        target: 'es2022',
+        target: 'ES2023',
         parser: {
           syntax: 'typescript',
           decorators: true,

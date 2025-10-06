@@ -15,7 +15,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "target": "ES2022",
+    "target": "ES2023",
     "typeRoots": ["./node_modules/@types", "./@types"]
   },
   "exclude": ["packages/*/test/fixtures", "test/fixtures", "packages/*/test/fixtures/**/*", "test/fixtures/**/*"],
