@@ -97,7 +97,7 @@ export async function canSkipBuild(
   const environmentJson = JSON.stringify(
     Object.entries(project.env)
       .filter(([key]) => !ignoringEnvVarNames.has(key))
-      .sort(([key1], [key2]) => key1.localeCompare(key2))
+      .toSorted(([key1], [key2]) => key1.localeCompare(key2))
   );
   hash.update(environmentJson);
 
