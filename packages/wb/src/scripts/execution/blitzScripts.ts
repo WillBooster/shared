@@ -46,15 +46,14 @@ class BlitzScripts extends BaseScripts {
     });
   }
 
-  override testE2EDev(
-    project: Project,
-    argv: TestArgv,
-    { playwrightArgs, startCommand = `blitz dev -p 8080${toDevNull(argv)}` }: TestE2EDevOptions
-  ): string {
-    return super.testE2EDev(project, argv, { playwrightArgs, startCommand });
+  override testE2EDev(project: Project, argv: TestArgv, { playwrightArgs, startCommand }: TestE2EDevOptions): string {
+    const port = process.env.PORT || '8080';
+    const defaultStartCommand = `blitz dev -p ${port}${toDevNull(argv)}`;
+    return super.testE2EDev(project, argv, { playwrightArgs, startCommand: startCommand ?? defaultStartCommand });
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {
+    const port = Number(process.env.PORT) || 8080;
     return `YARN concurrently --raw --kill-others-on-fail
       "${[
         ...prismaScripts.reset(project).split('&&'),
@@ -63,7 +62,7 @@ class BlitzScripts extends BaseScripts {
       ]
         .map((c) => `${c.trim()}${toDevNull(argv)}`)
         .join(' && ')}"
-      "${this.waitApp(project, argv, 8080)}"`;
+      "${this.waitApp(project, argv, port)}"`;
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {

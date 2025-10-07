@@ -48,7 +48,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         scripts = remixScripts;
       } else if (
         (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) ||
-        (project.hasDockerfile && /EXPOSE\s+8080/.test(project.dockerfile))
+        (project.hasDockerfile && /EXPOSE\s+(8080|\$\{?PORT\}?)/.test(project.dockerfile))
       ) {
         scripts = httpServerScripts;
       } else if (deps['build-ts'] || devDeps['build-ts']) {
@@ -67,7 +67,8 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         }
         case 'staging': {
           const prefix = configureEnvironmentVariables(deps, 'staging');
-          await runWithSpawn(`${prefix}${scripts.startProduction(project, argv, 8080)}`, project, argv);
+          const port = Number(process.env.PORT) || 8080;
+          await runWithSpawn(`${prefix}${scripts.startProduction(project, argv, port)}`, project, argv);
           break;
         }
         case 'docker': {
