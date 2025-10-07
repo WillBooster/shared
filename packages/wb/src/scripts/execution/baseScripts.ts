@@ -53,12 +53,11 @@ export abstract class BaseScripts {
     { playwrightArgs = 'test test/e2e/', prismaDirectory, startCommand }: TestE2EOptions
   ): string {
     const env = project.env.WB_ENV;
-    const port = process.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
-    return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port} YARN concurrently --kill-others --raw --success first
+    return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
+      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080
         && BUN playwright ${playwrightArgs === 'test test/e2e/' ? `test ${testTarget}` : playwrightArgs}${suffix}"`;
   }
 
@@ -68,12 +67,11 @@ export abstract class BaseScripts {
     { playwrightArgs = 'test test/e2e/', startCommand }: TestE2EDevOptions
   ): string {
     const env = project.env.WB_ENV;
-    const port = process.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
-    return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port} YARN concurrently --kill-others --raw --success first
+    return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
+      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080
         && BUN playwright ${playwrightArgs === 'test test/e2e/' ? `test ${testTarget}` : playwrightArgs}${suffix}"`;
   }
 

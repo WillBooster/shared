@@ -44,14 +44,15 @@ class NextScripts extends BaseScripts {
     });
   }
 
-  override testE2EDev(project: Project, argv: TestArgv, { startCommand }: TestE2EDevOptions): string {
-    const port = process.env.PORT || '8080';
-    const defaultStartCommand = `next dev --turbopack -p ${port}${toDevNull(argv)}`;
-    return super.testE2EDev(project, argv, { startCommand: startCommand ?? defaultStartCommand });
+  override testE2EDev(
+    project: Project,
+    argv: TestArgv,
+    { startCommand = `next dev --turbopack -p 8080${toDevNull(argv)}` }: TestE2EDevOptions
+  ): string {
+    return super.testE2EDev(project, argv, { startCommand });
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 8080;
     return `YARN concurrently --raw --kill-others-on-fail
       "${[
         ...(project.hasPrisma ? prismaScripts.reset(project).split('&&') : []),
@@ -60,7 +61,7 @@ class NextScripts extends BaseScripts {
       ]
         .map((c) => `${c.trim()}${toDevNull(argv)}`)
         .join(' && ')}"
-      "${this.waitApp(project, argv, port)}"`;
+      "${this.waitApp(project, argv, 8080)}"`;
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {

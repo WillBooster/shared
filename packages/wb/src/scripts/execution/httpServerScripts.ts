@@ -42,23 +42,21 @@ class HttpServerScripts extends BaseScripts {
       )})`,
     }: TestE2EOptions
   ): string {
-    const port = process.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
-    return `NODE_ENV=production WB_ENV=${project.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first
+    return `NODE_ENV=production WB_ENV=${project.env.WB_ENV} PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
+      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080 && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
   }
 
   override testE2EDev(project: Project, argv: TestArgv, { startCommand }: TestE2EDevOptions): string {
-    const port = process.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     return `NODE_ENV=production WB_ENV=${
       project.env.WB_ENV
-    } PORT=${port} YARN concurrently --kill-others --raw --success first
+    } PORT=8080 YARN concurrently --kill-others --raw --success first
       "${startCommand ?? this.start(project, argv)} && exit 1"
-      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
+      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:8080 && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {

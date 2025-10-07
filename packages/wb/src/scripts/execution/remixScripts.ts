@@ -51,7 +51,6 @@ class RemixScripts extends BaseScripts {
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 8080;
     return `YARN concurrently --raw --kill-others-on-fail
       "${[
         ...prismaScripts.reset(project).split('&&'),
@@ -60,7 +59,7 @@ class RemixScripts extends BaseScripts {
       ]
         .map((c) => `${c.trim()}${toDevNull(argv)}`)
         .join(' && ')}"
-      "${this.waitApp(project, argv, port)}"`;
+      "${this.waitApp(project, argv, 8080)}"`;
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {
