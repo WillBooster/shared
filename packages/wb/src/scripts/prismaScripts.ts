@@ -18,7 +18,7 @@ class PrismaScripts {
     const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
     return `rm -Rf ${dirName}/mount/prod.sqlite3*; PRISMA migrate reset --force && rm -Rf ${dirName}/mount/prod.sqlite3*
-      && litestream restore -o ${dirName}/mount/prod.sqlite3 ${backupPath} && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
+      && litestream restore -o ${dirName}/mount/prod.sqlite3 ${backupPath} && ls -ahl ${dirName}/mount/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
   litestream(_: Project): string {
