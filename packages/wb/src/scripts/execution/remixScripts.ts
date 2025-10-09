@@ -26,6 +26,19 @@ class RemixScripts extends BaseScripts {
       "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
+  override startTest(project: Project, argv: ScriptArgv): string {
+    const port = Number(process.env.PORT) || 8080;
+    return `YARN concurrently --raw --kill-others-on-fail
+      "${[
+        ...prismaScripts.reset(project).split('&&'),
+        project.buildCommand,
+        `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
+      ]
+        .map((c) => `${c.trim()}${toDevNull(argv)}`)
+        .join(' && ')}"
+      "${this.waitApp(project, argv, port)}"`;
+  }
+
   override testE2E(project: Project, argv: TestArgv, options: TestE2EOptions): string {
     return super.testE2E(project, argv, {
       playwrightArgs: options.playwrightArgs,
@@ -48,19 +61,6 @@ class RemixScripts extends BaseScripts {
     { playwrightArgs, startCommand = `remix dev${toDevNull(argv)}` }: TestE2EDevOptions
   ): string {
     return super.testE2EDev(project, argv, { playwrightArgs, startCommand });
-  }
-
-  override startTest(project: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 8080;
-    return `YARN concurrently --raw --kill-others-on-fail
-      "${[
-        ...prismaScripts.reset(project).split('&&'),
-        project.buildCommand,
-        `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
-      ]
-        .map((c) => `${c.trim()}${toDevNull(argv)}`)
-        .join(' && ')}"
-      "${this.waitApp(project, argv, port)}"`;
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {

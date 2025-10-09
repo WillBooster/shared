@@ -32,6 +32,13 @@ class HttpServerScripts extends BaseScripts {
     }${toDevNull(argv)} && NODE_ENV=production PORT=\${PORT:-${port}} ${runtimeWithArgs} dist/index.js ${argv.normalizedArgsText ?? ''}`;
   }
 
+  override startTest(project: Project, argv: ScriptArgv): string {
+    return `${project.hasPrisma ? 'prisma migrate reset --force --skip-generate && ' : ''}(${this.startProduction(
+      project,
+      argv
+    )})`;
+  }
+
   override testE2E(
     project: Project,
     argv: TestArgv,
@@ -59,14 +66,6 @@ class HttpServerScripts extends BaseScripts {
     } PORT=${port} YARN concurrently --kill-others --raw --success first
       "${startCommand ?? this.start(project, argv)} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
-  }
-
-  override startTest(project: Project, argv: ScriptArgv): string {
-    const startCommand = `${project.hasPrisma ? 'prisma migrate reset --force --skip-generate && ' : ''}(${this.startProduction(
-      project,
-      argv
-    )})`;
-    return startCommand;
   }
 
   override testStart(project: Project, argv: ScriptArgv): string {

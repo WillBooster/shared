@@ -30,15 +30,15 @@ class PlainAppScripts extends BaseScripts {
     }`;
   }
 
+  override startTest(): string {
+    return `echo 'do nothing.'`;
+  }
+
   override testE2E(): string {
     return `echo 'do nothing.'`;
   }
 
   override testE2EDev(): string {
-    return `echo 'do nothing.'`;
-  }
-
-  override startTest(): string {
     return `echo 'do nothing.'`;
   }
 
