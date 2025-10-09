@@ -1,1 +1,1 @@
-# library
+# @willbooster/shared-lib-react

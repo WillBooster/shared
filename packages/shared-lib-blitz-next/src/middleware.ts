@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import type { RequestMiddleware } from 'blitz';
 
 type BasicAuthMiddlewareOptions = {
@@ -10,15 +12,14 @@ export function BasicAuthMiddleware(options: BasicAuthMiddlewareOptions): Reques
   return async (request, response, next) => {
     const authorizationHeader = request.headers.authorization ?? '';
     const [type, encodedCredentials] = authorizationHeader.split(' ');
-    const credentials = Buffer.from(encodedCredentials ?? '', 'base64').toString();
-    const [requestUsername, requestPassword] = credentials.split(':');
+    const expected = Buffer.from(`${options.username}:${options.password}`);
+    const provided = Buffer.from(encodedCredentials ?? '', 'base64');
 
     if (
-      type !== 'Basic' ||
-      !requestUsername ||
-      !requestPassword ||
-      requestUsername !== options.username ||
-      requestPassword !== options.password
+      type?.toLowerCase() !== 'basic' ||
+      provided.length === 0 ||
+      expected.length !== provided.length ||
+      !crypto.timingSafeEqual(provided, expected)
     ) {
       response.setHeader('WWW-Authenticate', `Basic realm='${options.realm || 'Secure Area'}'`);
       response.statusCode = 401;
