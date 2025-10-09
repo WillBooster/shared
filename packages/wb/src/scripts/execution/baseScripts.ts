@@ -36,6 +36,7 @@ export abstract class BaseScripts {
   abstract startTest(project: Project, argv: ScriptArgv): string;
 
   startDocker(project: Project, argv: ScriptArgv): string {
+    const port = Number(process.env.PORT) || 8080;
     return `${this.buildDocker(project)}${toDevNull(argv)}
       && YARN concurrently --raw --kill-others-on-fail
         "${dockerScripts.stopAndStart(
@@ -44,7 +45,7 @@ export abstract class BaseScripts {
           argv.normalizedDockerOptionsText ?? '',
           argv.normalizedArgsText ?? ''
         )}"
-        "${this.waitAndOpenApp(project, argv, 8080)}"`;
+        "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
   testE2E(
