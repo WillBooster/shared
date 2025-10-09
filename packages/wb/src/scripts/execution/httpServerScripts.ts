@@ -1,5 +1,6 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { findAvailablePort } from '../../utils/findPort.js';
 import { runtimeWithArgs } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
@@ -68,11 +69,9 @@ class HttpServerScripts extends BaseScripts {
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
   }
 
-  override testStart(project: Project, argv: ScriptArgv): string {
-    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(
-      project,
-      argv
-    )}"`;
+  override async testStart(project: Project, argv: ScriptArgv): Promise<string> {
+    const port = await findAvailablePort();
+    return `WB_ENV=${process.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(project, argv, port)}"`;
   }
 }
 

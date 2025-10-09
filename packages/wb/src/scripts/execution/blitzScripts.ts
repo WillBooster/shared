@@ -1,5 +1,6 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { findAvailablePort } from '../../utils/findPort.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { prismaScripts } from '../prismaScripts.js';
@@ -65,8 +66,9 @@ class BlitzScripts extends BaseScripts {
     return super.testE2EDev(project, argv, { playwrightArgs, startCommand: startCommand ?? defaultStartCommand });
   }
 
-  override testStart(project: Project, argv: ScriptArgv): string {
-    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "blitz dev${toDevNull(argv)}" "${this.waitApp(project, argv)}"`;
+  override async testStart(project: Project, argv: ScriptArgv): Promise<string> {
+    const port = await findAvailablePort();
+    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "blitz dev -p ${port}${toDevNull(argv)}" "${this.waitApp(project, argv, port)}"`;
   }
 }
 

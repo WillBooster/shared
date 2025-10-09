@@ -77,7 +77,7 @@ export abstract class BaseScripts {
         && BUN playwright ${playwrightArgs === 'test test/e2e/' ? `test ${testTarget}` : playwrightArgs}${suffix}"`;
   }
 
-  abstract testStart(project: Project, argv: ScriptArgv): string;
+  abstract testStart(project: Project, argv: ScriptArgv): Promise<string>;
 
   testUnit(project: Project, argv: TestArgv): string {
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/unit/';

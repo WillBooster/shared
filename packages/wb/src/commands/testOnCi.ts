@@ -71,7 +71,7 @@ export async function testOnCi(
       // CI mode disallows `only` to avoid including debug tests
       await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv);
     }
-    await runWithSpawnInParallel(scripts.testStart(project, argv), project, argv);
+    await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
     await promisePool.promiseAll();
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       if (project.hasDockerfile) {

@@ -42,8 +42,8 @@ class PlainAppScripts extends BaseScripts {
     return `echo 'do nothing.'`;
   }
 
-  override testStart(): string {
-    return `echo 'do nothing.'`;
+  override testStart(): Promise<string> {
+    return Promise.resolve(`echo 'do nothing.'`);
   }
 }
 
