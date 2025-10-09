@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import { NextResponse } from 'next/server.js';
 import type { NextRequest } from 'next/server.js';
 
@@ -17,15 +19,14 @@ export function BasicAuthMiddleware(options: BasicAuthMiddlewareOptions): (reque
   return (request) => {
     const authorizationHeader = request.headers.get('authorization') ?? '';
     const [type, encodedCredentials] = authorizationHeader.split(' ');
-    const credentials = Buffer.from(encodedCredentials ?? '', 'base64').toString();
-    const [requestUsername, requestPassword] = credentials.split(':');
+    const expected = Buffer.from(`${username}:${password}`);
+    const provided = Buffer.from(encodedCredentials ?? '', 'base64');
 
     if (
       type?.toLowerCase() !== 'basic' ||
-      !requestUsername ||
-      !requestPassword ||
-      requestUsername !== username ||
-      requestPassword !== password
+      provided.length === 0 ||
+      expected.length !== provided.length ||
+      !crypto.timingSafeEqual(provided, expected)
     ) {
       return new NextResponse('Unauthorized', {
         headers: { 'WWW-Authenticate': `Basic realm="${realm || 'Secure Area'}"` },

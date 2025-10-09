@@ -37,4 +37,13 @@ describe('BasicAuthMiddleware', () => {
     expect(response.headers.get('WWW-Authenticate')).toBe('Basic realm="realm"');
     expect(await response.text()).toBe('Unauthorized');
   });
+
+  test('auth disabled', () => {
+    const middleware = BasicAuthMiddleware({});
+    const request = new NextRequest('http://127.0.0.1');
+
+    const response = middleware(request);
+
+    expect(response.status).toBe(200);
+  });
 });
