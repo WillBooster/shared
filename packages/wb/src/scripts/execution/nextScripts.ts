@@ -14,9 +14,10 @@ import { BaseScripts } from './baseScripts.js';
  */
 class NextScripts extends BaseScripts {
   override start(project: Project, argv: ScriptArgv): string {
+    const port = Number(process.env.PORT) || 3000;
     return `YARN concurrently --raw --kill-others-on-fail
-      "next dev --turbopack ${argv.normalizedArgsText ?? ''}"
-      "${this.waitAndOpenApp(project, argv)}"`;
+      "next dev --turbopack -p ${port} ${argv.normalizedArgsText ?? ''}"
+      "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {

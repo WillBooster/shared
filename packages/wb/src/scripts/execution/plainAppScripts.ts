@@ -12,7 +12,8 @@ import { BaseScripts } from './baseScripts.js';
  */
 class PlainAppScripts extends BaseScripts {
   override start(_: Project, argv: ScriptArgv): string {
-    return `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
+    const port = Number(process.env.PORT) || 3000;
+    return `PORT=${port} YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }
 
   override startDocker(project: Project, argv: ScriptArgv): string {
