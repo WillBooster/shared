@@ -1,5 +1,3 @@
-import crypto from 'node:crypto';
-
 import type { RequestMiddleware } from 'blitz';
 
 type BasicAuthMiddlewareOptions = {
@@ -7,6 +5,22 @@ type BasicAuthMiddlewareOptions = {
   realm?: string;
   username: string;
 };
+
+/**
+ * Timing-safe comparison of two buffers to prevent timing attacks.
+ * This implementation works in all JavaScript environments (Node.js, Edge, Browser).
+ */
+function timingSafeEqual(a: Buffer, b: Buffer): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (const [i, element] of a.entries()) {
+    result |= element ^ (b[i] ?? 0);
+  }
+  return result === 0;
+}
 
 export function BasicAuthMiddleware(options: BasicAuthMiddlewareOptions): RequestMiddleware {
   return async (request, response, next) => {
@@ -19,7 +33,7 @@ export function BasicAuthMiddleware(options: BasicAuthMiddlewareOptions): Reques
       type?.toLowerCase() !== 'basic' ||
       provided.length === 0 ||
       expected.length !== provided.length ||
-      !crypto.timingSafeEqual(provided, expected)
+      !timingSafeEqual(provided, expected)
     ) {
       response.setHeader('WWW-Authenticate', `Basic realm='${options.realm || 'Secure Area'}'`);
       response.statusCode = 401;
