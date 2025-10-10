@@ -14,9 +14,10 @@ import { BaseScripts } from './baseScripts.js';
  */
 class RemixScripts extends BaseScripts {
   override start(project: Project, argv: ScriptArgv): string {
-    return `YARN concurrently --raw --kill-others-on-fail
+    const port = Number(process.env.PORT) || 3000;
+    return `PORT=${port} YARN concurrently --raw --kill-others-on-fail
       "remix dev ${argv.normalizedArgsText ?? ''}"
-      "${this.waitAndOpenApp(project, argv)}"`;
+      "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {

@@ -15,9 +15,10 @@ import { BaseScripts } from './baseScripts.js';
 class BlitzScripts extends BaseScripts {
   override start(project: Project, argv: ScriptArgv): string {
     const appEnv = project.env.WB_ENV ? `APP_ENV=${project.env.WB_ENV} ` : '';
+    const port = Number(process.env.PORT) || 3000;
     return `${appEnv}YARN concurrently --raw --kill-others-on-fail
-      "blitz dev ${argv.normalizedArgsText ?? ''}"
-      "${this.waitAndOpenApp(project, argv)}"`;
+      "blitz dev -p ${port} ${argv.normalizedArgsText ?? ''}"
+      "${this.waitAndOpenApp(project, argv, port)}"`;
   }
 
   override startProduction(project: Project, argv: ScriptArgv, port: number): string {
