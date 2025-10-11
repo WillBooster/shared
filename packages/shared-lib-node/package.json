@@ -46,7 +46,7 @@
     "@types/eslint": "9.6.1",
     "@types/micromatch": "4.0.9",
     "@types/node": "24.7.1",
-    "@willbooster/eslint-config-ts": "11.4.7",
+    "@willbooster/eslint-config-ts": "11.4.8",
     "@willbooster/prettier-config": "10.2.0",
     "build-ts": "16.0.9",
     "eslint": "9.37.0",

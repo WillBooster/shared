@@ -50,7 +50,7 @@
     "@types/micromatch": "4.0.9",
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.1",
-    "@willbooster/eslint-config-ts-react": "11.5.7",
+    "@willbooster/eslint-config-ts-react": "11.5.9",
     "@willbooster/prettier-config": "10.2.0",
     "babel-loader": "10.0.0",
     "build-ts": "16.0.9",
