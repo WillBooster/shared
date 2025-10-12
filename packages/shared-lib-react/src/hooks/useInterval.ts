@@ -21,11 +21,14 @@ import { useCallback, useEffect, useRef } from 'react';
 export function useInterval(callback: () => void, milliseconds?: number): () => void {
   const timerId = useRef<number | NodeJS.Timeout>(undefined);
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
 
   const clearInterval = useCallback(() => {
     globalThis.clearInterval(timerId.current);
   }, []);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     if (milliseconds !== undefined) {
