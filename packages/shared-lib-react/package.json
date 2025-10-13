@@ -45,7 +45,6 @@
     "@storybook/builder-webpack4": "6.5.16",
     "@storybook/manager-webpack4": "6.5.16",
     "@storybook/react": "9.1.10",
-    "@storybook/testing-library": "0.2.2",
     "@types/eslint": "9.6.1",
     "@types/micromatch": "4.0.9",
     "@types/react": "19.2.2",
