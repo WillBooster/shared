@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef } from 'react';
 
 /**
  * A custom React hook that sets up an interval and returns a function to clear it.
@@ -20,20 +20,16 @@ import { useCallback, useEffect, useRef } from 'react';
  */
 export function useInterval(callback: () => void, milliseconds?: number): () => void {
   const timerId = useRef<number | NodeJS.Timeout>(undefined);
-  const callbackRef = useRef(callback);
-
   const clearInterval = useCallback(() => {
     globalThis.clearInterval(timerId.current);
   }, []);
 
-  useEffect(() => {
-    callbackRef.current = callback;
-  }, [callback]);
+  const onTick = useEffectEvent(callback);
 
   useEffect(() => {
     if (milliseconds !== undefined) {
       timerId.current = globalThis.setInterval(() => {
-        callbackRef.current();
+        onTick();
       }, milliseconds);
     }
     return clearInterval;
