@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import treeKill from 'tree-kill';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -57,5 +58,8 @@ function getVersion(): string {
 }
 
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
-  process.on(signal, () => process.exit());
+  process.on(signal, () => {
+    treeKill(process.pid);
+    process.exit();
+  });
 }
