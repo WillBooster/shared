@@ -33,8 +33,12 @@ export async function killPortIfNonCi(
     process.exit(1);
   }
 
-  await killPortProcess(port);
-  await waitUntilPortIsFree(port);
+  try {
+    await killPortProcess(port);
+    await waitUntilPortIsFree(port);
+  } catch {
+    // do nothing
+  }
 }
 
 async function waitUntilPortIsFree(port: number, timeoutMs = 30_000, intervalMs = 200): Promise<void> {
