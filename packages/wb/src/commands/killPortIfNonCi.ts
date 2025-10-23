@@ -27,11 +27,6 @@ export async function killPortIfNonCi(
   if (process.env.CI && process.env.CI !== '0' && process.env.CI !== 'false') return;
 
   const portEnv = process.env.PORT;
-  if (!portEnv) {
-    console.error(chalk.red('PORT environment variable is not set.'));
-    process.exit(1);
-  }
-
   const port = Number(portEnv);
   if (!Number.isInteger(port) || port <= 0) {
     console.error(chalk.red(`PORT environment variable is invalid: ${portEnv}`));
