@@ -10,6 +10,7 @@ wb <command>
 
 Commands:
   wb buildIfNeeded              Build code if changes are detected
+  wb kill-port-on-ci            Kill the port specified by PORT environment variable.
   wb lint [files...]            Lint code on Bun
   wb optimizeForDockerBuild     Optimize configuration when building a Docker
                                 image
