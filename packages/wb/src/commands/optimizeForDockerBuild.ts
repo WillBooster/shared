@@ -73,6 +73,7 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
   const devDeps = packageJson.devDependencies ?? {};
   const nameWordsToBeRemoved = [
     'artillery',
+    'biome',
     'concurrently',
     'conventional-changelog-conventionalcommits',
     'eslint',
@@ -112,7 +113,7 @@ function optimizeScripts(packageJson: PackageJson): void {
   const removedScripts: string[] = [];
   for (const [name, content] of Object.entries(scripts)) {
     if (
-      nameWordsOfUnnecessaryScripts.some((word) => name.includes(word)) ||
+      nameWordsOfUnnecessaryScripts.some((word) => name.startsWith(word)) ||
       // Support "husky" since husky v9 requires `"postinstall": "husky"`
       contentWordsOfUnnecessaryScripts.some((word) => content.includes(word) || content.trim() === word.trim())
     ) {
