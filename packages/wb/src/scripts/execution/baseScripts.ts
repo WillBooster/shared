@@ -51,10 +51,19 @@ export abstract class BaseScripts {
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
-    return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port} YARN concurrently --kill-others --raw --success first
-      "rm -Rf ${prismaDirectory}/mount && ${startCommand} && exit 1"
+    const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
+    const playwrightCommand = playwrightArgs.startsWith('test ')
+      ? `BUN playwright ${playwrightArgs}`
+      : `BUN playwright test ${testTarget}`;
+    if (project.hasWebServerOnPlaywrightConfig) {
+      return `${envPrefix} ${playwrightCommand}${suffix}`;
+    }
+
+    const resetCommand = prismaDirectory ? `rm -Rf ${prismaDirectory}/mount && ` : '';
+    return `${envPrefix} YARN concurrently --kill-others --raw --success first
+      "${resetCommand}${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
-        && BUN playwright ${playwrightArgs === 'test test/e2e/' ? `test ${testTarget}` : playwrightArgs}${suffix}"`;
+        && ${playwrightCommand}${suffix}"`;
   }
 
   testE2EDev(
@@ -66,10 +75,18 @@ export abstract class BaseScripts {
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
-    return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port} YARN concurrently --kill-others --raw --success first
+    const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
+    const playwrightCommand = playwrightArgs.startsWith('test ')
+      ? `BUN playwright ${playwrightArgs}`
+      : `BUN playwright test ${testTarget}`;
+    if (project.hasWebServerOnPlaywrightConfig) {
+      return `${envPrefix} ${playwrightCommand}${suffix}`;
+    }
+
+    return `${envPrefix} YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
-        && BUN playwright ${playwrightArgs === 'test test/e2e/' ? `test ${testTarget}` : playwrightArgs}${suffix}"`;
+        && ${playwrightCommand}${suffix}"`;
   }
 
   abstract testStart(project: Project, argv: ScriptArgv): Promise<string>;

@@ -41,16 +41,13 @@ class HttpServerScripts extends BaseScripts {
     )})`;
   }
 
-  override testE2E(
-    project: Project,
-    argv: TestArgv,
-    {
+  override testE2E(project: Project, argv: TestArgv, options: TestE2EOptions = {}): string {
+    const {
       startCommand = `${project.hasPrisma ? 'prisma migrate reset --force --skip-generate && ' : ''}(${this.startProduction(
         project,
         argv
       )})`,
-    }: TestE2EOptions
-  ): string {
+    } = options;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
@@ -59,7 +56,8 @@ class HttpServerScripts extends BaseScripts {
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
   }
 
-  override testE2EDev(project: Project, argv: TestArgv, { startCommand }: TestE2EDevOptions): string {
+  override testE2EDev(project: Project, argv: TestArgv, options: TestE2EDevOptions = {}): string {
+    const { startCommand } = options;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';

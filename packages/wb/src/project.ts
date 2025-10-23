@@ -113,6 +113,16 @@ export class Project {
   }
 
   @memoizeOne
+  get hasWebServerOnPlaywrightConfig(): boolean {
+    try {
+      const configPath = this.findFile('playwright.config.ts');
+      return /\bwebServer\b/.test(fs.readFileSync(configPath, 'utf8'));
+    } catch {
+      return false;
+    }
+  }
+
+  @memoizeOne
   get dockerPackageJson(): PackageJson {
     return path.dirname(this.findFile('Dockerfile')) === this.dirPath
       ? this.packageJson
