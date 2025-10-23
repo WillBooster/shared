@@ -52,8 +52,9 @@ export abstract class BaseScripts {
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const playwrightCommand =
-      playwrightArgs === 'test test/e2e/' ? `BUN playwright test ${testTarget}` : `BUN playwright ${playwrightArgs}`;
+    const playwrightCommand = playwrightArgs.startsWith('test ')
+      ? `BUN playwright ${playwrightArgs}`
+      : `BUN playwright test ${testTarget}`;
     if (project.hasWebServerOnPlaywrightConfig) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
@@ -75,8 +76,9 @@ export abstract class BaseScripts {
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const playwrightCommand =
-      playwrightArgs === 'test test/e2e/' ? `BUN playwright test ${testTarget}` : `BUN playwright ${playwrightArgs}`;
+    const playwrightCommand = playwrightArgs.startsWith('test ')
+      ? `BUN playwright ${playwrightArgs}`
+      : `BUN playwright test ${testTarget}`;
     if (project.hasWebServerOnPlaywrightConfig) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
