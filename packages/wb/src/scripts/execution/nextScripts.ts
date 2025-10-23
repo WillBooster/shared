@@ -31,9 +31,6 @@ class NextScripts extends BaseScripts {
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {
-    if (!this.shouldLaunchTestServer(project)) {
-      return this.skipServerStartCommand();
-    }
     const port = Number(project.env.PORT) || 8080;
     return `YARN concurrently --raw --kill-others-on-fail
       "${[
@@ -69,9 +66,6 @@ class NextScripts extends BaseScripts {
   }
 
   override async testStart(project: Project, argv: ScriptArgv): Promise<string> {
-    if (!this.shouldLaunchTestServer(project)) {
-      return this.skipServerStartCommand();
-    }
     const port = await findAvailablePort();
     return `WB_ENV=${project.env.WB_ENV} YARN concurrently --kill-others --raw --success first "next dev --turbopack -p ${port}${toDevNull(argv)}" "${this.waitApp(project, argv, port)}"`;
   }

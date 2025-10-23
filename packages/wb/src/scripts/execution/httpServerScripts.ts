@@ -35,9 +35,6 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {
-    if (!this.shouldLaunchTestServer(project)) {
-      return this.skipServerStartCommand();
-    }
     return `${project.hasPrisma ? 'prisma migrate reset --force --skip-generate && ' : ''}(${this.startProduction(
       project,
       argv
@@ -45,7 +42,7 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override testE2E(project: Project, argv: TestArgv, options: TestE2EOptions = {}): string {
-    if (project.hasWebServerOnPlaywrightConfig()) {
+    if (project.hasWebServerOnPlaywrightConfig) {
       return super.testE2E(project, argv, options);
     }
     const {
@@ -63,7 +60,7 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override testE2EDev(project: Project, argv: TestArgv, options: TestE2EDevOptions = {}): string {
-    if (project.hasWebServerOnPlaywrightConfig()) {
+    if (project.hasWebServerOnPlaywrightConfig) {
       return super.testE2EDev(project, argv, options);
     }
     const { startCommand } = options;
@@ -78,9 +75,6 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override async testStart(project: Project, argv: ScriptArgv): Promise<string> {
-    if (!this.shouldLaunchTestServer(project)) {
-      return this.skipServerStartCommand();
-    }
     const port = await findAvailablePort();
     return `WB_ENV=${project.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(project, argv, port)}"`;
   }

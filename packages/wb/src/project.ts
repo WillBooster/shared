@@ -113,7 +113,7 @@ export class Project {
   }
 
   @memoizeOne
-  hasWebServerOnPlaywrightConfig(): boolean {
+  get hasWebServerOnPlaywrightConfig(): boolean {
     try {
       const configPath = this.findFile('playwright.config.ts');
       return /\bwebServer\b/.test(fs.readFileSync(configPath, 'utf8'));
