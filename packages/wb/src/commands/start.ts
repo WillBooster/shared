@@ -67,7 +67,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         }
         case 'staging': {
           const prefix = configureEnvironmentVariables(deps, 'staging');
-          const port = Number(process.env.PORT) || 8080;
+          const port = Number(project.env.PORT) || 8080;
           await runWithSpawn(`${prefix}${scripts.startProduction(project, argv, port)}`, project, argv);
           break;
         }

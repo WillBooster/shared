@@ -14,7 +14,7 @@ import { BaseScripts } from './baseScripts.js';
  */
 class RemixScripts extends BaseScripts {
   override start(project: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 3000;
+    const port = Number(project.env.PORT) || 3000;
     return `PORT=${port} YARN concurrently --raw --kill-others-on-fail
       "remix dev ${argv.normalizedArgsText ?? ''}"
       "${this.waitAndOpenApp(project, argv, port)}"`;
@@ -29,7 +29,7 @@ class RemixScripts extends BaseScripts {
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 8080;
+    const port = Number(project.env.PORT) || 8080;
     return `YARN concurrently --raw --kill-others-on-fail
       "${[
         ...prismaScripts.reset(project).split('&&'),
@@ -67,7 +67,7 @@ class RemixScripts extends BaseScripts {
 
   override async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     const port = await findAvailablePort();
-    return `WB_ENV=${process.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first "remix dev${toDevNull(argv)}" "${this.waitApp(project, argv, port)}"`;
+    return `WB_ENV=${project.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first "remix dev${toDevNull(argv)}" "${this.waitApp(project, argv, port)}"`;
   }
 }
 

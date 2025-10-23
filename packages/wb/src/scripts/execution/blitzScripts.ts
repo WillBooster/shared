@@ -15,7 +15,7 @@ import { BaseScripts } from './baseScripts.js';
 class BlitzScripts extends BaseScripts {
   override start(project: Project, argv: ScriptArgv): string {
     const appEnv = project.env.WB_ENV ? `APP_ENV=${project.env.WB_ENV} ` : '';
-    const port = Number(process.env.PORT) || 3000;
+    const port = Number(project.env.PORT) || 3000;
     return `${appEnv}YARN concurrently --raw --kill-others-on-fail
       "blitz dev -p ${port} ${argv.normalizedArgsText ?? ''}"
       "${this.waitAndOpenApp(project, argv, port)}"`;
@@ -33,7 +33,7 @@ class BlitzScripts extends BaseScripts {
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 8080;
+    const port = Number(project.env.PORT) || 8080;
     return `YARN concurrently --raw --kill-others-on-fail
       "${[
         ...prismaScripts.reset(project).split('&&'),
@@ -62,14 +62,14 @@ class BlitzScripts extends BaseScripts {
   }
 
   override testE2EDev(project: Project, argv: TestArgv, { playwrightArgs, startCommand }: TestE2EDevOptions): string {
-    const port = process.env.PORT || '8080';
+    const port = project.env.PORT || '8080';
     const defaultStartCommand = `blitz dev -p ${port}${toDevNull(argv)}`;
     return super.testE2EDev(project, argv, { playwrightArgs, startCommand: startCommand ?? defaultStartCommand });
   }
 
   override async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     const port = await findAvailablePort();
-    return `WB_ENV=${process.env.WB_ENV} YARN concurrently --kill-others --raw --success first "blitz dev -p ${port}${toDevNull(argv)}" "${this.waitApp(project, argv, port)}"`;
+    return `WB_ENV=${project.env.WB_ENV} YARN concurrently --kill-others --raw --success first "blitz dev -p ${port}${toDevNull(argv)}" "${this.waitApp(project, argv, port)}"`;
   }
 }
 

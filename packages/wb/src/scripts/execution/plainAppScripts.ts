@@ -11,8 +11,8 @@ import { BaseScripts } from './baseScripts.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PlainAppScripts extends BaseScripts {
-  override start(_: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 3000;
+  override start(project: Project, argv: ScriptArgv): string {
+    const port = Number(project.env.PORT) || 3000;
     return `PORT=${port} YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }
 

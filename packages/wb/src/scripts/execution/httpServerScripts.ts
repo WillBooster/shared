@@ -15,7 +15,7 @@ import { BaseScripts } from './baseScripts.js';
  */
 class HttpServerScripts extends BaseScripts {
   override start(project: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 3000;
+    const port = Number(project.env.PORT) || 3000;
     return `PORT=${port} YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }
 
@@ -51,7 +51,7 @@ class HttpServerScripts extends BaseScripts {
       )})`,
     }: TestE2EOptions
   ): string {
-    const port = process.env.PORT || '8080';
+    const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     return `NODE_ENV=production WB_ENV=${project.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first
@@ -60,7 +60,7 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override testE2EDev(project: Project, argv: TestArgv, { startCommand }: TestE2EDevOptions): string {
-    const port = process.env.PORT || '8080';
+    const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     return `NODE_ENV=production WB_ENV=${
@@ -72,7 +72,7 @@ class HttpServerScripts extends BaseScripts {
 
   override async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     const port = await findAvailablePort();
-    return `WB_ENV=${process.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(project, argv, port)}"`;
+    return `WB_ENV=${project.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first "${this.start(project, argv)}" "${this.waitApp(project, argv, port)}"`;
   }
 }
 

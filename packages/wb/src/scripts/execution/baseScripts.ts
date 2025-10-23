@@ -19,12 +19,6 @@ export type TestE2EOptions = {
  * Note that YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 export abstract class BaseScripts {
-  private readonly defaultPort;
-
-  constructor(defaultPort = Number(process.env.PORT) || 3000) {
-    this.defaultPort = defaultPort;
-  }
-
   buildDocker(project: Project, version = 'development'): string {
     return dockerScripts.buildDevImage(project, version);
   }
@@ -36,7 +30,7 @@ export abstract class BaseScripts {
   abstract startTest(project: Project, argv: ScriptArgv): string;
 
   startDocker(project: Project, argv: ScriptArgv): string {
-    const port = Number(process.env.PORT) || 8080;
+    const port = Number(project.env.PORT) || 8080;
     return `${this.buildDocker(project)}${toDevNull(argv)}
       && YARN concurrently --raw --kill-others-on-fail
         "${dockerScripts.stopAndStart(
@@ -54,7 +48,7 @@ export abstract class BaseScripts {
     { playwrightArgs = 'test test/e2e/', prismaDirectory, startCommand }: TestE2EOptions
   ): string {
     const env = project.env.WB_ENV;
-    const port = process.env.PORT || '8080';
+    const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port} YARN concurrently --kill-others --raw --success first
@@ -69,7 +63,7 @@ export abstract class BaseScripts {
     { playwrightArgs = 'test test/e2e/', startCommand }: TestE2EDevOptions
   ): string {
     const env = project.env.WB_ENV;
-    const port = process.env.PORT || '8080';
+    const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     return `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port} YARN concurrently --kill-others --raw --success first
@@ -91,7 +85,7 @@ export abstract class BaseScripts {
     return 'echo "No tests."';
   }
 
-  protected waitApp(project: Project, argv: ScriptArgv, port = this.defaultPort): string {
+  protected waitApp(project: Project, argv: ScriptArgv, port = project.env.PORT || 3000): string {
     return `wait-on -t 10000 http-get://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 10000 -i 500 http-get://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 10000 -i 1000 http-get://127.0.0.1:${port} 2> /dev/null
@@ -100,7 +94,7 @@ export abstract class BaseScripts {
       || wait-on -t 60000 -i 5000 http-get://127.0.0.1:${port}`;
   }
 
-  protected waitAndOpenApp(project: Project, argv: ScriptArgv, port = this.defaultPort): string {
+  protected waitAndOpenApp(project: Project, argv: ScriptArgv, port = project.env.PORT || 3000): string {
     return `${this.waitApp(
       project,
       argv,

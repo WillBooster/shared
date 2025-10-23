@@ -177,7 +177,7 @@ export async function test(
           break;
         }
         case 'generate': {
-          const port = process.env.PORT || '8080';
+          const port = project.env.PORT || '8080';
           await runWithSpawn(
             scripts.testE2E(project, e2eArgv, { playwrightArgs: `codegen http://localhost:${port}` }),
             project,
