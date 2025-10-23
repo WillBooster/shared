@@ -42,9 +42,6 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override testE2E(project: Project, argv: TestArgv, options: TestE2EOptions = {}): string {
-    if (project.hasWebServerOnPlaywrightConfig) {
-      return super.testE2E(project, argv, options);
-    }
     const {
       startCommand = `${project.hasPrisma ? 'prisma migrate reset --force --skip-generate && ' : ''}(${this.startProduction(
         project,
@@ -60,9 +57,6 @@ class HttpServerScripts extends BaseScripts {
   }
 
   override testE2EDev(project: Project, argv: TestArgv, options: TestE2EDevOptions = {}): string {
-    if (project.hasWebServerOnPlaywrightConfig) {
-      return super.testE2EDev(project, argv, options);
-    }
     const { startCommand } = options;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
