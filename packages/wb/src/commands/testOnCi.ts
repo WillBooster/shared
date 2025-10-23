@@ -41,11 +41,8 @@ export async function testOnCi(
     process.exit(1);
   }
 
-  if (projects.descendants.length > 1) {
-    // Disable interactive mode
-    process.env.CI = '1';
-  }
-  process.env.FORCE_COLOR ??= '3';
+  process.env.CI ||= '1';
+  process.env.FORCE_COLOR ||= '3';
   process.env.WB_ENV ||= 'test';
 
   for (const project of projects.descendants) {
