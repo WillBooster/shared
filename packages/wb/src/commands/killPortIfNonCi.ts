@@ -1,6 +1,3 @@
-import net from 'node:net';
-import { setTimeout } from 'node:timers/promises';
-
 import chalk from 'chalk';
 import killPortProcess from 'kill-port';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
@@ -35,34 +32,7 @@ export async function killPortIfNonCi(
 
   try {
     await killPortProcess(port);
-    await waitUntilPortIsFree(port);
   } catch {
     // do nothing
   }
-}
-
-async function waitUntilPortIsFree(port: number, timeoutMs = 30_000, intervalMs = 200): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() <= deadline) {
-    if (await canBindToPort(port)) return;
-    await setTimeout(intervalMs);
-  }
-
-  console.error(chalk.red(`Failed to free port ${port} within ${timeoutMs}ms.`));
-  process.exit(1);
-}
-
-async function canBindToPort(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once('error', () => {
-      resolve(false);
-    });
-    server.once('listening', () => {
-      server.close(() => {
-        resolve(true);
-      });
-    });
-    server.listen(port, '0.0.0.0');
-  });
 }
