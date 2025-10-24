@@ -108,7 +108,8 @@ export abstract class BaseScripts {
       || wait-on -t 10000 -i 1000 http-get://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 10000 -i 2000 http-get://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 20000 -i 4000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 60000 -i 5000 http-get://127.0.0.1:${port}`;
+      || wait-on -t 60000 -i 5000 http-get://127.0.0.1:${port} 2> /dev/null
+      || wait-on -t 90000 -i 10000 http-get://127.0.0.1:${port}`;
   }
 
   protected waitAndOpenApp(project: Project, argv: ScriptArgv, port = project.env.PORT || 3000): string {
