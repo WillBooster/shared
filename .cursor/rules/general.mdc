@@ -20,3 +20,4 @@ alwaysApply: true
 ## Coding Style
 
 - When adding new functions or classes, define them below any functions or classes that call them to maintain clear call order.
+- Use `project.env` instead of `process.env` on `wb` package.

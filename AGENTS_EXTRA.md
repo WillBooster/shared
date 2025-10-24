@@ -1,0 +1,1 @@
+- Use `project.env` instead of `process.env` on `wb` package.
