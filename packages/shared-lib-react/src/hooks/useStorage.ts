@@ -1,11 +1,11 @@
 import type React from 'react';
 import { useMemo, useCallback, useEffect, useSyncExternalStore } from 'react';
 
-export type UseStorageOptions<T> = {
+export interface UseStorageOptions<T> {
   parseAfterJsonParse?: (value: unknown) => T;
   ssrJsonText?: string;
   validValues?: Set<T>;
-};
+}
 
 export function useStorage<T>(
   nonReactiveStorageType: 'localStorage' | 'sessionStorage',

@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server.js';
 import type { NextRequest } from 'next/server.js';
 
-type BasicAuthMiddlewareOptions = {
+interface BasicAuthMiddlewareOptions {
   username?: string;
   password?: string;
   realm?: string;
-};
+}
 
 /**
  * Timing-safe comparison of two buffers to prevent timing attacks.

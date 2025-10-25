@@ -1,30 +1,20 @@
-/* eslint-disable */
-
-import swc from '@rollup/plugin-swc';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-  esbuild: false,
-  plugins: [
-    (swc as any)({
-      jsc: {
+  esbuild: {
+    format: 'esm',
+    platform: 'node',
+    target: 'es2023',
+    tsconfigRaw: {
+      compilerOptions: {
+        experimentalDecorators: true,
         target: 'ES2023',
-        parser: {
-          syntax: 'typescript',
-          decorators: true,
-        },
-        transform: {
-          decoratorVersion: '2022-03',
-        },
-      },
-    }),
-  ],
-  test: {
-    poolOptions: {
-      forks: {
-        singleFork: true,
+        useDefineForClassFields: false,
       },
     },
+  },
+  test: {
+    maxWorkers: 1,
     testTimeout: 10 * 60_000,
   },
 });

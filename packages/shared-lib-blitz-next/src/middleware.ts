@@ -1,10 +1,10 @@
 import type { RequestMiddleware } from 'blitz';
 
-type BasicAuthMiddlewareOptions = {
+interface BasicAuthMiddlewareOptions {
   password: string;
   realm?: string;
   username: string;
-};
+}
 
 /**
  * Timing-safe comparison of two buffers to prevent timing attacks.

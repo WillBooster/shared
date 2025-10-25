@@ -52,7 +52,7 @@ export async function ignoreEnoentAsync<T>(fn: () => Promise<T>): Promise<T | un
   }
 }
 
-export type RetryOptions = {
+export interface RetryOptions {
   beforeRetry?: (error: unknown) => Promise<void>;
   handleError?: (error: unknown) => Promise<void>;
   retryCount?: number;
@@ -60,7 +60,7 @@ export type RetryOptions = {
   shouldRetry?: (error: unknown) => boolean;
   sleepMilliseconds?: number;
   updateSleepMilliseconds?: (sleepMilliseconds: number) => number;
-};
+}
 
 /**
  * Retry the given function.
