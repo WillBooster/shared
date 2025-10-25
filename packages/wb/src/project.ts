@@ -7,6 +7,8 @@ import { memoizeOne } from 'at-decorators';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 
+import { isCI } from './utils/ci.js';
+
 export class Project {
   private readonly argv: EnvReaderOptions;
   private readonly loadEnv: boolean;
@@ -113,7 +115,8 @@ export class Project {
   }
 
   @memoizeOne
-  get hasWebServerOnPlaywrightConfig(): boolean {
+  get skipLaunchingServerForPlaywright(): boolean {
+    if (isCI(this.env.CI)) return false;
     try {
       const configPath = this.findFile('playwright.config.ts');
       return /\bwebServer\b/.test(fs.readFileSync(configPath, 'utf8'));

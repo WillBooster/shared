@@ -55,7 +55,7 @@ export abstract class BaseScripts {
     const playwrightCommand = playwrightArgs.startsWith('test ')
       ? `BUN playwright ${playwrightArgs}`
       : `BUN playwright test ${testTarget}`;
-    if (project.hasWebServerOnPlaywrightConfig) {
+    if (project.skipLaunchingServerForPlaywright) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
 
@@ -79,7 +79,7 @@ export abstract class BaseScripts {
     const playwrightCommand = playwrightArgs.startsWith('test ')
       ? `BUN playwright ${playwrightArgs}`
       : `BUN playwright test ${testTarget}`;
-    if (project.hasWebServerOnPlaywrightConfig) {
+    if (project.skipLaunchingServerForPlaywright) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
 

@@ -3,6 +3,7 @@ import killPortProcess from 'kill-port';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { isCI } from '../utils/ci.js';
 
 const killPortIfNonCiBuilder = {} as const;
 
@@ -21,7 +22,7 @@ export const killPortIfNonCiCommand: CommandModule<
 export async function killPortIfNonCi(
   _: ArgumentsCamelCase<InferredOptionTypes<typeof killPortIfNonCiBuilder & typeof sharedOptionsBuilder>>
 ): Promise<void> {
-  if (!process.env.CI || (process.env.CI !== '0' && process.env.CI !== 'false')) {
+  if (isCI(process.env.CI)) {
     console.info(`Skip killing port due to CI: ${process.env.CI}`);
     return;
   }
