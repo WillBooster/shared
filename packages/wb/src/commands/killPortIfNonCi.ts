@@ -21,7 +21,10 @@ export const killPortIfNonCiCommand: CommandModule<
 export async function killPortIfNonCi(
   _: ArgumentsCamelCase<InferredOptionTypes<typeof killPortIfNonCiBuilder & typeof sharedOptionsBuilder>>
 ): Promise<void> {
-  if (!process.env.CI || (process.env.CI !== '0' && process.env.CI !== 'false')) return;
+  if (!process.env.CI || (process.env.CI !== '0' && process.env.CI !== 'false')) {
+    console.info(`Skip killing port due to CI: ${process.env.CI}`);
+    return;
+  }
 
   const portEnv = process.env.PORT;
   const port = Number(portEnv);
@@ -30,6 +33,7 @@ export async function killPortIfNonCi(
     process.exit(1);
   }
 
+  console.info(`Killing the port: ${port}`);
   try {
     await killPortProcess(port);
   } catch {
