@@ -29,26 +29,12 @@ async function killPortProcessHandlingErrors(port: number): Promise<void> {
   }
 }
 
-export async function stopDockerContainerImmediatelyAndOnExit(containerName: string, project: Project): Promise<void> {
-  await stopDockerContainers(`name:${containerName}`, ['--filter', `name=${containerName}`], project);
+export async function stopDockerContainerByImageName(imageName: string, project: Project): Promise<void> {
+  await removeDockerContainers(['--filter', `name=${imageName}`], project);
 }
 
-export async function stopDockerContainerByPortImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
-  await stopDockerContainers(`port:${port}`, ['--filter', `publish=${port}`], project);
-}
-
-async function stopDockerContainers(key: string, filterArgs: string[], project: Project): Promise<void> {
-  await removeDockerContainers(filterArgs, project);
-  const cleanupKey = `docker:${key}`;
-  const killFunc = async (): Promise<void> => {
-    if (killed.has(cleanupKey)) return;
-
-    killed.add(cleanupKey);
-    await removeDockerContainers(filterArgs, project);
-  };
-  for (const signal of ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT']) {
-    process.on(signal, killFunc);
-  }
+export async function stopDockerContainerByPort(port: number, project: Project): Promise<void> {
+  await removeDockerContainers(['--filter', `publish=${port}`], project);
 }
 
 async function removeDockerContainers(filterArgs: string[], project: Project): Promise<void> {
