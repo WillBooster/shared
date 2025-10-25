@@ -6222,11 +6222,11 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-js-react@npm:11.5.5":
-  version: 11.5.5
-  resolution: "@willbooster/eslint-config-js-react@npm:11.5.5"
+"@willbooster/eslint-config-js-react@npm:11.5.6":
+  version: 11.5.6
+  resolution: "@willbooster/eslint-config-js-react@npm:11.5.6"
   dependencies:
-    "@willbooster/eslint-config-js": "npm:11.4.4"
+    "@willbooster/eslint-config-js": "npm:11.4.5"
   peerDependencies:
     "@eslint/js": ">=9"
     eslint: ">=9"
@@ -6241,13 +6241,13 @@ __metadata:
     eslint-plugin-unicorn: ">=57"
     eslint-plugin-unused-imports: ">=4"
     globals: ">=16"
-  checksum: 10c0/3d61cb5303d75bcf4694b33b736912864186f81a0136ddd0ff3d7d0c102e24dcb7ca254db5045fc4bbf0f2da034328e3b10f3475cca69ff12c527cee591de853
+  checksum: 10c0/9e1ab7bc983d78a979bbba2389fe71e31cbe877759f1afb0a91d4c5f3f47610c5425414738dc70d86b6ccc96aa08149a1a5230220ba2c598fa1b2bf7c8851fe1
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-js@npm:11.4.4":
-  version: 11.4.4
-  resolution: "@willbooster/eslint-config-js@npm:11.4.4"
+"@willbooster/eslint-config-js@npm:11.4.5":
+  version: 11.4.5
+  resolution: "@willbooster/eslint-config-js@npm:11.4.5"
   peerDependencies:
     "@eslint/js": ">=9"
     eslint: ">=9"
@@ -6259,16 +6259,16 @@ __metadata:
     eslint-plugin-unicorn: ">=57"
     eslint-plugin-unused-imports: ">=4"
     globals: ">=16"
-  checksum: 10c0/4cb71f396387cf5dedad5cf664246a222bbd0cadf980540517cb7a9b6a4e2cd0ef8cde3fc8db7a5eb02ca7cf2e668b2d2ee72fd4d5d237917d46af6f372cca44
+  checksum: 10c0/a2f12fc3c5f2c916be6bcfee8365ffc79e2e2619ded8148b285761e3145a0fe37067bde7c6200342128e0bd4f6bfa2178592a95bbae0c38520938930918c45c6
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts-react@npm:11.5.9":
-  version: 11.5.9
-  resolution: "@willbooster/eslint-config-ts-react@npm:11.5.9"
+"@willbooster/eslint-config-ts-react@npm:11.5.11":
+  version: 11.5.11
+  resolution: "@willbooster/eslint-config-ts-react@npm:11.5.11"
   dependencies:
-    "@willbooster/eslint-config-js-react": "npm:11.5.5"
-    "@willbooster/eslint-config-ts": "npm:11.4.8"
+    "@willbooster/eslint-config-js-react": "npm:11.5.6"
+    "@willbooster/eslint-config-ts": "npm:11.4.10"
   peerDependencies:
     "@eslint/js": ">=9"
     eslint: ">=9"
@@ -6286,15 +6286,15 @@ __metadata:
     globals: ">=16"
     typescript: ">=5"
     typescript-eslint: ">=8"
-  checksum: 10c0/f995d91836a932446be510dd2264b37aedae6075ba511292dfe201d8f7088ccfbcfa09307caed4c6aa5768a1a59ef0c4d4e9b287ec8c634c61b8ee6f31a63334
+  checksum: 10c0/f4696b739ecfa8f32175d428f91b31b87bed099e6094e6228f675282e3868a66ceee12f6b8ec7501bb448915259e3f0560eebd57e3966e8868adac3ad81912b4
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts@npm:11.4.8":
-  version: 11.4.8
-  resolution: "@willbooster/eslint-config-ts@npm:11.4.8"
+"@willbooster/eslint-config-ts@npm:11.4.10":
+  version: 11.4.10
+  resolution: "@willbooster/eslint-config-ts@npm:11.4.10"
   dependencies:
-    "@willbooster/eslint-config-js": "npm:11.4.4"
+    "@willbooster/eslint-config-js": "npm:11.4.5"
   peerDependencies:
     "@eslint/js": ">=9"
     eslint: ">=9"
@@ -6309,17 +6309,17 @@ __metadata:
     globals: ">=16"
     typescript: ">=5"
     typescript-eslint: ">=8"
-  checksum: 10c0/ddb50574d9267c3f81fa0cca5c076a2afb1e895f72656b926394e837c94203a27c653d10431ecf5eec9c346629faef36900087d844b2d3f24c28097b6960c518
+  checksum: 10c0/a0bfe915d84ba3619cd50b8f8b540c33b8124a3ac559a603a41f03156c7b2c036042df7f644202d0d26b5a50e5b7dc06b363cddba415eb6442e55ee0efbe1a90
   languageName: node
   linkType: hard
 
-"@willbooster/prettier-config@npm:10.2.0":
-  version: 10.2.0
-  resolution: "@willbooster/prettier-config@npm:10.2.0"
+"@willbooster/prettier-config@npm:10.2.1":
+  version: 10.2.1
+  resolution: "@willbooster/prettier-config@npm:10.2.1"
   peerDependencies:
     prettier: ">=3"
     prettier-plugin-java: ">=2.6"
-  checksum: 10c0/c9a4fd669df01373870471e7e2e1d9f67faeddd8edc68db02d7ae5e138baaf05497b736d4733dd8a2a6164c634416f60fecbf0685874311e026e75b97de3e4d3
+  checksum: 10c0/6d1d4228de152376ee044dd6d3c1115edc85bf42759ea2dd3331847c156c989d2019edd877c14a81b4cd05c801912eb8797de49db61c0df32bfb04de08aa0818
   languageName: node
   linkType: hard
 
@@ -6329,8 +6329,8 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
-    "@willbooster/eslint-config-ts": "npm:11.4.8"
-    "@willbooster/prettier-config": "npm:10.2.0"
+    "@willbooster/eslint-config-ts": "npm:11.4.10"
+    "@willbooster/prettier-config": "npm:10.2.1"
     blitz: "npm:3.0.2"
     build-ts: "npm:16.0.12"
     eslint: "npm:9.37.0"
@@ -6360,8 +6360,8 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
-    "@willbooster/eslint-config-ts": "npm:11.4.8"
-    "@willbooster/prettier-config": "npm:10.2.0"
+    "@willbooster/eslint-config-ts": "npm:11.4.10"
+    "@willbooster/prettier-config": "npm:10.2.1"
     build-ts: "npm:16.0.12"
     eslint: "npm:9.37.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
@@ -6405,8 +6405,8 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:24.9.1"
-    "@willbooster/eslint-config-ts": "npm:11.4.8"
-    "@willbooster/prettier-config": "npm:10.2.0"
+    "@willbooster/eslint-config-ts": "npm:11.4.10"
+    "@willbooster/prettier-config": "npm:10.2.1"
     build-ts: "npm:16.0.12"
     dotenv: "npm:17.2.3"
     eslint: "npm:9.37.0"
@@ -6449,8 +6449,8 @@ __metadata:
     "@types/micromatch": "npm:4.0.10"
     "@types/react": "npm:19.2.2"
     "@types/react-dom": "npm:19.2.2"
-    "@willbooster/eslint-config-ts-react": "npm:11.5.9"
-    "@willbooster/prettier-config": "npm:10.2.0"
+    "@willbooster/eslint-config-ts-react": "npm:11.5.11"
+    "@willbooster/prettier-config": "npm:10.2.1"
     babel-loader: "npm:10.0.0"
     build-ts: "npm:16.0.12"
     eslint: "npm:9.37.0"
@@ -6489,8 +6489,8 @@ __metadata:
   dependencies:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
-    "@willbooster/eslint-config-ts": "npm:11.4.8"
-    "@willbooster/prettier-config": "npm:10.2.0"
+    "@willbooster/eslint-config-ts": "npm:11.4.10"
+    "@willbooster/prettier-config": "npm:10.2.1"
     build-ts: "npm:16.0.12"
     eslint: "npm:9.37.0"
     eslint-config-flat-gitignore: "npm:2.1.0"
@@ -6524,8 +6524,8 @@ __metadata:
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:24.9.1"
     "@types/yargs": "npm:17.0.34"
-    "@willbooster/eslint-config-ts": "npm:11.4.8"
-    "@willbooster/prettier-config": "npm:10.2.0"
+    "@willbooster/eslint-config-ts": "npm:11.4.10"
+    "@willbooster/prettier-config": "npm:10.2.1"
     at-decorators: "npm:6.0.0"
     build-ts: "npm:16.0.12"
     chalk: "npm:5.6.2"
@@ -20850,7 +20850,7 @@ __metadata:
   dependencies:
     "@anolilab/multi-semantic-release": "npm:2.0.6"
     "@types/eslint": "npm:9.6.1"
-    "@willbooster/prettier-config": "npm:10.2.0"
+    "@willbooster/prettier-config": "npm:10.2.1"
     conventional-changelog-conventionalcommits: "npm:9.1.0"
     eslint: "npm:9.37.0"
     husky: "npm:9.1.7"
