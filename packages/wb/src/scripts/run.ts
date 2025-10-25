@@ -4,7 +4,11 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { killPortProcessImmediatelyAndOnExit } from '../utils/process.js';
+import {
+  killPortProcessImmediatelyAndOnExit,
+  stopDockerContainerByPort,
+  stopDockerContainerByImageName,
+} from '../utils/process.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isRunningOnBun, packageManagerWithRun } from '../utils/runtime.js';
 
@@ -36,7 +40,11 @@ export async function runWithSpawn(
   }
 
   const port = /http-get:\/\/127.0.0.1:(\d+)/.exec(runnableScript)?.[1];
-  if (runnableScript.includes('wait-on') && port && !runnableScript.includes('docker run')) {
+  if (runnableScript.includes('wait-on') && port) {
+    if (runnableScript.includes('docker run')) {
+      await stopDockerContainerByPort(Number(port), project);
+      await stopDockerContainerByImageName(project.dockerImageName, project);
+    }
     await killPortProcessImmediatelyAndOnExit(Number(port));
   }
   const ret = await spawnAsync(runnableScript, undefined, {
