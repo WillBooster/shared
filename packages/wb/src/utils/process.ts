@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 
+import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import killPortProcess from 'kill-port';
 
 import type { Project } from '../project.js';
@@ -26,6 +27,53 @@ async function killPortProcessHandlingErrors(port: number): Promise<void> {
   } catch {
     // do nothing
   }
+}
+
+export async function stopDockerContainerImmediatelyAndOnExit(containerName: string, project: Project): Promise<void> {
+  await stopDockerContainers(`name:${containerName}`, ['--filter', `name=${containerName}`], project);
+}
+
+export async function stopDockerContainerByPortImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
+  await stopDockerContainers(`port:${port}`, ['--filter', `publish=${port}`], project);
+}
+
+async function stopDockerContainers(key: string, filterArgs: string[], project: Project): Promise<void> {
+  await removeDockerContainers(filterArgs, project);
+  const cleanupKey = `docker:${key}`;
+  const killFunc = async (): Promise<void> => {
+    if (killed.has(cleanupKey)) return;
+
+    killed.add(cleanupKey);
+    await removeDockerContainers(filterArgs, project);
+  };
+  for (const signal of ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT']) {
+    process.on(signal, killFunc);
+  }
+}
+
+async function removeDockerContainers(filterArgs: string[], project: Project): Promise<void> {
+  try {
+    const containerIds = await listDockerContainerIds(filterArgs, project);
+    if (containerIds.length === 0) return;
+
+    await spawnAsync('docker', ['rm', '-f', ...containerIds], {
+      cwd: project.dirPath,
+      env: project.env,
+    });
+  } catch {
+    // do nothing
+  }
+}
+
+async function listDockerContainerIds(filterArgs: string[], project: Project): Promise<string[]> {
+  const { stdout } = await spawnAsync('docker', ['ps', '-q', ...filterArgs], {
+    cwd: project.dirPath,
+    env: project.env,
+  });
+  return stdout
+    .split(/\s+/)
+    .map((id) => id.trim())
+    .filter(Boolean);
 }
 
 export function spawnSyncOnExit(script: string, project: Project): void {
