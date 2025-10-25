@@ -4,11 +4,11 @@ import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
-export type TestE2EDevOptions = {
+export interface TestE2EDevOptions {
   // '--e2e generate' calls 'codegen http://localhost:8080'
   playwrightArgs?: string;
   startCommand?: string;
-};
+}
 
 export type TestE2EOptions = {
   prismaDirectory?: string;

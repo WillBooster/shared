@@ -12,12 +12,12 @@ import {
 import { promisePool } from '../utils/promisePool.js';
 import { isRunningOnBun, packageManagerWithRun } from '../utils/runtime.js';
 
-type Options = {
+interface Options {
   ci?: boolean;
   exitIfFailed?: boolean;
   forceColor?: boolean;
   timeout?: number;
-};
+}
 
 const defaultOptions: Options = {
   exitIfFailed: true,

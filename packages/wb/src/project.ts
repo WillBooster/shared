@@ -172,11 +172,11 @@ export class Project {
   }
 }
 
-export type FoundProjects = {
+export interface FoundProjects {
   root: Project;
   self: Project;
   descendants: Project[];
-};
+}
 
 export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?: string): Project | undefined {
   dirPath ??= process.cwd();

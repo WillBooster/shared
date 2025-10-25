@@ -35,8 +35,6 @@
     "yargs": "18.0.0"
   },
   "devDependencies": {
-    "@rollup/plugin-swc": "0.4.0",
-    "@swc/core": "1.13.21",
     "@types/eslint": "9.6.1",
     "@types/kill-port": "2.0.3",
     "@types/micromatch": "4.0.10",
@@ -46,7 +44,7 @@
     "@willbooster/prettier-config": "10.2.1",
     "at-decorators": "6.0.0",
     "build-ts": "16.0.12",
-    "eslint": "9.37.0",
+    "eslint": "9.38.0",
     "eslint-config-flat-gitignore": "2.1.0",
     "eslint-config-prettier": "10.1.8",
     "eslint-import-resolver-typescript": "4.4.4",
@@ -65,7 +63,7 @@
     "type-fest": "5.1.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.46.2",
-    "vitest": "3.2.4"
+    "vitest": "4.0.3"
   },
   "engines": {
     "node": ">= 18"
