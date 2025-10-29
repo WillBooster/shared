@@ -86,7 +86,7 @@ export abstract class BaseScripts {
   abstract testStart(project: Project, argv: ScriptArgv): Promise<string>;
 
   testUnit(project: Project, argv: TestArgv): string {
-    const testTarget = argv.targets?.length ? argv.targets.join(' ') : 'test/unit/';
+    const testTarget = argv.targets?.join(' ') || 'test/unit/';
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
       return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly`;
@@ -117,7 +117,7 @@ export abstract class BaseScripts {
 
 function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets']): string {
   const base = 'BUN playwright';
-  const target = targets?.length ? targets.join(' ') : 'test/e2e/';
+  const target = targets?.join(' ') || 'test/e2e/';
   if (!playwrightArgs) {
     return `${base} test ${target}`;
   }
