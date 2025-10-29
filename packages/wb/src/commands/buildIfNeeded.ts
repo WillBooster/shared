@@ -132,7 +132,7 @@ async function updateHashWithDiffResult(
   hash: Hash
 ): Promise<void> {
   return new Promise((resolve) => {
-    const ret = child_process.spawnSync('git', ['diff', '--name-only'], {
+    const ret = child_process.spawnSync('git', ['status'], {
       cwd: project.dirPath,
       env: project.env,
       stdio: 'pipe',
