@@ -50,11 +50,8 @@ export abstract class BaseScripts {
     const env = project.env.WB_ENV;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const playwrightCommand = playwrightArgs.startsWith('test ')
-      ? `BUN playwright ${playwrightArgs}`
-      : `BUN playwright test ${testTarget}`;
+    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
     if (project.skipLaunchingServerForPlaywright) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
@@ -74,11 +71,8 @@ export abstract class BaseScripts {
     const env = project.env.WB_ENV;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
     const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const playwrightCommand = playwrightArgs.startsWith('test ')
-      ? `BUN playwright ${playwrightArgs}`
-      : `BUN playwright test ${testTarget}`;
+    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
     if (project.skipLaunchingServerForPlaywright) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
@@ -92,7 +86,7 @@ export abstract class BaseScripts {
   abstract testStart(project: Project, argv: ScriptArgv): Promise<string>;
 
   testUnit(project: Project, argv: TestArgv): string {
-    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/unit/';
+    const testTarget = argv.targets?.join(' ') || 'test/unit/';
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
       return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly`;
@@ -119,4 +113,21 @@ export abstract class BaseScripts {
       port
     )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
   }
+}
+
+function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets']): string {
+  const base = 'BUN playwright';
+  const target = targets?.join(' ') || 'test/e2e/';
+  if (!playwrightArgs.startsWith('test ') || !targets?.length) {
+    return `${base} ${playwrightArgs}`;
+  }
+
+  const rest = playwrightArgs.slice('test '.length).trim();
+  const parts = rest.length > 0 ? rest.split(/\s+/) : [];
+  if (!parts[0] || parts[0].startsWith('-')) {
+    parts.unshift(target);
+  } else {
+    parts[0] = target;
+  }
+  return `${base} test ${parts.join(' ')}`;
 }
