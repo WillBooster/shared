@@ -33,16 +33,13 @@ class BlitzScripts extends BaseScripts {
   }
 
   override startTest(project: Project, argv: ScriptArgv): string {
-    const port = Number(project.env.PORT) || 8080;
-    return `YARN concurrently --raw --kill-others-on-fail
-      "${[
-        ...prismaScripts.reset(project).split('&&'),
-        project.buildCommand,
-        `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
-      ]
-        .map((c) => `${c.trim()}${toDevNull(argv)}`)
-        .join(' && ')}"
-      "${this.waitApp(project, argv, port)}"`;
+    return [
+      ...prismaScripts.reset(project).split('&&'),
+      project.buildCommand,
+      `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
+    ]
+      .map((command) => `${command.trim()}${toDevNull(argv)}`)
+      .join(' && ');
   }
 
   override testE2E(project: Project, argv: TestArgv, options: TestE2EOptions): string {
