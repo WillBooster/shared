@@ -50,11 +50,12 @@ export abstract class BaseScripts {
     const env = project.env.WB_ENV;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
+    const customTargets = argv.targets ?? [];
+    const hasCustomTargets = customTargets.length > 0;
+    const testTarget = hasCustomTargets ? customTargets.join(' ') : 'test/e2e/';
     const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const playwrightCommand = playwrightArgs.startsWith('test ')
-      ? `BUN playwright ${playwrightArgs}`
-      : `BUN playwright test ${testTarget}`;
+    const normalizedPlaywrightArgs = normalizePlaywrightArgs(playwrightArgs, testTarget, hasCustomTargets);
+    const playwrightCommand = `BUN playwright ${normalizedPlaywrightArgs ?? `test ${testTarget}`}`;
     if (project.skipLaunchingServerForPlaywright) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
@@ -74,11 +75,12 @@ export abstract class BaseScripts {
     const env = project.env.WB_ENV;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
+    const customTargets = argv.targets ?? [];
+    const hasCustomTargets = customTargets.length > 0;
+    const testTarget = hasCustomTargets ? customTargets.join(' ') : 'test/e2e/';
     const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const playwrightCommand = playwrightArgs.startsWith('test ')
-      ? `BUN playwright ${playwrightArgs}`
-      : `BUN playwright test ${testTarget}`;
+    const normalizedPlaywrightArgs = normalizePlaywrightArgs(playwrightArgs, testTarget, hasCustomTargets);
+    const playwrightCommand = `BUN playwright ${normalizedPlaywrightArgs ?? `test ${testTarget}`}`;
     if (project.skipLaunchingServerForPlaywright) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
@@ -119,4 +121,33 @@ export abstract class BaseScripts {
       port
     )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
   }
+}
+
+function normalizePlaywrightArgs(
+  playwrightArgs: string,
+  testTarget: string,
+  hasCustomTargets: boolean
+): string | undefined {
+  if (!playwrightArgs) {
+    return undefined;
+  }
+  if (!playwrightArgs.startsWith('test ')) {
+    return playwrightArgs;
+  }
+  if (!hasCustomTargets) {
+    return playwrightArgs;
+  }
+
+  const rest = playwrightArgs.slice('test '.length).trim();
+  if (rest.length === 0) {
+    return `test ${testTarget}`;
+  }
+
+  const parts = rest.split(/\s+/);
+  if (!parts[0] || parts[0].startsWith('-')) {
+    parts.unshift(testTarget);
+  } else {
+    parts[0] = testTarget;
+  }
+  return `test ${parts.join(' ')}`;
 }
