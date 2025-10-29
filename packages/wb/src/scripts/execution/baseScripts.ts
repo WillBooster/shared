@@ -50,12 +50,8 @@ export abstract class BaseScripts {
     const env = project.env.WB_ENV;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const customTargets = argv.targets ?? [];
-    const hasCustomTargets = customTargets.length > 0;
-    const testTarget = hasCustomTargets ? customTargets.join(' ') : 'test/e2e/';
     const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const normalizedPlaywrightArgs = normalizePlaywrightArgs(playwrightArgs, testTarget, hasCustomTargets);
-    const playwrightCommand = `BUN playwright ${normalizedPlaywrightArgs ?? `test ${testTarget}`}`;
+    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
     if (project.skipLaunchingServerForPlaywright) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
@@ -75,12 +71,8 @@ export abstract class BaseScripts {
     const env = project.env.WB_ENV;
     const port = project.env.PORT || '8080';
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const customTargets = argv.targets ?? [];
-    const hasCustomTargets = customTargets.length > 0;
-    const testTarget = hasCustomTargets ? customTargets.join(' ') : 'test/e2e/';
     const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const normalizedPlaywrightArgs = normalizePlaywrightArgs(playwrightArgs, testTarget, hasCustomTargets);
-    const playwrightCommand = `BUN playwright ${normalizedPlaywrightArgs ?? `test ${testTarget}`}`;
+    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
     if (project.skipLaunchingServerForPlaywright) {
       return `${envPrefix} ${playwrightCommand}${suffix}`;
     }
@@ -123,31 +115,26 @@ export abstract class BaseScripts {
   }
 }
 
-function normalizePlaywrightArgs(
-  playwrightArgs: string,
-  testTarget: string,
-  hasCustomTargets: boolean
-): string | undefined {
+function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets']): string {
+  const base = 'BUN playwright';
+  const target = targets && targets.length > 0 ? targets.join(' ') : 'test/e2e/';
+
   if (!playwrightArgs) {
-    return undefined;
+    return `${base} test ${target}`;
   }
   if (!playwrightArgs.startsWith('test ')) {
-    return playwrightArgs;
+    return `${base} ${playwrightArgs}`;
   }
-  if (!hasCustomTargets) {
-    return playwrightArgs;
+  if (!targets || targets.length === 0) {
+    return `${base} ${playwrightArgs}`;
   }
 
   const rest = playwrightArgs.slice('test '.length).trim();
-  if (rest.length === 0) {
-    return `test ${testTarget}`;
-  }
-
-  const parts = rest.split(/\s+/);
+  const parts = rest.length > 0 ? rest.split(/\s+/) : [];
   if (!parts[0] || parts[0].startsWith('-')) {
-    parts.unshift(testTarget);
+    parts.unshift(target);
   } else {
-    parts[0] = testTarget;
+    parts[0] = target;
   }
-  return `test ${parts.join(' ')}`;
+  return `${base} test ${parts.join(' ')}`;
 }
