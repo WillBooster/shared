@@ -132,7 +132,7 @@ async function updateHashWithDiffResult(
   hash: Hash
 ): Promise<void> {
   return new Promise((resolve) => {
-    const ret = child_process.spawnSync('git', ['status'], {
+    const ret = child_process.spawnSync('git', ['status', '--porcelain'], {
       cwd: project.dirPath,
       env: project.env,
       stdio: 'pipe',
@@ -141,6 +141,8 @@ async function updateHashWithDiffResult(
     const filePaths = ret.stdout
       .trim()
       .split('\n')
+      .filter((line) => line.length > 0)
+      .map((line) => line.slice(3).trim())
       .map((filePath) =>
         project.env.WB_ENV === 'test' ? filePath.replace(/packages\/wb\/test\/fixtures\/[^/]+\//, '') : filePath
       );

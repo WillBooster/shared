@@ -37,14 +37,14 @@ describe('BaseScripts.testE2E', () => {
   });
 
   it('passes custom target to playwright', () => {
-    const command = scripts.testE2E(project, { targets: ['test/e2e/realtimeSurvey.spec.ts'] } as TestArgv, {});
-    expect(command).toContain('BUN playwright test test/e2e/realtimeSurvey.spec.ts');
+    const command = scripts.testE2E(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {});
+    expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts');
   });
 
   it('keeps additional playwright args when replacing target', () => {
-    const command = scripts.testE2E(project, { targets: ['test/e2e/realtimeSurvey.spec.ts'] } as TestArgv, {
+    const command = scripts.testE2E(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {
       playwrightArgs: 'test test/e2e/ --headed',
     });
-    expect(command).toContain('BUN playwright test test/e2e/realtimeSurvey.spec.ts --headed');
+    expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts --headed');
   });
 });
