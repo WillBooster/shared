@@ -117,15 +117,11 @@ export abstract class BaseScripts {
 
 function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets']): string {
   const base = 'BUN playwright';
-  const target = targets && targets.length > 0 ? targets.join(' ') : 'test/e2e/';
-
+  const target = targets?.length ? targets.join(' ') : 'test/e2e/';
   if (!playwrightArgs) {
     return `${base} test ${target}`;
   }
-  if (!playwrightArgs.startsWith('test ')) {
-    return `${base} ${playwrightArgs}`;
-  }
-  if (!targets || targets.length === 0) {
+  if (!playwrightArgs.startsWith('test ') || !targets?.length) {
     return `${base} ${playwrightArgs}`;
   }
 
