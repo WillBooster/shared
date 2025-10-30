@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import killPortProcess from 'kill-port';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
+import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
 
@@ -20,14 +21,20 @@ export const killPortIfNonCiCommand: CommandModule<
 };
 
 export async function killPortIfNonCi(
-  _: ArgumentsCamelCase<InferredOptionTypes<typeof killPortIfNonCiBuilder & typeof sharedOptionsBuilder>>
+  argv: ArgumentsCamelCase<InferredOptionTypes<typeof killPortIfNonCiBuilder & typeof sharedOptionsBuilder>>
 ): Promise<void> {
-  if (isCI(process.env.CI)) {
-    console.info(`Skip killing port due to CI: ${process.env.CI}`);
+  const project = findSelfProject(argv);
+  if (!project) {
+    console.error(chalk.red('No project found.'));
+    process.exit(1);
+  }
+
+  if (isCI(project.env.CI)) {
+    console.info(`Skip killing port due to CI: ${project.env.CI}`);
     return;
   }
 
-  const portEnv = process.env.PORT;
+  const portEnv = project.env.PORT;
   const port = Number(portEnv);
   if (!Number.isInteger(port) || port <= 0) {
     console.error(chalk.red(`PORT environment variable is invalid: ${portEnv}`));
