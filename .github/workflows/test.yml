@@ -8,6 +8,8 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+permissions:
+  contents: write
 jobs:
   test:
     uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main

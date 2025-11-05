@@ -69,7 +69,8 @@ export const typeCheckCommand: CommandModule<
         finalExitCode = exitCode;
       }
     }
-    if (finalExitCode) process.exit(finalExitCode);
+    if (!finalExitCode) console.info(chalk.green('No type error found.'));
+    process.exit(finalExitCode);
   },
 };
 
