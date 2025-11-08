@@ -4841,12 +4841,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/bun@npm:1.3.1":
-  version: 1.3.1
-  resolution: "@types/bun@npm:1.3.1"
+"@types/bun@npm:1.3.2":
+  version: 1.3.2
+  resolution: "@types/bun@npm:1.3.2"
   dependencies:
-    bun-types: "npm:1.3.1"
-  checksum: 10c0/048a992fd2b7d87cbeaac3511f224b8b8744bd6fe83a35bd85eff11d16bebe715e8da5e4410f813c686464450049de53fa7d82fe798987f15f68ac7e87dc9aa0
+    bun-types: "npm:1.3.2"
+  checksum: 10c0/1432d097d0cf635ec86538e96929d7f1f1164d465229ee011498344b5a598b51cfe48a471e24f19e92881ee4dee860115986aeed5a636c128b0d99a0bcbd4019
   languageName: node
   linkType: hard
 
@@ -5971,7 +5971,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-node@workspace:packages/shared-lib-node"
   dependencies:
-    "@types/bun": "npm:1.3.1"
+    "@types/bun": "npm:1.3.2"
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:24.10.0"
@@ -7439,14 +7439,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"bun-types@npm:1.3.1":
-  version: 1.3.1
-  resolution: "bun-types@npm:1.3.1"
+"bun-types@npm:1.3.2":
+  version: 1.3.2
+  resolution: "bun-types@npm:1.3.2"
   dependencies:
     "@types/node": "npm:*"
   peerDependencies:
     "@types/react": ^19
-  checksum: 10c0/4429af038fe2807466a0bb30dc2515ddd197d0869237b9b29b8b8ce6d40cca26f21d2afa1ee583f9eb28b94480c08a16d3a4f0e13b3bf3aa3a3807c47df24b6f
+  checksum: 10c0/ee78b88b1ed4a3dc2b885fe1a52dd65ca1afaa10ed14094de93b85921db745e64516b123cc7ba69859e3b102eca5e0d2f63a1d2cb1b4f26eb2a5b93e47715124
   languageName: node
   linkType: hard
 
