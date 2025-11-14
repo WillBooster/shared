@@ -24,6 +24,7 @@ export const typeCheckCommand: CommandModule<
       process.exit(1);
     }
 
+    let removedNextDir = false as boolean;
     const promises = projects.descendants.map(async (project) => {
       const commands: string[] = [];
       if (!project.packageJson.workspaces) {
@@ -52,6 +53,7 @@ export const typeCheckCommand: CommandModule<
         if (exitCode && fs.existsSync(nextDirPath)) {
           fs.rmSync(nextDirPath, { force: true, recursive: true });
           console.info(chalk.yellow('Removed `.next` directory. We will re-try type checking.'));
+          removedNextDir = true;
           continue;
         }
 
@@ -69,7 +71,14 @@ export const typeCheckCommand: CommandModule<
         finalExitCode = exitCode;
       }
     }
-    if (!finalExitCode) console.info(chalk.green('No type error found.'));
+    if (!finalExitCode)
+      console.info(
+        chalk.green(
+          removedNextDir
+            ? '-----\nNo type errors found. Please ignore the previous type errors, as they were caused by outdated Next.js cache files.'
+            : 'No type errors found.'
+        )
+      );
     process.exit(finalExitCode);
   },
 };
