@@ -47,8 +47,8 @@
     "@storybook/react": "9.1.16",
     "@types/eslint": "9.6.1",
     "@types/micromatch": "4.0.10",
-    "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.2",
+    "@types/react": "19.2.4",
+    "@types/react-dom": "19.2.3",
     "@willbooster/eslint-config-ts-react": "11.5.11",
     "@willbooster/prettier-config": "10.2.1",
     "babel-loader": "10.0.0",
@@ -63,7 +63,7 @@
     "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-sort-class-members": "1.21.0",
     "eslint-plugin-sort-destructure-keys": "2.0.0",
-    "eslint-plugin-storybook": "10.0.6",
+    "eslint-plugin-storybook": "10.0.7",
     "eslint-plugin-unicorn": "62.0.0",
     "eslint-plugin-unused-imports": "4.3.0",
     "globals": "16.5.0",
@@ -75,8 +75,8 @@
     "react-dom": "19.2.0",
     "sort-package-json": "3.4.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.3",
-    "vitest": "4.0.8"
+    "typescript-eslint": "8.46.4",
+    "vitest": "4.0.9"
   },
   "peerDependencies": {
     "react": "~19.2.0",
