@@ -6071,7 +6071,7 @@ __metadata:
     kill-port: "npm:2.0.1"
     lint-staged: "npm:16.2.6"
     micromatch: "npm:4.0.8"
-    minimal-promise-pool: "npm:5.0.0"
+    minimal-promise-pool: "npm:6.0.0"
     prettier: "npm:3.6.2"
     prettier-plugin-java: "npm:2.7.7"
     prisma: "npm:6.19.0"
@@ -14004,10 +14004,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"minimal-promise-pool@npm:5.0.0":
-  version: 5.0.0
-  resolution: "minimal-promise-pool@npm:5.0.0"
-  checksum: 10c0/c31da48a8d0ff6dd310180a0a78cbad6fbf6d9e7236a79796833e3967665bbc36e8d4b678d21a6223daf4101e41e4dd2384647d7e3bfbed28bb2c4d82d5384d0
+"minimal-promise-pool@npm:6.0.0":
+  version: 6.0.0
+  resolution: "minimal-promise-pool@npm:6.0.0"
+  checksum: 10c0/2d3d56a003755e2a84360a037c88af6165e95a7475a26c16da6c2d2cc34151cbe0597398197e7d06af8c2261b2a7c4c268a7e8d23057068acede27fe4d1dca55
   languageName: node
   linkType: hard
 
