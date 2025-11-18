@@ -51,11 +51,17 @@ class PrismaScripts {
       sync-interval: 60s
 `;
 
+    const configPath = '/etc/litestream.yml';
+    try {
+      fs.writeFileSync(configPath, litestreamConfig);
+      console.info(`Generated ${configPath}`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to write ${configPath}: ${reason}`);
+    }
+
     return `${runtimeWithArgs} -e '
-const fs = require("node:fs");
 const { PrismaClient } = require("@prisma/client");
-const CONFIG_PATH = "/etc/litestream.yml";
-const CONFIG_CONTENT = ${JSON.stringify(litestreamConfig)};
 
 async function enableWal() {
   const prisma = new PrismaClient();
@@ -66,13 +72,7 @@ async function enableWal() {
   }
 }
 
-async function main() {
-  await enableWal();
-  fs.writeFileSync(CONFIG_PATH, CONFIG_CONTENT);
-  console.info(\`Generated \${CONFIG_PATH}\`);
-}
-
-main().catch((error) => {
+enableWal().catch((error) => {
   console.error("Failed due to:", error);
   process.exit(1);
 });
