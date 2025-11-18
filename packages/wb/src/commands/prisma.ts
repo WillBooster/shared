@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
@@ -20,6 +22,7 @@ export const prismaCommand: CommandModule = {
       .command(deployCommand)
       .command(deployForceCommand)
       .command(litestreamCommand)
+      .command(createLitestreamConfigCommand)
       .command(migrateCommand)
       .command(migrateDevCommand)
       .command(resetCommand)
@@ -68,6 +71,18 @@ const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof build
     const allProjects = await findPrismaProjects(argv);
     for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
       await runWithSpawn(prismaScripts.litestream(project), project, argv);
+    }
+  },
+};
+
+const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'create-litestream-config',
+  describe: 'Create Litestream configuration file',
+  builder,
+  async handler(argv) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma create-litestream-config', allProjects)) {
+      createLitestreamConfig(project);
     }
   },
 };
@@ -204,6 +219,46 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
     }
   },
 };
+
+function createLitestreamConfig(project: Project): void {
+  const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
+  const dbPath = `${dirName}/mount/prod.sqlite3`;
+  const requiredEnvVars = {
+    CLOUDFLARE_R2_ACCOUNT_ID: project.env.CLOUDFLARE_R2_ACCOUNT_ID,
+    CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME: project.env.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME,
+    CLOUDFLARE_R2_ACCESS_KEY_ID: project.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
+    CLOUDFLARE_R2_SECRET_ACCESS_KEY: project.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+  } as const;
+  const missingEnvVars = Object.entries(requiredEnvVars)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+  if (missingEnvVars.length > 0) {
+    throw new Error(`Missing environment variables for Litestream: ${missingEnvVars.join(', ')}`);
+  }
+
+  const retentionCheckInterval = project.env.WB_ENV === 'staging' ? '5m' : '1h';
+  const litestreamConfig = `dbs:
+  - path: ${dbPath}
+    replica:
+      type: s3
+      endpoint: https://${requiredEnvVars.CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+      bucket: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
+      access-key-id: ${requiredEnvVars.CLOUDFLARE_R2_ACCESS_KEY_ID}
+      secret-access-key: ${requiredEnvVars.CLOUDFLARE_R2_SECRET_ACCESS_KEY}
+      retention: 8h
+      retention-check-interval: ${retentionCheckInterval}
+      sync-interval: 60s
+`;
+
+  const configPath = '/etc/litestream.yml';
+  try {
+    fs.writeFileSync(configPath, litestreamConfig);
+    console.info(`Generated ${configPath}`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to write ${configPath}: ${reason}`);
+  }
+}
 
 async function findPrismaProjects(argv: EnvReaderOptions): Promise<Project[]> {
   const projects = await findDescendantProjects(argv);
