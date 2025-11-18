@@ -45,7 +45,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 
   restore(project: Project, outputPath: string): string {
     const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
-    return `rm -Rf ${outputPath}; litestream restore -config litestream.yml restore -o ${outputPath} ${dirName}/mount/prod.sqlite3`;
+    return `rm -Rf ${outputPath}; litestream restore -config litestream.yml -o ${outputPath} ${dirName}/mount/prod.sqlite3`;
   }
 
   seed(project: Project, scriptPath?: string): string {
