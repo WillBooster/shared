@@ -224,10 +224,10 @@ function createLitestreamConfig(project: Project): void {
   const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
   const dbPath = `${dirName}/mount/prod.sqlite3`;
   const requiredEnvVars = {
-    CLOUDFLARE_R2_ACCOUNT_ID: project.env.CLOUDFLARE_R2_ACCOUNT_ID,
+    CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID,
     CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME: project.env.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME,
-    CLOUDFLARE_R2_ACCESS_KEY_ID: project.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
-    CLOUDFLARE_R2_SECRET_ACCESS_KEY: project.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+    CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID,
+    CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY: project.env.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY,
   } as const;
   const missingEnvVars = Object.entries(requiredEnvVars)
     .filter(([, value]) => !value)
@@ -241,10 +241,10 @@ function createLitestreamConfig(project: Project): void {
   - path: ${dbPath}
     replica:
       type: s3
-      endpoint: https://${requiredEnvVars.CLOUDFLARE_R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+      endpoint: https://${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID}.r2.cloudflarestorage.com
       bucket: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
-      access-key-id: ${requiredEnvVars.CLOUDFLARE_R2_ACCESS_KEY_ID}
-      secret-access-key: ${requiredEnvVars.CLOUDFLARE_R2_SECRET_ACCESS_KEY}
+      access-key-id: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}
+      secret-access-key: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}
       retention: 8h
       retention-check-interval: ${retentionCheckInterval}
       sync-interval: 60s
