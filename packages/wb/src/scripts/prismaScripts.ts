@@ -14,11 +14,11 @@ class PrismaScripts {
     return `PRISMA migrate deploy${additionalOptions ? ` ${additionalOptions}` : ''}`;
   }
 
-  deployForce(project: Project, backupPath: string): string {
+  deployForce(project: Project): string {
     const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
     return `rm -Rf ${dirName}/mount/prod.sqlite3*; PRISMA migrate reset --force && rm -Rf ${dirName}/mount/prod.sqlite3*
-      && litestream restore -config litestream.yml -o ${dirName}/mount/prod.sqlite3 ${backupPath} && ls -ahl ${dirName}/mount/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
+      && litestream restore -config litestream.yml -o ${dirName}/mount/prod.sqlite3 ${dirName}/mount/prod.sqlite3 && ls -ahl ${dirName}/mount/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
   litestream(_: Project): string {
@@ -43,9 +43,9 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     return `PRISMA migrate reset --force --skip-seed${additionalOptions ? ` ${additionalOptions}` : ''} && ${this.seed(project)}`;
   }
 
-  restore(project: Project, backupPath: string, outputPath: string): string {
+  restore(project: Project, outputPath: string): string {
     const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
-    return `rm -Rf ${dirName}/restored.sqlite3; litestream restore -config litestream.yml restore -o ${outputPath} ${backupPath}`;
+    return `rm -Rf ${outputPath}; litestream restore -config litestream.yml restore -o ${outputPath} ${dirName}/mount/prod.sqlite3`;
   }
 
   seed(project: Project, scriptPath?: string): string {
