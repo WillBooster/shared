@@ -30,7 +30,7 @@
     "dotenv": "17.2.3",
     "globby": "16.0.0",
     "kill-port": "2.0.1",
-    "minimal-promise-pool": "5.0.0",
+    "minimal-promise-pool": "6.0.0",
     "tree-kill": "1.2.2",
     "yargs": "18.0.0"
   },
