@@ -6220,7 +6220,7 @@ __metadata:
     "@types/yargs": "npm:17.0.35"
     "@willbooster/eslint-config-ts": "npm:11.4.10"
     "@willbooster/prettier-config": "npm:10.2.1"
-    at-decorators: "npm:6.0.0"
+    at-decorators: "npm:7.0.0"
     build-ts: "npm:17.0.2"
     chalk: "npm:5.6.2"
     dotenv: "npm:17.2.3"
@@ -6905,10 +6905,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"at-decorators@npm:6.0.0":
-  version: 6.0.0
-  resolution: "at-decorators@npm:6.0.0"
-  checksum: 10c0/6bebaf5044ec1928701d3ac6995374739dfbb649e06817fedf61e6ad9df2a0daab890a5c76fb6b5e872bb0cd2a031c6f927db0f7cca3df9132cf768b6b142406
+"at-decorators@npm:7.0.0":
+  version: 7.0.0
+  resolution: "at-decorators@npm:7.0.0"
+  checksum: 10c0/2d005a07c37f04293e728264d99ba28c6ac5ec07c6bf8b80bba99ae989e43c8e446728520bd8bf7d12e9ca0db11710d50881b90207cd6207d830996a127205ec
   languageName: node
   linkType: hard
 
