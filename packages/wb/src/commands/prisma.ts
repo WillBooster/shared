@@ -120,7 +120,7 @@ const restoreBuilder = {
 } as const;
 
 const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreBuilder>> = {
-  command: 'restore <backup-path>',
+  command: 'restore',
   describe: "Restore DB from Litestream's backup",
   builder: restoreBuilder,
   async handler(argv) {
