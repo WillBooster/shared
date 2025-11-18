@@ -42,7 +42,7 @@
     "@types/yargs": "17.0.35",
     "@willbooster/eslint-config-ts": "11.4.10",
     "@willbooster/prettier-config": "10.2.1",
-    "at-decorators": "6.0.0",
+    "at-decorators": "7.0.0",
     "build-ts": "17.0.2",
     "eslint": "9.39.1",
     "eslint-config-flat-gitignore": "2.1.0",
