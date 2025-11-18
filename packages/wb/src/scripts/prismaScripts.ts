@@ -24,20 +24,8 @@ class PrismaScripts {
   litestream(_: Project): string {
     return `${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
-
-async function main() {
-  const prisma = new PrismaClient();
-  try {
-    await prisma.$queryRaw\`PRAGMA journal_mode = WAL;\`;
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-main().catch((error) => {
-  console.error("Failed due to:", error);
-  process.exit(1);
-});
+new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
+  .catch((error) => { console.log("Failed due to:", error); process.exit(1); });
 '`;
   }
 
