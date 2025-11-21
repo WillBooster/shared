@@ -54,7 +54,7 @@
     "eslint-plugin-unicorn": "62.0.0",
     "eslint-plugin-unused-imports": "4.3.0",
     "globals": "16.5.0",
-    "lint-staged": "16.2.6",
+    "lint-staged": "16.2.7",
     "micromatch": "4.0.8",
     "prettier": "3.6.2",
     "prettier-plugin-java": "2.7.7",
@@ -63,7 +63,7 @@
     "type-fest": "5.2.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.47.0",
-    "vitest": "4.0.9"
+    "vitest": "4.0.13"
   },
   "engines": {
     "node": ">= 18"
