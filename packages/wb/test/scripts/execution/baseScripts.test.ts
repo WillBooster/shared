@@ -1,24 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { TestArgv } from '../../../src/commands/test.js';
 import type { Project } from '../../../src/project.js';
+import type { ScriptArgv } from '../../../src/scripts/builder.js';
 import { BaseScripts } from '../../../src/scripts/execution/baseScripts.js';
 
+vi.mock('../../../src/utils/port.js', () => ({
+  checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
+}));
+
 class TestScripts extends BaseScripts {
-  override start(): string {
-    return '';
+  constructor() {
+    super(false);
   }
 
-  override startProduction(): string {
-    return '';
+  protected startDevProtected(_: Project, _argv: ScriptArgv): string {
+    return 'start-dev';
   }
 
-  override startTest(): string {
-    return '';
-  }
-
-  override testStart(): Promise<string> {
-    return Promise.resolve('');
+  protected override startProductionProtected(_: Project): string {
+    return 'start-production';
   }
 }
 
@@ -31,18 +32,18 @@ describe('BaseScripts.testE2E', () => {
 
   const scripts = new TestScripts();
 
-  it('uses default target when none specified', () => {
-    const command = scripts.testE2E(project, {} as TestArgv, {});
+  it('uses default target when none specified', async () => {
+    const command = await scripts.testE2EProduction(project, {} as TestArgv, {});
     expect(command).toContain('BUN playwright test test/e2e/');
   });
 
-  it('passes custom target to playwright', () => {
-    const command = scripts.testE2E(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {});
+  it('passes custom target to playwright', async () => {
+    const command = await scripts.testE2EProduction(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {});
     expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts');
   });
 
-  it('keeps additional playwright args when replacing target', () => {
-    const command = scripts.testE2E(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {
+  it('keeps additional playwright args when replacing target', async () => {
+    const command = await scripts.testE2EProduction(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {
       playwrightArgs: 'test test/e2e/ --headed',
     });
     expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts --headed');
