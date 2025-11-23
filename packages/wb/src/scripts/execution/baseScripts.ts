@@ -34,7 +34,7 @@ export abstract class BaseScripts {
       `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
     ]
       .filter(Boolean)
-      .map((cmd) => `${cmd} ${toDevNull(argv)} &&`)
+      .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
       .join(' && ');
   }
 
