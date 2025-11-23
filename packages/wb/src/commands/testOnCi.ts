@@ -72,17 +72,16 @@ export async function testOnCi(
     await promisePool.promiseAll();
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       if (project.hasDockerfile) {
-        process.env.WB_DOCKER ??= '1';
+        project.env.WB_DOCKER ||= '1';
+        // Discard Docker build output to reduce log size on CI
         await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
       }
-      const options = project.hasDockerfile
-        ? {
-            startCommand: dockerScripts.stopAndStart(project, true),
-          }
-        : {};
+      const script = project.hasDockerfile
+        ? await scripts.testE2EDocker(project, argv, {})
+        : await scripts.testE2EProduction(project, argv, {});
       process.exitCode = await runWithSpawn(
         // CI mode disallows `only` to avoid including debug tests
-        scripts.testE2E(project, argv, options).replaceAll(' --allowOnly', ''),
+        script.replaceAll(' --allowOnly', ''),
         project,
         argv,
         {

@@ -4,11 +4,6 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import {
-  killPortProcessImmediatelyAndOnExit,
-  stopDockerContainerByPort,
-  stopDockerContainerByImageName,
-} from '../utils/process.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isRunningOnBun, packageManagerWithRun } from '../utils/runtime.js';
 
@@ -39,14 +34,6 @@ export async function runWithSpawn(
     return 0;
   }
 
-  const port = /http-get:\/\/127.0.0.1:(\d+)/.exec(runnableScript)?.[1];
-  if (runnableScript.includes('wait-on') && port) {
-    if (runnableScript.includes('docker run')) {
-      await stopDockerContainerByPort(Number(port), project);
-      await stopDockerContainerByImageName(project.dockerImageName, project);
-    }
-    await killPortProcessImmediatelyAndOnExit(Number(port));
-  }
   const ret = await spawnAsync(runnableScript, undefined, {
     cwd: project.dirPath,
     env: configureEnv(project.env, opts),
@@ -133,7 +120,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
   );
   // Add cascade option when WB_ENV is defined
   const cascadeOption = project.env.WB_ENV ? ` --cascade-env=${project.env.WB_ENV || 'development'}` : '';
-  return [`dotenv${cascadeOption} ${printableScript}`, runnableScript];
+  return [`${packageManagerWithRun} dotenv${cascadeOption} -- ${printableScript}`, runnableScript];
 }
 
 export function printStart(normalizedScript: string, project: Project, prefix = 'Start', weak = false): void {

@@ -8,7 +8,7 @@ import { spawnSyncOnExit } from '../utils/process.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class DockerScripts {
-  buildDevImage(project: Project, version: string): string {
+  buildImage(project: Project, version: string): string {
     // e.g. coding-booster uses `"docker/build/prepare": "touch drill-users.csv",`
     const prefix = project.dockerPackageJson.scripts?.['docker/build/prepare']
       ? 'YARN run docker/build/prepare && '
