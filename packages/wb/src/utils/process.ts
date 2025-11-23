@@ -6,10 +6,15 @@ import killPortProcess from 'kill-port';
 import type { Project } from '../project.js';
 import { printFinishedAndExitIfNeeded, printStart } from '../scripts/run.js';
 
+import { isPortAvailable } from './port.js';
+
 const killed = new Set<number | string>();
 
 export async function killPortProcessImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
-  await killPortContainerAndProcess(port, project);
+  if (!(await isPortAvailable(port))) {
+    await killPortContainerAndProcess(port, project);
+  }
+
   const killFunc = async (): Promise<void> => {
     if (killed.has(port)) return;
 

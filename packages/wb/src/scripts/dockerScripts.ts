@@ -31,7 +31,7 @@ class DockerScripts {
 
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop(project), project);
-    return `docker run --rm -it -p \${PORT:-8080}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
+    return `docker run --rm -it --publish \${PORT:-8080}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
   }
 
   stop(project: Project): string {
