@@ -15,24 +15,24 @@ describe('readAndApplyEnvironmentVariables()', () => {
 
   it('should load env vars with --auto-cascade-env', () => {
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ NAME: 'app1', ENV: 'development1' });
+    expect(envVars).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
   });
 
   it('should load env vars with --cascade-env=production', () => {
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'production', env: ['.env'] }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ NAME: 'app1', ENV: 'production1' });
+    expect(envVars).toEqual({ ENV: 'production1', PORT: '3003', NAME: 'app1' });
   });
 
   it('should load env vars with --cascade-node-env and NODE_ENV=""', () => {
     process.env.NODE_ENV = '';
     const envVars = readAndApplyEnvironmentVariables({ cascadeNodeEnv: true, env: ['.env'] }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ NAME: 'app1', ENV: 'development1' });
+    expect(envVars).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
   });
 
   it('should load env vars with --cascade-node-env and NODE_ENV=test', () => {
     process.env.NODE_ENV = 'test';
     const envVars = readAndApplyEnvironmentVariables({ cascadeNodeEnv: true, env: ['.env'] }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ NAME: 'app1', ENV: 'test1' });
+    expect(envVars).toEqual({ ENV: 'test1', PORT: '3002', NAME: 'app1' });
   });
 
   it('should load env vars with --env=test/fixtures/app2/.env --auto-cascade-env, WB_ENV=test and NODE_ENV=production', () => {
@@ -42,6 +42,6 @@ describe('readAndApplyEnvironmentVariables()', () => {
       { autoCascadeEnv: true, env: ['../app2/.env'] },
       'test/fixtures/app1'
     );
-    expect(envVars).toEqual({ NAME: 'app2', ENV: 'test2' });
+    expect(envVars).toEqual({ ENV: 'test2', PORT: '4002', NAME: 'app2' });
   });
 });
