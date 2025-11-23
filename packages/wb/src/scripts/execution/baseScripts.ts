@@ -1,6 +1,5 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
-import { SERVER_LOG_FILE } from '../../utils/log.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
@@ -95,7 +94,7 @@ export abstract class BaseScripts {
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
-    return `YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)} > ${SERVER_LOG_FILE} 2>&1" "${this.waitApp(project)}"`;
+    return `YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
   }
 
   private async testE2EPrivate(
