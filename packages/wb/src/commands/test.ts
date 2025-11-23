@@ -7,6 +7,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import type { scriptOptionsBuilder } from '../scripts/builder.js';
+import { toDevNull } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
@@ -201,7 +202,7 @@ async function testOnDocker(
   playwrightArgs?: string
 ): Promise<void> {
   project.env.WB_DOCKER ||= '1';
-  await runWithSpawn(scripts.buildDocker(project, 'test'), project, argv);
+  await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
   process.exitCode = await runWithSpawn(
     await scripts.testE2EDocker(project, argv, {
       playwrightArgs,

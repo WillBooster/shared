@@ -19,7 +19,12 @@ import { promisePool } from '../utils/promisePool.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
 
-const testOnCiBuilder = {} as const;
+const testOnCiBuilder = {
+  silent: {
+    description: 'Reduce redundant outputs',
+    type: 'boolean',
+  },
+} as const;
 export const testOnCiCommand: CommandModule<
   unknown,
   InferredOptionTypes<typeof testOnCiBuilder & typeof sharedOptionsBuilder>
@@ -73,7 +78,6 @@ export async function testOnCi(
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       if (project.hasDockerfile) {
         project.env.WB_DOCKER ||= '1';
-        // Discard Docker build output to reduce log size on CI
         await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
       }
       const script = project.hasDockerfile
