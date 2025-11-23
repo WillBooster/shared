@@ -39,6 +39,7 @@
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "dotenv": "17.2.3",
+    "dotenv-expand": "12.0.3",
     "tree-kill": "1.2.2"
   },
   "devDependencies": {
