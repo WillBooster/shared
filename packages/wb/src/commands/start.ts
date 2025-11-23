@@ -84,7 +84,8 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         }
         case 'test': {
           const prefix = configureEnvironmentVariables(deps, 'test');
-          await runWithSpawn(`${prefix}${scripts.startTest(project, argv)}`, project, argv);
+          const script = `${prefix}${scripts.startTest(project, argv)}`;
+          await runWithSpawn(addServerLogRedirection(script), project, argv);
           break;
         }
         default: {
@@ -94,6 +95,11 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     }
   },
 };
+
+function addServerLogRedirection(script: string): string {
+  const trimmedScript = script.trimEnd();
+  return `${trimmedScript} > server.log 2>&1`;
+}
 
 function configureEnvironmentVariables(deps: Partial<Record<string, string>>, wbEnv: string): string {
   process.env.WB_ENV ||= wbEnv;
