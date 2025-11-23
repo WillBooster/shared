@@ -39,7 +39,8 @@ export abstract class BaseScripts {
   }
 
   async startDev(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    const port = this.resolvePort(project, 3000);
+    await checkAndKillPortProcess(port, project);
     if (!this.shouldWaitAndOpenApp) return this.startDevProtected(project, argv);
 
     return `YARN concurrently --raw --kill-others-on-fail
@@ -47,7 +48,8 @@ export abstract class BaseScripts {
       "${this.waitAndOpenApp(project)}"`;
   }
   async startProduction(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    const port = this.resolvePort(project, 8080);
+    await checkAndKillPortProcess(port, project);
     if (!this.shouldWaitAndOpenApp) return this.startProductionProtected(project, argv);
 
     return `YARN concurrently --raw --kill-others-on-fail
@@ -55,11 +57,13 @@ export abstract class BaseScripts {
       "${this.waitAndOpenApp(project)}"`;
   }
   async startTest(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    const port = this.resolvePort(project, 8080);
+    await checkAndKillPortProcess(port, project);
     return this.startProductionProtected(project, argv);
   }
   async startDocker(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    const port = this.resolvePort(project, 8080);
+    await checkAndKillPortProcess(port, project);
     if (!this.shouldWaitAndOpenApp) {
       return `${this.buildDocker(project, 'development')}
       && ${dockerScripts.stopAndStart(
@@ -93,7 +97,8 @@ export abstract class BaseScripts {
     return this.testE2EPrivate(project, argv, dockerScripts.stopAndStart(project, true), options);
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    const port = this.resolvePort(project, 3000);
+    await checkAndKillPortProcess(port, project);
     return `YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
   }
 
@@ -103,7 +108,8 @@ export abstract class BaseScripts {
     startCommand: string,
     { playwrightArgs = 'test test/e2e/' }: TestE2EOptions
   ): Promise<string> {
-    const port = await checkAndKillPortProcess(project.env.PORT, project);
+    const port = this.resolvePort(project, 8080);
+    await checkAndKillPortProcess(port, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
     if (project.skipLaunchingServerForPlaywright) {
@@ -144,6 +150,15 @@ export abstract class BaseScripts {
     return `${this.waitApp(
       project
     )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
+  }
+
+  private resolvePort(project: Project, fallbackPort: number): number {
+    const port = Number(project.env.PORT ?? fallbackPort);
+    if (!Number.isInteger(port) || port <= 0) {
+      throw new Error(`The given port (${project.env.PORT}) is invalid.`);
+    }
+    project.env.PORT = `${port}`;
+    return port;
   }
 }
 
