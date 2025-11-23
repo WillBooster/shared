@@ -98,7 +98,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
 
 function addServerLogRedirection(script: string): string {
   const trimmedScript = script.trimEnd();
-  return `${trimmedScript} > server.log 2>&1`;
+  return `${trimmedScript} > test.log 2>&1`;
 }
 
 function configureEnvironmentVariables(deps: Partial<Record<string, string>>, wbEnv: string): string {
