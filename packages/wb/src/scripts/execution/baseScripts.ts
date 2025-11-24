@@ -26,18 +26,6 @@ export abstract class BaseScripts {
   }
 
   // ------------ START: start commands ------------
-  protected abstract startDevProtected(_: Project, argv: ScriptArgv): string;
-  protected startProductionProtected(project: Project, argv: ScriptArgv): string {
-    return [
-      ...(project.hasPrisma ? prismaScripts.migrate(project).split('&&') : []),
-      project.buildCommand,
-      `pm2-runtime start --no-autorestart ${project.findFile('ecosystem.config.cjs')}`,
-    ]
-      .filter(Boolean)
-      .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
-      .join(' && ');
-  }
-
   async startDev(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
     if (!this.shouldWaitAndOpenApp) return this.startDevProtected(project, argv);
@@ -80,24 +68,36 @@ export abstract class BaseScripts {
         )}"
         "${this.waitAndOpenApp(project)}"`;
   }
+
+  protected abstract startDevProtected(_: Project, argv: ScriptArgv): string;
+  protected startProductionProtected(project: Project, argv: ScriptArgv): string {
+    return [
+      ...(project.hasPrisma ? prismaScripts.migrate(project).split('&&') : []),
+      project.buildCommand,
+      `pm2-runtime start --no-autorestart ${project.findFile('ecosystem.config.cjs')}`,
+    ]
+      .filter(Boolean)
+      .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
+      .join(' && ');
+  }
   // ------------ END: start commands ------------
 
   // ------------ START: test (e2e) commands ------------
   testE2EDev(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
-    return this.testE2EPrivate(project, argv, this.startDevProtected(project, argv), options);
+    return this.testE2EProtected(project, argv, this.startDevProtected(project, argv), options);
   }
   testE2EProduction(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
-    return this.testE2EPrivate(project, argv, this.startProductionProtected(project, argv), options);
+    return this.testE2EProtected(project, argv, this.startProductionProtected(project, argv), options);
   }
   testE2EDocker(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
-    return this.testE2EPrivate(project, argv, dockerScripts.stopAndStart(project, true), options);
+    return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project, true), options);
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
     return `YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
   }
 
-  private async testE2EPrivate(
+  async testE2EProtected(
     project: Project,
     argv: TestArgv,
     startCommand: string,
