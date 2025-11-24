@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { config } from 'dotenv';
+import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 export const yargsOptionsBuilderForEnv = {
@@ -104,7 +105,7 @@ export function readEnvironmentVariables(
       throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
     }
   }
-  return [envVars, envPathAndEnvVarCountPairs];
+  return [expand({ parsed: envVars, processEnv: {} }).parsed ?? envVars, envPathAndEnvVarCountPairs];
 }
 
 /**

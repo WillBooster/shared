@@ -4,11 +4,6 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import {
-  killPortProcessImmediatelyAndOnExit,
-  stopDockerContainerByPort,
-  stopDockerContainerByImageName,
-} from '../utils/process.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isRunningOnBun, packageManagerWithRun } from '../utils/runtime.js';
 
@@ -39,14 +34,6 @@ export async function runWithSpawn(
     return 0;
   }
 
-  const port = /http-get:\/\/127.0.0.1:(\d+)/.exec(runnableScript)?.[1];
-  if (runnableScript.includes('wait-on') && port) {
-    if (runnableScript.includes('docker run')) {
-      await stopDockerContainerByPort(Number(port), project);
-      await stopDockerContainerByImageName(project.dockerImageName, project);
-    }
-    await killPortProcessImmediatelyAndOnExit(Number(port));
-  }
   const ret = await spawnAsync(runnableScript, undefined, {
     cwd: project.dirPath,
     env: configureEnv(project.env, opts),
@@ -109,6 +96,10 @@ function normalizeScript(script: string, project: Project): [string, string] {
   let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
+    .replaceAll(
+      'PRISMA generate ',
+      project.packageJson.dependencies?.blitz ? 'PRISMA generate ' : 'PRISMA generate --no-hints '
+    )
     .replaceAll('PRISMA ', project.packageJson.dependencies?.blitz ? 'YARN blitz prisma ' : 'YARN prisma ')
     .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ')
     // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`
@@ -133,7 +124,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
   );
   // Add cascade option when WB_ENV is defined
   const cascadeOption = project.env.WB_ENV ? ` --cascade-env=${project.env.WB_ENV || 'development'}` : '';
-  return [`dotenv${cascadeOption} ${printableScript}`, runnableScript];
+  return [`${packageManagerWithRun} dotenv${cascadeOption} -- ${printableScript}`, runnableScript];
 }
 
 export function printStart(normalizedScript: string, project: Project, prefix = 'Start', weak = false): void {

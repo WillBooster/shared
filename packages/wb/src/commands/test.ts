@@ -132,11 +132,11 @@ export async function test(
 
     switch (argv.e2e) {
       case 'headless': {
-        await runWithSpawn(scripts.testE2E(project, e2eArgv, {}), project, argv);
+        await runWithSpawn(await scripts.testE2EProduction(project, e2eArgv, {}), project, argv);
         continue;
       }
       case 'headless-dev': {
-        await runWithSpawn(scripts.testE2EDev(project, e2eArgv, {}), project, argv);
+        await runWithSpawn(await scripts.testE2EDev(project, e2eArgv, {}), project, argv);
         continue;
       }
       case 'docker': {
@@ -154,7 +154,7 @@ export async function test(
       switch (argv.e2e) {
         case 'headed': {
           await runWithSpawn(
-            scripts.testE2E(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
+            await scripts.testE2EProduction(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
             project,
             argv
           );
@@ -162,7 +162,7 @@ export async function test(
         }
         case 'headed-dev': {
           await runWithSpawn(
-            scripts.testE2EDev(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
+            await scripts.testE2EDev(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
             project,
             argv
           );
@@ -170,16 +170,17 @@ export async function test(
         }
         case 'debug': {
           await runWithSpawn(
-            scripts.testE2E(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --debug` }),
+            await scripts.testE2EProduction(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --debug` }),
             project,
             argv
           );
           break;
         }
         case 'generate': {
-          const port = project.env.PORT || '8080';
           await runWithSpawn(
-            scripts.testE2E(project, e2eArgv, { playwrightArgs: `codegen http://localhost:${port}` }),
+            await scripts.testE2EProduction(project, e2eArgv, {
+              playwrightArgs: `codegen http://localhost:${project.env.PORT}`,
+            }),
             project,
             argv
           );
@@ -200,12 +201,11 @@ async function testOnDocker(
   scripts: BaseScripts,
   playwrightArgs?: string
 ): Promise<void> {
-  process.env.WB_DOCKER ??= '1';
+  project.env.WB_DOCKER ||= '1';
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
   process.exitCode = await runWithSpawn(
-    scripts.testE2E(project, argv, {
+    await scripts.testE2EDocker(project, argv, {
       playwrightArgs,
-      startCommand: `${dockerScripts.stopAndStart(project, true)}${toDevNull(argv)}`,
     }),
     project,
     argv,

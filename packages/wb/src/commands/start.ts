@@ -61,31 +61,25 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       switch (argv.mode ?? 'dev') {
         case 'dev':
         case 'development': {
-          const prefix = configureEnvironmentVariables(deps, 'development');
-          await runWithSpawn(`${prefix}${scripts.start(project, argv)}`, project, argv);
+          await runWithSpawn(await scripts.startDev(project, argv), project, argv);
           break;
         }
         case 'staging': {
-          const prefix = configureEnvironmentVariables(deps, 'staging');
-          const port = Number(project.env.PORT) || 8080;
-          await runWithSpawn(`${prefix}${scripts.startProduction(project, argv, port)}`, project, argv);
+          await runWithSpawn(await scripts.startProduction(project, argv), project, argv);
           break;
         }
         case 'docker': {
-          const prefix = configureEnvironmentVariables(deps, 'staging');
-          await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
+          await runWithSpawn(await scripts.startDocker(project, argv), project, argv);
           break;
         }
         case 'docker-debug': {
-          const prefix = configureEnvironmentVariables(deps, 'staging');
           argv.normalizedArgsText = `'/bin/bash'`;
-          await runWithSpawn(`${prefix}${scripts.startDocker(project, argv)}`, project, argv);
+          await runWithSpawn(await scripts.startDocker(project, argv), project, argv);
           break;
         }
         case 'test': {
-          const prefix = configureEnvironmentVariables(deps, 'test');
-          const script = `${prefix}${scripts.startTest(project, argv)}`;
-          await runWithSpawn(addServerLogRedirection(script), project, argv);
+          const script = await scripts.startTest(project, argv);
+          await runWithSpawn(script, project, argv);
           break;
         }
         default: {
@@ -95,18 +89,3 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     }
   },
 };
-
-function addServerLogRedirection(script: string): string {
-  const trimmedScript = script.trimEnd();
-  return `${trimmedScript} > test.log 2>&1`;
-}
-
-function configureEnvironmentVariables(deps: Partial<Record<string, string>>, wbEnv: string): string {
-  process.env.WB_ENV ||= wbEnv;
-  let prefix = `WB_ENV=${process.env.WB_ENV} `;
-  if (deps.next) {
-    process.env.NEXT_PUBLIC_WB_ENV = process.env.WB_ENV;
-    prefix += `NEXT_PUBLIC_WB_ENV=${process.env.WB_ENV} `;
-  }
-  return prefix;
-}

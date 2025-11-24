@@ -19,7 +19,12 @@ import { promisePool } from '../utils/promisePool.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
 
-const testOnCiBuilder = {} as const;
+const testOnCiBuilder = {
+  silent: {
+    description: 'Reduce redundant outputs',
+    type: 'boolean',
+  },
+} as const;
 export const testOnCiCommand: CommandModule<
   unknown,
   InferredOptionTypes<typeof testOnCiBuilder & typeof sharedOptionsBuilder>
@@ -72,17 +77,15 @@ export async function testOnCi(
     await promisePool.promiseAll();
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       if (project.hasDockerfile) {
-        process.env.WB_DOCKER ??= '1';
+        project.env.WB_DOCKER ||= '1';
         await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
       }
-      const options = project.hasDockerfile
-        ? {
-            startCommand: dockerScripts.stopAndStart(project, true),
-          }
-        : {};
+      const script = project.hasDockerfile
+        ? await scripts.testE2EDocker(project, argv, {})
+        : await scripts.testE2EProduction(project, argv, {});
       process.exitCode = await runWithSpawn(
         // CI mode disallows `only` to avoid including debug tests
-        scripts.testE2E(project, argv, options).replaceAll(' --allowOnly', ''),
+        script.replaceAll(' --allowOnly', ''),
         project,
         argv,
         {

@@ -1,7 +1,7 @@
 import type { Project } from '../../project.js';
+import { SERVER_LOG_FILE } from '../../utils/log.js';
 import { runtimeWithArgs } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
-import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
 import { BaseScripts } from './baseScripts.js';
@@ -11,38 +11,47 @@ import { BaseScripts } from './baseScripts.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PlainAppScripts extends BaseScripts {
-  override start(project: Project, argv: ScriptArgv): string {
-    const port = Number(project.env.PORT) || 3000;
-    return `PORT=${port} YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
+  constructor() {
+    super(false);
   }
 
-  override startDocker(project: Project, argv: ScriptArgv): string {
-    return `${this.buildDocker(project)}${toDevNull(argv)} && ${dockerScripts.stopAndStart(
-      project,
-      false,
-      argv.normalizedDockerOptionsText ?? '',
-      argv.normalizedArgsText ?? ''
-    )}`;
+  protected startDevProtected(_1: Project, _2: ScriptArgv): string {
+    throw new Error('This method should not be called.');
   }
 
-  override startProduction(project: Project, argv: ScriptArgv): string {
-    return `NODE_ENV=production ${project.buildCommand} && NODE_ENV=production ${runtimeWithArgs} dist/index.js ${
-      argv.normalizedArgsText ?? ''
-    }`;
+  override startDev(_: Project, argv: ScriptArgv): Promise<string> {
+    return Promise.resolve(
+      `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`
+    );
+  }
+  override startProduction(project: Project, argv: ScriptArgv): Promise<string> {
+    return Promise.resolve(
+      `${project.buildCommand} && ${runtimeWithArgs} dist/index.js ${argv.normalizedArgsText ?? ''} | tee ${SERVER_LOG_FILE}`
+    );
+  }
+  override startTest(): Promise<string> {
+    return Promise.resolve(`echo 'do nothing.'`);
+  }
+  override startDocker(project: Project, argv: ScriptArgv): Promise<string> {
+    return Promise.resolve(
+      `${this.buildDocker(project, 'development')} && ${dockerScripts.stopAndStart(
+        project,
+        false,
+        argv.normalizedDockerOptionsText ?? '',
+        argv.normalizedArgsText ?? ''
+      )}`
+    );
   }
 
-  override startTest(): string {
-    return `echo 'do nothing.'`;
+  override testE2EDev(): Promise<string> {
+    return Promise.resolve(`echo 'do nothing.'`);
   }
-
-  override testE2E(): string {
-    return `echo 'do nothing.'`;
+  override testE2EProduction(): Promise<string> {
+    return Promise.resolve(`echo 'do nothing.'`);
   }
-
-  override testE2EDev(): string {
-    return `echo 'do nothing.'`;
+  override testE2EDocker(): Promise<string> {
+    return Promise.resolve(`echo 'do nothing.'`);
   }
-
   override testStart(): Promise<string> {
     return Promise.resolve(`echo 'do nothing.'`);
   }

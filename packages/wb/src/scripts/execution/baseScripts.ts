@@ -1,37 +1,76 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { checkAndKillPortProcess } from '../../utils/port.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
+import { prismaScripts } from '../prismaScripts.js';
 
-export interface TestE2EDevOptions {
-  // '--e2e generate' calls 'codegen http://localhost:8080'
+export interface TestE2EOptions {
+  /** '--e2e generate' calls 'codegen http://localhost:8080' */
   playwrightArgs?: string;
-  startCommand?: string;
 }
-
-export type TestE2EOptions = {
-  prismaDirectory?: string;
-} & TestE2EDevOptions;
 
 /**
  * A collection of scripts for executing an app.
  * Note that YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 export abstract class BaseScripts {
-  buildDocker(project: Project, version = 'development'): string {
-    return dockerScripts.buildDevImage(project, version);
+  private readonly shouldWaitAndOpenApp: boolean;
+  protected constructor(shouldWaitAndOpenApp: boolean) {
+    this.shouldWaitAndOpenApp = shouldWaitAndOpenApp;
   }
 
-  abstract start(project: Project, argv: ScriptArgv): string;
+  buildDocker(project: Project, version: string): string {
+    return dockerScripts.buildImage(project, version);
+  }
 
-  abstract startProduction(project: Project, argv: ScriptArgv, port: number): string;
+  // ------------ START: start commands ------------
+  protected abstract startDevProtected(_: Project, argv: ScriptArgv): string;
+  protected startProductionProtected(project: Project, argv: ScriptArgv): string {
+    return [
+      ...(project.hasPrisma ? prismaScripts.migrate(project).split('&&') : []),
+      project.buildCommand,
+      `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
+    ]
+      .filter(Boolean)
+      .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
+      .join(' && ');
+  }
 
-  abstract startTest(project: Project, argv: ScriptArgv): string;
+  async startDev(project: Project, argv: ScriptArgv): Promise<string> {
+    await checkAndKillPortProcess(project.env.PORT, project);
+    if (!this.shouldWaitAndOpenApp) return this.startDevProtected(project, argv);
 
-  startDocker(project: Project, argv: ScriptArgv): string {
-    const port = Number(project.env.PORT) || 8080;
-    return `${this.buildDocker(project)}${toDevNull(argv)}
+    return `YARN concurrently --raw --kill-others-on-fail
+      "${this.startDevProtected(project, argv)}"
+      "${this.waitAndOpenApp(project)}"`;
+  }
+  async startProduction(project: Project, argv: ScriptArgv): Promise<string> {
+    await checkAndKillPortProcess(project.env.PORT, project);
+    if (!this.shouldWaitAndOpenApp) return this.startProductionProtected(project, argv);
+
+    return `YARN concurrently --raw --kill-others-on-fail
+      "${this.startProductionProtected(project, argv)}"
+      "${this.waitAndOpenApp(project)}"`;
+  }
+  async startTest(project: Project, argv: ScriptArgv): Promise<string> {
+    await checkAndKillPortProcess(project.env.PORT, project);
+    return this.startProductionProtected(project, argv);
+  }
+  async startDocker(project: Project, argv: ScriptArgv): Promise<string> {
+    await checkAndKillPortProcess(project.env.PORT, project);
+    if (!this.shouldWaitAndOpenApp) {
+      return `${this.buildDocker(project, 'development')}
+      && ${dockerScripts.stopAndStart(
+        project,
+        false,
+        argv.normalizedDockerOptionsText ?? '',
+        argv.normalizedArgsText ?? ''
+      )}`;
+    }
+
+    return `${this.buildDocker(project, 'development')}
       && YARN concurrently --raw --kill-others-on-fail
         "${dockerScripts.stopAndStart(
           project,
@@ -39,64 +78,58 @@ export abstract class BaseScripts {
           argv.normalizedDockerOptionsText ?? '',
           argv.normalizedArgsText ?? ''
         )}"
-        "${this.waitAndOpenApp(project, argv, port)}"`;
+        "${this.waitAndOpenApp(project)}"`;
+  }
+  // ------------ END: start commands ------------
+
+  // ------------ START: test (e2e) commands ------------
+  testE2EDev(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    return this.testE2EPrivate(project, argv, this.startDevProtected(project, argv), options);
+  }
+  testE2EProduction(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    return this.testE2EPrivate(project, argv, this.startProductionProtected(project, argv), options);
+  }
+  testE2EDocker(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    return this.testE2EPrivate(project, argv, dockerScripts.stopAndStart(project, true), options);
+  }
+  async testStart(project: Project, argv: ScriptArgv): Promise<string> {
+    await checkAndKillPortProcess(project.env.PORT, project);
+    return `YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
   }
 
-  testE2E(
+  private async testE2EPrivate(
     project: Project,
     argv: TestArgv,
-    { playwrightArgs = 'test test/e2e/', prismaDirectory, startCommand }: TestE2EOptions
-  ): string {
-    const env = project.env.WB_ENV;
-    const port = project.env.PORT || '8080';
+    startCommand: string,
+    { playwrightArgs = 'test test/e2e/' }: TestE2EOptions
+  ): Promise<string> {
+    const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
     const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
     if (project.skipLaunchingServerForPlaywright) {
-      return `${envPrefix} ${playwrightCommand}${suffix}`;
+      return `${playwrightCommand}${suffix}`;
     }
 
-    const resetCommand = prismaDirectory ? `rm -Rf ${prismaDirectory}/mount && ` : '';
-    return `${envPrefix} YARN concurrently --kill-others --raw --success first
-      "${resetCommand}${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
-        && ${playwrightCommand}${suffix}"`;
-  }
-
-  testE2EDev(
-    project: Project,
-    argv: TestArgv,
-    { playwrightArgs = 'test test/e2e/', startCommand }: TestE2EDevOptions
-  ): string {
-    const env = project.env.WB_ENV;
-    const port = project.env.PORT || '8080';
-    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const envPrefix = `WB_ENV=${env} NEXT_PUBLIC_WB_ENV=${env} APP_ENV=${env} PORT=${port}`;
-    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
-    if (project.skipLaunchingServerForPlaywright) {
-      return `${envPrefix} ${playwrightCommand}${suffix}`;
-    }
-
-    return `${envPrefix} YARN concurrently --kill-others --raw --success first
+    return `YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
         && ${playwrightCommand}${suffix}"`;
   }
-
-  abstract testStart(project: Project, argv: ScriptArgv): Promise<string>;
+  // ------------ END: test (e2e) commands ------------
 
   testUnit(project: Project, argv: TestArgv): string {
     const testTarget = argv.targets?.join(' ') || 'test/unit/';
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-      return `WB_ENV=${project.env.WB_ENV} YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly`;
+      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly`;
     } else if (project.isBunAvailable) {
-      return `WB_ENV=${project.env.WB_ENV} bun test ${testTarget}`;
+      return `bun test ${testTarget}`;
     }
     return 'echo "No tests."';
   }
 
-  protected waitApp(project: Project, argv: ScriptArgv, port = project.env.PORT || 3000): string {
+  protected waitApp(project: Project): string {
+    const port = project.env.PORT;
     return `wait-on -t 10000 http-get://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 10000 -i 500 http-get://127.0.0.1:${port} 2> /dev/null
       || wait-on -t 10000 -i 1000 http-get://127.0.0.1:${port} 2> /dev/null
@@ -106,11 +139,10 @@ export abstract class BaseScripts {
       || wait-on -t 90000 -i 10000 http-get://127.0.0.1:${port}`;
   }
 
-  protected waitAndOpenApp(project: Project, argv: ScriptArgv, port = project.env.PORT || 3000): string {
+  protected waitAndOpenApp(project: Project): string {
+    const port = project.env.PORT;
     return `${this.waitApp(
-      project,
-      argv,
-      port
+      project
     )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
   }
 }

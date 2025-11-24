@@ -6,22 +6,29 @@ import killPortProcess from 'kill-port';
 import type { Project } from '../project.js';
 import { printFinishedAndExitIfNeeded, printStart } from '../scripts/run.js';
 
+import { isPortAvailable } from './port.js';
+
 const killed = new Set<number | string>();
 
-export async function killPortProcessImmediatelyAndOnExit(port: number): Promise<void> {
-  await killPortProcessHandlingErrors(port);
+export async function killPortProcessImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
+  if (!(await isPortAvailable(port))) {
+    await killPortContainerAndProcess(port, project);
+  }
+
   const killFunc = async (): Promise<void> => {
     if (killed.has(port)) return;
 
     killed.add(port);
-    await killPortProcessHandlingErrors(port);
+    await killPortContainerAndProcess(port, project);
   };
   for (const signal of ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT']) {
     process.on(signal, killFunc);
   }
 }
 
-async function killPortProcessHandlingErrors(port: number): Promise<void> {
+async function killPortContainerAndProcess(port: number, project: Project): Promise<void> {
+  // We should stop Docker containers first because `kill-port` may fail to stop Docker containers.
+  await stopDockerContainerByPort(port, project);
   try {
     await killPortProcess(port);
   } catch {

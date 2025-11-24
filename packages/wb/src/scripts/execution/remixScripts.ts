@@ -1,11 +1,6 @@
-import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
-import { findAvailablePort } from '../../utils/findPort.js';
 import type { ScriptArgv } from '../builder.js';
-import { toDevNull } from '../builder.js';
-import { prismaScripts } from '../prismaScripts.js';
 
-import type { TestE2EDevOptions, TestE2EOptions } from './baseScripts.js';
 import { BaseScripts } from './baseScripts.js';
 
 /**
@@ -13,58 +8,12 @@ import { BaseScripts } from './baseScripts.js';
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class RemixScripts extends BaseScripts {
-  override start(project: Project, argv: ScriptArgv): string {
-    const port = Number(project.env.PORT) || 3000;
-    return `PORT=${port} YARN concurrently --raw --kill-others-on-fail
-      "remix dev ${argv.normalizedArgsText ?? ''}"
-      "${this.waitAndOpenApp(project, argv, port)}"`;
+  constructor() {
+    super(true);
   }
 
-  override startProduction(project: Project, argv: ScriptArgv, port: number): string {
-    return `NODE_ENV=production YARN concurrently --raw --kill-others-on-fail
-      "${prismaScripts.migrate(project)} && ${project.buildCommand} && PORT=${port} pm2-runtime start ${project.findFile(
-        'ecosystem.config.cjs'
-      )} ${argv.normalizedArgsText ?? ''}"
-      "${this.waitAndOpenApp(project, argv, port)}"`;
-  }
-
-  override startTest(project: Project, argv: ScriptArgv): string {
-    return [
-      ...prismaScripts.reset(project).split('&&'),
-      project.buildCommand,
-      `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
-    ]
-      .map((command) => `${command.trim()}${toDevNull(argv)}`)
-      .join(' && ');
-  }
-
-  override testE2E(project: Project, argv: TestArgv, options: TestE2EOptions): string {
-    return super.testE2E(project, argv, {
-      playwrightArgs: options.playwrightArgs,
-      prismaDirectory: 'prisma',
-      startCommand:
-        options.startCommand ??
-        [
-          ...prismaScripts.reset(project).split('&&'),
-          project.buildCommand,
-          `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
-        ]
-          .map((c) => `${c.trim()}${toDevNull(argv)}`)
-          .join(' && '),
-    });
-  }
-
-  override testE2EDev(
-    project: Project,
-    argv: TestArgv,
-    { playwrightArgs, startCommand = `remix dev${toDevNull(argv)}` }: TestE2EDevOptions
-  ): string {
-    return super.testE2EDev(project, argv, { playwrightArgs, startCommand });
-  }
-
-  override async testStart(project: Project, argv: ScriptArgv): Promise<string> {
-    const port = await findAvailablePort();
-    return `WB_ENV=${project.env.WB_ENV} PORT=${port} YARN concurrently --kill-others --raw --success first "remix dev${toDevNull(argv)}" "${this.waitApp(project, argv, port)}"`;
+  protected override startDevProtected(_: Project, argv: ScriptArgv): string {
+    return `remix dev ${argv.normalizedArgsText ?? ''}`;
   }
 }
 
