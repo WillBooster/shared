@@ -6,6 +6,7 @@ import { killPortProcessImmediatelyAndOnExit } from './process.js';
 
 /**
  * Checks the given port and kills any process using it.
+ * Note wb always requires PORT environment variable.
  */
 export async function checkAndKillPortProcess(rawPort: unknown, project: Project): Promise<number> {
   const port = Number(rawPort);

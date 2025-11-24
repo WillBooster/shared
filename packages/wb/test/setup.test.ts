@@ -7,6 +7,8 @@ import { setup } from '../src/commands/setup.js';
 
 import { initializeProjectDirectory, tempDir } from './shared.js';
 
+process.env.PORT ||= '3000';
+
 describe('setup', () => {
   it(
     'blitz',
