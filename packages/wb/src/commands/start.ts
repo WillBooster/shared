@@ -61,23 +61,28 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       switch (argv.mode ?? 'dev') {
         case 'dev':
         case 'development': {
+          process.env.WB_ENV ||= 'development';
           await runWithSpawn(await scripts.startDev(project, argv), project, argv);
           break;
         }
         case 'staging': {
+          process.env.WB_ENV ||= 'staging';
           await runWithSpawn(await scripts.startProduction(project, argv), project, argv);
           break;
         }
         case 'docker': {
+          process.env.WB_ENV ||= 'staging';
           await runWithSpawn(await scripts.startDocker(project, argv), project, argv);
           break;
         }
         case 'docker-debug': {
+          process.env.WB_ENV ||= 'staging';
           argv.normalizedArgsText = `'/bin/bash'`;
           await runWithSpawn(await scripts.startDocker(project, argv), project, argv);
           break;
         }
         case 'test': {
+          process.env.WB_ENV ||= 'test';
           const script = await scripts.startTest(project, argv);
           await runWithSpawn(script, project, argv);
           break;
