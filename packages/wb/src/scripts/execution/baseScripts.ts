@@ -31,7 +31,7 @@ export abstract class BaseScripts {
     return [
       ...(project.hasPrisma ? prismaScripts.migrate(project).split('&&') : []),
       project.buildCommand,
-      `pm2-runtime start ${project.findFile('ecosystem.config.cjs')}`,
+      `pm2-runtime start --no-autorestart ${project.findFile('ecosystem.config.cjs')}`,
     ]
       .filter(Boolean)
       .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())

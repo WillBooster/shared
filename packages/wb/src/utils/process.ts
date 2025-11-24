@@ -11,7 +11,8 @@ import { isPortAvailable } from './port.js';
 const killed = new Set<number | string>();
 
 export async function killPortProcessImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
-  if (!(await isPortAvailable(port))) {
+  const available = await isPortAvailable(port);
+  if (!available) {
     await killPortContainerAndProcess(port, project);
   }
 

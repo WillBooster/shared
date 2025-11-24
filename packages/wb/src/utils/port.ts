@@ -22,15 +22,28 @@ export async function checkAndKillPortProcess(rawPort: unknown, project: Project
  * @returns A promise that resolves to true if the port is available, false otherwise
  */
 export async function isPortAvailable(port: number): Promise<boolean> {
+  // Check both stacks to catch processes bound only on IPv6 or IPv4.
+  for (const host of ['127.0.0.1', '::']) {
+    const available = await probePort(host, port);
+    if (!available) return false;
+  }
+  return true;
+}
+
+async function probePort(host: string, port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = createServer();
 
     server.once('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
         resolve(false);
-      } else {
-        resolve(false);
+        return;
       }
+      if (err.code === 'EAFNOSUPPORT') {
+        resolve(true);
+        return;
+      }
+      resolve(false);
     });
 
     server.once('listening', () => {
@@ -39,6 +52,6 @@ export async function isPortAvailable(port: number): Promise<boolean> {
       });
     });
 
-    server.listen(port, '127.0.0.1');
+    server.listen(port, host);
   });
 }
