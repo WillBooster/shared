@@ -17,8 +17,6 @@
     "postinstall": "husky || true",
     "lint": "yarn workspaces foreach --all --parallel --verbose run lint",
     "lint-fix": "yarn workspaces foreach --all --parallel --verbose run lint-fix",
-    "prepack": "pinst --disable",
-    "postpack": "pinst --enable",
     "prepare": "husky || true",
     "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/packages/**\" \"!**/test{-,/}fixtures/**\" || true",
     "release": "yarn multi-semantic-release --debug",
@@ -32,20 +30,19 @@
   "devDependencies": {
     "@anolilab/multi-semantic-release": "2.0.9",
     "@types/eslint": "9.6.1",
-    "@willbooster/prettier-config": "10.2.1",
+    "@willbooster/prettier-config": "10.2.2",
     "conventional-changelog-conventionalcommits": "9.1.0",
     "eslint": "9.39.1",
     "husky": "9.1.7",
-    "lint-staged": "16.2.6",
+    "lint-staged": "16.2.7",
     "micromatch": "4.0.8",
-    "pinst": "3.0.0",
     "prettier": "3.6.2",
     "prettier-plugin-java": "2.7.7",
     "semantic-release": "25.0.2",
     "sort-package-json": "3.4.0",
     "typescript": "5.9.3"
   },
-  "packageManager": "yarn@4.11.0",
+  "packageManager": "yarn@4.12.0",
   "engines": {
     "node": ">= 22"
   }
