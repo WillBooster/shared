@@ -11,7 +11,7 @@ import { runtimeWithArgs } from '../utils/runtime.js';
  */
 class PrismaScripts {
   deploy(_: Project, additionalOptions = ''): string {
-    return `PRISMA migrate deploy${additionalOptions ? ` ${additionalOptions}` : ''}`;
+    return `PRISMA migrate deploy ${additionalOptions}`;
   }
 
   deployForce(project: Project): string {
@@ -30,17 +30,20 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
   }
 
   migrate(project: Project, additionalOptions = ''): string {
-    return `PRISMA migrate deploy${additionalOptions ? ` ${additionalOptions}` : ''} && PRISMA generate && ${this.seed(project)}`;
+    return `PRISMA migrate deploy ${additionalOptions} && PRISMA generate && ${this.seed(project)}`;
   }
 
   migrateDev(_: Project, additionalOptions = ''): string {
-    return `PRISMA migrate dev${additionalOptions ? ` ${additionalOptions}` : ''}`;
+    return `PRISMA migrate dev ${additionalOptions}`;
   }
 
   reset(project: Project, additionalOptions = ''): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
-    // Blitz does not trigger seed automatically, so we need to run it manually.
-    return `PRISMA migrate reset --force --skip-seed${additionalOptions ? ` ${additionalOptions}` : ''} && ${this.seed(project)}`;
+    if (project.packageJson.dependencies?.blitz) {
+      // Blitz does not trigger seed automatically, so we need to run it manually.
+      return `PRISMA migrate reset --force ${additionalOptions} && ${this.seed(project)}`;
+    }
+    return `PRISMA migrate reset --force ${additionalOptions}`;
   }
 
   restore(project: Project, outputPath: string): string {
@@ -85,7 +88,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
         }
       }
     }
-    return `${prefix}PRISMA studio${additionalOptions ? ` ${additionalOptions}` : ''}`;
+    return `${prefix}PRISMA studio ${additionalOptions}`;
   }
 }
 
