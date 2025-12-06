@@ -7,14 +7,14 @@
   "type": "module",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "require": "./dist/index.cjs",
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/index.js"
     },
     "./src": {
+      "types": "./src/index.ts",
       "require": "./src/index.ts",
-      "import": "./src/index.ts",
-      "types": "./src/index.ts"
+      "import": "./src/index.ts"
     }
   },
   "main": "dist/index.cjs",
@@ -56,11 +56,11 @@
     "globals": "16.5.0",
     "lint-staged": "16.2.7",
     "micromatch": "4.0.8",
-    "prettier": "3.6.2",
+    "prettier": "3.7.3",
     "prettier-plugin-java": "2.7.7",
-    "sort-package-json": "3.4.0",
+    "sort-package-json": "3.5.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.47.0",
+    "typescript-eslint": "8.48.0",
     "vitest": "4.0.10"
   },
   "publishConfig": {
