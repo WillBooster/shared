@@ -1,7 +1,6 @@
 # @willbooster/wb
 
-`wb` offers a collection of reusable npm scripts,
-designed primarily for WillBooster Inc. but with potential utility for other projects as well.
+`wb` offers a collection of reusable npm scripts, designed primarily for WillBooster Inc. but with potential utility for other projects as well.
 
 ## Usage
 
