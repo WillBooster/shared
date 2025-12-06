@@ -39,9 +39,6 @@ export async function setup(
     if (project === projects.root) {
       if (os.platform() === 'darwin') {
         const packages = ['pstree'];
-        if (project.hasDockerfile) {
-          packages.push('expect');
-        }
         await runWithSpawnInParallel(`brew install ${packages.join(' ')}`, project, argv);
       }
 
