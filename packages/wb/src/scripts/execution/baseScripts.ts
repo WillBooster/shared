@@ -50,22 +50,12 @@ export abstract class BaseScripts {
     await checkAndKillPortProcess(project.env.PORT, project);
     if (!this.shouldWaitAndOpenApp) {
       return `${this.buildDocker(project, 'development')}
-      && ${dockerScripts.stopAndStart(
-        project,
-        false,
-        argv.normalizedDockerOptionsText ?? '',
-        argv.normalizedArgsText ?? ''
-      )}`;
+      && ${dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? '')}`;
     }
 
     return `${this.buildDocker(project, 'development')}
       && YARN concurrently --raw --kill-others-on-fail
-        "${dockerScripts.stopAndStart(
-          project,
-          false,
-          argv.normalizedDockerOptionsText ?? '',
-          argv.normalizedArgsText ?? ''
-        )}"
+        "${dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? '')}"
         "${this.waitAndOpenApp(project)}"`;
   }
 
@@ -90,7 +80,7 @@ export abstract class BaseScripts {
     return this.testE2EProtected(project, argv, this.startProductionProtected(project, argv), options);
   }
   testE2EDocker(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
-    return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project, true), options);
+    return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project), options);
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);

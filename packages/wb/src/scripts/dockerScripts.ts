@@ -21,17 +21,14 @@ class DockerScripts {
         --build-arg WB_VERSION=${version} .`;
   }
 
-  stopAndStart(project: Project, unbuffer = false, additionalOptions = '', additionalArgs = ''): string {
-    return `${this.stop(project)} && ${unbuffer ? 'unbuffer ' : ''}${this.start(
-      project,
-      additionalOptions,
-      additionalArgs
-    )}`;
+  stopAndStart(project: Project, additionalOptions = '', additionalArgs = ''): string {
+    return `${this.stop(project)} && ${this.start(project, additionalOptions, additionalArgs)}`;
   }
 
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop(project), project);
-    return `docker run --rm -it --publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
+    const allocateTty = additionalArgs.includes('/bin/bash');
+    return `docker run --rm ${allocateTty ? '-it ' : ''}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
   }
 
   stop(project: Project): string {

@@ -36,7 +36,6 @@ class PlainAppScripts extends BaseScripts {
     return Promise.resolve(
       `${this.buildDocker(project, 'development')} && ${dockerScripts.stopAndStart(
         project,
-        false,
         argv.normalizedDockerOptionsText ?? '',
         argv.normalizedArgsText ?? ''
       )}`
