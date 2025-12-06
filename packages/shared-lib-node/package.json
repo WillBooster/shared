@@ -1,6 +1,12 @@
 {
   "name": "@willbooster/shared-lib-node",
   "version": "0.0.0-semantically-released",
+  "description": "Shared library for WillBooster Node.js projects",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WillBooster/shared.git",
+    "directory": "packages/shared-lib-node"
+  },
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
   "sideEffects": false,

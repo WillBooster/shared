@@ -1,7 +1,7 @@
 {
   "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
-  "description": "A collection of reusable npm scripts, designed primarily for WillBooster Inc.",
+  "description": "CLI tool for WillBooster projects",
   "repository": {
     "type": "git",
     "url": "https://github.com/WillBooster/shared.git",

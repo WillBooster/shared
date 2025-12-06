@@ -1,6 +1,12 @@
 {
   "name": "@willbooster/shared-lib-blitz-next",
   "version": "0.0.0-semantically-released",
+  "description": "Shared library for WillBooster Blitz.js projects",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WillBooster/shared.git",
+    "directory": "packages/shared-lib-blitz-next"
+  },
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
   "sideEffects": false,
