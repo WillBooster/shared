@@ -89,17 +89,7 @@ export class Project {
     for (const [envPath, count] of envPathAndLoadedEnvVarCountPairs) {
       console.info(`Loaded ${count} environment variables from ${envPath}`);
     }
-    // Overwrite environment variables even though this behavior is non-standard
-    // because `bun wb ...` will load .env and .env.local before `wb` loads other variables.
-    const mergedEnv: Record<string, string | undefined> = { ...process.env, ...envVars };
-    // Keep explicitly provided environment selectors so cascading respects the caller's intention.
-    if (process.env.WB_ENV !== undefined) {
-      mergedEnv.WB_ENV = process.env.WB_ENV;
-    }
-    if (process.env.NODE_ENV !== undefined) {
-      mergedEnv.NODE_ENV = process.env.NODE_ENV;
-    }
-    return mergedEnv;
+    return { ...envVars, ...process.env };
   }
 
   @memoizeOne
