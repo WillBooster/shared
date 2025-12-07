@@ -89,9 +89,7 @@ export class Project {
     for (const [envPath, count] of envPathAndLoadedEnvVarCountPairs) {
       console.info(`Loaded ${count} environment variables from ${envPath}`);
     }
-    // Overwrite environment variables even though this behavior is non-standard
-    // because `bun wb ...` will load .env and .env.local before `wb` loads other variables.
-    return { ...process.env, ...envVars };
+    return { ...envVars, ...process.env };
   }
 
   @memoizeOne
