@@ -10,6 +10,7 @@ import { isRunningOnBun, packageManagerWithRun } from '../utils/runtime.js';
 interface Options {
   ci?: boolean;
   exitIfFailed?: boolean;
+  onSignal?: (signal: NodeJS.Signals | null) => void;
   forceColor?: boolean;
   timeout?: number;
 }
@@ -43,6 +44,7 @@ export async function runWithSpawn(
     killOnExit: true,
     verbose: argv.verbose,
   });
+  opts.onSignal?.(ret.signal);
   printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts);
   return ret.status ?? 1;
 }
@@ -75,6 +77,7 @@ export function runWithSpawnInParallel(
       killOnExit: true,
       verbose: argv.verbose,
     });
+    opts.onSignal?.(ret.signal);
     printStart(normalizedScript.printable, project, 'Started (log)');
     if (argv.verbose) {
       printStart(normalizedScript.runnable, project, 'Started (raw)', true);
