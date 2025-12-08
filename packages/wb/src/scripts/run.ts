@@ -123,7 +123,7 @@ function normalizeScript(script: string, project: Project): [string, string] {
       .replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `)
   );
   // Add cascade option when WB_ENV is defined
-  const cascadeOption = project.env.WB_ENV ? ` --cascade-env=${project.env.WB_ENV || 'development'}` : '';
+  const cascadeOption = project.env.WB_ENV ? ` -c=${project.env.WB_ENV || 'development'}` : '';
   return [`${packageManagerWithRun} dotenv${cascadeOption} -- ${printableScript}`, runnableScript];
 }
 
