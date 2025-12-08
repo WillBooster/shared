@@ -48,6 +48,11 @@ export const retryCommand: CommandModule<
       // TODO: should we add single quotes around each argument?
       lastStatus = await runWithSpawn(cmdAndArgs.join(' '), project, argv, {
         exitIfFailed: false,
+        onSignal: (signal) => {
+          if (signal) {
+            process.exit(1);
+          }
+        },
       });
       if (lastStatus === 0) return;
     }
