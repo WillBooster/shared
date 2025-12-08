@@ -84,7 +84,7 @@ export abstract class BaseScripts {
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
-    // Use empty NODE_ENV to avoid "production" mode in Blitz.js.
+    // Use empty NODE_ENV to avoid "production" mode in some frameworks like Blitz.js.
     return `NODE_ENV="" YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
   }
 
