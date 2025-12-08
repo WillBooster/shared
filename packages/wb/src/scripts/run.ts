@@ -24,17 +24,17 @@ export async function runWithSpawn(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
   opts: Options = defaultOptions
 ): Promise<number> {
-  const [printableScript, runnableScript] = normalizeScript(script, project);
-  printStart(printableScript, project);
+  const normalizedScript = normalizeScript(script, project);
+  printStart(normalizedScript.printable, project);
   if (argv.verbose) {
-    printStart(runnableScript, project, 'Start (raw)', true);
+    printStart(normalizedScript.runnable, project, 'Start (raw)', true);
   }
   if (argv.dryRun) {
-    printFinishedAndExitIfNeeded(printableScript, 0, opts);
+    printFinishedAndExitIfNeeded(normalizedScript.printable, 0, opts);
     return 0;
   }
 
-  const ret = await spawnAsync(runnableScript, undefined, {
+  const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
     env: configureEnv(project.env, opts),
     shell: true,
@@ -43,7 +43,7 @@ export async function runWithSpawn(
     killOnExit: true,
     verbose: argv.verbose,
   });
-  printFinishedAndExitIfNeeded(printableScript, ret.status, opts);
+  printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts);
   return ret.status ?? 1;
 }
 
@@ -54,18 +54,18 @@ export function runWithSpawnInParallel(
   opts: Options = defaultOptions
 ): Promise<number> {
   return promisePool.runAndWaitForReturnValue(async () => {
-    const [printableScript, runnableScript] = normalizeScript(script, project);
-    printStart(printableScript, project, 'Start (parallel)', true);
+    const normalizedScript = normalizeScript(script, project);
+    printStart(normalizedScript.printable, project, 'Start (parallel)', true);
     if (argv.dryRun) {
-      printStart(printableScript, project, 'Started (log)');
+      printStart(normalizedScript.printable, project, 'Started (log)');
       if (argv.verbose) {
-        printStart(runnableScript, project, 'Started (raw)', true);
+        printStart(normalizedScript.runnable, project, 'Started (raw)', true);
       }
-      printFinishedAndExitIfNeeded(printableScript, 0, opts);
+      printFinishedAndExitIfNeeded(normalizedScript.printable, 0, opts);
       return 0;
     }
 
-    const ret = await spawnAsync(runnableScript, undefined, {
+    const ret = await spawnAsync(normalizedScript.runnable, undefined, {
       cwd: project.dirPath,
       env: configureEnv(project.env, opts),
       shell: true,
@@ -75,16 +75,16 @@ export function runWithSpawnInParallel(
       killOnExit: true,
       verbose: argv.verbose,
     });
-    printStart(printableScript, project, 'Started (log)');
+    printStart(normalizedScript.printable, project, 'Started (log)');
     if (argv.verbose) {
-      printStart(runnableScript, project, 'Started (raw)', true);
+      printStart(normalizedScript.runnable, project, 'Started (raw)', true);
     }
     const out = ret.stdout.trim();
     if (out) {
       process.stdout.write(out);
       process.stdout.write('\n');
     }
-    printFinishedAndExitIfNeeded(printableScript, ret.status, opts);
+    printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts);
     return ret.status ?? 1;
   });
 }
@@ -92,7 +92,7 @@ export function runWithSpawnInParallel(
 /**
  * Replace capitalized commands (e.g., YARN, PRISMA, BUN) with suitable commands.
  */
-function normalizeScript(script: string, project: Project): [string, string] {
+function normalizeScript(script: string, project: Project): { printable: string; runnable: string } {
   let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
@@ -123,8 +123,11 @@ function normalizeScript(script: string, project: Project): [string, string] {
       .replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `)
   );
   // Add cascade option when WB_ENV is defined
-  const cascadeOption = project.env.WB_ENV ? ` --cascade-env=${project.env.WB_ENV || 'development'}` : '';
-  return [`${packageManagerWithRun} dotenv${cascadeOption} -- ${printableScript}`, runnableScript];
+  const cascadeOption = project.env.WB_ENV ? ` -c=${project.env.WB_ENV || 'development'}` : '';
+  return {
+    printable: `${packageManagerWithRun} dotenv${cascadeOption} -- ${printableScript}`,
+    runnable: runnableScript,
+  };
 }
 
 export function printStart(normalizedScript: string, project: Project, prefix = 'Start', weak = false): void {
