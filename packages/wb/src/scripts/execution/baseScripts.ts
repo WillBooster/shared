@@ -84,7 +84,8 @@ export abstract class BaseScripts {
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
-    return `YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
+    // Use empty NODE_ENV to avoid "production" mode in Blitz.js.
+    return `NODE_ENV="" YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
   }
 
   async testE2EProtected(
