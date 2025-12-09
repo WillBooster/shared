@@ -42,15 +42,10 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
     const resetOptions = additionalOptions.trim();
     const baseReset = `PRISMA migrate reset --force${resetOptions ? ` ${resetOptions}` : ''}`;
     const resetCommand = project.packageJson.dependencies?.blitz ? `${baseReset} && ${this.seed(project)}` : baseReset;
-    // Run a second reset with .env.test so test-specific values override already-loaded env vars.
-    const resetWithTestEnv =
-      `(set -a && . ./.env.test && set +a && ` +
-      // Remove SQLite DB defined in DATABASE_URL if it uses file: scheme.
-      'if [ -n "$DATABASE_URL" ] && [ "${DATABASE_URL#file:}" != "$DATABASE_URL" ]; then ' +
-      'db_path="${DATABASE_URL#file:}"; db_path="${db_path%%\\?*}"; rm -f -- "$db_path"; ' +
-      'fi && ' +
-      `${resetCommand})`;
-    return `${resetCommand} && ${resetWithTestEnv}`;
+    const resetCommandForTest = project.packageJson.dependencies?.blitz
+      ? String.raw`find db \( -name "test.db*" -o -name "test.sqlite*" \) -delete`
+      : String.raw`find prisma \( -name "test.db*" -o -name "test.sqlite*" \) -delete`;
+    return `${resetCommand} && ${resetCommandForTest}`;
   }
 
   restore(project: Project, outputPath: string): string {
