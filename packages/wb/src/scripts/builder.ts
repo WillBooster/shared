@@ -21,6 +21,8 @@ export const scriptOptionsBuilder = {
 export type ScriptArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof scriptOptionsBuilder>>> & {
   normalizedArgsText?: string;
   normalizedDockerOptionsText?: string;
+  silent?: boolean;
+  verbose?: boolean;
 };
 
 export function normalizeArgs(

@@ -61,11 +61,16 @@ export abstract class BaseScripts {
 
   protected abstract startDevProtected(_: Project, argv: ScriptArgv): string;
   protected startProductionProtected(project: Project, argv: ScriptArgv): string {
-    return [
-      ...(project.hasPrisma ? prismaScripts.migrate(project).split('&&') : []),
-      project.buildCommand,
-      `pm2-runtime start --no-autorestart ${project.findFile('ecosystem.config.cjs')}`,
-    ]
+    const ecosystemConfigPath = findEcosystemConfigPath(project);
+    const commands =
+      ecosystemConfigPath === undefined
+        ? [
+            `YARN wb buildIfNeeded ${argv.verbose ? '--verbose' : ''}`.trim(),
+            `node dist/index.js ${argv.normalizedArgsText ?? ''}`.trim(),
+          ]
+        : [project.buildCommand, `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`];
+
+    return [...(project.hasPrisma ? prismaScripts.migrate(project).split('&&') : []), ...commands]
       .filter(Boolean)
       .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
       .join(' && ');
@@ -135,6 +140,14 @@ export abstract class BaseScripts {
     return `${this.waitApp(
       project
     )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
+  }
+}
+
+function findEcosystemConfigPath(project: Project): string | undefined {
+  try {
+    return project.findFile('ecosystem.config.cjs');
+  } catch {
+    return;
   }
 }
 
