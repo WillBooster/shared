@@ -39,11 +39,12 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 
   reset(project: Project, additionalOptions = ''): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
-    if (project.packageJson.dependencies?.blitz) {
-      // Blitz does not trigger seed automatically, so we need to run it manually.
-      return `PRISMA migrate reset --force ${additionalOptions} && ${this.seed(project)}`;
-    }
-    return `PRISMA migrate reset --force ${additionalOptions}`;
+    const resetOptions = additionalOptions.trim();
+    const baseReset = `PRISMA migrate reset --force${resetOptions ? ` ${resetOptions}` : ''}`;
+    const resetCommand = project.packageJson.dependencies?.blitz && `${baseReset} && ${this.seed(project)}`;
+    // Run a second reset with .env.test so test-specific values override already-loaded env vars.
+    const resetWithTestEnv = `(set -a && . ./.env.test && set +a && ${resetCommand || baseReset})`;
+    return `${resetCommand || baseReset} && ${resetWithTestEnv}`;
   }
 
   restore(project: Project, outputPath: string): string {
