@@ -39,11 +39,13 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 
   reset(project: Project, additionalOptions = ''): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
-    if (project.packageJson.dependencies?.blitz) {
-      // Blitz does not trigger seed automatically, so we need to run it manually.
-      return `PRISMA migrate reset --force ${additionalOptions} && ${this.seed(project)}`;
-    }
-    return `PRISMA migrate reset --force ${additionalOptions}`;
+    const resetOptions = additionalOptions.trim();
+    const baseReset = `PRISMA migrate reset --force ${resetOptions}`;
+    const resetCommand = project.packageJson.dependencies?.blitz ? `${baseReset} && ${this.seed(project)}` : baseReset;
+    const resetCommandForTest = project.packageJson.dependencies?.blitz
+      ? String.raw`find db \( -name "test.db*" -o -name "test.sqlite*" \) -delete`
+      : String.raw`find prisma \( -name "test.db*" -o -name "test.sqlite*" \) -delete`;
+    return `${resetCommand} && ${resetCommandForTest}`;
   }
 
   restore(project: Project, outputPath: string): string {
