@@ -18,7 +18,6 @@ __generated__/
 dist/
 temp/
 tmp/
-*.sqlite3*
 
 # Created by https://www.toptal.com/developers/gitignore/api/windows
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows

@@ -6885,11 +6885,11 @@ __metadata:
   linkType: hard
 
 "baseline-browser-mapping@npm:^2.9.0":
-  version: 2.9.0
-  resolution: "baseline-browser-mapping@npm:2.9.0"
+  version: 2.9.3
+  resolution: "baseline-browser-mapping@npm:2.9.3"
   bin:
     baseline-browser-mapping: dist/cli.js
-  checksum: 10c0/cc2c4beaaa6310e57d55c0b38767b7d833cad17779a51bd2f1db7c8fb50d86629fa065cf65b9333bbe1d909270a084bd2177f0fbc832633b273504a8c805ab9c
+  checksum: 10c0/5d17ae997e41036756b32c22df74ed222c2f31c1e6970d0bfe7912a6f00dc2b4a45c2ac68740ce9de7d0ee9ae049a5d22683b3ba692bdb981880189795ccb8b5
   languageName: node
   linkType: hard
 
@@ -9187,9 +9187,9 @@ __metadata:
   linkType: hard
 
 "electron-to-chromium@npm:^1.5.263":
-  version: 1.5.264
-  resolution: "electron-to-chromium@npm:1.5.264"
-  checksum: 10c0/d62cfc6ed02856de59b0e7baf5bb7995b611ba4df14355a0943301a56628bd0fad98287c0becdcf55509ff5ed38d7f01a33b9f962820c8aa8cbc90292035275c
+  version: 1.5.266
+  resolution: "electron-to-chromium@npm:1.5.266"
+  checksum: 10c0/74ada92ada1ace76ec5b7da8a9cc2d7f03db122a64ac8e12ae30eba3e358ffec443c0c5265bc6edcdeebfa73f449b21c361080c064eb1eec437db2d71fc03248
   languageName: node
   linkType: hard
 
@@ -10609,9 +10609,9 @@ __metadata:
   linkType: hard
 
 "flow-parser@npm:0.*":
-  version: 0.292.0
-  resolution: "flow-parser@npm:0.292.0"
-  checksum: 10c0/99734b7e301382bdffa3bf978d2d4d4b267bf9e9d1fb2e28b6166f21a3851a31961751f17d8cdfb76fa035f6ff0d8851eea8cd562781da4585dbb77812c23e75
+  version: 0.293.0
+  resolution: "flow-parser@npm:0.293.0"
+  checksum: 10c0/2a33ffd5deb540d34a085e103fd79771ba38684c2f206c284755dd0619ecab3de1547bc04b4bffcdb310e7687364df942ce893cf2309f73b950830121737f0ab
   languageName: node
   linkType: hard
 
@@ -19505,8 +19505,8 @@ __metadata:
   linkType: hard
 
 "update-browserslist-db@npm:^1.2.0":
-  version: 1.2.1
-  resolution: "update-browserslist-db@npm:1.2.1"
+  version: 1.2.2
+  resolution: "update-browserslist-db@npm:1.2.2"
   dependencies:
     escalade: "npm:^3.2.0"
     picocolors: "npm:^1.1.1"
@@ -19514,7 +19514,7 @@ __metadata:
     browserslist: ">= 4.21.0"
   bin:
     update-browserslist-db: cli.js
-  checksum: 10c0/cbf7547651dfefd2924a61338ccf99cad15ab10bc52ada3fdc3fb1eade14e3cb27a247e6715c3bd2e8941f2bdd322348edfbee8536fff3828188445960b8e490
+  checksum: 10c0/39c3ea08b397ffc8dc3a1c517f5c6ed5cc4179b5e185383dab9bf745879623c12062a2e6bf4f9427cc59389c7bfa0010e86858b923c1e349e32fdddd9b043bb2
   languageName: node
   linkType: hard
 
