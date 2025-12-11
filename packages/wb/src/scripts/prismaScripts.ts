@@ -17,7 +17,7 @@ class PrismaScripts {
   deployForce(project: Project): string {
     const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
-    return `rm -Rf ${dirName}/mount/prod.sqlite3*; PRISMA migrate reset --force && rm -Rf ${dirName}/mount/prod.sqlite3*
+    return `PRISMA migrate reset --force --skip-seed && rm -Rf ${dirName}/mount/prod.sqlite3*
       && litestream restore -config litestream.yml -o ${dirName}/mount/prod.sqlite3 ${dirName}/mount/prod.sqlite3 && ls -ahl ${dirName}/mount/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
@@ -29,8 +29,25 @@ class PrismaScripts {
   litestream(_: Project): string {
     return `${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
-new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
-  .catch((error) => { console.log("Failed due to:", error); process.exit(1); });
+const prisma = new PrismaClient();
+const pragmas = [
+  "PRAGMA busy_timeout = 5000;",
+  "PRAGMA journal_mode = WAL;",
+  "PRAGMA synchronous = NORMAL;",
+  "PRAGMA wal_autocheckpoint = 0;",
+];
+(async () => {
+  try {
+    for (const pragma of pragmas) {
+      await prisma.$executeRawUnsafe(pragma);
+    }
+  } catch (error) {
+    console.error("Failed due to:", error);
+    process.exit(1);
+  } finally {
+    await prisma.$disconnect();
+  }
+})();
 '`;
   }
 
@@ -55,7 +72,7 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
 
   restore(project: Project, outputPath: string): string {
     const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
-    return `rm -Rf ${outputPath}; litestream restore -config litestream.yml -o ${outputPath} ${dirName}/mount/prod.sqlite3`;
+    return `${this.removeSqliteArtifacts(outputPath)}; litestream restore -config litestream.yml -o ${outputPath} ${dirName}/mount/prod.sqlite3`;
   }
 
   seed(project: Project, scriptPath?: string): string {
@@ -96,6 +113,11 @@ new PrismaClient().$queryRaw\`PRAGMA journal_mode = WAL;\`
       }
     }
     return `${prefix}PRISMA studio ${additionalOptions}`;
+  }
+
+  private removeSqliteArtifacts(sqlitePath: string): string {
+    // Litestream requires removing WAL/SHM and Litestream sidecar files when recreating databases.
+    return `rm -Rf ${sqlitePath} ${sqlitePath}-shm ${sqlitePath}-wal ${sqlitePath}-litestream`;
   }
 }
 
