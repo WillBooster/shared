@@ -27,6 +27,7 @@ class PrismaScripts {
   }
 
   litestream(_: Project): string {
+    // PRAGMA statements return results in SQLite, so use queryRawUnsafe instead of executeRawUnsafe.
     // cf. https://litestream.io/tips/
     return `${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
@@ -40,7 +41,7 @@ const pragmas = [
 (async () => {
   try {
     for (const pragma of pragmas) {
-      await prisma.$executeRawUnsafe(pragma);
+      await prisma.$queryRawUnsafe(pragma);
     }
   } catch (error) {
     console.error("Failed due to:", error);
