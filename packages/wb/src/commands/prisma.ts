@@ -21,8 +21,9 @@ export const prismaCommand: CommandModule = {
     return yargs
       .command(deployCommand)
       .command(deployForceCommand)
-      .command(litestreamCommand)
       .command(createLitestreamConfigCommand)
+      .command(listBackupsCommand)
+      .command(litestreamCommand)
       .command(migrateCommand)
       .command(migrateDevCommand)
       .command(resetCommand)
@@ -63,18 +64,6 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   },
 };
 
-const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
-  command: 'litestream',
-  describe: 'Setup DB for Litestream',
-  builder,
-  async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
-      await runWithSpawn(prismaScripts.litestream(project), project, argv);
-    }
-  },
-};
-
 const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'create-litestream-config',
   describe: 'Create Litestream configuration file',
@@ -83,6 +72,30 @@ const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<
     const allProjects = await findPrismaProjects(argv);
     for (const project of prepareForRunningCommand('prisma create-litestream-config', allProjects)) {
       createLitestreamConfig(project);
+    }
+  },
+};
+
+const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'list-backups',
+  describe: 'List Litestream backups',
+  builder,
+  async handler(argv) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma list-backups', allProjects)) {
+      await runWithSpawn(prismaScripts.listBackups(project), project, argv);
+    }
+  },
+};
+
+const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'litestream',
+  describe: 'Setup DB for Litestream',
+  builder,
+  async handler(argv) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
+      await runWithSpawn(prismaScripts.litestream(project), project, argv);
     }
   },
 };
@@ -245,7 +258,7 @@ function createLitestreamConfig(project: Project): void {
       bucket: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
       access-key-id: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}
       secret-access-key: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}
-      retention: 8h
+      retention: 72h # Keep backups for 3 days
       retention-check-interval: ${retentionCheckInterval}
       sync-interval: 60s
 `;

@@ -21,6 +21,11 @@ class PrismaScripts {
       && litestream restore -config litestream.yml -o ${dirName}/mount/prod.sqlite3 ${dirName}/mount/prod.sqlite3 && ls -ahl ${dirName}/mount/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
+  listBackups(project: Project): string {
+    const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
+    return `litestream ltx -config litestream.yml ${dirName}/mount/prod.sqlite3`;
+  }
+
   litestream(_: Project): string {
     return `${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
