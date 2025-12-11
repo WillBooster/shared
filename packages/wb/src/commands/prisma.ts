@@ -258,7 +258,8 @@ function createLitestreamConfig(project: Project): void {
       bucket: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
       access-key-id: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}
       secret-access-key: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}
-      retention: 72h # Keep backups for 3 days
+      snapshot-interval: 24h  # Create a backup per day
+      retention: 72h          # Keep backups for 3 days
       retention-check-interval: ${retentionCheckInterval}
       sync-interval: 60s
 `;
