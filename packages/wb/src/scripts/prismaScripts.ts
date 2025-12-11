@@ -27,6 +27,7 @@ class PrismaScripts {
   }
 
   litestream(_: Project): string {
+    // cf. https://litestream.io/tips/
     return `${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
