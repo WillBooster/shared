@@ -15,34 +15,30 @@ class PrismaScripts {
   }
 
   deployForce(project: Project): string {
-    const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
+    const dirPath = getDatabaseDirPath(project);
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
-    return `PRISMA migrate reset --force --skip-seed && rm -Rf ${dirName}/mount/prod.sqlite3*
-      && litestream restore -config litestream.yml -o ${dirName}/mount/prod.sqlite3 ${dirName}/mount/prod.sqlite3 && ls -ahl ${dirName}/mount/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
+    return `PRISMA migrate reset --force --skip-seed && rm -Rf ${dirPath}/prod.sqlite3*
+      && litestream restore -config litestream.yml -o ${dirPath}/prod.sqlite3 ${dirPath}/prod.sqlite3 && ls -ahl ${dirPath}/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
   listBackups(project: Project): string {
-    const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
-    return `litestream ltx -config litestream.yml ${dirName}/mount/prod.sqlite3`;
+    const dirPath = getDatabaseDirPath(project);
+    return `litestream ltx -config litestream.yml ${dirPath}/prod.sqlite3`;
   }
 
-  litestream(_: Project): string {
-    // PRAGMA statements return results in SQLite, so use queryRawUnsafe instead of executeRawUnsafe.
+  litestream(project: Project): string {
+    const dirPath = getDatabaseDirPath(project);
+    // Cleanup existing artifacts to avoid issues with Litestream replication at first.
     // cf. https://litestream.io/tips/
-    return `${runtimeWithArgs} -e '
+    return `rm -Rf ${dirPath}/prod.sqlite3-*; rm -Rf ${dirPath}/prod.sqlite3.*; rm -Rf ${dirPath}/.prod.sqlite3*; ${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-const pragmas = [
-  "PRAGMA busy_timeout = 5000;",
-  "PRAGMA journal_mode = WAL;",
-  "PRAGMA synchronous = NORMAL;",
-  "PRAGMA wal_autocheckpoint = 0;",
-];
 (async () => {
   try {
-    for (const pragma of pragmas) {
-      await prisma.$queryRawUnsafe(pragma);
-    }
+    await prisma.$queryRawUnsafe("PRAGMA busy_timeout = 5000");
+    await prisma.$queryRawUnsafe("PRAGMA journal_mode = WAL");
+    await prisma.$queryRawUnsafe("PRAGMA synchronous = NORMAL");
+    await prisma.$queryRawUnsafe("PRAGMA wal_autocheckpoint = 0");
   } catch (error) {
     console.error("Failed due to:", error);
     process.exit(1);
@@ -73,8 +69,8 @@ const pragmas = [
   }
 
   restore(project: Project, outputPath: string): string {
-    const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
-    return `${this.removeSqliteArtifacts(outputPath)}; litestream restore -config litestream.yml -o ${outputPath} ${dirName}/mount/prod.sqlite3`;
+    const dirPath = getDatabaseDirPath(project);
+    return `${this.removeSqliteArtifacts(outputPath)}; litestream restore -config litestream.yml -o ${outputPath} ${dirPath}/prod.sqlite3`;
   }
 
   seed(project: Project, scriptPath?: string): string {
@@ -121,6 +117,10 @@ const pragmas = [
     // Litestream requires removing WAL/SHM and Litestream sidecar files when recreating databases.
     return `rm -Rf ${sqlitePath} ${sqlitePath}-shm ${sqlitePath}-wal ${sqlitePath}-litestream`;
   }
+}
+
+function getDatabaseDirPath(project: Project): string {
+  return project.packageJson.dependencies?.blitz ? 'db/mount' : 'prisma/mount';
 }
 
 export const prismaScripts = new PrismaScripts();
