@@ -137,6 +137,13 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
     for (const project of prepareForRunningCommand('prisma reset', allProjects)) {
       await runWithSpawn(prismaScripts.reset(project, unknownOptions), project, argv);
     }
+    // Force to reset test database
+    if (process.env.WB_ENV !== 'test') {
+      process.env.WB_ENV = 'test';
+      for (const project of prepareForRunningCommand('WB_ENV=test prisma reset', await findPrismaProjects(argv))) {
+        await runWithSpawn(prismaScripts.reset(project, unknownOptions), project, argv);
+      }
+    }
   },
 };
 

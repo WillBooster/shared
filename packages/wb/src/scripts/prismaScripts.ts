@@ -23,8 +23,9 @@ class PrismaScripts {
 
   deployForce(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
+    // `prisma migrate reset` sometimes fails if the existing database schema, so we remove it first.
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
-    return `PRISMA migrate reset --force --skip-seed && rm -Rf ${dirPath}/prod.sqlite3*
+    return `rm -Rf ${dirPath}/prod.sqlite3*; PRISMA migrate reset --force --skip-seed && rm -Rf ${dirPath}/prod.sqlite3*
       && litestream restore -config litestream.yml -o ${dirPath}/prod.sqlite3 ${dirPath}/prod.sqlite3 && ls -ahl ${dirPath}/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
@@ -43,13 +44,11 @@ class PrismaScripts {
 
   reset(project: Project, additionalOptions = ''): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
-    const resetOptions = additionalOptions.trim();
-    const baseReset = `PRISMA migrate reset --force ${resetOptions}`;
-    const resetCommand = project.packageJson.dependencies?.blitz ? `${baseReset} && ${this.seed(project)}` : baseReset;
-    const resetCommandForTest = project.packageJson.dependencies?.blitz
-      ? String.raw`find db \( -name "test.db*" -o -name "test.sqlite*" \) -delete`
-      : String.raw`find prisma \( -name "test.db*" -o -name "test.sqlite*" \) -delete`;
-    return `${resetCommand} && ${resetCommandForTest}`;
+    if (project.packageJson.dependencies?.blitz) {
+      // Blitz does not trigger seed automatically, so we need to run it manually.
+      return `PRISMA migrate reset --force ${additionalOptions} && ${this.seed(project)}`;
+    }
+    return `PRISMA migrate reset --force ${additionalOptions}`;
   }
 
   restore(project: Project, outputPath: string): string {
