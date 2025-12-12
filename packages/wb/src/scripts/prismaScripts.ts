@@ -12,7 +12,7 @@ import { runtimeWithArgs } from '../utils/runtime.js';
 class PrismaScripts {
   cleanUpLitestream(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
-    // Cleanup existing artifacts to avoid issues with Litestream replication at first.
+    // Cleanup existing artifacts to avoid issues with Litestream replication.
     return `rm -Rf ${dirPath}/prod.sqlite3-*; rm -Rf ${dirPath}/prod.sqlite3.*; rm -Rf ${dirPath}/.prod.sqlite3*; true`;
   }
 
