@@ -13,7 +13,7 @@ class PrismaScripts {
   cleanUpLitestream(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
     // Cleanup existing artifacts to avoid issues with Litestream replication at first.
-    return `rm -Rf ${dirPath}/prod.sqlite3-*; rm -Rf ${dirPath}/prod.sqlite3.*; rm -Rf ${dirPath}/.prod.sqlite3*`;
+    return `rm -Rf ${dirPath}/prod.sqlite3-*; rm -Rf ${dirPath}/prod.sqlite3.*; rm -Rf ${dirPath}/.prod.sqlite3*; true`;
   }
 
   deploy(_: Project, additionalOptions = ''): string {
