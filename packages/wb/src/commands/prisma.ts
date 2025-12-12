@@ -19,11 +19,12 @@ export const prismaCommand: CommandModule = {
   describe: 'Run prisma commands',
   builder: (yargs) => {
     return yargs
+      .command(cleanUpLitestreamCommand)
+      .command(createLitestreamConfigCommand)
       .command(deployCommand)
       .command(deployForceCommand)
-      .command(createLitestreamConfigCommand)
       .command(listBackupsCommand)
-      .command(litestreamCommand)
+      .command(setUpDBForLitestreamCommand)
       .command(migrateCommand)
       .command(migrateDevCommand)
       .command(resetCommand)
@@ -36,6 +37,30 @@ export const prismaCommand: CommandModule = {
   },
   handler() {
     // Do nothing
+  },
+};
+
+const cleanUpLitestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'cleanup-litestream',
+  describe: 'Clean up temporal Litestream files',
+  builder,
+  async handler(argv) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma cleanup-litestream', allProjects)) {
+      await runWithSpawn(prismaScripts.cleanUpLitestream(project), project, argv);
+    }
+  },
+};
+
+const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'create-litestream-config',
+  describe: 'Create Litestream configuration file',
+  builder,
+  async handler(argv) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma create-litestream-config', allProjects)) {
+      createLitestreamConfig(project);
+    }
   },
 };
 
@@ -64,18 +89,6 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   },
 };
 
-const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
-  command: 'create-litestream-config',
-  describe: 'Create Litestream configuration file',
-  builder,
-  async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma create-litestream-config', allProjects)) {
-      createLitestreamConfig(project);
-    }
-  },
-};
-
 const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'list-backups',
   describe: 'List Litestream backups',
@@ -84,18 +97,6 @@ const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
     const allProjects = await findPrismaProjects(argv);
     for (const project of prepareForRunningCommand('prisma list-backups', allProjects)) {
       await runWithSpawn(prismaScripts.listBackups(project), project, argv);
-    }
-  },
-};
-
-const litestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
-  command: 'litestream',
-  describe: 'Setup DB for Litestream',
-  builder,
-  async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
-      await runWithSpawn(prismaScripts.litestream(project), project, argv);
     }
   },
 };
@@ -178,6 +179,18 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
     const allProjects = await findPrismaProjects(argv);
     for (const project of prepareForRunningCommand('prisma seed', allProjects)) {
       await runWithSpawn(prismaScripts.seed(project, argv.file), project, argv);
+    }
+  },
+};
+
+const setUpDBForLitestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'setup-db-for-litestream',
+  describe: 'Setup DB for Litestream',
+  builder,
+  async handler(argv) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma setup-db-for-litestream', allProjects)) {
+      await runWithSpawn(prismaScripts.setUpDBForLitestream(project), project, argv);
     }
   },
 };
