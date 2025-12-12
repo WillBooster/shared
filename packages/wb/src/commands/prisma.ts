@@ -101,18 +101,6 @@ const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   },
 };
 
-const setUpDBForLitestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
-  command: 'setup-db-for-litestream',
-  describe: 'Setup DB for Litestream',
-  builder,
-  async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma litestream', allProjects)) {
-      await runWithSpawn(prismaScripts.setUpLitestream(project), project, argv);
-    }
-  },
-};
-
 const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'migrate',
   describe: 'Apply migration to DB with initializing it',
@@ -191,6 +179,18 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
     const allProjects = await findPrismaProjects(argv);
     for (const project of prepareForRunningCommand('prisma seed', allProjects)) {
       await runWithSpawn(prismaScripts.seed(project, argv.file), project, argv);
+    }
+  },
+};
+
+const setUpDBForLitestreamCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'setup-db-for-litestream',
+  describe: 'Setup DB for Litestream',
+  builder,
+  async handler(argv) {
+    const allProjects = await findPrismaProjects(argv);
+    for (const project of prepareForRunningCommand('prisma setup-db-for-litestream', allProjects)) {
+      await runWithSpawn(prismaScripts.setUpDBForLitestream(project), project, argv);
     }
   },
 };

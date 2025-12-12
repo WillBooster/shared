@@ -32,7 +32,7 @@ class PrismaScripts {
     return `litestream ltx -config litestream.yml ${dirPath}/prod.sqlite3`;
   }
 
-  setUpLitestream(_: Project): string {
+  setUpDBForLitestream(_: Project): string {
     // cf. https://litestream.io/tips/
     return `${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
