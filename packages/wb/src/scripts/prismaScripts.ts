@@ -10,6 +10,12 @@ import { runtimeWithArgs } from '../utils/runtime.js';
  * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PrismaScripts {
+  cleanUpLitestream(project: Project): string {
+    const dirPath = getDatabaseDirPath(project);
+    // Cleanup existing artifacts to avoid issues with Litestream replication at first.
+    return `rm -Rf ${dirPath}/prod.sqlite3-*; rm -Rf ${dirPath}/prod.sqlite3.*; rm -Rf ${dirPath}/.prod.sqlite3*`;
+  }
+
   deploy(_: Project, additionalOptions = ''): string {
     return `PRISMA migrate deploy ${additionalOptions}`;
   }
@@ -26,11 +32,9 @@ class PrismaScripts {
     return `litestream ltx -config litestream.yml ${dirPath}/prod.sqlite3`;
   }
 
-  litestream(project: Project): string {
-    const dirPath = getDatabaseDirPath(project);
-    // Cleanup existing artifacts to avoid issues with Litestream replication at first.
+  setUpLitestream(_: Project): string {
     // cf. https://litestream.io/tips/
-    return `rm -Rf ${dirPath}/prod.sqlite3-*; rm -Rf ${dirPath}/prod.sqlite3.*; rm -Rf ${dirPath}/.prod.sqlite3*; ${runtimeWithArgs} -e '
+    return `${runtimeWithArgs} -e '
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 (async () => {
