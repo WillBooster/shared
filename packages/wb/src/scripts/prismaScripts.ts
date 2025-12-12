@@ -119,7 +119,7 @@ const prisma = new PrismaClient();
 
   private removeSqliteArtifacts(sqlitePath: string): string {
     // Litestream requires removing WAL/SHM and Litestream sidecar files when recreating databases.
-    return `rm -Rf ${sqlitePath} ${sqlitePath}-shm ${sqlitePath}-wal ${sqlitePath}-litestream`;
+    return `rm -Rf ${sqlitePath}*`;
   }
 }
 
