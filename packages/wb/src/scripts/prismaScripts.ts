@@ -53,7 +53,7 @@ class PrismaScripts {
 
   restore(project: Project, outputPath: string): string {
     const dirPath = getDatabaseDirPath(project);
-    return `${this.removeSqliteArtifacts(outputPath)}; litestream restore -config litestream.yml -o ${outputPath} ${dirPath}/prod.sqlite3`;
+    return `rm -Rf ${outputPath}*; litestream restore -config litestream.yml -o ${outputPath} ${dirPath}/prod.sqlite3`;
   }
 
   seed(project: Project, scriptPath?: string): string {
@@ -115,11 +115,6 @@ const prisma = new PrismaClient();
       }
     }
     return `${prefix}PRISMA studio ${additionalOptions}`;
-  }
-
-  private removeSqliteArtifacts(sqlitePath: string): string {
-    // Litestream requires removing WAL/SHM and Litestream sidecar files when recreating databases.
-    return `rm -Rf ${sqlitePath}*`;
   }
 }
 
