@@ -23,7 +23,7 @@ class PrismaScripts {
 
   deployForce(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
-// `prisma migrate reset` can fail depending on the state of the existing database, so we remove it first.
+    // `prisma migrate reset` can fail depending on the state of the existing database, so we remove it first.
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
     return `rm -Rf ${dirPath}/prod.sqlite3*; PRISMA migrate reset --force --skip-seed && rm -Rf ${dirPath}/prod.sqlite3*
       && litestream restore -config litestream.yml -o ${dirPath}/prod.sqlite3 ${dirPath}/prod.sqlite3 && ls -ahl ${dirPath}/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
