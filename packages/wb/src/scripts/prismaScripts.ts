@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { Project } from '../project.js';
-import { runtimeWithArgs } from '../utils/runtime.js';
 
 /**
  * A collection of scripts for executing Prisma commands.
@@ -61,27 +60,6 @@ class PrismaScripts {
     if (scriptPath) return `BUN build-ts run ${scriptPath}`;
     if ((project.packageJson.prisma as Record<string, string> | undefined)?.seed) return `YARN prisma db seed`;
     return `if [ -e "prisma/seeds.ts" ]; then BUN build-ts run prisma/seeds.ts; fi`;
-  }
-
-  setUpDBForLitestream(_: Project): string {
-    // cf. https://litestream.io/tips/
-    return `${runtimeWithArgs} -e '
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
-(async () => {
-  try {
-    await prisma.$queryRawUnsafe("PRAGMA busy_timeout = 5000");
-    await prisma.$queryRawUnsafe("PRAGMA journal_mode = WAL");
-    await prisma.$queryRawUnsafe("PRAGMA synchronous = NORMAL");
-    await prisma.$queryRawUnsafe("PRAGMA wal_autocheckpoint = 0");
-  } catch (error) {
-    console.error("Failed due to:", error);
-    process.exit(1);
-  } finally {
-    await prisma.$disconnect();
-  }
-})();
-'`;
   }
 
   studio(project: Project, dbUrlOrPath?: string, additionalOptions = ''): string {
