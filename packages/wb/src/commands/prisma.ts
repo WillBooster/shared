@@ -259,6 +259,8 @@ function createLitestreamConfig(project: Project): void {
   const retentionCheckInterval = project.env.WB_ENV === 'staging' ? '5m' : '1h';
   const litestreamConfig = `dbs:
   - path: ${dbPath}
+    busy-timeout: 5s
+    checkpoint-interval: 1m
     replica:
       type: s3
       endpoint: https://${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID}.r2.cloudflarestorage.com
@@ -268,7 +270,7 @@ function createLitestreamConfig(project: Project): void {
       snapshot-interval: 24h  # Create a backup per day
       retention: 72h          # Keep backups for 3 days
       retention-check-interval: ${retentionCheckInterval}
-      sync-interval: 60s
+      sync-interval: 1m
 `;
 
   const configPath = '/etc/litestream.yml';
