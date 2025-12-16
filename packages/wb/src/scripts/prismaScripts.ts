@@ -3,6 +3,14 @@ import path from 'node:path';
 
 import type { Project } from '../project.js';
 
+const FILE_SCHEMA = 'file:';
+
+const POSSIBLE_PRISMA_PATHS = [
+  { schemaPath: path.join('prisma', 'schema.prisma'), dbPath: 'prisma' },
+  { schemaPath: path.join('prisma', 'schema'), dbPath: path.join('prisma', 'schema') },
+  { schemaPath: path.join('db', 'schema.prisma'), dbPath: 'db' },
+];
+
 /**
  * A collection of scripts for executing Prisma commands.
  * Note that `PRISMA` is replaced with `YARN prisma` or `YARN blitz prisma`
@@ -43,11 +51,16 @@ class PrismaScripts {
 
   reset(project: Project, additionalOptions = ''): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
+    const steps: string[] = [];
+    const cleanupCommand = cleanUpSqliteDbIfNeeded(project);
+    if (cleanupCommand) steps.push(cleanupCommand);
+    const resetCommand = ['PRISMA migrate reset --force', additionalOptions].filter(Boolean).join(' ');
+    steps.push(resetCommand);
     if (project.packageJson.dependencies?.blitz) {
       // Blitz does not trigger seed automatically, so we need to run it manually.
-      return `PRISMA migrate reset --force ${additionalOptions} && ${this.seed(project)}`;
+      steps.push(this.seed(project));
     }
-    return `PRISMA migrate reset --force ${additionalOptions}`;
+    return steps.filter(Boolean).join(' && ');
   }
 
   restore(project: Project, outputPath: string): string {
@@ -63,7 +76,6 @@ class PrismaScripts {
   }
 
   studio(project: Project, dbUrlOrPath?: string, additionalOptions = ''): string {
-    const FILE_SCHEMA = 'file:';
     let prefix = '';
     // Deal with Prisma issue: https://github.com/prisma/studio/issues/1273
     if (dbUrlOrPath) {
@@ -75,21 +87,10 @@ class PrismaScripts {
         prefix = `DATABASE_URL=${FILE_SCHEMA}${absolutePath} `;
       }
     } else if (project.env.DATABASE_URL?.startsWith(FILE_SCHEMA)) {
-      const POSSIBLE_PATHS = [
-        { schemaPath: path.join('prisma', 'schema.prisma'), dbPath: 'prisma' },
-        { schemaPath: path.join('prisma', 'schema'), dbPath: path.join('prisma', 'schema') },
-        { schemaPath: path.join('db', 'schema.prisma'), dbPath: 'db' },
-      ];
-      for (const { dbPath, schemaPath } of POSSIBLE_PATHS) {
-        if (fs.existsSync(path.resolve(project.dirPath, schemaPath))) {
-          const absolutePath = path.resolve(
-            project.dirPath,
-            dbPath,
-            project.env.DATABASE_URL.slice(FILE_SCHEMA.length)
-          );
-          prefix = `DATABASE_URL=${FILE_SCHEMA}${absolutePath} `;
-          break;
-        }
+      const baseDir = getPrismaBaseDir(project);
+      if (baseDir) {
+        const absolutePath = path.resolve(project.dirPath, baseDir, project.env.DATABASE_URL.slice(FILE_SCHEMA.length));
+        prefix = `DATABASE_URL=${FILE_SCHEMA}${absolutePath} `;
       }
     }
     return `${prefix}PRISMA studio ${additionalOptions}`;
@@ -98,6 +99,26 @@ class PrismaScripts {
 
 function getDatabaseDirPath(project: Project): string {
   return project.packageJson.dependencies?.blitz ? 'db/mount' : 'prisma/mount';
+}
+
+function getPrismaBaseDir(project: Project): string | undefined {
+  return POSSIBLE_PRISMA_PATHS.find(({ schemaPath }) => fs.existsSync(path.resolve(project.dirPath, schemaPath)))
+    ?.dbPath;
+}
+
+function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
+  const dbUrl = project.env.DATABASE_URL;
+  if (!dbUrl?.startsWith(FILE_SCHEMA)) return;
+
+  const rawDbPath = dbUrl.slice(FILE_SCHEMA.length).replace(/[?#].*$/, '');
+  if (!rawDbPath) return;
+
+  const baseDir = getPrismaBaseDir(project);
+  const absolutePath = path.isAbsolute(rawDbPath)
+    ? rawDbPath
+    : path.resolve(project.dirPath, baseDir ?? '.', rawDbPath);
+
+  return `rm -f "${absolutePath}" "${absolutePath}-wal" "${absolutePath}-shm"`;
 }
 
 export const prismaScripts = new PrismaScripts();
