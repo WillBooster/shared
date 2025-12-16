@@ -43,11 +43,17 @@ class PrismaScripts {
 
   reset(project: Project, additionalOptions = ''): string {
     // cf. https://www.prisma.io/docs/guides/database/seed-database#integrated-seeding-with-prisma-migrate
+    const steps: string[] = [];
+    const cleanupCommand = cleanUpSqliteDbIfNeeded(project);
+    if (cleanupCommand) steps.push(cleanupCommand);
+    const resetCommand = ['PRISMA migrate reset --force', additionalOptions].filter(Boolean).join(' ');
     if (project.packageJson.dependencies?.blitz) {
       // Blitz does not trigger seed automatically, so we need to run it manually.
-      return `PRISMA migrate reset --force ${additionalOptions} && ${this.seed(project)}`;
+      steps.push(resetCommand, this.seed(project));
+    } else {
+      steps.push(resetCommand);
     }
-    return `PRISMA migrate reset --force ${additionalOptions}`;
+    return steps.filter(Boolean).join(' && ');
   }
 
   restore(project: Project, outputPath: string): string {
@@ -98,6 +104,29 @@ class PrismaScripts {
 
 function getDatabaseDirPath(project: Project): string {
   return project.packageJson.dependencies?.blitz ? 'db/mount' : 'prisma/mount';
+}
+
+function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
+  const FILE_SCHEMA = 'file:';
+  const dbUrl = project.env.DATABASE_URL;
+  if (!dbUrl?.startsWith(FILE_SCHEMA)) return;
+
+  const rawDbPath = dbUrl.slice(FILE_SCHEMA.length).replace(/[?#].*$/, '');
+  if (!rawDbPath) return;
+
+  const POSSIBLE_PATHS = [
+    { schemaPath: path.join('prisma', 'schema.prisma'), dbPath: 'prisma' },
+    { schemaPath: path.join('prisma', 'schema'), dbPath: path.join('prisma', 'schema') },
+    { schemaPath: path.join('db', 'schema.prisma'), dbPath: 'db' },
+  ];
+  const baseDir = POSSIBLE_PATHS.find(({ schemaPath }) =>
+    fs.existsSync(path.resolve(project.dirPath, schemaPath))
+  )?.dbPath;
+  const absolutePath = path.isAbsolute(rawDbPath)
+    ? rawDbPath
+    : path.resolve(project.dirPath, baseDir ?? '.', rawDbPath);
+
+  return `rm -f "${absolutePath}" "${absolutePath}-wal" "${absolutePath}-shm"`;
 }
 
 export const prismaScripts = new PrismaScripts();
