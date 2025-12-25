@@ -101,7 +101,7 @@ export abstract class BaseScripts {
   ): Promise<string> {
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
+    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail);
     if (project.skipLaunchingServerForPlaywright) {
       return `${playwrightCommand}${suffix}`;
     }
@@ -116,10 +116,12 @@ export abstract class BaseScripts {
   testUnit(project: Project, argv: TestArgv): string {
     const testTarget = argv.targets?.join(' ') || 'test/unit/';
     if (project.hasVitest) {
+      const bailOption = argv.bail ? ' --bail=1' : '';
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly`;
+      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly${bailOption}`;
     } else if (project.isBunAvailable) {
-      return `bun test ${testTarget}`;
+      const bailOption = argv.bail ? ' --bail' : '';
+      return `bun test ${testTarget}${bailOption}`;
     }
     return 'echo "No tests."';
   }
@@ -151,11 +153,11 @@ function findEcosystemConfigPath(project: Project): string | undefined {
   }
 }
 
-function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets']): string {
+function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets'], bail?: boolean): string {
   const base = 'BUN playwright';
   const target = targets?.join(' ') || 'test/e2e/';
   if (!playwrightArgs.startsWith('test ') || !targets?.length) {
-    return `${base} ${playwrightArgs}`;
+    return appendPlaywrightBailOption(`${base} ${playwrightArgs}`, bail);
   }
 
   const rest = playwrightArgs.slice('test '.length).trim();
@@ -165,5 +167,15 @@ function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targe
   } else {
     parts[0] = target;
   }
-  return `${base} test ${parts.join(' ')}`;
+  return appendPlaywrightBailOption(`${base} test ${parts.join(' ')}`, bail);
+}
+
+function appendPlaywrightBailOption(command: string, bail?: boolean): string {
+  if (!bail || !command.includes('playwright test')) {
+    return command;
+  }
+  if (/--max-failures(?:=|\s)/.test(command)) {
+    return command;
+  }
+  return `${command} --max-failures=1`;
 }
