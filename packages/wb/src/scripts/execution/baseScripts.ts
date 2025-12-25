@@ -115,13 +115,13 @@ export abstract class BaseScripts {
 
   testUnit(project: Project, argv: TestArgv): string {
     const testTarget = argv.targets?.join(' ') || 'test/unit/';
-    const quickOptionForVitest = argv.bail ? ' --bail=1' : '';
-    const quickOptionForBun = argv.bail ? ' --bail' : '';
+    const bailOptionForVitest = argv.bail ? ' --bail=1' : '';
+    const bailOptionForBun = argv.bail ? ' --bail' : '';
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly${quickOptionForVitest}`;
+      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly${bailOptionForVitest}`;
     } else if (project.isBunAvailable) {
-      return `bun test ${testTarget}${quickOptionForBun}`;
+      return `bun test ${testTarget}${bailOptionForBun}`;
     }
     return 'echo "No tests."';
   }
