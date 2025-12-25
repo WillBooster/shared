@@ -42,7 +42,7 @@ const builder = {
     description: 'Reduce redundant outputs',
     type: 'boolean',
   },
-  quick: {
+  bail: {
     description: 'Stop tests after the first failure',
     type: 'boolean',
   },
