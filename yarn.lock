@@ -48,28 +48,30 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anolilab/multi-semantic-release@npm:2.0.9":
-  version: 2.0.9
-  resolution: "@anolilab/multi-semantic-release@npm:2.0.9"
+"@anolilab/multi-semantic-release@npm:3.2.2":
+  version: 3.2.2
+  resolution: "@anolilab/multi-semantic-release@npm:3.2.2"
   dependencies:
     "@semrel-extra/topo": "npm:^1.14.1"
-    blork: "npm:^9.3.0"
+    "@visulima/fs": "npm:^4.1.0"
+    "@visulima/path": "npm:^2.0.5"
     cosmiconfig: "npm:^9.0.0"
     debug: "npm:^4.4.3"
     detect-indent: "npm:^7.0.2"
     detect-newline: "npm:^4.0.1"
-    execa: "npm:^9.6.0"
+    execa: "npm:^9.6.1"
     git-log-parser: "npm:^1.2.1"
     lodash-es: "npm:^4.17.21"
     resolve-from: "npm:^5.0.0"
     semver: "npm:^7.7.3"
     signale: "npm:^1.4.0"
     stream-buffers: "npm:^3.0.3"
+    yaml: "npm:^2.8.2"
     yargs: "npm:18.0.0"
   peerDependencies:
-    semantic-release: ">=22.0.12"
+    semantic-release: ">=24"
   bin:
-    multi-semantic-release: bin/cli.js
+    multi-semantic-release: dist/bin/cli.js
   conditions: (os=darwin | os=linux | os=win32)
   languageName: node
   linkType: hard
@@ -5382,6 +5384,29 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@visulima/fs@npm:^4.1.0":
+  version: 4.1.0
+  resolution: "@visulima/fs@npm:4.1.0"
+  dependencies:
+    "@visulima/path": "npm:2.0.5"
+    type-fest: "npm:^5.2.0"
+  peerDependencies:
+    yaml: ^2.7.1
+  peerDependenciesMeta:
+    yaml:
+      optional: true
+  conditions: (os=darwin | os=linux | os=win32)
+  languageName: node
+  linkType: hard
+
+"@visulima/path@npm:2.0.5, @visulima/path@npm:^2.0.5":
+  version: 2.0.5
+  resolution: "@visulima/path@npm:2.0.5"
+  checksum: 10c0/1fd5595adc8e0e3e40fb596379ebdce8724bc4cb665c104579b71d103e2b984e7f4e21a9193faab022c54ef782814aaea7318af5f08956a47161f9c28286a8fa
+  conditions: (os=darwin | os=linux | os=win32)
+  languageName: node
+  linkType: hard
+
 "@vitest/expect@npm:2.0.5":
   version: 2.0.5
   resolution: "@vitest/expect@npm:2.0.5"
@@ -7029,13 +7054,6 @@ __metadata:
   bin:
     blitz: bin/blitz
   checksum: 10c0/3089aaa865d16152528814f47cc412bf10b2465579d51557acb297d2caed670d3c5f308e1a55dad3095f6f94276f7a1db5e0cc1de8e21a7470e45b0d811daec9
-  languageName: node
-  linkType: hard
-
-"blork@npm:^9.3.0":
-  version: 9.3.0
-  resolution: "blork@npm:9.3.0"
-  checksum: 10c0/38277527021878ffe63f5eda28bb50d05c4e3dddbbfb81feddc83ea0d1b0d19ad2ce2e661c2758e23fa82fdfb0fcc01b4e8750a61562f66811adc970abf02556
   languageName: node
   linkType: hard
 
@@ -10174,7 +10192,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"execa@npm:^9.0.0, execa@npm:^9.6.0":
+"execa@npm:^9.0.0, execa@npm:^9.6.1":
   version: 9.6.1
   resolution: "execa@npm:9.6.1"
   dependencies:
@@ -20084,7 +20102,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "willbooster-shared@workspace:."
   dependencies:
-    "@anolilab/multi-semantic-release": "npm:2.0.9"
+    "@anolilab/multi-semantic-release": "npm:3.2.2"
     "@types/eslint": "npm:9.6.1"
     "@willbooster/prettier-config": "npm:10.2.4"
     conventional-changelog-conventionalcommits: "npm:9.1.0"
@@ -20278,7 +20296,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"yaml@npm:^2.8.1":
+"yaml@npm:^2.8.1, yaml@npm:^2.8.2":
   version: 2.8.2
   resolution: "yaml@npm:2.8.2"
   bin:
