@@ -42,6 +42,10 @@ const builder = {
     description: 'Reduce redundant outputs',
     type: 'boolean',
   },
+  quick: {
+    description: 'Stop tests after the first failure',
+    type: 'boolean',
+  },
   'unit-timeout': {
     description: 'Timeout for unit tests',
     type: 'number',

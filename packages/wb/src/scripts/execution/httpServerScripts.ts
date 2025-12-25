@@ -22,11 +22,12 @@ class HttpServerScripts extends BaseScripts {
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
+    const quickOption = argv.quick ? ' --bail=1' : '';
 
     return `YARN concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
-        && vitest run ${testTarget} --color --passWithNoTests --allowOnly${suffix}"`;
+        && vitest run ${testTarget} --color --passWithNoTests --allowOnly${quickOption}${suffix}"`;
   }
 }
 

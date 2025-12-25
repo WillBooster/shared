@@ -101,7 +101,7 @@ export abstract class BaseScripts {
   ): Promise<string> {
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets);
+    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets, argv.quick);
     if (project.skipLaunchingServerForPlaywright) {
       return `${playwrightCommand}${suffix}`;
     }
@@ -115,11 +115,13 @@ export abstract class BaseScripts {
 
   testUnit(project: Project, argv: TestArgv): string {
     const testTarget = argv.targets?.join(' ') || 'test/unit/';
+    const quickOptionForVitest = argv.quick ? ' --bail=1' : '';
+    const quickOptionForBun = argv.quick ? ' --bail' : '';
     if (project.hasVitest) {
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly`;
+      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly${quickOptionForVitest}`;
     } else if (project.isBunAvailable) {
-      return `bun test ${testTarget}`;
+      return `bun test ${testTarget}${quickOptionForBun}`;
     }
     return 'echo "No tests."';
   }
@@ -151,11 +153,11 @@ function findEcosystemConfigPath(project: Project): string | undefined {
   }
 }
 
-function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets']): string {
+function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets'], quick?: boolean): string {
   const base = 'BUN playwright';
   const target = targets?.join(' ') || 'test/e2e/';
   if (!playwrightArgs.startsWith('test ') || !targets?.length) {
-    return `${base} ${playwrightArgs}`;
+    return appendPlaywrightQuickOption(`${base} ${playwrightArgs}`, quick);
   }
 
   const rest = playwrightArgs.slice('test '.length).trim();
@@ -165,5 +167,15 @@ function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targe
   } else {
     parts[0] = target;
   }
-  return `${base} test ${parts.join(' ')}`;
+  return appendPlaywrightQuickOption(`${base} test ${parts.join(' ')}`, quick);
+}
+
+function appendPlaywrightQuickOption(command: string, quick?: boolean): string {
+  if (!quick || !command.includes('playwright test')) {
+    return command;
+  }
+  if (/--max-failures(?:=|\s)/.test(command)) {
+    return command;
+  }
+  return `${command} --max-failures=1`;
 }
