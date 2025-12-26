@@ -11,7 +11,7 @@
   "scripts": {
     "build": "yarn workspaces foreach --all --parallel --verbose run build",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
-    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet && yarn typecheck",
+    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format",
     "postinstall": "husky || true",
@@ -34,7 +34,7 @@
     "@types/eslint": "9.6.1",
     "@willbooster/prettier-config": "10.2.4",
     "conventional-changelog-conventionalcommits": "9.1.0",
-    "eslint": "9.39.1",
+    "eslint": "9.39.2",
     "husky": "9.1.7",
     "lint-staged": "16.2.7",
     "micromatch": "4.0.8",
