@@ -13,7 +13,7 @@ class ViteScripts extends BaseScripts {
   }
 
   protected override startDevProtected(_: Project, argv: ScriptArgv): string {
-    return `YARN vite dev ${argv.normalizedArgsText ?? ''}`;
+    return `YARN vite dev ${argv.normalizedArgsText ?? ''}`.trim();
   }
 
   protected override startProductionProtected(project: Project, argv: ScriptArgv): string {
