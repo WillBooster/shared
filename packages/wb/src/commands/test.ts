@@ -15,6 +15,7 @@ import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
+import { viteScripts } from '../scripts/execution/viteScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -111,6 +112,8 @@ export async function test(
       scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
+    } else if (devDeps.vite) {
+      scripts = viteScripts;
     } else if (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) {
       scripts = httpServerScripts;
     } else {
@@ -153,7 +156,7 @@ export async function test(
         continue;
       }
     }
-    if (deps.blitz || deps.next || devDeps['@remix-run/dev']) {
+    if (deps.blitz || deps.next || devDeps['@remix-run/dev'] || devDeps.vite) {
       const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
       switch (argv.e2e) {
         case 'headed': {

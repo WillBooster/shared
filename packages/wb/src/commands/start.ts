@@ -9,6 +9,7 @@ import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
+import { viteScripts } from '../scripts/execution/viteScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -46,6 +47,8 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         scripts = nextScripts;
       } else if (devDeps['@remix-run/dev']) {
         scripts = remixScripts;
+      } else if (devDeps.vite) {
+        scripts = viteScripts;
       } else if (
         (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) ||
         (project.hasDockerfile && /EXPOSE\s+8080/.test(project.dockerfile))
