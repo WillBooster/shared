@@ -61,7 +61,7 @@ export async function testOnCi(
       scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
-    } else if (devDeps.vite && devDeps['@playwright/test']) {
+    } else if (devDeps.vite) {
       scripts = viteScripts;
     } else if (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) {
       scripts = httpServerScripts;

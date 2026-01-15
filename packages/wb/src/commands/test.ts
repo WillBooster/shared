@@ -112,7 +112,7 @@ export async function test(
       scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {
       scripts = remixScripts;
-    } else if (devDeps.vite && devDeps['@playwright/test']) {
+    } else if (devDeps.vite) {
       scripts = viteScripts;
     } else if (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) {
       scripts = httpServerScripts;
@@ -156,7 +156,7 @@ export async function test(
         continue;
       }
     }
-    if (deps.blitz || deps.next || devDeps['@remix-run/dev'] || (devDeps.vite && devDeps['@playwright/test'])) {
+    if (deps.blitz || deps.next || devDeps['@remix-run/dev'] || devDeps.vite) {
       const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
       switch (argv.e2e) {
         case 'headed': {
