@@ -17,7 +17,7 @@ class ViteScripts extends BaseScripts {
   }
 
   protected override startProductionProtected(project: Project, argv: ScriptArgv): string {
-    return `${project.buildCommand} && YARN vite preview ${argv.normalizedArgsText ?? ''}`;
+    return `${project.buildCommand} && YARN vite preview ${argv.normalizedArgsText ?? ''}`.trim();
   }
 }
 
