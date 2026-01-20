@@ -48,7 +48,7 @@
     "@types/micromatch": "4.0.10",
     "@willbooster/eslint-config-ts": "11.4.12",
     "@willbooster/prettier-config": "10.2.4",
-    "build-ts": "17.0.13",
+    "build-ts": "17.0.14",
     "eslint": "9.39.2",
     "eslint-config-flat-gitignore": "2.1.0",
     "eslint-config-prettier": "10.1.8",
@@ -61,12 +61,12 @@
     "globals": "16.5.0",
     "lint-staged": "16.2.7",
     "micromatch": "4.0.8",
-    "prettier": "3.7.4",
-    "prettier-plugin-java": "2.8.0",
+    "prettier": "3.8.0",
+    "prettier-plugin-java": "2.8.1",
     "sort-package-json": "3.6.0",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.52.0",
-    "vitest": "4.0.16"
+    "typescript-eslint": "8.53.0",
+    "vitest": "4.0.17"
   },
   "publishConfig": {
     "access": "public"
