@@ -113,6 +113,15 @@ export class Project {
   }
 
   @memoizeOne
+  get hasPlaywrightConfig(): boolean {
+    try {
+      return !!this.findFile('playwright.config.ts');
+    } catch {
+      return false;
+    }
+  }
+
+  @memoizeOne
   get skipLaunchingServerForPlaywright(): boolean {
     if (isCI(this.env.CI)) return false;
     try {

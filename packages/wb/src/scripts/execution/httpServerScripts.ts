@@ -3,7 +3,7 @@ import type { Project } from '../../project.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import type { ScriptArgv } from '../builder.js';
 
-import { BaseScripts } from './baseScripts.js';
+import { BaseScripts, type TestE2EOptions } from './baseScripts.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
@@ -18,7 +18,16 @@ class HttpServerScripts extends BaseScripts {
     return `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }
 
-  async testE2EProtected(project: Project, argv: TestArgv, startCommand: string): Promise<string> {
+  async testE2EProtected(
+    project: Project,
+    argv: TestArgv,
+    startCommand: string,
+    options: TestE2EOptions = {}
+  ): Promise<string> {
+    if (project.hasPlaywrightConfig) {
+      return super.testE2EProtected(project, argv, startCommand, options);
+    }
+
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
