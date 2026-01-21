@@ -14,6 +14,11 @@ describe('HttpServerScripts.testE2E', () => {
       env: { WB_ENV: 'test', PORT: '3000' },
       packageJson: { scripts: {} },
       hasPlaywrightConfig: false,
+      hasPrisma: false,
+      buildCommand: 'echo "no build"',
+      findFile: vi.fn().mockImplementation(() => {
+        throw new Error('File not found');
+      }),
     } as unknown as Project;
 
     const command = await httpServerScripts.testE2EProduction(project, {} as TestArgv, {});
@@ -26,6 +31,11 @@ describe('HttpServerScripts.testE2E', () => {
       packageJson: { scripts: {} },
       hasPlaywrightConfig: true,
       skipLaunchingServerForPlaywright: true,
+      hasPrisma: false,
+      buildCommand: 'echo "no build"',
+      findFile: vi.fn().mockImplementation(() => {
+        throw new Error('File not found');
+      }),
     } as unknown as Project;
 
     const command = await httpServerScripts.testE2EProduction(project, {} as TestArgv, {});
