@@ -76,9 +76,10 @@ export async function testOnCi(
       // CI mode disallows `only` to avoid including debug tests
       await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv);
     }
-    await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
-    await promisePool.promiseAll();
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
+      // Avoid launching dev servers for build-only packages; only start a server when E2E needs it.
+      await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
+      await promisePool.promiseAll();
       if (project.hasDockerfile) {
         project.env.WB_DOCKER ||= '1';
         await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
