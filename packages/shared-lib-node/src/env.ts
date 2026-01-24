@@ -85,13 +85,14 @@ export function readEnvironmentVariables(
   const envPathAndEnvVarCountPairs: [string, number][] = [];
   const envVars: Record<string, string> = {};
   for (const envPath of envPaths) {
-    let count = 0;
+    const keys: string[] = [];
     for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
       if (!(key in envVars)) {
         envVars[key] = value;
-        count++;
+        keys.push(key);
       }
     }
+    const count = keys.length;
     envPathAndEnvVarCountPairs.push([envPath, count]);
     if (argv.verbose && count > 0) {
       console.info(`Read ${count} environment variables from ${envPath}`);
