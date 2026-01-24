@@ -82,35 +82,35 @@ export function readEnvironmentVariables(
     console.info('Reading env files:', envPaths.join(', '));
   }
 
-  const envPathAndEnvVarCountPairs: [string, string[]][] = [];
+  const envPathAndLoadedEnvVarNames: [string, string[]][] = [];
   const envVars: Record<string, string> = {};
   for (const envPath of envPaths) {
     const keys: string[] = [];
     for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
-      if (!(key in envVars)) {
+      if (!(key in envVars) && !(key in process.env)) {
         envVars[key] = value;
         keys.push(key);
       }
     }
-    envPathAndEnvVarCountPairs.push([envPath, keys]);
+    envPathAndLoadedEnvVarNames.push([envPath, keys]);
     if (argv.verbose && keys.length > 0) {
       console.info(`Read ${keys.length} environment variables from ${envPath}`);
     }
   }
   if (!argv.verbose) {
     console.info(
-      `Read: ${envPathAndEnvVarCountPairs.map(([envPath, keys]) => `${envPath} (${keys.join(', ')})`).join(', ')}`
+      `Read: ${envPathAndLoadedEnvVarNames.map(([envPath, keys]) => `${envPath} (${keys.join(', ')})`).join(', ')}`
     );
   }
 
   if (argv.checkEnv) {
     const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv)));
-    const missingKeys = exampleKeys.filter((key) => !(key in envVars));
+    const missingKeys = exampleKeys.filter((key) => !(key in envVars) && !(key in process.env));
     if (missingKeys.length > 0) {
       throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
     }
   }
-  return [expand({ parsed: envVars, processEnv: {} }).parsed ?? envVars, envPathAndEnvVarCountPairs];
+  return [expand({ parsed: envVars, processEnv: {} }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
 }
 
 /**
@@ -121,7 +121,11 @@ export function readAndApplyEnvironmentVariables(
   cwd: string
 ): Record<string, string | undefined> {
   const [envVars] = readEnvironmentVariables(argv, cwd);
-  Object.assign(process.env, envVars);
+  for (const [key, value] of Object.entries(envVars)) {
+    if (!(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
   return envVars;
 }
 

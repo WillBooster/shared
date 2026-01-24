@@ -7,6 +7,11 @@ const originalEnv = { ...process.env };
 beforeEach(() => {
   process.env.WB_ENV = '';
   process.env.NODE_ENV = '';
+  // Clear env vars that could affect env loading behavior in tests.
+
+  delete process.env.PORT;
+
+  delete process.env.NAME;
 });
 
 afterEach(() => {
@@ -55,22 +60,30 @@ describe('readAndApplyEnvironmentVariables()', () => {
     expect(envVars).toEqual({ ENV: 'test2', PORT: '4002', NAME: 'app2' });
   });
 
-  it('should overwrite existing process.env values', () => {
+  it('should not overwrite existing process.env values', () => {
     process.env.PORT = '9999';
     process.env.NAME = 'override';
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
-    expect(process.env.PORT).toBe('3001');
-    expect(process.env.NAME).toBe('app1');
+    expect(envVars).toEqual({ ENV: 'development1' });
+    expect(process.env.ENV).toBe('development1');
+    expect(process.env.PORT).toBe('9999');
+    expect(process.env.NAME).toBe('override');
   });
 });
 
 describe('readEnvironmentVariables()', () => {
-  it('should not overwrite existing process.env values', () => {
+  it('should skip existing process.env values in env vars and env files list', () => {
     process.env.PORT = '9999';
     process.env.NAME = 'override';
-    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
+    const [envVars, envPathAndLoadedEnvVarNames] = readEnvironmentVariables(
+      { autoCascadeEnv: true },
+      'test/fixtures/app1'
+    );
+    expect(envVars).toEqual({ ENV: 'development1' });
+    expect(envPathAndLoadedEnvVarNames).toEqual([
+      ['.env.development', ['ENV']],
+      ['.env', []],
+    ]);
     expect(process.env.PORT).toBe('9999');
     expect(process.env.NAME).toBe('override');
   });
