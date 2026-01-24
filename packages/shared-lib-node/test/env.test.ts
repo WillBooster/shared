@@ -1,11 +1,21 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { readAndApplyEnvironmentVariables } from '../src/env.js';
+import { readAndApplyEnvironmentVariables, readEnvironmentVariables } from '../src/env.js';
+
+const originalEnv = { ...process.env };
 
 describe('readAndApplyEnvironmentVariables()', () => {
   beforeEach(() => {
     process.env.WB_ENV = '';
     process.env.NODE_ENV = '';
+  });
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
   });
 
   it('should load no env vars with empty options', () => {
@@ -43,5 +53,38 @@ describe('readAndApplyEnvironmentVariables()', () => {
       'test/fixtures/app1'
     );
     expect(envVars).toEqual({ ENV: 'test2', PORT: '4002', NAME: 'app2' });
+  });
+
+  it('should overwrite existing process.env values', () => {
+    process.env.PORT = '9999';
+    process.env.NAME = 'override';
+    const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
+    expect(envVars).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
+    expect(process.env.PORT).toBe('3001');
+    expect(process.env.NAME).toBe('app1');
+  });
+});
+
+describe('readEnvironmentVariables()', () => {
+  beforeEach(() => {
+    process.env.WB_ENV = '';
+    process.env.NODE_ENV = '';
+  });
+
+  afterEach(() => {
+    for (const key of Object.keys(process.env)) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+  });
+
+  it('should not overwrite existing process.env values', () => {
+    process.env.PORT = '9999';
+    process.env.NAME = 'override';
+    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
+    expect(envVars).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
+    expect(process.env.PORT).toBe('9999');
+    expect(process.env.NAME).toBe('override');
   });
 });
