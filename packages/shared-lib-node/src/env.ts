@@ -46,12 +46,12 @@ export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<ty
 /**
  * This function reads environment variables from `.env` files.
  * Note it does not assign them in `process.env`.
- * @return [envVars, [envPaths, envVarCount][]]
+ * @return [envVars, [envPaths, envVarNames][]]
  * */
 export function readEnvironmentVariables(
   argv: EnvReaderOptions,
   cwd: string
-): [Record<string, string>, [string, number][]] {
+): [Record<string, string>, [string, string[]][]] {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
   const cascade =
     argv.cascadeEnv ??
@@ -82,20 +82,25 @@ export function readEnvironmentVariables(
     console.info('Reading env files:', envPaths.join(', '));
   }
 
-  const envPathAndEnvVarCountPairs: [string, number][] = [];
+  const envPathAndEnvVarCountPairs: [string, string[]][] = [];
   const envVars: Record<string, string> = {};
   for (const envPath of envPaths) {
-    let count = 0;
+    const keys: string[] = [];
     for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
       if (!(key in envVars)) {
         envVars[key] = value;
-        count++;
+        keys.push(key);
       }
     }
-    envPathAndEnvVarCountPairs.push([envPath, count]);
-    if (argv.verbose && count > 0) {
-      console.info(`Read ${count} environment variables from ${envPath}`);
+    envPathAndEnvVarCountPairs.push([envPath, keys]);
+    if (argv.verbose && keys.length > 0) {
+      console.info(`Read ${keys.length} environment variables from ${envPath}`);
     }
+  }
+  if (!argv.verbose) {
+    console.info(
+      `Read: ${envPathAndEnvVarCountPairs.map(([envPath, keys]) => `${envPath} (${keys.join(', ')})`).join(', ')}`
+    );
   }
 
   if (argv.checkEnv) {

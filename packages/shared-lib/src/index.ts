@@ -1,4 +1,5 @@
 export { errorify, ignoreError, ignoreEnoent, ignoreErrorAsync, ignoreEnoentAsync, withRetry } from './error.js';
+export { getEnvValue, getRequiredEnvValue } from './env.js';
 export { humanizeNumber } from './humanize.js';
 export { mailTemplates } from './mail.js';
 export { parseCommandLineArgs } from './parseCommandLineArgs.js';
