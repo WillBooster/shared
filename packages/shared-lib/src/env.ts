@@ -4,7 +4,7 @@ const metaEnv: EnvSource | undefined = 'env' in import.meta ? (import.meta as { 
 const processEnv: EnvSource | undefined = (globalThis as { process?: { env?: EnvSource } }).process?.env;
 
 export function getEnvValue(key: string): string | undefined {
-  return processEnv?.[key] ?? metaEnv?.[key];
+  return metaEnv?.[key] ?? processEnv?.[key];
 }
 
 export function getRequiredEnvValue(key: string): string {
