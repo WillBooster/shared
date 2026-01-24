@@ -4,20 +4,20 @@ import { readAndApplyEnvironmentVariables, readEnvironmentVariables } from '../s
 
 const originalEnv = { ...process.env };
 
+beforeEach(() => {
+  process.env.WB_ENV = '';
+  process.env.NODE_ENV = '';
+});
+
+afterEach(() => {
+  for (const key of Object.keys(process.env)) {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
+});
+
 describe('readAndApplyEnvironmentVariables()', () => {
-  beforeEach(() => {
-    process.env.WB_ENV = '';
-    process.env.NODE_ENV = '';
-  });
-
-  afterEach(() => {
-    for (const key of Object.keys(process.env)) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete process.env[key];
-    }
-    Object.assign(process.env, originalEnv);
-  });
-
   it('should load no env vars with empty options', () => {
     const envVars = readAndApplyEnvironmentVariables({}, 'test/fixtures/app1');
     expect(envVars).toEqual({});
@@ -66,19 +66,6 @@ describe('readAndApplyEnvironmentVariables()', () => {
 });
 
 describe('readEnvironmentVariables()', () => {
-  beforeEach(() => {
-    process.env.WB_ENV = '';
-    process.env.NODE_ENV = '';
-  });
-
-  afterEach(() => {
-    for (const key of Object.keys(process.env)) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete process.env[key];
-    }
-    Object.assign(process.env, originalEnv);
-  });
-
   it('should not overwrite existing process.env values', () => {
     process.env.PORT = '9999';
     process.env.NAME = 'override';
