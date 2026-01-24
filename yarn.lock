@@ -48,9 +48,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anolilab/multi-semantic-release@npm:3.2.2":
-  version: 3.2.2
-  resolution: "@anolilab/multi-semantic-release@npm:3.2.2"
+"@anolilab/multi-semantic-release@npm:4.1.0":
+  version: 4.1.0
+  resolution: "@anolilab/multi-semantic-release@npm:4.1.0"
   dependencies:
     "@semrel-extra/topo": "npm:^1.14.1"
     "@visulima/fs": "npm:^4.1.0"
@@ -20486,7 +20486,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "willbooster-shared@workspace:."
   dependencies:
-    "@anolilab/multi-semantic-release": "npm:3.2.2"
+    "@anolilab/multi-semantic-release": "npm:4.1.0"
     "@types/eslint": "npm:9.6.1"
     "@willbooster/prettier-config": "npm:10.2.4"
     conventional-changelog-conventionalcommits: "npm:9.1.0"
