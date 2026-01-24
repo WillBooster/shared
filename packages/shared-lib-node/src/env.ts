@@ -99,7 +99,7 @@ export function readEnvironmentVariables(
   }
   if (!argv.verbose) {
     console.info(
-      `Read: ${envPathAndLoadedEnvVarNames.map(([envPath, keys]) => `${envPath} (${keys.join(', ')})`).join(', ')}`
+      `Read env files: ${envPathAndLoadedEnvVarNames.map(([envPath, keys]) => `${envPath} (${keys.join(', ')})`).join(', ') || 'nothing'}`
     );
   }
 
