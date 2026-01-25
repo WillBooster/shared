@@ -29,7 +29,7 @@ export const typeCheckCommand: CommandModule<
       const commands: string[] = [];
       if (!project.packageJson.workspaces) {
         if (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript) {
-          commands.push('BUN tsc --noEmit --Pretty');
+          commands.push('BUN tsc --noEmit');
         }
         if (project.packageJson.devDependencies?.pyright) {
           commands.push('YARN pyright');
@@ -38,7 +38,7 @@ export const typeCheckCommand: CommandModule<
         project.hasSourceCode &&
         (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript)
       ) {
-        commands.push('BUN tsc --noEmit --Pretty');
+        commands.push('BUN tsc --noEmit');
       }
       while (commands.length > 0) {
         const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {

@@ -27,7 +27,7 @@
     "start": "build-ts run src/index.ts --",
     "start-prod": "yarn build && yarn wb",
     "test": "WB_ENV=test vitest run test",
-    "typecheck": "tsc --noEmit --Pretty"
+    "typecheck": "tsc --noEmit"
   },
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
