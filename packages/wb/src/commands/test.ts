@@ -98,11 +98,6 @@ export async function test(
   const shouldRunUnit = shouldRunAllTests || hasUnitTargets;
   const shouldRunE2e = shouldRunAllTests || hasE2eTargets;
 
-  if (projects.descendants.length > 1 && !shouldRunE2e) {
-    // Disable interactive mode for unit-only runs.
-    process.env.CI = '1';
-  }
-
   for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};

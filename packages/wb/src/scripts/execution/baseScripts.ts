@@ -118,7 +118,7 @@ export abstract class BaseScripts {
     if (project.hasVitest) {
       const bailOption = argv.bail ? ' --bail=1' : '';
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly${bailOption}`;
+      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly --watch=false${bailOption}`;
     } else if (project.isBunAvailable) {
       const bailOption = argv.bail ? ' --bail' : '';
       return `bun test ${testTarget}${bailOption}`;
