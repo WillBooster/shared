@@ -85,10 +85,6 @@ export async function test(
     process.exit(1);
   }
 
-  if (projects.descendants.length > 1) {
-    // Disable interactive mode
-    process.env.CI = '1';
-  }
   process.env.FORCE_COLOR ||= '3';
   process.env.WB_ENV ||= 'test';
 
