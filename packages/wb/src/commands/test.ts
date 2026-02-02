@@ -85,10 +85,6 @@ export async function test(
     process.exit(1);
   }
 
-  if (projects.descendants.length > 1) {
-    // Disable interactive mode
-    process.env.CI = '1';
-  }
   process.env.FORCE_COLOR ||= '3';
   process.env.WB_ENV ||= 'test';
 
@@ -101,6 +97,11 @@ export async function test(
   const hasUnitTargets = testTargets.some((target) => target.includes('/unit'));
   const shouldRunUnit = shouldRunAllTests || hasUnitTargets;
   const shouldRunE2e = shouldRunAllTests || hasE2eTargets;
+
+  if (projects.descendants.length > 1 && !shouldRunE2e) {
+    // Disable interactive mode for unit-only runs.
+    process.env.CI = '1';
+  }
 
   for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies ?? {};
