@@ -27,7 +27,7 @@
   },
   "prettier": "@willbooster/prettier-config",
   "resolutions": {
-    "esbuild": "0.27.2"
+    "esbuild": "0.27.3"
   },
   "devDependencies": {
     "@anolilab/multi-semantic-release": "4.1.1",
