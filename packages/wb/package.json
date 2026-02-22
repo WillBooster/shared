@@ -32,7 +32,7 @@
   "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.6.2",
-    "dotenv": "17.2.4",
+    "dotenv": "17.3.1",
     "dotenv-expand": "12.0.3",
     "globby": "16.1.0",
     "kill-port": "2.0.1",
@@ -44,7 +44,7 @@
     "@types/eslint": "9.6.1",
     "@types/kill-port": "2.0.3",
     "@types/micromatch": "4.0.10",
-    "@types/node": "25.2.2",
+    "@types/node": "25.2.3",
     "@types/yargs": "17.0.35",
     "@willbooster/eslint-config-ts": "11.4.12",
     "@willbooster/prettier-config": "10.2.4",
@@ -67,7 +67,7 @@
     "sort-package-json": "3.6.1",
     "type-fest": "5.4.4",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.55.0",
+    "typescript-eslint": "8.56.0",
     "vitest": "4.0.18"
   },
   "engines": {
