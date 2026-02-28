@@ -1,4 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>WillBooster/willbooster-configs:renovate.json5"]
+  "extends": ["github>WillBooster/willbooster-configs:renovate.json5"],
+  "lockFileMaintenance": {
+    "enabled": false
+  }
 }
