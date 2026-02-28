@@ -50,7 +50,7 @@
     "@willbooster/prettier-config": "10.2.4",
     "at-decorators": "7.0.2",
     "build-ts": "17.0.19",
-    "eslint": "9.39.2",
+    "eslint": "10.0.1",
     "eslint-config-flat-gitignore": "2.2.1",
     "eslint-config-prettier": "10.1.8",
     "eslint-import-resolver-typescript": "4.4.4",
