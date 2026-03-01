@@ -108,7 +108,9 @@ export async function spawnAsync(
           console.info(`treeKill(${proc.pid})`);
         }
         void treeKill(proc.pid).catch(() => {
-          // do nothing
+          if (options?.verbose) {
+            console.warn(`Failed to treeKill(${proc.pid})`);
+          }
         });
       };
       if (options?.killOnExit) {

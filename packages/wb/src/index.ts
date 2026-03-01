@@ -62,7 +62,9 @@ function getVersion(): string {
 
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
   process.on(signal, () => {
-    void treeKill(process.pid);
+    void treeKill(process.pid).catch(() => {
+      // do nothing
+    });
     process.exit();
   });
 }

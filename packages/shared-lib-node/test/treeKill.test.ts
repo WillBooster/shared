@@ -11,15 +11,20 @@ type ChildProcessWithPipeOut = ChildProcessByStdio<null, Readable, Readable>;
 describe('treeKill', () => {
   it('kills parent and descendant processes', async () => {
     const parent = spawnProcessTree();
-    expect(parent.pid).toBeDefined();
-    const childPid = await waitForDescendantPid(parent.pid as number, 10_000);
-    expect(isProcessRunning(parent.pid as number)).toBe(true);
+    const { pid: parentPid } = parent;
+    expect(parentPid).toBeDefined();
+    if (!parentPid) {
+      throw new Error('parent.pid is undefined');
+    }
+
+    const childPid = await waitForDescendantPid(parentPid, 10_000);
+    expect(isProcessRunning(parentPid)).toBe(true);
     expect(isProcessRunning(childPid)).toBe(true);
 
-    await treeKill(parent.pid as number);
+    await treeKill(parentPid);
 
     await Promise.all([
-      waitForProcessStopped(parent.pid as number, 10_000),
+      waitForProcessStopped(parentPid, 10_000),
       waitForProcessStopped(childPid, 10_000),
       waitForClose(parent, 10_000),
     ]);
