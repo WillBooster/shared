@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 
 export async function treeKill(pid: number, signal: NodeJS.Signals = 'SIGTERM'): Promise<void> {
   if (!Number.isInteger(pid) || pid <= 0) {
@@ -30,7 +30,10 @@ function killIfNeeded(pid: number, signal: NodeJS.Signals): void {
 
 async function killTreeOnWindows(pid: number): Promise<void> {
   try {
-    await runCommand('taskkill', ['/PID', String(pid), '/T', '/F']);
+    await runCommand('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      maxBuffer: 1024 * 1024,
+      timeout: 2000,
+    });
   } catch (error) {
     if (isNoSuchProcessError(error)) {
       return;
@@ -40,7 +43,12 @@ async function killTreeOnWindows(pid: number): Promise<void> {
 }
 
 async function collectDescendantPids(rootPid: number): Promise<number[]> {
-  const { stdout } = await runCommand('ps', ['-Ao', 'pid=,ppid=']);
+  const { stdout } = await runCommand(
+    'ps',
+    ['-Ao', 'pid=,ppid='],
+    // Keep command bounded so watch-mode kill loops cannot hang this path.
+    { maxBuffer: 1024 * 1024, timeout: 2000 }
+  );
   const childrenByParent = new Map<number, number[]>();
   for (const line of stdout.split('\n')) {
     const matched = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
@@ -71,32 +79,24 @@ async function collectDescendantPids(rootPid: number): Promise<number[]> {
   return descendants;
 }
 
-async function runCommand(command: string, args: readonly string[]): Promise<{ stdout: string; stderr: string }> {
+async function runCommand(
+  command: string,
+  args: readonly string[],
+  options?: { timeout: number; maxBuffer: number }
+): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-    proc.stdout.setEncoding('utf8');
-    proc.stderr.setEncoding('utf8');
-    proc.stdout.on('data', (data: string) => {
-      stdout += data;
-    });
-    proc.stderr.on('data', (data: string) => {
-      stderr += data;
-    });
-    proc.on('error', (error) => {
-      reject(error);
-    });
-    proc.on('close', (status) => {
-      if (status === 0) {
+    execFile(
+      command,
+      [...args],
+      { encoding: 'utf8', maxBuffer: options?.maxBuffer, timeout: options?.timeout },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new CommandExecutionError(command, args, stderr, toExitCode(error)));
+          return;
+        }
         resolve({ stdout, stderr });
-      } else {
-        reject(new CommandExecutionError(command, args, status, stderr));
       }
-    });
+    );
   });
 }
 
@@ -111,18 +111,25 @@ function isNoSuchProcessError(error: unknown): boolean {
   return false;
 }
 
+function toExitCode(error: unknown): number | string | undefined {
+  if (isErrnoException(error)) {
+    return error.code;
+  }
+  return undefined;
+}
+
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return typeof error === 'object' && error !== null && 'code' in error;
 }
 
 class CommandExecutionError extends Error {
-  readonly status: number | null;
   readonly stderr: string;
+  readonly code: number | string | undefined;
 
-  constructor(command: string, args: readonly string[], status: number | null, stderr: string) {
+  constructor(command: string, args: readonly string[], stderr: string, code: number | string | undefined) {
     super(`Command failed: ${command} ${args.join(' ')}`);
     this.name = 'CommandExecutionError';
-    this.status = status;
     this.stderr = stderr;
+    this.code = code;
   }
 }
