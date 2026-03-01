@@ -109,7 +109,7 @@ function getPrismaBaseDir(project: Project): string | undefined {
 }
 
 function buildWalCheckpointAndRemoveDbCommand(dbPath: string): string {
-  return `if [ -f "${dbPath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${dbPath}"; fi && rm -f "${dbPath}"`;
+  return `if [ -f "${dbPath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${dbPath}"; fi && rm -f "${dbPath}" "${dbPath}-wal" "${dbPath}-shm"`;
 }
 
 export function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
