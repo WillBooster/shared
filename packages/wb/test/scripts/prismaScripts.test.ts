@@ -9,6 +9,7 @@ import type { Project } from '../../src/project.js';
 import { cleanUpSqliteDbIfNeeded, prismaScripts } from '../../src/scripts/prismaScripts.js';
 
 const createdDirs: string[] = [];
+const PRISMA_VERSION_FOR_TEST = '6.10.1';
 
 afterEach(() => {
   for (const dirPath of createdDirs.splice(0)) {
@@ -39,7 +40,7 @@ describe('prismaScripts.reset', () => {
     expect(cleanupCommand).toBeTruthy();
     if (!cleanupCommand) throw new Error('cleanup command was not generated');
 
-    child_process.execSync(cleanupCommand.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
+    child_process.execSync(cleanupCommand.replaceAll('PRISMA ', `npx --yes prisma@${PRISMA_VERSION_FOR_TEST} `), {
       cwd: dirPath,
       stdio: 'inherit',
     });
@@ -48,6 +49,7 @@ describe('prismaScripts.reset', () => {
       expect(fs.statSync(walPath).size).toBe(0);
     }
     expect(fs.existsSync(absoluteDbPath)).toBe(false);
+    expect(fs.existsSync(`${absoluteDbPath}-shm`)).toBe(false);
   }, 120_000);
 
   it('does not add sqlite cleanup when DATABASE_URL is not file scheme', () => {
