@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
-import treeKill from 'tree-kill';
+import { removeNpmAndYarnEnvironmentVariables, treeKill } from '@willbooster/shared-lib-node/src';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -16,6 +15,7 @@ import { setupCommand } from './commands/setup.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
 import { testOnCiCommand } from './commands/testOnCi.js';
+import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
@@ -41,6 +41,7 @@ await yargs(hideBin(process.argv))
   .command(startCommand)
   .command(testCommand)
   .command(testOnCiCommand)
+  .command(treeKillCommand)
   .command(typeCheckCommand)
   .command(tcCommand)
   .demandCommand()
@@ -61,7 +62,7 @@ function getVersion(): string {
 
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
   process.on(signal, () => {
-    treeKill(process.pid);
+    void treeKill(process.pid);
     process.exit();
   });
 }

@@ -37,7 +37,6 @@
     "globby": "16.1.1",
     "kill-port": "2.0.1",
     "minimal-promise-pool": "6.0.1",
-    "tree-kill": "1.2.2",
     "yargs": "18.0.0"
   },
   "devDependencies": {
