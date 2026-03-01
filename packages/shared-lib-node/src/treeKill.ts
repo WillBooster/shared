@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
 
+import { buildChildrenByParentMap, collectDescendantPids as collectDescendantPidsFromMap } from './processTree.js';
+
 export async function treeKill(pid: number, signal: NodeJS.Signals = 'SIGTERM'): Promise<void> {
   if (!Number.isInteger(pid) || pid <= 0) {
     throw new Error(`Invalid pid: ${pid}`);
@@ -49,34 +51,8 @@ async function collectDescendantPids(rootPid: number): Promise<number[]> {
     // Keep command bounded so watch-mode kill loops cannot hang this path.
     { maxBuffer: 1024 * 1024, timeout: 2000 }
   );
-  const childrenByParent = new Map<number, number[]>();
-  for (const line of stdout.split('\n')) {
-    const matched = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
-    if (!matched) {
-      continue;
-    }
-
-    const childPid = Number(matched[1]);
-    const parentPid = Number(matched[2]);
-    const children = childrenByParent.get(parentPid);
-    if (children) {
-      children.push(childPid);
-    } else {
-      childrenByParent.set(parentPid, [childPid]);
-    }
-  }
-
-  const descendants: number[] = [];
-  const queue = [...(childrenByParent.get(rootPid) ?? [])];
-  let pid = queue.shift();
-  while (pid !== undefined) {
-    descendants.push(pid);
-    for (const childPid of childrenByParent.get(pid) ?? []) {
-      queue.push(childPid);
-    }
-    pid = queue.shift();
-  }
-  return descendants;
+  const childrenByParent = buildChildrenByParentMap(stdout);
+  return collectDescendantPidsFromMap(rootPid, childrenByParent);
 }
 
 async function runCommand(

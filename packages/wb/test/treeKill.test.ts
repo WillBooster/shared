@@ -25,4 +25,22 @@ describe('tree-kill command', () => {
 
     await waitForProcessStopped(pid, 10_000);
   });
+
+  it('kills target process with custom signal', async () => {
+    const proc = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000);'], {
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    const { pid } = proc;
+    expect(pid).toBeDefined();
+    if (!pid) {
+      throw new Error('proc.pid is undefined');
+    }
+
+    await treeKillCommand.handler({
+      pid,
+      signal: 'SIGKILL',
+    } as never);
+
+    await waitForProcessStopped(pid, 10_000);
+  });
 });
