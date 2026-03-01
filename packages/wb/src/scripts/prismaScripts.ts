@@ -106,7 +106,7 @@ function getPrismaBaseDir(project: Project): string | undefined {
     ?.dbPath;
 }
 
-function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
+export function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
   const dbUrl = project.env.DATABASE_URL;
   if (!dbUrl?.startsWith(FILE_SCHEMA)) return;
 
@@ -118,7 +118,7 @@ function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
     ? rawDbPath
     : path.resolve(project.dirPath, baseDir ?? '.', rawDbPath);
 
-  return `if [ -f "${absolutePath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${absolutePath}" || true; fi && rm -f "${absolutePath}"`;
+  return `if [ -f "${absolutePath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${absolutePath}"; fi && rm -f "${absolutePath}"`;
 }
 
 export const prismaScripts = new PrismaScripts();

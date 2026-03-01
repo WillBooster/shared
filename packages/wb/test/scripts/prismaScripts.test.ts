@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { Project } from '../../src/project.js';
-import { prismaScripts } from '../../src/scripts/prismaScripts.js';
+import { cleanUpSqliteDbIfNeeded, prismaScripts } from '../../src/scripts/prismaScripts.js';
 
 const createdDirs: string[] = [];
 
@@ -17,14 +17,14 @@ afterEach(() => {
 });
 
 describe('prismaScripts.reset', () => {
-  it('truncates WAL through Prisma command and removes sqlite files', async () => {
+  it('truncates WAL through Prisma command and removes sqlite files', () => {
     const dirPath = createProjectDir();
 
     const dbRelativePath = path.join('mount', 'prod.sqlite3');
     const absoluteDbPath = path.resolve(dirPath, 'prisma', dbRelativePath);
     fs.mkdirSync(path.dirname(absoluteDbPath), { recursive: true });
 
-    const { keeper } = await createDatabaseWithWal(absoluteDbPath);
+    createDatabaseWithWal(absoluteDbPath);
     expect(fs.existsSync(`${absoluteDbPath}-wal`)).toBe(true);
     expect(fs.existsSync(`${absoluteDbPath}-shm`)).toBe(true);
     expect(fs.statSync(`${absoluteDbPath}-wal`).size).toBeGreaterThan(0);
@@ -35,8 +35,9 @@ describe('prismaScripts.reset', () => {
       packageJson: { dependencies: {} },
     } as unknown as Project;
 
-    const resetCommand = prismaScripts.reset(project);
-    const cleanupCommand = resetCommand.replace(/\s*&&\s*PRISMA migrate reset --force$/, '');
+    const cleanupCommand = cleanUpSqliteDbIfNeeded(project);
+    expect(cleanupCommand).toBeTruthy();
+    if (!cleanupCommand) throw new Error('cleanup command was not generated');
 
     child_process.execSync(cleanupCommand.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
       cwd: dirPath,
@@ -46,8 +47,6 @@ describe('prismaScripts.reset', () => {
     if (fs.existsSync(walPath)) {
       expect(fs.statSync(walPath).size).toBe(0);
     }
-    keeper.close();
-
     expect(fs.existsSync(absoluteDbPath)).toBe(false);
   }, 120_000);
 
@@ -84,22 +83,13 @@ function createProjectDir(): string {
   return dirPath;
 }
 
-async function createDatabaseWithWal(dbPath: string): Promise<{ keeper: DatabaseLike }> {
-  const sqliteModuleName = 'node:sqlite';
-  const { DatabaseSync } = (await import(sqliteModuleName)) as { DatabaseSync: new (path: string) => DatabaseLike };
-  const writer = new DatabaseSync(dbPath);
-  writer.exec(
-    'PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;'
-  );
-  const keeper = new DatabaseSync(dbPath);
-  keeper.prepare('SELECT 1').get();
-  writer.exec('INSERT INTO t DEFAULT VALUES;');
-  writer.close();
-  return { keeper };
-}
-
-interface DatabaseLike {
-  close(): void;
-  exec(sql: string): void;
-  prepare(sql: string): { get(): unknown };
+function createDatabaseWithWal(dbPath: string): void {
+  const sqlite3Path = child_process.execSync('which sqlite3', { encoding: 'utf8' }).trim();
+  const sql = [
+    '.dbconfig no_ckpt_on_close on',
+    'PRAGMA journal_mode=WAL;',
+    'CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY);',
+    'INSERT INTO t DEFAULT VALUES;',
+  ].join('\n');
+  child_process.execSync(`${sqlite3Path} "${dbPath}" <<'SQL'\n${sql}\nSQL`, { stdio: 'inherit' });
 }
