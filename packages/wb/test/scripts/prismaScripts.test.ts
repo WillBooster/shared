@@ -19,7 +19,6 @@ afterEach(() => {
 describe('prismaScripts.reset', () => {
   it('truncates WAL through Prisma command and removes sqlite files', async () => {
     const dirPath = createProjectDir();
-    installPrisma(dirPath);
 
     const dbRelativePath = path.join('mount', 'prod.sqlite3');
     const absoluteDbPath = path.resolve(dirPath, 'prisma', dbRelativePath);
@@ -39,7 +38,7 @@ describe('prismaScripts.reset', () => {
     const resetCommand = prismaScripts.reset(project);
     const cleanupCommand = resetCommand.replace(/\s*&&\s*PRISMA migrate reset --force$/, '');
 
-    child_process.execSync(cleanupCommand.replaceAll('PRISMA ', 'yarn prisma '), {
+    child_process.execSync(cleanupCommand.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
       cwd: dirPath,
       stdio: 'inherit',
     });
@@ -69,10 +68,6 @@ function createProjectDir(): string {
   createdDirs.push(dirPath);
   fs.mkdirSync(path.join(dirPath, 'prisma'), { recursive: true });
   fs.writeFileSync(
-    path.join(dirPath, 'package.json'),
-    JSON.stringify({ name: 'tmp-prisma-test', private: true, devDependencies: { prisma: '6.10.1' } }, undefined, 2)
-  );
-  fs.writeFileSync(
     path.join(dirPath, 'prisma', 'schema.prisma'),
     [
       'datasource db {',
@@ -87,10 +82,6 @@ function createProjectDir(): string {
     ].join('\n')
   );
   return dirPath;
-}
-
-function installPrisma(dirPath: string): void {
-  child_process.execSync('yarn install', { cwd: dirPath, stdio: 'inherit' });
 }
 
 async function createDatabaseWithWal(dbPath: string): Promise<{ keeper: DatabaseLike }> {
