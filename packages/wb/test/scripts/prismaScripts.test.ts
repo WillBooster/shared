@@ -2,7 +2,6 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -18,7 +17,7 @@ afterEach(() => {
 });
 
 describe('prismaScripts.reset', () => {
-  it('truncates WAL through Prisma command and removes sqlite files', () => {
+  it('truncates WAL through Prisma command and removes sqlite files', async () => {
     const dirPath = createProjectDir();
     installPrisma(dirPath);
 
@@ -26,7 +25,7 @@ describe('prismaScripts.reset', () => {
     const absoluteDbPath = path.resolve(dirPath, 'prisma', dbRelativePath);
     fs.mkdirSync(path.dirname(absoluteDbPath), { recursive: true });
 
-    const { keeper } = createDatabaseWithWal(absoluteDbPath);
+    const { keeper } = await createDatabaseWithWal(absoluteDbPath);
     expect(fs.existsSync(`${absoluteDbPath}-wal`)).toBe(true);
     expect(fs.existsSync(`${absoluteDbPath}-shm`)).toBe(true);
     expect(fs.statSync(`${absoluteDbPath}-wal`).size).toBeGreaterThan(0);
@@ -94,7 +93,9 @@ function installPrisma(dirPath: string): void {
   child_process.execSync('yarn install', { cwd: dirPath, stdio: 'inherit' });
 }
 
-function createDatabaseWithWal(dbPath: string): { keeper: DatabaseSync } {
+async function createDatabaseWithWal(dbPath: string): Promise<{ keeper: DatabaseLike }> {
+  const sqliteModuleName = 'node:sqlite';
+  const { DatabaseSync } = (await import(sqliteModuleName)) as { DatabaseSync: new (path: string) => DatabaseLike };
   const writer = new DatabaseSync(dbPath);
   writer.exec(
     'PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;'
@@ -104,4 +105,10 @@ function createDatabaseWithWal(dbPath: string): { keeper: DatabaseSync } {
   writer.exec('INSERT INTO t DEFAULT VALUES;');
   writer.close();
   return { keeper };
+}
+
+interface DatabaseLike {
+  close(): void;
+  exec(sql: string): void;
+  prepare(sql: string): { get(): unknown };
 }
