@@ -57,10 +57,7 @@ function collectDescendantPids(rootPid: number): number[] {
 }
 
 function toChildrenFirstPids(pid: number, descendants: readonly number[]): number[] {
-  const targetPids = descendants.reduceRight<number[]>((accumulator, descendantPid) => {
-    accumulator.push(descendantPid);
-    return accumulator;
-  }, []);
+  const targetPids = descendants.toReversed();
   targetPids.push(pid);
   return targetPids;
 }
