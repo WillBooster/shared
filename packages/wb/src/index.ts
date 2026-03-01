@@ -66,8 +66,8 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
     if (shuttingDown) return;
 
     shuttingDown = true;
-    await treeKill(process.pid).catch(() => {
-      // do nothing
+    await treeKill(process.pid).catch((error: unknown) => {
+      console.warn(`Failed to treeKill(${process.pid}) during shutdown:`, error);
     });
     process.exit();
   });

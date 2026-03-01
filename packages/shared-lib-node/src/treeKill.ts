@@ -68,13 +68,13 @@ async function collectDescendantPids(rootPid: number): Promise<number[]> {
 
   const descendants: number[] = [];
   const queue = [...(childrenByParent.get(rootPid) ?? [])];
-  while (queue.length > 0) {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const pid = queue.shift()!;
+  let pid = queue.shift();
+  while (pid !== undefined) {
     descendants.push(pid);
     for (const childPid of childrenByParent.get(pid) ?? []) {
       queue.push(childPid);
     }
+    pid = queue.shift();
   }
   return descendants;
 }
