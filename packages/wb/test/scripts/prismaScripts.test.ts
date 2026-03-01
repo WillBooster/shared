@@ -95,6 +95,8 @@ describe('prismaScripts.reset', () => {
       stdio: 'inherit',
     });
     expect(fs.existsSync(dbPath)).toBe(false);
+    expect(fs.existsSync(`${dbPath}-wal`)).toBe(false);
+    expect(fs.existsSync(`${dbPath}-shm`)).toBe(false);
   }, 120_000);
 
   it('uses wal checkpoint in deployForce cleanup command', () => {
