@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
+import type { ArgumentsCamelCase } from 'yargs';
 
 import { isProcessRunning, waitForProcessStopped } from '../../../test/processUtils.js';
 import { treeKillCommand } from '../src/commands/treeKill.js';
@@ -18,10 +19,7 @@ describe('tree-kill command', () => {
 
     expect(isProcessRunning(pid)).toBe(true);
 
-    await treeKillCommand.handler({
-      pid,
-      signal: 'SIGTERM',
-    } as never);
+    runTreeKillHandler(pid, 'SIGTERM');
 
     await waitForProcessStopped(pid, 10_000);
   });
@@ -36,11 +34,18 @@ describe('tree-kill command', () => {
       throw new Error('proc.pid is undefined');
     }
 
-    await treeKillCommand.handler({
-      pid,
-      signal: 'SIGKILL',
-    } as never);
+    runTreeKillHandler(pid, 'SIGKILL');
 
     await waitForProcessStopped(pid, 10_000);
   });
 });
+
+function runTreeKillHandler(pid: number, signal: NodeJS.Signals): void {
+  const argv = {
+    _: [],
+    $0: 'wb',
+    pid,
+    signal,
+  } as ArgumentsCamelCase<{ pid: number; signal: string }>;
+  void treeKillCommand.handler(argv);
+}

@@ -14,7 +14,7 @@ export function treeKill(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void 
   }
 
   const descendants = collectDescendantPids(pid);
-  const targetPids = toParentFirstPids(pid, descendants);
+  const targetPids = toChildrenFirstPids(pid, descendants);
   for (const targetPid of targetPids) {
     killIfNeeded(targetPid, signal);
   }
@@ -56,11 +56,15 @@ function collectDescendantPids(rootPid: number): number[] {
   return collectDescendantPidsFromMap(rootPid, childrenByParent);
 }
 
-function toParentFirstPids(pid: number, descendants: readonly number[]): number[] {
-  const targetPids = [pid];
-  for (const descendantPid of descendants) {
-    targetPids.splice(1, 0, descendantPid);
+function toChildrenFirstPids(pid: number, descendants: readonly number[]): number[] {
+  const targetPids: number[] = [];
+  for (let index = descendants.length - 1; index >= 0; index--) {
+    const descendantPid = descendants[index];
+    if (descendantPid !== undefined) {
+      targetPids.push(descendantPid);
+    }
   }
+  targetPids.push(pid);
   return targetPids;
 }
 
