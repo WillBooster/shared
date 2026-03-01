@@ -107,11 +107,13 @@ export async function spawnAsync(
         if (options?.verbose) {
           console.info(`treeKill(${proc.pid})`);
         }
-        void treeKill(proc.pid).catch(() => {
+        try {
+          treeKill(proc.pid);
+        } catch {
           if (options?.verbose) {
             console.warn(`Failed to treeKill(${proc.pid})`);
           }
-        });
+        }
       };
       if (options?.killOnExit) {
         process.on('beforeExit', stopProcess);

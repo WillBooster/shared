@@ -1,18 +1,18 @@
-import { execFile } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 
 import { buildChildrenByParentMap, collectDescendantPids as collectDescendantPidsFromMap } from './processTree.js';
 
-export async function treeKill(pid: number, signal: NodeJS.Signals = 'SIGTERM'): Promise<void> {
+export function treeKill(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void {
   if (!Number.isInteger(pid) || pid <= 0) {
     throw new Error(`Invalid pid: ${pid}`);
   }
 
   if (process.platform === 'win32') {
-    await killTreeOnWindows(pid);
+    killTreeOnWindows(pid);
     return;
   }
 
-  const descendants = await collectDescendantPids(pid);
+  const descendants = collectDescendantPids(pid);
   const targetPids = [...descendants, pid].toReversed();
   for (const targetPid of targetPids) {
     killIfNeeded(targetPid, signal);
@@ -30,9 +30,9 @@ function killIfNeeded(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-async function killTreeOnWindows(pid: number): Promise<void> {
+function killTreeOnWindows(pid: number): void {
   try {
-    await runCommand('taskkill', ['/PID', String(pid), '/T', '/F'], {
+    runCommand('taskkill', ['/PID', String(pid), '/T', '/F'], {
       maxBuffer: 1024 * 1024,
       timeout: 2000,
     });
@@ -44,8 +44,8 @@ async function killTreeOnWindows(pid: number): Promise<void> {
   }
 }
 
-async function collectDescendantPids(rootPid: number): Promise<number[]> {
-  const { stdout } = await runCommand(
+function collectDescendantPids(rootPid: number): number[] {
+  const { stdout } = runCommand(
     'ps',
     ['-Ao', 'pid=,ppid='],
     // Keep command bounded so watch-mode kill loops cannot hang this path.
@@ -55,25 +55,23 @@ async function collectDescendantPids(rootPid: number): Promise<number[]> {
   return collectDescendantPidsFromMap(rootPid, childrenByParent);
 }
 
-async function runCommand(
+function runCommand(
   command: string,
   args: readonly string[],
   options?: { timeout: number; maxBuffer: number }
-): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      command,
-      [...args],
-      { encoding: 'utf8', maxBuffer: options?.maxBuffer, timeout: options?.timeout },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(new CommandExecutionError(command, args, stderr, toExitCode(error)));
-          return;
-        }
-        resolve({ stdout, stderr });
-      }
-    );
-  });
+): { stdout: string; stderr: string } {
+  try {
+    const stdout = execFileSync(command, [...args], {
+      encoding: 'utf8',
+      maxBuffer: options?.maxBuffer,
+      timeout: options?.timeout,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return { stdout, stderr: '' };
+  } catch (error) {
+    const stderr = extractStderr(error);
+    throw new CommandExecutionError(command, args, stderr, toExitCode(error));
+  }
 }
 
 function isNoSuchProcessError(error: unknown): boolean {
@@ -92,6 +90,21 @@ function toExitCode(error: unknown): number | string | undefined {
     return error.code;
   }
   return undefined;
+}
+
+function extractStderr(error: unknown): string {
+  if (typeof error !== 'object' || error === null || !('stderr' in error)) {
+    return '';
+  }
+
+  const stderr = (error as Record<'stderr', unknown>).stderr;
+  if (typeof stderr === 'string') {
+    return stderr;
+  }
+  if (Buffer.isBuffer(stderr)) {
+    return stderr.toString('utf8');
+  }
+  return '';
 }
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {

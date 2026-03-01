@@ -62,13 +62,15 @@ function getVersion(): string {
 
 let shuttingDown = false;
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
-  process.on(signal, async () => {
+  process.on(signal, () => {
     if (shuttingDown) return;
 
     shuttingDown = true;
-    await treeKill(process.pid).catch((error: unknown) => {
+    try {
+      treeKill(process.pid);
+    } catch (error) {
       console.warn(`Failed to treeKill(${process.pid}) during shutdown:`, error);
-    });
+    }
     process.exit();
   });
 }

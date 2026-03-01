@@ -15,13 +15,13 @@ export const treeKillCommand: CommandModule = {
   command: 'tree-kill <pid> [signal]',
   describe: 'Kill the given process and all descendants',
   builder,
-  async handler(argv) {
+  handler(argv) {
     try {
       const signal = argv.signal as NodeJS.Signals;
       if (!(signal in constants.signals)) {
         throw new Error(`Invalid signal: ${signal}`);
       }
-      await treeKill(Number(argv.pid), signal);
+      treeKill(Number(argv.pid), signal);
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exit(1);

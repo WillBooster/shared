@@ -24,7 +24,7 @@ describe('treeKill', () => {
       expect(isProcessRunning(pid)).toBe(true);
     }
 
-    await treeKill(parentPid);
+    treeKill(parentPid);
 
     await Promise.all([
       waitForProcessStopped(parentPid, 10_000),
@@ -42,7 +42,7 @@ describe('treeKill', () => {
     }
 
     const descendantPids = await waitForDescendantPidsCount(parentPid, 2, 10_000);
-    await treeKill(parentPid);
+    treeKill(parentPid);
 
     await Promise.all([
       waitForProcessStopped(parentPid, 10_000),
@@ -60,7 +60,7 @@ describe('treeKill', () => {
     }
 
     const descendantPids = await waitForDescendantPidsCount(parentPid, 1, 10_000);
-    await treeKill(parentPid, 'SIGKILL');
+    treeKill(parentPid, 'SIGKILL');
 
     await Promise.all([
       waitForProcessStopped(parentPid, 10_000),
@@ -79,7 +79,7 @@ describe('treeKill', () => {
       }
 
       const descendantPids = await waitForDescendantPidsCount(parentPid, 2, 10_000);
-      await treeKill(parentPid);
+      treeKill(parentPid);
 
       await Promise.all([
         waitForProcessStopped(parentPid, 10_000),
@@ -89,8 +89,10 @@ describe('treeKill', () => {
     }
   }, 60_000);
 
-  it('does not throw when process is already gone', async () => {
-    await expect(treeKill(999_999_999)).resolves.toBeUndefined();
+  it('does not throw when process is already gone', () => {
+    expect(() => {
+      treeKill(999_999_999);
+    }).not.toThrow();
   });
 });
 

@@ -17,7 +17,7 @@ describe('processUtils', () => {
     const descendants = await waitForDescendants(parentPid, 2, 10_000);
     expect(descendants.length).toBeGreaterThanOrEqual(2);
 
-    await treeKill(parentPid, 'SIGKILL');
+    treeKill(parentPid, 'SIGKILL');
     await waitForProcessStopped(parentPid, 10_000);
     for (const pid of descendants) {
       await waitForProcessStopped(pid, 10_000);
