@@ -23,12 +23,8 @@ export function collectDescendantPids(rootPid: number, childrenByParent: Map<num
   const queue = [...(childrenByParent.get(rootPid) ?? [])];
   let index = 0;
   while (index < queue.length) {
-    const pid = queue[index];
-    index++;
-    if (pid === undefined) {
-      continue;
-    }
-
+    const pid = queue[index] as number;
+    index += 1;
     descendants.push(pid);
     queue.push(...(childrenByParent.get(pid) ?? []));
   }
