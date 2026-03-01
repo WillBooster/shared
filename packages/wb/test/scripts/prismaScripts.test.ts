@@ -75,6 +75,21 @@ describe('prismaScripts.reset', () => {
 
     expect(command).toContain('wal_checkpoint(TRUNCATE)');
     expect(command).not.toContain('/prod.sqlite3*;');
+    const checkpointOnlyCommand = extractCheckpointOnlyCommand(command, 'prisma/mount/prod.sqlite3');
+    child_process.execSync(checkpointOnlyCommand.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
+      cwd: dirPath,
+      stdio: 'inherit',
+    });
+    // If WAL contents are checkpointed into the main DB, deleting WAL should not lose inserted rows.
+    child_process.execSync(`rm -f "${dbPath}-wal" "${dbPath}-shm"`, { cwd: dirPath, stdio: 'inherit' });
+    const rowCount = child_process
+      .execSync(`sqlite3 "${dbPath}" "SELECT COUNT(*) FROM t;"`, {
+        cwd: dirPath,
+        encoding: 'utf8',
+      })
+      .trim();
+    expect(rowCount).toBe('1');
+
     child_process.execSync(command.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
       cwd: dirPath,
       stdio: 'inherit',
@@ -125,4 +140,13 @@ function createDatabaseWithWal(dbPath: string): void {
     'INSERT INTO t DEFAULT VALUES;',
   ].join('\n');
   child_process.execSync(`${sqlite3Path} "${dbPath}" <<'SQL'\n${sql}\nSQL`, { stdio: 'inherit' });
+}
+
+function extractCheckpointOnlyCommand(command: string, dbRelativePath: string): string {
+  const marker = `&& rm -f "${dbRelativePath}"`;
+  const markerIndex = command.indexOf(marker);
+  if (markerIndex === -1) {
+    throw new Error(`Failed to find marker in command: ${marker}`);
+  }
+  return command.slice(0, markerIndex).trim();
 }
