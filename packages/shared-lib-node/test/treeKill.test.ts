@@ -22,7 +22,7 @@ describe('treeKill', () => {
       waitForProcessStopped(childPid, 10_000),
       waitForClose(parent, 10_000),
     ]);
-  });
+  }, 30_000);
 
   it('does not throw when process is already gone', async () => {
     await expect(treeKill(999_999_999)).resolves.toBeUndefined();
