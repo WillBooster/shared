@@ -8,7 +8,7 @@ import type {
 } from 'node:child_process';
 import { spawn } from 'node:child_process';
 
-import treeKill from 'tree-kill';
+import { treeKill } from './treeKill.js';
 
 /**
  * Return type for spawnAsync function, based on SpawnSyncReturns but without output and error properties
@@ -107,7 +107,13 @@ export async function spawnAsync(
         if (options?.verbose) {
           console.info(`treeKill(${proc.pid})`);
         }
-        treeKill(proc.pid);
+        try {
+          treeKill(proc.pid);
+        } catch (error) {
+          if (options?.verbose) {
+            console.warn(`Failed to treeKill(${proc.pid})`, error);
+          }
+        }
       };
       if (options?.killOnExit) {
         process.on('beforeExit', stopProcess);
