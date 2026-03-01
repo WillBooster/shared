@@ -21,11 +21,16 @@ export function buildChildrenByParentMap(psOutput: string): Map<number, number[]
 export function collectDescendantPids(rootPid: number, childrenByParent: Map<number, number[]>): number[] {
   const descendants: number[] = [];
   const queue = [...(childrenByParent.get(rootPid) ?? [])];
-  for (const pid of queue) {
-    descendants.push(pid);
-    for (const childPid of childrenByParent.get(pid) ?? []) {
-      queue.push(childPid);
+  let index = 0;
+  while (index < queue.length) {
+    const pid = queue[index];
+    index++;
+    if (pid === undefined) {
+      continue;
     }
+
+    descendants.push(pid);
+    queue.push(...(childrenByParent.get(pid) ?? []));
   }
   return descendants;
 }
