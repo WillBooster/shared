@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 
+import { isErrnoException } from '../packages/shared-lib-node/src/errno.js';
 import { buildChildrenByParentMap, collectDescendantPids } from '../packages/shared-lib-node/src/processTree.js';
 
 export function isProcessRunning(pid: number): boolean {
@@ -37,6 +38,14 @@ export function listDescendantPids(rootPid: number): number[] {
   return collectDescendantPids(rootPid, childrenByParent);
 }
 
-export function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return typeof error === 'object' && error !== null && 'code' in error;
+export function createTreeScript(depth: number): string {
+  let code = 'setInterval(() => {}, 1000);';
+  for (let i = 0; i < depth; i++) {
+    code = [
+      "const { spawn } = require('node:child_process');",
+      `spawn(process.execPath, ['-e', ${JSON.stringify(code)}], { stdio: 'ignore' });`,
+      'setInterval(() => {}, 1000);',
+    ].join('');
+  }
+  return code;
 }

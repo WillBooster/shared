@@ -2,7 +2,13 @@ import { spawn } from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
 
-import { isProcessRunning, listDescendantPids, waitForProcessStopped } from '../../../test/processUtils.js';
+import {
+  createTreeScript,
+  isProcessRunning,
+  listDescendantPids,
+  wait,
+  waitForProcessStopped,
+} from '../../../test/processUtils.js';
 import { treeKill } from '../src/treeKill.js';
 
 describe('processUtils', () => {
@@ -31,18 +37,6 @@ describe('processUtils', () => {
   });
 });
 
-function createTreeScript(depth: number): string {
-  let code = 'setInterval(() => {}, 1000);';
-  for (let i = 0; i < depth; i++) {
-    code = [
-      "const { spawn } = require('node:child_process');",
-      `spawn(process.execPath, ['-e', ${JSON.stringify(code)}], { stdio: 'ignore' });`,
-      'setInterval(() => {}, 1000);',
-    ].join('');
-  }
-  return code;
-}
-
 async function waitForDescendants(parentPid: number, minimumCount: number, timeoutMs: number): Promise<number[]> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -53,10 +47,4 @@ async function waitForDescendants(parentPid: number, minimumCount: number, timeo
     await wait(100);
   }
   throw new Error(`Timed out while waiting descendants of ${parentPid}`);
-}
-
-async function wait(ms: number): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }

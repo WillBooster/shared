@@ -21,14 +21,7 @@ export function buildChildrenByParentMap(psOutput: string): Map<number, number[]
 export function collectDescendantPids(rootPid: number, childrenByParent: Map<number, number[]>): number[] {
   const descendants: number[] = [];
   const queue = [...(childrenByParent.get(rootPid) ?? [])];
-  let head = 0;
-  while (head < queue.length) {
-    const pid = queue[head];
-    head++;
-    if (pid === undefined) {
-      continue;
-    }
-
+  for (const pid of queue) {
     descendants.push(pid);
     for (const childPid of childrenByParent.get(pid) ?? []) {
       queue.push(childPid);

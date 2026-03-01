@@ -4,7 +4,13 @@ import type { Readable } from 'node:stream';
 
 import { describe, expect, it } from 'vitest';
 
-import { isProcessRunning, listDescendantPids, wait, waitForProcessStopped } from '../../../test/processUtils.js';
+import {
+  createTreeScript,
+  isProcessRunning,
+  listDescendantPids,
+  wait,
+  waitForProcessStopped,
+} from '../../../test/processUtils.js';
 import { treeKill } from '../src/treeKill.js';
 
 type ChildProcessWithPipeOut = ChildProcessByStdio<null, Readable, Readable>;
@@ -98,18 +104,6 @@ describe('treeKill', () => {
 
 function spawnProcessTree(depth: number): ChildProcessWithPipeOut {
   return spawn(process.execPath, ['-e', createTreeScript(depth)], { stdio: ['ignore', 'pipe', 'pipe'] });
-}
-
-function createTreeScript(depth: number): string {
-  let code = 'setInterval(() => {}, 1000);';
-  for (let i = 0; i < depth; i++) {
-    code = [
-      "const { spawn } = require('node:child_process');",
-      `spawn(process.execPath, ['-e', ${JSON.stringify(code)}], { stdio: 'ignore' });`,
-      'setInterval(() => {}, 1000);',
-    ].join('');
-  }
-  return code;
 }
 
 async function waitForDescendantPidsCount(

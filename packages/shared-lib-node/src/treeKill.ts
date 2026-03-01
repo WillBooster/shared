@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 
+import { isErrnoException } from './errno.js';
 import { buildChildrenByParentMap, collectDescendantPids as collectDescendantPidsFromMap } from './processTree.js';
 
 export function treeKill(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void {
@@ -13,7 +14,7 @@ export function treeKill(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void 
   }
 
   const descendants = collectDescendantPids(pid);
-  const targetPids = [...descendants, pid].toReversed();
+  const targetPids = toParentFirstPids(pid, descendants);
   for (const targetPid of targetPids) {
     killIfNeeded(targetPid, signal);
   }
@@ -53,6 +54,14 @@ function collectDescendantPids(rootPid: number): number[] {
   );
   const childrenByParent = buildChildrenByParentMap(stdout);
   return collectDescendantPidsFromMap(rootPid, childrenByParent);
+}
+
+function toParentFirstPids(pid: number, descendants: readonly number[]): number[] {
+  const targetPids = [pid];
+  for (const descendantPid of descendants) {
+    targetPids.splice(1, 0, descendantPid);
+  }
+  return targetPids;
 }
 
 function runCommand(
@@ -105,10 +114,6 @@ function extractStderr(error: unknown): string {
     return stderr.toString('utf8');
   }
   return '';
-}
-
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return typeof error === 'object' && error !== null && 'code' in error;
 }
 
 class CommandExecutionError extends Error {
