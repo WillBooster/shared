@@ -60,9 +60,13 @@ function getVersion(): string {
   return packageJson.version;
 }
 
+let shuttingDown = false;
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGQUIT']) {
-  process.on(signal, () => {
-    void treeKill(process.pid).catch(() => {
+  process.on(signal, async () => {
+    if (shuttingDown) return;
+
+    shuttingDown = true;
+    await treeKill(process.pid).catch(() => {
       // do nothing
     });
     process.exit();
