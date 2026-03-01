@@ -99,6 +99,12 @@ function toExitCode(error: unknown): number | string | undefined {
   if (isErrnoException(error)) {
     return error.code;
   }
+  if (typeof error === 'object' && error !== null && 'status' in error) {
+    const status = (error as { status: unknown }).status;
+    if (typeof status === 'number') {
+      return status;
+    }
+  }
   return undefined;
 }
 
