@@ -1,5 +1,5 @@
 import type { ChildProcessByStdio } from 'node:child_process';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import type { Readable } from 'node:stream';
 
 import { describe, expect, it } from 'vitest';
@@ -10,8 +10,9 @@ type ChildProcessWithPipeOut = ChildProcessByStdio<null, Readable, Readable>;
 
 describe('treeKill', () => {
   it('kills parent and descendant processes', async () => {
-    const { childPid, parent } = await spawnProcessTree();
+    const parent = spawnProcessTree();
     expect(parent.pid).toBeDefined();
+    const childPid = await waitForDescendantPid(parent.pid as number, 10_000);
     expect(isProcessRunning(parent.pid as number)).toBe(true);
     expect(isProcessRunning(childPid)).toBe(true);
 
@@ -41,62 +42,31 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-async function spawnProcessTree(): Promise<{ parent: ChildProcessWithPipeOut; childPid: number }> {
-  const parent = spawn(
+function spawnProcessTree(): ChildProcessWithPipeOut {
+  return spawn(
     process.execPath,
     [
       '-e',
       [
         "const { spawn } = require('node:child_process');",
         "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });",
-        'console.log(child.pid);',
         'setInterval(() => {}, 1000);',
       ].join(''),
     ],
     { stdio: ['ignore', 'pipe', 'pipe'] }
   );
-  parent.stdout.setEncoding('utf8');
-  parent.stderr.setEncoding('utf8');
-  const childPid = await readChildPid(parent, 10_000);
-  return { parent, childPid };
 }
 
-async function readChildPid(parent: ChildProcessWithPipeOut, timeoutMs: number): Promise<number> {
-  return new Promise((resolve, reject) => {
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error(`Timed out while waiting child pid. stdout=${stdout}, stderr=${stderr}`));
-    }, timeoutMs);
-    const onStdout = (chunk: string): void => {
-      stdout += chunk;
-      const matched = /^\s*(\d+)\s*$/m.exec(stdout);
-      if (!matched) {
-        return;
-      }
-
-      cleanup();
-      resolve(Number(matched[1]));
-    };
-    const onStderr = (chunk: string): void => {
-      stderr += chunk;
-    };
-    const onClose = (): void => {
-      cleanup();
-      reject(new Error(`Parent process exited before printing child pid. stdout=${stdout}, stderr=${stderr}`));
-    };
-    const cleanup = (): void => {
-      clearTimeout(timer);
-      parent.stdout.off('data', onStdout);
-      parent.stderr.off('data', onStderr);
-      parent.off('close', onClose);
-    };
-
-    parent.stdout.on('data', onStdout);
-    parent.stderr.on('data', onStderr);
-    parent.on('close', onClose);
-  });
+async function waitForDescendantPid(pid: number, timeoutMs: number): Promise<number> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const descendants = listDescendantPids(pid);
+    if (descendants[0]) {
+      return descendants[0];
+    }
+    await wait(100);
+  }
+  throw new Error(`Timed out while waiting descendant process for ${pid}`);
 }
 
 async function waitForProcessStopped(pid: number, timeoutMs: number): Promise<void> {
@@ -128,6 +98,41 @@ async function wait(ms: number): Promise<void> {
   await new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function listDescendantPids(rootPid: number): number[] {
+  const result = spawnSync('ps', ['-Ao', 'pid=,ppid='], { encoding: 'utf8' });
+  const childrenByParent = new Map<number, number[]>();
+  for (const line of result.stdout.split('\n')) {
+    const matched = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
+    if (!matched) {
+      continue;
+    }
+
+    const childPid = Number(matched[1]);
+    const parentPid = Number(matched[2]);
+    const children = childrenByParent.get(parentPid);
+    if (children) {
+      children.push(childPid);
+    } else {
+      childrenByParent.set(parentPid, [childPid]);
+    }
+  }
+
+  const descendants: number[] = [];
+  const queue = [...(childrenByParent.get(rootPid) ?? [])];
+  while (queue.length > 0) {
+    const pid = queue.shift();
+    if (!pid) {
+      continue;
+    }
+
+    descendants.push(pid);
+    for (const childPid of childrenByParent.get(pid) ?? []) {
+      queue.push(childPid);
+    }
+  }
+  return descendants;
 }
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
