@@ -19,9 +19,10 @@ const POSSIBLE_PRISMA_PATHS = [
 class PrismaScripts {
   cleanUpLitestream(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
+    const cleanUpCommand = buildWalCheckpointAndRemoveDbCommand(`${dirPath}/prod.sqlite3`);
     // Cleanup existing artifacts to avoid issues with Litestream replication.
     // Note that don't merge multiple rm commands into one, because if one fails, the subsequent ones won't run.
-    return `rm -Rf ${dirPath}/prod.sqlite3.*; rm -Rf ${dirPath}/.prod.sqlite3* || true`;
+    return `${cleanUpCommand}; rm -Rf ${dirPath}/.prod.sqlite3* || true`;
   }
 
   deploy(_: Project, additionalOptions = ''): string {
@@ -30,9 +31,10 @@ class PrismaScripts {
 
   deployForce(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
+    const cleanUpCommand = buildWalCheckpointAndRemoveDbCommand(`${dirPath}/prod.sqlite3`);
     // `prisma migrate reset` can fail depending on the state of the existing database, so we remove it first.
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
-    return `rm -Rf ${dirPath}/prod.sqlite3*; PRISMA migrate reset --force --skip-seed && rm -Rf ${dirPath}/prod.sqlite3*
+    return `${cleanUpCommand}; PRISMA migrate reset --force --skip-seed && ${cleanUpCommand}
       && litestream restore -config litestream.yml -o ${dirPath}/prod.sqlite3 ${dirPath}/prod.sqlite3 && ls -ahl ${dirPath}/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
@@ -106,6 +108,10 @@ function getPrismaBaseDir(project: Project): string | undefined {
     ?.dbPath;
 }
 
+function buildWalCheckpointAndRemoveDbCommand(dbPath: string): string {
+  return `if [ -f "${dbPath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${dbPath}"; fi && rm -f "${dbPath}"`;
+}
+
 export function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
   const dbUrl = project.env.DATABASE_URL;
   if (!dbUrl?.startsWith(FILE_SCHEMA)) return;
@@ -118,7 +124,7 @@ export function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
     ? rawDbPath
     : path.resolve(project.dirPath, baseDir ?? '.', rawDbPath);
 
-  return `if [ -f "${absolutePath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${absolutePath}"; fi && rm -f "${absolutePath}"`;
+  return `rm -f "${absolutePath}" "${absolutePath}-wal" "${absolutePath}-shm"`;
 }
 
 export const prismaScripts = new PrismaScripts();

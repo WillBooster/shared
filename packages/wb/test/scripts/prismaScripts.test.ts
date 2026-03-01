@@ -9,7 +9,6 @@ import type { Project } from '../../src/project.js';
 import { cleanUpSqliteDbIfNeeded, prismaScripts } from '../../src/scripts/prismaScripts.js';
 
 const createdDirs: string[] = [];
-const PRISMA_VERSION_FOR_TEST = '6.10.1';
 
 afterEach(() => {
   for (const dirPath of createdDirs.splice(0)) {
@@ -18,7 +17,7 @@ afterEach(() => {
 });
 
 describe('prismaScripts.reset', () => {
-  it('truncates WAL through Prisma command and removes sqlite files', () => {
+  it('removes sqlite db and sidecar files', () => {
     const dirPath = createProjectDir();
 
     const dbRelativePath = path.join('mount', 'prod.sqlite3');
@@ -39,15 +38,13 @@ describe('prismaScripts.reset', () => {
     const cleanupCommand = cleanUpSqliteDbIfNeeded(project);
     expect(cleanupCommand).toBeTruthy();
     if (!cleanupCommand) throw new Error('cleanup command was not generated');
+    expect(cleanupCommand).not.toContain('wal_checkpoint');
+    expect(cleanupCommand).toContain(`${absoluteDbPath}-wal`);
+    expect(cleanupCommand).toContain(`${absoluteDbPath}-shm`);
 
-    child_process.execSync(cleanupCommand.replaceAll('PRISMA ', `npx --yes prisma@${PRISMA_VERSION_FOR_TEST} `), {
-      cwd: dirPath,
-      stdio: 'inherit',
-    });
+    child_process.execSync(cleanupCommand, { cwd: dirPath, stdio: 'inherit' });
     const walPath = `${absoluteDbPath}-wal`;
-    if (fs.existsSync(walPath)) {
-      expect(fs.statSync(walPath).size).toBe(0);
-    }
+    expect(fs.existsSync(walPath)).toBe(false);
     expect(fs.existsSync(absoluteDbPath)).toBe(false);
     expect(fs.existsSync(`${absoluteDbPath}-shm`)).toBe(false);
   }, 120_000);
@@ -61,6 +58,40 @@ describe('prismaScripts.reset', () => {
 
     const command = prismaScripts.reset(project);
     expect(command).toBe('PRISMA migrate reset --force');
+  });
+
+  it('uses wal checkpoint in cleanUpLitestream command and executes without mocks', () => {
+    const dirPath = createProjectDir();
+    const dbPath = path.resolve(dirPath, 'prisma', 'mount', 'prod.sqlite3');
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    createDatabaseWithWal(dbPath);
+
+    const project = {
+      dirPath,
+      env: {},
+      packageJson: { dependencies: {} },
+    } as unknown as Project;
+    const command = prismaScripts.cleanUpLitestream(project);
+
+    expect(command).toContain('wal_checkpoint(TRUNCATE)');
+    expect(command).not.toContain('/prod.sqlite3*;');
+    child_process.execSync(command.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
+      cwd: dirPath,
+      stdio: 'inherit',
+    });
+    expect(fs.existsSync(dbPath)).toBe(false);
+  }, 120_000);
+
+  it('uses wal checkpoint in deployForce cleanup command', () => {
+    const project = {
+      dirPath: '/tmp/dummy',
+      env: {},
+      packageJson: { dependencies: {} },
+    } as unknown as Project;
+
+    const command = prismaScripts.deployForce(project);
+    expect(command).toContain('wal_checkpoint(TRUNCATE)');
+    expect(command).not.toContain('/prod.sqlite3*;');
   });
 });
 
