@@ -30,7 +30,7 @@ export abstract class BaseScripts {
     await checkAndKillPortProcess(project.env.PORT, project);
     if (!this.shouldWaitAndOpenApp) return this.startDevProtected(project, argv);
 
-    return `YARN concurrently --raw --kill-others-on-fail
+    return `YARN wb concurrently --raw --kill-others-on-fail
       "${this.startDevProtected(project, argv)}"
       "${this.waitAndOpenApp(project)}"`;
   }
@@ -38,7 +38,7 @@ export abstract class BaseScripts {
     await checkAndKillPortProcess(project.env.PORT, project);
     if (!this.shouldWaitAndOpenApp) return this.startProductionProtected(project, argv);
 
-    return `YARN concurrently --raw --kill-others-on-fail
+    return `YARN wb concurrently --raw --kill-others-on-fail
       "${this.startProductionProtected(project, argv)}"
       "${this.waitAndOpenApp(project)}"`;
   }
@@ -54,7 +54,7 @@ export abstract class BaseScripts {
     }
 
     return `${this.buildDocker(project, 'development')}
-      && YARN concurrently --raw --kill-others-on-fail
+      && YARN wb concurrently --raw --kill-others-on-fail
         "${dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? '')}"
         "${this.waitAndOpenApp(project)}"`;
   }
@@ -90,7 +90,7 @@ export abstract class BaseScripts {
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
     // Use empty NODE_ENV to avoid "production" mode in some frameworks like Blitz.js.
-    return `NODE_ENV="" YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
+    return `NODE_ENV="" YARN wb concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
   }
 
   async testE2EProtected(
@@ -106,7 +106,7 @@ export abstract class BaseScripts {
       return `${playwrightCommand}${suffix}`;
     }
 
-    return `YARN concurrently --kill-others --raw --success first
+    return `YARN wb concurrently --kill-others --raw --success first
       "${startCommand} && exit 1"
       "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
         && ${playwrightCommand}${suffix}"`;
