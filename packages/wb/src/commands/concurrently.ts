@@ -113,10 +113,16 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
     stopping = true;
     terminateChildren(children);
   };
-  process.once('SIGINT', stopAll);
-  process.once('SIGTERM', stopAll);
-  process.once('SIGQUIT', stopAll);
-  await Promise.all(waitForExitPromises);
+  process.on('SIGINT', stopAll);
+  process.on('SIGTERM', stopAll);
+  process.on('SIGQUIT', stopAll);
+  try {
+    await Promise.all(waitForExitPromises);
+  } finally {
+    process.removeListener('SIGINT', stopAll);
+    process.removeListener('SIGTERM', stopAll);
+    process.removeListener('SIGQUIT', stopAll);
+  }
 
   if (options.success === 'first') {
     return firstResult ?? 1;
@@ -143,16 +149,7 @@ function shouldStopOthers(
   exitCode: number,
   options: Pick<RunConcurrentlyOptions, 'killOthers' | 'killOthersOnFail' | 'success'>
 ): boolean {
-  if (options.success === 'first') {
-    return true;
-  }
-  if (options.killOthers) {
-    return true;
-  }
-  if (options.killOthersOnFail && exitCode !== 0) {
-    return true;
-  }
-  return false;
+  return options.success === 'first' || options.killOthers || (options.killOthersOnFail && exitCode !== 0);
 }
 
 function terminateChildren(children: child_process.ChildProcess[], exceptPid?: number): void {
@@ -161,8 +158,8 @@ function terminateChildren(children: child_process.ChildProcess[], exceptPid?: n
 
     try {
       treeKill(child.pid);
-    } catch {
-      // do nothing
+    } catch (error) {
+      console.warn(`Failed to kill process ${child.pid}:`, error);
     }
   }
 }
