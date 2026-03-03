@@ -90,7 +90,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
 
   let stopping = false;
   let firstResult: number | undefined;
-  const results = Array.from({ length: children.length });
+  const results = Array.from<number | undefined>({ length: children.length });
   const waitForExitPromises = children.map((child, index) => {
     return new Promise<void>((resolve) => {
       child.on('exit', (code, signal) => {
