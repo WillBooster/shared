@@ -17,11 +17,6 @@ const builder = {
     description: 'Kill other commands when one command fails',
     type: 'boolean',
   },
-  raw: {
-    description: 'Print command output directly',
-    type: 'boolean',
-    default: true,
-  },
   success: {
     description: 'Define successful completion criteria',
     type: 'string',
