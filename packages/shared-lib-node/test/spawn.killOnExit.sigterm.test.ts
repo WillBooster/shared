@@ -66,11 +66,21 @@ describe('spawnAsync killOnExit with SIGTERM', () => {
       expect(registeredEvents).toContain('beforeExit');
       expect(registeredEvents).toContain('SIGINT');
       expect(registeredEvents).toContain('SIGTERM');
+      if (process.platform === 'win32') {
+        expect(registeredEvents).not.toContain('SIGQUIT');
+      } else {
+        expect(registeredEvents).toContain('SIGQUIT');
+      }
 
       const removedEvents = removeSpy.mock.calls.slice(removeCallsStart).map((args) => args[0]);
       expect(removedEvents).toContain('beforeExit');
       expect(removedEvents).toContain('SIGINT');
       expect(removedEvents).toContain('SIGTERM');
+      if (process.platform === 'win32') {
+        expect(removedEvents).not.toContain('SIGQUIT');
+      } else {
+        expect(removedEvents).toContain('SIGQUIT');
+      }
     } finally {
       onSpy.mockRestore();
       removeSpy.mockRestore();

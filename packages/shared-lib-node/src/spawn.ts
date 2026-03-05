@@ -115,7 +115,8 @@ export async function spawnAsync(
           }
         }
       };
-      const cleanupSignals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+      const cleanupSignals: NodeJS.Signals[] =
+        process.platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGQUIT'];
       if (options?.killOnExit) {
         process.on('beforeExit', stopProcess);
         for (const signal of cleanupSignals) {
