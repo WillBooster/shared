@@ -115,20 +115,27 @@ export async function spawnAsync(
           }
         }
       };
+      const cleanupSignals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGQUIT'];
       if (options?.killOnExit) {
         process.on('beforeExit', stopProcess);
-        process.on('SIGINT', stopProcess);
+        for (const signal of cleanupSignals) {
+          process.on(signal, stopProcess);
+        }
       }
 
       proc.on('error', (error) => {
         process.removeListener('beforeExit', stopProcess);
-        process.removeListener('SIGINT', stopProcess);
+        for (const signal of cleanupSignals) {
+          process.removeListener(signal, stopProcess);
+        }
         proc.removeAllListeners('close');
         reject(error);
       });
       proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
         process.removeListener('beforeExit', stopProcess);
-        process.removeListener('SIGINT', stopProcess);
+        for (const registeredSignal of cleanupSignals) {
+          process.removeListener(registeredSignal, stopProcess);
+        }
         if (proc.pid === undefined) {
           reject(new Error('Process has no pid.'));
         } else {
