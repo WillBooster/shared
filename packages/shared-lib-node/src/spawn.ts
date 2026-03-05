@@ -117,26 +117,39 @@ export async function spawnAsync(
       };
       const cleanupSignals: NodeJS.Signals[] =
         process.platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+      const signalHandlers = new Map<NodeJS.Signals, () => void>();
       if (options?.killOnExit) {
         process.on('beforeExit', stopProcess);
         for (const signal of cleanupSignals) {
-          process.on(signal, stopProcess);
+          const handleSignal = (): void => {
+            stopProcess();
+            process.removeListener('beforeExit', stopProcess);
+            for (const [registeredSignal, handler] of signalHandlers) {
+              process.removeListener(registeredSignal, handler);
+            }
+            signalHandlers.clear();
+            process.kill(process.pid, signal);
+          };
+          signalHandlers.set(signal, handleSignal);
+          process.on(signal, handleSignal);
         }
       }
 
       proc.on('error', (error) => {
         process.removeListener('beforeExit', stopProcess);
-        for (const signal of cleanupSignals) {
-          process.removeListener(signal, stopProcess);
+        for (const [signal, handler] of signalHandlers) {
+          process.removeListener(signal, handler);
         }
+        signalHandlers.clear();
         proc.removeAllListeners('close');
         reject(error);
       });
       proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
         process.removeListener('beforeExit', stopProcess);
-        for (const registeredSignal of cleanupSignals) {
-          process.removeListener(registeredSignal, stopProcess);
+        for (const [registeredSignal, handler] of signalHandlers) {
+          process.removeListener(registeredSignal, handler);
         }
+        signalHandlers.clear();
         if (proc.pid === undefined) {
           reject(new Error('Process has no pid.'));
         } else {
