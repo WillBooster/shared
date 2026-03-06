@@ -118,16 +118,19 @@ export async function spawnAsync(
       const cleanupSignals: NodeJS.Signals[] =
         process.platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGQUIT'];
       const signalHandlers = new Map<NodeJS.Signals, () => void>();
+      const removeKillOnExitHandlers = (): void => {
+        process.removeListener('beforeExit', stopProcess);
+        for (const [signal, handler] of signalHandlers) {
+          process.removeListener(signal, handler);
+        }
+        signalHandlers.clear();
+      };
       if (options?.killOnExit) {
         process.on('beforeExit', stopProcess);
         for (const signal of cleanupSignals) {
           const handleSignal = (): void => {
             stopProcess();
-            process.removeListener('beforeExit', stopProcess);
-            for (const [registeredSignal, handler] of signalHandlers) {
-              process.removeListener(registeredSignal, handler);
-            }
-            signalHandlers.clear();
+            removeKillOnExitHandlers();
             if (process.listenerCount(signal) === 0) {
               process.kill(process.pid, signal);
             }
@@ -138,20 +141,12 @@ export async function spawnAsync(
       }
 
       proc.on('error', (error) => {
-        process.removeListener('beforeExit', stopProcess);
-        for (const [signal, handler] of signalHandlers) {
-          process.removeListener(signal, handler);
-        }
-        signalHandlers.clear();
+        removeKillOnExitHandlers();
         proc.removeAllListeners('close');
         reject(error);
       });
       proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-        process.removeListener('beforeExit', stopProcess);
-        for (const [registeredSignal, handler] of signalHandlers) {
-          process.removeListener(registeredSignal, handler);
-        }
-        signalHandlers.clear();
+        removeKillOnExitHandlers();
         if (proc.pid === undefined) {
           reject(new Error('Process has no pid.'));
         } else {
