@@ -97,6 +97,7 @@ describe('prismaScripts.reset', () => {
     const introspectedSchema = child_process.execSync(`${PRISMA_TEST_COMMAND} db pull --print --url "file:${dbPath}"`, {
       cwd: dirPath,
       encoding: 'utf8',
+      env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
       stdio: ['ignore', 'pipe', 'inherit'],
     });
     expect(introspectedSchema).toContain('model t');
