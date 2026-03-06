@@ -95,7 +95,7 @@ describe('prismaScripts.reset', () => {
     expect(fs.existsSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'))).toBe(false);
 
     const introspectedSchema = child_process.execSync(
-      `DATABASE_URL="file:${dbPath}" ${PRISMA_TEST_COMMAND} db pull --print --url "file:${dbPath}"`,
+      `${PRISMA_TEST_COMMAND} db pull --print --url "file:${dbPath}"`,
       { cwd: dirPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }
     );
     expect(introspectedSchema).toContain('model t');
