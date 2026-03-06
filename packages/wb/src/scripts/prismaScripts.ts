@@ -19,7 +19,7 @@ const POSSIBLE_PRISMA_PATHS = [
 class PrismaScripts {
   cleanUpLitestream(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
-    const cleanUpCommand = buildWalCheckpointAndRemoveDbCommand(`${dirPath}/prod.sqlite3`);
+    const cleanUpCommand = buildWalCheckpointAndRemoveLitestreamArtifactsCommand(`${dirPath}/prod.sqlite3`);
     // Cleanup existing artifacts to avoid issues with Litestream replication.
     // Note that don't merge multiple rm commands into one, because if one fails, the subsequent ones won't run.
     return `${cleanUpCommand}; rm -Rf ${dirPath}/.prod.sqlite3* || true`;
@@ -110,6 +110,10 @@ function getPrismaBaseDir(project: Project): string | undefined {
 
 function buildWalCheckpointAndRemoveDbCommand(dbPath: string): string {
   return `if [ -f "${dbPath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${dbPath}"; fi && rm -f "${dbPath}" "${dbPath}-wal" "${dbPath}-shm"`;
+}
+
+function buildWalCheckpointAndRemoveLitestreamArtifactsCommand(dbPath: string): string {
+  return `if [ -f "${dbPath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${dbPath}"; fi && rm -f "${dbPath}".* "${dbPath}"-*`;
 }
 
 export function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
