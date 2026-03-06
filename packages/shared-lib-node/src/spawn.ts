@@ -115,20 +115,38 @@ export async function spawnAsync(
           }
         }
       };
+      const cleanupSignals: NodeJS.Signals[] =
+        process.platform === 'win32' ? ['SIGINT', 'SIGTERM'] : ['SIGINT', 'SIGTERM', 'SIGQUIT'];
+      const signalHandlers = new Map<NodeJS.Signals, () => void>();
+      const removeKillOnExitHandlers = (): void => {
+        process.removeListener('beforeExit', stopProcess);
+        for (const [signal, handler] of signalHandlers) {
+          process.removeListener(signal, handler);
+        }
+        signalHandlers.clear();
+      };
       if (options?.killOnExit) {
         process.on('beforeExit', stopProcess);
-        process.on('SIGINT', stopProcess);
+        for (const signal of cleanupSignals) {
+          const handleSignal = (): void => {
+            stopProcess();
+            removeKillOnExitHandlers();
+            if (process.listenerCount(signal) === 0) {
+              process.kill(process.pid, signal);
+            }
+          };
+          signalHandlers.set(signal, handleSignal);
+          process.on(signal, handleSignal);
+        }
       }
 
       proc.on('error', (error) => {
-        process.removeListener('beforeExit', stopProcess);
-        process.removeListener('SIGINT', stopProcess);
+        removeKillOnExitHandlers();
         proc.removeAllListeners('close');
         reject(error);
       });
       proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-        process.removeListener('beforeExit', stopProcess);
-        process.removeListener('SIGINT', stopProcess);
+        removeKillOnExitHandlers();
         if (proc.pid === undefined) {
           reject(new Error('Process has no pid.'));
         } else {
