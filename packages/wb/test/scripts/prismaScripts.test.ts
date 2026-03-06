@@ -2,7 +2,6 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -65,7 +64,7 @@ describe('prismaScripts.reset', () => {
     const dirPath = createProjectDir();
     const dbPath = path.resolve(dirPath, 'prisma', 'mount', 'prod.sqlite3');
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    const db = createDatabaseWithWal(dbPath);
+    createDatabaseWithWal(dbPath);
     fs.writeFileSync(`${dbPath}.tmp`, 'tmp');
     fs.writeFileSync(`${dbPath}-litestream`, 'tmp');
     fs.writeFileSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'), 'tmp');
@@ -93,9 +92,11 @@ describe('prismaScripts.reset', () => {
     expect(fs.existsSync(`${dbPath}-litestream`)).toBe(false);
     expect(fs.existsSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'))).toBe(false);
 
-    const result = db.prepare('SELECT COUNT(*) AS count FROM t').get() as { count: number } | undefined;
-    expect(result?.count).toBe(1);
-    db.close();
+    const introspectedSchema = child_process.execSync(
+      `DATABASE_URL="file:${dbPath}" npx --yes prisma@6.10.1 db pull --print --url "file:${dbPath}"`,
+      { cwd: dirPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }
+    );
+    expect(introspectedSchema).toContain('model t');
   }, 120_000);
 
   it('uses wal checkpoint in deployForce cleanup command', () => {
@@ -133,10 +134,11 @@ function createProjectDir(): string {
   return dirPath;
 }
 
-function createDatabaseWithWal(dbPath: string): DatabaseSync {
-  const db = new DatabaseSync(dbPath);
-  db.exec('PRAGMA journal_mode=WAL;');
-  db.exec('CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY);');
-  db.exec('INSERT INTO t DEFAULT VALUES;');
-  return db;
+function createDatabaseWithWal(dbPath: string): void {
+  child_process.execSync(
+    `printf '%s' 'PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;' | npx --yes prisma@6.10.1 db execute --stdin --url "file:${dbPath}"`,
+    { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }
+  );
+  fs.writeFileSync(`${dbPath}-wal`, 'wal');
+  fs.writeFileSync(`${dbPath}-shm`, 'shm');
 }
