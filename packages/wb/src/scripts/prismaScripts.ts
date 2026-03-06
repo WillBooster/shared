@@ -109,7 +109,7 @@ function getPrismaBaseDir(project: Project): string | undefined {
 }
 
 function buildRemoveSqliteDbCommand(dbPath: string): string {
-  return `rm -f "${dbPath}" "${dbPath}-wal" "${dbPath}-shm"`;
+  return `rm -Rf "${dbPath}"*`;
 }
 
 function buildWalCheckpointAndRemoveSqliteSidecarFilesCommand(dbPath: string): string {

@@ -108,7 +108,7 @@ describe('prismaScripts.reset', () => {
     const command = prismaScripts.deployForce(project);
     expect(command).not.toContain('wal_checkpoint(TRUNCATE)');
     expect(command).not.toContain('/prod.sqlite3*;');
-    expect(command).toContain('rm -f "prisma/mount/prod.sqlite3" "prisma/mount/prod.sqlite3-wal" "prisma/mount/prod.sqlite3-shm"');
+    expect(command).toContain('rm -Rf "prisma/mount/prod.sqlite3"*');
   });
 });
 
