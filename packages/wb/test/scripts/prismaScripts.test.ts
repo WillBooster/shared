@@ -2,6 +2,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -64,7 +65,10 @@ describe('prismaScripts.reset', () => {
     const dirPath = createProjectDir();
     const dbPath = path.resolve(dirPath, 'prisma', 'mount', 'prod.sqlite3');
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-    createDatabaseWithWal(dbPath);
+    const db = createDatabaseWithWal(dbPath);
+    fs.writeFileSync(`${dbPath}.tmp`, 'tmp');
+    fs.writeFileSync(`${dbPath}-litestream`, 'tmp');
+    fs.writeFileSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'), 'tmp');
 
     const project = {
       dirPath,
@@ -75,28 +79,23 @@ describe('prismaScripts.reset', () => {
 
     expect(command).toContain('wal_checkpoint(TRUNCATE)');
     expect(command).not.toContain('/prod.sqlite3*;');
-    const checkpointOnlyCommand = extractCheckpointOnlyCommand(command, 'prisma/mount/prod.sqlite3');
-    child_process.execSync(checkpointOnlyCommand.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
-      cwd: dirPath,
-      stdio: 'inherit',
-    });
-    // If WAL contents are checkpointed into the main DB, deleting WAL should not lose inserted rows.
-    child_process.execSync(`rm -f "${dbPath}-wal" "${dbPath}-shm"`, { cwd: dirPath, stdio: 'inherit' });
-    const rowCount = child_process
-      .execSync(`sqlite3 "${dbPath}" "SELECT COUNT(*) FROM t;"`, {
-        cwd: dirPath,
-        encoding: 'utf8',
-      })
-      .trim();
-    expect(rowCount).toBe('1');
+    expect(command).toContain('rm -f "prisma/mount/prod.sqlite3".* "prisma/mount/prod.sqlite3"-*');
 
     child_process.execSync(command.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
       cwd: dirPath,
       stdio: 'inherit',
     });
-    expect(fs.existsSync(dbPath)).toBe(false);
+
+    expect(fs.existsSync(dbPath)).toBe(true);
     expect(fs.existsSync(`${dbPath}-wal`)).toBe(false);
     expect(fs.existsSync(`${dbPath}-shm`)).toBe(false);
+    expect(fs.existsSync(`${dbPath}.tmp`)).toBe(false);
+    expect(fs.existsSync(`${dbPath}-litestream`)).toBe(false);
+    expect(fs.existsSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'))).toBe(false);
+
+    const result = db.prepare('SELECT COUNT(*) AS count FROM t').get() as { count: number } | undefined;
+    expect(result?.count).toBe(1);
+    db.close();
   }, 120_000);
 
   it('uses wal checkpoint in deployForce cleanup command', () => {
@@ -107,8 +106,9 @@ describe('prismaScripts.reset', () => {
     } as unknown as Project;
 
     const command = prismaScripts.deployForce(project);
-    expect(command).toContain('wal_checkpoint(TRUNCATE)');
+    expect(command).not.toContain('wal_checkpoint(TRUNCATE)');
     expect(command).not.toContain('/prod.sqlite3*;');
+    expect(command).toContain('rm -Rf "prisma/mount/prod.sqlite3"*');
   });
 });
 
@@ -133,22 +133,10 @@ function createProjectDir(): string {
   return dirPath;
 }
 
-function createDatabaseWithWal(dbPath: string): void {
-  const sqlite3Path = child_process.execSync('which sqlite3', { encoding: 'utf8' }).trim();
-  const sql = [
-    '.dbconfig no_ckpt_on_close on',
-    'PRAGMA journal_mode=WAL;',
-    'CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY);',
-    'INSERT INTO t DEFAULT VALUES;',
-  ].join('\n');
-  child_process.execSync(`${sqlite3Path} "${dbPath}" <<'SQL'\n${sql}\nSQL`, { stdio: 'inherit' });
-}
-
-function extractCheckpointOnlyCommand(command: string, dbRelativePath: string): string {
-  const marker = `&& rm -f "${dbRelativePath}"`;
-  const markerIndex = command.indexOf(marker);
-  if (markerIndex === -1) {
-    throw new Error(`Failed to find marker in command: ${marker}`);
-  }
-  return command.slice(0, markerIndex).trim();
+function createDatabaseWithWal(dbPath: string): DatabaseSync {
+  const db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode=WAL;');
+  db.exec('CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY);');
+  db.exec('INSERT INTO t DEFAULT VALUES;');
+  return db;
 }
