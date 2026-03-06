@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -23,7 +24,7 @@ describe('spawnAsync killOnExit with SIGTERM', () => {
 
   it('kills child process on parent SIGTERM when killOnExit is enabled', async () => {
     const fixturePath = path.resolve('test-fixtures/spawnAsyncKillOnExitHarness.mjs');
-    const pidFilePath = path.join(os.tmpdir(), `spawn-kill-on-exit-${process.pid}-${Date.now()}.pid`);
+    const pidFilePath = path.join(os.tmpdir(), `spawn-kill-on-exit-${randomUUID()}.pid`);
     try {
       fs.rmSync(pidFilePath, { force: true });
       const harness = spawn(process.execPath, [fixturePath, pidFilePath], {
