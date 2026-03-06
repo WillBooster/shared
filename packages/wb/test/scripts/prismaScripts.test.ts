@@ -94,10 +94,11 @@ describe('prismaScripts.reset', () => {
     expect(fs.existsSync(`${dbPath}-litestream`)).toBe(false);
     expect(fs.existsSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'))).toBe(false);
 
-    const introspectedSchema = child_process.execSync(
-      `${PRISMA_TEST_COMMAND} db pull --print --url "file:${dbPath}"`,
-      { cwd: dirPath, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }
-    );
+    const introspectedSchema = child_process.execSync(`${PRISMA_TEST_COMMAND} db pull --print --url "file:${dbPath}"`, {
+      cwd: dirPath,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
     expect(introspectedSchema).toContain('model t');
   }, 120_000);
 
