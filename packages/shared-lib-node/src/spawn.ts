@@ -128,7 +128,9 @@ export async function spawnAsync(
               process.removeListener(registeredSignal, handler);
             }
             signalHandlers.clear();
-            process.kill(process.pid, signal);
+            if (process.listenerCount(signal) === 0) {
+              process.kill(process.pid, signal);
+            }
           };
           signalHandlers.set(signal, handleSignal);
           process.on(signal, handleSignal);

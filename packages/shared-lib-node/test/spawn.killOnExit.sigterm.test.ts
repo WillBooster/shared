@@ -87,7 +87,7 @@ describe('spawnAsync killOnExit with SIGTERM', () => {
     }
   });
 
-  it('re-sends received signal to self after killOnExit cleanup', async () => {
+  it('re-sends received signal to self after killOnExit cleanup when no other listeners remain', async () => {
     const onSpy = vi.spyOn(process, 'on');
     const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
     try {
@@ -108,6 +108,35 @@ describe('spawnAsync killOnExit with SIGTERM', () => {
 
       await promise;
     } finally {
+      killSpy.mockRestore();
+      onSpy.mockRestore();
+    }
+  });
+
+  it('does not re-send received signal to self when another listener remains', async () => {
+    const appSignalHandler = vi.fn();
+    const onSpy = vi.spyOn(process, 'on');
+    const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
+    process.on('SIGTERM', appSignalHandler);
+    try {
+      const command = process.platform === 'win32' ? 'node' : 'sleep';
+      const args = process.platform === 'win32' ? ['-e', 'setTimeout(() => {}, 20)'] : ['0.02'];
+      const promise = spawnAsync(command, args, { killOnExit: true });
+
+      const signalRegistration = [...onSpy.mock.calls].toReversed().find(([event]) => event === 'SIGTERM');
+      if (!signalRegistration) {
+        throw new Error('SIGTERM handler is not registered');
+      }
+      const signalHandler = signalRegistration[1];
+      if (typeof signalHandler !== 'function') {
+        throw new TypeError('SIGTERM handler is not a function');
+      }
+      signalHandler();
+      expect(killSpy).not.toHaveBeenCalledWith(process.pid, 'SIGTERM');
+
+      await promise;
+    } finally {
+      process.removeListener('SIGTERM', appSignalHandler);
       killSpy.mockRestore();
       onSpy.mockRestore();
     }
