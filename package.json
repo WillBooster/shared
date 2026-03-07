@@ -33,7 +33,7 @@
     "@anolilab/multi-semantic-release": "4.1.1",
     "@types/eslint": "9.6.1",
     "@willbooster/prettier-config": "10.2.4",
-    "conventional-changelog-conventionalcommits": "9.1.0",
+    "conventional-changelog-conventionalcommits": "9.2.0",
     "eslint": "9.39.2",
     "husky": "9.1.7",
     "lint-staged": "16.3.1",

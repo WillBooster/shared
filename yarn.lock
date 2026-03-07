@@ -5781,7 +5781,7 @@ __metadata:
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:63.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
-    globals: "npm:17.3.0"
+    globals: "npm:17.4.0"
     lint-staged: "npm:16.3.1"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.8.1"
@@ -5811,7 +5811,7 @@ __metadata:
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:63.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
-    globals: "npm:17.3.0"
+    globals: "npm:17.4.0"
     lint-staged: "npm:16.3.1"
     micromatch: "npm:4.0.8"
     next: "npm:16.1.6"
@@ -5859,7 +5859,7 @@ __metadata:
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:63.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
-    globals: "npm:17.3.0"
+    globals: "npm:17.4.0"
     lint-staged: "npm:16.3.1"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.8.1"
@@ -5906,7 +5906,7 @@ __metadata:
     eslint-plugin-storybook: "npm:10.2.13"
     eslint-plugin-unicorn: "npm:63.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
-    globals: "npm:17.3.0"
+    globals: "npm:17.4.0"
     lint-staged: "npm:16.3.1"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.8.1"
@@ -5941,7 +5941,7 @@ __metadata:
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:63.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
-    globals: "npm:17.3.0"
+    globals: "npm:17.4.0"
     lint-staged: "npm:16.3.1"
     micromatch: "npm:4.0.8"
     prettier: "npm:3.8.1"
@@ -5978,7 +5978,7 @@ __metadata:
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:63.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
-    globals: "npm:17.3.0"
+    globals: "npm:17.4.0"
     globby: "npm:16.1.1"
     kill-port: "npm:2.0.1"
     lint-staged: "npm:16.3.1"
@@ -8222,12 +8222,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"conventional-changelog-conventionalcommits@npm:9.1.0":
-  version: 9.1.0
-  resolution: "conventional-changelog-conventionalcommits@npm:9.1.0"
+"conventional-changelog-conventionalcommits@npm:9.2.0":
+  version: 9.2.0
+  resolution: "conventional-changelog-conventionalcommits@npm:9.2.0"
   dependencies:
     compare-func: "npm:^2.0.0"
-  checksum: 10c0/b1dfbb8ce5983bb80837c35f089fb0f9603a1b067f34be680f88fde20871792e461e29d119d468bc293f38a1ca916c1c40a841f8c049a0a1efaa40582f4fecc9
+  checksum: 10c0/1ea8f1b9a9044680c3faf9d7a963a95d65bcec45815426ebdd00f1bd2bfa26aa26c454ebaa3fb67f3dd2c1b69ad48f25f20dd7837b535210576d3e18d5e8f3a7
   languageName: node
   linkType: hard
 
@@ -11141,10 +11141,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"globals@npm:17.3.0":
-  version: 17.3.0
-  resolution: "globals@npm:17.3.0"
-  checksum: 10c0/7f21443ecaa60c6e9ff56d9fb6f10a9b5f9514e7f22e5392f715472bb220ce31c865ebf414a32695150e733fb3e1013e6322dbce70fddd1e066f372b8d55a4b8
+"globals@npm:17.4.0":
+  version: 17.4.0
+  resolution: "globals@npm:17.4.0"
+  checksum: 10c0/2be9e8c2b9035836f13d420b22f0247a328db82967d3bebfc01126d888ed609305f06c05895914e969653af5c6ba35fd7a0920f3e6c869afa60666c810630feb
   languageName: node
   linkType: hard
 
@@ -19999,7 +19999,7 @@ __metadata:
     "@anolilab/multi-semantic-release": "npm:4.1.1"
     "@types/eslint": "npm:9.6.1"
     "@willbooster/prettier-config": "npm:10.2.4"
-    conventional-changelog-conventionalcommits: "npm:9.1.0"
+    conventional-changelog-conventionalcommits: "npm:9.2.0"
     eslint: "npm:9.39.2"
     husky: "npm:9.1.7"
     lint-staged: "npm:16.3.1"
