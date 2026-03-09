@@ -121,7 +121,9 @@ export const lintCommand: CommandModule<
         const lintCommand = buildLintCommand(project, argv, lintFilePaths);
         if (!lintCommand) continue;
 
-        lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, { forceColor: true }));
+        lintPromises.push(
+          runWithSpawnInParallel(lintCommand, project, argv, { exitIfFailed: false, forceColor: true })
+        );
       }
     } else {
       for (const project of projects.descendants) {
@@ -130,12 +132,14 @@ export const lintCommand: CommandModule<
         const lintCommand = buildLintCommand(project, argv);
         if (!lintCommand) continue;
 
-        lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, { forceColor: true }));
+        lintPromises.push(
+          runWithSpawnInParallel(lintCommand, project, argv, { exitIfFailed: false, forceColor: true })
+        );
       }
     }
-    await Promise.all(lintPromises);
+    const lintExitCodes = await Promise.all(lintPromises);
 
-    if (missingLintToolForExplicitFiles) {
+    if (missingLintToolForExplicitFiles || lintExitCodes.some((exitCode) => exitCode !== 0)) {
       process.exit(1);
     }
 
