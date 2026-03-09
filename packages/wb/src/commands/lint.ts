@@ -62,6 +62,10 @@ export const lintCommand: CommandModule<
       console.error(chalk.red('This command is only available on Bun.'));
       process.exit(1);
     }
+    if (process.platform === 'win32') {
+      console.error(chalk.red('This command is not supported on Windows.'));
+      process.exit(1);
+    }
 
     const projects = await findDescendantProjects(argv, false);
     if (!projects) {
@@ -184,14 +188,16 @@ export function buildLintCommand(
   files?: string[]
 ): string | undefined {
   if (project.preferredLinter === 'biome') {
-    const biomeArgs =
-      argv.fix && argv.format
-        ? ['check', '--fix']
-        : argv.fix
-          ? ['lint', '--fix']
-          : argv.format
-            ? ['format', '--fix']
-            : ['lint'];
+    let biomeArgs: string[];
+    if (argv.fix && argv.format) {
+      biomeArgs = ['check', '--fix'];
+    } else if (argv.fix) {
+      biomeArgs = ['lint', '--fix'];
+    } else if (argv.format) {
+      biomeArgs = ['format', '--fix'];
+    } else {
+      biomeArgs = ['lint'];
+    }
     return buildShellCommand([
       'bun',
       '--bun',
