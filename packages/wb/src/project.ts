@@ -196,16 +196,16 @@ export class Project {
   }
 
   private hasDependency(packageName: string): boolean {
-    return [this.packageJson, this.rootPackageJson].some((packageJson) => {
-      if (!packageJson) return false;
-
-      return !!(
-        packageJson.dependencies?.[packageName] ||
-        packageJson.devDependencies?.[packageName] ||
-        packageJson.optionalDependencies?.[packageName] ||
-        packageJson.peerDependencies?.[packageName]
+    const hasDependencyInPackageJson = (packageJson: PackageJson | undefined): boolean =>
+      !!(
+        packageJson &&
+        (packageJson.dependencies?.[packageName] ||
+          packageJson.devDependencies?.[packageName] ||
+          packageJson.optionalDependencies?.[packageName] ||
+          packageJson.peerDependencies?.[packageName])
       );
-    });
+
+    return hasDependencyInPackageJson(this.packageJson) || hasDependencyInPackageJson(this.rootPackageJson);
   }
 
   @memoizeOne
