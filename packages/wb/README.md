@@ -2,6 +2,10 @@
 
 `wb` offers a collection of reusable npm scripts, designed primarily for WillBooster Inc. but with potential utility for other projects as well.
 
+## Supported Platforms
+
+`wb` does not support Windows. Use it on macOS, Linux, or another POSIX-compatible environment.
+
 ## Usage
 
 ```
