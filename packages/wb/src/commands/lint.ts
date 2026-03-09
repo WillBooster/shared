@@ -207,9 +207,16 @@ export function buildLintCommand(
 }
 
 function findOwningProject(projects: Project[], filePath: string): Project | undefined {
-  return projects
-    .filter((project) => filePath === project.dirPath || filePath.startsWith(`${project.dirPath}/`))
-    .toSorted((a, b) => b.dirPath.length - a.dirPath.length)[0];
+  let owningProject: Project | undefined;
+  for (const project of projects) {
+    if (
+      (filePath === project.dirPath || filePath.startsWith(`${project.dirPath}/`)) &&
+      (!owningProject || project.dirPath.length > owningProject.dirPath.length)
+    ) {
+      owningProject = project;
+    }
+  }
+  return owningProject;
 }
 
 function isPotentialLintTarget(extension: string): boolean {

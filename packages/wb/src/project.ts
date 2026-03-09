@@ -214,7 +214,8 @@ export class Project {
 
     try {
       return JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8')) as PackageJson;
-    } catch {
+    } catch (error) {
+      console.error(`[wb] Failed to read or parse ${path.join(this.rootDirPath, 'package.json')}`, error);
       return;
     }
   }
