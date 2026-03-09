@@ -74,8 +74,8 @@ export const lintCommand: CommandModule<
     const prettierFilePaths: string[] = [];
     const packageJsonFilePaths: string[] = [];
     let missingLintToolForExplicitFiles = false;
-    let prettierArgsText: string;
-    let sortPackageJsonArgsText: string;
+    let prettierArgs: string[];
+    let sortPackageJsonArgs: string[];
     if (files.length > 0) {
       for (const file of files) {
         const filePath = path.resolve(String(file));
@@ -108,11 +108,11 @@ export const lintCommand: CommandModule<
           missingLintToolForExplicitFiles = true;
         }
       }
-      prettierArgsText = prettierFilePaths.map((f) => `"${f}"`).join(' ');
-      sortPackageJsonArgsText = packageJsonFilePaths.map((f) => `"${f}"`).join(' ');
+      prettierArgs = prettierFilePaths;
+      sortPackageJsonArgs = packageJsonFilePaths;
     } else {
-      prettierArgsText = `"**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}" "!**/test{-,/}fixtures/**"`;
-      sortPackageJsonArgsText = projects.descendants.map((p) => `"${p.packageJsonPath}"`).join(' ');
+      prettierArgs = [`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, '!**/test{-,/}fixtures/**'];
+      sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
     }
 
     const lintPromises: Promise<number>[] = [];
@@ -140,18 +140,32 @@ export const lintCommand: CommandModule<
     }
 
     if (argv.format) {
-      if (prettierArgsText) {
+      if (prettierArgs.length > 0) {
         await runWithSpawnInParallel(
-          `bun --bun prettier --cache --color --no-error-on-unmatched-pattern --write ${prettierArgsText}`,
+          buildShellCommand([
+            'bun',
+            '--bun',
+            'prettier',
+            '--cache',
+            '--color',
+            '--no-error-on-unmatched-pattern',
+            '--write',
+            ...prettierArgs,
+          ]),
           projects.self,
           argv,
           { forceColor: true }
         );
       }
-      if (sortPackageJsonArgsText) {
-        await runWithSpawnInParallel(`bun --bun sort-package-json ${sortPackageJsonArgsText}`, projects.self, argv, {
-          forceColor: true,
-        });
+      if (sortPackageJsonArgs.length > 0) {
+        await runWithSpawnInParallel(
+          buildShellCommand(['bun', '--bun', 'sort-package-json', ...sortPackageJsonArgs]),
+          projects.self,
+          argv,
+          {
+            forceColor: true,
+          }
+        );
       }
     }
   },
@@ -165,15 +179,29 @@ export function buildLintCommand(
   >,
   files?: string[]
 ): string | undefined {
-  const argsText =
-    files?.map((filePath) => `"${filePath}"`).join(' ') || (project.preferredLinter === 'eslint' ? '.' : '');
   if (project.preferredLinter === 'biome') {
     const biomeCommand =
       argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : argv.format ? 'format --fix' : 'lint';
-    return `bun --bun biome ${biomeCommand} --colors=force --no-errors-on-unmatched --files-ignore-unknown=true ${argsText}`.trim();
+    return buildShellCommand([
+      'bun',
+      '--bun',
+      'biome',
+      ...biomeCommand.split(' '),
+      '--colors=force',
+      '--no-errors-on-unmatched',
+      '--files-ignore-unknown=true',
+      ...(files ?? []),
+    ]);
   }
   if (project.preferredLinter === 'eslint') {
-    return `bun --bun eslint --color ${argv.fix || argv.format ? '--fix ' : ''}${argsText}`.trim();
+    return buildShellCommand([
+      'bun',
+      '--bun',
+      'eslint',
+      '--color',
+      ...(argv.fix || argv.format ? ['--fix'] : []),
+      ...(files ?? ['.']),
+    ]);
   }
   return;
 }
@@ -192,4 +220,12 @@ function supportsLintingExtension(project: Pick<Project, 'preferredLinter'>, ext
   if (project.preferredLinter === 'biome') return biomeExtensions.has(extension);
   if (project.preferredLinter === 'eslint') return eslintExtensions.has(extension);
   return false;
+}
+
+function buildShellCommand(args: string[]): string {
+  return args.map((arg) => shellEscapeArgument(arg)).join(' ');
+}
+
+function shellEscapeArgument(arg: string): string {
+  return /^[\w./:=,@%+-]+$/u.test(arg) ? arg : `'${arg.replaceAll("'", `'"'"'`)}'`;
 }

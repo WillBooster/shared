@@ -212,7 +212,11 @@ export class Project {
   private get rootPackageJson(): PackageJson | undefined {
     if (this.rootDirPath === this.dirPath) return this.packageJson;
 
-    return JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8')) as PackageJson;
+    try {
+      return JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8')) as PackageJson;
+    } catch {
+      return;
+    }
   }
 }
 
