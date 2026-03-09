@@ -3,6 +3,7 @@ import path from 'node:path';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
+import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
@@ -27,6 +28,7 @@ const _argumentsBuilder = {
 } as const;
 
 const biomeExtensions = new Set(['cjs', 'cts', 'js', 'json', 'jsonc', 'jsx', 'mjs', 'mts', 'ts', 'tsx']);
+const eslintExtensions = new Set(['cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'ts', 'tsx']);
 const prettierExtensions = new Set([
   'cjs',
   'cts',
@@ -68,13 +70,13 @@ export const lintCommand: CommandModule<
     }
 
     const files = argv.files ?? [];
-    let biomeArgsText: string;
+    const lintFilePathsByProject = new Map<Project, string[]>();
+    const prettierFilePaths: string[] = [];
+    const packageJsonFilePaths: string[] = [];
+    let missingLintToolForExplicitFiles = false;
     let prettierArgsText: string;
     let sortPackageJsonArgsText: string;
     if (files.length > 0) {
-      const filePathsToBeCheckedByBiome: string[] = [];
-      const filePathsToBeFormattedByPrettier: string[] = [];
-      const packageJsonFilePaths: string[] = [];
       for (const file of files) {
         const filePath = path.resolve(String(file));
         if (
@@ -89,35 +91,57 @@ export const lintCommand: CommandModule<
         const extension = path.extname(filePath).slice(1);
         if (filePath.endsWith('/package.json')) {
           packageJsonFilePaths.push(filePath);
-        } else if (biomeExtensions.has(extension)) {
-          filePathsToBeCheckedByBiome.push(filePath);
+          continue;
+        }
+
+        const project = findOwningProject(projects.descendants, filePath);
+        if (!project) continue;
+
+        if (supportsLintingExtension(project, extension)) {
+          const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
+          lintFilePaths.push(filePath);
+          lintFilePathsByProject.set(project, lintFilePaths);
         } else if (prettierExtensions.has(extension)) {
-          filePathsToBeFormattedByPrettier.push(filePath);
+          prettierFilePaths.push(filePath);
+        } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
+          console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
+          missingLintToolForExplicitFiles = true;
         }
       }
-      biomeArgsText = filePathsToBeCheckedByBiome.map((f) => `"${f}"`).join(' ');
-      prettierArgsText = filePathsToBeFormattedByPrettier.map((f) => `"${f}"`).join(' ');
+      prettierArgsText = prettierFilePaths.map((f) => `"${f}"`).join(' ');
       sortPackageJsonArgsText = packageJsonFilePaths.map((f) => `"${f}"`).join(' ');
     } else {
-      biomeArgsText = '';
       prettierArgsText = `"**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}" "!**/test{-,/}fixtures/**"`;
       sortPackageJsonArgsText = projects.descendants.map((p) => `"${p.packageJsonPath}"`).join(' ');
     }
 
-    const biomeCommand =
-      argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : argv.format ? 'format --fix' : 'lint';
-    let biomePromise: Promise<number> | undefined;
-    if (biomeArgsText || files.length === 0) {
-      biomePromise = runWithSpawnInParallel(
-        `bun --bun biome ${biomeCommand} --colors=force --no-errors-on-unmatched --files-ignore-unknown=true ${biomeArgsText}`,
-        projects.self,
-        argv,
-        { forceColor: true }
-      );
+    const lintPromises: Promise<number>[] = [];
+    if (files.length > 0) {
+      for (const [project, lintFilePaths] of lintFilePathsByProject) {
+        const lintCommand = buildLintCommand(project, argv, lintFilePaths);
+        if (!lintCommand) continue;
+
+        lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, { forceColor: true }));
+      }
+    } else {
+      for (const project of projects.descendants) {
+        if (project.packageJson.workspaces && !project.hasSourceCode) continue;
+
+        const lintCommand = buildLintCommand(project, argv);
+        if (!lintCommand) continue;
+
+        lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, { forceColor: true }));
+      }
     }
+    await Promise.all(lintPromises);
+
+    if (missingLintToolForExplicitFiles) {
+      process.exit(1);
+    }
+
     if (argv.format) {
       if (prettierArgsText) {
-        void runWithSpawnInParallel(
+        await runWithSpawnInParallel(
           `bun --bun prettier --cache --color --no-error-on-unmatched-pattern --write ${prettierArgsText}`,
           projects.self,
           argv,
@@ -125,11 +149,47 @@ export const lintCommand: CommandModule<
         );
       }
       if (sortPackageJsonArgsText) {
-        await biomePromise;
-        void runWithSpawnInParallel(`bun --bun sort-package-json ${sortPackageJsonArgsText}`, projects.self, argv, {
+        await runWithSpawnInParallel(`bun --bun sort-package-json ${sortPackageJsonArgsText}`, projects.self, argv, {
           forceColor: true,
         });
       }
     }
   },
 };
+
+export function buildLintCommand(
+  project: Pick<Project, 'preferredLinter'>,
+  argv: Pick<
+    InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
+    'fix' | 'format'
+  >,
+  files?: string[]
+): string | undefined {
+  const argsText =
+    files?.map((filePath) => `"${filePath}"`).join(' ') || (project.preferredLinter === 'eslint' ? '.' : '');
+  if (project.preferredLinter === 'biome') {
+    const biomeCommand =
+      argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : argv.format ? 'format --fix' : 'lint';
+    return `bun --bun biome ${biomeCommand} --colors=force --no-errors-on-unmatched --files-ignore-unknown=true ${argsText}`.trim();
+  }
+  if (project.preferredLinter === 'eslint') {
+    return `bun --bun eslint --color ${argv.fix || argv.format ? '--fix ' : ''}${argsText}`.trim();
+  }
+  return;
+}
+
+function findOwningProject(projects: Project[], filePath: string): Project | undefined {
+  return projects
+    .filter((project) => filePath === project.dirPath || filePath.startsWith(`${project.dirPath}/`))
+    .toSorted((a, b) => b.dirPath.length - a.dirPath.length)[0];
+}
+
+function isPotentialLintTarget(extension: string): boolean {
+  return biomeExtensions.has(extension) || eslintExtensions.has(extension);
+}
+
+function supportsLintingExtension(project: Pick<Project, 'preferredLinter'>, extension: string): boolean {
+  if (project.preferredLinter === 'biome') return biomeExtensions.has(extension);
+  if (project.preferredLinter === 'eslint') return eslintExtensions.has(extension);
+  return false;
+}
