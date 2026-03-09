@@ -158,6 +158,7 @@ export const lintCommand: CommandModule<
             '--color',
             '--no-error-on-unmatched-pattern',
             '--write',
+            '--',
             ...prettierArgs,
           ]),
           projects.self,
@@ -167,7 +168,7 @@ export const lintCommand: CommandModule<
       }
       if (sortPackageJsonArgs.length > 0) {
         await runWithSpawnInParallel(
-          buildShellCommand(['bun', '--bun', 'sort-package-json', ...sortPackageJsonArgs]),
+          buildShellCommand(['bun', '--bun', 'sort-package-json', '--', ...sortPackageJsonArgs]),
           projects.self,
           argv,
           {
@@ -206,6 +207,7 @@ export function buildLintCommand(
       '--colors=force',
       '--no-errors-on-unmatched',
       '--files-ignore-unknown=true',
+      ...(files?.length ? ['--'] : []),
       ...(files ?? []),
     ]);
   }
@@ -216,6 +218,7 @@ export function buildLintCommand(
       'eslint',
       '--color',
       ...(argv.fix || argv.format ? ['--fix'] : []),
+      '--',
       ...(files ?? ['.']),
     ]);
   }
