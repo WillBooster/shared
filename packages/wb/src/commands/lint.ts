@@ -180,13 +180,19 @@ export function buildLintCommand(
   files?: string[]
 ): string | undefined {
   if (project.preferredLinter === 'biome') {
-    const biomeCommand =
-      argv.fix && argv.format ? 'check --fix' : argv.fix ? 'lint --fix' : argv.format ? 'format --fix' : 'lint';
+    const biomeArgs =
+      argv.fix && argv.format
+        ? ['check', '--fix']
+        : argv.fix
+          ? ['lint', '--fix']
+          : argv.format
+            ? ['format', '--fix']
+            : ['lint'];
     return buildShellCommand([
       'bun',
       '--bun',
       'biome',
-      ...biomeCommand.split(' '),
+      ...biomeArgs,
       '--colors=force',
       '--no-errors-on-unmatched',
       '--files-ignore-unknown=true',
