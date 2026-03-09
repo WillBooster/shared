@@ -105,6 +105,9 @@ export const lintCommand: CommandModule<
           const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
           lintFilePaths.push(filePath);
           lintFilePathsByProject.set(project, lintFilePaths);
+          if (needsPrettier(project)) {
+            prettierFilePaths.push(filePath);
+          }
         } else if (prettierExtensions.has(extension)) {
           prettierFilePaths.push(filePath);
         } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
@@ -115,7 +118,7 @@ export const lintCommand: CommandModule<
       prettierArgs = prettierFilePaths;
       sortPackageJsonArgs = packageJsonFilePaths;
     } else {
-      prettierArgs = [`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, '!**/test{-,/}fixtures/**'];
+      prettierArgs = buildPrettierArgs(projects.self.dirPath, projects.descendants);
       sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
     }
 
@@ -219,6 +222,20 @@ export function buildLintCommand(
   return;
 }
 
+export function buildPrettierArgs(
+  selfDirPath: string,
+  projects: Pick<Project, 'dirPath' | 'preferredLinter'>[]
+): string[] {
+  const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, '!**/test{-,/}fixtures/**']);
+  for (const project of projects) {
+    if (!needsPrettier(project)) continue;
+
+    const projectPattern = path.join(project.dirPath, '**/{.*/,}*.{' + [...prettierExtensions].join(',') + '}');
+    args.add(path.relative(selfDirPath, projectPattern) || projectPattern);
+  }
+  return [...args];
+}
+
 function findOwningProject(projects: Project[], filePath: string): Project | undefined {
   let owningProject: Project | undefined;
   for (const project of projects) {
@@ -240,6 +257,10 @@ function supportsLintingExtension(project: Pick<Project, 'preferredLinter'>, ext
   if (project.preferredLinter === 'biome') return biomeExtensions.has(extension);
   if (project.preferredLinter === 'eslint') return eslintExtensions.has(extension);
   return false;
+}
+
+function needsPrettier(project: Pick<Project, 'preferredLinter'>): boolean {
+  return project.preferredLinter === 'eslint';
 }
 
 function buildShellCommand(args: string[]): string {

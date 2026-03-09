@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildLintCommand } from '../src/commands/lint.js';
+import { buildLintCommand, buildPrettierArgs } from '../src/commands/lint.js';
 
 describe('lint', () => {
   it('builds a biome command for biome projects', () => {
@@ -25,5 +25,18 @@ describe('lint', () => {
     expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: false }, ['/tmp/evil"file.ts'])).toBe(
       `bun --bun eslint --color '/tmp/evil"file.ts'`
     );
+  });
+
+  it('includes eslint project files in prettier args', () => {
+    expect(
+      buildPrettierArgs('/repo', [
+        { dirPath: '/repo/packages/eslint-app', preferredLinter: 'eslint' },
+        { dirPath: '/repo/packages/biome-app', preferredLinter: 'biome' },
+      ])
+    ).toEqual([
+      '**/{.*/,}*.{htm,html,md,scss,vue,yaml,yml}',
+      '!**/test{-,/}fixtures/**',
+      'packages/eslint-app/**/{.*/,}*.{cjs,cts,htm,html,js,json,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
+    ]);
   });
 });
