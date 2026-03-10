@@ -26,15 +26,39 @@ const _argumentsBuilder = {
   },
 } as const;
 
-const biomeExtensions = new Set(['cjs', 'cts', 'js', 'json', 'jsonc', 'jsx', 'mjs', 'mts', 'ts', 'tsx']);
-const eslintExtensions = new Set(['cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'ts', 'tsx']);
-const prettierExtensions = new Set([
+const biomeExtensions = new Set([
+  'astro',
   'cjs',
+  'css',
   'cts',
+  'gql',
   'htm',
   'html',
   'js',
   'json',
+  'json5',
+  'jsonc',
+  'jsx',
+  'mjs',
+  'mts',
+  'svelte',
+  'ts',
+  'tsx',
+  'vue',
+  'yaml',
+  'yml',
+]);
+const eslintExtensions = new Set(['cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'ts', 'tsx']);
+const prettierExtensions = new Set([
+  'cjs',
+  'css',
+  'cts',
+  'htm',
+  'html',
+  'java',
+  'js',
+  'json',
+  'json5',
   'jsonc',
   'jsx',
   'md',
