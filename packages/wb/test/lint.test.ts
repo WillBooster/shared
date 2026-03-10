@@ -34,9 +34,9 @@ describe('lint', () => {
         { dirPath: '/repo/packages/biome-app', preferredLinter: 'biome' },
       ])
     ).toEqual([
-      '**/{.*/,}*.{htm,html,md,scss,vue,yaml,yml}',
+      '**/{.*/,}*.{java,md,scss}',
       '!**/test{-,/}fixtures/**',
-      'packages/eslint-app/**/{.*/,}*.{cjs,cts,htm,html,js,json,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
+      'packages/eslint-app/**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
     ]);
   });
 });
