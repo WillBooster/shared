@@ -113,6 +113,23 @@ export class Project {
   }
 
   @memoizeOne
+  get hasBiome(): boolean {
+    return this.hasDependency('@biomejs/biome') || this.hasDependency('biome');
+  }
+
+  @memoizeOne
+  get hasEslint(): boolean {
+    return this.hasDependency('eslint');
+  }
+
+  @memoizeOne
+  get preferredLinter(): 'biome' | 'eslint' | undefined {
+    if (this.hasBiome) return 'biome';
+    if (this.hasEslint) return 'eslint';
+    return;
+  }
+
+  @memoizeOne
   get hasPlaywrightConfig(): boolean {
     try {
       return !!this.findFile('playwright.config.ts');
@@ -176,6 +193,31 @@ export class Project {
     }
     this.pathByName.set(fileName, filePath);
     return filePath;
+  }
+
+  private hasDependency(packageName: string): boolean {
+    const hasDependencyInPackageJson = (packageJson: PackageJson | undefined): boolean =>
+      !!(
+        packageJson &&
+        (packageJson.dependencies?.[packageName] ||
+          packageJson.devDependencies?.[packageName] ||
+          packageJson.optionalDependencies?.[packageName] ||
+          packageJson.peerDependencies?.[packageName])
+      );
+
+    return hasDependencyInPackageJson(this.packageJson) || hasDependencyInPackageJson(this.rootPackageJson);
+  }
+
+  @memoizeOne
+  private get rootPackageJson(): PackageJson | undefined {
+    if (this.rootDirPath === this.dirPath) return this.packageJson;
+
+    try {
+      return JSON.parse(fs.readFileSync(path.join(this.rootDirPath, 'package.json'), 'utf8')) as PackageJson;
+    } catch (error) {
+      console.error(`[wb] Failed to read or parse ${path.join(this.rootDirPath, 'package.json')}`, error);
+      return;
+    }
   }
 }
 

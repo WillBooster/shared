@@ -1,0 +1,42 @@
+import { describe, expect, it } from 'vitest';
+
+import { buildLintCommand, buildPrettierArgs } from '../src/commands/lint.js';
+
+describe('lint', () => {
+  it('builds a biome command for biome projects', () => {
+    expect(buildLintCommand({ preferredLinter: 'biome' }, { fix: true, format: true }, ['/tmp/example.ts'])).toBe(
+      'bun --bun biome check --fix --colors=force --no-errors-on-unmatched --files-ignore-unknown=true -- /tmp/example.ts'
+    );
+  });
+
+  it('builds an eslint command for eslint projects', () => {
+    expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: true }, ['/tmp/example.ts'])).toBe(
+      'bun --bun eslint --color --fix -- /tmp/example.ts'
+    );
+  });
+
+  it('uses the current directory when eslint runs without explicit files', () => {
+    expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: false })).toBe(
+      'bun --bun eslint --color -- .'
+    );
+  });
+
+  it('escapes shell-sensitive file paths', () => {
+    expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: false }, ['/tmp/evil"file.ts'])).toBe(
+      `bun --bun eslint --color -- '/tmp/evil"file.ts'`
+    );
+  });
+
+  it('includes eslint project files in prettier args', () => {
+    expect(
+      buildPrettierArgs('/repo', [
+        { dirPath: '/repo/packages/eslint-app', preferredLinter: 'eslint' },
+        { dirPath: '/repo/packages/biome-app', preferredLinter: 'biome' },
+      ])
+    ).toEqual([
+      '**/{.*/,}*.{htm,html,md,scss,vue,yaml,yml}',
+      '!**/test{-,/}fixtures/**',
+      'packages/eslint-app/**/{.*/,}*.{cjs,cts,htm,html,js,json,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
+    ]);
+  });
+});
