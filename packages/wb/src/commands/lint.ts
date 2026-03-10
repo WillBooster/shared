@@ -7,7 +7,6 @@ import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { isRunningOnBun } from '../utils/runtime.js';
 
 const builder = {
   fix: {
@@ -55,13 +54,9 @@ export const lintCommand: CommandModule<
   InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>
 > = {
   command: 'lint [files...]',
-  describe: 'Lint code on Bun',
+  describe: 'Lint code',
   builder,
   async handler(argv) {
-    if (!isRunningOnBun) {
-      console.error(chalk.red('This command is only available on Bun.'));
-      process.exit(1);
-    }
     if (process.platform === 'win32') {
       console.error(chalk.red('This command is not supported on Windows.'));
       process.exit(1);
@@ -151,8 +146,7 @@ export const lintCommand: CommandModule<
       if (prettierArgs.length > 0) {
         await runWithSpawnInParallel(
           buildShellCommand([
-            'bun',
-            '--bun',
+            'YARN',
             'prettier',
             '--cache',
             '--color',
@@ -168,7 +162,7 @@ export const lintCommand: CommandModule<
       }
       if (sortPackageJsonArgs.length > 0) {
         await runWithSpawnInParallel(
-          buildShellCommand(['bun', '--bun', 'sort-package-json', '--', ...sortPackageJsonArgs]),
+          buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
           projects.self,
           argv,
           {
@@ -200,8 +194,7 @@ export function buildLintCommand(
       biomeArgs = ['lint'];
     }
     return buildShellCommand([
-      'bun',
-      '--bun',
+      'BUN',
       'biome',
       ...biomeArgs,
       '--colors=force',
@@ -213,8 +206,7 @@ export function buildLintCommand(
   }
   if (project.preferredLinter === 'eslint') {
     return buildShellCommand([
-      'bun',
-      '--bun',
+      'YARN',
       'eslint',
       '--color',
       ...(argv.fix || argv.format ? ['--fix'] : []),
