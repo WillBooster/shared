@@ -5891,7 +5891,7 @@ __metadata:
     "@types/react-dom": "npm:19.2.3"
     "@willbooster/eslint-config-ts-react": "npm:11.5.14"
     "@willbooster/prettier-config": "npm:10.2.4"
-    babel-loader: "npm:10.0.0"
+    babel-loader: "npm:10.1.0"
     build-ts: "npm:17.0.20"
     eslint: "npm:9.39.2"
     eslint-config-flat-gitignore: "npm:2.2.1"
@@ -6713,15 +6713,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"babel-loader@npm:10.0.0":
-  version: 10.0.0
-  resolution: "babel-loader@npm:10.0.0"
+"babel-loader@npm:10.1.0":
+  version: 10.1.0
+  resolution: "babel-loader@npm:10.1.0"
   dependencies:
     find-up: "npm:^5.0.0"
   peerDependencies:
-    "@babel/core": ^7.12.0
+    "@babel/core": ^7.12.0 || ^8.0.0-beta.1
+    "@rspack/core": ^1.0.0 || ^2.0.0-0
     webpack: ">=5.61.0"
-  checksum: 10c0/882dfacde3ee24b432ad57e468832cd0821e2a410f6c5b75ff945f069a8956592b28c6c357df5bb03db73d2741ec3db5febb106ac0bb3591c3d4288f2cf4df0e
+  peerDependenciesMeta:
+    "@rspack/core":
+      optional: true
+    webpack:
+      optional: true
+  checksum: 10c0/62296ca9a1e248bed0e93269b4bf095c66eabf9c297e4367bea96ecd0b2f9cf5b4559bb9f0980ffeb3df800bbab799fa8ceec95884e846ae51cbbeaa05bfcddf
   languageName: node
   linkType: hard
 
@@ -8222,12 +8228,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"conventional-changelog-conventionalcommits@npm:9.2.0":
-  version: 9.2.0
-  resolution: "conventional-changelog-conventionalcommits@npm:9.2.0"
+"conventional-changelog-conventionalcommits@npm:9.3.0":
+  version: 9.3.0
+  resolution: "conventional-changelog-conventionalcommits@npm:9.3.0"
   dependencies:
     compare-func: "npm:^2.0.0"
-  checksum: 10c0/1ea8f1b9a9044680c3faf9d7a963a95d65bcec45815426ebdd00f1bd2bfa26aa26c454ebaa3fb67f3dd2c1b69ad48f25f20dd7837b535210576d3e18d5e8f3a7
+  checksum: 10c0/36be9435bb1f6e97bc729a1e69471851b6621054980617dc9a82c03221de5f9c21cd2369308c364f89b2383bd596071f90c8c71efdbe7a2908f91a935685fc76
   languageName: node
   linkType: hard
 
@@ -19999,7 +20005,7 @@ __metadata:
     "@anolilab/multi-semantic-release": "npm:4.1.1"
     "@types/eslint": "npm:9.6.1"
     "@willbooster/prettier-config": "npm:10.2.4"
-    conventional-changelog-conventionalcommits: "npm:9.2.0"
+    conventional-changelog-conventionalcommits: "npm:9.3.0"
     eslint: "npm:9.39.2"
     husky: "npm:9.1.7"
     lint-staged: "npm:16.3.1"

@@ -57,7 +57,7 @@
     "@types/react-dom": "19.2.3",
     "@willbooster/eslint-config-ts-react": "11.5.14",
     "@willbooster/prettier-config": "10.2.4",
-    "babel-loader": "10.0.0",
+    "babel-loader": "10.1.0",
     "build-ts": "17.0.20",
     "eslint": "9.39.2",
     "eslint-config-flat-gitignore": "2.2.1",
