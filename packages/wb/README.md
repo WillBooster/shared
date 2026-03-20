@@ -2,6 +2,10 @@
 
 `wb` offers a collection of reusable npm scripts, designed primarily for WillBooster Inc. but with potential utility for other projects as well.
 
+## Supported Platforms
+
+`wb` does not support Windows. Use it on macOS, Linux, or another POSIX-compatible environment.
+
 ## Usage
 
 ```
@@ -11,7 +15,7 @@ Commands:
   wb buildIfNeeded              Build code if changes are detected
   wb kill-port-if-non-ci        Kill the port specified by PORT environment
                                 variable if non-CI.
-  wb lint [files...]            Lint code on Bun
+  wb lint [files...]            Lint code
   wb optimizeForDockerBuild     Optimize configuration when building a Docker
                                 image
   wb prisma                     Run prisma commands

@@ -9,6 +9,8 @@ import type { Project } from '../../src/project.js';
 import { cleanUpSqliteDbIfNeeded, prismaScripts } from '../../src/scripts/prismaScripts.js';
 
 const createdDirs: string[] = [];
+// This package does not depend on Prisma, so the test pins a CLI version explicitly instead of relying on ambient tools.
+const PRISMA_TEST_COMMAND = 'npx --yes prisma@6.10.1';
 
 afterEach(() => {
   for (const dirPath of createdDirs.splice(0)) {
@@ -65,6 +67,9 @@ describe('prismaScripts.reset', () => {
     const dbPath = path.resolve(dirPath, 'prisma', 'mount', 'prod.sqlite3');
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     createDatabaseWithWal(dbPath);
+    fs.writeFileSync(`${dbPath}.tmp`, 'tmp');
+    fs.writeFileSync(`${dbPath}-litestream`, 'tmp');
+    fs.writeFileSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'), 'tmp');
 
     const project = {
       dirPath,
@@ -75,28 +80,27 @@ describe('prismaScripts.reset', () => {
 
     expect(command).toContain('wal_checkpoint(TRUNCATE)');
     expect(command).not.toContain('/prod.sqlite3*;');
-    const checkpointOnlyCommand = extractCheckpointOnlyCommand(command, 'prisma/mount/prod.sqlite3');
-    child_process.execSync(checkpointOnlyCommand.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
-      cwd: dirPath,
-      stdio: 'inherit',
-    });
-    // If WAL contents are checkpointed into the main DB, deleting WAL should not lose inserted rows.
-    child_process.execSync(`rm -f "${dbPath}-wal" "${dbPath}-shm"`, { cwd: dirPath, stdio: 'inherit' });
-    const rowCount = child_process
-      .execSync(`sqlite3 "${dbPath}" "SELECT COUNT(*) FROM t;"`, {
-        cwd: dirPath,
-        encoding: 'utf8',
-      })
-      .trim();
-    expect(rowCount).toBe('1');
+    expect(command).toContain('rm -f "prisma/mount/prod.sqlite3".* "prisma/mount/prod.sqlite3"-*');
 
-    child_process.execSync(command.replaceAll('PRISMA ', 'npx --yes prisma@6.10.1 '), {
+    child_process.execSync(command.replaceAll('PRISMA ', `${PRISMA_TEST_COMMAND} `), {
       cwd: dirPath,
       stdio: 'inherit',
     });
-    expect(fs.existsSync(dbPath)).toBe(false);
+
+    expect(fs.existsSync(dbPath)).toBe(true);
     expect(fs.existsSync(`${dbPath}-wal`)).toBe(false);
     expect(fs.existsSync(`${dbPath}-shm`)).toBe(false);
+    expect(fs.existsSync(`${dbPath}.tmp`)).toBe(false);
+    expect(fs.existsSync(`${dbPath}-litestream`)).toBe(false);
+    expect(fs.existsSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'))).toBe(false);
+
+    const introspectedSchema = child_process.execSync(`${PRISMA_TEST_COMMAND} db pull --print --url "file:${dbPath}"`, {
+      cwd: dirPath,
+      encoding: 'utf8',
+      env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
+      stdio: ['ignore', 'pipe', 'inherit'],
+    });
+    expect(introspectedSchema).toContain('model t');
   }, 120_000);
 
   it('uses wal checkpoint in deployForce cleanup command', () => {
@@ -107,8 +111,9 @@ describe('prismaScripts.reset', () => {
     } as unknown as Project;
 
     const command = prismaScripts.deployForce(project);
-    expect(command).toContain('wal_checkpoint(TRUNCATE)');
+    expect(command).not.toContain('wal_checkpoint(TRUNCATE)');
     expect(command).not.toContain('/prod.sqlite3*;');
+    expect(command).toContain('rm -Rf "prisma/mount/prod.sqlite3"*');
   });
 });
 
@@ -134,21 +139,13 @@ function createProjectDir(): string {
 }
 
 function createDatabaseWithWal(dbPath: string): void {
-  const sqlite3Path = child_process.execSync('which sqlite3', { encoding: 'utf8' }).trim();
-  const sql = [
-    '.dbconfig no_ckpt_on_close on',
-    'PRAGMA journal_mode=WAL;',
-    'CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY);',
-    'INSERT INTO t DEFAULT VALUES;',
-  ].join('\n');
-  child_process.execSync(`${sqlite3Path} "${dbPath}" <<'SQL'\n${sql}\nSQL`, { stdio: 'inherit' });
-}
-
-function extractCheckpointOnlyCommand(command: string, dbRelativePath: string): string {
-  const marker = `&& rm -f "${dbRelativePath}"`;
-  const markerIndex = command.indexOf(marker);
-  if (markerIndex === -1) {
-    throw new Error(`Failed to find marker in command: ${marker}`);
-  }
-  return command.slice(0, markerIndex).trim();
+  child_process.execSync(`${PRISMA_TEST_COMMAND} db execute --stdin --url "file:${dbPath}"`, {
+    encoding: 'utf8',
+    input:
+      'PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;',
+    stdio: ['pipe', 'pipe', 'inherit'],
+  });
+  // Prisma CLI does not keep SQLite sidecar files around after the command exits, so we create them to exercise cleanup paths.
+  fs.writeFileSync(`${dbPath}-wal`, 'wal');
+  fs.writeFileSync(`${dbPath}-shm`, 'shm');
 }
