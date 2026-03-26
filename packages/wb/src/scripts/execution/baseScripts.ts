@@ -206,7 +206,10 @@ function buildPlaywrightCommand(playwrightArgs: string[], targets: TestArgv['tar
   }
 
   const rest = playwrightArgs.slice(1);
-  const restWithoutExplicitTarget = !rest[0] || rest[0].startsWith('-') ? rest : rest.slice(1);
+  let restWithoutExplicitTarget = rest;
+  if (rest[0] && !rest[0].startsWith('-')) {
+    restWithoutExplicitTarget = rest.slice(1);
+  }
   return appendPlaywrightBailOption([...base, 'test', ...normalizedTargets, ...restWithoutExplicitTarget], bail);
 }
 
