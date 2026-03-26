@@ -1,4 +1,7 @@
 import child_process from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { describe, expect, it, afterEach, vi } from 'vitest';
 
@@ -77,11 +80,15 @@ describe('runConcurrently', () => {
   });
 
   it('does not stop other commands when kill-others-on-fail is enabled but the first exit succeeds', async () => {
-    const startedAt = Date.now();
+    const markerFilePath = path.join(
+      os.tmpdir(),
+      `wb-concurrently-${process.pid}-${Math.random().toString(36).slice(2)}.txt`
+    );
+    const writeMarkerScript = `setTimeout(() => { require('node:fs').writeFileSync(${JSON.stringify(markerFilePath)}, 'done'); process.exit(0); }, 180)`;
     const exitCode = await runConcurrently({
       commands: [
         `${process.execPath} -e "setTimeout(() => process.exit(0), 40)"`,
-        `${process.execPath} -e "setTimeout(() => process.exit(0), 180)"`,
+        `${process.execPath} -e ${JSON.stringify(writeMarkerScript)}`,
       ],
       cwd,
       env,
@@ -91,7 +98,8 @@ describe('runConcurrently', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(120);
+    expect(fs.existsSync(markerFilePath)).toBe(true);
+    await fs.promises.rm(markerFilePath, { force: true });
   });
 
   it('maps signal exits to 128 plus the signal number', async () => {

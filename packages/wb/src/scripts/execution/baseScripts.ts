@@ -219,7 +219,7 @@ function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): stri
   if (!bail || !isPlaywrightTestCommand) {
     return buildShellCommand(commandArgs);
   }
-  if (commandArgs.some((arg) => /--max-failures(?:=|\s)/.test(arg))) {
+  if (commandArgs.some((arg) => arg === '--max-failures' || arg.startsWith('--max-failures='))) {
     return buildShellCommand(commandArgs);
   }
   return buildShellCommand([...commandArgs, '--max-failures=1']);
