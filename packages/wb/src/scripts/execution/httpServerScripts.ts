@@ -1,5 +1,6 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
@@ -36,6 +37,7 @@ class HttpServerScripts extends BaseScripts {
       'YARN',
       'wb',
       'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
       '--kill-others',
       '--success',
       'first',

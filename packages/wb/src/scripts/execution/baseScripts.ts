@@ -282,6 +282,8 @@ const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
   '--reporter',
   '--retries',
   '--shard',
+  '--test-list',
+  '--test-list-invert',
   '--timeout',
   '--trace',
   '--tsconfig',
