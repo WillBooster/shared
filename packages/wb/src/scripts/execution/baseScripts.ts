@@ -1,5 +1,6 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
@@ -35,6 +36,7 @@ export abstract class BaseScripts {
       'YARN',
       'wb',
       'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
       '--kill-others-on-fail',
       this.startDevProtected(project, argv),
       this.waitAndOpenApp(project),
@@ -48,6 +50,7 @@ export abstract class BaseScripts {
       'YARN',
       'wb',
       'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
       '--kill-others-on-fail',
       this.startProductionProtected(project, argv),
       this.waitAndOpenApp(project),
@@ -69,6 +72,7 @@ export abstract class BaseScripts {
         'YARN',
         'wb',
         'concurrently',
+        ...buildEnvReaderOptionArgs(argv),
         '--kill-others-on-fail',
         dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? ''),
         this.waitAndOpenApp(project),
@@ -110,6 +114,7 @@ export abstract class BaseScripts {
       'YARN',
       'wb',
       'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
       '--kill-others',
       '--success',
       'first',
@@ -135,6 +140,7 @@ export abstract class BaseScripts {
       'YARN',
       'wb',
       'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
       '--kill-others',
       '--success',
       'first',

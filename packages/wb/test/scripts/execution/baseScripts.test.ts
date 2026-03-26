@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import yargs from 'yargs';
 
 import type { TestArgv } from '../../../src/commands/test.js';
 import type { Project } from '../../../src/project.js';
 import type { ScriptArgv } from '../../../src/scripts/builder.js';
 import { normalizeArgs } from '../../../src/scripts/builder.js';
 import { BaseScripts } from '../../../src/scripts/execution/baseScripts.js';
+import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../src/sharedOptionsBuilder.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../src/utils/shell.js';
 
 vi.mock('../../../src/utils/port.js', () => ({
@@ -98,7 +100,20 @@ describe('BaseScripts.testE2E', () => {
 
   it('escapes start commands passed to wb concurrently', async () => {
     const scriptsWithWait = new TestScriptsWithWait();
-    const argv = { _: ['start', `semi;colon`, `quo'te`] } as unknown as ScriptArgv;
+    const argv = yargs()
+      .options(sharedOptionsBuilder)
+      .parseSync([
+        '--env',
+        '.env.test',
+        '--include-root-env=false',
+        '--cascade-env=staging',
+        '--check-env',
+        '.env.custom',
+        '--verbose',
+        'start',
+        `semi;colon`,
+        `quo'te`,
+      ]) as unknown as ScriptArgv;
     normalizeArgs(argv);
 
     const command = await scriptsWithWait.startDev(project, argv);
@@ -108,6 +123,7 @@ describe('BaseScripts.testE2E', () => {
         'YARN',
         'wb',
         'concurrently',
+        ...buildEnvReaderOptionArgs(argv),
         '--kill-others-on-fail',
         `start-dev ${argv.normalizedArgsText}`,
         scriptsWithWait.getWaitAndOpenApp(project),
@@ -117,7 +133,9 @@ describe('BaseScripts.testE2E', () => {
 
   it('escapes test-start commands passed to wb concurrently', async () => {
     const scriptsWithWait = new TestScriptsWithWait();
-    const argv = { _: ['start', `quo'te`] } as unknown as ScriptArgv;
+    const argv = yargs()
+      .options(sharedOptionsBuilder)
+      .parseSync(['--env', '.env.test', '--include-root-env=false', 'start', `quo'te`]) as unknown as ScriptArgv;
     normalizeArgs(argv);
 
     const command = await scriptsWithWait.testStart(project, argv);
@@ -127,6 +145,7 @@ describe('BaseScripts.testE2E', () => {
         'YARN',
         'wb',
         'concurrently',
+        ...buildEnvReaderOptionArgs(argv),
         '--kill-others',
         '--success',
         'first',

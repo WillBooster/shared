@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject } from '../project.js';
-import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
   'kill-others': {
@@ -47,7 +47,7 @@ export const concurrentlyCommand: CommandModule<
 > = {
   command: 'concurrently <commands...>',
   describe: 'Run commands concurrently',
-  builder: { ...builder, ...argumentsBuilder },
+  builder: { ...sharedOptionsBuilder, ...builder, ...argumentsBuilder },
   async handler(argv) {
     const project = findSelfProject(argv);
     if (!project) {

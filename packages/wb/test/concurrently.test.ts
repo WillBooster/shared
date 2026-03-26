@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { describe, expect, it, afterEach, vi } from 'vitest';
 
-import { runConcurrently } from '../src/commands/concurrently.js';
+import { concurrentlyCommand, runConcurrently } from '../src/commands/concurrently.js';
 
 describe('runConcurrently', () => {
   const env = process.env as Record<string, string | undefined>;
@@ -143,5 +143,15 @@ describe('runConcurrently', () => {
         success: 'all',
       })
     ).resolves.toBe(1);
+  });
+});
+
+describe('concurrentlyCommand', () => {
+  it('registers shared env-loading options', () => {
+    const builder = concurrentlyCommand.builder as Record<string, unknown>;
+    expect(builder.env).toBeDefined();
+    expect(builder['cascade-env']).toBeDefined();
+    expect(builder['include-root-env']).toBeDefined();
+    expect(builder.verbose).toBeDefined();
   });
 });
