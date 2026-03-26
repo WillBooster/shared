@@ -82,6 +82,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   const children = options.commands.map((command) =>
     child_process.spawn(command, {
       cwd: options.cwd,
+      detached: process.platform !== 'win32',
       env: options.env,
       shell: true,
       stdio: 'inherit',
@@ -103,7 +104,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
 
         if (!stopping && shouldStopOthers(exitCode, options)) {
           stopping = true;
-          terminateChildren(children, child.pid);
+          terminateChildren(children);
         }
         resolve();
       };
@@ -168,9 +169,29 @@ function terminateChildren(children: child_process.ChildProcess[], exceptPid?: n
     if (!child.pid || child.pid === exceptPid) continue;
 
     try {
+      killProcessGroup(child.pid);
       treeKill(child.pid);
     } catch (error) {
       console.warn('Failed to kill child process:', error);
     }
   }
+}
+
+function killProcessGroup(pid: number): void {
+  if (process.platform === 'win32') {
+    return;
+  }
+
+  try {
+    process.kill(-pid, 'SIGTERM');
+  } catch (error) {
+    if (isNoSuchProcessError(error)) {
+      return;
+    }
+    throw error;
+  }
+}
+
+function isNoSuchProcessError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH';
 }

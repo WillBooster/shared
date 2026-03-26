@@ -80,6 +80,44 @@ describe('runConcurrently', () => {
     expect(exitCode).toBe(1);
   });
 
+  it('stops descendants of the command that triggered success=first shutdown', async () => {
+    if (process.platform === 'win32') {
+      return;
+    }
+
+    const markerFilePath = path.join(
+      os.tmpdir(),
+      `wb-concurrently-descendant-${process.pid}-${Math.random().toString(36).slice(2)}.txt`
+    );
+    const leakedChildScript = `setTimeout(() => require('node:fs').writeFileSync(${JSON.stringify(markerFilePath)}, 'leaked'), 300)`;
+    const grandchildScript = [
+      'const { spawn } = require("node:child_process");',
+      `const leakedChild = spawn(process.execPath, ["-e", ${JSON.stringify(leakedChildScript)}], { stdio: "ignore" });`,
+      'leakedChild.unref();',
+      'setTimeout(() => process.exit(0), 40);',
+    ].join(' ');
+
+    try {
+      const exitCode = await runConcurrently({
+        commands: [
+          `${process.execPath} -e ${JSON.stringify(grandchildScript)}`,
+          `${process.execPath} -e "setTimeout(() => process.exit(0), 1000)"`,
+        ],
+        cwd,
+        env,
+        killOthers: false,
+        killOthersOnFail: false,
+        success: 'first',
+      });
+
+      expect(exitCode).toBe(0);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(fs.existsSync(markerFilePath)).toBe(false);
+    } finally {
+      await fs.promises.rm(markerFilePath, { force: true });
+    }
+  });
+
   it('does not stop other commands when kill-others-on-fail is enabled but the first exit succeeds', async () => {
     const markerFilePath = path.join(
       os.tmpdir(),
