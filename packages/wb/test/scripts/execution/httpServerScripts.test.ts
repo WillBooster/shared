@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { TestArgv } from '../../../src/commands/test.js';
 import type { Project } from '../../../src/project.js';
 import { httpServerScripts } from '../../../src/scripts/execution/httpServerScripts.js';
+import { buildShellCommand } from '../../../src/utils/shell.js';
 
 vi.mock('../../../src/utils/port.js', () => ({
   checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
@@ -40,5 +41,46 @@ describe('HttpServerScripts.testE2E', () => {
 
     const command = await httpServerScripts.testE2EProduction(project, {} as TestArgv, {});
     expect(command).toContain('BUN playwright test test/e2e/');
+  });
+
+  it('escapes vitest targets inside concurrently commands', async () => {
+    const project = {
+      env: { WB_ENV: 'test', PORT: '3000' },
+      packageJson: { scripts: {} },
+      hasPlaywrightConfig: false,
+      hasPrisma: false,
+      buildCommand: 'echo "no build"',
+      findFile: vi.fn().mockImplementation(() => {
+        throw new Error('File not found');
+      }),
+    } as unknown as Project;
+
+    const command = await httpServerScripts.testE2EProduction(
+      project,
+      { targets: [`test/e2e/quo'te.spec.ts`, 'test/e2e/space path.spec.ts'] } as TestArgv,
+      {}
+    );
+
+    expect(command).toBe(
+      buildShellCommand([
+        'YARN',
+        'wb',
+        'concurrently',
+        '--kill-others',
+        '--success',
+        'first',
+        'YARN wb buildIfNeeded && node dist/index.js && exit 1',
+        `wait-on -t 600000 -i 2000 http-get://127.0.0.1:3000
+        && ${buildShellCommand([
+          'vitest',
+          'run',
+          `test/e2e/quo'te.spec.ts`,
+          'test/e2e/space path.spec.ts',
+          '--color',
+          '--passWithNoTests',
+          '--allowOnly',
+        ])}`,
+      ])
+    );
   });
 });

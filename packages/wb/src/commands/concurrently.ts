@@ -61,15 +61,20 @@ export const concurrentlyCommand: CommandModule<
       process.exit(1);
     }
 
-    const exitCode = await runConcurrently({
-      commands,
-      cwd: project.dirPath,
-      env: project.env,
-      killOthers: argv.killOthers ?? false,
-      killOthersOnFail: argv.killOthersOnFail ?? false,
-      success: argv.success,
-    });
-    process.exit(exitCode);
+    try {
+      const exitCode = await runConcurrently({
+        commands,
+        cwd: project.dirPath,
+        env: project.env,
+        killOthers: argv.killOthers ?? false,
+        killOthersOnFail: argv.killOthersOnFail ?? false,
+        success: argv.success,
+      });
+      process.exit(exitCode);
+    } catch (error) {
+      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      process.exit(1);
+    }
   },
 };
 
@@ -88,8 +93,11 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   const results = Array.from<number | undefined>({ length: children.length });
   const waitForExitPromises = children.map((child, index) => {
     return new Promise<void>((resolve) => {
-      child.on('exit', (code, signal) => {
-        const exitCode = getExitCode(code, signal);
+      let settled = false;
+      const settle = (exitCode: number): void => {
+        if (settled) return;
+
+        settled = true;
         results[index] = exitCode;
         firstResult ??= exitCode;
 
@@ -98,6 +106,14 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
           terminateChildren(children, child.pid);
         }
         resolve();
+      };
+
+      child.once('error', (error) => {
+        console.error(`Failed to start command "${options.commands[index]}":`, error);
+        settle(1);
+      });
+      child.once('exit', (code, signal) => {
+        settle(getExitCode(code, signal));
       });
     });
   });

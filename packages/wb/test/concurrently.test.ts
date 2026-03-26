@@ -1,10 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import child_process from 'node:child_process';
+
+import { describe, expect, it, afterEach, vi } from 'vitest';
 
 import { runConcurrently } from '../src/commands/concurrently.js';
 
 describe('runConcurrently', () => {
   const env = process.env as Record<string, string | undefined>;
   const cwd = process.cwd();
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('returns success when all commands succeed', async () => {
     const exitCode = await runConcurrently({
@@ -99,5 +105,35 @@ describe('runConcurrently', () => {
     });
 
     expect(exitCode).toBe(143);
+  });
+
+  it('returns failure when a child process emits an error', async () => {
+    vi.spyOn(child_process, 'spawn').mockImplementation(() => {
+      const listeners = new Map<string, ((...args: unknown[]) => void)[]>();
+      const child = {
+        once(event: string, listener: (...args: unknown[]) => void) {
+          listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+          return child;
+        },
+      } as unknown as child_process.ChildProcess;
+
+      queueMicrotask(() => {
+        for (const listener of listeners.get('error') ?? []) {
+          listener(new Error('spawn failed'));
+        }
+      });
+      return child;
+    });
+
+    await expect(
+      runConcurrently({
+        commands: ['ignored'],
+        cwd,
+        env,
+        killOthers: false,
+        killOthersOnFail: false,
+        success: 'all',
+      })
+    ).resolves.toBe(1);
   });
 });
