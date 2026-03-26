@@ -82,6 +82,32 @@ describe('BaseScripts.testE2E', () => {
     expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts --headed --grep hello');
   });
 
+  it('replaces all explicit playwright targets when multiple targets are already present', async () => {
+    const command = await scripts.testE2EProduction(
+      project,
+      { targets: ['test/e2e/a.spec.ts', 'test/e2e/b.spec.ts'] } as TestArgv,
+      {
+        playwrightArgs: ['test', 'test/e2e/a.spec.ts', 'test/e2e/b.spec.ts', '--headed'],
+      }
+    );
+
+    expect(command).toContain('BUN playwright test test/e2e/a.spec.ts test/e2e/b.spec.ts --headed');
+    expect(command).not.toContain('test/e2e/b.spec.ts test/e2e/b.spec.ts');
+  });
+
+  it('replaces all explicit playwright targets while preserving surrounding options', async () => {
+    const command = await scripts.testE2EProduction(
+      project,
+      { targets: ['test/e2e/a.spec.ts', 'test/e2e/b.spec.ts'] } as TestArgv,
+      {
+        playwrightArgs: ['test', '--headed', 'test/e2e/a.spec.ts', 'test/e2e/b.spec.ts', '--grep', 'hello'],
+      }
+    );
+
+    expect(command).toContain('BUN playwright test test/e2e/a.spec.ts test/e2e/b.spec.ts --headed --grep hello');
+    expect(command).not.toContain('test/e2e/b.spec.ts test/e2e/b.spec.ts');
+  });
+
   it('preserves option values when replacing explicit playwright targets', async () => {
     const command = await scripts.testE2EProduction(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {
       playwrightArgs: ['test', '--project', 'chromium'],

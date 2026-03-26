@@ -212,11 +212,9 @@ function buildPlaywrightCommand(playwrightArgs: string[], targets: TestArgv['tar
   }
 
   const rest = playwrightArgs.slice(1);
-  let restWithoutExplicitTarget = rest;
-  const firstTargetIndex = findFirstExplicitPlaywrightTargetIndex(rest);
-  if (firstTargetIndex !== -1) {
-    restWithoutExplicitTarget = rest.filter((_, index) => index !== firstTargetIndex);
-  }
+  const explicitTargetIndexes = findExplicitPlaywrightTargetIndexes(rest);
+  const restWithoutExplicitTarget =
+    explicitTargetIndexes.length === 0 ? rest : rest.filter((_, index) => !explicitTargetIndexes.includes(index));
   return appendPlaywrightBailOption([...base, 'test', ...normalizedTargets, ...restWithoutExplicitTarget], bail);
 }
 
@@ -232,8 +230,9 @@ function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): stri
   return buildShellCommand([...commandArgs, '--max-failures=1']);
 }
 
-function findFirstExplicitPlaywrightTargetIndex(args: string[]): number {
+function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
   let pendingValueMode: 'optional' | 'required' | undefined;
+  const targetIndexes: number[] = [];
 
   for (const [index, arg] of args.entries()) {
     if (pendingValueMode) {
@@ -245,7 +244,7 @@ function findFirstExplicitPlaywrightTargetIndex(args: string[]): number {
     }
 
     if (arg === '--') {
-      return index + 1 < args.length ? index + 1 : -1;
+      return index + 1 < args.length ? [index + 1] : targetIndexes;
     }
     if (arg.startsWith('--')) {
       if (arg.includes('=')) continue;
@@ -263,10 +262,10 @@ function findFirstExplicitPlaywrightTargetIndex(args: string[]): number {
       }
       continue;
     }
-    return index;
+    targetIndexes.push(index);
   }
 
-  return -1;
+  return targetIndexes;
 }
 
 const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
