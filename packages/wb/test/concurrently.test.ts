@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { describe, expect, it, afterEach, vi } from 'vitest';
+import yargs from 'yargs';
 
 import { concurrentlyCommand, runConcurrently } from '../src/commands/concurrently.js';
 
@@ -153,5 +154,34 @@ describe('concurrentlyCommand', () => {
     expect(builder['cascade-env']).toBeDefined();
     expect(builder['include-root-env']).toBeDefined();
     expect(builder.verbose).toBeDefined();
+  });
+
+  it('accepts env-loading flags when parsing direct wb concurrently usage', () => {
+    const command = {
+      ...concurrentlyCommand,
+      handler: vi.fn(),
+    };
+    const argv = yargs()
+      .scriptName('wb')
+      .command(command)
+      .demandCommand()
+      .strict()
+      .parseSync([
+        'concurrently',
+        '--env',
+        '.env.test',
+        '--include-root-env=false',
+        '--cascade-env=staging',
+        '--check-env=.env.required',
+        'echo first',
+        'echo second',
+      ]);
+
+    expect(argv.env).toEqual(['.env.test']);
+    expect(argv.includeRootEnv).toBe(false);
+    expect(argv.cascadeEnv).toBe('staging');
+    expect(argv.checkEnv).toBe('.env.required');
+    expect(argv.commands).toEqual(['echo first', 'echo second']);
+    expect(command.handler).toHaveBeenCalledOnce();
   });
 });

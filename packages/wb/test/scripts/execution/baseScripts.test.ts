@@ -154,4 +154,37 @@ describe('BaseScripts.testE2E', () => {
       ])}`
     );
   });
+
+  it('preserves explicit env-loading overrides when building nested concurrently commands', async () => {
+    const scriptsWithWait = new TestScriptsWithWait();
+    const argv = yargs()
+      .options(sharedOptionsBuilder)
+      .parseSync([
+        '--env',
+        '.env.test',
+        '--env',
+        '.env.local.test',
+        '--include-root-env=false',
+        '--auto-cascade-env=false',
+        '--check-env=.env.required',
+        'start',
+      ]) as unknown as ScriptArgv;
+    normalizeArgs(argv);
+
+    expect(buildEnvReaderOptionArgs(argv)).toEqual([
+      '--env=.env.test',
+      '--env=.env.local.test',
+      '--auto-cascade-env=false',
+      '--include-root-env=false',
+      '--check-env=.env.required',
+    ]);
+
+    const command = await scriptsWithWait.startProduction(project, argv);
+
+    expect(command).toContain('--env=.env.test');
+    expect(command).toContain('--env=.env.local.test');
+    expect(command).toContain('--include-root-env=false');
+    expect(command).toContain('--auto-cascade-env=false');
+    expect(command).toContain('--check-env=.env.required');
+  });
 });
