@@ -211,7 +211,9 @@ function buildPlaywrightCommand(playwrightArgs: string[], targets: TestArgv['tar
 }
 
 function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): string {
-  if (!bail || !commandArgs.includes('test') || !commandArgs.includes('playwright')) {
+  const playwrightIndex = commandArgs.indexOf('playwright');
+  const isPlaywrightTestCommand = playwrightIndex !== -1 && commandArgs[playwrightIndex + 1] === 'test';
+  if (!bail || !isPlaywrightTestCommand) {
     return buildShellCommand(commandArgs);
   }
   if (commandArgs.some((arg) => /--max-failures(?:=|\s)/.test(arg))) {

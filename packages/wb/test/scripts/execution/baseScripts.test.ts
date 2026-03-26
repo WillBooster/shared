@@ -73,6 +73,14 @@ describe('BaseScripts.testE2E', () => {
     expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts --headed');
   });
 
+  it('does not add max-failures to non-test playwright subcommands', async () => {
+    const command = await scripts.testE2EProduction(project, {} as TestArgv, {
+      playwrightArgs: ['codegen', 'http://localhost:3000'],
+    });
+
+    expect(command).toBe('BUN playwright codegen http://localhost:3000');
+  });
+
   it('escapes start commands passed to wb concurrently', async () => {
     const scriptsWithWait = new TestScriptsWithWait();
     const argv = { _: ['start', `semi;colon`, `quo'te`] } as unknown as ScriptArgv;
