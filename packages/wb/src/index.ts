@@ -6,6 +6,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
+import { concurrentlyCommand } from './commands/concurrently.js';
 import { killPortIfNonCiCommand } from './commands/killPortIfNonCi.js';
 import { lintCommand } from './commands/lint.js';
 import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
@@ -32,6 +33,7 @@ await yargs(hideBin(process.argv))
     removeNpmAndYarnEnvironmentVariables(process.env);
   })
   .command(buildIfNeededCommand)
+  .command(concurrentlyCommand)
   .command(killPortIfNonCiCommand)
   .command(lintCommand)
   .command(optimizeForDockerBuildCommand)

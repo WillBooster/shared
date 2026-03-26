@@ -147,17 +147,21 @@ export async function test(
         continue;
       }
       case 'docker-debug': {
-        const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
-        await testOnDocker(project, e2eArgv, scripts, `test ${e2eTarget} --debug`);
+        await testOnDocker(project, e2eArgv, scripts, [
+          'test',
+          ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']),
+          '--debug',
+        ]);
         continue;
       }
     }
     if (deps.blitz || deps.next || devDeps['@remix-run/dev'] || devDeps.vite) {
-      const e2eTarget = e2eTargets.length > 0 ? e2eTargets.join(' ') : 'test/e2e/';
       switch (argv.e2e) {
         case 'headed': {
           await runWithSpawn(
-            await scripts.testE2EProduction(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
+            await scripts.testE2EProduction(project, e2eArgv, {
+              playwrightArgs: ['test', ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']), '--headed'],
+            }),
             project,
             argv
           );
@@ -165,7 +169,9 @@ export async function test(
         }
         case 'headed-dev': {
           await runWithSpawn(
-            await scripts.testE2EDev(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --headed` }),
+            await scripts.testE2EDev(project, e2eArgv, {
+              playwrightArgs: ['test', ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']), '--headed'],
+            }),
             project,
             argv
           );
@@ -173,7 +179,9 @@ export async function test(
         }
         case 'debug': {
           await runWithSpawn(
-            await scripts.testE2EProduction(project, e2eArgv, { playwrightArgs: `test ${e2eTarget} --debug` }),
+            await scripts.testE2EProduction(project, e2eArgv, {
+              playwrightArgs: ['test', ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']), '--debug'],
+            }),
             project,
             argv
           );
@@ -182,7 +190,7 @@ export async function test(
         case 'generate': {
           await runWithSpawn(
             await scripts.testE2EProduction(project, e2eArgv, {
-              playwrightArgs: `codegen http://localhost:${project.env.PORT}`,
+              playwrightArgs: ['codegen', `http://localhost:${project.env.PORT}`],
             }),
             project,
             argv
@@ -202,7 +210,7 @@ async function testOnDocker(
   project: Project,
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof argumentsBuilder>>,
   scripts: BaseScripts,
-  playwrightArgs?: string
+  playwrightArgs?: string[]
 ): Promise<void> {
   project.env.WB_DOCKER ||= '1';
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
