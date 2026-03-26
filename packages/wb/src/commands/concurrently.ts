@@ -109,7 +109,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
       };
 
       child.once('error', (error) => {
-        console.error(`Failed to start command "${options.commands[index]}":`, error);
+        console.error('Failed to start child process:', error);
         settle(1);
       });
       child.once('exit', (code, signal) => {
@@ -170,7 +170,7 @@ function terminateChildren(children: child_process.ChildProcess[], exceptPid?: n
     try {
       treeKill(child.pid);
     } catch (error) {
-      console.warn(`Failed to kill process ${child.pid}:`, error);
+      console.warn('Failed to kill child process:', error);
     }
   }
 }
