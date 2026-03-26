@@ -207,7 +207,7 @@ function buildPlaywrightCommand(playwrightArgs: string[], targets: TestArgv['tar
 
   const rest = playwrightArgs.slice(1);
   let restWithoutExplicitTarget = rest;
-  const firstTargetIndex = rest.findIndex((arg) => !arg.startsWith('-'));
+  const firstTargetIndex = findFirstExplicitPlaywrightTargetIndex(rest);
   if (firstTargetIndex !== -1) {
     restWithoutExplicitTarget = rest.filter((_, index) => index !== firstTargetIndex);
   }
@@ -225,3 +225,70 @@ function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): stri
   }
   return buildShellCommand([...commandArgs, '--max-failures=1']);
 }
+
+function findFirstExplicitPlaywrightTargetIndex(args: string[]): number {
+  let pendingValueMode: 'optional' | 'required' | undefined;
+
+  for (const [index, arg] of args.entries()) {
+    if (pendingValueMode) {
+      if (pendingValueMode === 'required' || !arg.startsWith('-')) {
+        pendingValueMode = undefined;
+        continue;
+      }
+      pendingValueMode = undefined;
+    }
+
+    if (arg === '--') {
+      return index + 1 < args.length ? index + 1 : -1;
+    }
+    if (arg.startsWith('--')) {
+      if (arg.includes('=')) continue;
+      if (PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES.has(arg)) {
+        pendingValueMode = 'required';
+      } else if (PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES.has(arg)) {
+        pendingValueMode = 'optional';
+      }
+      continue;
+    }
+    if (arg.startsWith('-') && arg !== '-') {
+      const shortOption = arg.slice(0, 2);
+      if (arg.length === 2 && PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES.has(shortOption)) {
+        pendingValueMode = 'required';
+      }
+      continue;
+    }
+    return index;
+  }
+
+  return -1;
+}
+
+const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
+  '--browser',
+  '--config',
+  '--grep',
+  '--grep-invert',
+  '--global-timeout',
+  '--max-failures',
+  '--output',
+  '--project',
+  '--repeat-each',
+  '--reporter',
+  '--retries',
+  '--shard',
+  '--timeout',
+  '--trace',
+  '--tsconfig',
+  '--ui-host',
+  '--ui-port',
+  '--ui-title',
+  '--workers',
+]);
+
+const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set([
+  '--only-changed',
+  '--update-snapshots',
+  '--update-source-method',
+]);
+
+const PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES = new Set(['-c', '-g', '-j']);

@@ -80,6 +80,14 @@ describe('BaseScripts.testE2E', () => {
     expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts --headed --grep hello');
   });
 
+  it('preserves option values when replacing explicit playwright targets', async () => {
+    const command = await scripts.testE2EProduction(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {
+      playwrightArgs: ['test', '--project', 'chromium'],
+    });
+
+    expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts --project chromium');
+  });
+
   it('does not add max-failures to non-test playwright subcommands', async () => {
     const command = await scripts.testE2EProduction(project, {} as TestArgv, {
       playwrightArgs: ['codegen', 'http://localhost:3000'],
