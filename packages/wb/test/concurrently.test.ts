@@ -196,7 +196,7 @@ describe('runConcurrently', () => {
         once(event: string, listener: (...args: unknown[]) => void) {
           if (event === 'exit') {
             queueMicrotask(() => {
-              listener(0, null);
+              listener(0, undefined);
             });
           }
           return child;
