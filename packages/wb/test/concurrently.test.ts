@@ -62,6 +62,21 @@ describe('runConcurrently', () => {
     expect(exitCode).not.toBe(0);
   });
 
+  it('prefers the failing exit code over sibling signal exits with kill-others-on-fail', async () => {
+    const exitCode = await runConcurrently({
+      commands: [
+        `${process.execPath} -e "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)"`,
+        `${process.execPath} -e "setTimeout(() => process.exit(1), 40)"`,
+      ],
+      project,
+      killOthers: false,
+      killOthersOnFail: true,
+      success: 'all',
+    });
+
+    expect(exitCode).toBe(1);
+  });
+
   it('returns failure when the first exiting command fails with success=first', async () => {
     const exitCode = await runConcurrently({
       commands: [

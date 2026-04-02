@@ -95,6 +95,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   let stopping = false;
   let interruptedSignal: NodeJS.Signals | undefined;
   let firstResult: number | undefined;
+  let stopResult: number | undefined;
   const results = Array.from<number | undefined>({ length: children.length });
   const waitForExitPromises = children.map((child, index) => {
     return new Promise<void>((resolve) => {
@@ -107,6 +108,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
         firstResult ??= exitCode;
 
         if (!stopping && shouldStopOthers(exitCode, options)) {
+          stopResult = exitCode;
           stopping = true;
           terminateChildren(children);
         }
@@ -156,6 +158,9 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
 
   if (options.success === 'first') {
     return firstResult ?? 1;
+  }
+  if (stopResult !== undefined) {
+    return stopResult;
   }
   for (const result of results) {
     if (result !== undefined && result !== 0) {
