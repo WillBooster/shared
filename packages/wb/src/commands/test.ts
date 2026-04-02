@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import chalk from 'chalk';
-import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { Argv, ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
@@ -60,22 +60,22 @@ const argumentsBuilder = {
   },
 } as const;
 
+type TestCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>;
+
 export type TestArgv = Partial<
   ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof argumentsBuilder>>
 >;
 
-export type TestCommandArgv = ArgumentsCamelCase<
-  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
-> & { '--'?: string[] };
+export type TestCommandArgv = ArgumentsCamelCase<TestCommandOptions> & { '--'?: string[] };
 
-export const testCommand: CommandModule<
-  unknown,
-  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
-> = {
+export const testCommand: CommandModule<unknown, TestCommandOptions> = {
   command: 'test [targets...]',
   describe:
     "Test project. If you pass no arguments, it will run all tests. Use '--' to stop wb option parsing and forward the remaining flags to Playwright. Example: wb test -- --grep 'uploaded image asset'",
-  builder: { ...builder, ...argumentsBuilder },
+  builder: (yargs: Argv<unknown>): Argv<TestCommandOptions> =>
+    yargs
+      .parserConfiguration({ 'populate--': true })
+      .options({ ...builder, ...argumentsBuilder }) as Argv<TestCommandOptions>,
   async handler(argv) {
     await test(argv as TestCommandArgv);
   },

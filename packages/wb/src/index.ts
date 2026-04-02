@@ -22,7 +22,6 @@ import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
 await yargs(hideBin(process.argv))
   .scriptName('wb')
-  .parserConfiguration({ 'populate--': true })
   .options(sharedOptionsBuilder)
   .middleware((argv) => {
     const workingDir = argv['working-dir'];
