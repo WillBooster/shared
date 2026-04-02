@@ -240,7 +240,7 @@ function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): stri
   return buildShellCommand([...commandArgs, '--max-failures=1']);
 }
 
-function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
+export function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
   let pendingValueMode: 'optional' | 'required' | undefined;
   const targetIndexes: number[] = [];
 

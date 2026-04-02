@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import yargs from 'yargs';
 
 import { retryCommand } from '../src/commands/retry.js';
-import { buildPlaywrightArgsForE2E, testCommand } from '../src/commands/test.js';
+import { buildPlaywrightArgsForE2E, resolveTestExecutionTargets, testCommand } from '../src/commands/test.js';
 
 describe('buildPlaywrightArgsForE2E', () => {
   it('uses the default e2e directory when no explicit target is provided', () => {
@@ -16,7 +16,11 @@ describe('buildPlaywrightArgsForE2E', () => {
   });
 
   it('appends wb-managed mode flags after forwarded playwright flags', () => {
-    expect(buildPlaywrightArgsForE2E([], ['--headed'])).toEqual(['test', 'test/e2e/', '--headed']);
+    expect(buildPlaywrightArgsForE2E([], [], ['--headed'])).toEqual(['test', 'test/e2e/', '--headed']);
+  });
+
+  it('skips the default e2e directory when forwarded args already include explicit playwright targets', () => {
+    expect(buildPlaywrightArgsForE2E([], ['test/e2e/phaserAssetLoading.spec.ts'])).toEqual(['test']);
   });
 });
 
@@ -63,5 +67,21 @@ describe('command-specific -- parsing', () => {
 
     expect(argv._).toEqual(['docker', 'build', '-t', 'img', '.']);
     expect(argv['--']).toBeUndefined();
+  });
+});
+
+describe('resolveTestExecutionTargets', () => {
+  it('runs only e2e tests when playwright args are forwarded without positional targets', () => {
+    expect(resolveTestExecutionTargets([], ['--grep', 'uploaded image asset'])).toEqual({
+      shouldRunUnit: false,
+      shouldRunE2e: true,
+    });
+  });
+
+  it('still runs unit tests when unit targets are explicitly requested', () => {
+    expect(resolveTestExecutionTargets(['test/unit/example.test.ts'], ['--grep', 'uploaded image asset'])).toEqual({
+      shouldRunUnit: true,
+      shouldRunE2e: true,
+    });
   });
 });
