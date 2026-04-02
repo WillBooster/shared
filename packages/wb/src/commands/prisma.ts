@@ -9,6 +9,7 @@ import { findDescendantProjects } from '../project.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { buildShellCommand } from '../utils/shell.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -19,6 +20,7 @@ export const prismaCommand: CommandModule = {
   describe: 'Run prisma commands',
   builder: (yargs) => {
     return yargs
+      .parserConfiguration({ 'populate--': true })
       .command(cleanUpLitestreamCommand)
       .command(createLitestreamConfigCommand)
       .command(deployCommand)
@@ -322,6 +324,7 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
     ...sharedOptionKeys,
     ...sharedOptionAliases,
     // Internal yargs properties
+    '--',
     '_',
     '$0',
   ]);
@@ -352,5 +355,6 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
     }
   }
 
-  return unknownOptions.join(' ');
+  const passthroughArgs = Array.isArray(argv['--']) ? argv['--'].map(String) : [];
+  return buildShellCommand([...unknownOptions, ...passthroughArgs]);
 }

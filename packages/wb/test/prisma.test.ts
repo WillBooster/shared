@@ -90,4 +90,16 @@ describe('prisma command unknown options', () => {
     expect(result).not.toContain('--create-only'); // false/undefined value should not be included
     expect(result).not.toContain('--verbose'); // known option should not be included
   });
+
+  it('should append arguments forwarded after --', () => {
+    const argv = {
+      '--': ['--name', 'custom migration', '--skip-generate'],
+      _: ['prisma', 'migrate-dev'],
+      $0: 'wb',
+    } as Record<string, unknown>;
+
+    const result = extractUnknownOptions(argv);
+
+    expect(result).toBe(`--name 'custom migration' --skip-generate`);
+  });
 });
