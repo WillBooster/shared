@@ -64,18 +64,17 @@ export type TestArgv = Partial<
   ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof argumentsBuilder>>
 >;
 
-type ResolvedTestArgv = ArgumentsCamelCase<
+export type TestCommandArgv = ArgumentsCamelCase<
   InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
->;
-
-export type TestCommandArgv = ResolvedTestArgv & { '--'?: string[] | undefined };
+> & { '--'?: string[] };
 
 export const testCommand: CommandModule<
   unknown,
   InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
 > = {
   command: 'test [targets...]',
-  describe: 'Test project. If you pass no arguments, it will run all tests.',
+  describe:
+    "Test project. If you pass no arguments, it will run all tests. Use '--' to stop wb option parsing and forward the remaining flags to Playwright. Example: wb test -- --grep 'uploaded image asset'",
   builder: { ...builder, ...argumentsBuilder },
   async handler(argv) {
     await test(argv as TestCommandArgv);
@@ -239,7 +238,7 @@ async function testOnDocker(
 
 export function buildPlaywrightArgsForE2E(
   e2eTargets: string[],
-  argv: Pick<TestCommandArgv, '--'>,
+  argv: { '--'?: string[] },
   additionalArgs: string[] = []
 ): string[] {
   return ['test', ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']), ...(argv['--'] ?? []), ...additionalArgs];
