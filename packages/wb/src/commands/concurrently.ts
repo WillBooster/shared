@@ -51,6 +51,11 @@ export const concurrentlyCommand: CommandModule<
   describe: 'Run commands concurrently',
   builder: { ...sharedOptionsBuilder, ...builder, ...argumentsBuilder },
   async handler(argv) {
+    if (process.platform === 'win32') {
+      console.error(chalk.red('This command is not supported on Windows.'));
+      process.exit(1);
+    }
+
     const project = findSelfProject(argv);
     if (!project) {
       console.error(chalk.red('No project found.'));
@@ -189,7 +194,7 @@ function shouldStopOthers(
 
 function terminateChildren(children: child_process.ChildProcess[]): void {
   for (const child of children) {
-    if (!child.pid) continue;
+    if (!child.pid || child.exitCode !== null || child.signalCode !== null) continue;
 
     try {
       killProcessGroup(child.pid);
