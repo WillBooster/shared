@@ -116,6 +116,15 @@ describe('BaseScripts.testE2E', () => {
     expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts --project chromium');
   });
 
+  it('preserves forwarded values when explicit targets are provided separately', async () => {
+    const command = await scripts.testE2EProduction(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {
+      playwrightArgs: ['test'],
+      forwardedPlaywrightArgs: ['--some-option', 'custom-value'],
+    });
+
+    expect(command).toContain('BUN playwright test test/e2e/topPage.spec.ts --some-option custom-value');
+  });
+
   it('preserves test list option values when replacing explicit playwright targets', async () => {
     const command = await scripts.testE2EProduction(project, { targets: ['test/e2e/topPage.spec.ts'] } as TestArgv, {
       playwrightArgs: ['test', '--test-list', 'cases.txt', '--test-list-invert', 'ignored.txt', 'test/e2e/'],

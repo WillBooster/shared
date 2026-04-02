@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { CommandModule, InferredOptionTypes } from 'yargs';
+import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findDescendantProjects } from '../project.js';
 import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
@@ -26,8 +26,12 @@ const builder = {
 
 export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
   command: 'start [args..]',
-  describe: 'Start app',
-  builder,
+  describe:
+    "Start app. Use '--' to stop wb option parsing and forward the remaining arguments to the underlying app command. Example: wb start -- --host 0.0.0.0",
+  builder: (yargs: Argv<unknown>) =>
+    yargs.parserConfiguration({ 'populate--': true }).options(builder) as Argv<
+      InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>
+    >,
   async handler(argv) {
     normalizeArgs(argv);
 

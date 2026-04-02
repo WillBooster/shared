@@ -9,6 +9,7 @@ import { findDescendantProjects } from '../project.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { buildShellCommand } from '../utils/shell.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -16,9 +17,11 @@ const builder = {} as const;
 
 export const prismaCommand: CommandModule = {
   command: 'prisma',
-  describe: 'Run prisma commands',
+  describe:
+    "Run prisma commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Example: wb prisma migrate-dev -- --name init",
   builder: (yargs) => {
     return yargs
+      .parserConfiguration({ 'populate--': true })
       .command(cleanUpLitestreamCommand)
       .command(createLitestreamConfigCommand)
       .command(deployCommand)
@@ -227,7 +230,7 @@ const defaultCommandBuilder = { args: { type: 'array' } } as const;
 
 const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultCommandBuilder>> = {
   command: '$0 <args..>',
-  describe: 'Pass the command and arguments to prisma as is',
+  describe: "Pass the command and arguments to prisma as is. Additional Prisma flags can also be forwarded after '--'.",
   builder: defaultCommandBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
@@ -322,6 +325,7 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
     ...sharedOptionKeys,
     ...sharedOptionAliases,
     // Internal yargs properties
+    '--',
     '_',
     '$0',
   ]);
@@ -352,5 +356,6 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
     }
   }
 
-  return unknownOptions.join(' ');
+  const passthroughArgs = Array.isArray(argv['--']) ? argv['--'].map(String) : [];
+  return buildShellCommand([...unknownOptions, ...passthroughArgs]);
 }

@@ -21,6 +21,7 @@ export const scriptOptionsBuilder = {
 } as const;
 
 export type ScriptArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof scriptOptionsBuilder>>> & {
+  '--'?: string[];
   normalizedArgsText?: string;
   normalizedDockerOptionsText?: string;
   silent?: boolean;
@@ -28,9 +29,9 @@ export type ScriptArgv = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof s
 };
 
 export function normalizeArgs(
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof scriptOptionsBuilder>>>
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof scriptOptionsBuilder>>> & { '--'?: string[] }
 ): void {
-  (argv as ScriptArgv).normalizedArgsText = [...(argv.args ?? []), ...(argv._?.slice(1) ?? [])]
+  (argv as ScriptArgv).normalizedArgsText = [...(argv.args ?? []), ...(argv._?.slice(1) ?? []), ...(argv['--'] ?? [])]
     .map((arg) => shellEscapeArgument(String(arg)))
     .join(' ');
   (argv as ScriptArgv).normalizedDockerOptionsText = (argv.dockerOptions ?? [])

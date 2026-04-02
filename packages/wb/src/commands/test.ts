@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import chalk from 'chalk';
-import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { Argv, ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
@@ -10,6 +10,7 @@ import type { scriptOptionsBuilder } from '../scripts/builder.js';
 import { toDevNull } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
+import { findExplicitPlaywrightTargetIndexes } from '../scripts/execution/baseScripts.js';
 import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
@@ -60,25 +61,28 @@ const argumentsBuilder = {
   },
 } as const;
 
+type TestCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>;
+
 export type TestArgv = Partial<
   ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof scriptOptionsBuilder & typeof argumentsBuilder>>
 >;
 
-export const testCommand: CommandModule<
-  unknown,
-  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>
-> = {
+export type TestCommandArgv = ArgumentsCamelCase<TestCommandOptions> & { '--'?: string[] };
+
+export const testCommand: CommandModule<unknown, TestCommandOptions> = {
   command: 'test [targets...]',
-  describe: 'Test project. If you pass no arguments, it will run all tests.',
-  builder: { ...builder, ...argumentsBuilder },
+  describe:
+    "Test project. If you pass no arguments, it will run all tests. Use '--' to stop wb option parsing and forward the remaining flags to Playwright. Example: wb test -- --grep 'uploaded image asset'",
+  builder: (yargs: Argv<unknown>): Argv<TestCommandOptions> =>
+    yargs
+      .parserConfiguration({ 'populate--': true })
+      .options({ ...builder, ...argumentsBuilder }) as Argv<TestCommandOptions>,
   async handler(argv) {
-    await test(argv);
+    await test(argv as TestCommandArgv);
   },
 };
 
-export async function test(
-  argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof argumentsBuilder>>
-): Promise<void> {
+export async function test(argv: TestCommandArgv): Promise<void> {
   const projects = await findDescendantProjects(argv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
@@ -90,13 +94,8 @@ export async function test(
 
   // Get test targets from positional arguments
   const testTargets = (argv.targets ?? []) as string[];
-  const shouldRunAllTests = testTargets.length === 0;
-
-  // Detect test modes from target paths
-  const hasE2eTargets = testTargets.some((target) => target.includes('/e2e'));
-  const hasUnitTargets = testTargets.some((target) => target.includes('/unit'));
-  const shouldRunUnit = shouldRunAllTests || hasUnitTargets;
-  const shouldRunE2e = shouldRunAllTests || hasE2eTargets;
+  const forwardedPlaywrightArgs = argv['--'] ?? [];
+  const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
 
   for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies ?? {};
@@ -135,23 +134,45 @@ export async function test(
 
     switch (argv.e2e) {
       case 'headless': {
-        await runWithSpawn(await scripts.testE2EProduction(project, e2eArgv, {}), project, argv);
+        await runWithSpawn(
+          await scripts.testE2EProduction(project, e2eArgv, {
+            playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
+            forwardedPlaywrightArgs,
+          }),
+          project,
+          argv
+        );
         continue;
       }
       case 'headless-dev': {
-        await runWithSpawn(await scripts.testE2EDev(project, e2eArgv, {}), project, argv);
+        await runWithSpawn(
+          await scripts.testE2EDev(project, e2eArgv, {
+            playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
+            forwardedPlaywrightArgs,
+          }),
+          project,
+          argv
+        );
         continue;
       }
       case 'docker': {
-        await testOnDocker(project, e2eArgv, scripts);
+        await testOnDocker(
+          project,
+          e2eArgv,
+          scripts,
+          buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
+          forwardedPlaywrightArgs
+        );
         continue;
       }
       case 'docker-debug': {
-        await testOnDocker(project, e2eArgv, scripts, [
-          'test',
-          ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']),
-          '--debug',
-        ]);
+        await testOnDocker(
+          project,
+          e2eArgv,
+          scripts,
+          buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--debug']),
+          forwardedPlaywrightArgs
+        );
         continue;
       }
     }
@@ -160,7 +181,8 @@ export async function test(
         case 'headed': {
           await runWithSpawn(
             await scripts.testE2EProduction(project, e2eArgv, {
-              playwrightArgs: ['test', ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']), '--headed'],
+              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--headed']),
+              forwardedPlaywrightArgs,
             }),
             project,
             argv
@@ -170,7 +192,8 @@ export async function test(
         case 'headed-dev': {
           await runWithSpawn(
             await scripts.testE2EDev(project, e2eArgv, {
-              playwrightArgs: ['test', ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']), '--headed'],
+              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--headed']),
+              forwardedPlaywrightArgs,
             }),
             project,
             argv
@@ -180,7 +203,8 @@ export async function test(
         case 'debug': {
           await runWithSpawn(
             await scripts.testE2EProduction(project, e2eArgv, {
-              playwrightArgs: ['test', ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']), '--debug'],
+              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--debug']),
+              forwardedPlaywrightArgs,
             }),
             project,
             argv
@@ -210,17 +234,42 @@ async function testOnDocker(
   project: Project,
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof argumentsBuilder>>,
   scripts: BaseScripts,
-  playwrightArgs?: string[]
+  playwrightArgs?: string[],
+  forwardedPlaywrightArgs?: string[]
 ): Promise<void> {
   project.env.WB_DOCKER ||= '1';
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
   process.exitCode = await runWithSpawn(
     await scripts.testE2EDocker(project, argv, {
       playwrightArgs,
+      forwardedPlaywrightArgs,
     }),
     project,
     argv,
     { exitIfFailed: false }
   );
   await runWithSpawn(dockerScripts.stop(project), project, argv);
+}
+
+export function buildPlaywrightArgsForE2E(
+  e2eTargets: string[],
+  forwardedPlaywrightArgs: string[] = [],
+  additionalArgs: string[] = []
+): string[] {
+  const hasForwardedPlaywrightTargets = findExplicitPlaywrightTargetIndexes(forwardedPlaywrightArgs).length > 0;
+  return ['test', ...(e2eTargets.length > 0 || hasForwardedPlaywrightTargets ? [] : ['test/e2e/']), ...additionalArgs];
+}
+
+export function resolveTestExecutionTargets(
+  testTargets: string[],
+  forwardedPlaywrightArgs: string[] = []
+): { shouldRunUnit: boolean; shouldRunE2e: boolean } {
+  const hasE2eTargets = testTargets.some((target) => target.includes('/e2e'));
+  const hasUnitTargets = testTargets.some((target) => target.includes('/unit'));
+  const shouldRunAllTests = testTargets.length === 0 && forwardedPlaywrightArgs.length === 0;
+
+  return {
+    shouldRunUnit: shouldRunAllTests || hasUnitTargets,
+    shouldRunE2e: shouldRunAllTests || hasE2eTargets || forwardedPlaywrightArgs.length > 0,
+  };
 }
