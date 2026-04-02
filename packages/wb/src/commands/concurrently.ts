@@ -39,6 +39,8 @@ interface RunConcurrentlyOptions {
   killOthers: boolean;
   killOthersOnFail: boolean;
   success: 'all' | 'first';
+  ci?: boolean;
+  forceColor?: boolean;
 }
 
 export const concurrentlyCommand: CommandModule<
@@ -68,6 +70,8 @@ export const concurrentlyCommand: CommandModule<
         killOthers: argv.killOthers ?? false,
         killOthersOnFail: argv.killOthersOnFail ?? false,
         success: argv.success,
+        ci: typeof argv.ci === 'boolean' ? argv.ci : undefined,
+        forceColor: typeof argv.forceColor === 'boolean' ? argv.forceColor : undefined,
       });
       process.exit(exitCode);
     } catch (error) {
@@ -82,7 +86,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
     child_process.spawn(normalizeScript(command, options.project).runnable, {
       cwd: options.project.dirPath,
       detached: true,
-      env: configureEnv(options.project.env, {}),
+      env: configureEnv(options.project.env, { ci: options.ci, forceColor: options.forceColor }),
       shell: true,
       stdio: 'inherit',
     })
