@@ -36,3 +36,4 @@ When changing code, complete these steps before responding to the user.
 - When adding new functions or classes, define them below any functions or classes that call them to maintain clear call order.
 - Prefer `undefined` over `null` unless explicitly dealing with APIs or libraries that require `null`.
 - Use `project.env` instead of `process.env` on `wb` package.
+- Always drop any Windows support.
