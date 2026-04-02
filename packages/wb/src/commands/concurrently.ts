@@ -194,7 +194,7 @@ function shouldStopOthers(
 
 function terminateChildren(children: child_process.ChildProcess[]): void {
   for (const child of children) {
-    if (!child.pid || child.exitCode !== null || child.signalCode !== null) continue;
+    if (!child.pid) continue;
 
     try {
       killProcessGroup(child.pid);
