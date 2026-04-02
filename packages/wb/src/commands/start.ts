@@ -26,7 +26,8 @@ const builder = {
 
 export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>> = {
   command: 'start [args..]',
-  describe: 'Start app',
+  describe:
+    "Start app. Use '--' to stop wb option parsing and forward the remaining arguments to the underlying app command. Example: wb start -- --host 0.0.0.0",
   builder: (yargs: Argv<unknown>) =>
     yargs.parserConfiguration({ 'populate--': true }).options(builder) as Argv<
       InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>

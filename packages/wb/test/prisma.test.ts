@@ -1,3 +1,5 @@
+import child_process from 'node:child_process';
+
 import { describe, expect, it } from 'vitest';
 import yargs from 'yargs';
 
@@ -101,5 +103,19 @@ describe('prisma command unknown options', () => {
     const result = extractUnknownOptions(argv);
 
     expect(result).toBe(`--name 'custom migration' --skip-generate`);
+  });
+
+  it('explains -- passthrough in wb prisma --help output', () => {
+    const result = child_process.spawnSync('yarn', ['workspace', '@willbooster/wb', 'start', 'prisma', '--help'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+    const normalizedStdout = result.stdout.replaceAll(/\s+/g, ' ');
+
+    expect(result.status).toBe(0);
+    expect(normalizedStdout).toContain(`Use '--' to stop wb option parsing`);
+    expect(normalizedStdout).toContain(`forward the remaining arguments to Prisma.`);
+    expect(normalizedStdout).toContain(`Example: wb prisma migrate-dev -- --name init`);
+    expect(normalizedStdout).toContain(`Additional Prisma flags can also be forwarded after '--'.`);
   });
 });

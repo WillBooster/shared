@@ -17,7 +17,8 @@ const builder = {} as const;
 
 export const prismaCommand: CommandModule = {
   command: 'prisma',
-  describe: 'Run prisma commands',
+  describe:
+    "Run prisma commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Example: wb prisma migrate-dev -- --name init",
   builder: (yargs) => {
     return yargs
       .parserConfiguration({ 'populate--': true })
@@ -229,7 +230,7 @@ const defaultCommandBuilder = { args: { type: 'array' } } as const;
 
 const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultCommandBuilder>> = {
   command: '$0 <args..>',
-  describe: 'Pass the command and arguments to prisma as is',
+  describe: "Pass the command and arguments to prisma as is. Additional Prisma flags can also be forwarded after '--'.",
   builder: defaultCommandBuilder,
   async handler(argv) {
     const allProjects = await findPrismaProjects(argv);
