@@ -11,6 +11,8 @@ import { prismaScripts } from '../prismaScripts.js';
 export interface TestE2EOptions {
   /** '--e2e generate' calls 'codegen http://localhost:8080' */
   playwrightArgs?: string[];
+  /** Raw Playwright args forwarded after `wb test -- ...` */
+  forwardedPlaywrightArgs?: string[];
 }
 
 /**
@@ -127,11 +129,11 @@ export abstract class BaseScripts {
     project: Project,
     argv: TestArgv,
     startCommand: string,
-    { playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
+    { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
   ): Promise<string> {
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail);
+    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs);
     if (project.skipLaunchingServerForPlaywright) {
       return `${playwrightCommand}${suffix}`;
     }
@@ -204,18 +206,26 @@ function findEcosystemConfigPath(project: Project): string | undefined {
   }
 }
 
-function buildPlaywrightCommand(playwrightArgs: string[], targets: TestArgv['targets'], bail?: boolean): string {
+function buildPlaywrightCommand(
+  playwrightArgs: string[],
+  targets: TestArgv['targets'],
+  bail?: boolean,
+  forwardedPlaywrightArgs: string[] = []
+): string {
   const base = ['BUN', 'playwright'];
   const normalizedTargets = targets?.map(String);
   if (playwrightArgs[0] !== 'test' || !normalizedTargets?.length) {
-    return appendPlaywrightBailOption([...base, ...playwrightArgs], bail);
+    return appendPlaywrightBailOption([...base, ...playwrightArgs, ...forwardedPlaywrightArgs], bail);
   }
 
   const rest = playwrightArgs.slice(1);
   const explicitTargetIndexes = findExplicitPlaywrightTargetIndexes(rest);
   const restWithoutExplicitTarget =
     explicitTargetIndexes.length === 0 ? rest : rest.filter((_, index) => !explicitTargetIndexes.includes(index));
-  return appendPlaywrightBailOption([...base, 'test', ...normalizedTargets, ...restWithoutExplicitTarget], bail);
+  return appendPlaywrightBailOption(
+    [...base, 'test', ...normalizedTargets, ...restWithoutExplicitTarget, ...forwardedPlaywrightArgs],
+    bail
+  );
 }
 
 function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): string {

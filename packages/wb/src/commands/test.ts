@@ -140,7 +140,8 @@ export async function test(argv: TestCommandArgv): Promise<void> {
       case 'headless': {
         await runWithSpawn(
           await scripts.testE2EProduction(project, e2eArgv, {
-            playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, argv),
+            playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets),
+            forwardedPlaywrightArgs: argv['--'] ?? [],
           }),
           project,
           argv
@@ -150,7 +151,8 @@ export async function test(argv: TestCommandArgv): Promise<void> {
       case 'headless-dev': {
         await runWithSpawn(
           await scripts.testE2EDev(project, e2eArgv, {
-            playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, argv),
+            playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets),
+            forwardedPlaywrightArgs: argv['--'] ?? [],
           }),
           project,
           argv
@@ -158,11 +160,17 @@ export async function test(argv: TestCommandArgv): Promise<void> {
         continue;
       }
       case 'docker': {
-        await testOnDocker(project, e2eArgv, scripts, buildPlaywrightArgsForE2E(e2eTargets, argv));
+        await testOnDocker(project, e2eArgv, scripts, buildPlaywrightArgsForE2E(e2eTargets), argv['--'] ?? []);
         continue;
       }
       case 'docker-debug': {
-        await testOnDocker(project, e2eArgv, scripts, buildPlaywrightArgsForE2E(e2eTargets, argv, ['--debug']));
+        await testOnDocker(
+          project,
+          e2eArgv,
+          scripts,
+          buildPlaywrightArgsForE2E(e2eTargets, ['--debug']),
+          argv['--'] ?? []
+        );
         continue;
       }
     }
@@ -171,7 +179,8 @@ export async function test(argv: TestCommandArgv): Promise<void> {
         case 'headed': {
           await runWithSpawn(
             await scripts.testE2EProduction(project, e2eArgv, {
-              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, argv, ['--headed']),
+              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, ['--headed']),
+              forwardedPlaywrightArgs: argv['--'] ?? [],
             }),
             project,
             argv
@@ -181,7 +190,8 @@ export async function test(argv: TestCommandArgv): Promise<void> {
         case 'headed-dev': {
           await runWithSpawn(
             await scripts.testE2EDev(project, e2eArgv, {
-              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, argv, ['--headed']),
+              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, ['--headed']),
+              forwardedPlaywrightArgs: argv['--'] ?? [],
             }),
             project,
             argv
@@ -191,7 +201,8 @@ export async function test(argv: TestCommandArgv): Promise<void> {
         case 'debug': {
           await runWithSpawn(
             await scripts.testE2EProduction(project, e2eArgv, {
-              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, argv, ['--debug']),
+              playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, ['--debug']),
+              forwardedPlaywrightArgs: argv['--'] ?? [],
             }),
             project,
             argv
@@ -221,13 +232,15 @@ async function testOnDocker(
   project: Project,
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof argumentsBuilder>>,
   scripts: BaseScripts,
-  playwrightArgs?: string[]
+  playwrightArgs?: string[],
+  forwardedPlaywrightArgs?: string[]
 ): Promise<void> {
   project.env.WB_DOCKER ||= '1';
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
   process.exitCode = await runWithSpawn(
     await scripts.testE2EDocker(project, argv, {
       playwrightArgs,
+      forwardedPlaywrightArgs,
     }),
     project,
     argv,
@@ -236,10 +249,6 @@ async function testOnDocker(
   await runWithSpawn(dockerScripts.stop(project), project, argv);
 }
 
-export function buildPlaywrightArgsForE2E(
-  e2eTargets: string[],
-  argv: { '--'?: string[] },
-  additionalArgs: string[] = []
-): string[] {
-  return ['test', ...(e2eTargets.length > 0 ? e2eTargets : ['test/e2e/']), ...(argv['--'] ?? []), ...additionalArgs];
+export function buildPlaywrightArgsForE2E(e2eTargets: string[], additionalArgs: string[] = []): string[] {
+  return ['test', ...(e2eTargets.length > 0 ? [] : ['test/e2e/']), ...additionalArgs];
 }
