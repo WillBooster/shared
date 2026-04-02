@@ -7,10 +7,11 @@ import { describe, expect, it, afterEach, vi } from 'vitest';
 import yargs from 'yargs';
 
 import { concurrentlyCommand, runConcurrently } from '../src/commands/concurrently.js';
+import { Project } from '../src/project.js';
 
 describe('runConcurrently', () => {
-  const env = process.env as Record<string, string | undefined>;
   const cwd = process.cwd();
+  const project = new Project(cwd, {} as never, false);
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -22,8 +23,7 @@ describe('runConcurrently', () => {
         `${process.execPath} -e "setTimeout(() => process.exit(0), 50)"`,
         `${process.execPath} -e "setTimeout(() => process.exit(0), 100)"`,
       ],
-      cwd,
-      env,
+      project,
       killOthers: false,
       killOthersOnFail: false,
       success: 'all',
@@ -38,8 +38,7 @@ describe('runConcurrently', () => {
         `${process.execPath} -e "setTimeout(() => process.exit(0), 120)"`,
         `${process.execPath} -e "setTimeout(() => process.exit(0), 50)"`,
       ],
-      cwd,
-      env,
+      project,
       killOthers: true,
       killOthersOnFail: false,
       success: 'first',
@@ -54,8 +53,7 @@ describe('runConcurrently', () => {
         `${process.execPath} -e "setTimeout(() => process.exit(1), 40)"`,
         `${process.execPath} -e "setTimeout(() => process.exit(0), 1000)"`,
       ],
-      cwd,
-      env,
+      project,
       killOthers: false,
       killOthersOnFail: true,
       success: 'all',
@@ -70,8 +68,7 @@ describe('runConcurrently', () => {
         `${process.execPath} -e "setTimeout(() => process.exit(0), 120)"`,
         `${process.execPath} -e "setTimeout(() => process.exit(1), 40)"`,
       ],
-      cwd,
-      env,
+      project,
       killOthers: false,
       killOthersOnFail: false,
       success: 'first',
@@ -81,10 +78,6 @@ describe('runConcurrently', () => {
   });
 
   it('stops descendants of the command that triggered success=first shutdown', async () => {
-    if (process.platform === 'win32') {
-      return;
-    }
-
     const markerFilePath = path.join(
       os.tmpdir(),
       `wb-concurrently-descendant-${process.pid}-${Math.random().toString(36).slice(2)}.txt`
@@ -103,8 +96,7 @@ describe('runConcurrently', () => {
           `${process.execPath} -e ${JSON.stringify(grandchildScript)}`,
           `${process.execPath} -e "setTimeout(() => process.exit(0), 1000)"`,
         ],
-        cwd,
-        env,
+        project,
         killOthers: false,
         killOthersOnFail: false,
         success: 'first',
@@ -129,8 +121,7 @@ describe('runConcurrently', () => {
         `${process.execPath} -e "setTimeout(() => process.exit(0), 40)"`,
         `${process.execPath} -e ${JSON.stringify(writeMarkerScript)}`,
       ],
-      cwd,
-      env,
+      project,
       killOthers: false,
       killOthersOnFail: true,
       success: 'all',
@@ -144,8 +135,7 @@ describe('runConcurrently', () => {
   it('maps signal exits to 128 plus the signal number', async () => {
     const exitCode = await runConcurrently({
       commands: ['kill -TERM $$'],
-      cwd,
-      env,
+      project,
       killOthers: false,
       killOthersOnFail: false,
       success: 'all',
@@ -160,8 +150,7 @@ describe('runConcurrently', () => {
         `${process.execPath} -e "process.on('SIGINT', () => process.exit(0)); setInterval(() => {}, 1000)"`,
         `${process.execPath} -e "process.on('SIGINT', () => process.exit(0)); setInterval(() => {}, 1000)"`,
       ],
-      cwd,
-      env,
+      project,
       killOthers: false,
       killOthersOnFail: false,
       success: 'all',
@@ -172,6 +161,18 @@ describe('runConcurrently', () => {
     }, 50);
 
     await expect(concurrentRun).resolves.toBe(130);
+  });
+
+  it('normalizes placeholder commands before spawning children', async () => {
+    const exitCode = await runConcurrently({
+      commands: [`YARN node -e "process.exit(0)"`],
+      project,
+      killOthers: false,
+      killOthersOnFail: false,
+      success: 'all',
+    });
+
+    expect(exitCode).toBe(0);
   });
 
   it('returns failure when a child process emits an error', async () => {
@@ -195,8 +196,7 @@ describe('runConcurrently', () => {
     await expect(
       runConcurrently({
         commands: ['ignored'],
-        cwd,
-        env,
+        project,
         killOthers: false,
         killOthersOnFail: false,
         success: 'all',

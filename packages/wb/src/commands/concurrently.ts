@@ -5,7 +5,8 @@ import { treeKill } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findSelfProject } from '../project.js';
+import { findSelfProject, type Project } from '../project.js';
+import { configureEnv, normalizeScript } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {
@@ -34,8 +35,7 @@ const argumentsBuilder = {
 
 interface RunConcurrentlyOptions {
   commands: string[];
-  cwd: string;
-  env: Record<string, string | undefined>;
+  project: Project;
   killOthers: boolean;
   killOthersOnFail: boolean;
   success: 'all' | 'first';
@@ -64,8 +64,7 @@ export const concurrentlyCommand: CommandModule<
     try {
       const exitCode = await runConcurrently({
         commands,
-        cwd: project.dirPath,
-        env: project.env,
+        project,
         killOthers: argv.killOthers ?? false,
         killOthersOnFail: argv.killOthersOnFail ?? false,
         success: argv.success,
@@ -80,10 +79,10 @@ export const concurrentlyCommand: CommandModule<
 
 export async function runConcurrently(options: RunConcurrentlyOptions): Promise<number> {
   const children = options.commands.map((command) =>
-    child_process.spawn(command, {
-      cwd: options.cwd,
-      detached: process.platform !== 'win32',
-      env: options.env,
+    child_process.spawn(normalizeScript(command, options.project).runnable, {
+      cwd: options.project.dirPath,
+      detached: true,
+      env: configureEnv(options.project.env, {}),
       shell: true,
       stdio: 'inherit',
     })
@@ -193,10 +192,6 @@ function terminateChildren(children: child_process.ChildProcess[]): void {
 }
 
 function killProcessGroup(pid: number): void {
-  if (process.platform === 'win32') {
-    return;
-  }
-
   try {
     process.kill(-pid, 'SIGTERM');
   } catch (error) {
