@@ -244,7 +244,7 @@ function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
     }
 
     if (arg === '--') {
-      return index + 1 < args.length ? [index + 1] : targetIndexes;
+      return [...targetIndexes, ...args.slice(index + 1).map((_, offset) => index + 1 + offset)];
     }
     if (arg.startsWith('--')) {
       if (arg.includes('=')) continue;

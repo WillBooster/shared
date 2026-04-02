@@ -127,6 +127,21 @@ describe('BaseScripts.testE2E', () => {
     expect(command).not.toContain('test/e2e/ --test-list');
   });
 
+  it('replaces every explicit playwright target after -- while preserving earlier targets', async () => {
+    const command = await scripts.testE2EProduction(
+      project,
+      { targets: ['test/e2e/a.spec.ts', 'test/e2e/b.spec.ts'] } as TestArgv,
+      {
+        playwrightArgs: ['test', 'test/e2e/original.spec.ts', '--', 'test/e2e/c.spec.ts', 'test/e2e/d.spec.ts'],
+      }
+    );
+
+    expect(command).toContain('BUN playwright test test/e2e/a.spec.ts test/e2e/b.spec.ts --');
+    expect(command).not.toContain('test/e2e/original.spec.ts');
+    expect(command).not.toContain('test/e2e/c.spec.ts');
+    expect(command).not.toContain('test/e2e/d.spec.ts');
+  });
+
   it('does not add max-failures to non-test playwright subcommands', async () => {
     const command = await scripts.testE2EProduction(project, {} as TestArgv, {
       playwrightArgs: ['codegen', 'http://localhost:3000'],

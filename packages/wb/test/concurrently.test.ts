@@ -154,6 +154,26 @@ describe('runConcurrently', () => {
     expect(exitCode).toBe(143);
   });
 
+  it('returns the parent interrupt exit code when the runner is stopped by SIGINT', async () => {
+    const concurrentRun = runConcurrently({
+      commands: [
+        `${process.execPath} -e "process.on('SIGINT', () => process.exit(0)); setInterval(() => {}, 1000)"`,
+        `${process.execPath} -e "process.on('SIGINT', () => process.exit(0)); setInterval(() => {}, 1000)"`,
+      ],
+      cwd,
+      env,
+      killOthers: false,
+      killOthersOnFail: false,
+      success: 'all',
+    });
+
+    setTimeout(() => {
+      process.emit('SIGINT', 'SIGINT');
+    }, 50);
+
+    await expect(concurrentRun).resolves.toBe(130);
+  });
+
   it('returns failure when a child process emits an error', async () => {
     vi.spyOn(child_process, 'spawn').mockImplementation(() => {
       const listeners = new Map<string, ((...args: unknown[]) => void)[]>();

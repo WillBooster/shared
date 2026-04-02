@@ -90,6 +90,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   );
 
   let stopping = false;
+  let interruptedSignal: NodeJS.Signals | undefined;
   let firstResult: number | undefined;
   const results = Array.from<number | undefined>({ length: children.length });
   const waitForExitPromises = children.map((child, index) => {
@@ -119,21 +120,35 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
     });
   });
 
-  const stopAll = (): void => {
+  const stopAll = (signal: NodeJS.Signals): void => {
+    interruptedSignal ??= signal;
     if (stopping) return;
 
     stopping = true;
     terminateChildren(children);
   };
-  process.on('SIGINT', stopAll);
-  process.on('SIGTERM', stopAll);
-  process.on('SIGQUIT', stopAll);
+  const stopOnSigint = (): void => {
+    stopAll('SIGINT');
+  };
+  const stopOnSigterm = (): void => {
+    stopAll('SIGTERM');
+  };
+  const stopOnSigquit = (): void => {
+    stopAll('SIGQUIT');
+  };
+  process.on('SIGINT', stopOnSigint);
+  process.on('SIGTERM', stopOnSigterm);
+  process.on('SIGQUIT', stopOnSigquit);
   try {
     await Promise.all(waitForExitPromises);
   } finally {
-    process.removeListener('SIGINT', stopAll);
-    process.removeListener('SIGTERM', stopAll);
-    process.removeListener('SIGQUIT', stopAll);
+    process.removeListener('SIGINT', stopOnSigint);
+    process.removeListener('SIGTERM', stopOnSigterm);
+    process.removeListener('SIGQUIT', stopOnSigquit);
+  }
+
+  if (interruptedSignal) {
+    return getExitCode(null, interruptedSignal);
   }
 
   if (options.success === 'first') {
@@ -164,9 +179,9 @@ function shouldStopOthers(
   return options.success === 'first' || options.killOthers || (options.killOthersOnFail && exitCode !== 0);
 }
 
-function terminateChildren(children: child_process.ChildProcess[], exceptPid?: number): void {
+function terminateChildren(children: child_process.ChildProcess[]): void {
   for (const child of children) {
-    if (!child.pid || child.pid === exceptPid) continue;
+    if (!child.pid) continue;
 
     try {
       killProcessGroup(child.pid);
