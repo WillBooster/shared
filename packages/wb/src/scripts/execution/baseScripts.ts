@@ -1,6 +1,8 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
+import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
@@ -8,7 +10,7 @@ import { prismaScripts } from '../prismaScripts.js';
 
 export interface TestE2EOptions {
   /** '--e2e generate' calls 'codegen http://localhost:8080' */
-  playwrightArgs?: string;
+  playwrightArgs?: string[];
 }
 
 /**
@@ -30,17 +32,29 @@ export abstract class BaseScripts {
     await checkAndKillPortProcess(project.env.PORT, project);
     if (!this.shouldWaitAndOpenApp) return this.startDevProtected(project, argv);
 
-    return `YARN concurrently --raw --kill-others-on-fail
-      "${this.startDevProtected(project, argv)}"
-      "${this.waitAndOpenApp(project)}"`;
+    return buildShellCommand([
+      'YARN',
+      'wb',
+      'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
+      '--kill-others-on-fail',
+      this.startDevProtected(project, argv),
+      this.waitAndOpenApp(project),
+    ]);
   }
   async startProduction(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
     if (!this.shouldWaitAndOpenApp) return this.startProductionProtected(project, argv);
 
-    return `YARN concurrently --raw --kill-others-on-fail
-      "${this.startProductionProtected(project, argv)}"
-      "${this.waitAndOpenApp(project)}"`;
+    return buildShellCommand([
+      'YARN',
+      'wb',
+      'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
+      '--kill-others-on-fail',
+      this.startProductionProtected(project, argv),
+      this.waitAndOpenApp(project),
+    ]);
   }
   async startTest(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
@@ -54,9 +68,15 @@ export abstract class BaseScripts {
     }
 
     return `${this.buildDocker(project, 'development')}
-      && YARN concurrently --raw --kill-others-on-fail
-        "${dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? '')}"
-        "${this.waitAndOpenApp(project)}"`;
+      && ${buildShellCommand([
+        'YARN',
+        'wb',
+        'concurrently',
+        ...buildEnvReaderOptionArgs(argv),
+        '--kill-others-on-fail',
+        dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? ''),
+        this.waitAndOpenApp(project),
+      ])}`;
   }
 
   protected abstract startDevProtected(_: Project, argv: ScriptArgv): string;
@@ -90,14 +110,24 @@ export abstract class BaseScripts {
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     await checkAndKillPortProcess(project.env.PORT, project);
     // Use empty NODE_ENV to avoid "production" mode in some frameworks like Blitz.js.
-    return `NODE_ENV="" YARN concurrently --kill-others --raw --success first "${this.startDevProtected(project, argv)}" "${this.waitApp(project)}"`;
+    return `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildShellCommand([
+      'YARN',
+      'wb',
+      'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
+      '--kill-others',
+      '--success',
+      'first',
+      this.startDevProtected(project, argv),
+      this.waitApp(project),
+    ])}`;
   }
 
   async testE2EProtected(
     project: Project,
     argv: TestArgv,
     startCommand: string,
-    { playwrightArgs = 'test test/e2e/' }: TestE2EOptions
+    { playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
   ): Promise<string> {
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
@@ -106,22 +136,43 @@ export abstract class BaseScripts {
       return `${playwrightCommand}${suffix}`;
     }
 
-    return `YARN concurrently --kill-others --raw --success first
-      "${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
-        && ${playwrightCommand}${suffix}"`;
+    return buildShellCommand([
+      'YARN',
+      'wb',
+      'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
+      '--kill-others',
+      '--success',
+      'first',
+      `${startCommand} && exit 1`,
+      `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
+        && ${playwrightCommand}${suffix}`,
+    ]);
   }
   // ------------ END: test (e2e) commands ------------
 
   testUnit(project: Project, argv: TestArgv): string {
-    const testTarget = argv.targets?.join(' ') || 'test/unit/';
+    const targets = argv.targets?.map(String);
     if (project.hasVitest) {
-      const bailOption = argv.bail ? ' --bail=1' : '';
       // Since this command is referred from other commands, we have to use "vitest run" (non-interactive mode).
-      return `YARN vitest run ${testTarget} --color --passWithNoTests --allowOnly --watch=false${bailOption}`;
+      return buildShellCommand([
+        'YARN',
+        'vitest',
+        'run',
+        ...(targets?.length ? targets : ['test/unit/']),
+        '--color',
+        '--passWithNoTests',
+        '--allowOnly',
+        '--watch=false',
+        ...(argv.bail ? ['--bail=1'] : []),
+      ]);
     } else if (project.isBunAvailable) {
-      const bailOption = argv.bail ? ' --bail' : '';
-      return `bun test ${testTarget}${bailOption}`;
+      return buildShellCommand([
+        'bun',
+        'test',
+        ...(targets?.length ? targets : ['test/unit/']),
+        ...(argv.bail ? ['--bail'] : []),
+      ]);
     }
     return 'echo "No tests."';
   }
@@ -153,29 +204,98 @@ function findEcosystemConfigPath(project: Project): string | undefined {
   }
 }
 
-function buildPlaywrightCommand(playwrightArgs: string, targets: TestArgv['targets'], bail?: boolean): string {
-  const base = 'BUN playwright';
-  const target = targets?.join(' ') || 'test/e2e/';
-  if (!playwrightArgs.startsWith('test ') || !targets?.length) {
-    return appendPlaywrightBailOption(`${base} ${playwrightArgs}`, bail);
+function buildPlaywrightCommand(playwrightArgs: string[], targets: TestArgv['targets'], bail?: boolean): string {
+  const base = ['BUN', 'playwright'];
+  const normalizedTargets = targets?.map(String);
+  if (playwrightArgs[0] !== 'test' || !normalizedTargets?.length) {
+    return appendPlaywrightBailOption([...base, ...playwrightArgs], bail);
   }
 
-  const rest = playwrightArgs.slice('test '.length).trim();
-  const parts = rest.length > 0 ? rest.split(/\s+/) : [];
-  if (!parts[0] || parts[0].startsWith('-')) {
-    parts.unshift(target);
-  } else {
-    parts[0] = target;
-  }
-  return appendPlaywrightBailOption(`${base} test ${parts.join(' ')}`, bail);
+  const rest = playwrightArgs.slice(1);
+  const explicitTargetIndexes = findExplicitPlaywrightTargetIndexes(rest);
+  const restWithoutExplicitTarget =
+    explicitTargetIndexes.length === 0 ? rest : rest.filter((_, index) => !explicitTargetIndexes.includes(index));
+  return appendPlaywrightBailOption([...base, 'test', ...normalizedTargets, ...restWithoutExplicitTarget], bail);
 }
 
-function appendPlaywrightBailOption(command: string, bail?: boolean): string {
-  if (!bail || !command.includes('playwright test')) {
-    return command;
+function appendPlaywrightBailOption(commandArgs: string[], bail?: boolean): string {
+  const playwrightIndex = commandArgs.indexOf('playwright');
+  const isPlaywrightTestCommand = playwrightIndex !== -1 && commandArgs[playwrightIndex + 1] === 'test';
+  if (!bail || !isPlaywrightTestCommand) {
+    return buildShellCommand(commandArgs);
   }
-  if (/--max-failures(?:=|\s)/.test(command)) {
-    return command;
+  if (commandArgs.some((arg) => arg === '--max-failures' || arg.startsWith('--max-failures='))) {
+    return buildShellCommand(commandArgs);
   }
-  return `${command} --max-failures=1`;
+  return buildShellCommand([...commandArgs, '--max-failures=1']);
 }
+
+function findExplicitPlaywrightTargetIndexes(args: string[]): number[] {
+  let pendingValueMode: 'optional' | 'required' | undefined;
+  const targetIndexes: number[] = [];
+
+  for (const [index, arg] of args.entries()) {
+    if (pendingValueMode) {
+      if (pendingValueMode === 'required' || !arg.startsWith('-')) {
+        pendingValueMode = undefined;
+        continue;
+      }
+      pendingValueMode = undefined;
+    }
+
+    if (arg === '--') {
+      return [...targetIndexes, ...args.slice(index + 1).map((_, offset) => index + 1 + offset)];
+    }
+    if (arg.startsWith('--')) {
+      if (arg.includes('=')) continue;
+      if (PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES.has(arg)) {
+        pendingValueMode = 'required';
+      } else if (PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES.has(arg)) {
+        pendingValueMode = 'optional';
+      }
+      continue;
+    }
+    if (arg.startsWith('-') && arg !== '-') {
+      const shortOption = arg.slice(0, 2);
+      if (arg.length === 2 && PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES.has(shortOption)) {
+        pendingValueMode = 'required';
+      }
+      continue;
+    }
+    targetIndexes.push(index);
+  }
+
+  return targetIndexes;
+}
+
+const PLAYWRIGHT_TEST_OPTIONS_WITH_REQUIRED_VALUES = new Set([
+  '--browser',
+  '--config',
+  '--grep',
+  '--grep-invert',
+  '--global-timeout',
+  '--max-failures',
+  '--output',
+  '--project',
+  '--repeat-each',
+  '--reporter',
+  '--retries',
+  '--shard',
+  '--test-list',
+  '--test-list-invert',
+  '--timeout',
+  '--trace',
+  '--tsconfig',
+  '--ui-host',
+  '--ui-port',
+  '--ui-title',
+  '--workers',
+]);
+
+const PLAYWRIGHT_TEST_OPTIONS_WITH_OPTIONAL_VALUES = new Set([
+  '--only-changed',
+  '--update-snapshots',
+  '--update-source-method',
+]);
+
+const PLAYWRIGHT_TEST_SHORT_OPTIONS_WITH_REQUIRED_VALUES = new Set(['-c', '-g', '-j']);

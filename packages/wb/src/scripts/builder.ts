@@ -1,5 +1,7 @@
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
+import { shellEscapeArgument } from '../utils/shell.js';
+
 export const scriptOptionsBuilder = {
   watch: {
     description: 'Whether to watch files',
@@ -29,9 +31,11 @@ export function normalizeArgs(
   argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof scriptOptionsBuilder>>>
 ): void {
   (argv as ScriptArgv).normalizedArgsText = [...(argv.args ?? []), ...(argv._?.slice(1) ?? [])]
-    .map((arg) => `'${arg}'`)
+    .map((arg) => shellEscapeArgument(String(arg)))
     .join(' ');
-  (argv as ScriptArgv).normalizedDockerOptionsText = (argv.dockerOptions ?? []).map((arg) => `'${arg}'`).join(' ');
+  (argv as ScriptArgv).normalizedDockerOptionsText = (argv.dockerOptions ?? [])
+    .map((arg) => shellEscapeArgument(String(arg)))
+    .join(' ');
 }
 
 export function toDevNull(argv: unknown): string {

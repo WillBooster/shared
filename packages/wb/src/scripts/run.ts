@@ -95,7 +95,7 @@ export function runWithSpawnInParallel(
 /**
  * Replace capitalized commands (e.g., YARN, PRISMA, BUN) with suitable commands.
  */
-function normalizeScript(script: string, project: Project): { printable: string; runnable: string } {
+export function normalizeScript(script: string, project: Project): { printable: string; runnable: string } {
   let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
@@ -156,7 +156,10 @@ export function printFinishedAndExitIfNeeded(
   }
 }
 
-function configureEnv(env: Record<string, string | undefined>, opts: Options): Record<string, string | undefined> {
+export function configureEnv(
+  env: Record<string, string | undefined>,
+  opts: Options
+): Record<string, string | undefined> {
   const newEnv = { ...env };
   if (opts.ci) {
     newEnv.CI = '1';

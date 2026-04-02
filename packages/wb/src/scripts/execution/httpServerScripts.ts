@@ -1,6 +1,8 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
+import { buildShellCommand } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
 import { BaseScripts, type TestE2EOptions } from './baseScripts.js';
@@ -30,13 +32,27 @@ class HttpServerScripts extends BaseScripts {
 
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const testTarget = argv.targets && argv.targets.length > 0 ? argv.targets.join(' ') : 'test/e2e/';
-    const bailOption = argv.bail ? ' --bail=1' : '';
-
-    return `YARN concurrently --kill-others --raw --success first
-      "${startCommand} && exit 1"
-      "wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
-        && vitest run ${testTarget} --color --passWithNoTests --allowOnly${bailOption}${suffix}"`;
+    const targets = argv.targets?.map(String);
+    return buildShellCommand([
+      'YARN',
+      'wb',
+      'concurrently',
+      ...buildEnvReaderOptionArgs(argv),
+      '--kill-others',
+      '--success',
+      'first',
+      `${startCommand} && exit 1`,
+      `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
+        && ${buildShellCommand([
+          'vitest',
+          'run',
+          ...(targets && targets.length > 0 ? targets : ['test/e2e/']),
+          '--color',
+          '--passWithNoTests',
+          '--allowOnly',
+          ...(argv.bail ? ['--bail=1'] : []),
+        ])}${suffix}`,
+    ]);
   }
 }
 

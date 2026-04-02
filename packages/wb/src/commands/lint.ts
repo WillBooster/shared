@@ -7,6 +7,7 @@ import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { buildShellCommand } from '../utils/shell.js';
 
 const builder = {
   fix: {
@@ -280,12 +281,4 @@ function supportsLintingExtension(project: Pick<Project, 'preferredLinter'>, ext
 
 function needsPrettier(project: Pick<Project, 'preferredLinter'>): boolean {
   return project.preferredLinter === 'eslint';
-}
-
-function buildShellCommand(args: string[]): string {
-  return args.map((arg) => shellEscapeArgument(arg)).join(' ');
-}
-
-function shellEscapeArgument(arg: string): string {
-  return /^[\w./:=,@%+-]+$/u.test(arg) ? arg : `'${arg.replaceAll("'", `'"'"'`)}'`;
 }
