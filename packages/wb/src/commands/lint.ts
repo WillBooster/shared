@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import chalk from 'chalk';
@@ -93,7 +94,7 @@ export const lintCommand: CommandModule<
       process.exit(1);
     }
 
-    const files = argv.files ?? [];
+    const files = getLintTargetFiles(argv);
     const lintFilePathsByProject = new Map<Project, string[]>();
     const prettierFilePaths: string[] = [];
     const packageJsonFilePaths: string[] = [];
@@ -102,7 +103,7 @@ export const lintCommand: CommandModule<
     let sortPackageJsonArgs: string[];
     if (files.length > 0) {
       for (const file of files) {
-        const filePath = path.resolve(String(file));
+        const filePath = path.resolve(file);
         if (
           filePath.endsWith('/test/fixtures') ||
           filePath.includes('/test/fixtures/') ||
@@ -112,6 +113,7 @@ export const lintCommand: CommandModule<
           continue;
         }
 
+        const fileKind = await getLintTargetFileKind(filePath);
         const extension = path.extname(filePath).slice(1);
         if (filePath.endsWith('/package.json')) {
           packageJsonFilePaths.push(filePath);
@@ -121,7 +123,7 @@ export const lintCommand: CommandModule<
         const project = findOwningProject(projects.descendants, filePath);
         if (!project) continue;
 
-        if (supportsLintingExtension(project, extension)) {
+        if (fileKind === 'directory' || supportsLintingExtension(project, extension)) {
           const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
           lintFilePaths.push(filePath);
           lintFilePathsByProject.set(project, lintFilePaths);
@@ -267,6 +269,28 @@ function findOwningProject(projects: Project[], filePath: string): Project | und
     }
   }
   return owningProject;
+}
+
+export function getLintTargetFiles(
+  argv: Pick<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>, 'files'> & {
+    _: unknown[];
+  }
+): string[] {
+  if (argv.files && argv.files.length > 0) {
+    return argv.files.map(String);
+  }
+  return argv._.slice(1).filter((value): value is string => typeof value === 'string');
+}
+
+export async function getLintTargetFileKind(filePath: string): Promise<'directory' | 'other'> {
+  try {
+    const stats = await fs.stat(filePath);
+    if (stats.isDirectory()) return 'directory';
+  } catch {
+    // Missing paths are handled by the downstream tools.
+  }
+
+  return 'other';
 }
 
 function isPotentialLintTarget(extension: string): boolean {

@@ -1,6 +1,15 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
-import { buildLintCommand, buildPrettierArgs } from '../src/commands/lint.js';
+import {
+  buildLintCommand,
+  buildPrettierArgs,
+  getLintTargetFileKind,
+  getLintTargetFiles,
+} from '../src/commands/lint.js';
 
 describe('lint', () => {
   it('builds a biome command for biome projects', () => {
@@ -38,5 +47,29 @@ describe('lint', () => {
       '!**/test{-,/}fixtures/**',
       'packages/eslint-app/**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
     ]);
+  });
+
+  it('accepts lint target files passed after --', () => {
+    expect(
+      getLintTargetFiles({
+        _: ['lint', 'skills/complete-pr/SKILL.md'],
+        files: undefined,
+      })
+    ).toEqual(['skills/complete-pr/SKILL.md']);
+  });
+
+  it('treats explicit directories as lint targets', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-lint-dir-'));
+
+    await expect(getLintTargetFileKind(dirPath)).resolves.toBe('directory');
+  });
+
+  it('does not treat regular files as directories', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-lint-file-'));
+    const filePath = path.join(dirPath, 'README.md');
+
+    await fs.writeFile(filePath, '# test\n');
+
+    await expect(getLintTargetFileKind(filePath)).resolves.toBe('other');
   });
 });
