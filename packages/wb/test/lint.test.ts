@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  buildExplicitPrettierArgs,
   buildLintCommand,
   buildPrettierArgs,
   getLintTargetFileKind,
@@ -87,5 +88,17 @@ describe('lint', () => {
   it('keeps prettier formatting for explicit markdown files in biome projects', () => {
     expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome' }, 'md')).toBe(true);
     expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome' }, 'ts')).toBe(false);
+  });
+
+  it('uses a prettier-only glob for explicit directories in biome projects', () => {
+    expect(buildExplicitPrettierArgs({ preferredLinter: 'biome' }, '/tmp/example', 'directory', '')).toEqual([
+      '/tmp/example/**/{.*/,}*.{java,md,scss}',
+    ]);
+  });
+
+  it('keeps explicit files unchanged in prettier args', () => {
+    expect(buildExplicitPrettierArgs({ preferredLinter: 'biome' }, '/tmp/example/README.md', 'other', 'md')).toEqual([
+      '/tmp/example/README.md',
+    ]);
   });
 });

@@ -137,7 +137,7 @@ export const lintCommand: CommandModule<
           lintFilePaths.push(filePath);
           lintFilePathsByProject.set(project, lintFilePaths);
           if (shouldFormatExplicitPathWithPrettier(project, extension)) {
-            prettierFilePaths.push(filePath);
+            prettierFilePaths.push(...buildExplicitPrettierArgs(project, filePath, fileKind, extension));
           }
         } else if (prettierExtensions.has(extension)) {
           prettierFilePaths.push(filePath);
@@ -314,6 +314,21 @@ export function shouldFormatExplicitPathWithPrettier(
     !supportsLintingExtension(project, extension) &&
     prettierExtensions.has(extension)
   );
+}
+
+export function buildExplicitPrettierArgs(
+  project: Pick<Project, 'preferredLinter'>,
+  filePath: string,
+  fileKind: 'directory' | 'other',
+  extension: string
+): string[] {
+  if (fileKind === 'directory' && project.preferredLinter === 'biome') {
+    return [path.join(filePath, '**/{.*/,}*.{' + [...prettierOnlyExtensions].join(',') + '}')];
+  }
+  if (shouldFormatExplicitPathWithPrettier(project, extension)) {
+    return [filePath];
+  }
+  return [];
 }
 
 function isPotentialLintTarget(extension: string): boolean {
