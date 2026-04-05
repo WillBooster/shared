@@ -123,6 +123,16 @@ export class Project {
   }
 
   @memoizeOne
+  get hasOxlint(): boolean {
+    return this.hasDependency('oxlint');
+  }
+
+  @memoizeOne
+  get hasOxfmt(): boolean {
+    return this.hasDependency('oxfmt');
+  }
+
+  @memoizeOne
   get hasPoetryLock(): boolean {
     return (
       fs.existsSync(path.join(this.dirPath, 'poetry.lock')) || fs.existsSync(path.join(this.rootDirPath, 'poetry.lock'))
@@ -138,8 +148,9 @@ export class Project {
   }
 
   @memoizeOne
-  get preferredLinter(): 'biome' | 'eslint' | undefined {
+  get preferredLinter(): 'biome' | 'oxlint' | 'eslint' | undefined {
     if (this.hasBiome) return 'biome';
+    if (this.hasOxlint) return 'oxlint';
     if (this.hasEslint) return 'eslint';
     return;
   }

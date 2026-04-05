@@ -6,8 +6,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildDartCommand,
-  buildExplicitPrettierArgs,
+  buildExplicitFormatterArgs,
   buildLintCommand,
+  buildOxfmtCommand,
   buildPoetryCommand,
   buildPrettierArgs,
   getExplicitLintTargets,
@@ -30,6 +31,12 @@ describe('lint', () => {
     );
   });
 
+  it('builds an oxlint command for oxlint projects', () => {
+    expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: true, format: false }, ['/tmp/example.ts'])).toBe(
+      'YARN oxlint --fix /tmp/example.ts'
+    );
+  });
+
   it('uses the current directory when eslint runs without explicit files', () => {
     expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: false })).toBe(
       'YARN eslint --color -- .'
@@ -48,6 +55,12 @@ describe('lint', () => {
     );
   });
 
+  it('builds an oxfmt command for explicit files', () => {
+    expect(buildOxfmtCommand(['/tmp/example.ts'])).toBe(
+      'YARN oxfmt --write --no-error-on-unmatched-pattern /tmp/example.ts'
+    );
+  });
+
   it('escapes shell-sensitive file paths', () => {
     expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: false }, ['/tmp/evil"file.ts'])).toBe(
       `YARN eslint --color -- '/tmp/evil"file.ts'`
@@ -57,8 +70,8 @@ describe('lint', () => {
   it('includes eslint project files in prettier args', () => {
     expect(
       buildPrettierArgs('/repo', [
-        { dirPath: '/repo/packages/eslint-app', preferredLinter: 'eslint' },
-        { dirPath: '/repo/packages/biome-app', preferredLinter: 'biome' },
+        { dirPath: '/repo/packages/eslint-app', preferredLinter: 'eslint', hasOxfmt: false },
+        { dirPath: '/repo/packages/biome-app', preferredLinter: 'biome', hasOxfmt: false },
       ])
     ).toEqual([
       '**/{.*/,}*.{java,md,scss}',
@@ -102,28 +115,37 @@ describe('lint', () => {
   });
 
   it('keeps prettier formatting for explicit markdown files in biome projects', () => {
-    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome' }, 'md')).toBe(true);
-    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome' }, 'ts')).toBe(false);
+    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome', hasOxfmt: false }, 'md')).toBe(true);
+    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome', hasOxfmt: false }, 'ts')).toBe(false);
+  });
+
+  it('prefers oxfmt formatting when available', () => {
+    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: true }, 'ts')).toBe(true);
+    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: true }, 'py')).toBe(false);
   });
 
   it('uses a prettier-only glob for explicit directories in biome projects', () => {
-    expect(buildExplicitPrettierArgs({ preferredLinter: 'biome' }, '/tmp/example', 'directory', '')).toEqual([
-      '/tmp/example/**/{.*/,}*.{java,md,scss}',
-      '!**/test{-,/}fixtures/**',
-    ]);
+    expect(
+      buildExplicitFormatterArgs({ preferredLinter: 'biome', hasOxfmt: false }, '/tmp/example', 'directory', '')
+    ).toEqual(['/tmp/example/**/{.*/,}*.{java,md,scss}', '!**/test{-,/}fixtures/**']);
   });
 
   it('keeps explicit files unchanged in prettier args', () => {
-    expect(buildExplicitPrettierArgs({ preferredLinter: 'biome' }, '/tmp/example/README.md', 'other', 'md')).toEqual([
-      '/tmp/example/README.md',
-    ]);
+    expect(
+      buildExplicitFormatterArgs({ preferredLinter: 'biome', hasOxfmt: false }, '/tmp/example/README.md', 'other', 'md')
+    ).toEqual(['/tmp/example/README.md']);
   });
 
   it('keeps fixture ignores for explicit eslint directories', () => {
-    expect(buildExplicitPrettierArgs({ preferredLinter: 'eslint' }, '/tmp/example', 'directory', '')).toEqual([
-      '/tmp/example',
-      '!**/test{-,/}fixtures/**',
-    ]);
+    expect(
+      buildExplicitFormatterArgs({ preferredLinter: 'eslint', hasOxfmt: false }, '/tmp/example', 'directory', '')
+    ).toEqual(['/tmp/example', '!**/test{-,/}fixtures/**']);
+  });
+
+  it('uses direct directory formatting for oxfmt projects', () => {
+    expect(
+      buildExplicitFormatterArgs({ preferredLinter: 'oxlint', hasOxfmt: true }, '/tmp/example', 'directory', '')
+    ).toEqual(['/tmp/example']);
   });
 
   it('collects package.json files underneath explicit directories', () => {
