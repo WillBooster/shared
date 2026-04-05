@@ -136,7 +136,7 @@ export const lintCommand: CommandModule<
           const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
           lintFilePaths.push(filePath);
           lintFilePathsByProject.set(project, lintFilePaths);
-          if (needsPrettier(project)) {
+          if (shouldFormatExplicitPathWithPrettier(project, extension)) {
             prettierFilePaths.push(filePath);
           }
         } else if (prettierExtensions.has(extension)) {
@@ -282,10 +282,15 @@ function findOwningProject(projects: Project[], filePath: string): Project | und
 
 export function getLintTargetFiles(
   argv: Pick<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>, 'files'> & {
+    '--'?: unknown[];
     _: unknown[];
   }
 ): string[] {
-  return argv._.slice(1).filter((value): value is string => typeof value === 'string');
+  const lintTargets = new Set<string>();
+  for (const value of [...(argv.files ?? []), ...argv._.slice(1), ...(argv['--'] ?? [])]) {
+    lintTargets.add(String(value));
+  }
+  return [...lintTargets];
 }
 
 export async function getLintTargetFileKind(filePath: string): Promise<'directory' | 'other'> {
@@ -297,6 +302,18 @@ export async function getLintTargetFileKind(filePath: string): Promise<'director
   }
 
   return 'other';
+}
+
+export function shouldFormatExplicitPathWithPrettier(
+  project: Pick<Project, 'preferredLinter'>,
+  extension: string
+): boolean {
+  if (needsPrettier(project)) return true;
+  return (
+    project.preferredLinter === 'biome' &&
+    !supportsLintingExtension(project, extension) &&
+    prettierExtensions.has(extension)
+  );
 }
 
 function isPotentialLintTarget(extension: string): boolean {

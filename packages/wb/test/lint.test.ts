@@ -9,6 +9,7 @@ import {
   buildPrettierArgs,
   getLintTargetFileKind,
   getLintTargetFiles,
+  shouldFormatExplicitPathWithPrettier,
 } from '../src/commands/lint.js';
 
 describe('lint', () => {
@@ -58,6 +59,16 @@ describe('lint', () => {
     ).toEqual(['skills/complete-pr/SKILL.md']);
   });
 
+  it('merges positional and double-dash lint targets and preserves numeric paths', () => {
+    expect(
+      getLintTargetFiles({
+        _: ['lint', 'double-dash.ts', 123],
+        '--': ['double-dash.ts', 456],
+        files: ['positional.ts', 123],
+      })
+    ).toEqual(['positional.ts', '123', 'double-dash.ts', '456']);
+  });
+
   it('treats explicit directories as lint targets', async () => {
     const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-lint-dir-'));
 
@@ -71,5 +82,10 @@ describe('lint', () => {
     await fs.writeFile(filePath, '# test\n');
 
     await expect(getLintTargetFileKind(filePath)).resolves.toBe('other');
+  });
+
+  it('keeps prettier formatting for explicit markdown files in biome projects', () => {
+    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome' }, 'md')).toBe(true);
+    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome' }, 'ts')).toBe(false);
   });
 });
