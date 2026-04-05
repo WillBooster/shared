@@ -10,6 +10,7 @@ import {
   buildPrettierArgs,
   getLintTargetFileKind,
   getLintTargetFiles,
+  getExplicitPackageJsonPaths,
   shouldFormatExplicitPathWithPrettier,
 } from '../src/commands/lint.js';
 
@@ -100,5 +101,19 @@ describe('lint', () => {
     expect(buildExplicitPrettierArgs({ preferredLinter: 'biome' }, '/tmp/example/README.md', 'other', 'md')).toEqual([
       '/tmp/example/README.md',
     ]);
+  });
+
+  it('collects package.json files underneath explicit directories', () => {
+    expect(
+      getExplicitPackageJsonPaths(
+        [
+          { dirPath: '/repo', packageJsonPath: '/repo/package.json' },
+          { dirPath: '/repo/packages/a', packageJsonPath: '/repo/packages/a/package.json' },
+          { dirPath: '/repo/packages/b', packageJsonPath: '/repo/packages/b/package.json' },
+        ],
+        '/repo/packages',
+        'directory'
+      )
+    ).toEqual(['/repo/packages/a/package.json', '/repo/packages/b/package.json']);
   });
 });

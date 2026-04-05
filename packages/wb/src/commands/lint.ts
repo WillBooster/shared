@@ -124,6 +124,7 @@ export const lintCommand: CommandModule<
           packageJsonFilePaths.push(filePath);
           continue;
         }
+        packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects.descendants, filePath, fileKind));
 
         const project = findOwningProject(projects.descendants, filePath);
         if (!project) continue;
@@ -145,7 +146,7 @@ export const lintCommand: CommandModule<
         }
       }
       prettierArgs = prettierFilePaths;
-      sortPackageJsonArgs = packageJsonFilePaths;
+      sortPackageJsonArgs = [...new Set(packageJsonFilePaths)];
     } else {
       prettierArgs = buildPrettierArgs(projects.self.dirPath, projects.descendants);
       sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
@@ -327,6 +328,21 @@ export function buildExplicitPrettierArgs(
     return [filePath];
   }
   return [];
+}
+
+export function getExplicitPackageJsonPaths(
+  projects: Pick<Project, 'dirPath' | 'packageJsonPath'>[],
+  filePath: string,
+  fileKind: 'directory' | 'other'
+): string[] {
+  if (fileKind !== 'directory') return [];
+  return projects
+    .filter(
+      (project) =>
+        project.packageJsonPath === path.join(filePath, 'package.json') ||
+        project.packageJsonPath.startsWith(`${filePath}/`)
+    )
+    .map((project) => project.packageJsonPath);
 }
 
 function isPotentialLintTarget(extension: string): boolean {
