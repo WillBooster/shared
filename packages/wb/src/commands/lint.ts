@@ -123,7 +123,11 @@ export const lintCommand: CommandModule<
         const project = findOwningProject(projects.descendants, filePath);
         if (!project) continue;
 
-        if (fileKind === 'directory' || supportsLintingExtension(project, extension)) {
+        if (
+          project.preferredLinter === 'biome' ||
+          fileKind === 'directory' ||
+          supportsLintingExtension(project, extension)
+        ) {
           const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
           lintFilePaths.push(filePath);
           lintFilePathsByProject.set(project, lintFilePaths);
