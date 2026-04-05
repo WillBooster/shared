@@ -282,7 +282,9 @@ function createLitestreamConfig(project: Project): void {
     console.info(`Generated ${configPath}`);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to write ${configPath}: ${reason}`);
+    throw new Error(`Failed to write ${configPath}: ${reason}`, {
+      cause: error,
+    });
   }
 }
 

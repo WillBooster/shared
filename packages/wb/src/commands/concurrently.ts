@@ -125,7 +125,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
         settle(1);
       });
       child.once('exit', (code, signal) => {
-        settle(getExitCode(code, signal));
+        settle(getExitCode(code ?? undefined, signal));
       });
     });
   });
@@ -158,7 +158,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   }
 
   if (interruptedSignal) {
-    return getExitCode(null, interruptedSignal);
+    return getExitCode(undefined, interruptedSignal);
   }
 
   if (options.success === 'first') {
@@ -175,8 +175,8 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   return 0;
 }
 
-function getExitCode(code: number | null, signal: NodeJS.Signals | null): number {
-  if (code !== null) {
+function getExitCode(code: number | undefined, signal: NodeJS.Signals | null): number {
+  if (code !== undefined) {
     return code;
   }
   if (signal && signal in constants.signals) {

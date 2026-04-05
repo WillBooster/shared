@@ -7,6 +7,7 @@
     "esModuleInterop": true,
     "importHelpers": false,
     "jsx": "react-jsx",
+    "lib": ["DOM", "ES2024", "ESNext.Array", "ESNext.Collection", "ESNext.Iterator", "ESNext.Promise"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "noUncheckedIndexedAccess": true,
@@ -16,8 +17,10 @@
     "sourceMap": true,
     "strict": true,
     "target": "ES2023",
-    "typeRoots": ["../../node_modules/@types", "../../@types", "./@types"]
+    "typeRoots": ["../../node_modules", "../../node_modules/@types", "../../@types", "./@types"],
+    "types": ["node", "vitest/globals"]
   },
   "exclude": ["test/fixtures", "test/fixtures/**/*"],
+  "extends": ["@tsconfig/node-lts/tsconfig.json", "@tsconfig/node-ts/tsconfig.json"],
   "include": ["scripts/**/*", "src/**/*", "test/**/*"]
 }
