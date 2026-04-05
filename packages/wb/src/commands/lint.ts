@@ -102,8 +102,14 @@ export const lintCommand: CommandModule<
     let prettierArgs: string[];
     let sortPackageJsonArgs: string[];
     if (files.length > 0) {
-      for (const file of files) {
-        const filePath = path.resolve(file);
+      const lintTargets = await Promise.all(
+        files.map(async (file) => {
+          const filePath = path.resolve(file);
+          const fileKind = await getLintTargetFileKind(filePath);
+          return { fileKind, filePath };
+        })
+      );
+      for (const { fileKind, filePath } of lintTargets) {
         if (
           filePath.endsWith('/test/fixtures') ||
           filePath.includes('/test/fixtures/') ||
@@ -113,7 +119,6 @@ export const lintCommand: CommandModule<
           continue;
         }
 
-        const fileKind = await getLintTargetFileKind(filePath);
         const extension = path.extname(filePath).slice(1);
         if (filePath.endsWith('/package.json')) {
           packageJsonFilePaths.push(filePath);
@@ -280,9 +285,6 @@ export function getLintTargetFiles(
     _: unknown[];
   }
 ): string[] {
-  if (argv.files && argv.files.length > 0) {
-    return argv.files.map(String);
-  }
   return argv._.slice(1).filter((value): value is string => typeof value === 'string');
 }
 
