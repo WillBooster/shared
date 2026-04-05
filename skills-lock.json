@@ -39,17 +39,17 @@
     "plan-issue-claude": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "1879df73ee615064c65e1dc4929a9de4d22ca2c2ff0878cd4f2b7a2d947e4497"
+      "computedHash": "30734d04f62c168617aa9102178dbbe809f3a652ef2a62adbe6ad3419f727cc7"
     },
     "plan-issue-codex": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "9a8d8a6cb6de7f74dfd0e5f8f251d62626da11829eaa6d53a41c0bd70fcec839"
+      "computedHash": "8658c7d6d8d108ba54d745810ef67e575585429d4163bc6ee586662672e98f3c"
     },
     "plan-issue-gemini": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "c12895d1dc3140fed61a2f6ca0e28be601a4dfc1fbf24b172ef2e77a9185eb26"
+      "computedHash": "0618085bf0523ca0a33ea360b2967490a406d1e92f151e0baf7af3dd85f62a71"
     },
     "playwright-cli": {
       "source": "WillBooster/agent-skills",
@@ -59,72 +59,72 @@
     "review-all": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "fc3454edc3470a0981bb54b5ebe91a51461a302fd4f08883329786ca6b5ab04c"
+      "computedHash": "dc26c8c1b6705e04b0d10485afebc47f7141527f968d2b848384e91330b9be79"
     },
     "review-claude": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "528d7b307c766c9f08cf49a9c3808ff7b74423e015b1fcf0c2bbf84f3ddbcca8"
+      "computedHash": "c9342b814750d5d34522ddf71910dd63ba3318f1b900ce7834965631f5f4902c"
     },
     "review-codex": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "415ed8f9d185786d349e7cdf20f9c12bb2c18c79eb25c789a44231bb08f040fd"
+      "computedHash": "ca986bfd6f38e9602692cb31c3836db661ebe769bc635fbca18d7da64e597dc3"
     },
     "review-fix-all": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "8d655173933f6cc09a237fac53c753fc52a2e078ce267849d0d79390229cb42f"
+      "computedHash": "f1896b2f2b10886942b1df3357722d8a7b95c6f20c7464b7fdb2d18e81a489d9"
     },
     "review-fix-claude": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "098eeed3d9d121ef26ec15544301ce9d728d5c39d4eea632728c38ad4f10622f"
+      "computedHash": "5c149f17afe5162d8948e4ce965f227cf8caac250b1f13442720154602c97975"
     },
     "review-fix-codex": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "531531f6d6e3c529ddf67e43fc807e1a636c9d53f6be0b2516638d28078320e6"
+      "computedHash": "a151d97eb611cccc718e80574ba3d276e08fbb11567d3fb32f5d64063a664469"
     },
     "review-fix-gemini": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "7fbb480ad73e2a75fc97cf5b4a8c27f9d2f34a5a5023229f6555922e6fe41fdf"
+      "computedHash": "9d5746ac6c4e85e3dd79bcaa068637ed0973fc9d41fecb27d06f2e962d13b7bb"
     },
     "review-gemini": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "8952f39e838568da26819057dfd8f785666efebd8f93320a60151da57e7e2a61"
+      "computedHash": "543c3a362741506b34bd402bc44cd853d6cdf5f30ee59840941b50eaa2effb9d"
     },
     "screenshot-claude": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "d8a8d268f7dd7779831a3a6cf35cd8cc10dcc76a544dafb0e08f4f4d8cc8204c"
+      "computedHash": "0aa981e0a154a74e5dde26f9fe1dcbbdbd3e615f8e850c2e924305d809f70c20"
     },
     "screenshot-codex": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "97b6c22709bdf88d3e1969dbded1d87932adc23993e8eac55fd1a8ad309019fc"
+      "computedHash": "82fa143281fe8722058870db56987ac5e996139e1534ab813730c82072ac90e8"
     },
     "screenshot-gemini": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "940eece7ff5ffa5e2005db59df51a2211276b36338558063285d83be7329a248"
+      "computedHash": "38d1e43432924fae35cf6854ff67f21b99acf8673194abb910dca6d629b777a3"
     },
     "simplify-pr-claude": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "22119ca88a3e40bf8e9b23735a48cd2fa2eee17c6bdd0c14d03a62e0884881ea"
+      "computedHash": "dfe02800b6102401feaf54f429126adcd2c2f9f15e0aad71454eafdd673f0e5e"
     },
     "simplify-pr-codex": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "1f11aa33791ecf93db4750f5d18bf1e05bd6787d1ee1fd406ce82a50bb0d726f"
+      "computedHash": "05e3b2c9eed56fc46ce38b8baae2d9cb5d968780aa73e2d778c26774ff3ab2dc"
     },
     "simplify-pr-gemini": {
       "source": "WillBooster/agent-skills",
       "sourceType": "github",
-      "computedHash": "d8338e06e81084af132eac4e6e2fb9b0641790e70dad4eeba39997b007917205"
+      "computedHash": "8105722db5e1cfa2a0271f89122ae9b648939ce5964010154a663c154a98c2ae"
     },
     "update-pr": {
       "source": "WillBooster/agent-skills",
