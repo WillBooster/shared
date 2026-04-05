@@ -74,6 +74,7 @@ const prettierExtensions = new Set([
   'yml',
 ]);
 const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !biomeExtensions.has(ext)));
+const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
 export const lintCommand: CommandModule<
   unknown,
@@ -255,7 +256,7 @@ export function buildPrettierArgs(
   selfDirPath: string,
   projects: Pick<Project, 'dirPath' | 'preferredLinter'>[]
 ): string[] {
-  const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, '!**/test{-,/}fixtures/**']);
+  const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, prettierFixtureIgnorePattern]);
   for (const project of projects) {
     if (!needsPrettier(project)) continue;
 
@@ -321,7 +322,13 @@ export function buildExplicitPrettierArgs(
   extension: string
 ): string[] {
   if (fileKind === 'directory' && project.preferredLinter === 'biome') {
-    return [path.join(filePath, '**/{.*/,}*.{' + [...prettierOnlyExtensions].join(',') + '}')];
+    return [
+      path.join(filePath, '**/{.*/,}*.{' + [...prettierOnlyExtensions].join(',') + '}'),
+      prettierFixtureIgnorePattern,
+    ];
+  }
+  if (fileKind === 'directory' && needsPrettier(project)) {
+    return [filePath, prettierFixtureIgnorePattern];
   }
   if (shouldFormatExplicitPathWithPrettier(project, extension)) {
     return [filePath];

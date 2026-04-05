@@ -95,12 +95,20 @@ describe('lint', () => {
   it('uses a prettier-only glob for explicit directories in biome projects', () => {
     expect(buildExplicitPrettierArgs({ preferredLinter: 'biome' }, '/tmp/example', 'directory', '')).toEqual([
       '/tmp/example/**/{.*/,}*.{java,md,scss}',
+      '!**/test{-,/}fixtures/**',
     ]);
   });
 
   it('keeps explicit files unchanged in prettier args', () => {
     expect(buildExplicitPrettierArgs({ preferredLinter: 'biome' }, '/tmp/example/README.md', 'other', 'md')).toEqual([
       '/tmp/example/README.md',
+    ]);
+  });
+
+  it('keeps fixture ignores for explicit eslint directories', () => {
+    expect(buildExplicitPrettierArgs({ preferredLinter: 'eslint' }, '/tmp/example', 'directory', '')).toEqual([
+      '/tmp/example',
+      '!**/test{-,/}fixtures/**',
     ]);
   });
 
