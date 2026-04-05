@@ -123,6 +123,21 @@ export class Project {
   }
 
   @memoizeOne
+  get hasPoetryLock(): boolean {
+    return (
+      fs.existsSync(path.join(this.dirPath, 'poetry.lock')) || fs.existsSync(path.join(this.rootDirPath, 'poetry.lock'))
+    );
+  }
+
+  @memoizeOne
+  get hasPubspecYaml(): boolean {
+    return (
+      fs.existsSync(path.join(this.dirPath, 'pubspec.yaml')) ||
+      fs.existsSync(path.join(this.rootDirPath, 'pubspec.yaml'))
+    );
+  }
+
+  @memoizeOne
   get preferredLinter(): 'biome' | 'eslint' | undefined {
     if (this.hasBiome) return 'biome';
     if (this.hasEslint) return 'eslint';

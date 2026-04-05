@@ -51,6 +51,8 @@ const biomeExtensions = new Set([
   'yml',
 ]);
 const eslintExtensions = new Set(['cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'ts', 'tsx']);
+const pythonExtensions = new Set(['py']);
+const dartExtensions = new Set(['dart']);
 const prettierExtensions = new Set([
   'cjs',
   'css',
@@ -97,6 +99,8 @@ export const lintCommand: CommandModule<
 
     const files = getLintTargetFiles(argv);
     const lintFilePathsByProject = new Map<Project, string[]>();
+    const pythonFilePathsByProject = new Map<Project, string[]>();
+    const dartFilePathsByProject = new Map<Project, string[]>();
     const prettierFilePaths: string[] = [];
     const packageJsonFilePaths: string[] = [];
     let missingLintToolForExplicitFiles = false;
@@ -128,6 +132,18 @@ export const lintCommand: CommandModule<
         packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects.descendants, filePath, fileKind));
 
         for (const { lintPath, project } of getExplicitLintTargets(projects.descendants, filePath, fileKind)) {
+          if (project.hasPoetryLock && (fileKind === 'directory' || pythonExtensions.has(extension))) {
+            const pythonFilePaths = pythonFilePathsByProject.get(project) ?? [];
+            pythonFilePaths.push(lintPath);
+            pythonFilePathsByProject.set(project, pythonFilePaths);
+            if (fileKind !== 'directory') continue;
+          }
+          if (project.hasPubspecYaml && (fileKind === 'directory' || dartExtensions.has(extension))) {
+            const dartFilePaths = dartFilePathsByProject.get(project) ?? [];
+            dartFilePaths.push(lintPath);
+            dartFilePathsByProject.set(project, dartFilePaths);
+            if (fileKind !== 'directory') continue;
+          }
           if (
             project.preferredLinter === 'biome' ||
             fileKind === 'directory' ||
@@ -161,6 +177,14 @@ export const lintCommand: CommandModule<
 
         lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
       }
+      for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
+        lintPromises.push(
+          runWithSpawnInParallel(buildPoetryCommand(argv, pythonFilePaths), project, argv, lintRunOptions)
+        );
+      }
+      for (const [project, dartFilePaths] of dartFilePathsByProject) {
+        lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv, dartFilePaths), project, argv, lintRunOptions));
+      }
     } else {
       for (const project of projects.descendants) {
         if (project.packageJson.workspaces && !project.hasSourceCode) continue;
@@ -169,6 +193,14 @@ export const lintCommand: CommandModule<
         if (!lintCommand) continue;
 
         lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
+      }
+      for (const project of projects.descendants) {
+        if (project.hasPoetryLock) {
+          lintPromises.push(runWithSpawnInParallel(buildPoetryCommand(argv), project, argv, lintRunOptions));
+        }
+        if (project.hasPubspecYaml) {
+          lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv), project, argv, lintRunOptions));
+        }
       }
     }
     const lintExitCodes = await Promise.all(lintPromises);
@@ -250,6 +282,41 @@ export function buildLintCommand(
     ]);
   }
   return;
+}
+
+export function buildPoetryCommand(
+  argv: Pick<
+    InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
+    'fix' | 'format'
+  >,
+  files?: string[]
+): string {
+  const targets = files && files.length > 0 ? files : ['.'];
+  const commands =
+    argv.fix || argv.format
+      ? [
+          buildShellCommand(['poetry', 'run', 'isort', '--profile', 'black', '--filter-files', ...targets]),
+          buildShellCommand(['poetry', 'run', 'black', ...targets]),
+          buildShellCommand(['poetry', 'run', 'flake8', ...targets]),
+        ]
+      : [buildShellCommand(['poetry', 'run', 'flake8', ...targets])];
+  return commands.join(' && ');
+}
+
+export function buildDartCommand(
+  argv: Pick<
+    InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
+    'fix' | 'format'
+  >,
+  files?: string[]
+): string {
+  const targets = files && files.length > 0 ? files : ['.'];
+  const commands: string[] = [];
+  if (argv.fix || argv.format) {
+    commands.push(buildShellCommand(['dart', 'format', ...targets]));
+  }
+  commands.push(buildShellCommand(['dart', 'analyze', ...targets]));
+  return commands.join(' && ');
 }
 
 export function buildPrettierArgs(
@@ -370,7 +437,12 @@ export function getExplicitLintTargets(
 }
 
 function isPotentialLintTarget(extension: string): boolean {
-  return biomeExtensions.has(extension) || eslintExtensions.has(extension);
+  return (
+    biomeExtensions.has(extension) ||
+    eslintExtensions.has(extension) ||
+    pythonExtensions.has(extension) ||
+    dartExtensions.has(extension)
+  );
 }
 
 function supportsLintingExtension(project: Pick<Project, 'preferredLinter'>, extension: string): boolean {
