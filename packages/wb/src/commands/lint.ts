@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import chalk from 'chalk';
@@ -73,6 +74,7 @@ const prettierExtensions = new Set([
   'yml',
 ]);
 const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !biomeExtensions.has(ext)));
+const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
 export const lintCommand: CommandModule<
   unknown,
@@ -93,7 +95,7 @@ export const lintCommand: CommandModule<
       process.exit(1);
     }
 
-    const files = argv.files ?? [];
+    const files = getLintTargetFiles(argv);
     const lintFilePathsByProject = new Map<Project, string[]>();
     const prettierFilePaths: string[] = [];
     const packageJsonFilePaths: string[] = [];
@@ -101,8 +103,14 @@ export const lintCommand: CommandModule<
     let prettierArgs: string[];
     let sortPackageJsonArgs: string[];
     if (files.length > 0) {
-      for (const file of files) {
-        const filePath = path.resolve(String(file));
+      const lintTargets = await Promise.all(
+        files.map(async (file) => {
+          const filePath = path.resolve(file);
+          const fileKind = await getLintTargetFileKind(filePath);
+          return { fileKind, filePath };
+        })
+      );
+      for (const { fileKind, filePath } of lintTargets) {
         if (
           filePath.endsWith('/test/fixtures') ||
           filePath.includes('/test/fixtures/') ||
@@ -117,26 +125,28 @@ export const lintCommand: CommandModule<
           packageJsonFilePaths.push(filePath);
           continue;
         }
+        packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects.descendants, filePath, fileKind));
 
-        const project = findOwningProject(projects.descendants, filePath);
-        if (!project) continue;
-
-        if (supportsLintingExtension(project, extension)) {
-          const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
-          lintFilePaths.push(filePath);
-          lintFilePathsByProject.set(project, lintFilePaths);
-          if (needsPrettier(project)) {
-            prettierFilePaths.push(filePath);
+        for (const { lintPath, project } of getExplicitLintTargets(projects.descendants, filePath, fileKind)) {
+          if (
+            project.preferredLinter === 'biome' ||
+            fileKind === 'directory' ||
+            supportsLintingExtension(project, extension)
+          ) {
+            const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
+            lintFilePaths.push(lintPath);
+            lintFilePathsByProject.set(project, lintFilePaths);
+            prettierFilePaths.push(...buildExplicitPrettierArgs(project, lintPath, fileKind, extension));
+          } else if (prettierExtensions.has(extension)) {
+            prettierFilePaths.push(lintPath);
+          } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
+            console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
+            missingLintToolForExplicitFiles = true;
           }
-        } else if (prettierExtensions.has(extension)) {
-          prettierFilePaths.push(filePath);
-        } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
-          console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
-          missingLintToolForExplicitFiles = true;
         }
       }
-      prettierArgs = prettierFilePaths;
-      sortPackageJsonArgs = packageJsonFilePaths;
+      prettierArgs = [...new Set(prettierFilePaths)];
+      sortPackageJsonArgs = [...new Set(packageJsonFilePaths)];
     } else {
       prettierArgs = buildPrettierArgs(projects.self.dirPath, projects.descendants);
       sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
@@ -246,7 +256,7 @@ export function buildPrettierArgs(
   selfDirPath: string,
   projects: Pick<Project, 'dirPath' | 'preferredLinter'>[]
 ): string[] {
-  const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, '!**/test{-,/}fixtures/**']);
+  const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, prettierFixtureIgnorePattern]);
   for (const project of projects) {
     if (!needsPrettier(project)) continue;
 
@@ -267,6 +277,96 @@ function findOwningProject(projects: Project[], filePath: string): Project | und
     }
   }
   return owningProject;
+}
+
+export function getLintTargetFiles(
+  argv: Pick<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>, 'files'> & {
+    '--'?: unknown[];
+    _: unknown[];
+  }
+): string[] {
+  const lintTargets = new Set<string>();
+  for (const value of [...(argv.files ?? []), ...argv._.slice(1), ...(argv['--'] ?? [])]) {
+    lintTargets.add(String(value));
+  }
+  return [...lintTargets];
+}
+
+export async function getLintTargetFileKind(filePath: string): Promise<'directory' | 'other'> {
+  try {
+    const stats = await fs.stat(filePath);
+    if (stats.isDirectory()) return 'directory';
+  } catch {
+    // Missing paths are handled by the downstream tools.
+  }
+
+  return 'other';
+}
+
+export function shouldFormatExplicitPathWithPrettier(
+  project: Pick<Project, 'preferredLinter'>,
+  extension: string
+): boolean {
+  if (needsPrettier(project)) return true;
+  return (
+    project.preferredLinter === 'biome' &&
+    !supportsLintingExtension(project, extension) &&
+    prettierExtensions.has(extension)
+  );
+}
+
+export function buildExplicitPrettierArgs(
+  project: Pick<Project, 'preferredLinter'>,
+  filePath: string,
+  fileKind: 'directory' | 'other',
+  extension: string
+): string[] {
+  if (fileKind === 'directory' && project.preferredLinter === 'biome') {
+    return [
+      path.join(filePath, '**/{.*/,}*.{' + [...prettierOnlyExtensions].join(',') + '}'),
+      prettierFixtureIgnorePattern,
+    ];
+  }
+  if (fileKind === 'directory' && needsPrettier(project)) {
+    return [filePath, prettierFixtureIgnorePattern];
+  }
+  if (shouldFormatExplicitPathWithPrettier(project, extension)) {
+    return [filePath];
+  }
+  return [];
+}
+
+export function getExplicitPackageJsonPaths(
+  projects: Pick<Project, 'dirPath' | 'packageJsonPath'>[],
+  filePath: string,
+  fileKind: 'directory' | 'other'
+): string[] {
+  if (fileKind !== 'directory') return [];
+  return projects
+    .filter(
+      (project) =>
+        project.packageJsonPath === path.join(filePath, 'package.json') ||
+        project.packageJsonPath.startsWith(`${filePath}/`)
+    )
+    .map((project) => project.packageJsonPath);
+}
+
+export function getExplicitLintTargets(
+  projects: Project[],
+  filePath: string,
+  fileKind: 'directory' | 'other'
+): { lintPath: string; project: Project }[] {
+  if (fileKind === 'directory') {
+    const descendantProjects = projects.filter(
+      (project) => project.dirPath === filePath || project.dirPath.startsWith(`${filePath}/`)
+    );
+    if (descendantProjects.length > 0) {
+      return descendantProjects.map((project) => ({ lintPath: project.dirPath, project }));
+    }
+  }
+
+  const project = findOwningProject(projects, filePath);
+  return project ? [{ lintPath: filePath, project }] : [];
 }
 
 function isPotentialLintTarget(extension: string): boolean {
