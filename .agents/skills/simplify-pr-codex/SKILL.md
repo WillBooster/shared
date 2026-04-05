@@ -6,5 +6,5 @@ allowed-tools: Bash(bunx:*)
 
 # PR simplification workflow
 
-1. Run the following command from the repository root with 1 hour timeout: `bunx @willbooster/agent-skills@latest simplify --agent codex`
+1. Run the following command with a 1-hour timeout (DO NOT STOP THE COMMAND BEFORE 1 HOUR ELAPSES): `bunx @willbooster/agent-skills@latest simplify --agent codex`
 2. Report on the simplification results.

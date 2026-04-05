@@ -6,7 +6,7 @@ allowed-tools: Bash(bunx:*)
 
 # Review workflow
 
-1. Run the following command from the repository root with 1 hour timeout: `bunx @willbooster/agent-skills@latest review --agent gemini`
+1. Run the following command with a 1-hour timeout (DO NOT STOP THE COMMAND BEFORE 1 HOUR ELAPSES): `bunx @willbooster/agent-skills@latest review --agent gemini`
 2. Treat the returned review results as the candidate comment set to process. If the command returns `There is no concern.`, quit without modifying code.
 3. Determine whether each candidate comment is still valid for the current codebase.
 4. Fix only the valid comments, leaving invalid comments unchanged.

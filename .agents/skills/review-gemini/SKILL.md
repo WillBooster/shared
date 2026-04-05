@@ -6,5 +6,5 @@ allowed-tools: Bash(bunx:*)
 
 # Review workflow
 
-1. Run the following command from the repository root with 1 hour timeout: `bunx @willbooster/agent-skills@latest review --agent gemini`
+1. Run the following command with a 1-hour timeout (DO NOT STOP THE COMMAND BEFORE 1 HOUR ELAPSES): `bunx @willbooster/agent-skills@latest review --agent gemini`
 2. Report on the review results.
