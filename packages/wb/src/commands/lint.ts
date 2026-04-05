@@ -51,6 +51,28 @@ const biomeExtensions = new Set([
   'yml',
 ]);
 const eslintExtensions = new Set(['cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'ts', 'tsx']);
+const oxlintExtensions = new Set([...eslintExtensions, 'astro', 'svelte', 'vue']);
+const pythonExtensions = new Set(['py']);
+const dartExtensions = new Set(['dart']);
+const oxfmtExtensions = new Set([
+  ...oxlintExtensions,
+  'css',
+  'gql',
+  'graphql',
+  'hbs',
+  'htm',
+  'html',
+  'json',
+  'json5',
+  'jsonc',
+  'less',
+  'md',
+  'mdx',
+  'scss',
+  'toml',
+  'yaml',
+  'yml',
+]);
 const prettierExtensions = new Set([
   'cjs',
   'css',
@@ -97,6 +119,9 @@ export const lintCommand: CommandModule<
 
     const files = getLintTargetFiles(argv);
     const lintFilePathsByProject = new Map<Project, string[]>();
+    const oxfmtFilePathsByProject = new Map<Project, string[]>();
+    const pythonFilePathsByProject = new Map<Project, string[]>();
+    const dartFilePathsByProject = new Map<Project, string[]>();
     const prettierFilePaths: string[] = [];
     const packageJsonFilePaths: string[] = [];
     let missingLintToolForExplicitFiles = false;
@@ -128,6 +153,18 @@ export const lintCommand: CommandModule<
         packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects.descendants, filePath, fileKind));
 
         for (const { lintPath, project } of getExplicitLintTargets(projects.descendants, filePath, fileKind)) {
+          if (project.hasPoetryLock && (fileKind === 'directory' || pythonExtensions.has(extension))) {
+            const pythonFilePaths = pythonFilePathsByProject.get(project) ?? [];
+            pythonFilePaths.push(lintPath);
+            pythonFilePathsByProject.set(project, pythonFilePaths);
+            if (fileKind !== 'directory') continue;
+          }
+          if (project.hasPubspecYaml && (fileKind === 'directory' || dartExtensions.has(extension))) {
+            const dartFilePaths = dartFilePathsByProject.get(project) ?? [];
+            dartFilePaths.push(lintPath);
+            dartFilePathsByProject.set(project, dartFilePaths);
+            if (fileKind !== 'directory') continue;
+          }
           if (
             project.preferredLinter === 'biome' ||
             fileKind === 'directory' ||
@@ -136,9 +173,23 @@ export const lintCommand: CommandModule<
             const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
             lintFilePaths.push(lintPath);
             lintFilePathsByProject.set(project, lintFilePaths);
-            prettierFilePaths.push(...buildExplicitPrettierArgs(project, lintPath, fileKind, extension));
-          } else if (prettierExtensions.has(extension)) {
-            prettierFilePaths.push(lintPath);
+            for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
+              if (project.hasOxfmt) {
+                const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
+                oxfmtFilePaths.push(formatterPath);
+                oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
+              } else {
+                prettierFilePaths.push(formatterPath);
+              }
+            }
+          } else if (prettierExtensions.has(extension) || oxfmtExtensions.has(extension)) {
+            if (project.hasOxfmt && oxfmtExtensions.has(extension)) {
+              const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
+              oxfmtFilePaths.push(lintPath);
+              oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
+            } else if (prettierExtensions.has(extension)) {
+              prettierFilePaths.push(lintPath);
+            }
           } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
             console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
             missingLintToolForExplicitFiles = true;
@@ -161,6 +212,17 @@ export const lintCommand: CommandModule<
 
         lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
       }
+      for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
+        lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(oxfmtFilePaths), project, argv, lintRunOptions));
+      }
+      for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
+        lintPromises.push(
+          runWithSpawnInParallel(buildPoetryCommand(argv, pythonFilePaths), project, argv, lintRunOptions)
+        );
+      }
+      for (const [project, dartFilePaths] of dartFilePathsByProject) {
+        lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv, dartFilePaths), project, argv, lintRunOptions));
+      }
     } else {
       for (const project of projects.descendants) {
         if (project.packageJson.workspaces && !project.hasSourceCode) continue;
@@ -169,6 +231,17 @@ export const lintCommand: CommandModule<
         if (!lintCommand) continue;
 
         lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
+      }
+      for (const project of projects.descendants) {
+        if (project.hasPoetryLock) {
+          lintPromises.push(runWithSpawnInParallel(buildPoetryCommand(argv), project, argv, lintRunOptions));
+        }
+        if (project.hasPubspecYaml) {
+          lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv), project, argv, lintRunOptions));
+        }
+        if (project.hasOxfmt && argv.format) {
+          lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(), project, argv, lintRunOptions));
+        }
       }
     }
     const lintExitCodes = await Promise.all(lintPromises);
@@ -249,12 +322,54 @@ export function buildLintCommand(
       ...(files ?? ['.']),
     ]);
   }
+  if (project.preferredLinter === 'oxlint') {
+    return buildShellCommand(['YARN', 'oxlint', ...(argv.fix ? ['--fix'] : []), ...(files ?? ['.'])]);
+  }
   return;
+}
+
+export function buildOxfmtCommand(files?: string[]): string {
+  return buildShellCommand(['YARN', 'oxfmt', '--write', '--no-error-on-unmatched-pattern', ...(files ?? ['.'])]);
+}
+
+export function buildPoetryCommand(
+  argv: Pick<
+    InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
+    'fix' | 'format'
+  >,
+  files?: string[]
+): string {
+  const targets = files && files.length > 0 ? files : ['.'];
+  const commands =
+    argv.fix || argv.format
+      ? [
+          buildShellCommand(['poetry', 'run', 'isort', '--profile', 'black', '--filter-files', ...targets]),
+          buildShellCommand(['poetry', 'run', 'black', ...targets]),
+          buildShellCommand(['poetry', 'run', 'flake8', ...targets]),
+        ]
+      : [buildShellCommand(['poetry', 'run', 'flake8', ...targets])];
+  return commands.join(' && ');
+}
+
+export function buildDartCommand(
+  argv: Pick<
+    InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
+    'fix' | 'format'
+  >,
+  files?: string[]
+): string {
+  const targets = files && files.length > 0 ? files : ['.'];
+  const commands: string[] = [];
+  if (argv.fix || argv.format) {
+    commands.push(buildShellCommand(['dart', 'format', ...targets]));
+  }
+  commands.push(buildShellCommand(['dart', 'analyze', ...targets]));
+  return commands.join(' && ');
 }
 
 export function buildPrettierArgs(
   selfDirPath: string,
-  projects: Pick<Project, 'dirPath' | 'preferredLinter'>[]
+  projects: Pick<Project, 'dirPath' | 'preferredLinter' | 'hasOxfmt'>[]
 ): string[] {
   const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, prettierFixtureIgnorePattern]);
   for (const project of projects) {
@@ -304,9 +419,10 @@ export async function getLintTargetFileKind(filePath: string): Promise<'director
 }
 
 export function shouldFormatExplicitPathWithPrettier(
-  project: Pick<Project, 'preferredLinter'>,
+  project: Pick<Project, 'preferredLinter' | 'hasOxfmt'>,
   extension: string
 ): boolean {
+  if (project.hasOxfmt) return oxfmtExtensions.has(extension);
   if (needsPrettier(project)) return true;
   return (
     project.preferredLinter === 'biome' &&
@@ -315,12 +431,15 @@ export function shouldFormatExplicitPathWithPrettier(
   );
 }
 
-export function buildExplicitPrettierArgs(
-  project: Pick<Project, 'preferredLinter'>,
+export function buildExplicitFormatterArgs(
+  project: Pick<Project, 'preferredLinter' | 'hasOxfmt'>,
   filePath: string,
   fileKind: 'directory' | 'other',
   extension: string
 ): string[] {
+  if (fileKind === 'directory' && project.hasOxfmt) {
+    return [filePath];
+  }
   if (fileKind === 'directory' && project.preferredLinter === 'biome') {
     return [
       path.join(filePath, '**/{.*/,}*.{' + [...prettierOnlyExtensions].join(',') + '}'),
@@ -370,15 +489,22 @@ export function getExplicitLintTargets(
 }
 
 function isPotentialLintTarget(extension: string): boolean {
-  return biomeExtensions.has(extension) || eslintExtensions.has(extension);
+  return (
+    biomeExtensions.has(extension) ||
+    oxlintExtensions.has(extension) ||
+    eslintExtensions.has(extension) ||
+    pythonExtensions.has(extension) ||
+    dartExtensions.has(extension)
+  );
 }
 
 function supportsLintingExtension(project: Pick<Project, 'preferredLinter'>, extension: string): boolean {
   if (project.preferredLinter === 'biome') return biomeExtensions.has(extension);
+  if (project.preferredLinter === 'oxlint') return oxlintExtensions.has(extension);
   if (project.preferredLinter === 'eslint') return eslintExtensions.has(extension);
   return false;
 }
 
-function needsPrettier(project: Pick<Project, 'preferredLinter'>): boolean {
-  return project.preferredLinter === 'eslint';
+function needsPrettier(project: Pick<Project, 'preferredLinter' | 'hasOxfmt'>): boolean {
+  return !project.hasOxfmt && (project.preferredLinter === 'eslint' || project.preferredLinter === 'oxlint');
 }
