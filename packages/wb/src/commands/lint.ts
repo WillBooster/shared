@@ -126,26 +126,25 @@ export const lintCommand: CommandModule<
         }
         packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects.descendants, filePath, fileKind));
 
-        const project = findOwningProject(projects.descendants, filePath);
-        if (!project) continue;
-
-        if (
-          project.preferredLinter === 'biome' ||
-          fileKind === 'directory' ||
-          supportsLintingExtension(project, extension)
-        ) {
-          const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
-          lintFilePaths.push(filePath);
-          lintFilePathsByProject.set(project, lintFilePaths);
-          prettierFilePaths.push(...buildExplicitPrettierArgs(project, filePath, fileKind, extension));
-        } else if (prettierExtensions.has(extension)) {
-          prettierFilePaths.push(filePath);
-        } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
-          console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
-          missingLintToolForExplicitFiles = true;
+        for (const { lintPath, project } of getExplicitLintTargets(projects.descendants, filePath, fileKind)) {
+          if (
+            project.preferredLinter === 'biome' ||
+            fileKind === 'directory' ||
+            supportsLintingExtension(project, extension)
+          ) {
+            const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
+            lintFilePaths.push(lintPath);
+            lintFilePathsByProject.set(project, lintFilePaths);
+            prettierFilePaths.push(...buildExplicitPrettierArgs(project, lintPath, fileKind, extension));
+          } else if (prettierExtensions.has(extension)) {
+            prettierFilePaths.push(lintPath);
+          } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
+            console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
+            missingLintToolForExplicitFiles = true;
+          }
         }
       }
-      prettierArgs = prettierFilePaths;
+      prettierArgs = [...new Set(prettierFilePaths)];
       sortPackageJsonArgs = [...new Set(packageJsonFilePaths)];
     } else {
       prettierArgs = buildPrettierArgs(projects.self.dirPath, projects.descendants);
@@ -343,6 +342,24 @@ export function getExplicitPackageJsonPaths(
         project.packageJsonPath.startsWith(`${filePath}/`)
     )
     .map((project) => project.packageJsonPath);
+}
+
+export function getExplicitLintTargets(
+  projects: Project[],
+  filePath: string,
+  fileKind: 'directory' | 'other'
+): { lintPath: string; project: Project }[] {
+  if (fileKind === 'directory') {
+    const descendantProjects = projects.filter(
+      (project) => project.dirPath === filePath || project.dirPath.startsWith(`${filePath}/`)
+    );
+    if (descendantProjects.length > 0) {
+      return descendantProjects.map((project) => ({ lintPath: project.dirPath, project }));
+    }
+  }
+
+  const project = findOwningProject(projects, filePath);
+  return project ? [{ lintPath: filePath, project }] : [];
 }
 
 function isPotentialLintTarget(extension: string): boolean {

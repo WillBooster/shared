@@ -8,6 +8,7 @@ import {
   buildExplicitPrettierArgs,
   buildLintCommand,
   buildPrettierArgs,
+  getExplicitLintTargets,
   getLintTargetFileKind,
   getLintTargetFiles,
   getExplicitPackageJsonPaths,
@@ -115,5 +116,22 @@ describe('lint', () => {
         'directory'
       )
     ).toEqual(['/repo/packages/a/package.json', '/repo/packages/b/package.json']);
+  });
+
+  it('fans out parent directory targets to descendant projects', () => {
+    expect(
+      getExplicitLintTargets(
+        [
+          { dirPath: '/repo', preferredLinter: 'eslint' },
+          { dirPath: '/repo/packages/a', preferredLinter: 'eslint' },
+          { dirPath: '/repo/packages/b', preferredLinter: 'biome' },
+        ] as never,
+        '/repo/packages',
+        'directory'
+      )
+    ).toEqual([
+      { lintPath: '/repo/packages/a', project: { dirPath: '/repo/packages/a', preferredLinter: 'eslint' } },
+      { lintPath: '/repo/packages/b', project: { dirPath: '/repo/packages/b', preferredLinter: 'biome' } },
+    ]);
   });
 });
