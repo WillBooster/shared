@@ -125,7 +125,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
         settle(1);
       });
       child.once('exit', (code, signal) => {
-        settle(getExitCode(code ?? undefined, signal));
+        settle(getExitCode(code ?? undefined, signal ?? undefined));
       });
     });
   });
@@ -175,7 +175,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   return 0;
 }
 
-function getExitCode(code: number | undefined, signal: NodeJS.Signals | null): number {
+function getExitCode(code: number | undefined, signal: NodeJS.Signals | undefined): number {
   if (code !== undefined) {
     return code;
   }
