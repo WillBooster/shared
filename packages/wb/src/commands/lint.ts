@@ -136,9 +136,7 @@ export const lintCommand: CommandModule<
           const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
           lintFilePaths.push(filePath);
           lintFilePathsByProject.set(project, lintFilePaths);
-          if (shouldFormatExplicitPathWithPrettier(project, extension)) {
-            prettierFilePaths.push(...buildExplicitPrettierArgs(project, filePath, fileKind, extension));
-          }
+          prettierFilePaths.push(...buildExplicitPrettierArgs(project, filePath, fileKind, extension));
         } else if (prettierExtensions.has(extension)) {
           prettierFilePaths.push(filePath);
         } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
