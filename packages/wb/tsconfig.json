@@ -16,7 +16,6 @@
     "sourceMap": true,
     "strict": true,
     "target": "ES2023",
-    "typeRoots": ["../../node_modules", "../../node_modules/@types", "../../@types", "./@types"],
     "types": ["node", "vitest/globals"]
   },
   "exclude": ["test/fixtures", "test/fixtures/**/*"],
