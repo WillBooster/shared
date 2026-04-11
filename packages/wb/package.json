@@ -26,7 +26,7 @@
     "start-prod": "yarn build && yarn wb",
     "test": "WB_ENV=test vitest run test",
     "typecheck": "tsc --noEmit",
-    "verify-code": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
+    "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
   "prettier": "@willbooster/prettier-config",

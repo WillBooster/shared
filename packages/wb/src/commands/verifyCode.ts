@@ -14,12 +14,12 @@ import { typeCheck } from './typecheck.js';
 
 const builder = {} as const;
 
-type AiCheckCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
-type AiCheckCommandArgv = ArgumentsCamelCase<AiCheckCommandOptions>;
+type VerifyCodeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
+type VerifyCodeCommandArgv = ArgumentsCamelCase<VerifyCodeCommandOptions>;
 
-export const verifyCodeCommand: CommandModule<unknown, AiCheckCommandOptions> = {
+export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
   command: 'verify-code',
-  describe: 'Run project checks',
+  describe: 'Verify project code',
   builder,
   async handler(argv) {
     const projects = findRootAndSelfProjects(argv, false);
@@ -32,9 +32,9 @@ export const verifyCodeCommand: CommandModule<unknown, AiCheckCommandOptions> = 
   },
 };
 
-export const verifyCodeWithTestsCommand: CommandModule<unknown, AiCheckCommandOptions> = {
+export const verifyCodeWithTestsCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
   command: 'verify-code-with-tests',
-  describe: 'Run project checks and tests',
+  describe: 'Verify project code and run tests',
   builder,
   async handler(argv) {
     const projects = findRootAndSelfProjects(argv, false);
@@ -48,7 +48,7 @@ export const verifyCodeWithTestsCommand: CommandModule<unknown, AiCheckCommandOp
   },
 };
 
-async function verifyCode(project: Project, argv: AiCheckCommandArgv): Promise<void> {
+async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
   await runPackageCommand('install', `${packageManager} install`, project, argv, { silent: true });
   if (project.packageJson.scripts?.['gen-code']) {
     await runPackageCommand('gen-code', `${packageManager} gen-code`, project, argv, {
@@ -64,7 +64,7 @@ async function verifyCode(project: Project, argv: AiCheckCommandArgv): Promise<v
   );
 }
 
-async function runProjectTest(project: Project, argv: AiCheckCommandArgv): Promise<void> {
+async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
   if (project.packageJson.scripts?.test?.includes('wb test')) {
     console.info('\n' + chalk.cyan(chalk.bold('Start:'), 'test'));
     await test({ ...argv, _: ['test'], e2e: 'headless' } as TestCommandArgv);
@@ -95,7 +95,7 @@ async function runPackageCommand(
   commandName: string,
   command: string,
   project: Project,
-  argv: AiCheckCommandArgv,
+  argv: VerifyCodeCommandArgv,
   options: { allowFailure?: boolean; silent?: boolean } = {}
 ): Promise<number> {
   console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName) + chalk.gray(` at ${project.dirPath}`));

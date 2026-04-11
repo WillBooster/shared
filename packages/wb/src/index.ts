@@ -5,7 +5,6 @@ import { removeNpmAndYarnEnvironmentVariables, treeKill } from '@willbooster/sha
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
-import { verifyCodeCommand, verifyCodeWithTestsCommand } from './commands/aiCheck.js';
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
 import { concurrentlyCommand } from './commands/concurrently.js';
 import { killPortIfNonCiCommand } from './commands/killPortIfNonCi.js';
@@ -19,6 +18,7 @@ import { testCommand } from './commands/test.js';
 import { testOnCiCommand } from './commands/testOnCi.js';
 import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
+import { verifyCodeCommand, verifyCodeWithTestsCommand } from './commands/verifyCode.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
 await yargs(hideBin(process.argv))
