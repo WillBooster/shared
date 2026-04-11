@@ -17,8 +17,8 @@ const builder = {} as const;
 type AiCheckCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 type AiCheckCommandArgv = ArgumentsCamelCase<AiCheckCommandOptions>;
 
-export const checkForAiCommand: CommandModule<unknown, AiCheckCommandOptions> = {
-  command: ['check', 'check-for-ai'],
+export const validateCodeCommand: CommandModule<unknown, AiCheckCommandOptions> = {
+  command: 'validate-code',
   describe: 'Run project checks',
   builder,
   async handler(argv) {
@@ -28,12 +28,12 @@ export const checkForAiCommand: CommandModule<unknown, AiCheckCommandOptions> = 
       process.exit(1);
     }
 
-    await checkForAi(projects.self, argv);
+    await validateCode(projects.self, argv);
   },
 };
 
-export const checkAllForAiCommand: CommandModule<unknown, AiCheckCommandOptions> = {
-  command: ['check-all', 'check-all-for-ai'],
+export const validateCodeWithTestsCommand: CommandModule<unknown, AiCheckCommandOptions> = {
+  command: 'validate-code-with-tests',
   describe: 'Run project checks and tests',
   builder,
   async handler(argv) {
@@ -43,12 +43,12 @@ export const checkAllForAiCommand: CommandModule<unknown, AiCheckCommandOptions>
       process.exit(1);
     }
 
-    await checkForAi(projects.self, argv);
+    await validateCode(projects.self, argv);
     await runProjectTest(projects.self, argv);
   },
 };
 
-async function checkForAi(project: Project, argv: AiCheckCommandArgv): Promise<void> {
+async function validateCode(project: Project, argv: AiCheckCommandArgv): Promise<void> {
   await runPackageCommand('install', `${packageManager} install`, project, argv, { silent: true });
   if (project.packageJson.scripts?.['gen-code']) {
     await runPackageCommand('gen-code', `${packageManager} gen-code`, project, argv, {

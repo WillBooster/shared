@@ -32,15 +32,15 @@
   ],
   "scripts": {
     "build": "build-ts lib",
-    "check-all-for-ai": "yarn check-for-ai && yarn test",
-    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify",
     "lint": "eslint --color",
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test{-,/}fixtures/**\" || true",
     "test": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "validate-code": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
+    "validate-code-with-tests": "yarn validate-code && yarn test"
   },
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
