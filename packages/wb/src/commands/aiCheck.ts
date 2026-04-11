@@ -45,7 +45,7 @@ export const checkAllForAiCommand: CommandModule<unknown, AiCheckCommandOptions>
 
     await checkForAi(projects.self, argv);
     await runInProcessCommand('test', async () => {
-      await test({ ...argv, _: ['test'] } as TestCommandArgv);
+      await test({ ...argv, _: ['test'], e2e: 'headless' } as TestCommandArgv);
       return;
     });
   },
