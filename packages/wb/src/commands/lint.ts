@@ -19,6 +19,10 @@ const builder = {
     description: 'Format the code',
     type: 'boolean',
   },
+  quiet: {
+    description: 'Report errors only',
+    type: 'boolean',
+  },
 } as const;
 
 const _argumentsBuilder = {
@@ -287,7 +291,10 @@ export function buildLintCommand(
   argv: Pick<
     InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
     'fix' | 'format'
-  >,
+  > &
+    Partial<
+      Pick<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>, 'quiet'>
+    >,
   files?: string[]
 ): string | undefined {
   if (project.preferredLinter === 'biome') {
@@ -317,6 +324,7 @@ export function buildLintCommand(
       'YARN',
       'eslint',
       '--color',
+      ...(argv.quiet ? ['--quiet'] : []),
       ...(argv.fix || argv.format ? ['--fix'] : []),
       '--',
       ...(files ?? ['.']),

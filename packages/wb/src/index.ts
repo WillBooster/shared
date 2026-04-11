@@ -5,6 +5,7 @@ import { removeNpmAndYarnEnvironmentVariables, treeKill } from '@willbooster/sha
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
+import { checkAllForAiCommand, checkForAiCommand } from './commands/aiCheck.js';
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
 import { concurrentlyCommand } from './commands/concurrently.js';
 import { killPortIfNonCiCommand } from './commands/killPortIfNonCi.js';
@@ -32,6 +33,8 @@ await yargs(hideBin(process.argv))
 
     removeNpmAndYarnEnvironmentVariables(process.env);
   })
+  .command(checkAllForAiCommand)
+  .command(checkForAiCommand)
   .command(buildIfNeededCommand)
   .command(concurrentlyCommand)
   .command(killPortIfNonCiCommand)
