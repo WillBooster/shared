@@ -10,7 +10,7 @@ pre-commit:
   commands:
     cleanup:
       glob: '**/*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}'
-      run: yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files} && git add -- {staged_files}
+      run: node node_modules/.bin/lint-staged
     check-migrations:
       glob: '**/migration.sql'
       run: |-
