@@ -66,10 +66,9 @@ async function checkForAi(project: Project, argv: AiCheckCommandArgv): Promise<v
 
 async function runProjectTest(project: Project, argv: AiCheckCommandArgv): Promise<void> {
   if (project.packageJson.scripts?.test?.includes('wb test')) {
-    await runInProcessCommand('test', async () => {
-      await test({ ...argv, _: ['test'], e2e: 'headless' } as TestCommandArgv);
-      return;
-    });
+    console.info('\n' + chalk.cyan(chalk.bold('Start:'), 'test'));
+    await test({ ...argv, _: ['test'], e2e: 'headless' } as TestCommandArgv);
+    console.info(chalk.green(chalk.bold('Finished:'), 'test'));
     return;
   }
 

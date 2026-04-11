@@ -320,6 +320,7 @@ export function buildLintCommand(
       '--colors=force',
       '--no-errors-on-unmatched',
       '--files-ignore-unknown=true',
+      ...(argv.quiet ? ['--diagnostic-level=error'] : []),
       ...(files?.length ? ['--'] : []),
       ...(files ?? []),
     ]);
@@ -368,10 +369,7 @@ export function buildPoetryCommand(
 }
 
 export function buildDartCommand(
-  argv: Pick<
-    InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
-    'fix' | 'format'
-  >,
+  argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
   files?: string[]
 ): string {
   const targets = files && files.length > 0 ? files : ['.'];
@@ -410,12 +408,7 @@ function findOwningProject(projects: Project[], filePath: string): Project | und
   return owningProject;
 }
 
-export function getLintTargetFiles(
-  argv: Pick<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>, 'files'> & {
-    '--'?: unknown[];
-    _: unknown[];
-  }
-): string[] {
+export function getLintTargetFiles(argv: Pick<LintCommandArgv, '--' | '_' | 'files'>): string[] {
   const lintTargets = new Set<string>();
   for (const value of [...(argv.files ?? []), ...argv._.slice(1), ...(argv['--'] ?? [])]) {
     lintTargets.add(String(value));
