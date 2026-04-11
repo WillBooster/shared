@@ -6,7 +6,11 @@ import type { Project } from '../project.js';
 import { findRootAndSelfProjects } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { packageManager, packageManagerWithRun } from '../utils/runtime.js';
+import { packageManager } from '../utils/runtime.js';
+
+import { lint, type LintCommandArgv } from './lint.js';
+import { test, type TestCommandArgv } from './test.js';
+import { typeCheck } from './typecheck.js';
 
 const builder = {} as const;
 
@@ -40,29 +44,46 @@ export const checkAllForAiCommand: CommandModule<unknown, AiCheckCommandOptions>
     }
 
     await checkForAi(projects.self, argv);
-    await runGeneratedCommand('test', `${packageManagerWithRun} wb test`, projects.self, argv);
+    await runInProcessCommand('test', async () => {
+      await test({ ...argv, _: ['test'] } as TestCommandArgv);
+      return;
+    });
   },
 };
 
 async function checkForAi(project: Project, argv: AiCheckCommandArgv): Promise<void> {
-  await runGeneratedCommand('install', `${packageManager} install > /dev/null`, project, argv, { silent: true });
+  await runPackageCommand('install', `${packageManager} install > /dev/null`, project, argv, { silent: true });
   if (project.packageJson.scripts?.['gen-code']) {
-    await runGeneratedCommand('gen-code', `${packageManagerWithRun} gen-code > /dev/null`, project, argv, {
+    await runPackageCommand('gen-code', `${packageManager} gen-code > /dev/null`, project, argv, {
       silent: true,
     });
   }
-  await runGeneratedCommand(
-    'format',
-    `${packageManagerWithRun} wb lint --format > /dev/null 2> /dev/null`,
-    project,
-    argv,
-    { allowFailure: true, silent: true }
+  await runInProcessCommand('format', () => lint({ ...argv, _: ['lint'], format: true } as LintCommandArgv), {
+    allowFailure: true,
+  });
+  await runInProcessCommand('typecheck', () => typeCheck(argv));
+  await runInProcessCommand('lint-fix', () =>
+    lint({ ...argv, _: ['lint'], fix: true, quiet: true } as LintCommandArgv)
   );
-  await runGeneratedCommand('typecheck', `${packageManagerWithRun} wb typecheck`, project, argv);
-  await runGeneratedCommand('lint-fix', `${packageManagerWithRun} wb lint --fix --quiet`, project, argv);
 }
 
-async function runGeneratedCommand(
+async function runInProcessCommand(
+  commandName: string,
+  command: () => Promise<number | undefined>,
+  options: { allowFailure?: boolean } = {}
+): Promise<number> {
+  console.info(chalk.cyan(chalk.bold('Start:'), commandName));
+  const exitCode = (await command()) ?? 0;
+  if (exitCode === 0 || options.allowFailure) {
+    console.info(chalk.green(chalk.bold('Finished:'), commandName));
+  } else {
+    console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
+    process.exit(exitCode);
+  }
+  return exitCode;
+}
+
+async function runPackageCommand(
   commandName: string,
   command: string,
   project: Project,

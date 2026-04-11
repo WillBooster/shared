@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import chalk from 'chalk';
-import type { CommandModule, InferredOptionTypes } from 'yargs';
+import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
@@ -31,6 +31,9 @@ const _argumentsBuilder = {
     type: 'array',
   },
 } as const;
+
+type LintCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>;
+export type LintCommandArgv = ArgumentsCamelCase<LintCommandOptions> & { '--'?: unknown[]; _: unknown[] };
 
 const biomeExtensions = new Set([
   'astro',
@@ -102,160 +105,164 @@ const prettierExtensions = new Set([
 const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !biomeExtensions.has(ext)));
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
-export const lintCommand: CommandModule<
-  unknown,
-  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>
-> = {
+export const lintCommand: CommandModule<unknown, LintCommandOptions> = {
   command: 'lint [files...]',
   describe: 'Lint code',
   builder,
   async handler(argv) {
-    if (process.platform === 'win32') {
-      console.error(chalk.red('This command is not supported on Windows.'));
-      process.exit(1);
-    }
+    const exitCode = await lint(argv as LintCommandArgv);
+    if (exitCode) process.exit(exitCode);
+  },
+};
 
-    const projects = await findDescendantProjects(argv, false);
-    if (!projects) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
-    }
+export async function lint(argv: LintCommandArgv): Promise<number> {
+  if (process.platform === 'win32') {
+    console.error(chalk.red('This command is not supported on Windows.'));
+    return 1;
+  }
 
-    const files = getLintTargetFiles(argv);
-    const lintFilePathsByProject = new Map<Project, string[]>();
-    const oxfmtFilePathsByProject = new Map<Project, string[]>();
-    const pythonFilePathsByProject = new Map<Project, string[]>();
-    const dartFilePathsByProject = new Map<Project, string[]>();
-    const prettierFilePaths: string[] = [];
-    const packageJsonFilePaths: string[] = [];
-    let missingLintToolForExplicitFiles = false;
-    let prettierArgs: string[];
-    let sortPackageJsonArgs: string[];
-    if (files.length > 0) {
-      const lintTargets = await Promise.all(
-        files.map(async (file) => {
-          const filePath = path.resolve(file);
-          const fileKind = await getLintTargetFileKind(filePath);
-          return { fileKind, filePath };
-        })
-      );
-      for (const { fileKind, filePath } of lintTargets) {
+  const projects = await findDescendantProjects(argv, false);
+  if (!projects) {
+    console.error(chalk.red('No project found.'));
+    return 1;
+  }
+
+  const files = getLintTargetFiles(argv);
+  const lintFilePathsByProject = new Map<Project, string[]>();
+  const oxfmtFilePathsByProject = new Map<Project, string[]>();
+  const pythonFilePathsByProject = new Map<Project, string[]>();
+  const dartFilePathsByProject = new Map<Project, string[]>();
+  const prettierFilePaths: string[] = [];
+  const packageJsonFilePaths: string[] = [];
+  let missingLintToolForExplicitFiles = false;
+  let prettierArgs: string[];
+  let sortPackageJsonArgs: string[];
+  if (files.length > 0) {
+    const lintTargets = await Promise.all(
+      files.map(async (file) => {
+        const filePath = path.resolve(file);
+        const fileKind = await getLintTargetFileKind(filePath);
+        return { fileKind, filePath };
+      })
+    );
+    for (const { fileKind, filePath } of lintTargets) {
+      if (
+        filePath.endsWith('/test/fixtures') ||
+        filePath.includes('/test/fixtures/') ||
+        filePath.endsWith('/test-fixtures') ||
+        filePath.includes('/test-fixtures/')
+      ) {
+        continue;
+      }
+
+      const extension = path.extname(filePath).slice(1);
+      if (filePath.endsWith('/package.json')) {
+        packageJsonFilePaths.push(filePath);
+        continue;
+      }
+      packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects.descendants, filePath, fileKind));
+
+      for (const { lintPath, project } of getExplicitLintTargets(projects.descendants, filePath, fileKind)) {
+        if (project.hasPoetryLock && (fileKind === 'directory' || pythonExtensions.has(extension))) {
+          const pythonFilePaths = pythonFilePathsByProject.get(project) ?? [];
+          pythonFilePaths.push(lintPath);
+          pythonFilePathsByProject.set(project, pythonFilePaths);
+          if (fileKind !== 'directory') continue;
+        }
+        if (project.hasPubspecYaml && (fileKind === 'directory' || dartExtensions.has(extension))) {
+          const dartFilePaths = dartFilePathsByProject.get(project) ?? [];
+          dartFilePaths.push(lintPath);
+          dartFilePathsByProject.set(project, dartFilePaths);
+          if (fileKind !== 'directory') continue;
+        }
         if (
-          filePath.endsWith('/test/fixtures') ||
-          filePath.includes('/test/fixtures/') ||
-          filePath.endsWith('/test-fixtures') ||
-          filePath.includes('/test-fixtures/')
+          project.preferredLinter === 'biome' ||
+          fileKind === 'directory' ||
+          supportsLintingExtension(project, extension)
         ) {
-          continue;
-        }
-
-        const extension = path.extname(filePath).slice(1);
-        if (filePath.endsWith('/package.json')) {
-          packageJsonFilePaths.push(filePath);
-          continue;
-        }
-        packageJsonFilePaths.push(...getExplicitPackageJsonPaths(projects.descendants, filePath, fileKind));
-
-        for (const { lintPath, project } of getExplicitLintTargets(projects.descendants, filePath, fileKind)) {
-          if (project.hasPoetryLock && (fileKind === 'directory' || pythonExtensions.has(extension))) {
-            const pythonFilePaths = pythonFilePathsByProject.get(project) ?? [];
-            pythonFilePaths.push(lintPath);
-            pythonFilePathsByProject.set(project, pythonFilePaths);
-            if (fileKind !== 'directory') continue;
-          }
-          if (project.hasPubspecYaml && (fileKind === 'directory' || dartExtensions.has(extension))) {
-            const dartFilePaths = dartFilePathsByProject.get(project) ?? [];
-            dartFilePaths.push(lintPath);
-            dartFilePathsByProject.set(project, dartFilePaths);
-            if (fileKind !== 'directory') continue;
-          }
-          if (
-            project.preferredLinter === 'biome' ||
-            fileKind === 'directory' ||
-            supportsLintingExtension(project, extension)
-          ) {
-            const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
-            lintFilePaths.push(lintPath);
-            lintFilePathsByProject.set(project, lintFilePaths);
-            for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
-              if (project.hasOxfmt) {
-                const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
-                oxfmtFilePaths.push(formatterPath);
-                oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
-              } else {
-                prettierFilePaths.push(formatterPath);
-              }
-            }
-          } else if (prettierExtensions.has(extension) || oxfmtExtensions.has(extension)) {
-            if (project.hasOxfmt && oxfmtExtensions.has(extension)) {
+          const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
+          lintFilePaths.push(lintPath);
+          lintFilePathsByProject.set(project, lintFilePaths);
+          for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
+            if (project.hasOxfmt) {
               const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
-              oxfmtFilePaths.push(lintPath);
+              oxfmtFilePaths.push(formatterPath);
               oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
-            } else if (prettierExtensions.has(extension)) {
-              prettierFilePaths.push(lintPath);
+            } else {
+              prettierFilePaths.push(formatterPath);
             }
-          } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
-            console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
-            missingLintToolForExplicitFiles = true;
           }
-        }
-      }
-      prettierArgs = [...new Set(prettierFilePaths)];
-      sortPackageJsonArgs = [...new Set(packageJsonFilePaths)];
-    } else {
-      prettierArgs = buildPrettierArgs(projects.self.dirPath, projects.descendants);
-      sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
-    }
-
-    const lintPromises: Promise<number>[] = [];
-    const lintRunOptions = { exitIfFailed: false, forceColor: true } as const;
-    if (files.length > 0) {
-      for (const [project, lintFilePaths] of lintFilePathsByProject) {
-        const lintCommand = buildLintCommand(project, argv, lintFilePaths);
-        if (!lintCommand) continue;
-
-        lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
-      }
-      for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
-        lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(oxfmtFilePaths), project, argv, lintRunOptions));
-      }
-      for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
-        lintPromises.push(
-          runWithSpawnInParallel(buildPoetryCommand(argv, pythonFilePaths), project, argv, lintRunOptions)
-        );
-      }
-      for (const [project, dartFilePaths] of dartFilePathsByProject) {
-        lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv, dartFilePaths), project, argv, lintRunOptions));
-      }
-    } else {
-      for (const project of projects.descendants) {
-        if (project.packageJson.workspaces && !project.hasSourceCode) continue;
-
-        const lintCommand = buildLintCommand(project, argv);
-        if (!lintCommand) continue;
-
-        lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
-      }
-      for (const project of projects.descendants) {
-        if (project.hasPoetryLock) {
-          lintPromises.push(runWithSpawnInParallel(buildPoetryCommand(argv), project, argv, lintRunOptions));
-        }
-        if (project.hasPubspecYaml) {
-          lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv), project, argv, lintRunOptions));
-        }
-        if (project.hasOxfmt && argv.format) {
-          lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(), project, argv, lintRunOptions));
+        } else if (prettierExtensions.has(extension) || oxfmtExtensions.has(extension)) {
+          if (project.hasOxfmt && oxfmtExtensions.has(extension)) {
+            const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
+            oxfmtFilePaths.push(lintPath);
+            oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
+          } else if (prettierExtensions.has(extension)) {
+            prettierFilePaths.push(lintPath);
+          }
+        } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
+          console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
+          missingLintToolForExplicitFiles = true;
         }
       }
     }
-    const lintExitCodes = await Promise.all(lintPromises);
+    prettierArgs = [...new Set(prettierFilePaths)];
+    sortPackageJsonArgs = [...new Set(packageJsonFilePaths)];
+  } else {
+    prettierArgs = buildPrettierArgs(projects.self.dirPath, projects.descendants);
+    sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
+  }
 
-    if (missingLintToolForExplicitFiles || lintExitCodes.some((exitCode) => exitCode !== 0)) {
-      process.exit(1);
+  const lintPromises: Promise<number>[] = [];
+  const lintRunOptions = { exitIfFailed: false, forceColor: true } as const;
+  if (files.length > 0) {
+    for (const [project, lintFilePaths] of lintFilePathsByProject) {
+      const lintCommand = buildLintCommand(project, argv, lintFilePaths);
+      if (!lintCommand) continue;
+
+      lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
     }
+    for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
+      lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(oxfmtFilePaths), project, argv, lintRunOptions));
+    }
+    for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
+      lintPromises.push(
+        runWithSpawnInParallel(buildPoetryCommand(argv, pythonFilePaths), project, argv, lintRunOptions)
+      );
+    }
+    for (const [project, dartFilePaths] of dartFilePathsByProject) {
+      lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv, dartFilePaths), project, argv, lintRunOptions));
+    }
+  } else {
+    for (const project of projects.descendants) {
+      if (project.packageJson.workspaces && !project.hasSourceCode) continue;
 
-    if (argv.format) {
-      if (prettierArgs.length > 0) {
+      const lintCommand = buildLintCommand(project, argv);
+      if (!lintCommand) continue;
+
+      lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
+    }
+    for (const project of projects.descendants) {
+      if (project.hasPoetryLock) {
+        lintPromises.push(runWithSpawnInParallel(buildPoetryCommand(argv), project, argv, lintRunOptions));
+      }
+      if (project.hasPubspecYaml) {
+        lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv), project, argv, lintRunOptions));
+      }
+      if (project.hasOxfmt && argv.format) {
+        lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(), project, argv, lintRunOptions));
+      }
+    }
+  }
+  const lintExitCodes = await Promise.all(lintPromises);
+
+  if (missingLintToolForExplicitFiles || lintExitCodes.some((exitCode) => exitCode !== 0)) {
+    return 1;
+  }
+
+  if (argv.format) {
+    if (prettierArgs.length > 0) {
+      lintExitCodes.push(
         await runWithSpawnInParallel(
           buildShellCommand([
             'YARN',
@@ -269,22 +276,24 @@ export const lintCommand: CommandModule<
           ]),
           projects.self,
           argv,
-          { forceColor: true }
-        );
-      }
-      if (sortPackageJsonArgs.length > 0) {
+          { exitIfFailed: false, forceColor: true }
+        )
+      );
+    }
+    if (sortPackageJsonArgs.length > 0) {
+      lintExitCodes.push(
         await runWithSpawnInParallel(
           buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
           projects.self,
           argv,
-          {
-            forceColor: true,
-          }
-        );
-      }
+          { exitIfFailed: false, forceColor: true }
+        )
+      );
     }
-  },
-};
+  }
+
+  return lintExitCodes.some((exitCode) => exitCode !== 0) ? 1 : 0;
+}
 
 export function buildLintCommand(
   project: Pick<Project, 'preferredLinter'>,
