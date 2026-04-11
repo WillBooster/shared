@@ -32,7 +32,9 @@ const _argumentsBuilder = {
   },
 } as const;
 
-type LintCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>;
+export type LintCommandOptions = InferredOptionTypes<
+  typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder
+>;
 export type LintCommandArgv = ArgumentsCamelCase<LintCommandOptions> & { '--'?: unknown[]; _: unknown[] };
 
 const biomeExtensions = new Set([
@@ -297,13 +299,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
 
 export function buildLintCommand(
   project: Pick<Project, 'preferredLinter'>,
-  argv: Pick<
-    InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
-    'fix' | 'format'
-  > &
-    Partial<
-      Pick<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>, 'quiet'>
-    >,
+  argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
   files?: string[]
 ): string | undefined {
   if (project.preferredLinter === 'biome') {
@@ -340,7 +336,13 @@ export function buildLintCommand(
     ]);
   }
   if (project.preferredLinter === 'oxlint') {
-    return buildShellCommand(['YARN', 'oxlint', ...(argv.fix ? ['--fix'] : []), ...(files ?? ['.'])]);
+    return buildShellCommand([
+      'YARN',
+      'oxlint',
+      ...(argv.quiet ? ['--quiet'] : []),
+      ...(argv.fix ? ['--fix'] : []),
+      ...(files ?? ['.']),
+    ]);
   }
   return;
 }
@@ -350,10 +352,7 @@ export function buildOxfmtCommand(files?: string[]): string {
 }
 
 export function buildPoetryCommand(
-  argv: Pick<
-    InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>,
-    'fix' | 'format'
-  >,
+  argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
   files?: string[]
 ): string {
   const targets = files && files.length > 0 ? files : ['.'];
@@ -362,9 +361,9 @@ export function buildPoetryCommand(
       ? [
           buildShellCommand(['poetry', 'run', 'isort', '--profile', 'black', '--filter-files', ...targets]),
           buildShellCommand(['poetry', 'run', 'black', ...targets]),
-          buildShellCommand(['poetry', 'run', 'flake8', ...targets]),
+          buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...targets]),
         ]
-      : [buildShellCommand(['poetry', 'run', 'flake8', ...targets])];
+      : [buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...targets])];
   return commands.join(' && ');
 }
 

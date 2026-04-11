@@ -44,17 +44,14 @@ export const checkAllForAiCommand: CommandModule<unknown, AiCheckCommandOptions>
     }
 
     await checkForAi(projects.self, argv);
-    await runInProcessCommand('test', async () => {
-      await test({ ...argv, _: ['test'], e2e: 'headless' } as TestCommandArgv);
-      return;
-    });
+    await runProjectTest(projects.self, argv);
   },
 };
 
 async function checkForAi(project: Project, argv: AiCheckCommandArgv): Promise<void> {
-  await runPackageCommand('install', `${packageManager} install > /dev/null`, project, argv, { silent: true });
+  await runPackageCommand('install', `${packageManager} install`, project, argv, { silent: true });
   if (project.packageJson.scripts?.['gen-code']) {
-    await runPackageCommand('gen-code', `${packageManager} gen-code > /dev/null`, project, argv, {
+    await runPackageCommand('gen-code', `${packageManager} gen-code`, project, argv, {
       silent: true,
     });
   }
@@ -67,12 +64,24 @@ async function checkForAi(project: Project, argv: AiCheckCommandArgv): Promise<v
   );
 }
 
+async function runProjectTest(project: Project, argv: AiCheckCommandArgv): Promise<void> {
+  if (project.packageJson.scripts?.test?.includes('wb test')) {
+    await runInProcessCommand('test', async () => {
+      await test({ ...argv, _: ['test'], e2e: 'headless' } as TestCommandArgv);
+      return;
+    });
+    return;
+  }
+
+  await runPackageCommand('test', `${packageManager} test`, project, argv);
+}
+
 async function runInProcessCommand(
   commandName: string,
   command: () => Promise<number | undefined>,
   options: { allowFailure?: boolean } = {}
 ): Promise<number> {
-  console.info(chalk.cyan(chalk.bold('Start:'), commandName));
+  console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
   const exitCode = (await command()) ?? 0;
   if (exitCode === 0 || options.allowFailure) {
     console.info(chalk.green(chalk.bold('Finished:'), commandName));
@@ -90,7 +99,7 @@ async function runPackageCommand(
   argv: AiCheckCommandArgv,
   options: { allowFailure?: boolean; silent?: boolean } = {}
 ): Promise<number> {
-  console.info(chalk.cyan(chalk.bold('Start:'), commandName) + chalk.gray(` at ${project.dirPath}`));
+  console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName) + chalk.gray(` at ${project.dirPath}`));
   if (argv.verbose) {
     console.info(chalk.gray(chalk.bold('Start (raw):'), command));
   }
@@ -103,7 +112,7 @@ async function runPackageCommand(
     cwd: project.dirPath,
     env: configureEnv(project.env, { forceColor: true }),
     shell: true,
-    stdio: options.silent ? 'ignore' : 'inherit',
+    stdio: options.silent ? ['ignore', 'ignore', 'inherit'] : 'inherit',
     killOnExit: true,
     verbose: argv.verbose,
   });
