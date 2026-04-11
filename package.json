@@ -23,8 +23,8 @@
     "release": "yarn multi-semantic-release --debug",
     "test": "CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test",
     "typecheck": "yarn workspaces foreach --all --parallel --verbose run typecheck",
-    "validate-code": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
-    "validate-code-with-tests": "yarn validate-code && yarn test"
+    "verify-code": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
+    "verify-code-with-tests": "yarn verify-code && yarn test"
   },
   "prettier": "@willbooster/prettier-config",
   "resolutions": {

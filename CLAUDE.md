@@ -11,8 +11,8 @@
 - Write tests ONLY if explicitly requested.
   - Make sure to continue to modify the tests and code until the tests pass.
 - When fixing tests, gather debug information through logging and screenshots before modifying the code.
-- After making code changes, run `yarn validate-code-with-tests` to execute all tests (takes up to 1 hour), or run `yarn validate-code` for type checking and linting only (takes up to 10 minutes).
-  - If you are confident your changes will not break any tests, you may use `validate-code`.
+- After making code changes, run `yarn verify-code-with-tests` to execute all tests (takes up to 1 hour), or run `yarn verify-code` for type checking and linting only (takes up to 10 minutes).
+  - If you are confident your changes will not break any tests, you may use `verify-code`.
 - Once you have verified your changes, commit and push them to the current (non-main) branch then create a PR via `gh`.
   - Follow the conventional commits; your commit message should start with `feat:`, `fix:`, etc.
   - If not specified, make sure to add a new line at the end of your commit message with: `Co-authored-by: WillBooster (Claude Code) <agent@willbooster.com>`.

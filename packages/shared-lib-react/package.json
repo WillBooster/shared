@@ -36,8 +36,8 @@
     "storybook": "start-storybook -p 6006",
     "test/ci": "yarn build-storybook",
     "typecheck": "tsc --noEmit",
-    "validate-code": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
-    "validate-code-with-tests": "yarn validate-code && yarn test"
+    "verify-code": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
+    "verify-code-with-tests": "yarn verify-code && yarn test"
   },
   "prettier": "@willbooster/prettier-config",
   "devDependencies": {
