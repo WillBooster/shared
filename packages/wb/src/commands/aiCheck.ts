@@ -18,8 +18,8 @@ type AiCheckCommandOptions = InferredOptionTypes<typeof builder & typeof sharedO
 type AiCheckCommandArgv = ArgumentsCamelCase<AiCheckCommandOptions>;
 
 export const checkForAiCommand: CommandModule<unknown, AiCheckCommandOptions> = {
-  command: 'check-for-ai',
-  describe: 'Run generated AI checks',
+  command: ['check', 'check-for-ai'],
+  describe: 'Run project checks',
   builder,
   async handler(argv) {
     const projects = findRootAndSelfProjects(argv, false);
@@ -33,8 +33,8 @@ export const checkForAiCommand: CommandModule<unknown, AiCheckCommandOptions> = 
 };
 
 export const checkAllForAiCommand: CommandModule<unknown, AiCheckCommandOptions> = {
-  command: 'check-all-for-ai',
-  describe: 'Run generated AI checks and tests',
+  command: ['check-all', 'check-all-for-ai'],
+  describe: 'Run project checks and tests',
   builder,
   async handler(argv) {
     const projects = findRootAndSelfProjects(argv, false);
