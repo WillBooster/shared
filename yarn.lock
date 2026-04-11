@@ -2380,7 +2380,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@eslint/js@npm:9.39.4, @eslint/js@npm:^9":
+"@eslint/js@npm:9.39.4, @eslint/js@npm:^9.39.4":
   version: 9.39.4
   resolution: "@eslint/js@npm:9.39.4"
   checksum: 10c0/5aa7dea2cbc5decf7f5e3b0c6f86a084ccee0f792d288ca8e839f8bc1b64e03e227068968e49b26096e6f71fd857ab6e42691d1b993826b9a3883f1bdd7a0e46
@@ -6048,7 +6048,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-blitz-next@workspace:packages/shared-lib-blitz-next"
   dependencies:
-    "@eslint/js": "npm:^9"
+    "@eslint/js": "npm:^9.39.4"
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/eslint": "npm:9.6.1"
@@ -6058,12 +6058,12 @@ __metadata:
     "@willbooster/prettier-config": "npm:10.4.0"
     blitz: "npm:3.0.2"
     build-ts: "npm:17.0.22"
-    eslint: "npm:^9"
+    eslint: "npm:^9.39.4"
     eslint-config-flat-gitignore: "npm:2.3.0"
     eslint-config-prettier: "npm:10.1.8"
     eslint-import-resolver-typescript: "npm:4.4.4"
     eslint-plugin-import-x: "npm:4.16.2"
-    eslint-plugin-sort-class-members: "npm:1.21.0"
+    eslint-plugin-sort-class-members: "npm:1.22.1"
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:64.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
@@ -6072,7 +6072,7 @@ __metadata:
     prettier: "npm:3.8.1"
     prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
-    typescript: "npm:^5"
+    typescript: "npm:^5.9.3"
     typescript-eslint: "npm:8.58.0"
     vitest: "npm:4.0.18"
   languageName: unknown
@@ -6082,7 +6082,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-next@workspace:packages/shared-lib-next"
   dependencies:
-    "@eslint/js": "npm:^9"
+    "@eslint/js": "npm:^9.39.4"
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/eslint": "npm:9.6.1"
@@ -6091,12 +6091,12 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:11.5.1"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
-    eslint: "npm:^9"
+    eslint: "npm:^9.39.4"
     eslint-config-flat-gitignore: "npm:2.3.0"
     eslint-config-prettier: "npm:10.1.8"
     eslint-import-resolver-typescript: "npm:4.4.4"
     eslint-plugin-import-x: "npm:4.16.2"
-    eslint-plugin-sort-class-members: "npm:1.21.0"
+    eslint-plugin-sort-class-members: "npm:1.22.1"
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:64.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
@@ -6106,7 +6106,7 @@ __metadata:
     prettier: "npm:3.8.1"
     prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
-    typescript: "npm:^5"
+    typescript: "npm:^5.9.3"
     typescript-eslint: "npm:8.58.0"
     vitest: "npm:4.0.18"
   peerDependencies:
@@ -6128,7 +6128,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-node@workspace:packages/shared-lib-node"
   dependencies:
-    "@eslint/js": "npm:^9"
+    "@eslint/js": "npm:^9.39.4"
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/bun": "npm:1.3.10"
@@ -6140,12 +6140,12 @@ __metadata:
     build-ts: "npm:17.0.22"
     dotenv: "npm:17.3.1"
     dotenv-expand: "npm:12.0.3"
-    eslint: "npm:^9"
+    eslint: "npm:^9.39.4"
     eslint-config-flat-gitignore: "npm:2.3.0"
     eslint-config-prettier: "npm:10.1.8"
     eslint-import-resolver-typescript: "npm:4.4.4"
     eslint-plugin-import-x: "npm:4.16.2"
-    eslint-plugin-sort-class-members: "npm:1.21.0"
+    eslint-plugin-sort-class-members: "npm:1.22.1"
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:64.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
@@ -6154,7 +6154,7 @@ __metadata:
     prettier: "npm:3.8.1"
     prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
-    typescript: "npm:^5"
+    typescript: "npm:^5.9.3"
     typescript-eslint: "npm:8.58.0"
     vitest: "npm:4.0.18"
   languageName: unknown
@@ -6165,7 +6165,7 @@ __metadata:
   resolution: "@willbooster/shared-lib-react@workspace:packages/shared-lib-react"
   dependencies:
     "@babel/core": "npm:7.29.0"
-    "@eslint/js": "npm:^9"
+    "@eslint/js": "npm:^9.39.4"
     "@mdx-js/react": "npm:3.1.1"
     "@storybook/addon-actions": "npm:9.0.8"
     "@storybook/addon-docs": "npm:10.2.19"
@@ -6186,7 +6186,7 @@ __metadata:
     "@willbooster/prettier-config": "npm:10.4.0"
     babel-loader: "npm:10.1.1"
     build-ts: "npm:17.0.22"
-    eslint: "npm:^9"
+    eslint: "npm:^9.39.4"
     eslint-config-flat-gitignore: "npm:2.3.0"
     eslint-config-prettier: "npm:10.1.8"
     eslint-import-resolver-typescript: "npm:4.4.4"
@@ -6194,7 +6194,7 @@ __metadata:
     eslint-plugin-react: "npm:7.37.5"
     eslint-plugin-react-compiler: "npm:19.1.0-rc.2"
     eslint-plugin-react-hooks: "npm:7.0.1"
-    eslint-plugin-sort-class-members: "npm:1.21.0"
+    eslint-plugin-sort-class-members: "npm:1.22.1"
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-storybook: "npm:10.2.19"
     eslint-plugin-unicorn: "npm:64.0.0"
@@ -6206,7 +6206,7 @@ __metadata:
     react: "npm:19.2.4"
     react-dom: "npm:19.2.4"
     sort-package-json: "npm:3.6.1"
-    typescript: "npm:^5"
+    typescript: "npm:^5.9.3"
     typescript-eslint: "npm:8.58.0"
     vitest: "npm:4.0.18"
   peerDependencies:
@@ -6219,7 +6219,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib@workspace:packages/shared-lib"
   dependencies:
-    "@eslint/js": "npm:^9"
+    "@eslint/js": "npm:^9.39.4"
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/eslint": "npm:9.6.1"
@@ -6228,12 +6228,12 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:11.5.1"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
-    eslint: "npm:^9"
+    eslint: "npm:^9.39.4"
     eslint-config-flat-gitignore: "npm:2.3.0"
     eslint-config-prettier: "npm:10.1.8"
     eslint-import-resolver-typescript: "npm:4.4.4"
     eslint-plugin-import-x: "npm:4.16.2"
-    eslint-plugin-sort-class-members: "npm:1.21.0"
+    eslint-plugin-sort-class-members: "npm:1.22.1"
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:64.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
@@ -6242,7 +6242,7 @@ __metadata:
     prettier: "npm:3.8.1"
     prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
-    typescript: "npm:^5"
+    typescript: "npm:^5.9.3"
     typescript-eslint: "npm:8.58.0"
     vitest: "npm:4.0.18"
   languageName: unknown
@@ -6252,7 +6252,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/wb@workspace:packages/wb"
   dependencies:
-    "@eslint/js": "npm:^9"
+    "@eslint/js": "npm:^9.39.4"
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/eslint": "npm:9.6.1"
@@ -6267,12 +6267,12 @@ __metadata:
     chalk: "npm:5.6.2"
     dotenv: "npm:17.3.1"
     dotenv-expand: "npm:12.0.3"
-    eslint: "npm:^9"
+    eslint: "npm:^9.39.4"
     eslint-config-flat-gitignore: "npm:2.3.0"
     eslint-config-prettier: "npm:10.1.8"
     eslint-import-resolver-typescript: "npm:4.4.4"
     eslint-plugin-import-x: "npm:4.16.2"
-    eslint-plugin-sort-class-members: "npm:1.21.0"
+    eslint-plugin-sort-class-members: "npm:1.22.1"
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:64.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
@@ -6285,7 +6285,7 @@ __metadata:
     prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
     type-fest: "npm:5.4.4"
-    typescript: "npm:^5"
+    typescript: "npm:^5.9.3"
     typescript-eslint: "npm:8.58.0"
     vitest: "npm:4.0.18"
     yargs: "npm:18.0.0"
@@ -7170,11 +7170,11 @@ __metadata:
   linkType: hard
 
 "baseline-browser-mapping@npm:^2.10.12, baseline-browser-mapping@npm:^2.8.3":
-  version: 2.10.15
-  resolution: "baseline-browser-mapping@npm:2.10.15"
+  version: 2.10.16
+  resolution: "baseline-browser-mapping@npm:2.10.16"
   bin:
     baseline-browser-mapping: dist/cli.cjs
-  checksum: 10c0/0bbcdefe842e79a1bcded41f7ffd6cca7a89edc035cfabae84ed80f19a0318de3f909ee64e184c39165cef12213eba89335745b101eeace2a4eaf290680d3af2
+  checksum: 10c0/9947243bb8f16db3f8e05397c5c3e7a91243dcf2d1ec6a681ad5ffabeadee36c1061cd18e5f0432088df6798fa0689890ba26db173b9ad23c5650709b7b2e7cf
   languageName: node
   linkType: hard
 
@@ -10070,12 +10070,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint-plugin-sort-class-members@npm:1.21.0":
-  version: 1.21.0
-  resolution: "eslint-plugin-sort-class-members@npm:1.21.0"
+"eslint-plugin-sort-class-members@npm:1.22.1":
+  version: 1.22.1
+  resolution: "eslint-plugin-sort-class-members@npm:1.22.1"
   peerDependencies:
     eslint: ">=0.8.0"
-  checksum: 10c0/4cb2c58f6d835e7978b21865738ace3a294be74fd9f2149dd53adcdc79e213753609c91f66fbfd974dc027f1e36f099a3650d555473c69e6fabb56200e681f4e
+  checksum: 10c0/31db0579be8346a1f15e3d3b9502f786707b645e0c507c6efde115210ee833e6b1bfed36d4eebb1c45eb88b079cc012be10b789345ce69097f7a3f0c2ca56a9b
   languageName: node
   linkType: hard
 
@@ -10182,7 +10182,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint@npm:^9":
+"eslint@npm:^9.39.4":
   version: 9.39.4
   resolution: "eslint@npm:9.39.4"
   dependencies:
@@ -19363,7 +19363,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@npm:5.9.3, typescript@npm:^5":
+"typescript@npm:5.9.3, typescript@npm:^5.9.3":
   version: 5.9.3
   resolution: "typescript@npm:5.9.3"
   bin:
@@ -19373,7 +19373,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@patch:typescript@npm%3A5.9.3#optional!builtin<compat/typescript>, typescript@patch:typescript@npm%3A^5#optional!builtin<compat/typescript>":
+"typescript@patch:typescript@npm%3A5.9.3#optional!builtin<compat/typescript>, typescript@patch:typescript@npm%3A^5.9.3#optional!builtin<compat/typescript>":
   version: 5.9.3
   resolution: "typescript@patch:typescript@npm%3A5.9.3#optional!builtin<compat/typescript>::version=5.9.3&hash=5786d5"
   bin:
@@ -19873,8 +19873,8 @@ __metadata:
   linkType: hard
 
 "vite@npm:^6.0.0 || ^7.0.0":
-  version: 7.3.1
-  resolution: "vite@npm:7.3.1"
+  version: 7.3.2
+  resolution: "vite@npm:7.3.2"
   dependencies:
     esbuild: "npm:^0.27.0"
     fdir: "npm:^6.5.0"
@@ -19923,7 +19923,7 @@ __metadata:
       optional: true
   bin:
     vite: bin/vite.js
-  checksum: 10c0/5c7548f5f43a23533e53324304db4ad85f1896b1bfd3ee32ae9b866bac2933782c77b350eb2b52a02c625c8ad1ddd4c000df077419410650c982cd97fde8d014
+  checksum: 10c0/74be36907e208916f18bfec81c8eba18b869f0a170f1ece0a4dcb14874d0f0e7c022fb6c2ad896e3ee6c973fe88f53ac23b4078879ada340d8b263260868b8d4
   languageName: node
   linkType: hard
 
@@ -20323,7 +20323,7 @@ __metadata:
   resolution: "willbooster-shared@workspace:."
   dependencies:
     "@anolilab/multi-semantic-release": "npm:4.1.1"
-    "@eslint/js": "npm:^9"
+    "@eslint/js": "npm:^9.39.4"
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/eslint": "npm:9.6.1"
@@ -20331,12 +20331,12 @@ __metadata:
     "@willbooster/eslint-config-ts": "npm:11.5.1"
     "@willbooster/prettier-config": "npm:10.4.0"
     conventional-changelog-conventionalcommits: "npm:9.3.0"
-    eslint: "npm:^9"
+    eslint: "npm:^9.39.4"
     eslint-config-flat-gitignore: "npm:2.3.0"
     eslint-config-prettier: "npm:10.1.8"
     eslint-import-resolver-typescript: "npm:4.4.4"
     eslint-plugin-import-x: "npm:4.16.2"
-    eslint-plugin-sort-class-members: "npm:1.21.0"
+    eslint-plugin-sort-class-members: "npm:1.22.1"
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
     eslint-plugin-unicorn: "npm:64.0.0"
     eslint-plugin-unused-imports: "npm:4.4.1"
@@ -20347,7 +20347,7 @@ __metadata:
     prettier-plugin-java: "npm:2.8.1"
     semantic-release: "npm:25.0.3"
     sort-package-json: "npm:3.6.1"
-    typescript: "npm:^5"
+    typescript: "npm:^5.9.3"
     typescript-eslint: "npm:8.58.0"
   languageName: unknown
   linkType: soft
