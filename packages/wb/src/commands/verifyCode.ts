@@ -49,6 +49,7 @@ export const verifyCodeWithTestsCommand: CommandModule<unknown, VerifyCodeComman
 };
 
 async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
+  // runPackageCommand exits on failure, so later verification steps only run after a successful install.
   await runPackageCommand('install', `${packageManager} install`, project, argv, { silent: true });
   if (project.packageJson.scripts?.['gen-code']) {
     await runPackageCommand('gen-code', `${packageManager} gen-code`, project, argv, {
