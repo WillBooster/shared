@@ -321,8 +321,6 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
   }
 
   let newSettings = cloneDeep(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
-  // Skip a broken workflow
-  if (!('jobs' in newSettings)) return;
 
   try {
     const oldContent = await fs.promises.readFile(filePath, 'utf8');
@@ -331,6 +329,9 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
   } catch {
     // do nothing
   }
+
+  // Skip a broken workflow
+  if (!('jobs' in newSettings)) return;
 
   if (kind.startsWith('deploy')) {
     newSettings = {

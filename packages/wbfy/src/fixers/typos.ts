@@ -44,12 +44,15 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     }
     for (const tsFile of tsFiles) {
       const filePath = path.join(dirPath, tsFile);
-      const oldContent = await fs.promises.readFile(filePath, 'utf8');
-      let newContent = fixTyposInCode(oldContent);
-      newContent = replaceWithConfig(newContent, packageConfig, 'ts');
+      await promisePool.run(async () => {
+        const oldContent = await fs.promises.readFile(filePath, 'utf8');
+        let newContent = fixTyposInCode(oldContent);
+        newContent = replaceWithConfig(newContent, packageConfig, 'ts');
 
-      if (oldContent === newContent) continue;
-      await fsUtil.generateFile(filePath, newContent);
+        if (oldContent !== newContent) {
+          await fsUtil.generateFile(filePath, newContent);
+        }
+      });
     }
 
     const textBasedFiles = await fg.glob('**/*.{csv,htm,html,tsv,xml,yaml,yml}', {
@@ -62,12 +65,15 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     }
     for (const file of textBasedFiles) {
       const filePath = path.join(dirPath, file);
-      const oldContent = await fs.promises.readFile(filePath, 'utf8');
-      let newContent = fixTyposInText(oldContent);
-      newContent = replaceWithConfig(newContent, packageConfig, 'text');
+      await promisePool.run(async () => {
+        const oldContent = await fs.promises.readFile(filePath, 'utf8');
+        let newContent = fixTyposInText(oldContent);
+        newContent = replaceWithConfig(newContent, packageConfig, 'text');
 
-      if (oldContent === newContent) continue;
-      await fsUtil.generateFile(filePath, newContent);
+        if (oldContent !== newContent) {
+          await fsUtil.generateFile(filePath, newContent);
+        }
+      });
     }
 
     await promisePool.promiseAll();

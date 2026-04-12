@@ -99,14 +99,10 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   // Deal with breaking changes in yarn berry 4.0.0-rc.49
   for (const [key, value] of Object.entries(jsonObj.scripts)) {
     if (!value?.includes('yarn workspaces foreach')) continue;
-    if (
-      value.includes('--all') ||
-      value.includes('--recursive') ||
-      value.includes('--since') ||
-      value.includes('--worktree')
-    )
-      continue;
-    jsonObj.scripts[key] = value.replace('yarn workspaces foreach', 'yarn workspaces foreach --all');
+    jsonObj.scripts[key] = value.replaceAll(
+      /yarn workspaces foreach(?!\s+--(?:all|recursive|since|worktree))/gu,
+      'yarn workspaces foreach --all'
+    );
   }
 
   let dependencies: string[] = [];
@@ -351,6 +347,12 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
     delete jsonObj.devDependencies['@types/prettier'];
   }
 
+  const packageJsonDependencies = jsonObj.dependencies;
+  const packageJsonDevDependencies = jsonObj.devDependencies;
+  dependencies = addPackageJsonDependencies(packageJsonDependencies, dependencies);
+  devDependencies = devDependencies.filter((dep) => !packageJsonDependencies[dep]);
+  devDependencies = addPackageJsonDependencies(packageJsonDevDependencies, devDependencies);
+
   if (Object.keys(jsonObj.dependencies).length === 0) {
     delete jsonObj.dependencies;
   }
@@ -398,6 +400,23 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
       spawnSync('poetry', ['add', '--group', 'dev', ...new Set(poetryDevDependencies)], config.dirPath);
     }
   }
+}
+
+function addPackageJsonDependencies(
+  packageJsonDependencies: Partial<Record<string, string>>,
+  dependencies: string[]
+): string[] {
+  const uniqueDependencies = [...new Set(dependencies)].filter((dep) => !packageJsonDependencies[dep]);
+  for (const dependency of uniqueDependencies) {
+    packageJsonDependencies[dependency] = getPackageJsonDependencyVersion(dependency);
+  }
+  return uniqueDependencies;
+}
+
+function getPackageJsonDependencyVersion(dependency: string): string {
+  const dependencySpecifier = getDependencySpecifier(dependency);
+  const versionSeparatorIndex = dependencySpecifier.lastIndexOf('@');
+  return versionSeparatorIndex > 0 ? dependencySpecifier.slice(versionSeparatorIndex + 1) : '*';
 }
 
 // TODO: remove the following migration code in future

@@ -95,12 +95,16 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
 
 export function getLatestVersion(packageName: string, dirPath: string): string {
   const versionsJson = spawnSyncAndReturnStdout('npm', ['show', packageName, 'versions', '--json'], dirPath);
-  return (
-    versionsJson
-      .match(/"([^"]+)"/gu)
-      ?.at(-1)
-      ?.slice(1, -1) ?? '0.0.0'
-  );
+  try {
+    const versions = JSON.parse(versionsJson) as unknown;
+    return isStringArray(versions) ? (versions.at(-1) ?? '0.0.0') : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 function getMajorNumber(version: string): number {
   const [major] = version.split('.');
