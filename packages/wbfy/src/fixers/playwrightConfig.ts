@@ -68,32 +68,6 @@ function toParsedObject(properties: Record<string, ParsedValue>, extraMembers: s
   };
 }
 
-function mergeParsedObjects(base: ParsedObject, override: ParsedObject): ParsedObject {
-  const overridePropertyKeys = new Set(
-    override.memberOrder.flatMap((member) => (member.kind === 'property' ? [member.key] : []))
-  );
-  const extraMembers = [...base.extraMembers, ...override.extraMembers];
-  const memberOrder = [
-    ...base.memberOrder.filter((member) => member.kind !== 'property' || !overridePropertyKeys.has(member.key)),
-    ...override.memberOrder.map((member): ObjectMember => {
-      if (member.kind === 'property') return member;
-      return { kind: 'extra', index: base.extraMembers.length + member.index };
-    }),
-  ];
-  const properties = { ...base.properties };
-  for (const [key, value] of Object.entries(override.properties)) {
-    properties[key] = mergeParsedValue(properties[key], value);
-  }
-  return { extraMembers, memberOrder, properties };
-}
-
-function mergeParsedValue(base: ParsedValue | undefined, override: ParsedValue): ParsedValue {
-  if (base?.kind === 'object' && override.kind === 'object') {
-    return { kind: 'object', value: mergeParsedObjects(base.value, override.value) };
-  }
-  return override;
-}
-
 export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> {
   const filePath = path.resolve(config.dirPath, `playwright.config.ts`);
   if (!fs.existsSync(filePath)) return;
@@ -126,6 +100,30 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
 
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
+}
+
+function mergeParsedObjects(base: ParsedObject, override: ParsedObject): ParsedObject {
+  const overridePropertyKeys = new Set(Object.keys(override.properties));
+  const extraMembers = [...base.extraMembers, ...override.extraMembers];
+  const memberOrder = [
+    ...base.memberOrder.filter((member) => member.kind !== 'property' || !overridePropertyKeys.has(member.key)),
+    ...override.memberOrder.map((member): ObjectMember => {
+      if (member.kind === 'property') return member;
+      return { kind: 'extra', index: base.extraMembers.length + member.index };
+    }),
+  ];
+  const properties = { ...base.properties };
+  for (const [key, value] of Object.entries(override.properties)) {
+    properties[key] = mergeParsedValue(properties[key], value);
+  }
+  return { extraMembers, memberOrder, properties };
+}
+
+function mergeParsedValue(base: ParsedValue | undefined, override: ParsedValue): ParsedValue {
+  if (base?.kind === 'object' && override.kind === 'object') {
+    return { kind: 'object', value: mergeParsedObjects(base.value, override.value) };
+  }
+  return override;
 }
 
 async function assertNextPublicBaseUrl(dirPath: string): Promise<void> {
