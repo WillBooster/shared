@@ -18,7 +18,7 @@ Commands:
   wb lint [files...]            Lint code
   wb optimizeForDockerBuild     Optimize configuration when building a Docker
                                 image
-  wb prisma                     Run prisma commands                [aliases: db]
+  wb prisma                     Run database commands              [aliases: db]
   wb retry [command] [args...]  Retry the given command until it succeeds
   wb setup                      Setup development environment. .env files are
                                 ignored.

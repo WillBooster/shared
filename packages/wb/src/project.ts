@@ -9,6 +9,8 @@ import type { PackageJson } from 'type-fest';
 
 import { isCI } from './utils/ci.js';
 
+export type DatabaseOrm = 'prisma' | 'drizzle';
+
 export class Project {
   private readonly argv: EnvReaderOptions;
   private readonly loadEnv: boolean;
@@ -104,7 +106,23 @@ export class Project {
 
   @memoizeOne
   get hasPrisma(): boolean {
-    return !!(this.packageJson.dependencies?.prisma ?? this.packageJson.devDependencies?.prisma);
+    return !!this.getDependencyVersion('prisma');
+  }
+
+  @memoizeOne
+  get hasDrizzleV1(): boolean {
+    const drizzleOrmVersion = this.getDependencyVersion('drizzle-orm');
+    if (!drizzleOrmVersion) return false;
+
+    const versionText = drizzleOrmVersion.replace(/^npm:[^@]+@/, '').trim();
+    return versionText === 'beta' || /^[\^~>=< ]*1\./.test(versionText);
+  }
+
+  @memoizeOne
+  get databaseOrm(): DatabaseOrm | undefined {
+    if (this.hasPrisma) return 'prisma';
+    if (this.hasDrizzleV1) return 'drizzle';
+    return;
   }
 
   @memoizeOne
@@ -222,16 +240,22 @@ export class Project {
   }
 
   private hasDependency(packageName: string): boolean {
-    const hasDependencyInPackageJson = (packageJson: PackageJson | undefined): boolean =>
-      !!(
-        packageJson &&
-        (packageJson.dependencies?.[packageName] ||
-          packageJson.devDependencies?.[packageName] ||
-          packageJson.optionalDependencies?.[packageName] ||
-          packageJson.peerDependencies?.[packageName])
-      );
+    return !!this.getDependencyVersion(packageName);
+  }
 
-    return hasDependencyInPackageJson(this.packageJson) || hasDependencyInPackageJson(this.rootPackageJson);
+  private getDependencyVersion(packageName: string): string | undefined {
+    const dependencyVersionInPackageJson = (packageJson: PackageJson | undefined): string | undefined => {
+      if (!packageJson) return;
+
+      return (
+        packageJson.dependencies?.[packageName] ??
+        packageJson.devDependencies?.[packageName] ??
+        packageJson.optionalDependencies?.[packageName] ??
+        packageJson.peerDependencies?.[packageName]
+      );
+    };
+
+    return dependencyVersionInPackageJson(this.packageJson) ?? dependencyVersionInPackageJson(this.rootPackageJson);
   }
 
   @memoizeOne

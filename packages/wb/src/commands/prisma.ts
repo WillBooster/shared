@@ -4,8 +4,9 @@ import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import type { Project } from '../project.js';
+import type { DatabaseOrm, Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
+import { drizzleScripts } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
@@ -19,7 +20,7 @@ export const prismaCommand: CommandModule = {
   command: 'prisma',
   aliases: ['db'],
   describe:
-    "Run prisma commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Example: wb prisma migrate-dev -- --name init",
+    "Run database commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Drizzle v1 projects use drizzle-kit. Example: wb prisma migrate-dev -- --name init",
   builder: (yargs) => {
     return yargs
       .parserConfiguration({ 'populate--': true })
@@ -48,8 +49,8 @@ const cleanUpLitestreamCommand: CommandModule<unknown, InferredOptionTypes<typeo
   describe: 'Clean up temporal Litestream files',
   builder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma cleanup-litestream', allProjects)) {
+    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
+    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma cleanup-litestream', allProjects)) {
       await runWithSpawn(prismaScripts.cleanUpLitestream(project), project, argv);
     }
   },
@@ -60,8 +61,8 @@ const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<
   describe: 'Create Litestream configuration file',
   builder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma create-litestream-config', allProjects)) {
+    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
+    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma create-litestream-config', allProjects)) {
       createLitestreamConfig(project);
     }
   },
@@ -72,10 +73,10 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
   describe: 'Apply migration to DB without initializing it',
   builder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv);
-    for (const project of prepareForRunningCommand('prisma deploy', allProjects)) {
-      await runWithSpawn(prismaScripts.deploy(project, unknownOptions), project, argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db deploy', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).deploy(project, unknownOptions), project, argv);
     }
   },
 };
@@ -85,8 +86,8 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   describe: "Force to apply migration to DB utilizing Litestream's backup without initializing it",
   builder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma deploy-force', allProjects)) {
+    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
+    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma deploy-force', allProjects)) {
       await runWithSpawn(prismaScripts.deployForce(project), project, argv);
     }
   },
@@ -97,8 +98,8 @@ const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   describe: 'List Litestream backups',
   builder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma list-backups', allProjects)) {
+    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
+    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma list-backups', allProjects)) {
       await runWithSpawn(prismaScripts.listBackups(project), project, argv);
     }
   },
@@ -109,10 +110,10 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>
   describe: 'Apply migration to DB with initializing it',
   builder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv);
-    for (const project of prepareForRunningCommand('prisma migrate', allProjects)) {
-      await runWithSpawn(prismaScripts.migrate(project, unknownOptions), project, argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).migrate(project, unknownOptions), project, argv);
     }
   },
 };
@@ -122,10 +123,10 @@ const migrateDevCommand: CommandModule<unknown, InferredOptionTypes<typeof build
   describe: 'Create a migration file',
   builder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv);
-    for (const project of prepareForRunningCommand('prisma migrate-dev', allProjects)) {
-      await runWithSpawn(prismaScripts.migrateDev(project, unknownOptions), project, argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate-dev', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).migrateDev(project, unknownOptions), project, argv);
     }
   },
 };
@@ -135,16 +136,19 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
   describe: 'Reset DB',
   builder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv);
-    for (const project of prepareForRunningCommand('prisma reset', allProjects)) {
-      await runWithSpawn(prismaScripts.reset(project, unknownOptions), project, argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db reset', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).reset(project, unknownOptions), project, argv);
     }
     // Force to reset test database
     if (process.env.WB_ENV !== 'test') {
       process.env.WB_ENV = 'test';
-      for (const project of prepareForRunningCommand('WB_ENV=test prisma reset', await findPrismaProjects(argv))) {
-        await runWithSpawn(prismaScripts.reset(project, unknownOptions), project, argv);
+      for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
+        'WB_ENV=test db reset',
+        await findDatabaseOrmProjects(argv)
+      )) {
+        await runWithSpawn(getDatabaseOrmScripts(orm).reset(project, unknownOptions), project, argv);
       }
     }
   },
@@ -163,8 +167,8 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
   describe: "Restore DB from Litestream's backup",
   builder: restoreBuilder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma restore', allProjects)) {
+    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
+    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma restore', allProjects)) {
       const output =
         argv.output ?? (project.packageJson.dependencies?.blitz ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3');
       await runWithSpawn(prismaScripts.restore(project, output), project, argv);
@@ -186,9 +190,9 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
   describe: 'Populate DB with seed data',
   builder: seedBuilder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
-    for (const project of prepareForRunningCommand('prisma seed', allProjects)) {
-      await runWithSpawn(prismaScripts.seed(project, argv.file), project, argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db seed', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).seed(project, argv.file), project, argv);
     }
   },
 };
@@ -207,22 +211,22 @@ const studioBuilder = {
 
 const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBuilder>> = {
   command: 'studio [db-url-or-path]',
-  describe: 'Open Prisma Studio',
+  describe: 'Open database studio',
   builder: studioBuilder,
   async handler(argv) {
     if (argv.restored && argv.dbUrlOrPath) {
       throw new Error('You cannot specify both --restored and --db-url-or-path.');
     }
 
-    const allProjects = await findPrismaProjects(argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv, ['db-url-or-path', 'restored']);
-    for (const project of prepareForRunningCommand('prisma studio', allProjects)) {
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db studio', allProjects)) {
       const dbUrlOrPath = argv.restored
         ? project.packageJson.dependencies?.blitz
           ? 'db/restored.sqlite3'
           : 'prisma/restored.sqlite3'
         : argv.dbUrlOrPath?.toString();
-      await runWithSpawn(prismaScripts.studio(project, dbUrlOrPath, unknownOptions), project, argv);
+      await runWithSpawn(getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions), project, argv);
     }
   },
 };
@@ -231,15 +235,17 @@ const defaultCommandBuilder = { args: { type: 'array' } } as const;
 
 const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultCommandBuilder>> = {
   command: '$0 <args..>',
-  describe: "Pass the command and arguments to prisma as is. Additional Prisma flags can also be forwarded after '--'.",
+  describe:
+    "Pass the command and arguments to the detected ORM as is. Additional Prisma flags can also be forwarded after '--'.",
   builder: defaultCommandBuilder,
   async handler(argv) {
-    const allProjects = await findPrismaProjects(argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
     const script = (argv.args?.join(' ') ?? '').trimEnd();
     const unknownOptions = extractUnknownOptions(argv, ['args']);
     const fullCommand = [script, unknownOptions].filter(Boolean).join(' ');
-    for (const project of prepareForRunningCommand(`prisma ${fullCommand}`, allProjects)) {
-      await runWithSpawn(`PRISMA ${fullCommand}`, project, argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand(`db ${fullCommand}`, allProjects)) {
+      const command = orm === 'prisma' ? `PRISMA ${fullCommand}` : `YARN drizzle-kit ${fullCommand}`;
+      await runWithSpawn(command, project, argv);
     }
   },
 };
@@ -289,25 +295,50 @@ function createLitestreamConfig(project: Project): void {
   }
 }
 
-async function findPrismaProjects(argv: EnvReaderOptions): Promise<Project[]> {
+interface DatabaseOrmProject {
+  project: Project;
+  orm: DatabaseOrm;
+}
+
+async function findDatabaseOrmProjects(argv: EnvReaderOptions, orm?: DatabaseOrm): Promise<DatabaseOrmProject[]> {
   const projects = await findDescendantProjects(argv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
     process.exit(1);
   }
 
-  const filtered = projects.descendants.filter(
-    (project) => project.packageJson.dependencies?.prisma ?? project.packageJson.devDependencies?.prisma
-  );
+  const filtered = projects.descendants
+    .map((project) => (project.databaseOrm ? { project, orm: project.databaseOrm } : undefined))
+    .filter((project): project is DatabaseOrmProject => !!project && (!orm || project.orm === orm));
   if (filtered.length === 0) {
-    console.error(chalk.red('No prisma project found.'));
+    console.error(chalk.red(orm ? `No ${orm} project found.` : 'No supported database ORM project found.'));
     process.exit(1);
   }
   return filtered;
 }
 
+function getDatabaseOrmScripts(orm: DatabaseOrm): typeof prismaScripts | typeof drizzleScripts {
+  return orm === 'prisma' ? prismaScripts : drizzleScripts;
+}
+
+function* prepareForRunningDatabaseOrmCommand(
+  commandName: string,
+  projects: DatabaseOrmProject[]
+): Generator<DatabaseOrmProject, void, unknown> {
+  const ormProjectByProject = new Map(projects.map((project) => [project.project, project]));
+  for (const project of prepareForRunningCommand(
+    commandName,
+    projects.map(({ project }) => project)
+  )) {
+    const ormProject = ormProjectByProject.get(project);
+    if (!ormProject) throw new Error(`Failed to detect database ORM for ${project.name}.`);
+
+    yield ormProject;
+  }
+}
+
 /**
- * Extract unknown options from argv to pass to prisma command
+ * Extract unknown options from argv to pass to ORM commands.
  */
 export function extractUnknownOptions(argv: Record<string, unknown>, knownOptions: string[] = []): string {
   const unknownOptions: string[] = [];
