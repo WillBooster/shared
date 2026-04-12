@@ -51,6 +51,17 @@ const eslintDeps: Record<EslintExtensionBase, string[]> = {
   ],
 };
 
+type WritablePackageJson = SetRequired<
+  PackageJson,
+  'scripts' | 'dependencies' | 'devDependencies' | 'peerDependencies'
+>;
+
+interface DependencyUpdates {
+  dependencies: string[];
+  devDependencies: string[];
+  poetryDevDependencies: string[];
+}
+
 export async function generatePackageJson(
   config: PackageConfig,
   rootConfig: PackageConfig,
@@ -63,53 +74,92 @@ export async function generatePackageJson(
 
 async function core(config: PackageConfig, rootConfig: PackageConfig, skipAddingDeps: boolean): Promise<void> {
   const filePath = path.resolve(config.dirPath, 'package.json');
+  const jsonObj = await readPackageJson(filePath);
+  const packageManager = config.isBun ? 'bun' : 'yarn';
+
+  await removeDeprecatedStuff(jsonObj, config.dirPath);
+  await updateScripts(config, jsonObj, packageManager);
+  const dependencyUpdates = collectDependencyUpdates(config, rootConfig, jsonObj);
+  await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
+  addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
+  removeEmptyDependencySections(jsonObj);
+  await updatePrivatePackages(jsonObj);
+
+  if (config.isBun) delete jsonObj.packageManager;
+  await fixScriptNames(jsonObj.scripts, config);
+  await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2)));
+
+  if (!skipAddingDeps) {
+    installDependencyUpdates(config, jsonObj, dependencyUpdates, packageManager);
+  }
+}
+
+async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   const jsonText = await fs.promises.readFile(filePath, 'utf8');
   const jsonObj = JSON.parse(jsonText) as PackageJson;
   jsonObj.scripts = jsonObj.scripts ?? {};
   jsonObj.dependencies = jsonObj.dependencies ?? {};
   jsonObj.devDependencies = jsonObj.devDependencies ?? {};
   jsonObj.peerDependencies = jsonObj.peerDependencies ?? {};
-  const packageManager = config.isBun ? 'bun' : 'yarn';
+  return jsonObj as WritablePackageJson;
+}
 
-  await removeDeprecatedStuff(
-    jsonObj as SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies'>,
-    config.dirPath
-  );
-
-  for (const [key, value] of Object.entries(jsonObj.scripts)) {
-    if (typeof value !== 'string') continue;
-    // Fresh repo still requires 'yarn install'
-    if (!value.includes('git clone')) {
-      jsonObj.scripts[key] = value.replaceAll(/yarn\s*&&\s*/gu, '').replaceAll(/yarn\s*install\s*&&\s*/gu, '');
-    }
-  }
+async function updateScripts(
+  config: PackageConfig,
+  jsonObj: WritablePackageJson,
+  packageManager: 'bun' | 'yarn'
+): Promise<void> {
+  removeLegacyInstallCommands(jsonObj.scripts);
 
   jsonObj.scripts = merge(jsonObj.scripts, generateScripts(config, jsonObj.scripts));
   addStartTestServerScriptIfNeeded(config, jsonObj);
-
-  if ('check-for-ai' in jsonObj.scripts) {
-    if ('gen-code' in jsonObj.scripts) {
-      jsonObj.scripts['check-for-ai'] = `${packageManager} gen-code > /dev/null && ${jsonObj.scripts['check-for-ai']}`;
-    }
-    jsonObj.scripts['check-for-ai'] = `${packageManager} install > /dev/null && ${jsonObj.scripts['check-for-ai']}`;
-  }
+  addInstallStepToCheckForAi(jsonObj.scripts, packageManager);
 
   if (config.isBun) {
     delete jsonObj.scripts.prettify;
   } else {
     jsonObj.scripts.prettify = (jsonObj.scripts.prettify ?? '') + (await generatePrettierSuffix(config.dirPath));
   }
+  normalizeYarnWorkspaceForeachScripts(jsonObj.scripts);
+}
+
+function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
+  for (const [key, value] of Object.entries(scripts)) {
+    if (typeof value !== 'string') continue;
+    // Fresh repo still requires 'yarn install'
+    if (!value.includes('git clone')) {
+      scripts[key] = value.replaceAll(/yarn\s*&&\s*/gu, '').replaceAll(/yarn\s*install\s*&&\s*/gu, '');
+    }
+  }
+}
+
+function addInstallStepToCheckForAi(scripts: PackageJson.Scripts, packageManager: 'bun' | 'yarn'): void {
+  if (!('check-for-ai' in scripts)) return;
+
+  if ('gen-code' in scripts) {
+    scripts['check-for-ai'] = `${packageManager} gen-code > /dev/null && ${scripts['check-for-ai']}`;
+  }
+  scripts['check-for-ai'] = `${packageManager} install > /dev/null && ${scripts['check-for-ai']}`;
+}
+
+function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {
   // Deal with breaking changes in yarn berry 4.0.0-rc.49
-  for (const [key, value] of Object.entries(jsonObj.scripts)) {
+  for (const [key, value] of Object.entries(scripts)) {
     if (!value?.includes('yarn workspaces foreach')) continue;
-    jsonObj.scripts[key] = value.replaceAll(
+    scripts[key] = value.replaceAll(
       /yarn workspaces foreach(?!\s+(?:-A|-R|--(?:all|recursive|since|worktree|from|include|exclude|public|private)))/gu,
       'yarn workspaces foreach --all'
     );
   }
+}
 
-  let dependencies: string[] = [];
-  let devDependencies = ['prettier', 'sort-package-json'];
+function collectDependencyUpdates(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  jsonObj: WritablePackageJson
+): DependencyUpdates {
+  const dependencies: string[] = [];
+  const devDependencies = ['prettier', 'sort-package-json'];
   const poetryDevDependencies: string[] = [];
 
   if (
@@ -233,10 +283,22 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   }
 
   if (config.isWillBoosterConfigs) {
-    dependencies = dependencies.filter((dep) => !dep.includes('@willbooster/'));
-    devDependencies = devDependencies.filter((dep) => !dep.includes('@willbooster/'));
+    return {
+      dependencies: dependencies.filter((dep) => !dep.includes('@willbooster/')),
+      devDependencies: devDependencies.filter((dep) => !dep.includes('@willbooster/')),
+      poetryDevDependencies,
+    };
   }
 
+  return { dependencies, devDependencies, poetryDevDependencies };
+}
+
+async function normalizePackageMetadata(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  jsonObj: WritablePackageJson,
+  dependencyUpdates: DependencyUpdates
+): Promise<void> {
   if (!jsonObj.name) {
     jsonObj.name = path.basename(config.dirPath);
   }
@@ -317,7 +379,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
           jsonObj.scripts['lint-fix'] = 'yarn lint';
         }
         jsonObj.scripts.format = (jsonObj.scripts.format ?? '') + ` && yarn format-code`;
-        poetryDevDependencies.push('black', 'isort', 'flake8');
+        dependencyUpdates.poetryDevDependencies.push('black', 'isort', 'flake8');
       }
     }
   }
@@ -343,57 +405,62 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
     // Because @types/prettier blocks prettier execution.
     delete jsonObj.devDependencies['@types/prettier'];
   }
+}
 
+function addDependencyVersionsToPackageJson(jsonObj: WritablePackageJson, dependencyUpdates: DependencyUpdates): void {
   const packageJsonDependencies = jsonObj.dependencies;
   const packageJsonDevDependencies = jsonObj.devDependencies;
-  dependencies = addPackageJsonDependencies(packageJsonDependencies, dependencies);
-  devDependencies = devDependencies.filter((dep) => !packageJsonDependencies[dep]);
-  devDependencies = addPackageJsonDependencies(packageJsonDevDependencies, devDependencies);
+  dependencyUpdates.dependencies = addPackageJsonDependencies(packageJsonDependencies, dependencyUpdates.dependencies);
+  dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter((dep) => !packageJsonDependencies[dep]);
+  dependencyUpdates.devDependencies = addPackageJsonDependencies(
+    packageJsonDevDependencies,
+    dependencyUpdates.devDependencies
+  );
+}
 
-  if (Object.keys(jsonObj.dependencies).length === 0) {
+function removeEmptyDependencySections(jsonObj: PackageJson): void {
+  if (jsonObj.dependencies && Object.keys(jsonObj.dependencies).length === 0) {
     delete jsonObj.dependencies;
   }
-  if (Object.keys(jsonObj.devDependencies).length === 0) {
+  if (jsonObj.devDependencies && Object.keys(jsonObj.devDependencies).length === 0) {
     delete jsonObj.devDependencies;
   }
-  if (Object.keys(jsonObj.peerDependencies).length === 0) {
+  if (jsonObj.peerDependencies && Object.keys(jsonObj.peerDependencies).length === 0) {
     delete jsonObj.peerDependencies;
   }
+}
 
-  await updatePrivatePackages(jsonObj);
+function installDependencyUpdates(
+  config: PackageConfig,
+  jsonObj: PackageJson,
+  dependencyUpdates: DependencyUpdates,
+  packageManager: 'bun' | 'yarn'
+): void {
+  const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
+  installNpmDependencies(config, packageManager, dependencies, false);
 
-  if (config.isBun) delete jsonObj.packageManager;
-  await fixScriptNames(jsonObj.scripts, config);
-  await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2)));
+  const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
+  installNpmDependencies(config, packageManager, devDependencies, true);
 
-  if (!skipAddingDeps) {
-    // We cannot add dependencies which are already included in devDependencies.
-    dependencies = dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-    if (dependencies.length > 0) {
-      const uniqueDependencies = [...new Set(dependencies)];
-      const dependencySpecifiers = uniqueDependencies.map((dependency) => getDependencySpecifier(dependency));
-      if (config.isBun) {
-        spawnSync(packageManager, ['add', '--exact', ...dependencySpecifiers], config.dirPath);
-      } else {
-        // Intentionally omit versions to update dependencies to the latest versions with Yarn.
-        spawnSync(packageManager, ['add', ...dependencySpecifiers], config.dirPath);
-      }
-    }
-    // We cannot add devDependencies which are already included in dependencies.
-    devDependencies = devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-    if (devDependencies.length > 0) {
-      const uniqueDevDependencies = [...new Set(devDependencies)];
-      const devDependencySpecifiers = uniqueDevDependencies.map((dependency) => getDependencySpecifier(dependency));
-      if (config.isBun) {
-        spawnSync(packageManager, ['add', '-D', '--exact', ...devDependencySpecifiers], config.dirPath);
-      } else {
-        // Intentionally omit versions to update dependencies to the latest versions with Yarn.
-        spawnSync(packageManager, ['add', '-D', ...devDependencySpecifiers], config.dirPath);
-      }
-    }
-    if (poetryDevDependencies.length > 0) {
-      spawnSync('poetry', ['add', '--group', 'dev', ...new Set(poetryDevDependencies)], config.dirPath);
-    }
+  if (dependencyUpdates.poetryDevDependencies.length > 0) {
+    spawnSync('poetry', ['add', '--group', 'dev', ...new Set(dependencyUpdates.poetryDevDependencies)], config.dirPath);
+  }
+}
+
+function installNpmDependencies(
+  config: PackageConfig,
+  packageManager: 'bun' | 'yarn',
+  dependencies: string[],
+  dev: boolean
+): void {
+  if (dependencies.length === 0) return;
+
+  const dependencySpecifiers = [...new Set(dependencies)].map((dependency) => getDependencySpecifier(dependency));
+  if (config.isBun) {
+    spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
+  } else {
+    // Intentionally omit versions to update dependencies to the latest versions with Yarn.
+    spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), ...dependencySpecifiers], config.dirPath);
   }
 }
 
@@ -658,27 +725,28 @@ async function updatePrivatePackages(jsonObj: PackageJson): Promise<void> {
   jsonObj.dependencies = jsonObj.dependencies ?? {};
   jsonObj.devDependencies = jsonObj.devDependencies ?? {};
   const packageNames = new Set([...Object.keys(jsonObj.dependencies), ...Object.keys(jsonObj.devDependencies)]);
-  if (packageNames.has('@willbooster/auth') && !isWorkspacePackage(jsonObj, '@willbooster/auth')) {
-    delete jsonObj.devDependencies['@willbooster/auth'];
-    jsonObj.dependencies['@willbooster/auth'] = await getLatestPrivatePackageSpecifier('auth');
-  }
-  if (packageNames.has('@discord-bot/shared') && !isWorkspacePackage(jsonObj, '@discord-bot/shared')) {
-    delete jsonObj.devDependencies['@discord-bot/shared'];
-    jsonObj.dependencies['@discord-bot/shared'] = await getLatestPrivatePackageSpecifier('discord-bot');
-  }
+  const privatePackages: {
+    packageName: string;
+    repo: string;
+    target: 'dependencies' | 'devDependencies';
+  }[] = [
+    { packageName: '@willbooster/auth', repo: 'auth', target: 'dependencies' },
+    { packageName: '@discord-bot/shared', repo: 'discord-bot', target: 'dependencies' },
+    { packageName: '@willbooster/code-analyzer', repo: 'code-analyzer', target: 'devDependencies' },
+    { packageName: '@willbooster/judge', repo: 'judge', target: 'dependencies' },
+    { packageName: '@willbooster/llm-proxy', repo: 'llm-proxy', target: 'dependencies' },
+  ];
 
-  if (packageNames.has('@willbooster/code-analyzer') && !isWorkspacePackage(jsonObj, '@willbooster/code-analyzer')) {
-    delete jsonObj.dependencies['@willbooster/code-analyzer'];
-    jsonObj.devDependencies['@willbooster/code-analyzer'] = await getLatestPrivatePackageSpecifier('code-analyzer');
-  }
-  if (packageNames.has('@willbooster/judge') && !isWorkspacePackage(jsonObj, '@willbooster/judge')) {
-    delete jsonObj.devDependencies['@willbooster/judge'];
-    jsonObj.dependencies['@willbooster/judge'] = await getLatestPrivatePackageSpecifier('judge');
-  }
-  if (packageNames.has('@willbooster/llm-proxy') && !isWorkspacePackage(jsonObj, '@willbooster/llm-proxy')) {
-    delete jsonObj.devDependencies['@willbooster/llm-proxy'];
-    jsonObj.dependencies['@willbooster/llm-proxy'] = await getLatestPrivatePackageSpecifier('llm-proxy');
-  }
+  await Promise.all(
+    privatePackages.map(async ({ packageName, repo, target }) => {
+      if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
+
+      const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
+      delete jsonObj[otherTarget]?.[packageName];
+      jsonObj[target] ??= {};
+      jsonObj[target][packageName] = await getLatestPrivatePackageSpecifier(repo);
+    })
+  );
 }
 
 async function getLatestPrivatePackageSpecifier(repo: string): Promise<string> {
