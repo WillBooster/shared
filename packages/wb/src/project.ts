@@ -9,6 +9,8 @@ import type { PackageJson } from 'type-fest';
 
 import { isCI } from './utils/ci.js';
 
+export type DatabaseOrm = 'prisma' | 'drizzle';
+
 export class Project {
   private readonly argv: EnvReaderOptions;
   private readonly loadEnv: boolean;
@@ -104,7 +106,19 @@ export class Project {
 
   @memoizeOne
   get hasPrisma(): boolean {
-    return !!(this.packageJson.dependencies?.prisma ?? this.packageJson.devDependencies?.prisma);
+    return !!this.getOwnDependencyVersion('prisma');
+  }
+
+  @memoizeOne
+  get hasDrizzle(): boolean {
+    return !!this.getOwnDependencyVersion('drizzle-orm');
+  }
+
+  @memoizeOne
+  get databaseOrm(): DatabaseOrm | undefined {
+    if (this.hasPrisma) return 'prisma';
+    if (this.hasDrizzle) return 'drizzle';
+    return;
   }
 
   @memoizeOne
@@ -222,16 +236,24 @@ export class Project {
   }
 
   private hasDependency(packageName: string): boolean {
-    const hasDependencyInPackageJson = (packageJson: PackageJson | undefined): boolean =>
-      !!(
-        packageJson &&
-        (packageJson.dependencies?.[packageName] ||
-          packageJson.devDependencies?.[packageName] ||
-          packageJson.optionalDependencies?.[packageName] ||
-          packageJson.peerDependencies?.[packageName])
-      );
+    return !!(
+      this.getOwnDependencyVersion(packageName) ?? this.getDependencyVersion(this.rootPackageJson, packageName)
+    );
+  }
 
-    return hasDependencyInPackageJson(this.packageJson) || hasDependencyInPackageJson(this.rootPackageJson);
+  private getOwnDependencyVersion(packageName: string): string | undefined {
+    return this.getDependencyVersion(this.packageJson, packageName);
+  }
+
+  private getDependencyVersion(packageJson: PackageJson | undefined, packageName: string): string | undefined {
+    if (!packageJson) return;
+
+    return (
+      packageJson.dependencies?.[packageName] ??
+      packageJson.devDependencies?.[packageName] ??
+      packageJson.optionalDependencies?.[packageName] ??
+      packageJson.peerDependencies?.[packageName]
+    );
   }
 
   @memoizeOne
