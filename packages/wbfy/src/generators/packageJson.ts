@@ -77,7 +77,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   for (const [key, value] of Object.entries(jsonObj.scripts as Record<string, string>)) {
     // Fresh repo still requires 'yarn install'
     if (!value.includes('git clone')) {
-      jsonObj.scripts[key] = value.replace(/yarn\s*&&\s*/, '').replace(/yarn\s*install\s*&&\s*/, '');
+      jsonObj.scripts[key] = value.replaceAll(/yarn\s*&&\s*/gu, '').replaceAll(/yarn\s*install\s*&&\s*/gu, '');
     }
   }
 
@@ -148,7 +148,6 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
       // Since llm-toolbox requires @playwright/test in dependencies
       if (!hasArtillery && !jsonObj.dependencies['@playwright/test']) {
         devDependencies.push('@playwright/test');
-        delete jsonObj.dependencies['@playwright/test'];
       }
       delete jsonObj.dependencies.playwright;
       delete jsonObj.devDependencies.playwright;
@@ -183,7 +182,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
       devDependencies.push('@willbooster/wb');
     }
     for (const [key, value] of Object.entries(jsonObj.scripts as Record<string, string>)) {
-      jsonObj.scripts[key] = value.replace(/wb\s+db/, 'wb prisma');
+      jsonObj.scripts[key] = value.replaceAll(/wb\s+db/gu, 'wb prisma');
     }
   }
 
@@ -621,7 +620,8 @@ async function fixScriptNames(scripts: PackageJson.Scripts, config: PackageConfi
     if (oldScript) {
       scripts[newName] = replaceScriptNamesInText(oldScript, oldAndNewScriptNames);
     }
-    scripts[oldName] = undefined;
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete scripts[oldName];
   }
   for (const [scriptName, script] of Object.entries(scripts)) {
     if (!script) continue;

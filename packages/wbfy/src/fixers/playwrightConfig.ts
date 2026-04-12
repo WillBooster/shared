@@ -143,7 +143,7 @@ function parseObjectLiteralExpression(
   const parsed: ParsedObject = {};
   for (const property of objectLiteral.properties) {
     if (!ts.isPropertyAssignment(property) || (!ts.isIdentifier(property.name) && !ts.isStringLiteral(property.name))) {
-      return;
+      continue;
     }
     const value = parseExpression(property.initializer, source);
     if (value === undefined) return;
