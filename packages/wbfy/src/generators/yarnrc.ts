@@ -56,7 +56,12 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
     const yarnrcPath = path.resolve(config.dirPath, '.yarnrc');
     await promisePool.run(() => fs.promises.rm(yarnrcPath, { force: true }));
 
-    const settings = yaml.load(await fs.promises.readFile(yarnrcYmlPath, 'utf8')) as Settings;
+    let settings = {} as Settings;
+    try {
+      settings = (yaml.load(await fs.promises.readFile(yarnrcYmlPath, 'utf8')) as Settings | undefined) ?? settings;
+    } catch {
+      // do nothing
+    }
     settings.defaultSemverRangePrefix = '';
     settings.nodeLinker = 'node-modules';
     settings.nmMode = 'hardlinks-global';
