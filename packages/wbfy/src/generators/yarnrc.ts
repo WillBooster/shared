@@ -96,6 +96,8 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
     await fs.promises.writeFile(yarnrcYmlPath, yaml.dump(settings, { lineWidth: -1 }));
 
     spawnSync('yarn', ['dlx', 'yarn-plugin-auto-install'], config.dirPath);
+    // yarn-plugin-auto-install may edit .yarnrc.yml after js-yaml writes it, so format the final file.
+    spawnSync('yarn', ['prettier', '--write', path.relative(config.dirPath, yarnrcYmlPath)], config.dirPath);
   });
 }
 
