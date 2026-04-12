@@ -96,6 +96,8 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
     await fs.promises.writeFile(yarnrcYmlPath, yaml.dump(settings, { lineWidth: -1 }));
 
     spawnSync('yarn', ['dlx', 'yarn-plugin-auto-install'], config.dirPath);
+    // The target repo may not have prettier installed yet, and yarn-plugin-auto-install edits this file after js-yaml.
+    spawnSync('yarn', ['dlx', 'prettier', '--write', path.relative(config.dirPath, yarnrcYmlPath)], config.dirPath);
   });
 }
 
