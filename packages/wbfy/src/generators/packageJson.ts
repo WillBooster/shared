@@ -126,7 +126,7 @@ async function updateScripts(
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   for (const [key, value] of Object.entries(scripts)) {
     if (typeof value !== 'string') continue;
-    // Fresh repo still requires 'yarn install'
+    // Fresh repos still require standalone `yarn install`; only remove legacy install prefixes before another command.
     if (!value.includes('git clone')) {
       scripts[key] = value.replaceAll(/yarn\s*(?:install\s*)?&&\s*/gu, '');
     }
