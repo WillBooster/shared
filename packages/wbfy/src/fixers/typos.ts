@@ -89,6 +89,7 @@ export function fixTyposInText(content: string): string {
 
 function fixTyposInCode(content: string): string {
   return content
+    .replaceAll(/\/\*[\s\S]*?\*\//g, (comment) => fixTyposInText(comment))
     .replaceAll(/(^|\s)\/\/(.*?)c\.f\./g, '$1//$2cf.')
     .replaceAll(/(^|\s)\/\/(.*?)eg\./g, '$1//$2e.g.')
     .replaceAll(/(^|\s)\/\/(.*?)ie\./g, '$1//$2i.e.');
