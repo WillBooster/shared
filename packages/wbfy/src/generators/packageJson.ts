@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import merge from 'deepmerge';
 import fg from 'fast-glob';
+import sortPackageJson from 'sort-package-json';
 import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
@@ -14,7 +15,6 @@ import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
-import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
@@ -102,7 +102,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   for (const [key, value] of Object.entries(jsonObj.scripts)) {
     if (!value?.includes('yarn workspaces foreach')) continue;
     jsonObj.scripts[key] = value.replaceAll(
-      /yarn workspaces foreach(?!\s+--(?:all|recursive|since|worktree))/gu,
+      /yarn workspaces foreach(?!\s+--(?:all|recursive|since|worktree|from|include|exclude|public|private))/gu,
       'yarn workspaces foreach --all'
     );
   }
@@ -363,7 +363,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   if (config.isBun) delete jsonObj.packageManager;
   await fixScriptNames(jsonObj.scripts, config);
-  await fs.promises.writeFile(filePath, `${JSON.stringify(sortKeys(jsonObj), undefined, 2)}\n`);
+  await fs.promises.writeFile(filePath, `${JSON.stringify(sortPackageJson(jsonObj), undefined, 2)}\n`);
 
   if (!skipAddingDeps) {
     // We cannot add dependencies which are already included in devDependencies.

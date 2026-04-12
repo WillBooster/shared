@@ -7,12 +7,14 @@ export async function fixTestDirectoriesUpdatingPackageJson(packageDirPaths: str
   return logger.functionIgnoringException('fixTestDirectoriesUpdatingPackageJson', async () => {
     await Promise.all(
       packageDirPaths.map(async (packageDirPath) => {
+        const packageJsonPath = path.join(packageDirPath, 'package.json');
+        if (!fs.existsSync(packageJsonPath)) return;
+
         const newTestDirPath = path.join(packageDirPath, 'test');
         for (const oldTestDirName of ['__tests__', 'tests']) {
           const oldTestDirPath = path.join(packageDirPath, oldTestDirName);
           try {
             await moveTestDirectory(oldTestDirPath, newTestDirPath);
-            const packageJsonPath = path.join(packageDirPath, 'package.json');
             const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf8')) as {
               scripts?: Record<string, string>;
             };

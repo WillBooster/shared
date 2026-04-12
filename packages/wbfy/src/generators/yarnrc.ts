@@ -40,7 +40,7 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
 
     const currentVersion = spawnSyncAndReturnStdout('yarn', ['--version'], config.dirPath);
     const latestVersion = getLatestVersion('@yarnpkg/cli', config.dirPath);
-    if (getMajorNumber(currentVersion) <= getMajorNumber(latestVersion) && currentVersion !== latestVersion) {
+    if (isNewerVersion(latestVersion, currentVersion)) {
       spawnSync('yarn', ['set', 'version', latestVersion], config.dirPath, 1);
     }
 
@@ -102,7 +102,17 @@ export function getLatestVersion(packageName: string, dirPath: string): string {
   return spawnSyncAndReturnStdout('npm', ['show', packageName, 'version'], dirPath) || '0.0.0';
 }
 
-function getMajorNumber(version: string): number {
-  const [major] = version.split('.');
-  return Number(major);
+function isNewerVersion(newVersion: string, oldVersion: string): boolean {
+  const newNumbers = getVersionNumbers(newVersion);
+  const oldNumbers = getVersionNumbers(oldVersion);
+  for (let index = 0; index < Math.max(newNumbers.length, oldNumbers.length); index++) {
+    const newNumber = newNumbers[index] ?? 0;
+    const oldNumber = oldNumbers[index] ?? 0;
+    if (newNumber !== oldNumber) return newNumber > oldNumber;
+  }
+  return false;
+}
+
+function getVersionNumbers(version: string): number[] {
+  return version.split('.').map((part) => Number.parseInt(part, 10) || 0);
 }
