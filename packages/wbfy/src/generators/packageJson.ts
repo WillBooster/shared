@@ -111,7 +111,7 @@ async function updateScripts(
 ): Promise<void> {
   removeLegacyInstallCommands(jsonObj.scripts);
 
-  jsonObj.scripts = merge(jsonObj.scripts, generateScripts(config, jsonObj.scripts));
+  jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
   addStartTestServerScriptIfNeeded(config, jsonObj);
   addInstallStepToCheckForAi(jsonObj.scripts, packageManager);
 
@@ -721,9 +721,7 @@ function escapeRegExp(text: string): string {
   return text.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
 }
 
-async function updatePrivatePackages(jsonObj: PackageJson): Promise<void> {
-  jsonObj.dependencies = jsonObj.dependencies ?? {};
-  jsonObj.devDependencies = jsonObj.devDependencies ?? {};
+async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {
   const packageNames = new Set([...Object.keys(jsonObj.dependencies), ...Object.keys(jsonObj.devDependencies)]);
   const privatePackages: {
     packageName: string;
@@ -742,8 +740,7 @@ async function updatePrivatePackages(jsonObj: PackageJson): Promise<void> {
       if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
 
       const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
-      delete jsonObj[otherTarget]?.[packageName];
-      jsonObj[target] ??= {};
+      Reflect.deleteProperty(jsonObj[otherTarget], packageName);
       jsonObj[target][packageName] = await getLatestPrivatePackageSpecifier(repo);
     })
   );
