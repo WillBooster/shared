@@ -95,8 +95,12 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
 
 export function getLatestVersion(packageName: string, dirPath: string): string {
   const versionsJson = spawnSyncAndReturnStdout('npm', ['show', packageName, 'versions', '--json'], dirPath);
-  const versions = JSON.parse(versionsJson) as string[];
-  return versions.at(-1) as string;
+  return (
+    versionsJson
+      .match(/"([^"]+)"/gu)
+      ?.at(-1)
+      ?.slice(1, -1) ?? '0.0.0'
+  );
 }
 function getMajorNumber(version: string): number {
   const [major] = version.split('.');

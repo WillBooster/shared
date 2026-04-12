@@ -54,9 +54,9 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
   const filePath = path.resolve(config.dirPath, `playwright.config.ts`);
   if (!fs.existsSync(filePath)) return;
 
-  await assertNextPublicBaseUrl(config.dirPath);
-
   return logger.functionIgnoringException('fixPlaywrightConfig', async () => {
+    await assertNextPublicBaseUrl(config.dirPath);
+
     const oldContent = await fs.promises.readFile(filePath, 'utf8');
     const extractedObjectLiteral = extractDefineConfigObjectLiteral(oldContent);
     if (!extractedObjectLiteral) return;

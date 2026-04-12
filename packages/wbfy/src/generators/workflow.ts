@@ -27,6 +27,8 @@ interface Concurrency {
 }
 
 interface On {
+  // GitHub Actions treats `event: null` as a valueless event mapping, e.g.
+  // `pull_request:`. `undefined` would omit the event entirely when dumping YAML.
   issues?: Types | null;
   pull_request?: PullRequest | null;
   pull_request_target?: Types | null;
