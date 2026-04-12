@@ -71,7 +71,10 @@ export async function testOnCi(
 
     console.info(`Running "test-on-ci" for ${project.name} ...`);
 
-    await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
+    const hasDockerfile = project.hasDockerfile;
+    if (hasDockerfile) {
+      await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
+    }
     if (fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) {
       // CI mode disallows `only` to avoid including debug tests
       await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv);
@@ -80,11 +83,11 @@ export async function testOnCi(
       // Avoid launching dev servers for build-only packages; only start a server when E2E needs it.
       await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
       await promisePool.promiseAll();
-      if (project.hasDockerfile) {
+      if (hasDockerfile) {
         project.env.WB_DOCKER ||= '1';
         await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
       }
-      const script = project.hasDockerfile
+      const script = hasDockerfile
         ? await scripts.testE2EDocker(project, argv, {})
         : await scripts.testE2EProduction(project, argv, {});
       process.exitCode = await runWithSpawn(
@@ -96,7 +99,9 @@ export async function testOnCi(
           exitIfFailed: false,
         }
       );
-      await runWithSpawn(dockerScripts.stop(project), project, argv);
+      if (hasDockerfile) {
+        await runWithSpawn(dockerScripts.stop(project), project, argv);
+      }
     }
   }
 }
