@@ -105,6 +105,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
 function mergeParsedObjects(base: ParsedObject, override: ParsedObject): ParsedObject {
   const overridePropertyKeys = new Set(Object.keys(override.properties));
   const extraMembers = [...base.extraMembers, ...override.extraMembers];
+  // Keep default-only members before parsed members so spreads and explicit local properties retain precedence.
   const memberOrder = [
     ...base.memberOrder.filter((member) => member.kind !== 'property' || !overridePropertyKeys.has(member.key)),
     ...override.memberOrder.map((member): ObjectMember => {
@@ -241,12 +242,13 @@ function stringifyValue(value: ParsedValue, level: number): string {
 
   const indent = '  '.repeat(level + 1);
   const emittedProperties = new Set<string>();
-  const lines = value.value.memberOrder.flatMap((member, index, memberOrder) => {
+  const lastPropertyIndexByKey = getLastPropertyIndexByKey(value.value.memberOrder);
+  const lines = value.value.memberOrder.flatMap((member, index) => {
     if (member.kind === 'extra') {
       return [stringifyObjectMember(value.value.extraMembers[member.index] ?? '', indent)];
     }
 
-    if (hasLaterPropertyMember(memberOrder, index, member.key)) return [];
+    if (lastPropertyIndexByKey.get(member.key) !== index) return [];
     const item = value.value.properties[member.key];
     if (!item || emittedProperties.has(member.key)) return [];
     emittedProperties.add(member.key);
@@ -261,8 +263,14 @@ function stringifyValue(value: ParsedValue, level: number): string {
   return `{\n${lines.join('\n')}\n${closingIndent}}`;
 }
 
-function hasLaterPropertyMember(memberOrder: ObjectMember[], index: number, key: string): boolean {
-  return memberOrder.slice(index + 1).some((member) => member.kind === 'property' && member.key === key);
+function getLastPropertyIndexByKey(memberOrder: ObjectMember[]): Map<string, number> {
+  const lastPropertyIndexByKey = new Map<string, number>();
+  for (const [index, member] of memberOrder.entries()) {
+    if (member.kind === 'property') {
+      lastPropertyIndexByKey.set(member.key, index);
+    }
+  }
+  return lastPropertyIndexByKey;
 }
 
 function stringifyObjectProperty(key: string, item: ParsedValue, level: number, indent: string): string {
