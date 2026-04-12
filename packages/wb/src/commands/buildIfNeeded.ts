@@ -45,7 +45,7 @@ export async function buildIfNeeded(
     argv.command ??
     (project.packageJson.scripts?.build ? (isRunningOnBun ? 'bun run build' : 'yarn build') : undefined);
   if (!buildCommand) {
-    console.info(chalk.green('Skip to build because no build command is defined.'));
+    console.info(chalk.green('Skip to build because no build command is defined 💫'));
     return false;
   }
   argv = { ...argv, command: buildCommand };
