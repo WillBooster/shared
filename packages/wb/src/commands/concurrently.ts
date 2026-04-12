@@ -209,7 +209,7 @@ function terminateChildren(children: child_process.ChildProcess[], signal: NodeJ
 
 function signalChildren(children: child_process.ChildProcess[], signal: NodeJS.Signals): void {
   for (const child of children) {
-    if (!child.pid) continue;
+    if (!isRunningChild(child)) continue;
 
     try {
       killProcessGroup(child.pid, signal);
@@ -218,6 +218,10 @@ function signalChildren(children: child_process.ChildProcess[], signal: NodeJS.S
       console.warn('Failed to kill child process:', error);
     }
   }
+}
+
+function isRunningChild(child: child_process.ChildProcess): child is child_process.ChildProcess & { pid: number } {
+  return child.pid !== undefined && child.exitCode === null && child.signalCode === null;
 }
 
 function killProcessGroup(pid: number, signal: NodeJS.Signals): void {
