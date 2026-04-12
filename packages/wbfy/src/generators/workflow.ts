@@ -1,3 +1,4 @@
+// GitHub Actions valueless events such as `pull_request:` require YAML null values.
 /* eslint-disable unicorn/no-null */
 
 import fs from 'node:fs';
