@@ -103,7 +103,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   for (const [key, value] of Object.entries(jsonObj.scripts)) {
     if (!value?.includes('yarn workspaces foreach')) continue;
     jsonObj.scripts[key] = value.replaceAll(
-      /yarn workspaces foreach(?!\s+--(?:all|recursive|since|worktree|from|include|exclude|public|private))/gu,
+      /yarn workspaces foreach(?!\s+(?:-A|-R|--(?:all|recursive|since|worktree|from|include|exclude|public|private)))/gu,
       'yarn workspaces foreach --all'
     );
   }

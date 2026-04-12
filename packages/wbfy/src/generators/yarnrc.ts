@@ -114,5 +114,8 @@ function isNewerVersion(newVersion: string, oldVersion: string): boolean {
 }
 
 function getVersionNumbers(version: string): number[] {
-  return version.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  return version
+    .replace(/-.*$/u, '')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0);
 }

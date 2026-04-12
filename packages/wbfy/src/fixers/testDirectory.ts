@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { sortPackageJson } from 'sort-package-json';
+
 import { logger } from '../logger.js';
 import { fsUtil } from '../utils/fsUtil.js';
 
@@ -31,7 +33,7 @@ export async function fixTestDirectoriesUpdatingPackageJson(packageDirPaths: str
             packageJson.scripts = scripts;
             if (!didUpdateScript) return;
 
-            await fsUtil.generateFile(packageJsonPath, JSON.stringify(packageJson, undefined, 2));
+            await fsUtil.generateFile(packageJsonPath, JSON.stringify(sortPackageJson(packageJson), undefined, 2));
           } catch {
             // do nothing
           }

@@ -13,11 +13,14 @@ export async function fixPrismaEnvFiles(config: PackageConfig): Promise<void> {
     for (const envFile of envFiles) {
       const envFilePath = path.resolve(config.dirPath, envFile);
       const content = await fs.readFile(envFilePath, 'utf8');
-      const newContent = content.replaceAll(/DATABASE_URL\s*=\s*"?(.+?\.sqlite3[^"\n]*)"?/g, (match, url: string) => {
-        if (url.includes('connection_limit=1')) return match;
-        const separator = url.includes('?') ? '&' : '?';
-        return `DATABASE_URL="${url}${separator}connection_limit=1"`;
-      });
+      const newContent = content.replaceAll(
+        /DATABASE_URL\s*=\s*"?([^"#\n]+?\.sqlite3[^"#\n]*)"?/g,
+        (match, url: string) => {
+          if (url.includes('connection_limit=1')) return match;
+          const separator = url.includes('?') ? '&' : '?';
+          return `DATABASE_URL="${url}${separator}connection_limit=1"`;
+        }
+      );
       await fs.writeFile(envFilePath, newContent);
     }
   });
