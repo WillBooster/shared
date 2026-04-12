@@ -199,37 +199,40 @@ function shouldStopOthers(
 }
 
 function terminateChildren(children: child_process.ChildProcess[], signal: NodeJS.Signals): NodeJS.Timeout {
-  signalChildren(children, signal);
+  const forceKillPids = signalPids(toChildPids(children), signal);
   const timer = setTimeout(() => {
-    signalChildren(children, 'SIGKILL');
+    signalPids(forceKillPids, 'SIGKILL');
   }, FORCE_KILL_DELAY_MS);
   timer.unref();
   return timer;
 }
 
-function signalChildren(children: child_process.ChildProcess[], signal: NodeJS.Signals): void {
-  for (const child of children) {
-    if (!isRunningChild(child)) continue;
+function toChildPids(children: child_process.ChildProcess[]): number[] {
+  return children.flatMap((child) => (child.pid === undefined ? [] : [child.pid]));
+}
 
+function signalPids(pids: readonly number[], signal: NodeJS.Signals): number[] {
+  const signaledPids: number[] = [];
+  for (const pid of pids) {
     try {
-      killProcessGroup(child.pid, signal);
-      treeKill(child.pid, signal);
+      if (killProcessGroup(pid, signal)) {
+        signaledPids.push(pid);
+      }
+      treeKill(pid, signal);
     } catch (error) {
       console.warn('Failed to kill child process:', error);
     }
   }
+  return signaledPids;
 }
 
-function isRunningChild(child: child_process.ChildProcess): child is child_process.ChildProcess & { pid: number } {
-  return child.pid !== undefined && child.exitCode === null && child.signalCode === null;
-}
-
-function killProcessGroup(pid: number, signal: NodeJS.Signals): void {
+function killProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
   try {
     process.kill(-pid, signal);
+    return true;
   } catch (error) {
     if (isNoSuchProcessError(error)) {
-      return;
+      return false;
     }
     throw error;
   }
