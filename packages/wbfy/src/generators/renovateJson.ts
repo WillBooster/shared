@@ -50,7 +50,7 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
 
     await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.dependabot'), { force: true }));
     await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.renovaterc.json'), { force: true }));
-    const newContent = JSON.stringify(newSettings);
+    const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }
