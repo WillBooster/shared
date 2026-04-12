@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { ConfigurationValueMap } from '@yarnpkg/core';
 import yaml from 'js-yaml';
+import semver from 'semver';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -103,19 +104,8 @@ export function getLatestVersion(packageName: string, dirPath: string): string {
 }
 
 function isNewerVersion(newVersion: string, oldVersion: string): boolean {
-  const newNumbers = getVersionNumbers(newVersion);
-  const oldNumbers = getVersionNumbers(oldVersion);
-  for (let index = 0; index < Math.max(newNumbers.length, oldNumbers.length); index++) {
-    const newNumber = newNumbers[index] ?? 0;
-    const oldNumber = oldNumbers[index] ?? 0;
-    if (newNumber !== oldNumber) return newNumber > oldNumber;
-  }
-  return false;
-}
+  const validNewVersion = semver.valid(newVersion);
+  if (!validNewVersion) return false;
 
-function getVersionNumbers(version: string): number[] {
-  return version
-    .replace(/-.*$/u, '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0);
+  return semver.gt(validNewVersion, semver.valid(oldVersion) ?? '0.0.0');
 }
