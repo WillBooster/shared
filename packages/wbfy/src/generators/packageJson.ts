@@ -267,7 +267,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
     jsonObj.main = './src';
   }
 
-  // Because `"resolutions": { "npm/chalk": "^4.1.2" },` causes "Invalid npm token"
+  // Yarn treats the legacy npm/chalk resolution alias as an invalid package token.
   delete jsonObj.resolutions?.['npm/chalk'];
 
   if (!config.doesContainSubPackageJsons) {

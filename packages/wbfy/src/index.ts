@@ -223,7 +223,7 @@ function refreshBunLock(rootDirPath: string): void {
     fs.copyFileSync(backupLockFilePath, lockFilePath);
     fs.rmSync(backupLockFilePath, { force: true });
   }
-  throw new Error(`Failed to regenerate ${lockFilePath}`);
+  throw new Error(`Failed to regenerate ${lockFilePath}: bun update exited with status ${status}`);
 }
 
 function getVersion(): string {
