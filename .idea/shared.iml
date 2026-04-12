@@ -14,6 +14,7 @@
       <excludeFolder url="file://$MODULE_DIR$/packages/shared-lib-react/dist" />
       <excludeFolder url="file://$MODULE_DIR$/packages/shared-lib/dist" />
       <excludeFolder url="file://$MODULE_DIR$/packages/wb/test/fixtures" />
+      <excludeFolder url="file://$MODULE_DIR$/logs" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

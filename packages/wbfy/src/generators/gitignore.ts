@@ -9,7 +9,8 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
-const defaultNames = ['macos', 'linux', 'jetbrains', 'visualstudiocode', 'emacs', 'vim', 'yarn'];
+// Do not remove `windows`: generated .gitignore files must keep ignoring Windows-created local artifacts.
+const defaultNames = ['windows', 'macos', 'linux', 'jetbrains', 'visualstudiocode', 'emacs', 'vim', 'yarn'];
 
 const commonContent = `
 !.keep
