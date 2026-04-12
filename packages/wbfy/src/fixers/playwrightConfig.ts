@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import merge from 'deepmerge';
 import ts from 'typescript';
 
 import { logger } from '../logger.js';
@@ -13,8 +12,10 @@ type ParsedValue =
   | { kind: 'array'; value: ParsedValue[] }
   | { kind: 'literal'; value: string }
   | { kind: 'object'; value: ParsedObject };
+type ObjectMember = { kind: 'extra'; index: number } | { kind: 'property'; key: string };
 interface ParsedObject {
   extraMembers: string[];
+  memberOrder: ObjectMember[];
   properties: Record<string, ParsedValue>;
 }
 interface ExtractedObjectLiteral {
@@ -26,38 +27,72 @@ const literal = (value: string): ParsedValue => ({ kind: 'literal', value });
 const asArray = (value: ParsedValue[]): ParsedValue => ({ kind: 'array', value });
 const asObject = (properties: Record<string, ParsedValue>, extraMembers: string[] = []): ParsedValue => ({
   kind: 'object',
-  value: { extraMembers, properties },
+  value: toParsedObject(properties, extraMembers),
 });
 
-const defaultConfig: ParsedObject = {
-  extraMembers: [],
-  properties: {
-    forbidOnly: literal('!!process.env.CI'),
-    retries: literal('process.env.PWDEBUG ? 0 : process.env.CI ? 5 : 1'),
-    use: asObject({
-      baseURL: literal('process.env.NEXT_PUBLIC_BASE_URL'),
-      trace: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
-      screenshot: literal("process.env.CI ? 'only-on-failure' : 'only-on-failure'"),
-      video: literal("process.env.CI ? 'retain-on-failure' : 'retain-on-failure'"),
-    }),
-    webServer: asObject({
-      command: literal("'yarn start-test-server'"),
-      url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
-      reuseExistingServer: literal('!!process.env.CI'),
-      timeout: literal('300_000'),
-      stdout: literal("'pipe'"),
-      stderr: literal("'pipe'"),
-      env: literal(`{
+const defaultConfig = toParsedObject({
+  forbidOnly: literal('!!process.env.CI'),
+  retries: literal('process.env.PWDEBUG ? 0 : process.env.CI ? 5 : 1'),
+  use: asObject({
+    baseURL: literal('process.env.NEXT_PUBLIC_BASE_URL'),
+    trace: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
+    screenshot: literal("process.env.CI ? 'only-on-failure' : 'only-on-failure'"),
+    video: literal("process.env.CI ? 'retain-on-failure' : 'retain-on-failure'"),
+  }),
+  webServer: asObject({
+    command: literal("'yarn start-test-server'"),
+    url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
+    reuseExistingServer: literal('!!process.env.CI'),
+    timeout: literal('300_000'),
+    stdout: literal("'pipe'"),
+    stderr: literal("'pipe'"),
+    env: literal(`{
   ...process.env,
   PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'true',
 }`),
-      gracefulShutdown: literal(`{
+    gracefulShutdown: literal(`{
   signal: 'SIGTERM',
   timeout: 500,
 }`),
+  }),
+});
+
+function toParsedObject(properties: Record<string, ParsedValue>, extraMembers: string[] = []): ParsedObject {
+  return {
+    extraMembers,
+    memberOrder: [
+      ...Object.keys(properties).map((key): ObjectMember => ({ kind: 'property', key })),
+      ...extraMembers.map((_, index): ObjectMember => ({ kind: 'extra', index })),
+    ],
+    properties,
+  };
+}
+
+function mergeParsedObjects(base: ParsedObject, override: ParsedObject): ParsedObject {
+  const overridePropertyKeys = new Set(
+    override.memberOrder.flatMap((member) => (member.kind === 'property' ? [member.key] : []))
+  );
+  const extraMembers = [...base.extraMembers, ...override.extraMembers];
+  const memberOrder = [
+    ...base.memberOrder.filter((member) => member.kind !== 'property' || !overridePropertyKeys.has(member.key)),
+    ...override.memberOrder.map((member): ObjectMember => {
+      if (member.kind === 'property') return member;
+      return { kind: 'extra', index: base.extraMembers.length + member.index };
     }),
-  },
-};
+  ];
+  const properties = { ...base.properties };
+  for (const [key, value] of Object.entries(override.properties)) {
+    properties[key] = mergeParsedValue(properties[key], value);
+  }
+  return { extraMembers, memberOrder, properties };
+}
+
+function mergeParsedValue(base: ParsedValue | undefined, override: ParsedValue): ParsedValue {
+  if (base?.kind === 'object' && override.kind === 'object') {
+    return { kind: 'object', value: mergeParsedObjects(base.value, override.value) };
+  }
+  return override;
+}
 
 export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> {
   const filePath = path.resolve(config.dirPath, `playwright.config.ts`);
@@ -74,7 +109,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     if (!parsed) return;
 
     // Keep filling missing defaults, but don't overwrite local adjustments on every regeneration.
-    const merged = merge.all<ParsedObject>([defaultConfig, parsed]);
+    const merged = mergeParsedObjects(defaultConfig, parsed);
     const hasStartTestServer = Boolean(config.packageJson?.scripts?.['start-test-server']);
     const hasExistingWebServer = Boolean(parsed.properties.webServer);
     // Only drop wbfy's default server command. Repos with custom Playwright
@@ -164,15 +199,24 @@ function parseObjectLiteralExpression(
   objectLiteral: ts.ObjectLiteralExpression,
   source: ts.SourceFile
 ): ParsedObject | undefined {
-  const parsed: ParsedObject = { extraMembers: [], properties: {} };
+  const parsed: ParsedObject = { extraMembers: [], memberOrder: [], properties: {} };
   for (const property of objectLiteral.properties) {
+    if (ts.isShorthandPropertyAssignment(property)) {
+      const key = property.name.getText(source);
+      parsed.properties[key] = literal(key);
+      parsed.memberOrder.push({ kind: 'property', key });
+      continue;
+    }
     if (!ts.isPropertyAssignment(property) || (!ts.isIdentifier(property.name) && !ts.isStringLiteral(property.name))) {
-      parsed.extraMembers.push(property.getText(source));
+      const index = parsed.extraMembers.push(property.getText(source)) - 1;
+      parsed.memberOrder.push({ kind: 'extra', index });
       continue;
     }
     const value = parseExpression(property.initializer, source);
     if (value === undefined) return;
-    parsed.properties[property.name.getText(source)] = value;
+    const key = property.name.getText(source);
+    parsed.properties[key] = value;
+    parsed.memberOrder.push({ kind: 'property', key });
   }
   return parsed;
 }
@@ -198,27 +242,48 @@ function stringifyValue(value: ParsedValue, level: number): string {
   if (value.kind === 'literal') return value.value;
 
   const indent = '  '.repeat(level + 1);
-  const lines = Object.entries(value.value.properties).map(([key, item]) => {
-    const stringified = stringifyValue(item, level + 1).split('\n');
-    stringified[stringified.length - 1] = `${stringified.at(-1)},`;
-    if (item.kind === 'literal') {
-      for (let index = 1; index < stringified.length; index += 1) {
-        stringified[index] = `${indent}${stringified[index]}`;
-      }
+  const emittedProperties = new Set<string>();
+  const lines = value.value.memberOrder.flatMap((member, index, memberOrder) => {
+    if (member.kind === 'extra') {
+      return [stringifyObjectMember(value.value.extraMembers[member.index] ?? '', indent)];
     }
-    stringified[0] = `${indent}${key}: ${stringified[0]}`;
-    return stringified.join('\n');
+
+    if (hasLaterPropertyMember(memberOrder, index, member.key)) return [];
+    const item = value.value.properties[member.key];
+    if (!item || emittedProperties.has(member.key)) return [];
+    emittedProperties.add(member.key);
+    return [stringifyObjectProperty(member.key, item, level, indent)];
   });
   lines.push(
-    ...value.value.extraMembers.map((member) => {
-      const stringified = member.split('\n');
-      stringified[stringified.length - 1] = `${stringified.at(-1)},`;
-      for (const [index, line] of stringified.entries()) {
-        stringified[index] = `${indent}${line}`;
-      }
-      return stringified.join('\n');
-    })
+    ...Object.entries(value.value.properties)
+      .filter(([key]) => !emittedProperties.has(key))
+      .map(([key, item]) => stringifyObjectProperty(key, item, level, indent))
   );
   if (lines.length === 0) return `{\n${closingIndent}}`;
   return `{\n${lines.join('\n')}\n${closingIndent}}`;
+}
+
+function hasLaterPropertyMember(memberOrder: ObjectMember[], index: number, key: string): boolean {
+  return memberOrder.slice(index + 1).some((member) => member.kind === 'property' && member.key === key);
+}
+
+function stringifyObjectProperty(key: string, item: ParsedValue, level: number, indent: string): string {
+  const stringified = stringifyValue(item, level + 1).split('\n');
+  stringified[stringified.length - 1] = `${stringified.at(-1)},`;
+  if (item.kind === 'literal') {
+    for (let index = 1; index < stringified.length; index += 1) {
+      stringified[index] = `${indent}${stringified[index]}`;
+    }
+  }
+  stringified[0] = `${indent}${key}: ${stringified[0]}`;
+  return stringified.join('\n');
+}
+
+function stringifyObjectMember(member: string, indent: string): string {
+  const stringified = member.split('\n');
+  stringified[stringified.length - 1] = `${stringified.at(-1)},`;
+  for (const [index, line] of stringified.entries()) {
+    stringified[index] = `${indent}${line}`;
+  }
+  return stringified.join('\n');
 }

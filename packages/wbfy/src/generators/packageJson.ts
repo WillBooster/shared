@@ -79,7 +79,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   await removeDeprecatedStuff(jsonObj, config.dirPath);
   await updateScripts(config, jsonObj, packageManager);
-  const dependencyUpdates = collectDependencyUpdates(config, rootConfig, jsonObj);
+  const dependencyUpdates = applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
   await updatePrivatePackages(jsonObj);
@@ -153,7 +153,7 @@ function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): voi
   }
 }
 
-function collectDependencyUpdates(
+function applyPackageJsonConventions(
   config: PackageConfig,
   rootConfig: PackageConfig,
   jsonObj: WritablePackageJson
