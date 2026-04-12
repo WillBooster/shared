@@ -9,6 +9,8 @@ import { findSelfProject, type Project } from '../project.js';
 import { configureEnv, normalizeScript } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
+const FORCE_KILL_DELAY_MS = 5000;
+
 const builder = {
   'kill-others': {
     description: 'Kill other commands when one command exits',
@@ -101,6 +103,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   let interruptedSignal: NodeJS.Signals | undefined;
   let firstResult: number | undefined;
   let stopResult: number | undefined;
+  const forceKillTimers: NodeJS.Timeout[] = [];
   const results = Array.from<number | undefined>({ length: children.length });
   const waitForExitPromises = children.map((child, index) => {
     return new Promise<void>((resolve) => {
@@ -115,7 +118,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
         if (!stopping && shouldStopOthers(exitCode, options)) {
           stopResult = exitCode;
           stopping = true;
-          terminateChildren(children);
+          forceKillTimers.push(terminateChildren(children, 'SIGTERM'));
         }
         resolve();
       };
@@ -135,7 +138,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
     if (stopping) return;
 
     stopping = true;
-    terminateChildren(children);
+    forceKillTimers.push(terminateChildren(children, signal));
   };
   const stopOnSigint = (): void => {
     stopAll('SIGINT');
@@ -155,6 +158,9 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
     process.removeListener('SIGINT', stopOnSigint);
     process.removeListener('SIGTERM', stopOnSigterm);
     process.removeListener('SIGQUIT', stopOnSigquit);
+    for (const timer of forceKillTimers) {
+      clearTimeout(timer);
+    }
   }
 
   if (interruptedSignal) {
@@ -192,22 +198,31 @@ function shouldStopOthers(
   return options.success === 'first' || options.killOthers || (options.killOthersOnFail && exitCode !== 0);
 }
 
-function terminateChildren(children: child_process.ChildProcess[]): void {
+function terminateChildren(children: child_process.ChildProcess[], signal: NodeJS.Signals): NodeJS.Timeout {
+  signalChildren(children, signal);
+  const timer = setTimeout(() => {
+    signalChildren(children, 'SIGKILL');
+  }, FORCE_KILL_DELAY_MS);
+  timer.unref();
+  return timer;
+}
+
+function signalChildren(children: child_process.ChildProcess[], signal: NodeJS.Signals): void {
   for (const child of children) {
     if (!child.pid) continue;
 
     try {
-      killProcessGroup(child.pid);
-      treeKill(child.pid);
+      killProcessGroup(child.pid, signal);
+      treeKill(child.pid, signal);
     } catch (error) {
       console.warn('Failed to kill child process:', error);
     }
   }
 }
 
-function killProcessGroup(pid: number): void {
+function killProcessGroup(pid: number, signal: NodeJS.Signals): void {
   try {
-    process.kill(-pid, 'SIGTERM');
+    process.kill(-pid, signal);
   } catch (error) {
     if (isNoSuchProcessError(error)) {
       return;
