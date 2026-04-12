@@ -21,7 +21,7 @@ import {
 describe('lint', () => {
   it('builds a biome command for biome projects', () => {
     expect(buildLintCommand({ preferredLinter: 'biome' }, { fix: true, format: true }, ['/tmp/example.ts'])).toBe(
-      'BUN biome check --fix --colors=force --no-errors-on-unmatched --files-ignore-unknown=true -- /tmp/example.ts'
+      'BUN biome check --write --colors=force --no-errors-on-unmatched --files-ignore-unknown=true -- /tmp/example.ts'
     );
   });
 
