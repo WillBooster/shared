@@ -19,8 +19,10 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     };
     const plugins = settings.plugins ?? [];
     for (let i = 0; i < plugins.length; i++) {
-      const plugin = Array.isArray(plugins[i]) ? plugins[i]?.[0] : plugins[i];
-      const oldConfig = (Array.isArray(plugins[i]) && plugins[i]?.[1]) || {};
+      const pluginEntry = plugins[i];
+      const isArray = Array.isArray(pluginEntry);
+      const plugin = isArray ? pluginEntry[0] : pluginEntry;
+      const oldConfig = (isArray && pluginEntry[1]) || {};
       if (plugin === '@semantic-release/commit-analyzer') {
         plugins[i] = [
           '@semantic-release/commit-analyzer',

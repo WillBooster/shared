@@ -74,7 +74,8 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
     config.dirPath
   );
 
-  for (const [key, value] of Object.entries(jsonObj.scripts as Record<string, string>)) {
+  for (const [key, value] of Object.entries(jsonObj.scripts)) {
+    if (typeof value !== 'string') continue;
     // Fresh repo still requires 'yarn install'
     if (!value.includes('git clone')) {
       jsonObj.scripts[key] = value.replaceAll(/yarn\s*&&\s*/gu, '').replaceAll(/yarn\s*install\s*&&\s*/gu, '');
@@ -180,7 +181,8 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
     } else {
       devDependencies.push('@willbooster/wb');
     }
-    for (const [key, value] of Object.entries(jsonObj.scripts as Record<string, string>)) {
+    for (const [key, value] of Object.entries(jsonObj.scripts)) {
+      if (typeof value !== 'string') continue;
       jsonObj.scripts[key] = value.replaceAll(/wb\s+db/gu, 'wb prisma');
     }
   }
