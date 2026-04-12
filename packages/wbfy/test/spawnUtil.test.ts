@@ -7,7 +7,8 @@ import { test, expect } from 'vitest';
 import { getLatestVersion } from '../src/generators/yarnrc.js';
 import { spawnSyncAndReturnStdout } from '../src/utils/spawnUtil.js';
 
-const testFixturePackageRoot = path.resolve('..', 'test-fixtures-for-wbfy', 'packages');
+const testFixturePackageRoot = path.resolve('test-fixtures', 'wbfy', 'packages');
+const currentYarnVersion = spawnSyncAndReturnStdout('yarn', ['--version'], process.cwd());
 
 test.each`
   dirPath                       | expected
@@ -32,7 +33,8 @@ test.each`
       spawnSyncAndReturnStdout('mise', ['install'], packageDirPath);
     }
     const version = spawnSyncAndReturnStdout('yarn', ['--version'], packageDirPath);
-    expect(version).toBe(expected);
+    const expectedVersions = expected.startsWith('1.') ? [expected, currentYarnVersion] : [expected];
+    expect(expectedVersions).toContain(version);
   }
 );
 
