@@ -7,6 +7,26 @@ import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
+export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
+  return logger.functionIgnoringException('generateIdeaSettings', async () => {
+    const dirPath = path.resolve(config.dirPath, '.idea');
+    if (fs.existsSync(dirPath)) {
+      const filePath = path.resolve(dirPath, 'watcherTasks.xml');
+      await (config.doesContainJavaScript ||
+      config.doesContainJavaScriptInPackages ||
+      config.doesContainTypeScript ||
+      config.doesContainTypeScriptInPackages ||
+      (config.doesContainPackageJson &&
+        !config.doesContainPubspecYaml &&
+        !config.doesContainGemfile &&
+        !config.doesContainGoMod &&
+        !config.doesContainPomXml)
+        ? promisePool.run(() => fsUtil.generateFile(filePath, config.isBun ? biomeContent : prettierContent))
+        : promisePool.run(() => fs.promises.rm(filePath, { force: true })));
+    }
+  });
+}
+
 function createTaskOptions(runner: string, args: string, name: string, extension: string): string {
   return `    <TaskOptions isEnabled="true">
       <option name="arguments" value="${args} $FilePathRelativeToProjectRoot$" />
@@ -46,23 +66,3 @@ ${extensions.prettier.map((ext) => createTaskOptions('bun', '--bun node_modules/
   </component>
 </project>
 `;
-
-export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
-  return logger.functionIgnoringException('generateIdeaSettings', async () => {
-    const dirPath = path.resolve(config.dirPath, '.idea');
-    if (fs.existsSync(dirPath)) {
-      const filePath = path.resolve(dirPath, 'watcherTasks.xml');
-      await (config.doesContainJavaScript ||
-      config.doesContainJavaScriptInPackages ||
-      config.doesContainTypeScript ||
-      config.doesContainTypeScriptInPackages ||
-      (config.doesContainPackageJson &&
-        !config.doesContainPubspecYaml &&
-        !config.doesContainGemfile &&
-        !config.doesContainGoMod &&
-        !config.doesContainPomXml)
-        ? promisePool.run(() => fsUtil.generateFile(filePath, config.isBun ? biomeContent : prettierContent))
-        : promisePool.run(() => fs.promises.rm(filePath, { force: true })));
-    }
-  });
-}

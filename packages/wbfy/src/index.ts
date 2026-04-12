@@ -194,7 +194,6 @@ async function main(): Promise<void> {
     if (rootConfig.isBun) {
       refreshBunLock(rootDirPath);
     } else {
-      fs.rmSync(path.join(rootDirPath, 'yarn.lock'), { force: true });
       spawnSync(packageManager, ['install', '--no-immutable'], rootDirPath);
     }
     spawnSync(packageManager, ['cleanup'], rootDirPath);

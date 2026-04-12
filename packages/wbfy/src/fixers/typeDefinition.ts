@@ -34,7 +34,7 @@ export async function fixTypeDefinitions(
       if (dirent.isFile() && hasTypeDeclarationExtension) {
         if (hasLibrary) {
           // Move @types/<name>/index.d.ts if installed
-          await fs.mkdir(path.join(libTypeDirPath, dirName));
+          await fs.mkdir(path.join(libTypeDirPath, dirName), { recursive: true });
           await promisePool.run(() =>
             fs.rename(path.join(libTypeDirPath, dirent.name), path.join(libTypeDirPath, dirName, 'index.d.ts'))
           );

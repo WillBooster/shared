@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import ts from 'typescript';
+
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -14,16 +16,48 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     if (!filePath) return;
 
     const oldContent = await fs.promises.readFile(filePath, 'utf8');
-    // Replace the JSON object from the file
-    const newContent = oldContent.replace(/=\s*{([\S\s]*)};/, (_, settingsText: string) => {
-      if (!settingsText.includes('eslint:')) {
-        settingsText += 'eslint: { ignoreDuringBuilds: true },';
-      }
-      if (!settingsText.includes('typescript:')) {
-        settingsText += 'typescript: { ignoreBuildErrors: true },';
-      }
-      return `= {${settingsText}};`;
-    });
+    const objectLiteral = getNextConfigObjectLiteral(oldContent);
+    if (!objectLiteral) return;
+
+    const existingProperties = new Set(objectLiteral.properties.map((property) => property.name?.getText()));
+    const propertyTexts: string[] = [];
+    if (!existingProperties.has('eslint')) {
+      propertyTexts.push('eslint: { ignoreDuringBuilds: true }');
+    }
+    if (!existingProperties.has('typescript')) {
+      propertyTexts.push('typescript: { ignoreBuildErrors: true }');
+    }
+    if (propertyTexts.length === 0) return;
+
+    const insertionPoint = objectLiteral.getEnd() - 1;
+    const prefix = objectLiteral.properties.length > 0 ? ', ' : '';
+    const newContent = `${oldContent.slice(0, insertionPoint)}${prefix}${propertyTexts.join(', ')}${oldContent.slice(
+      insertionPoint
+    )}`;
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
+}
+
+function getNextConfigObjectLiteral(content: string): ts.ObjectLiteralExpression | undefined {
+  const source = ts.createSourceFile('next.config.js', content, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+  let objectLiteral: ts.ObjectLiteralExpression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (objectLiteral) return;
+    if (ts.isExportAssignment(node) && ts.isObjectLiteralExpression(node.expression)) {
+      objectLiteral = node.expression;
+      return;
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      node.left.getText(source) === 'module.exports' &&
+      ts.isObjectLiteralExpression(node.right)
+    ) {
+      objectLiteral = node.right;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return objectLiteral;
 }

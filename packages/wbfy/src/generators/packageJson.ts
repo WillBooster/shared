@@ -69,7 +69,10 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   jsonObj.peerDependencies = jsonObj.peerDependencies ?? {};
   const packageManager = config.isBun ? 'bun' : 'yarn';
 
-  await removeDeprecatedStuff(jsonObj as SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies'>);
+  await removeDeprecatedStuff(
+    jsonObj as SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies'>,
+    config.dirPath
+  );
 
   for (const [key, value] of Object.entries(jsonObj.scripts as Record<string, string>)) {
     // Fresh repo still requires 'yarn install'
@@ -361,9 +364,8 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   await updatePrivatePackages(jsonObj);
 
   if (config.isBun) delete jsonObj.packageManager;
-  let newJsonText = JSON.stringify(jsonObj);
-  newJsonText = await fixScriptNames(jsonObj.scripts, newJsonText, config);
-  await fs.promises.writeFile(filePath, `${newJsonText}\n`);
+  await fixScriptNames(jsonObj.scripts, config);
+  await fs.promises.writeFile(filePath, `${JSON.stringify(jsonObj, undefined, 2)}\n`);
 
   if (!skipAddingDeps) {
     // We cannot add dependencies which are already included in devDependencies.
@@ -400,7 +402,8 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
 // TODO: remove the following migration code in future
 async function removeDeprecatedStuff(
-  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies'>
+  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies'>,
+  dirPath: string
 ): Promise<void> {
   if (jsonObj.author === 'WillBooster LLC') {
     jsonObj.author = 'WillBooster Inc.';
@@ -426,7 +429,7 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['format-python'];
   delete jsonObj.scripts.prettier;
   delete jsonObj.scripts['check-all'];
-  await promisePool.run(() => fs.promises.rm('lerna.json', { force: true }));
+  await promisePool.run(() => fs.promises.rm(path.resolve(dirPath, 'lerna.json'), { force: true }));
 
   // Migrate from ESLint legacy configs to flat configs,
   delete jsonObj.devDependencies['@typescript-eslint/eslint-plugin'];
@@ -585,22 +588,27 @@ async function generatePrettierSuffix(dirPath: string): Promise<string> {
   return `${lines.map((line) => ` "!**/${line}/**"`).join('')} || true`;
 }
 
-async function fixScriptNames(
-  scripts: PackageJson.Scripts,
-  newJsonText: string,
-  config: PackageConfig
-): Promise<string> {
+async function fixScriptNames(scripts: PackageJson.Scripts, config: PackageConfig): Promise<void> {
   const oldAndNewScriptNames: [string, string][] = [];
-  for (const [key] of Object.keys(scripts)) {
+  for (const key of Object.keys(scripts)) {
     if (key && !key.startsWith(':') && key.includes(':')) {
       oldAndNewScriptNames.push([key, key.replaceAll(':', '-')]);
     }
   }
-  if (oldAndNewScriptNames.length === 0) return newJsonText;
+  if (oldAndNewScriptNames.length === 0) return;
 
   for (const [oldName, newName] of oldAndNewScriptNames) {
-    newJsonText = newJsonText.replaceAll(oldName, newName);
+    const oldScript = scripts[oldName];
+    if (oldScript) {
+      scripts[newName] = replaceScriptNamesInText(oldScript, oldAndNewScriptNames);
+    }
+    scripts[oldName] = undefined;
   }
+  for (const [scriptName, script] of Object.entries(scripts)) {
+    if (!script) continue;
+    scripts[scriptName] = replaceScriptNamesInText(script, oldAndNewScriptNames);
+  }
+
   const files = await fg.glob(['**/*.{md,cjs,mjs,js,jsx,cts,mts,ts,tsx}', '**/Dockerfile'], {
     cwd: config.dirPath,
     dot: true,
@@ -610,17 +618,25 @@ async function fixScriptNames(
     await promisePool.run(async () => {
       const filePath = path.join(config.dirPath, file);
       const oldContent = await fs.promises.readFile(filePath, 'utf8');
-      let newContent = oldContent;
-      for (const [oldName, newName] of oldAndNewScriptNames) {
-        newContent = newContent.replaceAll(oldName, newName);
-      }
+      const newContent = replaceScriptNamesInText(oldContent, oldAndNewScriptNames);
       if (newContent !== oldContent) {
         await fs.promises.writeFile(filePath, newContent);
       }
     });
   }
   await promisePool.promiseAll();
-  return newJsonText;
+}
+
+function replaceScriptNamesInText(text: string, oldAndNewScriptNames: [string, string][]): string {
+  let newText = text;
+  for (const [oldName, newName] of oldAndNewScriptNames) {
+    newText = newText.replaceAll(new RegExp(String.raw`(?<![\w-])${escapeRegExp(oldName)}(?![\w-])`, 'gu'), newName);
+  }
+  return newText;
+}
+
+function escapeRegExp(text: string): string {
+  return text.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
 }
 
 async function updatePrivatePackages(jsonObj: PackageJson): Promise<void> {

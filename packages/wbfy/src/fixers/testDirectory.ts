@@ -12,11 +12,23 @@ export async function fixTestDirectoriesUpdatingPackageJson(packageDirPaths: str
           const oldTestDirPath = path.join(packageDirPath, oldTestDirName);
           try {
             await fs.promises.rename(oldTestDirPath, newTestDirPath);
-            const oldContent = await fs.promises.readFile(path.join(packageDirPath, 'package.json'), 'utf8');
-            const newContent = oldContent.replaceAll(oldTestDirName, 'test');
-            if (oldContent === newContent) return;
+            const packageJsonPath = path.join(packageDirPath, 'package.json');
+            const packageJson = JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf8')) as {
+              scripts?: Record<string, string>;
+            };
+            let didUpdateScript = false;
+            const scripts = packageJson.scripts ?? {};
+            for (const [scriptName, script] of Object.entries(scripts)) {
+              const newScript = script.replaceAll(oldTestDirName, 'test');
+              if (script !== newScript) {
+                scripts[scriptName] = newScript;
+                didUpdateScript = true;
+              }
+            }
+            packageJson.scripts = scripts;
+            if (!didUpdateScript) return;
 
-            await fs.promises.writeFile(path.join(packageDirPath, 'package.json'), newContent);
+            await fs.promises.writeFile(packageJsonPath, `${JSON.stringify(packageJson, undefined, 2)}\n`);
           } catch {
             // do nothing
           }

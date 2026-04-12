@@ -64,6 +64,15 @@ const minimumReleaseAgeExcludes = [
   'react-dom',
 ];
 
+export async function generateBunfigToml(config: PackageConfig): Promise<void> {
+  return logger.functionIgnoringException('generateBunfigToml', async () => {
+    const filePath = path.resolve(config.dirPath, 'bunfig.toml');
+    const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
+    const content = newContent(existingContent);
+    await promisePool.run(() => fsUtil.generateFile(filePath, content));
+  });
+}
+
 const newContent = (existingContent: string | undefined): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   return `env = false
@@ -79,15 +88,6 @@ ${minimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('
 ]
 `;
 };
-
-export async function generateBunfigToml(config: PackageConfig): Promise<void> {
-  return logger.functionIgnoringException('generateBunfigToml', async () => {
-    const filePath = path.resolve(config.dirPath, 'bunfig.toml');
-    const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent);
-    await promisePool.run(() => fsUtil.generateFile(filePath, content));
-  });
-}
 
 function parseBunfigToml(content: string | undefined): BunfigToml | undefined {
   if (!content) {

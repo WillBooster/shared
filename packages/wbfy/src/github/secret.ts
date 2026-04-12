@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import dotenv from 'dotenv';
 import sodium from 'libsodium-wrappers';
 
@@ -14,7 +16,7 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
     if (!owner || !repo || owner !== 'WillBoosterLab') return;
     if (!hasGitHubToken(owner) || !options.doesUploadEnvVars) return;
 
-    const parsed = dotenv.config().parsed ?? {};
+    const parsed = dotenv.config({ path: path.resolve(config.dirPath, '.env') }).parsed ?? {};
     if (Object.keys(parsed).length === 0) return;
 
     const octokit = getOctokit(owner);

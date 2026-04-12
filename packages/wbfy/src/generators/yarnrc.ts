@@ -81,7 +81,7 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
     const originalLength = settings.plugins?.length ?? 0;
     settings.plugins = settings.plugins?.filter((p) => p.path !== '.yarn/plugins/undefined.cjs') ?? [];
     if (settings.plugins.length !== originalLength) {
-      const pluginPath = path.resolve(config.dirPath, '.yarnrc', 'undefined.cjs');
+      const pluginPath = path.resolve(config.dirPath, '.yarn', 'plugins', 'undefined.cjs');
       await promisePool.run(() => fs.promises.rm(pluginPath, { force: true }));
     }
     if (settings.plugins.length === 0) {
