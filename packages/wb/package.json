@@ -23,7 +23,7 @@
     "format": "sort-package-json && yarn prettify",
     "lint": "eslint --color",
     "lint-fix": "yarn lint --fix",
-    "prettify": "prettier --cache --cache-strategy content --cache-location node_modules/.cache/prettier-content --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test{-,/}fixtures/**\" || true",
+    "prettify": "prettier --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/test{-,/}fixtures/**\" || true",
     "start": "build-ts run src/index.ts --",
     "start-prod": "yarn build && yarn wb",
     "test": "WB_ENV=test vitest run test",

@@ -222,7 +222,7 @@ package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json
 ${config.doesContainPoetryLock ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
-node node_modules/.bin/prettier --cache --cache-strategy content --cache-location node_modules/.cache/prettier-content --write --ignore-unknown -- {staged_files}
+node node_modules/.bin/prettier --write --ignore-unknown -- {staged_files}
 if [ -n "$eslint_files" ]; then
   node node_modules/.bin/eslint --color --fix${eslintRuleSuffix} -- $eslint_files
 fi

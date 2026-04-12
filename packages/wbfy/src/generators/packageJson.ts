@@ -612,7 +612,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       format: `sort-package-json && yarn prettify`,
       lint: `eslint --color`,
       'lint-fix': 'yarn lint --fix',
-      prettify: `prettier --cache --cache-strategy content --cache-location node_modules/.cache/prettier-content --color --write "**/{.*/,}*.{${extensions.prettier.join(',')}}" "!**/test{-,/}fixtures/**"`,
+      prettify: `prettier --color --write "**/{.*/,}*.{${extensions.prettier.join(',')}}" "!**/test{-,/}fixtures/**"`,
       typecheck: 'tsc --noEmit',
     };
     if (config.doesContainSubPackageJsons) {
@@ -622,7 +622,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
           format: `sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format`,
           lint: `yarn workspaces foreach --all --parallel --verbose run lint`,
           'lint-fix': 'yarn workspaces foreach --all --parallel --verbose run lint-fix',
-          prettify: `prettier --cache --cache-strategy content --cache-location node_modules/.cache/prettier-content --color --write "**/{.*/,}*.{${extensions.prettier.join(
+          prettify: `prettier --color --write "**/{.*/,}*.{${extensions.prettier.join(
             ','
           )}}" "!**/packages/**" "!**/test{-,/}fixtures/**"`,
           // CI=1 prevents vitest from enabling watch.
