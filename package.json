@@ -21,7 +21,7 @@
     "lint": "yarn workspaces foreach --all --parallel --verbose run lint",
     "lint-fix": "yarn workspaces foreach --all --parallel --verbose run lint-fix",
     "prepare": "lefthook install || true",
-    "prettify": "prettier --cache --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/packages/**\" \"!**/test{-,/}fixtures/**\" || true",
+    "prettify": "prettier --cache --cache-strategy content --cache-location node_modules/.cache/prettier-content --color --write \"**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}\" \"!**/packages/**\" \"!**/test{-,/}fixtures/**\" || true",
     "release": "yarn multi-semantic-release --debug",
     "test": "CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test",
     "typecheck": "yarn workspaces foreach --all --parallel --verbose run typecheck",
