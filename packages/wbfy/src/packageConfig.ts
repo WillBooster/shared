@@ -177,7 +177,7 @@ export async function getPackageConfig(
       ),
       isBun: rootConfig?.isBun || fs.existsSync(path.join(dirPath, 'bun.lock')),
       isEsmPackage: esmPackage,
-      isWillBoosterConfigs: packageJsonPath.includes(`${path.sep}willbooster-configs`),
+      isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
       doesContainSubPackageJsons: containsAny('packages/**/package.json', dirPath),
       doesContainDockerfile: !!dockerfile || fs.existsSync(path.resolve(dirPath, 'docker-compose.yml')),
       doesContainGemfile: fs.existsSync(path.resolve(dirPath, 'Gemfile')),
