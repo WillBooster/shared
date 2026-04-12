@@ -2,6 +2,7 @@
 
 ## Coding Style
 
+- Use camelCase for JavaScript and TypeScript files (or PascalCase for React components).
 - Simplify code as much as possible to eliminate redundancy.
 - Design each module with high cohesion, grouping related functionality together.
   - Refactor existing large modules into smaller, focused modules when necessary.
@@ -11,6 +12,5 @@
 - Write comments that explain "why" rather than "what". Avoid stating what can be understood from the code itself.
 - Prefer `undefined` over `null` unless explicitly required by APIs or libraries.
 - Prefer using a single template literal for prompts instead of `join()` with an array of strings.
-
 - Use `project.env` instead of `process.env` on `wb` package.
 - Always drop any Windows support.

@@ -27,6 +27,8 @@ __generated__/
 @willbooster/
 dist/
 temp/
+# Test fixtures may contain nested Git repositories that must stay local to the test run.
+test-fixtures/
 tmp/
 `;
 
