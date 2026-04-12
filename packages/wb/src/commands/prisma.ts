@@ -17,6 +17,7 @@ const builder = {} as const;
 
 export const prismaCommand: CommandModule = {
   command: 'prisma',
+  aliases: ['db'],
   describe:
     "Run prisma commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Example: wb prisma migrate-dev -- --name init",
   builder: (yargs) => {
