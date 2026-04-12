@@ -128,7 +128,7 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
     if (typeof value !== 'string') continue;
     // Fresh repo still requires 'yarn install'
     if (!value.includes('git clone')) {
-      scripts[key] = value.replaceAll(/yarn\s*&&\s*/gu, '').replaceAll(/yarn\s*install\s*&&\s*/gu, '');
+      scripts[key] = value.replaceAll(/yarn\s*(?:install\s*)?&&\s*/gu, '');
     }
   }
 }
@@ -419,14 +419,11 @@ function addDependencyVersionsToPackageJson(jsonObj: WritablePackageJson, depend
 }
 
 function removeEmptyDependencySections(jsonObj: PackageJson): void {
-  if (jsonObj.dependencies && Object.keys(jsonObj.dependencies).length === 0) {
-    delete jsonObj.dependencies;
-  }
-  if (jsonObj.devDependencies && Object.keys(jsonObj.devDependencies).length === 0) {
-    delete jsonObj.devDependencies;
-  }
-  if (jsonObj.peerDependencies && Object.keys(jsonObj.peerDependencies).length === 0) {
-    delete jsonObj.peerDependencies;
+  for (const key of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
+    const section = jsonObj[key];
+    if (section && Object.keys(section).length === 0) {
+      Reflect.deleteProperty(jsonObj, key);
+    }
   }
 }
 
@@ -740,6 +737,7 @@ async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void
       if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
 
       const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
+      // The lint rule disallows `delete` with computed package names; Reflect has the same deletion semantics here.
       Reflect.deleteProperty(jsonObj[otherTarget], packageName);
       jsonObj[target][packageName] = await getLatestPrivatePackageSpecifier(repo);
     })
