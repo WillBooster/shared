@@ -11,7 +11,7 @@ export const fsUtil = {
   },
   async generateFile(filePath: string, content: string): Promise<void> {
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    let normalizedContent = content.replaceAll('\r\n', '\n').trim();
+    let normalizedContent = content.trim();
     if (normalizedContent) {
       normalizedContent += '\n';
     }

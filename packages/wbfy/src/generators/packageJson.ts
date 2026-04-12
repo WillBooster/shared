@@ -308,7 +308,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
       });
       const dirNameSet = new Set<string>();
       for (const pythonFile of pythonFiles) {
-        const [first, second] = pythonFile.split(/[/\\]/);
+        const [first, second] = pythonFile.split('/');
         if (first && second) {
           dirNameSet.add(first);
         }

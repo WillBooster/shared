@@ -10,7 +10,6 @@ import { promisePool } from '../utils/promisePool.js';
 const newContent = `* text=auto
 
 *.lockb binary diff=lockb
-*.vcproj text eol=crlf
 
 ${[...extensions.codeWith2IndentSize, ...extensions.codeWith4IndentSize, ...extensions.markdownLike]
   .map((ext) => `*.${ext} text eol=lf`)

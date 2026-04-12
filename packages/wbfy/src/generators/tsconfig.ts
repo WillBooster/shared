@@ -121,7 +121,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
-    const newContent = JSON.stringify(newSettings);
+    const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }

@@ -24,7 +24,7 @@ export async function generateBiomeJsonc(config: PackageConfig): Promise<void> {
     } catch {
       // do nothing
     }
-    const newContent = JSON.stringify(newSettings);
+    const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }

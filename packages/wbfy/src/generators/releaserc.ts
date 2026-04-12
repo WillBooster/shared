@@ -53,7 +53,7 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
         ];
       }
     }
-    const newContent = JSON.stringify(settings);
+    const newContent = JSON.stringify(settings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }

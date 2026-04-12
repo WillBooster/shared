@@ -26,7 +26,7 @@ export async function generatePyrightConfigJson(config: PackageConfig): Promise<
     } catch {
       // do nothing
     }
-    const newContent = JSON.stringify(newSettings);
+    const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }

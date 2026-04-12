@@ -4,7 +4,6 @@ import path from 'node:path';
 import { ignoreErrorAsync } from '@willbooster/shared-lib/src';
 import yargs from 'yargs';
 
-import { fixDockerfile } from './fixers/dockerfile.js';
 import { fixNextConfigJson } from './fixers/nextConfig.js';
 import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
 import { fixPrismaEnvFiles } from './fixers/prisma.js';
@@ -88,7 +87,9 @@ async function main(): Promise<void> {
     await fixTestDirectoriesUpdatingPackageJson([rootDirPath, ...subDirPaths]);
 
     const rootConfig = await getPackageConfig(rootDirPath);
-    console.log('rootConfig:', rootConfig);
+    if (options.isVerbose) {
+      console.log('rootConfig:', rootConfig);
+    }
     if (!rootConfig) {
       console.error(`there is no valid package.json in ${rootDirPath}`);
       continue;
@@ -118,7 +119,6 @@ async function main(): Promise<void> {
       (rootConfig.repository?.startsWith('github:WillBooster/') ||
         rootConfig.repository?.startsWith('github:WillBoosterLab/'));
     await Promise.all([
-      fixDockerfile(rootConfig),
       fixPrismaEnvFiles(rootConfig),
       abbreviationPromise.then(() => generateReadme(rootConfig)),
       generateAgentInstructions(rootConfig, allPackageConfigs),
