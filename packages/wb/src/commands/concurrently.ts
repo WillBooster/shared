@@ -9,6 +9,8 @@ import { findSelfProject, type Project } from '../project.js';
 import { configureEnv, normalizeScript } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
+const FORCE_KILL_DELAY_MS = 5000;
+
 const builder = {
   'kill-others': {
     description: 'Kill other commands when one command exits',
@@ -101,6 +103,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   let interruptedSignal: NodeJS.Signals | undefined;
   let firstResult: number | undefined;
   let stopResult: number | undefined;
+  const forceKillPromises: Promise<void>[] = [];
   const results = Array.from<number | undefined>({ length: children.length });
   const waitForExitPromises = children.map((child, index) => {
     return new Promise<void>((resolve) => {
@@ -115,7 +118,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
         if (!stopping && shouldStopOthers(exitCode, options)) {
           stopResult = exitCode;
           stopping = true;
-          terminateChildren(children);
+          forceKillPromises.push(terminateChildren(children, 'SIGTERM'));
         }
         resolve();
       };
@@ -135,7 +138,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
     if (stopping) return;
 
     stopping = true;
-    terminateChildren(children);
+    forceKillPromises.push(terminateChildren(children, signal));
   };
   const stopOnSigint = (): void => {
     stopAll('SIGINT');
@@ -151,6 +154,7 @@ export async function runConcurrently(options: RunConcurrentlyOptions): Promise<
   process.on('SIGQUIT', stopOnSigquit);
   try {
     await Promise.all(waitForExitPromises);
+    await Promise.all(forceKillPromises);
   } finally {
     process.removeListener('SIGINT', stopOnSigint);
     process.removeListener('SIGTERM', stopOnSigterm);
@@ -192,25 +196,67 @@ function shouldStopOthers(
   return options.success === 'first' || options.killOthers || (options.killOthersOnFail && exitCode !== 0);
 }
 
-function terminateChildren(children: child_process.ChildProcess[]): void {
-  for (const child of children) {
-    if (!child.pid) continue;
+async function terminateChildren(children: child_process.ChildProcess[], signal: NodeJS.Signals): Promise<void> {
+  const forceKillPids = signalPids(toChildPids(children), signal);
+  if (forceKillPids.length === 0) return;
 
+  if (await waitForForceKill(forceKillPids)) {
+    signalPids(forceKillPids, 'SIGKILL');
+  }
+}
+
+function toChildPids(children: child_process.ChildProcess[]): number[] {
+  return children.flatMap((child) => (child.pid === undefined ? [] : [child.pid]));
+}
+
+function signalPids(pids: readonly number[], signal: NodeJS.Signals): number[] {
+  const signaledPids: number[] = [];
+  for (const pid of pids) {
     try {
-      killProcessGroup(child.pid);
-      treeKill(child.pid);
+      if (!killProcessGroup(pid, signal)) continue;
+
+      signaledPids.push(pid);
+      treeKill(pid, signal);
     } catch (error) {
       console.warn('Failed to kill child process:', error);
     }
   }
+  return signaledPids;
 }
 
-function killProcessGroup(pid: number): void {
+async function waitForForceKill(pids: readonly number[]): Promise<boolean> {
+  const deadline = Date.now() + FORCE_KILL_DELAY_MS;
+  while (Date.now() < deadline) {
+    if (pids.every(isProcessGroupGone)) return false;
+
+    await sleep(Math.min(100, deadline - Date.now()));
+  }
+  return true;
+}
+
+function isProcessGroupGone(pid: number): boolean {
   try {
-    process.kill(-pid, 'SIGTERM');
+    process.kill(-pid, 0);
+    return false;
   } catch (error) {
     if (isNoSuchProcessError(error)) {
-      return;
+      return true;
+    }
+    return false;
+  }
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function killProcessGroup(pid: number, signal: NodeJS.Signals): boolean {
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch (error) {
+    if (isNoSuchProcessError(error)) {
+      return false;
     }
     throw error;
   }
