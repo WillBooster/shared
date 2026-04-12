@@ -20,7 +20,7 @@ export const prismaCommand: CommandModule = {
   command: 'prisma',
   aliases: ['db'],
   describe:
-    "Run database commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Drizzle v1 projects use drizzle-kit. Example: wb prisma migrate-dev -- --name init",
+    "Run database commands. Use '--' to stop wb option parsing and forward the remaining arguments to Prisma. Drizzle projects use drizzle-kit. Example: wb prisma migrate-dev -- --name init",
   builder: (yargs) => {
     return yargs
       .parserConfiguration({ 'populate--': true })

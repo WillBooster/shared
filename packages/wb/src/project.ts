@@ -106,22 +106,18 @@ export class Project {
 
   @memoizeOne
   get hasPrisma(): boolean {
-    return !!this.getDependencyVersion('prisma');
+    return !!this.getOwnDependencyVersion('prisma');
   }
 
   @memoizeOne
-  get hasDrizzleV1(): boolean {
-    const drizzleOrmVersion = this.getDependencyVersion('drizzle-orm');
-    if (!drizzleOrmVersion) return false;
-
-    const versionText = drizzleOrmVersion.replace(/^npm:[^@]+@/, '').trim();
-    return versionText === 'beta' || /^[\^~>=< ]*1\./.test(versionText);
+  get hasDrizzle(): boolean {
+    return !!this.getOwnDependencyVersion('drizzle-orm');
   }
 
   @memoizeOne
   get databaseOrm(): DatabaseOrm | undefined {
     if (this.hasPrisma) return 'prisma';
-    if (this.hasDrizzleV1) return 'drizzle';
+    if (this.hasDrizzle) return 'drizzle';
     return;
   }
 
@@ -240,22 +236,24 @@ export class Project {
   }
 
   private hasDependency(packageName: string): boolean {
-    return !!this.getDependencyVersion(packageName);
+    return !!(
+      this.getOwnDependencyVersion(packageName) ?? this.getDependencyVersion(this.rootPackageJson, packageName)
+    );
   }
 
-  private getDependencyVersion(packageName: string): string | undefined {
-    const dependencyVersionInPackageJson = (packageJson: PackageJson | undefined): string | undefined => {
-      if (!packageJson) return;
+  private getOwnDependencyVersion(packageName: string): string | undefined {
+    return this.getDependencyVersion(this.packageJson, packageName);
+  }
 
-      return (
-        packageJson.dependencies?.[packageName] ??
-        packageJson.devDependencies?.[packageName] ??
-        packageJson.optionalDependencies?.[packageName] ??
-        packageJson.peerDependencies?.[packageName]
-      );
-    };
+  private getDependencyVersion(packageJson: PackageJson | undefined, packageName: string): string | undefined {
+    if (!packageJson) return;
 
-    return dependencyVersionInPackageJson(this.packageJson) ?? dependencyVersionInPackageJson(this.rootPackageJson);
+    return (
+      packageJson.dependencies?.[packageName] ??
+      packageJson.devDependencies?.[packageName] ??
+      packageJson.optionalDependencies?.[packageName] ??
+      packageJson.peerDependencies?.[packageName]
+    );
   }
 
   @memoizeOne
