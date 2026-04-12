@@ -305,7 +305,7 @@ export function buildLintCommand(
   if (project.preferredLinter === 'biome') {
     let biomeArgs: string[];
     if (argv.fix && argv.format) {
-      biomeArgs = ['check', '--fix'];
+      biomeArgs = ['check', '--write'];
     } else if (argv.fix) {
       biomeArgs = ['lint', '--fix'];
     } else if (argv.format) {
