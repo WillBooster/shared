@@ -89,9 +89,9 @@ export function fixTyposInText(content: string): string {
 
 function fixTyposInCode(content: string): string {
   return content
-    .replaceAll(/\/\/(.*)c\.f\./g, '//$1cf.')
-    .replaceAll(/\/\/(.*)eg\./g, '//$1e.g.')
-    .replaceAll(/\/\/(.*)ie\./g, '//$1i.e.');
+    .replaceAll(/(^|\s)\/\/(.*?)c\.f\./g, '$1//$2cf.')
+    .replaceAll(/(^|\s)\/\/(.*?)eg\./g, '$1//$2e.g.')
+    .replaceAll(/(^|\s)\/\/(.*?)ie\./g, '$1//$2i.e.');
 }
 
 function replaceWithConfig(newContent: string, packageConfig: PackageConfig, propName: 'doc' | 'ts' | 'text'): string {

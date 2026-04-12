@@ -29,6 +29,16 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
   });
 }
 
+function generateCursorGeneralMdcContent(
+  config: PackageConfig,
+  allConfigs: PackageConfig[],
+  extraContent?: string
+): string {
+  const frontmatter = `---\ndescription: General Coding Rules\nglobs:\nalwaysApply: true\n---`;
+  const body = generateAgentInstruction(config, allConfigs, 'Cursor', extraContent);
+  return `${frontmatter}\n\n${body}`;
+}
+
 function generateAgentInstruction(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],
@@ -116,14 +126,4 @@ ${
     .replaceAll(/\.\n\n+-/g, '.\n-')
     .replaceAll(/\n{3,}/g, '\n\n')
     .trim();
-}
-
-function generateCursorGeneralMdcContent(
-  config: PackageConfig,
-  allConfigs: PackageConfig[],
-  extraContent?: string
-): string {
-  const frontmatter = `---\ndescription: General Coding Rules\nglobs:\nalwaysApply: true\n---`;
-  const body = generateAgentInstruction(config, allConfigs, 'Cursor', extraContent);
-  return `${frontmatter}\n\n${body}`;
 }

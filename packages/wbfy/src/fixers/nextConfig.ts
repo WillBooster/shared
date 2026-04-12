@@ -30,7 +30,11 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     if (propertyTexts.length === 0) return;
 
     const insertionPoint = objectLiteral.getEnd() - 1;
-    const prefix = objectLiteral.properties.length > 0 ? ', ' : '';
+    const lastProperty = objectLiteral.properties.at(-1);
+    const hasTrailingComma = lastProperty
+      ? oldContent.slice(lastProperty.getEnd(), insertionPoint).includes(',')
+      : false;
+    const prefix = objectLiteral.properties.length > 0 && !hasTrailingComma ? ', ' : '';
     const newContent = `${oldContent.slice(0, insertionPoint)}${prefix}${propertyTexts.join(', ')}${oldContent.slice(
       insertionPoint
     )}`;
