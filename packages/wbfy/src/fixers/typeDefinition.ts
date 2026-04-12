@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { ignoreEnoentAsync } from '@willbooster/shared-lib';
+import { ignoreEnoentAsync } from '@willbooster/shared-lib/src';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';

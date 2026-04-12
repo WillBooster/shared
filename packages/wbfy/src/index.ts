@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ignoreErrorAsync } from '@willbooster/shared-lib';
+import { ignoreErrorAsync } from '@willbooster/shared-lib/src';
 import yargs from 'yargs';
 
 import { fixDockerfile } from './fixers/dockerfile.js';

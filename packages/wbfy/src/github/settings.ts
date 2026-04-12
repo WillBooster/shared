@@ -1,4 +1,4 @@
-import { withRetry } from '@willbooster/shared-lib';
+import { withRetry } from '@willbooster/shared-lib/src';
 
 import type { PackageConfig } from '../packageConfig.js';
 import { getOctokit, gitHubUtil, hasGitHubToken } from '../utils/githubUtil.js';
