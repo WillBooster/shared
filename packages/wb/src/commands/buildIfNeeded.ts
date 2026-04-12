@@ -41,7 +41,14 @@ export async function buildIfNeeded(
     return true;
   }
 
-  argv = { ...argv, command: argv.command ?? (isRunningOnBun ? 'bun run build' : 'yarn build') };
+  const buildCommand =
+    argv.command ??
+    (project.packageJson.scripts?.build ? (isRunningOnBun ? 'bun run build' : 'yarn build') : undefined);
+  if (!buildCommand) {
+    console.info(chalk.green('Skip to build because no build command is defined.'));
+    return false;
+  }
+  argv = { ...argv, command: buildCommand };
 
   if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
     build(project, argv);
