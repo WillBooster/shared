@@ -122,7 +122,6 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   if (config.isRoot) {
     delete jsonObj.devDependencies.husky;
-    delete jsonObj.devDependencies.pinst;
     delete jsonObj.scripts.postinstall;
     delete jsonObj.scripts.postpublish;
     delete jsonObj.scripts.prepublishOnly;
@@ -186,12 +185,12 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
     }
   }
 
-  if (
+  const doesContainJsOrTs =
     config.doesContainJavaScript ||
     config.doesContainJavaScriptInPackages ||
     config.doesContainTypeScript ||
-    config.doesContainTypeScriptInPackages
-  ) {
+    config.doesContainTypeScriptInPackages;
+  if (doesContainJsOrTs) {
     if (config.isBun) {
       devDependencies.push('@biomejs/biome', '@willbooster/biome-config');
       delete jsonObj.devDependencies.eslint;
@@ -202,12 +201,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
     }
   }
 
-  if (
-    config.doesContainJavaScript ||
-    config.doesContainJavaScriptInPackages ||
-    config.doesContainTypeScript ||
-    config.doesContainTypeScriptInPackages
-  ) {
+  if (doesContainJsOrTs) {
     devDependencies.push(...getTsconfigBaseDependencies(config));
   }
 

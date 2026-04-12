@@ -22,7 +22,7 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     }
     for (const mdFile of docFiles) {
       const filePath = path.join(dirPath, mdFile);
-      await promisePool.run(async () => {
+      void promisePool.run(async () => {
         const content = await fs.promises.readFile(filePath, 'utf8');
         let newContent = fixTyposInText(content);
         newContent = replaceWithConfig(newContent, packageConfig, 'doc');
@@ -44,7 +44,7 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     }
     for (const tsFile of tsFiles) {
       const filePath = path.join(dirPath, tsFile);
-      await promisePool.run(async () => {
+      void promisePool.run(async () => {
         const oldContent = await fs.promises.readFile(filePath, 'utf8');
         let newContent = fixTyposInCode(oldContent);
         newContent = replaceWithConfig(newContent, packageConfig, 'ts');
@@ -65,7 +65,7 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     }
     for (const file of textBasedFiles) {
       const filePath = path.join(dirPath, file);
-      await promisePool.run(async () => {
+      void promisePool.run(async () => {
         const oldContent = await fs.promises.readFile(filePath, 'utf8');
         let newContent = fixTyposInText(oldContent);
         newContent = replaceWithConfig(newContent, packageConfig, 'text');
@@ -82,9 +82,9 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
 
 export function fixTyposInText(content: string): string {
   return content
-    .replaceAll(/\bc\.f\.([^$])/g, 'cf.$1')
-    .replaceAll(/\beg\.([^$])/g, 'e.g.$1')
-    .replaceAll(/\bie\.([^$])/g, 'i.e.$1');
+    .replaceAll(/\bc\.f\.(?=\s|$)/g, 'cf.')
+    .replaceAll(/\beg\.(?=\s|$)/g, 'e.g.')
+    .replaceAll(/\bie\.(?=\s)/g, 'i.e.');
 }
 
 function fixTyposInCode(content: string): string {
