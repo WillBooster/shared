@@ -82,8 +82,8 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   const dependencyUpdates = collectDependencyUpdates(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
-  removeEmptyDependencySections(jsonObj);
   await updatePrivatePackages(jsonObj);
+  removeEmptyDependencySections(jsonObj);
 
   if (config.isBun) delete jsonObj.packageManager;
   await fixScriptNames(jsonObj.scripts, config);
