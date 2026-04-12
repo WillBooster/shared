@@ -45,10 +45,21 @@ async function moveTestDirectory(oldTestDirPath: string, newTestDirPath: string)
   }
 
   const dirents = await fs.promises.readdir(oldTestDirPath, { withFileTypes: true });
-  await Promise.all(
-    dirents.map((dirent) =>
-      fs.promises.rename(path.join(oldTestDirPath, dirent.name), path.join(newTestDirPath, dirent.name))
-    )
-  );
+  await Promise.all(dirents.map((dirent) => moveTestDirectoryEntry(oldTestDirPath, newTestDirPath, dirent)));
   await fs.promises.rm(oldTestDirPath, { recursive: true });
+}
+
+async function moveTestDirectoryEntry(
+  oldTestDirPath: string,
+  newTestDirPath: string,
+  dirent: fs.Dirent
+): Promise<void> {
+  const oldPath = path.join(oldTestDirPath, dirent.name);
+  const newPath = path.join(newTestDirPath, dirent.name);
+  const newPathStat = fs.existsSync(newPath) ? await fs.promises.stat(newPath) : undefined;
+  if (dirent.isDirectory() && newPathStat?.isDirectory()) {
+    await moveTestDirectory(oldPath, newPath);
+    return;
+  }
+  await fs.promises.rename(oldPath, newPath);
 }

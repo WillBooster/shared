@@ -38,6 +38,7 @@ import { setupLabels } from './github/label.js';
 import { setupSecrets } from './github/secret.js';
 import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
+import { logger } from './logger.js';
 import { options } from './options.js';
 import { getPackageConfig } from './packageConfig.js';
 import { promisePool } from './utils/promisePool.js';
@@ -192,7 +193,10 @@ async function main(): Promise<void> {
     const packageManager = rootConfig.isBun ? 'bun' : 'yarn';
     // Refresh lock files
     if (rootConfig.isBun) {
-      refreshBunLock(rootDirPath);
+      await logger.functionIgnoringException('refreshBunLock', async () => {
+        await Promise.resolve();
+        refreshBunLock(rootDirPath);
+      });
     } else {
       spawnSync(packageManager, ['install', '--no-immutable'], rootDirPath);
     }
