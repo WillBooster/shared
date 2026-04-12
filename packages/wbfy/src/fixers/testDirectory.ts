@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { logger } from '../logger.js';
+import { fsUtil } from '../utils/fsUtil.js';
 
 export async function fixTestDirectoriesUpdatingPackageJson(packageDirPaths: string[]): Promise<void> {
   return logger.functionIgnoringException('fixTestDirectoriesUpdatingPackageJson', async () => {
@@ -30,7 +31,7 @@ export async function fixTestDirectoriesUpdatingPackageJson(packageDirPaths: str
             packageJson.scripts = scripts;
             if (!didUpdateScript) return;
 
-            await fs.promises.writeFile(packageJsonPath, `${JSON.stringify(packageJson, undefined, 2)}\n`);
+            await fsUtil.generateFile(packageJsonPath, JSON.stringify(packageJson, undefined, 2));
           } catch {
             // do nothing
           }

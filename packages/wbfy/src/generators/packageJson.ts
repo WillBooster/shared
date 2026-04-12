@@ -11,6 +11,7 @@ import { logger } from '../logger.js';
 import type { EslintExtensionBase, PackageConfig } from '../packageConfig.js';
 import { EslintUtil } from '../utils/eslintUtil.js';
 import { extensions } from '../utils/extensions.js';
+import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
@@ -363,7 +364,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   if (config.isBun) delete jsonObj.packageManager;
   await fixScriptNames(jsonObj.scripts, config);
-  await fs.promises.writeFile(filePath, `${JSON.stringify(sortPackageJson(jsonObj), undefined, 2)}\n`);
+  await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2)));
 
   if (!skipAddingDeps) {
     // We cannot add dependencies which are already included in devDependencies.
