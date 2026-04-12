@@ -373,7 +373,6 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
       const uniqueDependencies = [...new Set(dependencies)];
       const dependencySpecifiers = uniqueDependencies.map((dependency) => getDependencySpecifier(dependency));
       if (config.isBun) {
-        spawnSync(packageManager, ['remove', ...uniqueDependencies], config.dirPath);
         spawnSync(packageManager, ['add', '--exact', ...dependencySpecifiers], config.dirPath);
       } else {
         // Intentionally omit versions to update dependencies to the latest versions with Yarn.
@@ -386,7 +385,6 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
       const uniqueDevDependencies = [...new Set(devDependencies)];
       const devDependencySpecifiers = uniqueDevDependencies.map((dependency) => getDependencySpecifier(dependency));
       if (config.isBun) {
-        spawnSync(packageManager, ['remove', ...uniqueDevDependencies], config.dirPath);
         spawnSync(packageManager, ['add', '-D', '--exact', ...devDependencySpecifiers], config.dirPath);
       } else {
         // Intentionally omit versions to update dependencies to the latest versions with Yarn.

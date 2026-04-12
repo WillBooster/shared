@@ -136,6 +136,21 @@ function extractDefineConfigObjectLiteral(content: string): ExtractedObjectLiter
   return found ? { source, node: found } : undefined;
 }
 
+function parseExpression(expression: ts.Expression, source: ts.SourceFile): ParsedValue | undefined {
+  if (ts.isObjectLiteralExpression(expression)) {
+    const parsedObject = parseObjectLiteralExpression(expression, source);
+    return parsedObject ? asObject(parsedObject) : literal(expression.getText(source));
+  }
+  if (ts.isArrayLiteralExpression(expression)) {
+    const elements = expression.elements.map((element) => parseExpression(element, source));
+    if (elements.some((element): element is undefined => element === undefined)) {
+      return literal(expression.getText(source));
+    }
+    return asArray(elements as ParsedValue[]);
+  }
+  return literal(expression.getText(source));
+}
+
 function parseObjectLiteralExpression(
   objectLiteral: ts.ObjectLiteralExpression,
   source: ts.SourceFile
@@ -150,21 +165,6 @@ function parseObjectLiteralExpression(
     parsed[property.name.getText(source)] = value;
   }
   return parsed;
-}
-
-function parseExpression(expression: ts.Expression, source: ts.SourceFile): ParsedValue | undefined {
-  if (ts.isObjectLiteralExpression(expression)) {
-    const parsedObject = parseObjectLiteralExpression(expression, source);
-    return parsedObject ? asObject(parsedObject) : literal(expression.getText(source));
-  }
-  if (ts.isArrayLiteralExpression(expression)) {
-    const elements = expression.elements.map((element) => parseExpression(element, source));
-    if (elements.some((element): element is undefined => element === undefined)) {
-      return literal(expression.getText(source));
-    }
-    return asArray(elements as ParsedValue[]);
-  }
-  return literal(expression.getText(source));
 }
 
 function stringifyValue(value: ParsedValue, level: number): string {
