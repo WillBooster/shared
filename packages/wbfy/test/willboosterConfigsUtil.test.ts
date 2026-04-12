@@ -1,0 +1,87 @@
+import { describe, expect, test } from 'vitest';
+
+import type { PackageConfig } from '../src/packageConfig.js';
+import { shouldSkipWillboosterConfigsEslintPackage } from '../src/utils/willboosterConfigsUtil.js';
+
+describe('shouldSkipWillboosterConfigsEslintPackage', () => {
+  test('skips ESLint config packages inside willbooster-configs', () => {
+    const config = createConfig({
+      isWillBoosterConfigs: true,
+      packageJson: { name: '@willbooster/eslint-config-ts' },
+    });
+
+    expect(shouldSkipWillboosterConfigsEslintPackage(config)).toBe(true);
+  });
+
+  test('does not skip non-ESLint packages inside willbooster-configs', () => {
+    const config = createConfig({
+      isWillBoosterConfigs: true,
+      packageJson: { name: '@willbooster/prettier-config' },
+    });
+
+    expect(shouldSkipWillboosterConfigsEslintPackage(config)).toBe(false);
+  });
+
+  test('does not skip ESLint packages outside willbooster-configs', () => {
+    const config = createConfig({
+      isWillBoosterConfigs: false,
+      packageJson: { name: '@willbooster/eslint-config-ts' },
+    });
+
+    expect(shouldSkipWillboosterConfigsEslintPackage(config)).toBe(false);
+  });
+});
+
+function createConfig(overrides: Partial<PackageConfig> = {}): PackageConfig {
+  return {
+    dirPath: '/tmp',
+    dockerfile: '',
+    isRoot: false,
+    isPublicRepo: true,
+    isReferredByOtherRepo: false,
+    repository: 'github:WillBooster/example',
+    isWillBoosterRepo: true,
+    isBun: false,
+    isEsmPackage: false,
+    isWillBoosterConfigs: false,
+    doesContainSubPackageJsons: false,
+    doesContainDockerfile: false,
+    doesContainGemfile: false,
+    doesContainGoMod: false,
+    doesContainPackageJson: true,
+    doesContainPoetryLock: false,
+    doesContainPomXml: false,
+    doesContainPubspecYaml: false,
+    doesContainTemplateYaml: false,
+    doesContainVscodeSettingsJson: false,
+    doesContainJavaScript: false,
+    doesContainTypeScript: false,
+    doesContainJsxOrTsx: false,
+    doesContainJavaScriptInPackages: false,
+    doesContainTypeScriptInPackages: false,
+    doesContainJsxOrTsxInPackages: false,
+    hasStartTestServer: false,
+    depending: {
+      blitz: false,
+      firebase: false,
+      genI18nTs: false,
+      litestream: false,
+      next: false,
+      playwrightTest: false,
+      prisma: false,
+      pyright: false,
+      react: false,
+      reactNative: false,
+      semanticRelease: false,
+      storybook: false,
+      wb: false,
+    },
+    release: {
+      branches: [],
+      github: false,
+      npm: false,
+    },
+    hasVersionSettings: false,
+    ...overrides,
+  };
+}
