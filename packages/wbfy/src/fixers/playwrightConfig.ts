@@ -75,7 +75,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     }
     setWebServerCommand(config, merged);
 
-    const newObjectLiteral = stringifyObject(merged, 0);
+    const newObjectLiteral = stringifyValue(asObject(merged), 0);
     const start = extractedObjectLiteral.node.getStart(extractedObjectLiteral.source);
     const end = extractedObjectLiteral.node.getEnd();
     const newContent = `${oldContent.slice(0, start)}${newObjectLiteral}${oldContent.slice(end)}`;
@@ -168,37 +168,30 @@ function parseExpression(expression: ts.Expression, source: ts.SourceFile): Pars
 }
 
 function stringifyValue(value: ParsedValue, level: number): string {
+  const closingIndent = '  '.repeat(level);
   if (value.kind === 'array') {
-    return stringifyArray(value.value, level);
+    if (value.value.length === 0) return '[]';
+    const indent = '  '.repeat(level + 1);
+    const lines = value.value.map((item) => {
+      const stringified = stringifyValue(item, level + 1).split('\n');
+      stringified[stringified.length - 1] = `${stringified.at(-1)},`;
+      if (item.kind === 'literal') {
+        for (let index = 1; index < stringified.length; index += 1) {
+          stringified[index] = `${indent}${stringified[index]}`;
+        }
+      }
+      stringified[0] = `${indent}${stringified[0]}`;
+      return stringified.join('\n');
+    });
+    return `[\n${lines.join('\n')}\n${closingIndent}]`;
   }
   if (value.kind === 'literal') return value.value;
-  return stringifyObject(value.value, level);
-}
 
-function stringifyArray(values: ParsedValue[], level: number): string {
-  if (values.length === 0) return '[]';
   const indent = '  '.repeat(level + 1);
-  const lines = values.map((value) => {
-    const stringified = stringifyValue(value, level + 1).split('\n');
+  const lines = Object.entries(value.value).map(([key, item]) => {
+    const stringified = stringifyValue(item, level + 1).split('\n');
     stringified[stringified.length - 1] = `${stringified.at(-1)},`;
-    if (value.kind === 'literal') {
-      for (let index = 1; index < stringified.length; index += 1) {
-        stringified[index] = `${indent}${stringified[index]}`;
-      }
-    }
-    stringified[0] = `${indent}${stringified[0]}`;
-    return stringified.join('\n');
-  });
-  const closingIndent = '  '.repeat(level);
-  return `[\n${lines.join('\n')}\n${closingIndent}]`;
-}
-
-function stringifyObject(object: ParsedObject, level: number): string {
-  const indent = '  '.repeat(level + 1);
-  const lines = Object.entries(object).map(([key, value]) => {
-    const stringified = stringifyValue(value, level + 1).split('\n');
-    stringified[stringified.length - 1] = `${stringified.at(-1)},`;
-    if (value.kind === 'literal') {
+    if (item.kind === 'literal') {
       for (let index = 1; index < stringified.length; index += 1) {
         stringified[index] = `${indent}${stringified[index]}`;
       }
@@ -206,7 +199,6 @@ function stringifyObject(object: ParsedObject, level: number): string {
     stringified[0] = `${indent}${key}: ${stringified[0]}`;
     return stringified.join('\n');
   });
-  const closingIndent = '  '.repeat(level);
   if (lines.length === 0) return `{\n${closingIndent}}`;
   return `{\n${lines.join('\n')}\n${closingIndent}}`;
 }

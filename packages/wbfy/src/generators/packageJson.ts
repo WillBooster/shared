@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import merge from 'deepmerge';
 import fg from 'fast-glob';
-import sortPackageJson from 'sort-package-json';
+import { sortPackageJson } from 'sort-package-json';
 import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
