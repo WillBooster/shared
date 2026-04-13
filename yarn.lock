@@ -6298,17 +6298,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/shared-lib-node@npm:8.2.2":
-  version: 8.2.2
-  resolution: "@willbooster/shared-lib-node@npm:8.2.2"
-  dependencies:
-    dotenv: "npm:17.3.1"
-    dotenv-expand: "npm:12.0.3"
-  checksum: 10c0/006fb84947f1d19f5a6b74623c0617c91b99d59a5a84c6721be5aedf0caca70f4a0d030e510c816fab4c345c02e9650ba3f09e2df93ec80570cfb918af6d1d02
-  languageName: node
-  linkType: hard
-
-"@willbooster/shared-lib-node@workspace:*, @willbooster/shared-lib-node@workspace:packages/shared-lib-node":
+"@willbooster/shared-lib-node@workspace:packages/shared-lib-node":
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-node@workspace:packages/shared-lib-node"
   dependencies:
@@ -6399,7 +6389,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/shared-lib@workspace:*, @willbooster/shared-lib@workspace:packages/shared-lib":
+"@willbooster/shared-lib@workspace:packages/shared-lib":
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib@workspace:packages/shared-lib"
   dependencies:
@@ -6496,8 +6486,8 @@ __metadata:
     "@types/yargs": "npm:17.0.35"
     "@willbooster/eslint-config-ts": "npm:11.5.1"
     "@willbooster/prettier-config": "npm:10.4.0"
-    "@willbooster/shared-lib": "workspace:*"
-    "@willbooster/shared-lib-node": "workspace:*"
+    "@willbooster/shared-lib": "npm:7.2.1"
+    "@willbooster/shared-lib-node": "npm:8.3.1"
     "@yarnpkg/core": "npm:4.6.0"
     build-ts: "npm:17.0.22"
     deepmerge: "npm:4.3.1"

@@ -30,6 +30,8 @@
   },
   "prettier": "@willbooster/prettier-config",
   "resolutions": {
+    "@willbooster/shared-lib": "workspace:packages/shared-lib",
+    "@willbooster/shared-lib-node": "workspace:packages/shared-lib-node",
     "esbuild": "0.27.4"
   },
   "devDependencies": {
