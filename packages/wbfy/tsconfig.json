@@ -11,6 +11,10 @@
     "noEmit": false,
     "noUncheckedIndexedAccess": true,
     "outDir": "dist",
+    "paths": {
+      "@willbooster/shared-lib/src": ["../shared-lib/src/index.ts"],
+      "@willbooster/shared-lib-node/src": ["../shared-lib-node/src/index.ts"]
+    },
     "resolveJsonModule": true,
     "rewriteRelativeImportExtensions": true,
     "skipLibCheck": true,
