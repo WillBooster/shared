@@ -6516,6 +6516,7 @@ __metadata:
     globals: "npm:17.4.0"
     js-yaml: "npm:4.1.1"
     lefthook: "npm:2.1.5"
+    libsodium: "npm:0.8.2"
     libsodium-wrappers: "npm:0.8.2"
     lodash.clonedeep: "npm:4.5.0"
     micromatch: "npm:4.0.8"
@@ -13853,7 +13854,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"libsodium@npm:^0.8.0":
+"libsodium@npm:0.8.2, libsodium@npm:^0.8.0":
   version: 0.8.2
   resolution: "libsodium@npm:0.8.2"
   checksum: 10c0/e943b269331670e45d63885ee32dec5471daa4c78ddfbe35e00e27a5b0ea7b51e7fa8260142ba478dcba0918e8117e9151883c11466b2fab2638ec29a1f3482b

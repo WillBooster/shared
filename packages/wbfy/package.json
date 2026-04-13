@@ -42,6 +42,7 @@
     "fast-glob": "3.3.3",
     "fastest-levenshtein": "1.0.16",
     "js-yaml": "4.1.1",
+    "libsodium": "0.8.2",
     "libsodium-wrappers": "0.8.2",
     "lodash.clonedeep": "4.5.0",
     "minimal-promise-pool": "6.0.1",
