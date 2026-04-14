@@ -80,11 +80,8 @@ export async function testOnCi(
       await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv);
     }
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
-      // Docker E2E builds and starts the production image below. Probing a dev server first can fail on
-      // runtime-specific dev bundlers while adding no coverage for the image that Playwright will exercise.
-      if (!hasDockerfile) {
-        await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
-      }
+      // Confirm dev server startup for consistency across projects with E2E tests.
+      await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
       await promisePool.promiseAll();
       if (hasDockerfile) {
         project.env.WB_DOCKER ||= '1';
