@@ -2,6 +2,7 @@
   "compilerOptions": {
     "allowSyntheticDefaultImports": true,
     "alwaysStrict": true,
+    "declaration": true,
     "erasableSyntaxOnly": true,
     "esModuleInterop": true,
     "importHelpers": false,
@@ -9,10 +10,12 @@
     "lib": ["DOM", "ES2024", "ESNext.Array", "ESNext.Collection", "ESNext.Iterator", "ESNext.Promise"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "noEmit": true,
+    "noEmit": false,
     "noUncheckedIndexedAccess": true,
+    "outDir": "dist",
     "resolveJsonModule": true,
     "skipLibCheck": true,
+    "sourceMap": true,
     "strict": true,
     "target": "ES2023",
     "types": ["node", "vitest/globals"]
