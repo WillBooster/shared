@@ -66,6 +66,41 @@ test('omits rootDir for monorepos without root sources', async () => {
   expect(tsconfig.compilerOptions.types).toEqual(['node']);
 });
 
+test('preserves explicit emit settings while removing rootDir', async () => {
+  const dirPath = createTempDir();
+  await fs.promises.mkdir(path.join(dirPath, 'src'), { recursive: true });
+  await fs.promises.writeFile(path.join(dirPath, 'src', 'index.ts'), 'export const value = 1;\n');
+  await fs.promises.writeFile(
+    path.join(dirPath, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        declaration: true,
+        noEmit: false,
+        outDir: 'dist',
+        rootDir: './src',
+        sourceMap: true,
+      },
+      include: ['src/**/*'],
+    })
+  );
+
+  await generateTsconfig(
+    createConfig({
+      dirPath,
+      doesContainPackageJson: true,
+      doesContainTypeScript: true,
+    })
+  );
+  await promisePool.promiseAll();
+
+  const tsconfig = await readTsconfig(dirPath);
+  expect(tsconfig.compilerOptions.declaration).toBe(true);
+  expect(tsconfig.compilerOptions.noEmit).toBe(false);
+  expect(tsconfig.compilerOptions.outDir).toBe('dist');
+  expect(tsconfig.compilerOptions.rootDir).toBeUndefined();
+  expect(tsconfig.compilerOptions.sourceMap).toBe(true);
+});
+
 function createTempDir(): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
   tempDirs.push(tempDir);
@@ -73,10 +108,24 @@ function createTempDir(): string {
 }
 
 async function readTsconfig(dirPath: string): Promise<{
-  compilerOptions: { noEmit?: boolean; rootDir?: string; types?: string[] };
+  compilerOptions: {
+    declaration?: boolean;
+    noEmit?: boolean;
+    outDir?: string;
+    rootDir?: string;
+    sourceMap?: boolean;
+    types?: string[];
+  };
 }> {
   return JSON.parse(await fs.promises.readFile(path.join(dirPath, 'tsconfig.json'), 'utf8')) as {
-    compilerOptions: { noEmit?: boolean; rootDir?: string; types?: string[] };
+    compilerOptions: {
+      declaration?: boolean;
+      noEmit?: boolean;
+      outDir?: string;
+      rootDir?: string;
+      sourceMap?: boolean;
+      types?: string[];
+    };
   };
 }
 

@@ -73,15 +73,11 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       const existingContent = await fs.promises.readFile(filePath, 'utf8');
       const oldSettings = JSON.parse(existingContent) as TsConfigJson;
       const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
+      const existingEmitOptions = pickExistingEmitOptions(oldSettings.compilerOptions);
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
-      delete oldSettings.compilerOptions?.declaration;
-      delete oldSettings.compilerOptions?.declarationMap;
-      delete oldSettings.compilerOptions?.emitDeclarationOnly;
-      delete oldSettings.compilerOptions?.outDir;
       delete oldSettings.compilerOptions?.rootDir;
-      delete oldSettings.compilerOptions?.sourceMap;
       newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
       newSettings.include = newSettings.include?.filter(
         (dirPath: string) =>
@@ -90,14 +86,10 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.compilerOptions ??= {};
       // The main tsconfig is for broad typechecking. WillBooster projects commonly keep
       // TS config/scripts/tests beside src, so inferring rootDir here makes valid inputs fail TS6059.
-      // Build tools such as build-ts can set declaration-only emit options when they
-      // compile just src/**/*, without requiring a generated tsconfig.build.json.
-      delete newSettings.compilerOptions.declaration;
-      delete newSettings.compilerOptions.declarationMap;
-      delete newSettings.compilerOptions.emitDeclarationOnly;
-      delete newSettings.compilerOptions.outDir;
+      // Keep explicit emit settings because some repos have tsconfig.build.json files
+      // that extend this config and rely on those options for tracked .d.ts outputs.
+      newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
       delete newSettings.compilerOptions.rootDir;
-      delete newSettings.compilerOptions.sourceMap;
 
       const mergedTypes = [...new Set([...existingTypes, ...generatedTypes])];
       if (mergedTypes.length > 0) {
@@ -149,6 +141,32 @@ function shouldDeleteTypeRoots(typeNames: string[]): boolean {
   // Only generated package-owned test types should trigger this. User-defined slash-based
   // entries may intentionally rely on custom typeRoots and should be preserved as-is.
   return typeNames.some((typeName) => typeName === 'cypress' || typeName.includes('/'));
+}
+
+function pickExistingEmitOptions(
+  compilerOptions: TsConfigJson['compilerOptions']
+): Pick<
+  NonNullable<TsConfigJson['compilerOptions']>,
+  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'outDir' | 'sourceMap'
+> {
+  const emitOptions = {} as Pick<
+    NonNullable<TsConfigJson['compilerOptions']>,
+    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'outDir' | 'sourceMap'
+  >;
+  for (const key of [
+    'declaration',
+    'declarationMap',
+    'emitDeclarationOnly',
+    'noEmit',
+    'outDir',
+    'sourceMap',
+  ] as const) {
+    const value = compilerOptions?.[key];
+    if (value !== undefined) {
+      emitOptions[key] = value as never;
+    }
+  }
+  return emitOptions;
 }
 
 function getGeneratedTypes(config: PackageConfig): string[] {
