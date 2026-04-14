@@ -11,7 +11,6 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { getSrcDirs } from '../utils/srcDirectories.js';
 import { getTsconfigExtends } from '../utils/tsconfigBase.js';
 
 const rootJsonObj = {
@@ -21,11 +20,8 @@ const rootJsonObj = {
     allowSyntheticDefaultImports: true, // allow `import React from 'react'`
     esModuleInterop: true, // allow default import from CommonJS/AMD/UMD modules
     resolveJsonModule: true, // allow to import JSON files
-    declaration: true,
-    sourceMap: true,
     importHelpers: false,
-    noEmit: false,
-    outDir: 'dist',
+    noEmit: true,
   },
   exclude: ['packages/*/test/fixtures', 'test/fixtures'],
   include: [
@@ -45,11 +41,8 @@ const subJsonObj = {
     allowSyntheticDefaultImports: true, // allow `import React from 'react'`
     esModuleInterop: true, // allow default import from CommonJS/AMD/UMD modules
     resolveJsonModule: true, // allow to import JSON files
-    declaration: true,
-    sourceMap: true,
     importHelpers: false,
-    noEmit: false,
-    outDir: 'dist',
+    noEmit: true,
   },
   exclude: ['test/fixtures'],
   include: ['scripts/**/*', 'src/**/*', 'test/**/*'],
@@ -60,12 +53,8 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     if (config.depending.blitz || config.depending.next) return;
 
     let newSettings = cloneDeep(config.isRoot ? rootJsonObj : subJsonObj) as TsConfigJson;
-    const generatedRootDir = getGeneratedRootDir(config);
     const generatedTypes = getGeneratedTypes(config);
     newSettings.extends = getTsconfigExtends(config);
-    if (generatedRootDir) {
-      newSettings.compilerOptions = { ...newSettings.compilerOptions, rootDir: generatedRootDir };
-    }
     if (generatedTypes.length > 0) {
       newSettings.compilerOptions = { ...newSettings.compilerOptions, types: generatedTypes };
     }
@@ -83,26 +72,26 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     try {
       const existingContent = await fs.promises.readFile(filePath, 'utf8');
       const oldSettings = JSON.parse(existingContent) as TsConfigJson;
-      const existingRootDir = oldSettings.compilerOptions?.rootDir;
       const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
+      const existingEmitOptions = pickExistingEmitOptions(oldSettings.compilerOptions);
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
+      delete oldSettings.compilerOptions?.rootDir;
       newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
       newSettings.include = newSettings.include?.filter(
         (dirPath: string) =>
           !dirPath.includes('@types') && !dirPath.includes('__tests__/') && !dirPath.includes('tests/')
       );
       newSettings.compilerOptions ??= {};
-      if (existingRootDir && !shouldReplaceExistingRootDir(existingRootDir, generatedRootDir)) {
-        newSettings.compilerOptions.rootDir = existingRootDir;
-      } else if (generatedRootDir) {
-        newSettings.compilerOptions.rootDir = generatedRootDir;
-      } else {
-        delete newSettings.compilerOptions.rootDir;
-      }
+      // The main tsconfig is for broad typechecking. WillBooster projects commonly keep
+      // TS config/scripts/tests beside src, so inferring rootDir here makes valid inputs fail TS6059.
+      // Keep explicit emit settings because some repos have tsconfig.build.json files
+      // that extend this config and rely on those options for tracked .d.ts outputs.
+      newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
+      delete newSettings.compilerOptions.rootDir;
 
-      const mergedTypes = [...new Set([...existingTypes, ...generatedTypes])];
+      const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
       if (mergedTypes.length > 0) {
         newSettings.compilerOptions.types = mergedTypes;
       } else {
@@ -154,32 +143,45 @@ function shouldDeleteTypeRoots(typeNames: string[]): boolean {
   return typeNames.some((typeName) => typeName === 'cypress' || typeName.includes('/'));
 }
 
-function getGeneratedRootDir(config: PackageConfig): string | undefined {
-  const rootDirCandidates = getRootDirCandidates(config);
-  // Keep test and scripts in this list so mixed tsconfigs omit rootDir instead of
-  // generating a src-only rootDir that conflicts with the generated include globs.
-  const existingIncludedDirs = getSrcDirs(config).filter((dirName) =>
-    fs.existsSync(path.resolve(config.dirPath, dirName))
-  );
-  const existingRootSourceDirs = existingIncludedDirs.filter((dirName) => rootDirCandidates.includes(dirName));
+function filterExistingTypes(existingTypes: string[], generatedTypes: string[]): string[] {
+  const generatedTypeSet = new Set(generatedTypes);
+  return existingTypes.filter((typeName) => {
+    // wbfy owns these package-provided test globals. Drop stale entries when the
+    // corresponding dependency is no longer present so TypeScript won't require
+    // missing packages such as vitest.
+    if (isGeneratedTestGlobalType(typeName) && !generatedTypeSet.has(typeName)) return false;
+    return true;
+  });
+}
 
-  // Subpackage tsconfigs inherit root options, so a monorepo rootDir would shift
-  // generated package declarations into nested paths such as dist/shared/shared/src.
-  if (config.isRoot && config.doesContainSubPackageJsons) return undefined;
+function isGeneratedTestGlobalType(typeName: string): boolean {
+  return typeName === 'cypress' || typeName === 'jest' || typeName === 'mocha' || typeName === 'vitest/globals';
+}
 
-  if (existingIncludedDirs.length === 1 && existingRootSourceDirs.length === 1) {
-    return `./${existingRootSourceDirs[0]}`;
+function pickExistingEmitOptions(
+  compilerOptions: TsConfigJson['compilerOptions']
+): Pick<
+  NonNullable<TsConfigJson['compilerOptions']>,
+  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'outDir' | 'sourceMap'
+> {
+  const emitOptions = {} as Pick<
+    NonNullable<TsConfigJson['compilerOptions']>,
+    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'outDir' | 'sourceMap'
+  >;
+  for (const key of [
+    'declaration',
+    'declarationMap',
+    'emitDeclarationOnly',
+    'noEmit',
+    'outDir',
+    'sourceMap',
+  ] as const) {
+    const value = compilerOptions?.[key];
+    if (value !== undefined) {
+      emitOptions[key] = value as never;
+    }
   }
-}
-
-function getRootDirCandidates(config: PackageConfig): string[] {
-  return getSrcDirs(config).filter((dirName) => dirName !== 'scripts' && dirName !== 'test');
-}
-
-function shouldReplaceExistingRootDir(existingRootDir: string, generatedRootDir: string | undefined): boolean {
-  // Mixed source/test tsconfigs must omit rootDir; otherwise src-only rootDir breaks typecheck,
-  // while "." changes library declaration output from dist/*.d.ts to dist/src/*.d.ts.
-  return generatedRootDir === undefined || (existingRootDir === '.' && generatedRootDir !== '.');
+  return emitOptions;
 }
 
 function getGeneratedTypes(config: PackageConfig): string[] {
