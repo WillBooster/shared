@@ -2,8 +2,8 @@ import type { PackageConfig } from '../packageConfig.js';
 
 const ESLINT_CONFIG_PREFIX = '@willbooster/eslint-config-';
 const pinnedDependencySpecifiers = {
-  '@eslint/js': '^9.39.4',
-  eslint: '^9.39.4',
+  '@eslint/js': '^10.0.1',
+  eslint: '^10.2.0',
   typescript: '^5.9.3',
 } as const;
 

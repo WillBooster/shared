@@ -36,7 +36,12 @@ const jsCommonDeps = [
 
 const tsCommonDeps = [...jsCommonDeps, 'typescript-eslint', 'eslint-import-resolver-typescript'];
 
-const reactCommonDeps = ['eslint-plugin-react', 'eslint-plugin-react-hooks', 'eslint-plugin-react-compiler'];
+const reactCommonDeps = [
+  '@eslint-react/eslint-plugin',
+  'eslint-plugin-perfectionist',
+  'eslint-plugin-react-compiler',
+  'typescript',
+];
 
 const eslintDeps: Record<EslintExtensionBase, string[]> = {
   '@willbooster/eslint-config-js': ['@willbooster/eslint-config-js', ...jsCommonDeps],
