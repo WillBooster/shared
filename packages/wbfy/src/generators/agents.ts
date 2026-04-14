@@ -62,7 +62,7 @@ function generateAgentInstruction(
   - Ensure tests reset any related persistent data, as our test infrastructure does not clear it automatically.
   - Prefer actual API calls over mocks. Use mocks when actual calls are impractical, have unintended side effects, or are explicitly requested.
 - When fixing issues, follow these rules:
-  - Always investigate the root cause first (e.g., by gathering debug logs, taking screenshots, etc.) before implementing a fix.
+  - Investigate the root cause first (e.g., by gathering debug logs, taking screenshots, etc.).
   - Fix the actual root cause instead of applying workarounds.
 - After making code changes, run \`${packageManager} check-all-for-ai\` to execute all tests (takes up to 1 hour) or \`${packageManager} check-for-ai\` for type checking and linting only (takes up to 10 minutes).
   - If you are confident your changes will not break any tests, you may use \`check-for-ai\`.
