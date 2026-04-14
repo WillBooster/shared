@@ -86,7 +86,6 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   removeEmptyDependencySections(jsonObj);
 
   if (config.isBun) delete jsonObj.packageManager;
-  await fixScriptNames(jsonObj.scripts, config);
   await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2)));
 
   if (!skipAddingDeps) {
@@ -664,58 +663,6 @@ async function generatePrettierSuffix(dirPath: string): Promise<string> {
     .filter((l) => l && !l.startsWith('#') && !l.includes('/'));
 
   return `${lines.map((line) => ` "!**/${line}/**"`).join('')} || true`;
-}
-
-async function fixScriptNames(scripts: PackageJson.Scripts, config: PackageConfig): Promise<void> {
-  const oldAndNewScriptNames: [string, string][] = [];
-  for (const key of Object.keys(scripts)) {
-    if (key && !key.startsWith(':') && key.includes(':')) {
-      oldAndNewScriptNames.push([key, key.replaceAll(':', '-')]);
-    }
-  }
-  if (oldAndNewScriptNames.length === 0) return;
-
-  for (const [oldName, newName] of oldAndNewScriptNames) {
-    const oldScript = scripts[oldName];
-    if (oldScript) {
-      scripts[newName] = replaceScriptNamesInText(oldScript, oldAndNewScriptNames);
-    }
-    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-    delete scripts[oldName];
-  }
-  for (const [scriptName, script] of Object.entries(scripts)) {
-    if (!script) continue;
-    scripts[scriptName] = replaceScriptNamesInText(script, oldAndNewScriptNames);
-  }
-
-  const files = await fg.glob(['**/*.{md,cjs,mjs,js,jsx,cts,mts,ts,tsx}', '**/Dockerfile'], {
-    cwd: config.dirPath,
-    dot: true,
-    ignore: globIgnore,
-  });
-  for (const file of files) {
-    await promisePool.run(async () => {
-      const filePath = path.join(config.dirPath, file);
-      const oldContent = await fs.promises.readFile(filePath, 'utf8');
-      const newContent = replaceScriptNamesInText(oldContent, oldAndNewScriptNames);
-      if (newContent !== oldContent) {
-        await fs.promises.writeFile(filePath, newContent);
-      }
-    });
-  }
-  await promisePool.promiseAll();
-}
-
-function replaceScriptNamesInText(text: string, oldAndNewScriptNames: [string, string][]): string {
-  let newText = text;
-  for (const [oldName, newName] of oldAndNewScriptNames) {
-    newText = newText.replaceAll(new RegExp(String.raw`(?<![\w-])${escapeRegExp(oldName)}(?![\w-])`, 'gu'), newName);
-  }
-  return newText;
-}
-
-function escapeRegExp(text: string): string {
-  return text.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
 }
 
 async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {
