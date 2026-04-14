@@ -91,7 +91,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
       delete newSettings.compilerOptions.rootDir;
 
-      const mergedTypes = [...new Set([...existingTypes, ...generatedTypes])];
+      const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
       if (mergedTypes.length > 0) {
         newSettings.compilerOptions.types = mergedTypes;
       } else {
@@ -141,6 +141,21 @@ function shouldDeleteTypeRoots(typeNames: string[]): boolean {
   // Only generated package-owned test types should trigger this. User-defined slash-based
   // entries may intentionally rely on custom typeRoots and should be preserved as-is.
   return typeNames.some((typeName) => typeName === 'cypress' || typeName.includes('/'));
+}
+
+function filterExistingTypes(existingTypes: string[], generatedTypes: string[]): string[] {
+  const generatedTypeSet = new Set(generatedTypes);
+  return existingTypes.filter((typeName) => {
+    // wbfy owns these package-provided test globals. Drop stale entries when the
+    // corresponding dependency is no longer present so TypeScript won't require
+    // missing packages such as vitest.
+    if (isGeneratedTestGlobalType(typeName) && !generatedTypeSet.has(typeName)) return false;
+    return true;
+  });
+}
+
+function isGeneratedTestGlobalType(typeName: string): boolean {
+  return typeName === 'cypress' || typeName === 'jest' || typeName === 'mocha' || typeName === 'vitest/globals';
 }
 
 function pickExistingEmitOptions(

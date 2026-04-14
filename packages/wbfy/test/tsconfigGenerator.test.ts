@@ -101,6 +101,38 @@ test('preserves explicit emit settings while removing rootDir', async () => {
   expect(tsconfig.compilerOptions.sourceMap).toBe(true);
 });
 
+test('drops stale generated test globals when the package dependency is absent', async () => {
+  const dirPath = createTempDir();
+  await fs.promises.mkdir(path.join(dirPath, 'src'), { recursive: true });
+  await fs.promises.writeFile(path.join(dirPath, 'src', 'index.ts'), 'export const value = 1;\n');
+  await fs.promises.writeFile(
+    path.join(dirPath, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        types: ['node', 'vitest/globals', 'custom-test-env'],
+      },
+      include: ['src/**/*'],
+    })
+  );
+
+  await generateTsconfig(
+    createConfig({
+      dirPath,
+      doesContainPackageJson: true,
+      doesContainTypeScript: true,
+      packageJson: {
+        devDependencies: {
+          typescript: '^6.0.0',
+        },
+      },
+    })
+  );
+  await promisePool.promiseAll();
+
+  const tsconfig = await readTsconfig(dirPath);
+  expect(tsconfig.compilerOptions.types).toEqual(['node', 'custom-test-env']);
+});
+
 function createTempDir(): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
   tempDirs.push(tempDir);
