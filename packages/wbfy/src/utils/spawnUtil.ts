@@ -6,15 +6,15 @@ export function spawnSync(command: string, args: string[], cwd: string, retry = 
 }
 
 export function spawnSyncAndReturnStatus(command: string, args: string[], cwd: string, retry = 0): number {
-  let status = 1;
   do {
     const [newCmd, newArgs, options] = getSpawnSyncArgs(command, args, cwd);
     console.log(`$ ${newCmd} ${newArgs.join(' ')} at ${cwd}`);
     const ret = child_process.spawnSync(newCmd, newArgs, options);
-    status = ret.status ?? 1;
+    const status = ret.status ?? 1;
     if (status === 0) break;
+    if (retry <= 0) return status;
   } while (--retry >= 0);
-  return status;
+  return 0;
 }
 
 export function spawnSyncAndReturnStdout(command: string, args: string[], cwd: string): string {

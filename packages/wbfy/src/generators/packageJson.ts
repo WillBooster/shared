@@ -283,6 +283,10 @@ function applyPackageJsonConventions(
   }
 
   if (config.eslintBase) {
+    if (config.eslintBase.includes('react')) {
+      delete jsonObj.devDependencies['eslint-plugin-react'];
+      delete jsonObj.devDependencies['eslint-plugin-react-hooks'];
+    }
     devDependencies.push(...eslintDeps[config.eslintBase]);
   }
 
@@ -469,17 +473,20 @@ function addPackageJsonDependencies(
   packageJsonDependencies: Partial<Record<string, string>>,
   dependencies: string[]
 ): string[] {
-  const uniqueDependencies = [...new Set(dependencies)].filter((dep) => !packageJsonDependencies[dep]);
-  for (const dependency of uniqueDependencies) {
+  const dependenciesToInstall: string[] = [];
+  for (const dependency of new Set(dependencies)) {
+    if (shouldUpdateExistingManagedDependency(dependency, packageJsonDependencies[dependency])) {
+      dependenciesToInstall.push(dependency);
+    }
+    if (packageJsonDependencies[dependency] && !getPinnedDependencySpecifier(dependency)) continue;
     packageJsonDependencies[dependency] = getPackageJsonDependencyVersion(dependency);
   }
-  return uniqueDependencies;
+  return dependenciesToInstall;
 }
 
 function getPackageJsonDependencyVersion(dependency: string): string {
   const dependencySpecifier = getDependencySpecifier(dependency);
-  const versionSeparatorIndex = dependencySpecifier.lastIndexOf('@');
-  return versionSeparatorIndex > 0 ? dependencySpecifier.slice(versionSeparatorIndex + 1) : '*';
+  return dependencySpecifier.startsWith(`${dependency}@`) ? dependencySpecifier.slice(dependency.length + 1) : '*';
 }
 
 // TODO: remove the following migration code in future
@@ -521,6 +528,15 @@ async function removeDeprecatedStuff(
 
 function getDependencySpecifier(dependency: string): string {
   return getPinnedDependencySpecifier(dependency) ?? dependency;
+}
+
+function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
+  if (!currentVersion) return true;
+  const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
+  if (pinnedSpecifier) {
+    return currentVersion !== getPackageJsonDependencyVersion(dependency);
+  }
+  return dependency.startsWith('@willbooster/eslint-config-');
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
