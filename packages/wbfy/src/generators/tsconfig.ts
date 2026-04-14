@@ -76,7 +76,12 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
+      delete oldSettings.compilerOptions?.declaration;
+      delete oldSettings.compilerOptions?.declarationMap;
+      delete oldSettings.compilerOptions?.emitDeclarationOnly;
+      delete oldSettings.compilerOptions?.outDir;
       delete oldSettings.compilerOptions?.rootDir;
+      delete oldSettings.compilerOptions?.sourceMap;
       newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
       newSettings.include = newSettings.include?.filter(
         (dirPath: string) =>
@@ -85,7 +90,13 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.compilerOptions ??= {};
       // The main tsconfig is for broad typechecking. WillBooster projects commonly keep
       // TS config/scripts/tests beside src, so inferring rootDir here makes valid inputs fail TS6059.
+      // Keep declaration emit settings in tsconfig.build.json so output paths remain stable.
+      delete newSettings.compilerOptions.declaration;
+      delete newSettings.compilerOptions.declarationMap;
+      delete newSettings.compilerOptions.emitDeclarationOnly;
+      delete newSettings.compilerOptions.outDir;
       delete newSettings.compilerOptions.rootDir;
+      delete newSettings.compilerOptions.sourceMap;
 
       const mergedTypes = [...new Set([...existingTypes, ...generatedTypes])];
       if (mergedTypes.length > 0) {

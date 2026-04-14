@@ -128,13 +128,7 @@ function mergeParsedValue(base: ParsedValue | undefined, override: ParsedValue):
 }
 
 async function assertNextPublicBaseUrl(dirPath: string): Promise<void> {
-  const envFilePaths = [
-    path.resolve(dirPath, '.env'),
-    path.resolve(dirPath, '.env.test'),
-    path.resolve(dirPath, 'mise.toml'),
-    path.resolve(dirPath, 'mise.test.toml'),
-  ];
-  for (const envFilePath of envFilePaths) {
+  for (const envFilePath of getEnvFilePaths(dirPath)) {
     try {
       const content = await fs.promises.readFile(envFilePath, 'utf8');
       if (/NEXT_PUBLIC_BASE_URL\s*=/m.test(content)) {
@@ -146,6 +140,24 @@ async function assertNextPublicBaseUrl(dirPath: string): Promise<void> {
   }
 
   throw new Error('NEXT_PUBLIC_BASE_URL is required for Playwright. Define NEXT_PUBLIC_BASE_URL in the target repo.');
+}
+
+function getEnvFilePaths(dirPath: string): string[] {
+  const envFileNames = ['.env', '.env.test', '.env.example', 'mise.toml', 'mise.test.toml'];
+  const envFilePaths: string[] = [];
+
+  for (let currentDirPath = path.resolve(dirPath); ; currentDirPath = path.dirname(currentDirPath)) {
+    envFilePaths.push(...envFileNames.map((fileName) => path.resolve(currentDirPath, fileName)));
+
+    // Playwright configs often live in packages/* while shared env files live at the
+    // repository root, so walk upward until the target repo boundary.
+    if (fs.existsSync(path.resolve(currentDirPath, '.git'))) break;
+
+    const parentDirPath = path.dirname(currentDirPath);
+    if (parentDirPath === currentDirPath) break;
+  }
+
+  return envFilePaths;
 }
 
 function setWebServerCommand(config: PackageConfig, object: ParsedObject): void {
