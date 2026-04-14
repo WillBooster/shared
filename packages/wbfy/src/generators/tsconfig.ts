@@ -94,10 +94,11 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
           !dirPath.includes('@types') && !dirPath.includes('__tests__/') && !dirPath.includes('tests/')
       );
       newSettings.compilerOptions ??= {};
-      if (existingRootDir && !shouldReplaceExistingRootDir(existingRootDir, generatedRootDir)) {
+      const safeGeneratedRootDir = getSafeGeneratedRootDir(config, generatedRootDir, newSettings.include);
+      if (existingRootDir && !shouldReplaceExistingRootDir(existingRootDir, safeGeneratedRootDir)) {
         newSettings.compilerOptions.rootDir = existingRootDir;
-      } else if (generatedRootDir) {
-        newSettings.compilerOptions.rootDir = generatedRootDir;
+      } else if (safeGeneratedRootDir) {
+        newSettings.compilerOptions.rootDir = safeGeneratedRootDir;
       } else {
         delete newSettings.compilerOptions.rootDir;
       }
@@ -180,6 +181,27 @@ function shouldReplaceExistingRootDir(existingRootDir: string, generatedRootDir:
   // Mixed source/test tsconfigs must omit rootDir; otherwise src-only rootDir breaks typecheck,
   // while "." changes library declaration output from dist/*.d.ts to dist/src/*.d.ts.
   return generatedRootDir === undefined || (existingRootDir === '.' && generatedRootDir !== '.');
+}
+
+function getSafeGeneratedRootDir(
+  config: PackageConfig,
+  generatedRootDir: string | undefined,
+  includes: TsConfigJson['include']
+): string | undefined {
+  if (!generatedRootDir || !includes) return generatedRootDir;
+
+  const rootDirPath = path.resolve(config.dirPath, generatedRootDir);
+  const hasExistingInputOutsideRootDir = includes.some((includePath) => {
+    const firstPathPart = includePath.split('/')[0];
+    if (!firstPathPart || firstPathPart.includes('*')) return false;
+
+    const inputPath = path.resolve(config.dirPath, firstPathPart);
+    // Keep rootDir for generated globs such as scripts/**/* and test/**/* when the
+    // directories do not exist, but drop it for real root-level files like vite.config.ts.
+    return fs.existsSync(inputPath) && !inputPath.startsWith(`${rootDirPath}${path.sep}`) && inputPath !== rootDirPath;
+  });
+
+  return hasExistingInputOutsideRootDir ? undefined : generatedRootDir;
 }
 
 function getGeneratedTypes(config: PackageConfig): string[] {
