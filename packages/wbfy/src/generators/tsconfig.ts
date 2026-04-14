@@ -90,7 +90,8 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.compilerOptions ??= {};
       // The main tsconfig is for broad typechecking. WillBooster projects commonly keep
       // TS config/scripts/tests beside src, so inferring rootDir here makes valid inputs fail TS6059.
-      // Keep declaration emit settings in tsconfig.build.json so output paths remain stable.
+      // Build tools such as build-ts can set declaration-only emit options when they
+      // compile just src/**/*, without requiring a generated tsconfig.build.json.
       delete newSettings.compilerOptions.declaration;
       delete newSettings.compilerOptions.declarationMap;
       delete newSettings.compilerOptions.emitDeclarationOnly;
@@ -119,7 +120,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     }
     const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
-    await generateTsconfigBuild(config);
   });
 }
 
@@ -182,32 +182,4 @@ function getGeneratedTypes(config: PackageConfig): string[] {
   }
 
   return [...typeNames];
-}
-
-async function generateTsconfigBuild(config: PackageConfig): Promise<void> {
-  if (!shouldGenerateTsconfigBuild(config)) return;
-
-  // Declaration emit still needs a stable source root, but that belongs in the
-  // emit-only config rather than the broad typecheck config.
-  const tsconfigBuild = {
-    compilerOptions: {
-      declaration: true,
-      declarationMap: true,
-      emitDeclarationOnly: true,
-      noEmit: false,
-      outDir: 'dist',
-      rootDir: './src',
-    },
-    exclude: ['src/**/__tests__/**/*', 'src/**/*.test.*', 'src/**/*.spec.*', 'test/**/*', 'tests/**/*'],
-    extends: './tsconfig.json',
-    include: ['src/**/*'],
-  } satisfies TsConfigJson;
-  sortKeys(tsconfigBuild);
-
-  const filePath = path.resolve(config.dirPath, 'tsconfig.build.json');
-  await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(tsconfigBuild, undefined, 2)));
-}
-
-function shouldGenerateTsconfigBuild(config: PackageConfig): boolean {
-  return config.doesContainTypeScript && fs.existsSync(path.resolve(config.dirPath, 'src'));
 }

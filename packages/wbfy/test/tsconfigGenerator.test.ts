@@ -36,12 +36,9 @@ test('generates explicit TS 6 types and keeps rootDir out of the broad tsconfig'
   await promisePool.promiseAll();
 
   const tsconfig = await readTsconfig(dirPath);
-  const tsconfigBuild = await readTsconfigBuild(dirPath);
   expect(tsconfig.compilerOptions.noEmit).toBe(true);
   expect(tsconfig.compilerOptions.rootDir).toBeUndefined();
   expect(tsconfig.compilerOptions.types).toEqual(['node', 'vitest/globals']);
-  expect(tsconfigBuild.compilerOptions.emitDeclarationOnly).toBe(true);
-  expect(tsconfigBuild.compilerOptions.rootDir).toBe('./src');
 });
 
 test('omits rootDir for monorepos without root sources', async () => {
@@ -80,14 +77,6 @@ async function readTsconfig(dirPath: string): Promise<{
 }> {
   return JSON.parse(await fs.promises.readFile(path.join(dirPath, 'tsconfig.json'), 'utf8')) as {
     compilerOptions: { noEmit?: boolean; rootDir?: string; types?: string[] };
-  };
-}
-
-async function readTsconfigBuild(dirPath: string): Promise<{
-  compilerOptions: { emitDeclarationOnly?: boolean; rootDir?: string };
-}> {
-  return JSON.parse(await fs.promises.readFile(path.join(dirPath, 'tsconfig.build.json'), 'utf8')) as {
-    compilerOptions: { emitDeclarationOnly?: boolean; rootDir?: string };
   };
 }
 
