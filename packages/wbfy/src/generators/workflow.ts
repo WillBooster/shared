@@ -524,6 +524,13 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
 }
 
 async function writeYaml(newSettings: Workflow, filePath: string): Promise<void> {
-  const yamlText = yaml.dump(newSettings, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } });
+  const yamlText = removeTrailingSpaces(
+    yaml.dump(newSettings, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } })
+  );
   await fs.promises.writeFile(filePath, yamlText);
+}
+
+function removeTrailingSpaces(text: string): string {
+  // js-yaml emits valueless GitHub Actions events as `event: ` when using the empty null style.
+  return text.replaceAll(/[ \t]+$/gm, '');
 }
