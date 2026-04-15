@@ -1,25 +1,4 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
-import { logger } from '../logger.js';
-import type { PackageConfig } from '../packageConfig.js';
-import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
-
-export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
-  return logger.functionIgnoringException('generateOxlintConfig', async () => {
-    const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
-
-    await Promise.all([
-      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.oxlintrc.json'), { force: true })),
-      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'biome.jsonc'), { force: true })),
-      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.mjs'), { force: true })),
-      promisePool.run(() => fsUtil.generateFile(filePath, configContent)),
-    ]);
-  });
-}
-
-const configContent = `import { defineConfig } from 'oxlint';
+import { defineConfig } from 'oxlint';
 
 declare const process: {
   getBuiltinModule(name: 'fs'): {
@@ -44,7 +23,7 @@ export default defineConfig({
 });
 
 function parseJsonc(text: string): unknown {
-  return JSON.parse(stripJsonComments(text).replaceAll(/,\\s*([}\\]])/gu, '$1'));
+  return JSON.parse(stripJsonComments(text).replaceAll(/,\s*([}\]])/gu, '$1'));
 }
 
 function stripJsonComments(text: string): string {
@@ -59,7 +38,7 @@ function stripJsonComments(text: string): string {
     const next = text[index + 1];
 
     if (inLineComment) {
-      if (char === '\\n' || char === '\\r') {
+      if (char === '\n' || char === '\r') {
         inLineComment = false;
         result += char;
       }
@@ -78,7 +57,7 @@ function stripJsonComments(text: string): string {
         escaped = false;
         continue;
       }
-      if (char === '\\\\') {
+      if (char === '\\') {
         escaped = true;
         continue;
       }
@@ -106,4 +85,3 @@ function stripJsonComments(text: string): string {
 
   return result;
 }
-`;

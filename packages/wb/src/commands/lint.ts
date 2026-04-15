@@ -279,6 +279,7 @@ export function buildLintCommand(
     return buildShellCommand([
       'YARN',
       'oxlint',
+      '--no-error-on-unmatched-pattern',
       ...(argv.quiet ? ['--quiet'] : []),
       ...(argv.fix ? ['--fix'] : []),
       ...(files ?? ['.']),
