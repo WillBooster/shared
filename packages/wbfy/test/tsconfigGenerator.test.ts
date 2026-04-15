@@ -205,6 +205,7 @@ function createConfig(overrides: Partial<PackageConfig> = {}): PackageConfig {
     doesContainGoMod: false,
     doesContainPackageJson: false,
     doesContainPoetryLock: false,
+    doesContainUvLock: false,
     doesContainPomXml: false,
     doesContainPubspecYaml: false,
     doesContainTemplateYaml: false,
