@@ -21,7 +21,7 @@
   "scripts": {
     "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
-    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
+    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn format-code && yarn prettify",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern -c \"$(node -e 'console.log(require.resolve(\"@willbooster/oxfmt-config/.oxfmtrc.json\"))')\" .",

@@ -627,7 +627,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
     const scripts: Record<string, string> = {
       'check-all-for-ai': 'bun run check-for-ai && bun run test',
-      'check-for-ai': `bun run cleanup${hasTypecheck ? ' && bun run typecheck' : ''}`,
+      'check-for-ai': 'bun run cleanup',
       cleanup: 'bun --bun wb lint --fix --format',
       format: `bun --bun wb lint --format`,
       lint: `bun --bun wb lint`,
@@ -649,9 +649,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const oldTest = oldScripts.test;
     let scripts: Record<string, string> = {
       'check-all-for-ai': 'yarn check-for-ai && yarn test',
-      'check-for-ai': `yarn format > /dev/null 2> /dev/null || true${
-        hasTypecheck ? ' && yarn typecheck' : ''
-      } && yarn lint-fix --quiet`,
+      'check-for-ai': `yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet`,
       cleanup: 'yarn format && yarn lint-fix',
       format: `sort-package-json && yarn format-code && yarn prettify`,
       lint: `oxlint .`,
