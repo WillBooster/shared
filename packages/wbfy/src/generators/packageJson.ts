@@ -609,18 +609,22 @@ function buildNormalizedRepositoryForPackageJson(
   repository: PackageJson['repository'],
   existingRepository?: PackageJson['repository']
 ): PackageJson['repository'] {
-  const repositoryObj =
-    typeof repository === 'object'
-      ? repository
-      : typeof existingRepository === 'object'
-        ? existingRepository
-        : undefined;
+  const repositoryObj = getRepositoryObject(repository, existingRepository);
 
   return {
     ...repositoryObj,
     type: 'git',
     url: normalizedUrl,
   };
+}
+
+function getRepositoryObject(
+  repository: PackageJson['repository'],
+  existingRepository?: PackageJson['repository']
+): Exclude<PackageJson['repository'], string> | undefined {
+  if (typeof repository === 'object') return repository;
+  if (typeof existingRepository === 'object') return existingRepository;
+  return;
 }
 
 export function generateScripts(config: PackageConfig, oldScripts: PackageJson.Scripts): Record<string, string> {

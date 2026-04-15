@@ -82,13 +82,14 @@ ${generateAgentCodingStyle(allConfigs)}
     .replaceAll(/\n{3,}/g, '\n\n')
     .trim();
 
-  const hasNewSection = extraContent?.trim().startsWith('#');
-  const normalizedExtraContent = extraContent
-    ? hasNewSection
-      ? '\n\n' + extraContent.trim()
-      : '\n' + extraContent
-    : '';
+  const normalizedExtraContent = normalizeExtraContent(extraContent);
   return baseContent + normalizedExtraContent;
+}
+
+function normalizeExtraContent(extraContent: string | undefined): string {
+  if (!extraContent) return '';
+  if (extraContent.trim().startsWith('#')) return '\n\n' + extraContent.trim();
+  return '\n' + extraContent;
 }
 
 export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {

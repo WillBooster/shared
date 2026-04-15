@@ -35,11 +35,9 @@ export class Project {
 
   @memoizeOne
   get buildCommand(): string {
-    return this.packageJson.scripts?.build?.includes('buildIfNeeded')
-      ? 'YARN run build'
-      : this.packageJson.scripts?.build
-        ? `YARN wb buildIfNeeded ${this.argv.verbose ? '--verbose' : ''}`
-        : "echo 'No build script'";
+    if (this.packageJson.scripts?.build?.includes('buildIfNeeded')) return 'YARN run build';
+    if (this.packageJson.scripts?.build) return `YARN wb buildIfNeeded ${this.argv.verbose ? '--verbose' : ''}`;
+    return "echo 'No build script'";
   }
 
   get dirPath(): string {
