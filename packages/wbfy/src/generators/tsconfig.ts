@@ -88,8 +88,11 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
           !dirPath.includes('@types') && !dirPath.includes('__tests__/') && !dirPath.includes('tests/')
       );
       newSettings.compilerOptions ??= {};
-      // Keep explicit emit settings because some repos have tsconfig.build.json files
-      // that extend this config and rely on those options for tracked .d.ts outputs.
+      // wbfy owns rootDir for normal no-emit configs so type-aware linting can cover
+      // root-level config files plus scripts/tests in a single project. Emitting package
+      // configs are different: rootDir determines the declaration output layout, so
+      // replacing an explicit "src" with "." or "../.." makes published package metadata
+      // such as "types": "dist/index.d.ts" point at files that are never emitted.
       newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
       ensureTsExtensionEmitCompatibility(newSettings.compilerOptions);
 
@@ -204,17 +207,20 @@ function pickExistingEmitOptions(
   compilerOptions: TsConfigJson['compilerOptions']
 ): Pick<
   NonNullable<TsConfigJson['compilerOptions']>,
-  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'sourceMap'
+  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'rootDir' | 'sourceMap'
 > {
   const emitOptions = {} as Pick<
     NonNullable<TsConfigJson['compilerOptions']>,
-    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'sourceMap'
+    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'rootDir' | 'sourceMap'
   >;
   for (const key of ['declaration', 'declarationMap', 'emitDeclarationOnly', 'noEmit', 'sourceMap'] as const) {
     const value = compilerOptions?.[key];
     if (value !== undefined) {
       emitOptions[key] = value as never;
     }
+  }
+  if ((compilerOptions?.noEmit === false || compilerOptions?.emitDeclarationOnly === true) && compilerOptions.rootDir) {
+    emitOptions.rootDir = compilerOptions.rootDir;
   }
   return emitOptions;
 }
