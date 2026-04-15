@@ -109,7 +109,10 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     newSettings.include?.sort();
     // Don't use old decorator
     delete newSettings.compilerOptions?.experimentalDecorators;
-    // Package imports should resolve through package exports instead of tsconfig aliases.
+    // Strictly ban `baseUrl` and `paths` in wbfy-generated configs. TypeScript 6
+    // tooling rejects `baseUrl`, and path aliases can hide broken package exports.
+    // Do not change wbfy to preserve or reintroduce these options; migrate imports
+    // in target repositories to relative or package-exported specifiers instead.
     delete newSettings.compilerOptions?.baseUrl;
     delete newSettings.compilerOptions?.paths;
     deleteLegacyModuleSettings(newSettings.compilerOptions, config);
