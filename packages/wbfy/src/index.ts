@@ -41,6 +41,7 @@ import { generateGitHubTemplates } from './github/template.js';
 import { logger } from './logger.js';
 import { options } from './options.js';
 import { getPackageConfig } from './packageConfig.js';
+import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
 import { shouldSkipWillboosterConfigsPackage } from './utils/willboosterConfigsUtil.js';
@@ -170,12 +171,7 @@ async function main(): Promise<void> {
       if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
         promises.push(generateTsconfig(config));
       }
-      if (
-        config.doesContainJavaScript ||
-        config.doesContainJavaScriptInPackages ||
-        config.doesContainTypeScript ||
-        config.doesContainTypeScriptInPackages
-      ) {
+      if (doesContainJsOrTs(config)) {
         promises.push(generateOxfmtConfig(config));
         promises.push(generateOxlintConfig(config, rootConfig));
       }

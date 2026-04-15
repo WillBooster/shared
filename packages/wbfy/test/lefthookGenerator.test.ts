@@ -79,6 +79,22 @@ test('uses local wb workspace for cleanup when available', async () => {
   expect(lefthookConfig).not.toContain('printf');
 });
 
+test('does not generate oxlint or oxfmt hooks for package-only projects', async () => {
+  const dirPath = createTempDir();
+
+  await generateLefthookUpdatingPackageJson(
+    createConfig({
+      dirPath,
+      doesContainPackageJson: true,
+    })
+  );
+
+  const lefthookConfig = await fs.promises.readFile(path.join(dirPath, 'lefthook.yml'), 'utf8');
+  expect(lefthookConfig).not.toContain('pre-push');
+  expect(lefthookConfig).not.toContain('oxfmt');
+  expect(lefthookConfig).not.toContain('oxlint');
+});
+
 function createTempDir(): string {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-lefthook-'));
   tempDirs.push(dirPath);

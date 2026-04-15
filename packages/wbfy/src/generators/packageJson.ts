@@ -15,6 +15,7 @@ import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
+import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
@@ -254,16 +255,11 @@ function applyPackageJsonConventions(
     dependencies.push('@willbooster/oxfmt-config');
   }
 
-  const doesContainJsOrTs =
-    config.doesContainJavaScript ||
-    config.doesContainJavaScriptInPackages ||
-    config.doesContainTypeScript ||
-    config.doesContainTypeScriptInPackages;
-  if (doesContainJsOrTs) {
+  if (doesContainJsOrTs(config)) {
     devDependencies.push(...oxlintDeps);
   }
 
-  if (doesContainJsOrTs) {
+  if (doesContainJsOrTs(config)) {
     devDependencies.push(...getTsconfigBaseDependencies(config));
   }
 
@@ -645,11 +641,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     return scripts;
   } else {
     const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
-    const hasJsOrTs =
-      config.doesContainJavaScript ||
-      config.doesContainJavaScriptInPackages ||
-      config.doesContainTypeScript ||
-      config.doesContainTypeScriptInPackages;
+    const hasJsOrTs = doesContainJsOrTs(config);
     const oldTest = oldScripts.test;
     let scripts: Record<string, string> = {
       'check-all-for-ai': 'yarn check-for-ai && yarn test',
@@ -688,6 +680,8 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     if (!hasJsOrTs) {
       delete scripts['format-code'];
       scripts.format = 'sort-package-json && yarn prettify';
+      delete scripts.lint;
+      delete scripts['lint-fix'];
     }
     if (!hasTypecheck) {
       delete scripts.typecheck;

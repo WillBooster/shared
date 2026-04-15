@@ -6,6 +6,7 @@ import yaml from 'js-yaml';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
+import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync } from '../utils/spawnUtil.js';
 
@@ -181,7 +182,10 @@ ${lintCommand}
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
-  const supportedExtensions = [...extensions.prettierOnly, ...extensions.oxfmt, ...extensions.oxlint];
+  const supportedExtensions = [...extensions.prettierOnly];
+  if (doesContainJsOrTs(config)) {
+    supportedExtensions.push(...extensions.oxfmt, ...extensions.oxlint);
+  }
   if (config.doesContainPoetryLock) {
     supportedExtensions.push('py');
   }
@@ -207,24 +211,37 @@ function getCleanupCommand(config: PackageConfig): string {
   const oxlintPattern = extensions.oxlint.map((extension) => String.raw`\.${extension}$`).join('|');
   const oxfmtPattern = extensions.oxfmt.map((extension) => String.raw`\.${extension}$`).join('|');
   const prettierPattern = extensions.prettierOnly.map((extension) => String.raw`\.${extension}$`).join('|');
+  const hasJsOrTs = doesContainJsOrTs(config);
 
   return String.raw`
-oxlint_files="$(printf '%s\n' {staged_files} | grep -E '(${oxlintPattern})' || true)"
-oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' || true)"
+${hasJsOrTs ? String.raw`oxlint_files="$(printf '%s\n' {staged_files} | grep -E '(${oxlintPattern})' || true)"` : ''}
+${hasJsOrTs ? String.raw`oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' || true)"` : ''}
 prettier_files="$(printf '%s\n' {staged_files} | grep -E '(${prettierPattern})' || true)"
 package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
 ${config.doesContainPoetryLock ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
+${
+  hasJsOrTs
+    ? String.raw`
 if [ -n "$oxfmt_files" ]; then
   node node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern $oxfmt_files
 fi
+`
+    : ''
+}
 if [ -n "$prettier_files" ]; then
   node node_modules/.bin/prettier --cache --write --ignore-unknown -- $prettier_files
 fi
+${
+  hasJsOrTs
+    ? String.raw`
 if [ -n "$oxlint_files" ]; then
   node node_modules/.bin/oxlint --fix $oxlint_files
 fi
+`
+    : ''
+}
 if [ -n "$package_json_files" ]; then
   node node_modules/.bin/sort-package-json -- $package_json_files
 fi

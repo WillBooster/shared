@@ -159,13 +159,20 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
           lintFilePaths.push(lintPath);
           lintFilePathsByProject.set(project, lintFilePaths);
           if (argv.format) {
-            for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
-              if (project.hasOxfmt) {
-                const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
-                oxfmtFilePaths.push(formatterPath);
-                oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
-              } else {
-                prettierFilePaths.push(formatterPath);
+            if (fileKind === 'directory' && project.hasOxfmt) {
+              const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
+              oxfmtFilePaths.push(lintPath);
+              oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
+              prettierFilePaths.push(buildPrettierOnlyDirectoryPattern(lintPath), prettierFixtureIgnorePattern);
+            } else {
+              for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
+                if (project.hasOxfmt) {
+                  const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
+                  oxfmtFilePaths.push(formatterPath);
+                  oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
+                } else {
+                  prettierFilePaths.push(formatterPath);
+                }
               }
             }
           }
@@ -396,6 +403,10 @@ export function buildExplicitFormatterArgs(
     return [filePath];
   }
   return [];
+}
+
+function buildPrettierOnlyDirectoryPattern(filePath: string): string {
+  return path.join(filePath, `**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`);
 }
 
 export function getExplicitPackageJsonPaths(
