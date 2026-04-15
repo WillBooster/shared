@@ -2354,7 +2354,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@eslint-react/eslint-plugin@npm:*":
+"@eslint-react/eslint-plugin@npm:4.2.3":
   version: 4.2.3
   resolution: "@eslint-react/eslint-plugin@npm:4.2.3"
   dependencies:
@@ -6326,7 +6326,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts-react@npm:*":
+"@willbooster/eslint-config-ts-react@npm:12.0.0":
   version: 12.0.0
   resolution: "@willbooster/eslint-config-ts-react@npm:12.0.0"
   peerDependencies:
@@ -6350,7 +6350,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts@npm:*":
+"@willbooster/eslint-config-ts@npm:12.0.0":
   version: 12.0.0
   resolution: "@willbooster/eslint-config-ts@npm:12.0.0"
   peerDependencies:
@@ -6391,7 +6391,7 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "npm:*"
+    "@willbooster/eslint-config-ts": "npm:12.0.0"
     "@willbooster/prettier-config": "npm:10.4.0"
     blitz: "npm:3.0.2"
     build-ts: "npm:17.0.22"
@@ -6425,7 +6425,7 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "npm:*"
+    "@willbooster/eslint-config-ts": "npm:12.0.0"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     eslint: "npm:^10.2.0"
@@ -6472,7 +6472,7 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "npm:*"
+    "@willbooster/eslint-config-ts": "npm:12.0.0"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     dotenv: "npm:17.3.1"
@@ -6502,7 +6502,7 @@ __metadata:
   resolution: "@willbooster/shared-lib-react@workspace:packages/shared-lib-react"
   dependencies:
     "@babel/core": "npm:7.29.0"
-    "@eslint-react/eslint-plugin": "npm:*"
+    "@eslint-react/eslint-plugin": "npm:4.2.3"
     "@eslint/js": "npm:^10.0.1"
     "@mdx-js/react": "npm:3.1.1"
     "@storybook/addon-actions": "npm:9.0.8"
@@ -6520,7 +6520,7 @@ __metadata:
     "@types/node": "npm:25.5.2"
     "@types/react": "npm:19.2.14"
     "@types/react-dom": "npm:19.2.3"
-    "@willbooster/eslint-config-ts-react": "npm:*"
+    "@willbooster/eslint-config-ts-react": "npm:12.0.0"
     "@willbooster/prettier-config": "npm:10.4.0"
     babel-loader: "npm:10.1.1"
     build-ts: "npm:17.0.22"
@@ -6529,7 +6529,7 @@ __metadata:
     eslint-config-prettier: "npm:10.1.8"
     eslint-import-resolver-typescript: "npm:4.4.4"
     eslint-plugin-import-x: "npm:4.16.2"
-    eslint-plugin-perfectionist: "npm:*"
+    eslint-plugin-perfectionist: "npm:5.8.0"
     eslint-plugin-react-compiler: "npm:19.1.0-rc.2"
     eslint-plugin-sort-class-members: "npm:1.22.1"
     eslint-plugin-sort-destructure-keys: "npm:3.0.0"
@@ -6562,7 +6562,7 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "npm:*"
+    "@willbooster/eslint-config-ts": "npm:12.0.0"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     eslint: "npm:^10.2.0"
@@ -6597,7 +6597,7 @@ __metadata:
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
     "@types/yargs": "npm:17.0.35"
-    "@willbooster/eslint-config-ts": "npm:*"
+    "@willbooster/eslint-config-ts": "npm:12.0.0"
     "@willbooster/prettier-config": "npm:10.4.0"
     at-decorators: "npm:7.0.2"
     build-ts: "npm:17.0.22"
@@ -6647,7 +6647,7 @@ __metadata:
     "@types/node": "npm:25.5.2"
     "@types/semver": "npm:^7"
     "@types/yargs": "npm:17.0.35"
-    "@willbooster/eslint-config-ts": "npm:*"
+    "@willbooster/eslint-config-ts": "npm:12.0.0"
     "@willbooster/prettier-config": "npm:10.4.0"
     "@yarnpkg/core": "npm:4.6.0"
     build-ts: "npm:17.0.22"
@@ -10693,7 +10693,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint-plugin-perfectionist@npm:*":
+"eslint-plugin-perfectionist@npm:5.8.0":
   version: 5.8.0
   resolution: "eslint-plugin-perfectionist@npm:5.8.0"
   dependencies:
@@ -21201,7 +21201,7 @@ __metadata:
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/eslint": "npm:9.6.1"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "npm:*"
+    "@willbooster/eslint-config-ts": "npm:12.0.0"
     "@willbooster/prettier-config": "npm:10.4.0"
     conventional-changelog-conventionalcommits: "npm:9.3.0"
     eslint: "npm:^10.2.0"

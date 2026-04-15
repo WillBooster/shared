@@ -17,7 +17,7 @@ import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { spawnSync } from '../utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
@@ -42,6 +42,8 @@ const reactCommonDeps = [
   'eslint-plugin-react-compiler',
   'typescript',
 ];
+
+const latestDependencyVersionCache = new Map<string, string>();
 
 const eslintDeps: Record<EslintExtensionBase, string[]> = {
   '@willbooster/eslint-config-js': ['@willbooster/eslint-config-js', ...jsCommonDeps],
@@ -471,10 +473,12 @@ function addPackageJsonDependencies(
 ): string[] {
   const dependenciesToInstall: string[] = [];
   for (const dependency of new Set(dependencies)) {
+    const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
     if (shouldUpdateExistingManagedDependency(dependency, packageJsonDependencies[dependency])) {
       dependenciesToInstall.push(dependency);
     }
-    if (packageJsonDependencies[dependency] && !getPinnedDependencySpecifier(dependency)) continue;
+    if (packageJsonDependencies[dependency] && !pinnedSpecifier && packageJsonDependencies[dependency] !== '*')
+      continue;
     packageJsonDependencies[dependency] = getPackageJsonDependencyVersion(dependency);
   }
   return dependenciesToInstall;
@@ -482,7 +486,19 @@ function addPackageJsonDependencies(
 
 function getPackageJsonDependencyVersion(dependency: string): string {
   const dependencySpecifier = getDependencySpecifier(dependency);
-  return dependencySpecifier.startsWith(`${dependency}@`) ? dependencySpecifier.slice(dependency.length + 1) : '*';
+  return dependencySpecifier.startsWith(`${dependency}@`)
+    ? dependencySpecifier.slice(dependency.length + 1)
+    : getLatestDependencyVersion(dependency);
+}
+
+function getLatestDependencyVersion(dependency: string): string {
+  const cachedVersion = latestDependencyVersionCache.get(dependency);
+  if (cachedVersion) return cachedVersion;
+
+  const version =
+    spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
+  latestDependencyVersionCache.set(dependency, version);
+  return version;
 }
 
 // TODO: remove the following migration code in future
@@ -528,6 +544,7 @@ function getDependencySpecifier(dependency: string): string {
 
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
+  if (currentVersion === '*') return true;
   const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
   if (pinnedSpecifier) {
     return currentVersion !== getPackageJsonDependencyVersion(dependency);
