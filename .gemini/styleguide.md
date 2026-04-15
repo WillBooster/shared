@@ -1,4 +1,4 @@
-以下のコーディング規約を踏まえて、日本語でレビューしてください。
+Review in English based on the following coding standards.
 
 ## Coding Style
 

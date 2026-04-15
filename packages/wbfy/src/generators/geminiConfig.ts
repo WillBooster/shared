@@ -56,7 +56,10 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
 
     const extraContent = await fsUtil.readFileIgnoringError(agentsExtraPath);
     const codingRuleExtraContent = extraContent?.trimStart().startsWith('#') ? undefined : extraContent;
-    const styleguideContent = `以下のコーディング規約を踏まえて、日本語でレビューしてください。\n\n${generateAgentCodingStyle(allConfigs)}${
+    const reviewLanguageInstruction = config.isPublicRepo
+      ? 'Review in English based on the following coding standards.'
+      : '以下のコーディング規約を踏まえて、日本語でレビューしてください。';
+    const styleguideContent = `${reviewLanguageInstruction}\n\n${generateAgentCodingStyle(allConfigs)}${
       codingRuleExtraContent ? `\n${codingRuleExtraContent.trimEnd()}` : ''
     }`;
 
