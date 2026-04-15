@@ -22,6 +22,7 @@ import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
 import { generatePackageJson } from './generators/packageJson.js';
+import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
 import { generatePyrightConfigJson } from './generators/pyrightConfig.js';
@@ -175,6 +176,7 @@ async function main(): Promise<void> {
         config.doesContainTypeScript ||
         config.doesContainTypeScriptInPackages
       ) {
+        promises.push(generateOxfmtConfig(config));
         promises.push(generateOxlintConfig(config, rootConfig));
       }
       if (config.depending.pyright) {

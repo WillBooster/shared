@@ -1,10 +1,6 @@
 import type { PackageConfig } from '../packageConfig.js';
 
-const WILLBOOSTER_CONFIG_PACKAGE_NAMES = new Set([
-  '@willbooster/oxfmt-config',
-  '@willbooster/oxlint-config',
-  '@willbooster/prettier-config',
-]);
+const WILLBOOSTER_CONFIG_PACKAGE_NAMES = new Set(['@willbooster/oxlint-config', '@willbooster/prettier-config']);
 const pinnedDependencySpecifiers = {
   oxlint: '^1.60.0',
   typescript: '^5.9.3',

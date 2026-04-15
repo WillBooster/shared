@@ -45,7 +45,7 @@ describe('lint', () => {
 
   it('builds an oxfmt command for explicit files', () => {
     expect(buildOxfmtCommand(['/tmp/example.ts'])).toBe(
-      `YARN oxfmt --write --no-error-on-unmatched-pattern -c "$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config"))')" /tmp/example.ts`
+      'YARN oxfmt --write --no-error-on-unmatched-pattern /tmp/example.ts'
     );
   });
 

@@ -40,7 +40,6 @@ const minimumReleaseAgeExcludes = [
   '@next/third-parties',
   '@willbooster/agent-skills',
   '@willbooster/babel-configs',
-  '@willbooster/oxfmt-config',
   '@willbooster/oxlint-config',
   '@willbooster/prettier-config',
   '@willbooster/renovate-config',

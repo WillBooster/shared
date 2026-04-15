@@ -20,7 +20,7 @@ import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
-const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
+const oxlintDeps = ['@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -39,6 +39,7 @@ const obsoleteLintDependencies = [
   '@willbooster/eslint-config-react',
   '@willbooster/eslint-config-ts',
   '@willbooster/eslint-config-ts-react',
+  '@willbooster/oxfmt-config',
   'biome',
   'eslint',
   'eslint-config-flat-gitignore',
@@ -554,7 +555,7 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   if (pinnedSpecifier) {
     return currentVersion !== getPackageJsonDependencyVersion(dependency);
   }
-  return dependency === '@willbooster/oxfmt-config' || dependency === '@willbooster/oxlint-config';
+  return dependency === '@willbooster/oxlint-config';
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
@@ -653,7 +654,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       format: `sort-package-json && yarn format-code && yarn prettify`,
       lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
-      'format-code': `oxfmt --write --no-error-on-unmatched-pattern -c "$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config"))')" .`,
+      'format-code': `oxfmt --write --no-error-on-unmatched-pattern .`,
       prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`,
       typecheck: 'tsc --noEmit',
     };
