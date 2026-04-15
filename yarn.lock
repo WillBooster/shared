@@ -6001,7 +6001,7 @@ __metadata:
     blitz: "npm:3.0.2"
     build-ts: "npm:17.0.26"
     oxfmt: "npm:0.45.0"
-    oxlint: "npm:^1.60.0"
+    oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"
@@ -6024,7 +6024,7 @@ __metadata:
     build-ts: "npm:17.0.26"
     next: "npm:16.2.3"
     oxfmt: "npm:0.45.0"
-    oxlint: "npm:^1.60.0"
+    oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"
@@ -6061,7 +6061,7 @@ __metadata:
     dotenv: "npm:17.4.1"
     dotenv-expand: "npm:12.0.3"
     oxfmt: "npm:0.45.0"
-    oxlint: "npm:^1.60.0"
+    oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"
@@ -6096,7 +6096,7 @@ __metadata:
     babel-loader: "npm:10.1.1"
     build-ts: "npm:17.0.26"
     oxfmt: "npm:0.45.0"
-    oxlint: "npm:^1.60.0"
+    oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"
@@ -6123,7 +6123,7 @@ __metadata:
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.26"
     oxfmt: "npm:0.45.0"
-    oxlint: "npm:^1.60.0"
+    oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"
@@ -6158,7 +6158,7 @@ __metadata:
     kill-port: "npm:2.0.1"
     minimal-promise-pool: "npm:6.0.1"
     oxfmt: "npm:0.45.0"
-    oxlint: "npm:^1.60.0"
+    oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"
@@ -6200,7 +6200,7 @@ __metadata:
     libsodium-wrappers: "npm:0.8.2"
     minimal-promise-pool: "npm:6.0.1"
     oxfmt: "npm:0.45.0"
-    oxlint: "npm:^1.60.0"
+    oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"
@@ -15143,7 +15143,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"oxlint@npm:^1.60.0":
+"oxlint@npm:1.60.0":
   version: 1.60.0
   resolution: "oxlint@npm:1.60.0"
   dependencies:
@@ -20256,7 +20256,7 @@ __metadata:
     conventional-changelog-conventionalcommits: "npm:9.3.1"
     lefthook: "npm:2.1.5"
     oxfmt: "npm:0.45.0"
-    oxlint: "npm:^1.60.0"
+    oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"

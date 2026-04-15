@@ -58,7 +58,7 @@
     "@willbooster/prettier-config": "10.4.0",
     "build-ts": "17.0.26",
     "oxfmt": "0.45.0",
-    "oxlint": "^1.60.0",
+    "oxlint": "1.60.0",
     "oxlint-tsgolint": "0.21.0",
     "prettier": "3.8.2",
     "prettier-plugin-java": "2.8.1",

@@ -19,7 +19,6 @@ import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
-import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptGoDependency = '@typescript/native-preview';
@@ -463,7 +462,6 @@ function addPackageJsonDependencies(
 ): string[] {
   const dependenciesToInstall: string[] = [];
   for (const dependency of new Set(dependencies)) {
-    const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       dependency,
       packageJsonDependencies[dependency]
@@ -474,7 +472,6 @@ function addPackageJsonDependencies(
     if (
       packageJsonDependencies[dependency] &&
       !shouldUpdateExistingDependency &&
-      !pinnedSpecifier &&
       packageJsonDependencies[dependency] !== '*'
     )
       continue;
@@ -542,17 +539,13 @@ function removeObsoleteLintDependencies(
 }
 
 function getDependencySpecifier(dependency: string): string {
-  return getPinnedDependencySpecifier(dependency) ?? dependency;
+  return dependency;
 }
 
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
-  const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
-  if (pinnedSpecifier) {
-    return currentVersion !== getPackageJsonDependencyVersion(dependency);
-  }
-  return dependency === '@willbooster/oxlint-config';
+  return dependency === '@willbooster/oxlint-config' || dependency === 'oxlint';
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
