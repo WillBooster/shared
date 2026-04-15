@@ -2,15 +2,22 @@
   "name": "@willbooster/shared-lib-react",
   "version": "0.0.0-semantically-released",
   "description": "Shared library for WillBooster React projects",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/shared-lib-react"
   },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "sideEffects": false,
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -18,13 +25,9 @@
       "import": "./dist/index.js"
     }
   },
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "bin/",
-    "dist/"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "build-ts lib",
     "build-storybook": "build-storybook",
@@ -42,7 +45,6 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
-  "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@babel/core": "7.29.0",
     "@mdx-js/react": "3.1.1",
@@ -78,7 +80,5 @@
     "react": "~19.2.0",
     "react-dom": "~19.2.0"
   },
-  "publishConfig": {
-    "access": "public"
-  }
+  "prettier": "@willbooster/prettier-config"
 }

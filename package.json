@@ -2,16 +2,16 @@
   "name": "willbooster-shared",
   "version": "0.0.0-semantically-released",
   "private": true,
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git"
   },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "type": "module",
   "workspaces": [
     "packages/*"
   ],
+  "type": "module",
   "scripts": {
     "build": "yarn workspaces foreach --all --parallel --verbose run build",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -29,7 +29,6 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
-  "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@anolilab/multi-semantic-release": "4.1.1",
     "@tsconfig/node-lts": "24.0.0",
@@ -48,8 +47,9 @@
     "sort-package-json": "3.6.1",
     "typescript": "^5.9.3"
   },
-  "packageManager": "yarn@4.13.0",
+  "prettier": "@willbooster/prettier-config",
   "engines": {
     "node": ">= 22.18.0"
-  }
+  },
+  "packageManager": "yarn@4.13.0"
 }
