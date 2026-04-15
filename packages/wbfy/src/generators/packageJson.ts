@@ -19,9 +19,9 @@ import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
-import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
+const typescriptGoDependency = '@typescript/native-preview';
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -259,7 +259,7 @@ function applyPackageJsonConventions(
   }
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
-    devDependencies.push('typescript');
+    devDependencies.push(typescriptGoDependency);
     if (config.isBun) {
       devDependencies.push('@types/bun');
     } else if (!config.depending.reactNative) {
@@ -447,7 +447,7 @@ function installNpmDependencies(
 ): void {
   if (dependencies.length === 0) return;
 
-  const dependencySpecifiers = [...new Set(dependencies)].map((dependency) => getDependencySpecifier(dependency));
+  const dependencySpecifiers = [...new Set(dependencies)];
   if (config.isBun) {
     spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
   } else {
@@ -462,7 +462,6 @@ function addPackageJsonDependencies(
 ): string[] {
   const dependenciesToInstall: string[] = [];
   for (const dependency of new Set(dependencies)) {
-    const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       dependency,
       packageJsonDependencies[dependency]
@@ -473,20 +472,12 @@ function addPackageJsonDependencies(
     if (
       packageJsonDependencies[dependency] &&
       !shouldUpdateExistingDependency &&
-      !pinnedSpecifier &&
       packageJsonDependencies[dependency] !== '*'
     )
       continue;
-    packageJsonDependencies[dependency] = getPackageJsonDependencyVersion(dependency);
+    packageJsonDependencies[dependency] = getLatestDependencyVersion(dependency);
   }
   return dependenciesToInstall;
-}
-
-function getPackageJsonDependencyVersion(dependency: string): string {
-  const dependencySpecifier = getDependencySpecifier(dependency);
-  return dependencySpecifier.startsWith(`${dependency}@`)
-    ? dependencySpecifier.slice(dependency.length + 1)
-    : getLatestDependencyVersion(dependency);
 }
 
 function getLatestDependencyVersion(dependency: string): string {
@@ -515,6 +506,7 @@ async function removeDeprecatedStuff(
   delete jsonObj.dependencies.tslib;
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
+  delete jsonObj.devDependencies.typescript;
   delete jsonObj.devDependencies.lerna;
   // To install the latest pinst
   delete jsonObj.devDependencies.pinst;
@@ -539,18 +531,12 @@ function removeObsoleteLintDependencies(
   }
 }
 
-function getDependencySpecifier(dependency: string): string {
-  return getPinnedDependencySpecifier(dependency) ?? dependency;
-}
-
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
-  const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
-  if (pinnedSpecifier) {
-    return currentVersion !== getPackageJsonDependencyVersion(dependency);
-  }
-  return dependency === '@willbooster/oxlint-config';
+  return (
+    dependency === '@willbooster/oxlint-config' || dependency === 'oxlint' || dependency === typescriptGoDependency
+  );
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
@@ -647,7 +633,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern .`,
       prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`,
-      typecheck: 'tsc --noEmit',
+      typecheck: 'tsgo --noEmit',
     };
     if (config.doesContainSubPackageJsons) {
       scripts = merge(
