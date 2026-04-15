@@ -23,6 +23,8 @@ export async function generateOxlintConfig(config: PackageConfig, rootConfig: Pa
         typeCheck: true,
       },
       rules: {
+        'unicorn/no-nested-ternary': 'off',
+        'unicorn/number-literal-case': 'off',
         'react-perf/jsx-no-new-object-as-prop': 'off',
         'react/react-in-jsx-scope': 'off',
         'unicorn/prefer-structured-clone': 'off',
