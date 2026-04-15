@@ -108,6 +108,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     // Package imports should resolve through package exports instead of tsconfig aliases.
     delete newSettings.compilerOptions?.baseUrl;
     delete newSettings.compilerOptions?.paths;
+    deleteLegacyModuleResolution(newSettings.compilerOptions);
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
@@ -171,6 +172,15 @@ function ensureTsExtensionEmitCompatibility(compilerOptions: TsConfigJson.Compil
   // @tsconfig/bun enables allowImportingTsExtensions, which TypeScript permits
   // during emit only when relative TS extensions are rewritten.
   compilerOptions.rewriteRelativeImportExtensions = true;
+}
+
+function deleteLegacyModuleResolution(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
+  if (!compilerOptions) return;
+
+  // TypeScript 6 removed the old node10 resolver spelling, so inherited base configs
+  // should choose the resolver unless a project already opted into a modern one.
+  if (compilerOptions.moduleResolution !== 'Node' && compilerOptions.moduleResolution !== 'node10') return;
+  delete compilerOptions.moduleResolution;
 }
 
 function pickExistingEmitOptions(
