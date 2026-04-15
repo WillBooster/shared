@@ -73,6 +73,7 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
       '@exercode/*',
       '@willbooster/*',
       'agent-runtime-kit',
+      'build-ts',
       'one-way-git-sync',
       // ------------------------------------------------------
       // To deal with CVE like https://nextjs.org/blog/CVE-2025-66478

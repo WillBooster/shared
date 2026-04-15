@@ -61,7 +61,7 @@
     "@willbooster/oxfmt-config": "1.2.0",
     "@willbooster/oxlint-config": "1.4.0",
     "@willbooster/prettier-config": "10.4.0",
-    "build-ts": "17.0.26",
+    "build-ts": "17.1.0",
     "oxfmt": "0.45.0",
     "oxlint": "1.60.0",
     "oxlint-tsgolint": "0.21.0",
