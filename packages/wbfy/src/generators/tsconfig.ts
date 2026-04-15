@@ -105,8 +105,9 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     newSettings.include?.sort();
     // Don't use old decorator
     delete newSettings.compilerOptions?.experimentalDecorators;
-    // TypeScript no longer requires baseUrl for paths, and tsgolint rejects it.
+    // Package imports should resolve through package exports instead of tsconfig aliases.
     delete newSettings.compilerOptions?.baseUrl;
+    delete newSettings.compilerOptions?.paths;
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
