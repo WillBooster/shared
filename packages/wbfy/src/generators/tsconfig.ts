@@ -113,9 +113,10 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     newSettings.include?.sort();
     // Don't use old decorator
     delete newSettings.compilerOptions?.experimentalDecorators;
-    // Package imports should resolve through package exports instead of tsconfig aliases.
+    // Package imports should resolve through package exports instead of baseUrl.
+    // paths is intentionally preserved so repo-local tooling can keep explicit
+    // aliases without relying on baseUrl's broad fallback resolution.
     delete newSettings.compilerOptions?.baseUrl;
-    delete newSettings.compilerOptions?.paths;
     deleteLegacyModuleSettings(newSettings.compilerOptions, config);
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;

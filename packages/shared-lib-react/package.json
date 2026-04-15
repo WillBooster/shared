@@ -63,7 +63,7 @@
     "@types/react-dom": "19.2.3",
     "@typescript/native-preview": "7.0.0-dev.20260415.1",
     "@willbooster/oxfmt-config": "1.2.0",
-    "@willbooster/oxlint-config": "1.4.0",
+    "@willbooster/oxlint-config": "1.4.2",
     "@willbooster/prettier-config": "10.4.0",
     "babel-loader": "10.1.1",
     "build-ts": "17.1.0",
