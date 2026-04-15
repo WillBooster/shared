@@ -74,9 +74,11 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     }
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
+    let shouldKeepExistingPathAliases = false;
     try {
       const existingContent = await fs.promises.readFile(filePath, 'utf8');
       const oldSettings = JSON.parse(existingContent) as TsConfigJson;
+      shouldKeepExistingPathAliases = hasPathAliases(oldSettings.compilerOptions);
       const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
       const existingEmitOptions = pickExistingEmitOptions(oldSettings.compilerOptions);
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
@@ -109,9 +111,12 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     newSettings.include?.sort();
     // Don't use old decorator
     delete newSettings.compilerOptions?.experimentalDecorators;
-    // Package imports should resolve through package exports instead of tsconfig aliases.
-    delete newSettings.compilerOptions?.baseUrl;
-    delete newSettings.compilerOptions?.paths;
+    if (!shouldKeepExistingPathAliases) {
+      // New aliases hide package export mistakes, but existing repos may rely on them
+      // until their imports can be migrated deliberately.
+      delete newSettings.compilerOptions?.baseUrl;
+      delete newSettings.compilerOptions?.paths;
+    }
     deleteLegacyModuleSettings(newSettings.compilerOptions, config);
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
@@ -146,6 +151,10 @@ function normalizeStringArray(value: unknown): string[] {
   if (typeof value === 'string') return [value];
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === 'string');
+}
+
+function hasPathAliases(compilerOptions: TsConfigJson['compilerOptions']): boolean {
+  return compilerOptions?.baseUrl !== undefined || compilerOptions?.paths !== undefined;
 }
 
 function shouldDeleteTypeRoots(typeNames: string[]): boolean {
