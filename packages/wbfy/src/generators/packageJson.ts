@@ -17,7 +17,7 @@ import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { spawnSync } from '../utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
@@ -36,7 +36,14 @@ const jsCommonDeps = [
 
 const tsCommonDeps = [...jsCommonDeps, 'typescript-eslint', 'eslint-import-resolver-typescript'];
 
-const reactCommonDeps = ['eslint-plugin-react', 'eslint-plugin-react-hooks', 'eslint-plugin-react-compiler'];
+const reactCommonDeps = [
+  '@eslint-react/eslint-plugin',
+  'eslint-plugin-perfectionist',
+  'eslint-plugin-react-compiler',
+  'typescript',
+];
+
+const latestDependencyVersionCache = new Map<string, string>();
 
 const eslintDeps: Record<EslintExtensionBase, string[]> = {
   '@willbooster/eslint-config-js': ['@willbooster/eslint-config-js', ...jsCommonDeps],
@@ -464,17 +471,34 @@ function addPackageJsonDependencies(
   packageJsonDependencies: Partial<Record<string, string>>,
   dependencies: string[]
 ): string[] {
-  const uniqueDependencies = [...new Set(dependencies)].filter((dep) => !packageJsonDependencies[dep]);
-  for (const dependency of uniqueDependencies) {
+  const dependenciesToInstall: string[] = [];
+  for (const dependency of new Set(dependencies)) {
+    const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
+    if (shouldUpdateExistingManagedDependency(dependency, packageJsonDependencies[dependency])) {
+      dependenciesToInstall.push(dependency);
+    }
+    if (packageJsonDependencies[dependency] && !pinnedSpecifier && packageJsonDependencies[dependency] !== '*')
+      continue;
     packageJsonDependencies[dependency] = getPackageJsonDependencyVersion(dependency);
   }
-  return uniqueDependencies;
+  return dependenciesToInstall;
 }
 
 function getPackageJsonDependencyVersion(dependency: string): string {
   const dependencySpecifier = getDependencySpecifier(dependency);
-  const versionSeparatorIndex = dependencySpecifier.lastIndexOf('@');
-  return versionSeparatorIndex > 0 ? dependencySpecifier.slice(versionSeparatorIndex + 1) : '*';
+  return dependencySpecifier.startsWith(`${dependency}@`)
+    ? dependencySpecifier.slice(dependency.length + 1)
+    : getLatestDependencyVersion(dependency);
+}
+
+function getLatestDependencyVersion(dependency: string): string {
+  const cachedVersion = latestDependencyVersionCache.get(dependency);
+  if (cachedVersion) return cachedVersion;
+
+  const version =
+    spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
+  latestDependencyVersionCache.set(dependency, version);
+  return version;
 }
 
 // TODO: remove the following migration code in future
@@ -516,6 +540,16 @@ async function removeDeprecatedStuff(
 
 function getDependencySpecifier(dependency: string): string {
   return getPinnedDependencySpecifier(dependency) ?? dependency;
+}
+
+function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
+  if (!currentVersion) return true;
+  if (currentVersion === '*') return true;
+  const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
+  if (pinnedSpecifier) {
+    return currentVersion !== getPackageJsonDependencyVersion(dependency);
+  }
+  return dependency.startsWith('@willbooster/eslint-config-');
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
