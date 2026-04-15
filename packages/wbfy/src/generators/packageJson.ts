@@ -22,6 +22,10 @@ import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptGoDependency = '@typescript/native-preview';
+const pinnedDependencyVersions: Record<string, string> = {
+  // oxfmt 0.45.0 raises DataCloneError when formatting JSON files.
+  oxfmt: '0.44.0',
+};
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -447,7 +451,7 @@ function installNpmDependencies(
 ): void {
   if (dependencies.length === 0) return;
 
-  const dependencySpecifiers = [...new Set(dependencies)];
+  const dependencySpecifiers = [...new Set(dependencies)].map(toInstallDependencySpecifier);
   if (config.isBun) {
     spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
   } else {
@@ -480,7 +484,15 @@ function addPackageJsonDependencies(
   return dependenciesToInstall;
 }
 
+function toInstallDependencySpecifier(dependency: string): string {
+  const pinnedVersion = pinnedDependencyVersions[dependency];
+  return pinnedVersion ? `${dependency}@${pinnedVersion}` : dependency;
+}
+
 function getLatestDependencyVersion(dependency: string): string {
+  const pinnedVersion = pinnedDependencyVersions[dependency];
+  if (pinnedVersion) return pinnedVersion;
+
   const cachedVersion = latestDependencyVersionCache.get(dependency);
   if (cachedVersion) return cachedVersion;
 
@@ -535,7 +547,10 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
   return (
-    dependency === '@willbooster/oxlint-config' || dependency === 'oxlint' || dependency === typescriptGoDependency
+    dependency === '@willbooster/oxlint-config' ||
+    dependency === 'oxfmt' ||
+    dependency === 'oxlint' ||
+    dependency === typescriptGoDependency
   );
 }
 
