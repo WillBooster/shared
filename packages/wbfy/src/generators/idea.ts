@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
@@ -12,16 +13,8 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
     const dirPath = path.resolve(config.dirPath, '.idea');
     if (fs.existsSync(dirPath)) {
       const filePath = path.resolve(dirPath, 'watcherTasks.xml');
-      await (config.doesContainJavaScript ||
-      config.doesContainJavaScriptInPackages ||
-      config.doesContainTypeScript ||
-      config.doesContainTypeScriptInPackages ||
-      (config.doesContainPackageJson &&
-        !config.doesContainPubspecYaml &&
-        !config.doesContainGemfile &&
-        !config.doesContainGoMod &&
-        !config.doesContainPomXml)
-        ? promisePool.run(() => fsUtil.generateFile(filePath, config.isBun ? biomeContent : prettierContent))
+      await (doesContainJsOrTs(config)
+        ? promisePool.run(() => fsUtil.generateFile(filePath, oxlintContent))
         : promisePool.run(() => fs.promises.rm(filePath, { force: true })));
     }
   });
@@ -51,18 +44,11 @@ function createTaskOptions(runner: string, args: string, name: string, extension
 `;
 }
 
-const prettierContent = `<?xml version="1.0" encoding="UTF-8"?>
+const oxlintContent = `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectTasksOptions">
-${extensions.prettier.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('')}
-  </component>
-</project>
-`;
-
-const biomeContent = `<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="ProjectTasksOptions">
-${extensions.prettier.map((ext) => createTaskOptions('bun', '--bun node_modules/.bin/biome check --fix --no-errors-on-unmatched --skip-parse-errors', 'Biome', ext)).join('')}
+${extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern', 'Oxfmt', ext)).join('')}
+${extensions.prettierOnly.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('')}
   </component>
 </project>
 `;

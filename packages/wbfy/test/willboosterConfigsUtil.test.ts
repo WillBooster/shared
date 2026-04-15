@@ -1,34 +1,34 @@
 import { describe, expect, test } from 'vitest';
 
 import type { PackageConfig } from '../src/packageConfig.js';
-import { shouldSkipWillboosterConfigsEslintPackage } from '../src/utils/willboosterConfigsUtil.js';
+import { shouldSkipWillboosterConfigsPackage } from '../src/utils/willboosterConfigsUtil.js';
 
-describe('shouldSkipWillboosterConfigsEslintPackage', () => {
-  test('skips ESLint config packages inside willbooster-configs', () => {
+describe('shouldSkipWillboosterConfigsPackage', () => {
+  test('does not skip legacy ESLint config packages inside willbooster-configs', () => {
     const config = createConfig({
       isWillBoosterConfigs: true,
       packageJson: { name: '@willbooster/eslint-config-ts' },
     });
 
-    expect(shouldSkipWillboosterConfigsEslintPackage(config)).toBe(true);
+    expect(shouldSkipWillboosterConfigsPackage(config)).toBe(false);
   });
 
-  test('does not skip non-ESLint packages inside willbooster-configs', () => {
+  test('skips shared format config packages inside willbooster-configs', () => {
     const config = createConfig({
       isWillBoosterConfigs: true,
       packageJson: { name: '@willbooster/prettier-config' },
     });
 
-    expect(shouldSkipWillboosterConfigsEslintPackage(config)).toBe(false);
+    expect(shouldSkipWillboosterConfigsPackage(config)).toBe(true);
   });
 
-  test('does not skip ESLint packages outside willbooster-configs', () => {
+  test('does not skip config packages outside willbooster-configs', () => {
     const config = createConfig({
       isWillBoosterConfigs: false,
-      packageJson: { name: '@willbooster/eslint-config-ts' },
+      packageJson: { name: '@willbooster/oxlint-config' },
     });
 
-    expect(shouldSkipWillboosterConfigsEslintPackage(config)).toBe(false);
+    expect(shouldSkipWillboosterConfigsPackage(config)).toBe(false);
   });
 });
 

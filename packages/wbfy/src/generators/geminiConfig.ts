@@ -1,9 +1,9 @@
+// oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make load/dump usage clearer.
 import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
 import yaml from 'js-yaml';
-import cloneDeep from 'lodash.clonedeep';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -37,7 +37,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     const styleguideFilePath = path.resolve(dirPath, 'styleguide.md');
     const agentsExtraPath = path.resolve(config.dirPath, 'AGENTS_EXTRA.md');
 
-    let newConfig: object = cloneDeep(defaultConfig);
+    let newConfig: object = structuredClone(defaultConfig);
     try {
       const oldContent = await fs.promises.readFile(configFilePath, 'utf8');
       const oldConfig = yaml.load(oldContent) as object;

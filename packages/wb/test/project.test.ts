@@ -25,7 +25,7 @@ describe('project', () => {
     5 * 60 * 1000
   );
 
-  it('prefers biome over eslint when both are declared', async () => {
+  it('uses oxlint when declared', async () => {
     const dirPath = path.join(tempDir, 'app');
     await initializeProjectDirectory(dirPath);
 
@@ -35,8 +35,7 @@ describe('project', () => {
         {
           name: '@test-fixtures/app',
           devDependencies: {
-            '@biomejs/biome': '1.9.4',
-            eslint: '9.39.2',
+            oxlint: '1.60.0',
           },
         },
         undefined,
@@ -44,10 +43,10 @@ describe('project', () => {
       ) + '\n'
     );
 
-    expect(findSelfProject({}, false, dirPath)?.preferredLinter).toBe('biome');
+    expect(findSelfProject({}, false, dirPath)?.preferredLinter).toBe('oxlint');
   });
 
-  it('inherits eslint from the workspace root', async () => {
+  it('inherits oxlint from the workspace root', async () => {
     const dirPath = path.join(tempDir, 'monorepo');
     await initializeProjectDirectory(dirPath);
 
@@ -58,7 +57,7 @@ describe('project', () => {
           name: 'monorepo',
           workspaces: ['packages/*'],
           devDependencies: {
-            eslint: '9.39.2',
+            oxlint: '1.60.0',
             typescript: '5.8.3',
           },
         },
@@ -67,6 +66,6 @@ describe('project', () => {
       ) + '\n'
     );
 
-    expect(findSelfProject({}, false, path.join(dirPath, 'packages', 'sub1'))?.preferredLinter).toBe('eslint');
+    expect(findSelfProject({}, false, path.join(dirPath, 'packages', 'sub1'))?.preferredLinter).toBe('oxlint');
   });
 });

@@ -1,3 +1,4 @@
+// oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make dump usage clearer.
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -6,6 +7,7 @@ import yaml from 'js-yaml';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
+import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync } from '../utils/spawnUtil.js';
 
@@ -99,7 +101,7 @@ async function core(config: PackageConfig): Promise<void> {
   const dirPath = path.resolve(config.dirPath, '.lefthook');
   const huskyDirPath = path.resolve(config.dirPath, '.husky');
   const hasHuskyDir = fs.existsSync(huskyDirPath);
-  const { typecheck } = generateScripts(config, {});
+  const { lint } = generateScripts(config, {});
   const settings: Partial<LefthookSettings> = {
     ...baseSettings,
     'pre-commit': {
@@ -114,7 +116,7 @@ async function core(config: PackageConfig): Promise<void> {
       },
     },
   };
-  if (!typecheck) {
+  if (!lint) {
     delete settings['pre-push'];
   }
   await Promise.all([
@@ -138,7 +140,7 @@ async function core(config: PackageConfig): Promise<void> {
     spawnSync('git', ['config', '--unset', 'core.hooksPath'], config.dirPath);
   }
 
-  if (typecheck) {
+  if (lint) {
     const prePush = getPrePushScript(config);
     fs.mkdirSync(path.join(dirPath, 'pre-push'), { recursive: true });
     await promisePool.run(() =>
@@ -157,11 +159,11 @@ async function core(config: PackageConfig): Promise<void> {
 }
 
 function getPrePushScript(config: PackageConfig): string {
-  let typecheckCommand: string;
+  let lintCommand: string;
   if (config.isBun) {
-    typecheckCommand = config.depending.wb ? 'bun --bun wb typecheck' : 'bun run typecheck';
+    lintCommand = config.depending.wb ? 'bun --bun wb lint' : 'bun run lint';
   } else {
-    typecheckCommand = config.depending.wb ? 'yarn wb typecheck' : 'yarn run typecheck';
+    lintCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
   }
   if (config.repository?.startsWith('github:WillBoosterLab/')) {
     return `
@@ -174,27 +176,24 @@ if [ $(git branch --show-current) = "main" ] && [ $(git config user.email) != "e
   exit 1
 fi
 
-${typecheckCommand}
+${lintCommand}
 `.trim();
   }
-  return typecheckCommand;
+  return lintCommand;
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
-  const supportedExtensions = [
-    ...extensions.prettier,
-    ...extensions.eslint,
-    ...(config.depending.wb || config.isBun ? extensions.biome : []),
-  ];
+  const supportedExtensions = [...extensions.prettierOnly];
+  if (doesContainJsOrTs(config)) {
+    supportedExtensions.push(...extensions.oxfmt, ...extensions.oxlint);
+  }
   if (config.doesContainPoetryLock) {
     supportedExtensions.push('py');
   }
   if (config.doesContainPubspecYaml) {
     supportedExtensions.push('dart');
   }
-  const filteredExtensions = [...new Set(supportedExtensions)]
-    .filter((extension) => config.isBun || !['astro', 'gql', 'svelte'].includes(extension))
-    .toSorted();
+  const filteredExtensions = [...new Set(supportedExtensions)].toSorted();
   return `**/*.{${filteredExtensions.join(',')}}`;
 }
 
@@ -210,22 +209,40 @@ function getCleanupCommand(config: PackageConfig): string {
     return `${command} && git add -- {staged_files}`;
   }
 
-  const eslintRuleSuffix =
-    config.doesContainJsxOrTsx || config.doesContainJsxOrTsxInPackages
-      ? ' --rule "{ react-hooks/exhaustive-deps: 0 }"'
-      : '';
-  const eslintPattern = extensions.eslint.map((extension) => String.raw`\.${extension}$`).join('|');
+  const oxlintPattern = extensions.oxlint.map((extension) => String.raw`\.${extension}$`).join('|');
+  const oxfmtPattern = extensions.oxfmt.map((extension) => String.raw`\.${extension}$`).join('|');
+  const prettierPattern = extensions.prettierOnly.map((extension) => String.raw`\.${extension}$`).join('|');
+  const hasJsOrTs = doesContainJsOrTs(config);
 
   return String.raw`
-eslint_files="$(printf '%s\n' {staged_files} | grep -E '(${eslintPattern})' || true)"
+${hasJsOrTs ? String.raw`oxlint_files="$(printf '%s\n' {staged_files} | grep -E '(${oxlintPattern})' || true)"` : ''}
+${hasJsOrTs ? String.raw`oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' || true)"` : ''}
+prettier_files="$(printf '%s\n' {staged_files} | grep -E '(${prettierPattern})' || true)"
 package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
 ${config.doesContainPoetryLock ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
-node node_modules/.bin/prettier --cache --write --ignore-unknown -- {staged_files}
-if [ -n "$eslint_files" ]; then
-  node node_modules/.bin/eslint --color --fix${eslintRuleSuffix} -- $eslint_files
+${
+  hasJsOrTs
+    ? String.raw`
+if [ -n "$oxfmt_files" ]; then
+  node node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern $oxfmt_files
 fi
+`
+    : ''
+}
+if [ -n "$prettier_files" ]; then
+  node node_modules/.bin/prettier --cache --write --ignore-unknown -- $prettier_files
+fi
+${
+  hasJsOrTs
+    ? String.raw`
+if [ -n "$oxlint_files" ]; then
+  node node_modules/.bin/oxlint --fix $oxlint_files
+fi
+`
+    : ''
+}
 if [ -n "$package_json_files" ]; then
   node node_modules/.bin/sort-package-json -- $package_json_files
 fi

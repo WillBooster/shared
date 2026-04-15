@@ -8,55 +8,60 @@ import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
-import type { EslintExtensionBase, PackageConfig } from '../packageConfig.js';
-import { EslintUtil } from '../utils/eslintUtil.js';
+import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
+import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
-const jsCommonDeps = [
+const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
+const obsoleteLintDependencies = [
+  '@biomejs/biome',
+  '@eslint-react/eslint-plugin',
   '@eslint/js',
+  '@next/eslint-plugin-next',
+  '@types/eslint',
+  '@types/micromatch',
+  '@typescript-eslint/eslint-plugin',
+  '@typescript-eslint/parser',
+  '@willbooster/biome-config',
+  '@willbooster/eslint-config',
+  '@willbooster/eslint-config-blitz-next',
+  '@willbooster/eslint-config-js',
+  '@willbooster/eslint-config-js-react',
+  '@willbooster/eslint-config-next',
+  '@willbooster/eslint-config-react',
+  '@willbooster/eslint-config-ts',
+  '@willbooster/eslint-config-ts-react',
+  'biome',
   'eslint',
   'eslint-config-flat-gitignore',
   'eslint-config-prettier',
+  'eslint-import-resolver-node',
+  'eslint-import-resolver-typescript',
+  'eslint-plugin-import',
   'eslint-plugin-import-x',
+  'eslint-plugin-perfectionist',
+  'eslint-plugin-prettier',
+  'eslint-plugin-react-compiler',
   'eslint-plugin-sort-class-members',
   'eslint-plugin-sort-destructure-keys',
+  'eslint-plugin-storybook',
   'eslint-plugin-unicorn',
   'eslint-plugin-unused-imports',
   'globals',
-];
-
-const tsCommonDeps = [...jsCommonDeps, 'typescript-eslint', 'eslint-import-resolver-typescript'];
-
-const reactCommonDeps = [
-  '@eslint-react/eslint-plugin',
-  'eslint-plugin-perfectionist',
-  'eslint-plugin-react-compiler',
-  'typescript',
+  'micromatch',
+  'typescript-eslint',
 ];
 
 const latestDependencyVersionCache = new Map<string, string>();
-
-const eslintDeps: Record<EslintExtensionBase, string[]> = {
-  '@willbooster/eslint-config-js': ['@willbooster/eslint-config-js', ...jsCommonDeps],
-  '@willbooster/eslint-config-js-react': ['@willbooster/eslint-config-js-react', ...jsCommonDeps, ...reactCommonDeps],
-  '@willbooster/eslint-config-ts': ['@willbooster/eslint-config-ts', ...tsCommonDeps],
-  '@willbooster/eslint-config-ts-react': ['@willbooster/eslint-config-ts-react', ...tsCommonDeps, ...reactCommonDeps],
-  '@willbooster/eslint-config-next': [
-    '@willbooster/eslint-config-next',
-    '@next/eslint-plugin-next',
-    ...tsCommonDeps,
-    ...reactCommonDeps,
-  ],
-};
 
 type WritablePackageJson = SetRequired<
   PackageJson,
@@ -245,23 +250,11 @@ function applyPackageJsonConventions(
     }
   }
 
-  const doesContainJsOrTs =
-    config.doesContainJavaScript ||
-    config.doesContainJavaScriptInPackages ||
-    config.doesContainTypeScript ||
-    config.doesContainTypeScriptInPackages;
-  if (doesContainJsOrTs) {
-    if (config.isBun) {
-      devDependencies.push('@biomejs/biome', '@willbooster/biome-config');
-      delete jsonObj.devDependencies.eslint;
-      delete jsonObj.devDependencies.micromatch;
-      delete jsonObj.devDependencies['typescript-eslint'];
-    } else {
-      devDependencies.push('eslint', 'micromatch');
-    }
+  if (doesContainJsOrTs(config)) {
+    devDependencies.push(...oxlintDeps);
   }
 
-  if (doesContainJsOrTs) {
+  if (doesContainJsOrTs(config)) {
     devDependencies.push(...getTsconfigBaseDependencies(config));
   }
 
@@ -282,10 +275,6 @@ function applyPackageJsonConventions(
     ) {
       devDependencies.push('@types/jest');
     }
-  }
-
-  if (config.eslintBase) {
-    devDependencies.push(...eslintDeps[config.eslintBase]);
   }
 
   if (config.isWillBoosterConfigs) {
@@ -342,7 +331,7 @@ async function normalizePackageMetadata(
           jsonObj.scripts[scriptName] = script.replace(/ ?&& ?yarn lint-fix(?: --quiet)?/, '');
         }
       } else {
-        jsonObj.scripts['lint-fix'] = (jsonObj.scripts['lint-fix'] ?? '') + EslintUtil.getLintFixSuffix(config);
+        jsonObj.scripts['lint-fix'] = jsonObj.scripts['lint-fix'] ?? 'yarn lint --fix';
       }
     }
 
@@ -474,10 +463,19 @@ function addPackageJsonDependencies(
   const dependenciesToInstall: string[] = [];
   for (const dependency of new Set(dependencies)) {
     const pinnedSpecifier = getPinnedDependencySpecifier(dependency);
-    if (shouldUpdateExistingManagedDependency(dependency, packageJsonDependencies[dependency])) {
+    const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
+      dependency,
+      packageJsonDependencies[dependency]
+    );
+    if (shouldUpdateExistingDependency) {
       dependenciesToInstall.push(dependency);
     }
-    if (packageJsonDependencies[dependency] && !pinnedSpecifier && packageJsonDependencies[dependency] !== '*')
+    if (
+      packageJsonDependencies[dependency] &&
+      !shouldUpdateExistingDependency &&
+      !pinnedSpecifier &&
+      packageJsonDependencies[dependency] !== '*'
+    )
       continue;
     packageJsonDependencies[dependency] = getPackageJsonDependencyVersion(dependency);
   }
@@ -503,7 +501,7 @@ function getLatestDependencyVersion(dependency: string): string {
 
 // TODO: remove the following migration code in future
 async function removeDeprecatedStuff(
-  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies'>,
+  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies' | 'peerDependencies'>,
   dirPath: string
 ): Promise<void> {
   if (jsonObj.author === 'WillBooster LLC') {
@@ -515,12 +513,8 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['typecheck:gen-code'];
   delete jsonObj.scripts['typecheck:codegen'];
   delete jsonObj.dependencies.tslib;
-  delete jsonObj.devDependencies['@willbooster/eslint-config'];
-  delete jsonObj.devDependencies['@willbooster/eslint-config-react'];
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
-  delete jsonObj.devDependencies['eslint-import-resolver-node'];
-  delete jsonObj.devDependencies['eslint-plugin-prettier'];
   delete jsonObj.devDependencies.lerna;
   // To install the latest pinst
   delete jsonObj.devDependencies.pinst;
@@ -532,10 +526,17 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['check-all'];
   await promisePool.run(() => fs.promises.rm(path.resolve(dirPath, 'lerna.json'), { force: true }));
 
-  // Migrate from ESLint legacy configs to flat configs,
-  delete jsonObj.devDependencies['@typescript-eslint/eslint-plugin'];
-  delete jsonObj.devDependencies['@typescript-eslint/parser'];
-  delete jsonObj.devDependencies['eslint-plugin-import'];
+  removeObsoleteLintDependencies(jsonObj);
+}
+
+function removeObsoleteLintDependencies(
+  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
+): void {
+  for (const dependency of obsoleteLintDependencies) {
+    delete jsonObj.dependencies[dependency];
+    delete jsonObj.devDependencies[dependency];
+    delete jsonObj.peerDependencies[dependency];
+  }
 }
 
 function getDependencySpecifier(dependency: string): string {
@@ -549,7 +550,7 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   if (pinnedSpecifier) {
     return currentVersion !== getPackageJsonDependencyVersion(dependency);
   }
-  return dependency.startsWith('@willbooster/eslint-config-');
+  return dependency === '@willbooster/oxlint-config';
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
@@ -621,7 +622,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
     const scripts: Record<string, string> = {
       'check-all-for-ai': 'bun run check-for-ai && bun run test',
-      'check-for-ai': `bun run cleanup${hasTypecheck ? ' && bun run typecheck' : ''}`,
+      'check-for-ai': 'bun run cleanup',
       cleanup: 'bun --bun wb lint --fix --format',
       format: `bun --bun wb lint --format`,
       lint: `bun --bun wb lint`,
@@ -635,27 +636,27 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     return scripts;
   } else {
     const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
+    const hasJsOrTs = doesContainJsOrTs(config);
     const oldTest = oldScripts.test;
     let scripts: Record<string, string> = {
       'check-all-for-ai': 'yarn check-for-ai && yarn test',
-      'check-for-ai': `yarn format > /dev/null 2> /dev/null || true${
-        hasTypecheck ? ' && yarn typecheck' : ''
-      } && yarn lint-fix --quiet`,
+      'check-for-ai': `yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet`,
       cleanup: 'yarn format && yarn lint-fix',
-      format: `sort-package-json && yarn prettify`,
-      lint: `eslint --color`,
+      format: `sort-package-json && yarn format-code && yarn prettify`,
+      lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
-      prettify: `prettier --cache --color --write "**/{.*/,}*.{${extensions.prettier.join(',')}}" "!**/test{-,/}fixtures/**"`,
+      'format-code': `oxfmt --write --no-error-on-unmatched-pattern .`,
+      prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`,
       typecheck: 'tsc --noEmit',
     };
     if (config.doesContainSubPackageJsons) {
       scripts = merge(
         { ...scripts },
         {
-          format: `sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format`,
+          format: `sort-package-json && yarn format-code && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format`,
           lint: `yarn workspaces foreach --all --parallel --verbose run lint`,
           'lint-fix': 'yarn workspaces foreach --all --parallel --verbose run lint-fix',
-          prettify: `prettier --cache --color --write "**/{.*/,}*.{${extensions.prettier.join(
+          prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(
             ','
           )}}" "!**/packages/**" "!**/test{-,/}fixtures/**"`,
           // CI=1 prevents vitest from enabling watch.
@@ -671,7 +672,12 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     if (oldTest?.includes('wb test')) {
       scripts.test = oldTest;
     }
-
+    if (!hasJsOrTs) {
+      delete scripts['format-code'];
+      scripts.format = 'sort-package-json && yarn prettify';
+      delete scripts.lint;
+      delete scripts['lint-fix'];
+    }
     if (!hasTypecheck) {
       delete scripts.typecheck;
     } else if (config.depending.wb) {

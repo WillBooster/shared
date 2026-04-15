@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import cloneDeep from 'lodash.clonedeep';
 import type { TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
@@ -52,9 +51,11 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateTsconfig', async () => {
     if (config.depending.blitz || config.depending.next) return;
 
-    let newSettings = cloneDeep(config.isRoot ? rootJsonObj : subJsonObj) as TsConfigJson;
+    let newSettings = structuredClone(config.isRoot ? rootJsonObj : subJsonObj) as TsConfigJson;
     const generatedTypes = getGeneratedTypes(config);
     newSettings.extends = getTsconfigExtends(config);
+    newSettings.compilerOptions ??= {};
+    newSettings.compilerOptions.rootDir = getRootDir(config);
     if (generatedTypes.length > 0) {
       newSettings.compilerOptions = { ...newSettings.compilerOptions, types: generatedTypes };
     }
@@ -77,19 +78,15 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
-      delete oldSettings.compilerOptions?.rootDir;
       newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
       newSettings.include = newSettings.include?.filter(
         (dirPath: string) =>
           !dirPath.includes('@types') && !dirPath.includes('__tests__/') && !dirPath.includes('tests/')
       );
       newSettings.compilerOptions ??= {};
-      // The main tsconfig is for broad typechecking. WillBooster projects commonly keep
-      // TS config/scripts/tests beside src, so inferring rootDir here makes valid inputs fail TS6059.
       // Keep explicit emit settings because some repos have tsconfig.build.json files
       // that extend this config and rely on those options for tracked .d.ts outputs.
       newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
-      delete newSettings.compilerOptions.rootDir;
 
       const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
       if (mergedTypes.length > 0) {
@@ -113,6 +110,11 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
+}
+
+function getRootDir(config: PackageConfig): string {
+  if (config.isRoot) return '.';
+  return fs.existsSync(path.resolve(config.dirPath, '..', '..', 'package.json')) ? '../..' : '.';
 }
 
 function mergeTsconfigExtends(
@@ -162,20 +164,13 @@ function pickExistingEmitOptions(
   compilerOptions: TsConfigJson['compilerOptions']
 ): Pick<
   NonNullable<TsConfigJson['compilerOptions']>,
-  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'outDir' | 'sourceMap'
+  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'sourceMap'
 > {
   const emitOptions = {} as Pick<
     NonNullable<TsConfigJson['compilerOptions']>,
-    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'outDir' | 'sourceMap'
+    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'sourceMap'
   >;
-  for (const key of [
-    'declaration',
-    'declarationMap',
-    'emitDeclarationOnly',
-    'noEmit',
-    'outDir',
-    'sourceMap',
-  ] as const) {
+  for (const key of ['declaration', 'declarationMap', 'emitDeclarationOnly', 'noEmit', 'sourceMap'] as const) {
     const value = compilerOptions?.[key];
     if (value !== undefined) {
       emitOptions[key] = value as never;

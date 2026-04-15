@@ -37,7 +37,8 @@ export function useStorage<T>(
       // do nothing
     }
     return typeof initialValueOrFunc === 'function' ? (initialValueOrFunc as () => T)() : initialValueOrFunc;
-  }, [jsonText, initialValueOrFunc]); // Don't add nonReactiveOptions to deps because it's not allowed to change.
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- nonReactiveOptions is intentionally fixed by the hook contract.
+  }, [jsonText, initialValueOrFunc]);
 
   const setState = useCallback(
     (valueOrFunc: T | ((prevState: T) => T)) => {
@@ -54,7 +55,8 @@ export function useStorage<T>(
       globalThis.dispatchEvent(new StorageEvent('storage', { key, newValue }));
     },
 
-    [key, value] // Don't add nonReactiveStorageType to deps because it's not allowed to change.
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- nonReactiveStorageType is intentionally fixed by the hook contract.
+    [key, value]
   );
 
   useEffect(() => {
@@ -63,7 +65,8 @@ export function useStorage<T>(
     if (window[nonReactiveStorageType].getItem(key) === null && resolvedInitialValue !== undefined) {
       window[nonReactiveStorageType].setItem(key, JSON.stringify(resolvedInitialValue));
     }
-  }, [key, initialValueOrFunc]); // Don't add nonReactiveStorageType to deps because it's not allowed to change.
+    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps -- nonReactiveStorageType is intentionally fixed by the hook contract.
+  }, [key, initialValueOrFunc]);
 
   return [value, setState];
 }

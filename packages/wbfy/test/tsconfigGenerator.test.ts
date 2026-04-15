@@ -15,7 +15,7 @@ afterEach(async () => {
   tempDirs.length = 0;
 });
 
-test('generates explicit TS 6 types and keeps rootDir out of the broad tsconfig', async () => {
+test('generates explicit TS 6 types and rootDir for a root package', async () => {
   const dirPath = createTempDir();
   await fs.promises.mkdir(path.join(dirPath, 'src'), { recursive: true });
   await fs.promises.writeFile(path.join(dirPath, 'src', 'index.ts'), 'export const value = 1;\n');
@@ -37,11 +37,11 @@ test('generates explicit TS 6 types and keeps rootDir out of the broad tsconfig'
 
   const tsconfig = await readTsconfig(dirPath);
   expect(tsconfig.compilerOptions.noEmit).toBe(true);
-  expect(tsconfig.compilerOptions.rootDir).toBeUndefined();
+  expect(tsconfig.compilerOptions.rootDir).toBe('.');
   expect(tsconfig.compilerOptions.types).toEqual(['node', 'vitest/globals']);
 });
 
-test('omits rootDir for monorepos without root sources', async () => {
+test('sets rootDir for monorepos without root sources', async () => {
   const dirPath = createTempDir();
   await fs.promises.mkdir(path.join(dirPath, 'packages', 'pkg-a', 'src'), { recursive: true });
   await fs.promises.writeFile(path.join(dirPath, 'packages', 'pkg-a', 'src', 'index.ts'), 'export const value = 1;\n');
@@ -62,11 +62,11 @@ test('omits rootDir for monorepos without root sources', async () => {
 
   const tsconfig = await readTsconfig(dirPath);
   expect(tsconfig.compilerOptions.noEmit).toBe(true);
-  expect(tsconfig.compilerOptions.rootDir).toBeUndefined();
+  expect(tsconfig.compilerOptions.rootDir).toBe('.');
   expect(tsconfig.compilerOptions.types).toEqual(['node']);
 });
 
-test('preserves explicit emit settings while removing rootDir', async () => {
+test('preserves explicit emit settings while resetting rootDir', async () => {
   const dirPath = createTempDir();
   await fs.promises.mkdir(path.join(dirPath, 'src'), { recursive: true });
   await fs.promises.writeFile(path.join(dirPath, 'src', 'index.ts'), 'export const value = 1;\n');
@@ -97,8 +97,31 @@ test('preserves explicit emit settings while removing rootDir', async () => {
   expect(tsconfig.compilerOptions.declaration).toBe(true);
   expect(tsconfig.compilerOptions.noEmit).toBe(false);
   expect(tsconfig.compilerOptions.outDir).toBe('dist');
-  expect(tsconfig.compilerOptions.rootDir).toBeUndefined();
+  expect(tsconfig.compilerOptions.rootDir).toBe('.');
   expect(tsconfig.compilerOptions.sourceMap).toBe(true);
+});
+
+test('sets subpackage rootDir to the repository root', async () => {
+  const dirPath = createTempDir();
+  const packageDirPath = path.join(dirPath, 'packages', 'pkg-a');
+  await fs.promises.mkdir(path.join(packageDirPath, 'src'), { recursive: true });
+  await fs.promises.writeFile(path.join(dirPath, 'package.json'), '{"private":true}\n');
+  await fs.promises.writeFile(path.join(packageDirPath, 'src', 'index.ts'), 'export const value = 1;\n');
+
+  await generateTsconfig(
+    createConfig({
+      dirPath: packageDirPath,
+      isRoot: false,
+      doesContainPackageJson: true,
+      doesContainTypeScript: true,
+    })
+  );
+  await promisePool.promiseAll();
+
+  const tsconfig = await readTsconfig(packageDirPath);
+  expect(tsconfig.compilerOptions.noEmit).toBe(true);
+  expect(tsconfig.compilerOptions.rootDir).toBe('../..');
+  expect(tsconfig.compilerOptions.types).toEqual(['node']);
 });
 
 test('drops stale generated test globals when the package dependency is absent', async () => {

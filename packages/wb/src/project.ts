@@ -127,16 +127,6 @@ export class Project {
   }
 
   @memoizeOne
-  get hasBiome(): boolean {
-    return this.hasDependency('@biomejs/biome') || this.hasDependency('biome');
-  }
-
-  @memoizeOne
-  get hasEslint(): boolean {
-    return this.hasDependency('eslint');
-  }
-
-  @memoizeOne
   get hasOxlint(): boolean {
     return this.hasDependency('oxlint');
   }
@@ -162,10 +152,8 @@ export class Project {
   }
 
   @memoizeOne
-  get preferredLinter(): 'biome' | 'oxlint' | 'eslint' | undefined {
-    if (this.hasBiome) return 'biome';
+  get preferredLinter(): 'oxlint' | undefined {
     if (this.hasOxlint) return 'oxlint';
-    if (this.hasEslint) return 'eslint';
     return;
   }
 
