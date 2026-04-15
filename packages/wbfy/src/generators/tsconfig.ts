@@ -20,7 +20,6 @@ const rootJsonObj = {
     allowSyntheticDefaultImports: true, // allow `import React from 'react'`
     esModuleInterop: true, // allow default import from CommonJS/AMD/UMD modules
     resolveJsonModule: true, // allow to import JSON files
-    rootDir: '.',
     importHelpers: false,
     noEmit: true,
   },
@@ -42,7 +41,6 @@ const subJsonObj = {
     allowSyntheticDefaultImports: true, // allow `import React from 'react'`
     esModuleInterop: true, // allow default import from CommonJS/AMD/UMD modules
     resolveJsonModule: true, // allow to import JSON files
-    rootDir: '.',
     importHelpers: false,
     noEmit: true,
   },
@@ -79,7 +77,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
-      delete oldSettings.compilerOptions?.rootDir;
       newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
       newSettings.include = newSettings.include?.filter(
         (dirPath: string) =>
@@ -89,6 +86,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       // Keep explicit emit settings because some repos have tsconfig.build.json files
       // that extend this config and rely on those options for tracked .d.ts outputs.
       newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
+      delete newSettings.compilerOptions.rootDir;
 
       const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
       if (mergedTypes.length > 0) {

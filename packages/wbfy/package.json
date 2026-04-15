@@ -2,39 +2,38 @@
   "name": "@willbooster/wbfy",
   "version": "0.0.0-semantically-released",
   "description": "A tool for applying WillBooster's conventional configures to npm packages",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wbfy"
   },
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
+  "type": "module",
   "bin": "./bin/wbfy.js",
   "files": [
     "bin/",
     "dist/"
   ],
-  "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "build-ts app",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
-    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet",
+    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn format-code && yarn prettify",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern -c \"$(node -e 'console.log(require.resolve(\"@willbooster/oxfmt-config/.oxfmtrc.json\"))')\" .",
-    "lint": "oxlint --type-aware --type-check .",
+    "lint": "oxlint .",
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --cache --color --no-error-on-unmatched-pattern --write \"**/{.*/,}*.{java}\" \"!**/test{-,/}fixtures/**\" || true",
     "start": "build-ts run src/index.ts --env .env --",
     "start-prod": "yarn build && yarn wbfy",
     "test": "yarn run test/ci-setup && vitest test",
     "test/ci-setup": "rm -Rf test-fixtures/wbfy && mkdir -p test-fixtures && git clone https://github.com/WillBooster/test-fixtures-for-wbfy.git test-fixtures/wbfy",
+    "typecheck": "tsc --noEmit",
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
+  "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "@octokit/core": "7.0.6",
     "deepmerge": "4.3.1",
@@ -77,8 +76,10 @@
     "type-fest": "5.4.4",
     "vitest": "4.0.18"
   },
-  "prettier": "@willbooster/prettier-config",
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

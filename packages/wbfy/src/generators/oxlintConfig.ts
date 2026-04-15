@@ -19,8 +19,8 @@ export async function generateOxlintConfig(config: PackageConfig, rootConfig: Pa
       extends: [configPath.startsWith('.') ? configPath : `./${configPath}`],
       ignorePatterns: ['**/test/fixtures/**', '**/test-fixtures/**'],
       options: {
-        typeAware: true,
-        typeCheck: true,
+        typeAware: false,
+        typeCheck: false,
       },
       rules: {
         'unicorn/no-nested-ternary': 'off',

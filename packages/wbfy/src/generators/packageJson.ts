@@ -517,7 +517,6 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['typecheck/warn'];
   delete jsonObj.scripts['typecheck:gen-code'];
   delete jsonObj.scripts['typecheck:codegen'];
-  delete jsonObj.scripts.typecheck;
   delete jsonObj.dependencies.tslib;
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
@@ -625,17 +624,23 @@ function buildNormalizedRepositoryForPackageJson(
 
 export function generateScripts(config: PackageConfig, oldScripts: PackageJson.Scripts): Record<string, string> {
   if (config.isBun) {
+    const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
     const scripts: Record<string, string> = {
       'check-all-for-ai': 'bun run check-for-ai && bun run test',
-      'check-for-ai': 'bun run cleanup',
+      'check-for-ai': `bun run cleanup${hasTypecheck ? ' && bun run typecheck' : ''}`,
       cleanup: 'bun --bun wb lint --fix --format',
       format: `bun --bun wb lint --format`,
       lint: `bun --bun wb lint`,
       'lint-fix': 'bun --bun wb lint --fix',
       test: 'bun wb test',
+      typecheck: 'bun --bun wb typecheck',
     };
+    if (!hasTypecheck) {
+      delete scripts.typecheck;
+    }
     return scripts;
   } else {
+    const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
     const hasJsOrTs =
       config.doesContainJavaScript ||
       config.doesContainJavaScriptInPackages ||
@@ -644,13 +649,16 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const oldTest = oldScripts.test;
     let scripts: Record<string, string> = {
       'check-all-for-ai': 'yarn check-for-ai && yarn test',
-      'check-for-ai': `yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet`,
+      'check-for-ai': `yarn format > /dev/null 2> /dev/null || true${
+        hasTypecheck ? ' && yarn typecheck' : ''
+      } && yarn lint-fix --quiet`,
       cleanup: 'yarn format && yarn lint-fix',
       format: `sort-package-json && yarn format-code && yarn prettify`,
-      lint: `oxlint --type-aware --type-check .`,
+      lint: `oxlint .`,
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern -c "${oxfmtConfigPath}" .`,
       prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`,
+      typecheck: 'tsc --noEmit',
     };
     if (config.doesContainSubPackageJsons) {
       scripts = merge(
@@ -665,10 +673,12 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
           // CI=1 prevents vitest from enabling watch.
           // FORCE_COLOR=3 make wb enable color output.
           test: 'CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test',
+          typecheck: 'yarn workspaces foreach --all --parallel --verbose run typecheck',
         }
       );
     } else if (config.depending.pyright) {
-      scripts.lint += ' && pyright';
+      scripts.typecheck = scripts.typecheck ? `${scripts.typecheck} && ` : '';
+      scripts.typecheck += 'pyright';
     }
     if (oldTest?.includes('wb test')) {
       scripts.test = oldTest;
@@ -676,6 +686,11 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     if (!hasJsOrTs) {
       delete scripts['format-code'];
       scripts.format = 'sort-package-json && yarn prettify';
+    }
+    if (!hasTypecheck) {
+      delete scripts.typecheck;
+    } else if (config.depending.wb) {
+      scripts.typecheck = 'wb typecheck';
     }
     return scripts;
   }

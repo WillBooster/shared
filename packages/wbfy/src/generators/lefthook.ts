@@ -99,7 +99,7 @@ async function core(config: PackageConfig): Promise<void> {
   const dirPath = path.resolve(config.dirPath, '.lefthook');
   const huskyDirPath = path.resolve(config.dirPath, '.husky');
   const hasHuskyDir = fs.existsSync(huskyDirPath);
-  const { lint } = generateScripts(config, {});
+  const { typecheck } = generateScripts(config, {});
   const settings: Partial<LefthookSettings> = {
     ...baseSettings,
     'pre-commit': {
@@ -114,7 +114,7 @@ async function core(config: PackageConfig): Promise<void> {
       },
     },
   };
-  if (!lint) {
+  if (!typecheck) {
     delete settings['pre-push'];
   }
   await Promise.all([
@@ -138,7 +138,7 @@ async function core(config: PackageConfig): Promise<void> {
     spawnSync('git', ['config', '--unset', 'core.hooksPath'], config.dirPath);
   }
 
-  if (lint) {
+  if (typecheck) {
     const prePush = getPrePushScript(config);
     fs.mkdirSync(path.join(dirPath, 'pre-push'), { recursive: true });
     await promisePool.run(() =>
@@ -157,11 +157,11 @@ async function core(config: PackageConfig): Promise<void> {
 }
 
 function getPrePushScript(config: PackageConfig): string {
-  let checkCommand: string;
+  let typecheckCommand: string;
   if (config.isBun) {
-    checkCommand = config.depending.wb ? 'bun --bun wb lint' : 'bun run lint';
+    typecheckCommand = config.depending.wb ? 'bun --bun wb typecheck' : 'bun run typecheck';
   } else {
-    checkCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
+    typecheckCommand = config.depending.wb ? 'yarn wb typecheck' : 'yarn run typecheck';
   }
   if (config.repository?.startsWith('github:WillBoosterLab/')) {
     return `
@@ -174,10 +174,10 @@ if [ $(git branch --show-current) = "main" ] && [ $(git config user.email) != "e
   exit 1
 fi
 
-${checkCommand}
+${typecheckCommand}
 `.trim();
   }
-  return checkCommand;
+  return typecheckCommand;
 }
 
 function getCleanupGlobs(config: PackageConfig): string {

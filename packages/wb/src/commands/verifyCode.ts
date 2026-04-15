@@ -10,6 +10,7 @@ import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv } from './test.js';
+import { typeCheck } from './typecheck.js';
 
 const builder = {} as const;
 
@@ -57,6 +58,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
   await runInProcessCommand('format', () => lint({ ...argv, _: ['lint'], format: true } as LintCommandArgv), {
     allowFailure: true,
   });
+  await runInProcessCommand('typecheck', () => typeCheck(argv));
   await runInProcessCommand('lint-fix', () =>
     lint({ ...argv, _: ['lint'], fix: true, quiet: true } as LintCommandArgv)
   );

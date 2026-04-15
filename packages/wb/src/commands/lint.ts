@@ -279,8 +279,6 @@ export function buildLintCommand(
     return buildShellCommand([
       'YARN',
       'oxlint',
-      '--type-aware',
-      '--type-check',
       ...(argv.quiet ? ['--quiet'] : []),
       ...(argv.fix ? ['--fix'] : []),
       ...(files ?? ['.']),

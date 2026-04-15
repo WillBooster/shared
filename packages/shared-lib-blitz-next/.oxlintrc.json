@@ -2,8 +2,8 @@
   "extends": ["../../node_modules/@willbooster/oxlint-config/.oxlintrc.json"],
   "ignorePatterns": ["**/test/fixtures/**", "**/test-fixtures/**"],
   "options": {
-    "typeAware": true,
-    "typeCheck": true
+    "typeAware": false,
+    "typeCheck": false
   },
   "rules": {
     "unicorn/no-nested-ternary": "off",

@@ -2,22 +2,15 @@
   "name": "@willbooster/shared-lib-blitz-next",
   "version": "0.0.0-semantically-released",
   "description": "Shared library for WillBooster Blitz.js projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/shared-lib-blitz-next"
   },
-  "files": [
-    "bin/",
-    "dist/"
-  ],
-  "type": "module",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -30,23 +23,29 @@
       "import": "./src/index.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "scripts": {
     "build": "build-ts lib",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
-    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet",
+    "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn typecheck && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn format-code && yarn prettify",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern -c \"$(node -e 'console.log(require.resolve(\"@willbooster/oxfmt-config/.oxfmtrc.json\"))')\" .",
-    "lint": "oxlint --type-aware --type-check .",
+    "lint": "oxlint .",
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --cache --color --no-error-on-unmatched-pattern --write \"**/{.*/,}*.{java}\" \"!**/test{-,/}fixtures/**\" || true",
     "test": "vitest",
+    "typecheck": "tsc --noEmit",
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
+  "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/node-ts": "23.6.4",
@@ -65,5 +64,7 @@
     "typescript": "^5.9.3",
     "vitest": "4.0.18"
   },
-  "prettier": "@willbooster/prettier-config"
+  "publishConfig": {
+    "access": "public"
+  }
 }
