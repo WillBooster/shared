@@ -9,18 +9,6 @@ import packageJson from '../package.json' with { type: 'json' };
 
 const packageDirPath = path.resolve(import.meta.dirname, '..');
 
-test('built cli prints its version', { timeout: 60 * 1000 }, () => {
-  buildCli();
-
-  const result = child_process.spawnSync(process.execPath, [path.join(packageDirPath, 'bin', 'wbfy.js'), '--version'], {
-    cwd: packageDirPath,
-    encoding: 'utf8',
-  });
-  expect(result.stderr).toBe('');
-  expect(result.status).toBe(0);
-  expect(result.stdout.trim()).toBe(packageJson.version);
-});
-
 test('packed cli prints its version after npm install', { timeout: 120 * 1000 }, () => {
   buildCli();
 
