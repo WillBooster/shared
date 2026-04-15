@@ -24,6 +24,8 @@ const rootJsonObj = {
   },
   exclude: ['packages/*/test/fixtures', 'test/fixtures'],
   include: [
+    '*.config.ts',
+    'packages/*/*.config.ts',
     'packages/*/scripts/**/*',
     'packages/*/src/**/*',
     'packages/*/test/**/*',
@@ -44,7 +46,9 @@ const subJsonObj = {
     noEmit: true,
   },
   exclude: ['test/fixtures'],
-  include: ['scripts/**/*', 'src/**/*', 'test/**/*'],
+  // wbfy generates root-level tool configs such as playwright.config.ts, and
+  // type-aware linting needs those files in the project to see Node/Bun globals.
+  include: ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'],
 };
 
 export async function generateTsconfig(config: PackageConfig): Promise<void> {
