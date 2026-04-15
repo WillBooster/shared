@@ -87,6 +87,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       // Keep explicit emit settings because some repos have tsconfig.build.json files
       // that extend this config and rely on those options for tracked .d.ts outputs.
       newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
+      ensureTsExtensionEmitCompatibility(newSettings.compilerOptions);
 
       const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
       if (mergedTypes.length > 0) {
@@ -158,6 +159,15 @@ function filterExistingTypes(existingTypes: string[], generatedTypes: string[]):
 
 function isGeneratedTestGlobalType(typeName: string): boolean {
   return typeName === 'cypress' || typeName === 'jest' || typeName === 'mocha' || typeName === 'vitest/globals';
+}
+
+function ensureTsExtensionEmitCompatibility(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
+  if (!compilerOptions) return;
+  if (compilerOptions.noEmit !== false || compilerOptions.emitDeclarationOnly === true) return;
+
+  // @tsconfig/bun enables allowImportingTsExtensions, which TypeScript permits
+  // during emit only when relative TS extensions are rewritten.
+  compilerOptions.rewriteRelativeImportExtensions = true;
 }
 
 function pickExistingEmitOptions(

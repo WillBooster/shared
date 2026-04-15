@@ -9,6 +9,7 @@ import { promisePool } from '../utils/promisePool.js';
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
+    const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
 
     const promises = [
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.oxlintrc.json'), { force: true })),
@@ -25,7 +26,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.mjs'), { force: true })),
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true })),
     ];
-    if (!fs.existsSync(filePath)) {
+    if (!existingContent) {
       promises.push(promisePool.run(() => fsUtil.generateFile(filePath, configContent)));
     }
     await Promise.all(promises);
