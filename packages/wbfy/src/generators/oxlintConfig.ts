@@ -26,17 +26,28 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.mjs'), { force: true })),
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true })),
     ];
-    if (!existingContent || existingContent === legacyConfigContent) {
+    if (!existingContent || legacyConfigContents.has(existingContent)) {
       promises.push(promisePool.run(() => fsUtil.generateFile(filePath, configContent)));
     }
     await Promise.all(promises);
   });
 }
 
-const legacyConfigContent = `import config from '@willbooster/oxlint-config';
+const legacyConfigContents = new Set([
+  `import config from '@willbooster/oxlint-config';
 
 export default config;
-`;
+`,
+  `import config from '@willbooster/oxlint-config';
+
+// @willbooster/oxlint-config currently enables a Unicorn rule that oxlint does
+// not ship yet. Drop this shim after the shared config package removes it or
+// oxlint adds support.
+delete config.rules?.['unicorn/consistent-template-literal-escape'];
+
+export default config;
+`,
+]);
 
 const configContent = `import config from '@willbooster/oxlint-config';
 
