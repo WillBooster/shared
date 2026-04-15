@@ -27,7 +27,7 @@ export async function generateVscodeSettings(config: PackageConfig): Promise<voi
       for (const excludeFilePattern of excludeFilePatterns) {
         settings = merge.all([settings, excludeSetting(excludeFilePattern)]);
       }
-      if (config.doesContainPoetryLock) {
+      if (config.doesContainPoetryLock || config.doesContainUvLock) {
         settings = merge.all([settings, excludeSetting('**/.venv/**')]);
       }
       if (config.depending.next) {

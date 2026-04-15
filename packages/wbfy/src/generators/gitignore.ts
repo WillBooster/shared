@@ -69,7 +69,7 @@ packaged.yaml
 `;
     }
     // Because .venv should be ignored on root directory
-    if (config.doesContainPoetryLock) {
+    if (config.doesContainPoetryLock || config.doesContainUvLock) {
       names.push('python');
       headUserContent += `.venv/
 `;

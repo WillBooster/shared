@@ -71,7 +71,7 @@ type WritablePackageJson = SetRequired<
 interface DependencyUpdates {
   dependencies: string[];
   devDependencies: string[];
-  poetryDevDependencies: string[];
+  pythonDevDependencies: string[];
 }
 
 export async function generatePackageJson(
@@ -171,7 +171,7 @@ function applyPackageJsonConventions(
 ): DependencyUpdates {
   const dependencies: string[] = [];
   const devDependencies = ['prettier', 'sort-package-json'];
-  const poetryDevDependencies: string[] = [];
+  const pythonDevDependencies: string[] = [];
 
   if (
     !fs.existsSync(path.join(rootConfig.dirPath, '.prettierrc.json')) &&
@@ -281,11 +281,11 @@ function applyPackageJsonConventions(
     return {
       dependencies: dependencies.filter((dep) => !dep.includes('@willbooster/')),
       devDependencies: devDependencies.filter((dep) => !dep.includes('@willbooster/')),
-      poetryDevDependencies,
+      pythonDevDependencies,
     };
   }
 
-  return { dependencies, devDependencies, poetryDevDependencies };
+  return { dependencies, devDependencies, pythonDevDependencies };
 }
 
 async function normalizePackageMetadata(
@@ -347,10 +347,15 @@ async function normalizePackageMetadata(
       }
     }
 
-    if (config.doesContainPoetryLock) {
+    const pythonPackageManager = getPythonPackageManager(config);
+    if (pythonPackageManager) {
       if (jsonObj.scripts.postinstall === 'poetry install') {
         delete jsonObj.scripts.postinstall;
       }
+      jsonObj.scripts['common/ci-setup'] = `yarn setup-${pythonPackageManager}`;
+      delete jsonObj.scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
+      delete jsonObj.scripts['setup-poetry-asdf'];
+      jsonObj.scripts[`setup-${pythonPackageManager}`] = getPythonSetupCommand(pythonPackageManager);
       const pythonFiles = await fg.glob('**/*.py', {
         cwd: config.dirPath,
         dot: true,
@@ -365,16 +370,17 @@ async function normalizePackageMetadata(
       }
       if (dirNameSet.size > 0) {
         const dirNamesStr = [...dirNameSet].join(' ');
+        const pythonRunner = `${pythonPackageManager} run`;
         jsonObj.scripts['format-code'] =
-          `poetry run isort --profile black ${dirNamesStr} && poetry run black ${dirNamesStr}`;
+          `${pythonRunner} isort --profile black ${dirNamesStr} && ${pythonRunner} black ${dirNamesStr}`;
         if (jsonObj.scripts.lint) {
-          jsonObj.scripts.lint = `poetry run flake8 ${dirNamesStr} && ${jsonObj.scripts.lint}`;
+          jsonObj.scripts.lint = `${pythonRunner} flake8 ${dirNamesStr} && ${jsonObj.scripts.lint}`;
         } else {
-          jsonObj.scripts.lint = `poetry run flake8 ${dirNamesStr}`;
+          jsonObj.scripts.lint = `${pythonRunner} flake8 ${dirNamesStr}`;
           jsonObj.scripts['lint-fix'] = 'yarn lint';
         }
         jsonObj.scripts.format = (jsonObj.scripts.format ?? '') + ` && yarn format-code`;
-        dependencyUpdates.poetryDevDependencies.push('black', 'isort', 'flake8');
+        dependencyUpdates.pythonDevDependencies.push('black', 'isort', 'flake8');
       }
     }
   }
@@ -434,9 +440,25 @@ function installDependencyUpdates(
   const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
   installNpmDependencies(config, packageManager, devDependencies, true);
 
-  if (dependencyUpdates.poetryDevDependencies.length > 0) {
-    spawnSync('poetry', ['add', '--group', 'dev', ...new Set(dependencyUpdates.poetryDevDependencies)], config.dirPath);
+  const pythonPackageManager = getPythonPackageManager(config);
+  if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
+    const dependencies = [...new Set(dependencyUpdates.pythonDevDependencies)];
+    if (pythonPackageManager === 'poetry') {
+      spawnSync('poetry', ['add', '--group', 'dev', ...dependencies], config.dirPath);
+    } else {
+      spawnSync('uv', ['add', '--dev', ...dependencies], config.dirPath);
+    }
   }
+}
+
+function getPythonPackageManager(config: PackageConfig): 'poetry' | 'uv' | undefined {
+  if (config.doesContainUvLock) return 'uv';
+  if (config.doesContainPoetryLock) return 'poetry';
+}
+
+function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
+  if (packageManager === 'uv') return 'uv sync --frozen';
+  return 'poetry config virtualenvs.in-project true && poetry env use $(mise current python) && poetry run pip install --upgrade pip && poetry install';
 }
 
 function installNpmDependencies(

@@ -22,6 +22,7 @@ test('includes python files in cleanup glob when poetry is used', async () => {
       dirPath,
       doesContainPackageJson: true,
       doesContainPoetryLock: true,
+      doesContainUvLock: false,
       doesContainTypeScript: true,
     })
   );
@@ -30,7 +31,32 @@ test('includes python files in cleanup glob when poetry is used', async () => {
   expect(lefthookConfig).toContain("glob: '**/*.{");
   expect(lefthookConfig).toContain('py');
   expect(lefthookConfig).toContain('python_files=');
+  expect(lefthookConfig).toContain('poetry run isort');
   expect(lefthookConfig).not.toContain('lint-staged');
+});
+
+test('uses uv for python cleanup and install hooks when uv is used', async () => {
+  const dirPath = createTempDir();
+
+  await generateLefthookUpdatingPackageJson(
+    createConfig({
+      dirPath,
+      doesContainPackageJson: true,
+      doesContainTypeScript: true,
+      doesContainUvLock: true,
+    })
+  );
+
+  const lefthookConfig = await fs.promises.readFile(path.join(dirPath, 'lefthook.yml'), 'utf8');
+  const postMergeScript = await fs.promises.readFile(
+    path.join(dirPath, '.lefthook', 'post-merge', 'prepare.sh'),
+    'utf8'
+  );
+  expect(lefthookConfig).toContain('py');
+  expect(lefthookConfig).toContain('python_files=');
+  expect(lefthookConfig).toContain('uv run isort');
+  expect(lefthookConfig).not.toContain('poetry run');
+  expect(postMergeScript).toContain(String.raw`run_if_changed "uv\.lock" "uv sync --frozen"`);
 });
 
 test('includes dart files in cleanup glob when pubspec is present', async () => {
@@ -119,6 +145,7 @@ function createConfig(overrides: Partial<PackageConfig> = {}): PackageConfig {
     doesContainGoMod: false,
     doesContainPackageJson: false,
     doesContainPoetryLock: false,
+    doesContainUvLock: false,
     doesContainPomXml: false,
     doesContainPubspecYaml: false,
     doesContainTemplateYaml: false,

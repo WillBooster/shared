@@ -187,7 +187,7 @@ function getCleanupGlobs(config: PackageConfig): string {
   if (doesContainJsOrTs(config)) {
     supportedExtensions.push(...extensions.oxfmt, ...extensions.oxlint);
   }
-  if (config.doesContainPoetryLock) {
+  if (config.doesContainPoetryLock || config.doesContainUvLock) {
     supportedExtensions.push('py');
   }
   if (config.doesContainPubspecYaml) {
@@ -219,7 +219,7 @@ ${hasJsOrTs ? String.raw`oxlint_files="$(printf '%s\n' {staged_files} | grep -E 
 ${hasJsOrTs ? String.raw`oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' || true)"` : ''}
 prettier_files="$(printf '%s\n' {staged_files} | grep -E '(${prettierPattern})' || true)"
 package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
-${config.doesContainPoetryLock ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
+${hasPythonPackageManager(config) ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
 ${
@@ -247,11 +247,11 @@ if [ -n "$package_json_files" ]; then
   node node_modules/.bin/sort-package-json -- $package_json_files
 fi
 ${
-  config.doesContainPoetryLock
+  hasPythonPackageManager(config)
     ? `if [ -n "$python_files" ]; then
-  poetry run isort --profile black --filter-files $python_files
-  poetry run black $python_files
-  poetry run flake8 $python_files
+  ${getPythonRunner(config)} isort --profile black --filter-files $python_files
+  ${getPythonRunner(config)} black $python_files
+  ${getPythonRunner(config)} flake8 $python_files
 fi`
     : ''
 }
@@ -292,6 +292,9 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
   if (config.doesContainPoetryLock) {
     postMergeCommands.push(String.raw`run_if_changed "poetry\.lock" "poetry install"`);
   }
+  if (config.doesContainUvLock) {
+    postMergeCommands.push(String.raw`run_if_changed "uv\.lock" "uv sync --frozen"`);
+  }
   if (config.depending.blitz) {
     postMergeCommands.push(
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/blitz prisma migrate deploy"`,
@@ -305,4 +308,12 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
     );
   }
   return postMergeCommands;
+}
+
+function hasPythonPackageManager(config: PackageConfig): boolean {
+  return config.doesContainPoetryLock || config.doesContainUvLock;
+}
+
+function getPythonRunner(config: PackageConfig): 'poetry run' | 'uv run' {
+  return config.doesContainUvLock ? 'uv run' : 'poetry run';
 }

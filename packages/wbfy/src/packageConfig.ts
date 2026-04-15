@@ -30,6 +30,7 @@ export interface PackageConfig {
   doesContainGoMod: boolean;
   doesContainPackageJson: boolean;
   doesContainPoetryLock: boolean;
+  doesContainUvLock: boolean;
   doesContainPomXml: boolean;
   doesContainPubspecYaml: boolean;
   doesContainTemplateYaml: boolean;
@@ -183,6 +184,7 @@ export async function getPackageConfig(
       doesContainGoMod: fs.existsSync(path.resolve(dirPath, 'go.mod')),
       doesContainPackageJson: fs.existsSync(path.resolve(dirPath, 'package.json')),
       doesContainPoetryLock: fs.existsSync(path.resolve(dirPath, 'poetry.lock')),
+      doesContainUvLock: fs.existsSync(path.resolve(dirPath, 'uv.lock')),
       doesContainPomXml: fs.existsSync(path.resolve(dirPath, 'pom.xml')),
       doesContainPubspecYaml: fs.existsSync(path.resolve(dirPath, 'pubspec.yaml')),
       doesContainTemplateYaml: fs.existsSync(path.resolve(dirPath, 'template.yaml')),
@@ -228,6 +230,7 @@ export async function getPackageConfig(
       config.doesContainGoMod ||
       config.doesContainPackageJson ||
       config.doesContainPoetryLock ||
+      config.doesContainUvLock ||
       config.doesContainPomXml ||
       config.doesContainPubspecYaml ||
       config.doesContainTemplateYaml
