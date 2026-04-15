@@ -447,7 +447,7 @@ function installNpmDependencies(
 ): void {
   if (dependencies.length === 0) return;
 
-  const dependencySpecifiers = [...new Set(dependencies)].map((dependency) => getDependencySpecifier(dependency));
+  const dependencySpecifiers = [...new Set(dependencies)];
   if (config.isBun) {
     spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
   } else {
@@ -481,10 +481,7 @@ function addPackageJsonDependencies(
 }
 
 function getPackageJsonDependencyVersion(dependency: string): string {
-  const dependencySpecifier = getDependencySpecifier(dependency);
-  return dependencySpecifier.startsWith(`${dependency}@`)
-    ? dependencySpecifier.slice(dependency.length + 1)
-    : getLatestDependencyVersion(dependency);
+  return getLatestDependencyVersion(dependency);
 }
 
 function getLatestDependencyVersion(dependency: string): string {
@@ -536,10 +533,6 @@ function removeObsoleteLintDependencies(
     delete jsonObj.devDependencies[dependency];
     delete jsonObj.peerDependencies[dependency];
   }
-}
-
-function getDependencySpecifier(dependency: string): string {
-  return dependency;
 }
 
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
