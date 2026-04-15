@@ -3537,6 +3537,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@rolldown/plugin-babel@npm:0.2.2":
+  version: 0.2.2
+  resolution: "@rolldown/plugin-babel@npm:0.2.2"
+  dependencies:
+    picomatch: "npm:^4.0.3"
+  peerDependencies:
+    "@babel/core": ^7.29.0 || ^8.0.0-rc.1
+    "@babel/plugin-transform-runtime": ^7.29.0 || ^8.0.0-rc.1
+    "@babel/runtime": ^7.27.0 || ^8.0.0-rc.1
+    rolldown: ^1.0.0-rc.5
+    vite: ^8.0.0
+  peerDependenciesMeta:
+    "@babel/plugin-transform-runtime":
+      optional: true
+    "@babel/runtime":
+      optional: true
+    vite:
+      optional: true
+  checksum: 10c0/d00d6afd831c1efa5eac8bbe9eb4c78abfe731c744ffac99d2246e78a94ac8546ee26d0a304541143427e59a846c96d3d5728da540293d02c37bcbe3972428b3
+  languageName: node
+  linkType: hard
+
 "@rolldown/pluginutils@npm:1.0.0-rc.15":
   version: 1.0.0-rc.15
   resolution: "@rolldown/pluginutils@npm:1.0.0-rc.15"
@@ -5043,7 +5065,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/babel__core@npm:^7.20.5":
+"@types/babel__core@npm:^7, @types/babel__core@npm:^7.20.5":
   version: 7.20.5
   resolution: "@types/babel__core@npm:7.20.5"
   dependencies:
@@ -6033,8 +6055,12 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@willbooster/wb@workspace:packages/wb"
   dependencies:
+    "@babel/core": "npm:7.29.0"
+    "@babel/plugin-proposal-decorators": "npm:7.29.0"
+    "@rolldown/plugin-babel": "npm:0.2.2"
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
+    "@types/babel__core": "npm:^7"
     "@types/kill-port": "npm:2.0.3"
     "@types/node": "npm:25.6.0"
     "@types/yargs": "npm:17.0.35"
@@ -6054,6 +6080,7 @@ __metadata:
     oxlint-tsgolint: "npm:0.21.0"
     prettier: "npm:3.8.2"
     prettier-plugin-java: "npm:2.8.1"
+    rolldown: "npm:1.0.0-rc.15"
     sort-package-json: "npm:3.6.1"
     type-fest: "npm:5.5.0"
     typescript: "npm:6.0.2"
