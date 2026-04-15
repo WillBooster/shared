@@ -250,6 +250,10 @@ function applyPackageJsonConventions(
     }
   }
 
+  if (jsonObj.name === '@willbooster/wbfy') {
+    dependencies.push('@willbooster/oxfmt-config');
+  }
+
   const doesContainJsOrTs =
     config.doesContainJavaScript ||
     config.doesContainJavaScriptInPackages ||
