@@ -78,7 +78,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       const existingContent = await fs.promises.readFile(filePath, 'utf8');
       const oldSettings = JSON.parse(existingContent) as TsConfigJson;
       const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
-      const existingEmitOptions = pickExistingEmitOptions(oldSettings.compilerOptions);
+      const existingEmitMetadata = pickExistingEmitMetadata(oldSettings.compilerOptions);
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
@@ -88,9 +88,13 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
           !dirPath.includes('@types') && !dirPath.includes('__tests__/') && !dirPath.includes('tests/')
       );
       newSettings.compilerOptions ??= {};
-      // Keep explicit emit settings because some repos have tsconfig.build.json files
-      // that extend this config and rely on those options for tracked .d.ts outputs.
-      newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
+      // wbfy-generated tsconfig.json is a lint/typecheck project, not the emit
+      // contract. It must keep rootDir broad enough for root config files,
+      // scripts, src, and tests. build-ts owns emit and creates a temporary
+      // src-only tsconfig with noEmit=false, emitDeclarationOnly=true,
+      // rootDir="src", and include=["src/**/*"], so preserving noEmit=false or
+      // rootDir="src" here would only break non-src type-aware lint coverage.
+      newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitMetadata };
       ensureTsExtensionEmitCompatibility(newSettings.compilerOptions);
 
       const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
@@ -200,17 +204,14 @@ function deleteLegacyModuleSettings(
   delete compilerOptions.module;
 }
 
-function pickExistingEmitOptions(
+function pickExistingEmitMetadata(
   compilerOptions: TsConfigJson['compilerOptions']
-): Pick<
-  NonNullable<TsConfigJson['compilerOptions']>,
-  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'sourceMap'
-> {
+): Pick<NonNullable<TsConfigJson['compilerOptions']>, 'declaration' | 'declarationMap' | 'sourceMap'> {
   const emitOptions = {} as Pick<
     NonNullable<TsConfigJson['compilerOptions']>,
-    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'sourceMap'
+    'declaration' | 'declarationMap' | 'sourceMap'
   >;
-  for (const key of ['declaration', 'declarationMap', 'emitDeclarationOnly', 'noEmit', 'sourceMap'] as const) {
+  for (const key of ['declaration', 'declarationMap', 'sourceMap'] as const) {
     const value = compilerOptions?.[key];
     if (value !== undefined) {
       emitOptions[key] = value as never;

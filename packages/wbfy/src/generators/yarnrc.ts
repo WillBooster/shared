@@ -69,12 +69,14 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
     settings.nmMode = 'hardlinks-global';
     settings.npmMinimalAgeGate = '5d';
     settings.npmPreapprovedPackages = [
-      // ---------- We believe our packages are safe ----------
+      // ---------- START: We believe our packages are safe ----------
       '@exercode/*',
       '@willbooster/*',
       'agent-runtime-kit',
+      'build-ts',
       'one-way-git-sync',
-      // ------------------------------------------------------
+      // ---------- END: We believe our packages are safe ----------
+
       // To deal with CVE like https://nextjs.org/blog/CVE-2025-66478
       'next',
       '@next/*',

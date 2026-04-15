@@ -18,7 +18,7 @@ interface BunfigToml {
 }
 
 const minimumReleaseAgeExcludes = [
-  // ---------- We believe our packages are safe ----------
+  // ---------- START: We believe our packages are safe ----------
   '@exercode/problem-utils',
   '@willbooster/agent-skills',
   '@willbooster/babel-configs',
@@ -33,7 +33,10 @@ const minimumReleaseAgeExcludes = [
   '@willbooster/shared-lib-react',
   '@willbooster/wb',
   'agent-runtime-kit',
+  'build-ts',
   'one-way-git-sync',
+  // ---------- END: We believe our packages are safe ----------
+
   // wbfy pins these tooling packages and may apply them immediately after a
   // release, before the global minimum-release-age window has elapsed.
   '@typescript/native-preview',
@@ -91,7 +94,6 @@ const minimumReleaseAgeExcludes = [
   '@oxlint-tsgolint/linux-x64',
   '@oxlint-tsgolint/win32-arm64',
   '@oxlint-tsgolint/win32-x64',
-  // ------------------------------------------------------
   '@next/env',
   '@next/font',
   '@next/rspack-binding-linux-arm64-gnu',

@@ -67,7 +67,7 @@ test('sets rootDir for monorepos without root sources', async () => {
   expect(tsconfig.compilerOptions.types).toEqual(['node']);
 });
 
-test('preserves explicit emit settings while resetting rootDir', async () => {
+test('resets emit rootDir because build-ts owns src-only declaration emit', async () => {
   const dirPath = createTempDir();
   await fs.promises.mkdir(path.join(dirPath, 'src'), { recursive: true });
   await fs.promises.writeFile(path.join(dirPath, 'src', 'index.ts'), 'export const value = 1;\n');
@@ -96,7 +96,7 @@ test('preserves explicit emit settings while resetting rootDir', async () => {
 
   const tsconfig = await readTsconfig(dirPath);
   expect(tsconfig.compilerOptions.declaration).toBe(true);
-  expect(tsconfig.compilerOptions.noEmit).toBe(false);
+  expect(tsconfig.compilerOptions.noEmit).toBe(true);
   expect(tsconfig.compilerOptions.outDir).toBe('dist');
   expect(tsconfig.compilerOptions.rootDir).toBe('.');
   expect(tsconfig.compilerOptions.sourceMap).toBe(true);
