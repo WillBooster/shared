@@ -18,5 +18,18 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
 
 const configContent = `import config from '@willbooster/oxfmt-config';
 
-export default config;
+export default {
+  ...config,
+  ignorePatterns: [
+    ...config.ignorePatterns,
+    // oxfmt 0.45 can crash with DataCloneError on text/data parsers. Keep
+    // those formats on Prettier until oxfmt handles them reliably.
+    '**/*.html',
+    '**/*.json',
+    '**/*.jsonc',
+    '**/*.md',
+    '**/*.yaml',
+    '**/*.yml',
+  ],
+};
 `;
