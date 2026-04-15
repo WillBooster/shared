@@ -217,7 +217,7 @@ ${config.doesContainPoetryLock ? String.raw`python_files="$(printf '%s\n' {stage
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
 if [ -n "$oxfmt_files" ]; then
-  node node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern -c "$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config/.oxfmtrc.json"))')" $oxfmt_files
+  node node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern -c "$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config"))')" $oxfmt_files
 fi
 if [ -n "$prettier_files" ]; then
   node node_modules/.bin/prettier --cache --write --ignore-unknown -- $prettier_files

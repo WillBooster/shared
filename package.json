@@ -18,7 +18,7 @@
     "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format",
-    "format-code": "oxfmt --write --no-error-on-unmatched-pattern -c \"$(node -e 'console.log(require.resolve(\"@willbooster/oxfmt-config/.oxfmtrc.json\"))')\" .",
+    "format-code": "oxfmt --write --no-error-on-unmatched-pattern -c \"$(node -e 'console.log(require.resolve(\"@willbooster/oxfmt-config\"))')\" .",
     "lint": "yarn workspaces foreach --all --parallel --verbose run lint",
     "lint-fix": "yarn workspaces foreach --all --parallel --verbose run lint-fix",
     "prepare": "lefthook install || true",

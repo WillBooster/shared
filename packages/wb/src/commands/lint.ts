@@ -288,7 +288,7 @@ export function buildLintCommand(
 }
 
 export function buildOxfmtCommand(files?: string[]): string {
-  const configPath = `"$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config/.oxfmtrc.json"))')"`;
+  const configPath = `"$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config"))')"`;
   return `${buildShellCommand([
     'YARN',
     'oxfmt',

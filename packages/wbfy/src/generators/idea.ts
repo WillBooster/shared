@@ -54,7 +54,7 @@ function createTaskOptions(runner: string, args: string, name: string, extension
 const oxlintContent = `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectTasksOptions">
-${extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern -c ./node_modules/@willbooster/oxfmt-config/.oxfmtrc.json', 'Oxfmt', ext)).join('')}
+${extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern -c ./node_modules/@willbooster/oxfmt-config', 'Oxfmt', ext)).join('')}
 ${extensions.prettierOnly.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('')}
   </component>
 </project>
