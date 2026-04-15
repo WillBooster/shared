@@ -39,6 +39,7 @@ test('generates explicit TS 6 types and rootDir for a root package', async () =>
   expect(tsconfig.compilerOptions.noEmit).toBe(true);
   expect(tsconfig.compilerOptions.rootDir).toBe('.');
   expect(tsconfig.compilerOptions.types).toEqual(['node', 'vitest/globals']);
+  expect(tsconfig.include).toContain('*.config.ts');
 });
 
 test('sets rootDir for monorepos without root sources', async () => {
@@ -171,6 +172,7 @@ async function readTsconfig(dirPath: string): Promise<{
     sourceMap?: boolean;
     types?: string[];
   };
+  include?: string[];
 }> {
   return JSON.parse(await fs.promises.readFile(path.join(dirPath, 'tsconfig.json'), 'utf8')) as {
     compilerOptions: {
@@ -181,6 +183,7 @@ async function readTsconfig(dirPath: string): Promise<{
       sourceMap?: boolean;
       types?: string[];
     };
+    include?: string[];
   };
 }
 
