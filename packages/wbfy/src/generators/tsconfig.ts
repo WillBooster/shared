@@ -182,7 +182,11 @@ function deleteLegacyModuleSettings(
 
   // TypeScript 6 removed the old node10 resolver spelling, so inherited base configs
   // should choose the resolver unless a project already opted into a modern one.
-  if (compilerOptions.moduleResolution === 'Node' || compilerOptions.moduleResolution === 'node10') {
+  if (
+    compilerOptions.moduleResolution === 'node' ||
+    compilerOptions.moduleResolution === 'Node' ||
+    compilerOptions.moduleResolution === 'node10'
+  ) {
     delete compilerOptions.moduleResolution;
   }
   if (config.isBun || config.depending.reactNative || compilerOptions.module !== 'ESNext') return;
