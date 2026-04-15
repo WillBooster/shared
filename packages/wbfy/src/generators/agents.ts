@@ -84,9 +84,9 @@ ${generateAgentCodingStyle(allConfigs)}
 
   const hasNewSection = extraContent?.trim().startsWith('#');
   const normalizedExtraContent = extraContent
-    ? hasNewSection
+    ? (hasNewSection
       ? '\n\n' + extraContent.trim()
-      : '\n' + extraContent
+      : '\n' + extraContent)
     : '';
   return baseContent + normalizedExtraContent;
 }

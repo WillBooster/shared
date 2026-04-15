@@ -594,9 +594,9 @@ function buildNormalizedRepositoryForPackageJson(
   const repositoryObj =
     typeof repository === 'object'
       ? repository
-      : typeof existingRepository === 'object'
+      : (typeof existingRepository === 'object'
         ? existingRepository
-        : undefined;
+        : undefined);
 
   return {
     ...repositoryObj,
