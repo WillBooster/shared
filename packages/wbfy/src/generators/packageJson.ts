@@ -61,6 +61,9 @@ const obsoleteLintDependencies = [
   'micromatch',
   'typescript-eslint',
 ];
+const micromatchPackageNames = new Set(['micromatch', '@types/micromatch']);
+const micromatchImportPattern =
+  /\bfrom\s+['"]micromatch['"]|\brequire\(\s*['"]micromatch['"]\s*\)|\bimport\(\s*['"]micromatch['"]\s*\)/u;
 
 const latestDependencyVersionCache = new Map<string, string>();
 
@@ -553,27 +556,43 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['check-all'];
   await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'lerna.json'), { force: true }));
 
-  // willbooster-configs subpackages publish config files as their product. Their
-  // ESLint and glob dependencies are package data, so removing them would break
-  // those published configs. Keep the migration scoped to this repository so
-  // every other repo keeps the normal obsolete-lint cleanup behavior.
-  if (!isWillboosterConfigsSubpackage(config)) {
-    removeObsoleteLintDependencies(jsonObj);
-  }
+  removeObsoleteLintDependencies(jsonObj, config);
 }
 
 function removeObsoleteLintDependencies(
-  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
+  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>,
+  config: PackageConfig
 ): void {
+  const preserveMicromatch = shouldPreserveMicromatch(config);
   for (const dependency of obsoleteLintDependencies) {
+    if (preserveMicromatch && micromatchPackageNames.has(dependency)) continue;
     delete jsonObj.dependencies[dependency];
     delete jsonObj.devDependencies[dependency];
     delete jsonObj.peerDependencies[dependency];
   }
 }
 
-function isWillboosterConfigsSubpackage(config: PackageConfig): boolean {
-  return config.isWillBoosterConfigs && !config.isRoot;
+function shouldPreserveMicromatch(config: PackageConfig): boolean {
+  // willbooster-configs subpackages publish config files as their product, so
+  // micromatch is package data there. Other repos keep micromatch only when
+  // product code imports it; otherwise it is treated as obsolete ESLint-era
+  // tooling.
+  return (config.isWillBoosterConfigs && !config.isRoot) || doesProductCodeImportMicromatch(config.dirPath);
+}
+
+function doesProductCodeImportMicromatch(dirPath: string): boolean {
+  const filePaths = fg.globSync('src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}', {
+    cwd: dirPath,
+    dot: true,
+    ignore: globIgnore,
+  });
+  return filePaths.some((filePath) => {
+    try {
+      return micromatchImportPattern.test(fs.readFileSync(path.resolve(dirPath, filePath), 'utf8'));
+    } catch {
+      return false;
+    }
+  });
 }
 
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
