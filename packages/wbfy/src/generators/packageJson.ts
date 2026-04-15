@@ -475,13 +475,9 @@ function addPackageJsonDependencies(
       packageJsonDependencies[dependency] !== '*'
     )
       continue;
-    packageJsonDependencies[dependency] = getPackageJsonDependencyVersion(dependency);
+    packageJsonDependencies[dependency] = getLatestDependencyVersion(dependency);
   }
   return dependenciesToInstall;
-}
-
-function getPackageJsonDependencyVersion(dependency: string): string {
-  return getLatestDependencyVersion(dependency);
 }
 
 function getLatestDependencyVersion(dependency: string): string {
