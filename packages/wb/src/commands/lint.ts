@@ -158,16 +158,18 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
           const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
           lintFilePaths.push(lintPath);
           lintFilePathsByProject.set(project, lintFilePaths);
-          for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
-            if (project.hasOxfmt) {
-              const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
-              oxfmtFilePaths.push(formatterPath);
-              oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
-            } else {
-              prettierFilePaths.push(formatterPath);
+          if (argv.format) {
+            for (const formatterPath of buildExplicitFormatterArgs(project, lintPath, fileKind, extension)) {
+              if (project.hasOxfmt) {
+                const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
+                oxfmtFilePaths.push(formatterPath);
+                oxfmtFilePathsByProject.set(project, oxfmtFilePaths);
+              } else {
+                prettierFilePaths.push(formatterPath);
+              }
             }
           }
-        } else if (prettierExtensions.has(extension) || oxfmtExtensions.has(extension)) {
+        } else if (argv.format && (prettierExtensions.has(extension) || oxfmtExtensions.has(extension))) {
           if (project.hasOxfmt && oxfmtExtensions.has(extension)) {
             const oxfmtFilePaths = oxfmtFilePathsByProject.get(project) ?? [];
             oxfmtFilePaths.push(lintPath);
@@ -197,8 +199,10 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
 
       lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
     }
-    for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
-      lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(oxfmtFilePaths), project, argv, lintRunOptions));
+    if (argv.format) {
+      for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
+        lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(oxfmtFilePaths), project, argv, lintRunOptions));
+      }
     }
     for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
       lintPromises.push(
