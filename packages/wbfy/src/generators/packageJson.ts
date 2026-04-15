@@ -22,13 +22,13 @@ import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptGoDependency = '@typescript/native-preview';
+const buildTsDependency = 'build-ts';
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
   '@eslint/js',
   '@next/eslint-plugin-next',
   '@types/eslint',
-  '@types/micromatch',
   '@typescript-eslint/eslint-plugin',
   '@typescript-eslint/parser',
   '@willbooster/biome-config',
@@ -57,7 +57,6 @@ const obsoleteLintDependencies = [
   'eslint-plugin-unicorn',
   'eslint-plugin-unused-imports',
   'globals',
-  'micromatch',
   'typescript-eslint',
 ];
 
@@ -248,6 +247,18 @@ function applyPackageJsonConventions(
       if (typeof value !== 'string') continue;
       jsonObj.scripts[key] = value.replaceAll(/wb\s+db/gu, 'wb prisma');
     }
+  }
+
+  // build-ts owns declaration emit for libraries. Keeping older releases can
+  // make generated .d.ts files land under dist/src while package exports point
+  // at dist, so wbfy must update existing build-ts users.
+  if (jsonObj.dependencies[buildTsDependency]) {
+    dependencies.push(buildTsDependency);
+  } else if (
+    jsonObj.devDependencies[buildTsDependency] ||
+    Object.values(jsonObj.scripts).some((script) => script?.includes(buildTsDependency))
+  ) {
+    devDependencies.push(buildTsDependency);
   }
 
   if (doesContainJsOrTs(config)) {
@@ -540,7 +551,13 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['check-all'];
   await promisePool.run(() => fs.promises.rm(path.resolve(dirPath, 'lerna.json'), { force: true }));
 
-  removeObsoleteLintDependencies(jsonObj);
+  // Packages that publish lint configs need their lint toolchain as package
+  // data, not just local repo tooling. Removing micromatch or ESLint peers here
+  // would break the exported config even though wbfy can lint the repo itself
+  // with oxlint.
+  if (!isPublishedLintConfigPackage(jsonObj)) {
+    removeObsoleteLintDependencies(jsonObj);
+  }
 }
 
 function removeObsoleteLintDependencies(
@@ -553,6 +570,15 @@ function removeObsoleteLintDependencies(
   }
 }
 
+function isPublishedLintConfigPackage(jsonObj: PackageJson): boolean {
+  return (
+    typeof jsonObj.name === 'string' &&
+    jsonObj.name.includes('eslint-config') &&
+    typeof jsonObj.main === 'string' &&
+    /(?:^|\/)eslint\.config\.[cm]?js$/u.test(jsonObj.main)
+  );
+}
+
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
@@ -560,6 +586,7 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   // current CLI when wbfy wires hooks or scripts through wb.
   return (
     dependency === '@willbooster/wb' ||
+    dependency === buildTsDependency ||
     dependency === '@willbooster/oxlint-config' ||
     dependency === 'oxlint' ||
     dependency === typescriptGoDependency

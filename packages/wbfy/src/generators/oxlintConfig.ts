@@ -8,6 +8,9 @@ import { promisePool } from '../utils/promisePool.js';
 
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
+    if (isPublishedEslintConfigPackage(config)) {
+      return;
+    }
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
 
@@ -31,6 +34,16 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     }
     await Promise.all(promises);
   });
+}
+
+function isPublishedEslintConfigPackage(config: PackageConfig): boolean {
+  const packageJson = config.packageJson;
+  return (
+    typeof packageJson?.name === 'string' &&
+    packageJson.name.includes('eslint-config') &&
+    typeof packageJson.main === 'string' &&
+    /(?:^|\/)eslint\.config\.[cm]?js$/u.test(packageJson.main)
+  );
 }
 
 const configContent = `import config from '@willbooster/oxlint-config';
