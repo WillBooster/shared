@@ -22,6 +22,7 @@ const minimumReleaseAgeExcludes = [
   '@exercode/problem-utils',
   '@willbooster/agent-skills',
   '@willbooster/babel-configs',
+  '@willbooster/oxfmt-config',
   '@willbooster/oxlint-config',
   '@willbooster/prettier-config',
   '@willbooster/renovate-config',
@@ -33,6 +34,12 @@ const minimumReleaseAgeExcludes = [
   '@willbooster/wb',
   'agent-runtime-kit',
   'one-way-git-sync',
+  // wbfy pins these tooling packages and may apply them immediately after a
+  // release, before the global minimum-release-age window has elapsed.
+  '@typescript/native-preview',
+  'oxfmt',
+  'oxlint',
+  'oxlint-tsgolint',
   // ------------------------------------------------------
   '@next/env',
   '@next/font',
