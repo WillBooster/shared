@@ -1,3 +1,4 @@
+// oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make load/dump usage clearer.
 import fs from 'node:fs';
 import path from 'node:path';
 

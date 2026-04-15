@@ -1,4 +1,5 @@
 // GitHub Actions valueless events such as `pull_request:` require YAML null values.
+// oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make load/dump usage clearer.
 /* eslint-disable unicorn/no-null */
 
 import fs from 'node:fs';

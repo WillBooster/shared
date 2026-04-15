@@ -1,3 +1,4 @@
+// oxlint-disable eslint-plugin-import/no-named-as-default-member -- LibSodium's namespace API keeps crypto helpers grouped.
 import path from 'node:path';
 
 import dotenv from 'dotenv';
