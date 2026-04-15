@@ -2,19 +2,22 @@
   "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
   "description": "CLI tool for WillBooster projects",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wb"
   },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "type": "module",
   "bin": "bin/index.js",
   "files": [
     "bin/",
     "dist/"
   ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -32,7 +35,6 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
-  "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.6.2",
     "dotenv": "17.4.1",
@@ -63,10 +65,8 @@
     "typescript": "6.0.2",
     "vitest": "4.1.4"
   },
+  "prettier": "@willbooster/prettier-config",
   "engines": {
     "node": ">= 22.18.0"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }
