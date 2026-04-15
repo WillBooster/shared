@@ -61,6 +61,7 @@
     "@types/node": "25.5.2",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "@willbooster/oxfmt-config": "1.1.0",
     "@willbooster/oxlint-config": "1.4.0",
     "@willbooster/prettier-config": "10.4.0",
     "babel-loader": "10.1.1",

@@ -21,7 +21,7 @@ import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
-const oxlintDeps = ['@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
+const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -40,7 +40,6 @@ const obsoleteLintDependencies = [
   '@willbooster/eslint-config-react',
   '@willbooster/eslint-config-ts',
   '@willbooster/eslint-config-ts-react',
-  '@willbooster/oxfmt-config',
   'biome',
   'eslint',
   'eslint-config-flat-gitignore',
@@ -249,10 +248,6 @@ function applyPackageJsonConventions(
       if (typeof value !== 'string') continue;
       jsonObj.scripts[key] = value.replaceAll(/wb\s+db/gu, 'wb prisma');
     }
-  }
-
-  if (jsonObj.name === '@willbooster/wbfy') {
-    dependencies.push('@willbooster/oxfmt-config');
   }
 
   if (doesContainJsOrTs(config)) {
