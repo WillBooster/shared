@@ -22,6 +22,7 @@ import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptGoDependency = '@typescript/native-preview';
+const buildTsDependency = 'build-ts';
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -60,6 +61,9 @@ const obsoleteLintDependencies = [
   'micromatch',
   'typescript-eslint',
 ];
+const micromatchPackageNames = new Set(['micromatch', '@types/micromatch']);
+const micromatchImportPattern =
+  /\bfrom\s+['"]micromatch['"]|\brequire\(\s*['"]micromatch['"]\s*\)|\bimport\(\s*['"]micromatch['"]\s*\)/u;
 
 const latestDependencyVersionCache = new Map<string, string>();
 
@@ -89,7 +93,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   const jsonObj = await readPackageJson(filePath);
   const packageManager = config.isBun ? 'bun' : 'yarn';
 
-  await removeDeprecatedStuff(jsonObj, config.dirPath);
+  await removeDeprecatedStuff(config, jsonObj);
   await updateScripts(config, jsonObj, packageManager);
   const dependencyUpdates = applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
@@ -248,6 +252,18 @@ function applyPackageJsonConventions(
       if (typeof value !== 'string') continue;
       jsonObj.scripts[key] = value.replaceAll(/wb\s+db/gu, 'wb prisma');
     }
+  }
+
+  // build-ts owns TypeScript execution and declaration emit. wbfy must always
+  // keep existing build-ts users current because older releases can emit .d.ts
+  // files at paths that no longer match package exports.
+  if (jsonObj.dependencies[buildTsDependency]) {
+    dependencies.push(buildTsDependency);
+  } else if (
+    jsonObj.devDependencies[buildTsDependency] ||
+    Object.values(jsonObj.scripts).some((script) => script?.includes(buildTsDependency))
+  ) {
+    devDependencies.push(buildTsDependency);
   }
 
   if (doesContainJsOrTs(config)) {
@@ -514,8 +530,8 @@ function getLatestDependencyVersion(dependency: string): string {
 
 // TODO: remove the following migration code in future
 async function removeDeprecatedStuff(
-  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies' | 'peerDependencies'>,
-  dirPath: string
+  config: PackageConfig,
+  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies' | 'peerDependencies'>
 ): Promise<void> {
   if (jsonObj.author === 'WillBooster LLC') {
     jsonObj.author = 'WillBooster Inc.';
@@ -538,28 +554,55 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['format-python'];
   delete jsonObj.scripts.prettier;
   delete jsonObj.scripts['check-all'];
-  await promisePool.run(() => fs.promises.rm(path.resolve(dirPath, 'lerna.json'), { force: true }));
+  await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'lerna.json'), { force: true }));
 
-  removeObsoleteLintDependencies(jsonObj);
+  removeObsoleteLintDependencies(jsonObj, config);
 }
 
 function removeObsoleteLintDependencies(
-  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
+  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>,
+  config: PackageConfig
 ): void {
+  const preserveMicromatch = shouldPreserveMicromatch(config);
   for (const dependency of obsoleteLintDependencies) {
+    if (preserveMicromatch && micromatchPackageNames.has(dependency)) continue;
     delete jsonObj.dependencies[dependency];
     delete jsonObj.devDependencies[dependency];
     delete jsonObj.peerDependencies[dependency];
   }
 }
 
+function shouldPreserveMicromatch(config: PackageConfig): boolean {
+  // willbooster-configs subpackages publish config files as their product, so
+  // micromatch is package data there. Other repos keep micromatch only when
+  // product code imports it; otherwise it is treated as obsolete ESLint-era
+  // tooling.
+  return (config.isWillBoosterConfigs && !config.isRoot) || doesProductCodeImportMicromatch(config.dirPath);
+}
+
+function doesProductCodeImportMicromatch(dirPath: string): boolean {
+  const filePaths = fg.globSync('src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}', {
+    cwd: dirPath,
+    dot: true,
+    ignore: globIgnore,
+  });
+  return filePaths.some((filePath) => {
+    try {
+      return micromatchImportPattern.test(fs.readFileSync(path.resolve(dirPath, filePath), 'utf8'));
+    } catch {
+      return false;
+    }
+  });
+}
+
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
-  // Old wb releases had Bun-only lint behavior; managed projects need the
-  // current CLI when wbfy wires hooks or scripts through wb.
+  // wbfy-managed tools must be kept current even when the package already pins
+  // a concrete version. In particular, build-ts owns declaration output paths.
   return (
     dependency === '@willbooster/wb' ||
+    dependency === buildTsDependency ||
     dependency === '@willbooster/oxlint-config' ||
     dependency === 'oxlint' ||
     dependency === typescriptGoDependency
