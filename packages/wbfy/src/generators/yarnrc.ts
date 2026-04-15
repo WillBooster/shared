@@ -75,6 +75,12 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
       // To deal with CVE like https://nextjs.org/blog/CVE-2025-66478
       'next',
       '@next/*',
+      '@oxfmt/*',
+      '@oxlint/*',
+      '@oxlint-tsgolint/*',
+      'oxfmt',
+      'oxlint',
+      'oxlint-tsgolint',
       'react',
       'react-dom',
     ];

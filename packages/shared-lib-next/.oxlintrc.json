@@ -1,0 +1,12 @@
+{
+  "extends": ["../../node_modules/@willbooster/oxlint-config/.oxlintrc.json"],
+  "ignorePatterns": ["**/test/fixtures/**", "**/test-fixtures/**"],
+  "options": {
+    "typeAware": false
+  },
+  "rules": {
+    "react-perf/jsx-no-new-object-as-prop": "off",
+    "react/react-in-jsx-scope": "off",
+    "unicorn/prefer-structured-clone": "off"
+  }
+}

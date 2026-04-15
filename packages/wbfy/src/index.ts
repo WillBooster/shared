@@ -11,11 +11,9 @@ import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
 import { generateAgentInstructions } from './generators/agents.js';
-import { generateBiomeJsonc } from './generators/biome.js';
 import { generateBunfigToml } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
-import { generateEslintrc } from './generators/eslintConfig.js';
 import { generateGeminiConfig } from './generators/geminiConfig.js';
 import { removeGeminiSettings } from './generators/geminiSettings.js';
 import { generateGitattributes } from './generators/gitattributes.js';
@@ -24,6 +22,7 @@ import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
 import { generatePackageJson } from './generators/packageJson.js';
+import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
 import { generatePyrightConfigJson } from './generators/pyrightConfig.js';
 import { generateReadme } from './generators/readme.js';
@@ -43,7 +42,7 @@ import { options } from './options.js';
 import { getPackageConfig } from './packageConfig.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
-import { shouldSkipWillboosterConfigsEslintPackage } from './utils/willboosterConfigsUtil.js';
+import { shouldSkipWillboosterConfigsPackage } from './utils/willboosterConfigsUtil.js';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -143,7 +142,7 @@ async function main(): Promise<void> {
 
     const promises: Promise<void>[] = [];
     for (const config of allPackageConfigs) {
-      if (shouldSkipWillboosterConfigsEslintPackage(config)) {
+      if (shouldSkipWillboosterConfigsPackage(config)) {
         continue;
       }
       if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
@@ -176,12 +175,7 @@ async function main(): Promise<void> {
         config.doesContainTypeScript ||
         config.doesContainTypeScriptInPackages
       ) {
-        if (rootConfig.isBun) {
-          promises.push(generateBiomeJsonc(config));
-        }
-        if (!rootConfig.isWillBoosterConfigs) {
-          promises.push(generateEslintrc(config));
-        }
+        promises.push(generateOxlintConfig(config, rootConfig));
       }
       if (config.depending.pyright) {
         promises.push(generatePyrightConfigJson(config));

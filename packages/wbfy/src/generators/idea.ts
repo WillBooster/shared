@@ -21,7 +21,7 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
         !config.doesContainGemfile &&
         !config.doesContainGoMod &&
         !config.doesContainPomXml)
-        ? promisePool.run(() => fsUtil.generateFile(filePath, config.isBun ? biomeContent : prettierContent))
+        ? promisePool.run(() => fsUtil.generateFile(filePath, oxlintContent))
         : promisePool.run(() => fs.promises.rm(filePath, { force: true })));
     }
   });
@@ -51,18 +51,11 @@ function createTaskOptions(runner: string, args: string, name: string, extension
 `;
 }
 
-const prettierContent = `<?xml version="1.0" encoding="UTF-8"?>
+const oxlintContent = `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectTasksOptions">
-${extensions.prettier.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('')}
-  </component>
-</project>
-`;
-
-const biomeContent = `<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="ProjectTasksOptions">
-${extensions.prettier.map((ext) => createTaskOptions('bun', '--bun node_modules/.bin/biome check --fix --no-errors-on-unmatched --skip-parse-errors', 'Biome', ext)).join('')}
+${extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern -c ./node_modules/@willbooster/oxfmt-config/.oxfmtrc.json', 'Oxfmt', ext)).join('')}
+${extensions.prettierOnly.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('')}
   </component>
 </project>
 `;

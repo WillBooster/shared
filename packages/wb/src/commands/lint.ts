@@ -104,7 +104,8 @@ const prettierExtensions = new Set([
   'yaml',
   'yml',
 ]);
-const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !biomeExtensions.has(ext)));
+const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !oxfmtExtensions.has(ext)));
+const biomePrettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !biomeExtensions.has(ext)));
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
 export const lintCommand: CommandModule<unknown, LintCommandOptions> = {
@@ -203,7 +204,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
             prettierFilePaths.push(lintPath);
           }
         } else if (isPotentialLintTarget(extension) && !project.preferredLinter) {
-          console.error(chalk.red(`No linter found for ${project.name}. Install ESLint or Biome.`));
+          console.error(chalk.red(`No linter found for ${project.name}. Install Oxlint.`));
           missingLintToolForExplicitFiles = true;
         }
       }
@@ -349,7 +350,14 @@ export function buildLintCommand(
 }
 
 export function buildOxfmtCommand(files?: string[]): string {
-  return buildShellCommand(['YARN', 'oxfmt', '--write', '--no-error-on-unmatched-pattern', ...(files ?? ['.'])]);
+  const configPath = `"$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config/.oxfmtrc.json"))')"`;
+  return `${buildShellCommand([
+    'YARN',
+    'oxfmt',
+    '--write',
+    '--no-error-on-unmatched-pattern',
+    '-c',
+  ])} ${configPath} ${buildShellCommand(files ?? ['.'])}`;
 }
 
 export function buildPoetryCommand(
@@ -387,6 +395,14 @@ export function buildPrettierArgs(
 ): string[] {
   const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, prettierFixtureIgnorePattern]);
   for (const project of projects) {
+    if (project.preferredLinter === 'biome' && !project.hasOxfmt) {
+      const projectPattern = path.join(
+        project.dirPath,
+        '**/{.*/,}*.{' + [...biomePrettierOnlyExtensions].join(',') + '}'
+      );
+      args.add(path.relative(selfDirPath, projectPattern) || projectPattern);
+      continue;
+    }
     if (!needsPrettier(project)) continue;
 
     const projectPattern = path.join(project.dirPath, '**/{.*/,}*.{' + [...prettierExtensions].join(',') + '}');
@@ -451,7 +467,7 @@ export function buildExplicitFormatterArgs(
   }
   if (fileKind === 'directory' && project.preferredLinter === 'biome') {
     return [
-      path.join(filePath, '**/{.*/,}*.{' + [...prettierOnlyExtensions].join(',') + '}'),
+      path.join(filePath, '**/{.*/,}*.{' + [...biomePrettierOnlyExtensions].join(',') + '}'),
       prettierFixtureIgnorePattern,
     ];
   }

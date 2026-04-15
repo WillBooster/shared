@@ -57,7 +57,7 @@ describe('lint', () => {
 
   it('builds an oxfmt command for explicit files', () => {
     expect(buildOxfmtCommand(['/tmp/example.ts'])).toBe(
-      'YARN oxfmt --write --no-error-on-unmatched-pattern /tmp/example.ts'
+      `YARN oxfmt --write --no-error-on-unmatched-pattern -c "$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config/.oxfmtrc.json"))')" /tmp/example.ts`
     );
   });
 
@@ -74,9 +74,10 @@ describe('lint', () => {
         { dirPath: '/repo/packages/biome-app', preferredLinter: 'biome', hasOxfmt: false },
       ])
     ).toEqual([
-      '**/{.*/,}*.{java,md,scss}',
+      '**/{.*/,}*.{java}',
       '!**/test{-,/}fixtures/**',
       'packages/eslint-app/**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
+      'packages/biome-app/**/{.*/,}*.{java,md,scss}',
     ]);
   });
 

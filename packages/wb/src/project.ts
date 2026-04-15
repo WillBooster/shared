@@ -163,8 +163,8 @@ export class Project {
 
   @memoizeOne
   get preferredLinter(): 'biome' | 'oxlint' | 'eslint' | undefined {
-    if (this.hasBiome) return 'biome';
     if (this.hasOxlint) return 'oxlint';
+    if (this.hasBiome) return 'biome';
     if (this.hasEslint) return 'eslint';
     return;
   }

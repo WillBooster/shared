@@ -64,7 +64,6 @@ export interface PackageConfig {
     github: boolean;
     npm: boolean;
   };
-  eslintBase?: EslintExtensionBase;
   hasVersionSettings: boolean;
   packageJson?: PackageJson;
   wbfyJson?: WbfyJson;
@@ -224,9 +223,6 @@ export async function getPackageConfig(
       packageJson,
       wbfyJson,
     };
-    if (!config.isBun) {
-      config.eslintBase = getEslintExtensionBase(config);
-    }
     if (
       config.doesContainGemfile ||
       config.doesContainGoMod ||
@@ -254,27 +250,6 @@ function hasVersionSettingsFile(dirPath: string): boolean {
 
 function containsAny(pattern: string, dirPath: string): boolean {
   return fg.globSync(pattern, { dot: true, cwd: dirPath, ignore: globIgnore }).length > 0;
-}
-
-export type EslintExtensionBase =
-  | '@willbooster/eslint-config-ts-react'
-  | '@willbooster/eslint-config-ts'
-  | '@willbooster/eslint-config-js-react'
-  | '@willbooster/eslint-config-js'
-  | '@willbooster/eslint-config-next';
-
-function getEslintExtensionBase(config: PackageConfig): EslintExtensionBase | undefined {
-  if (config.depending.next) {
-    return '@willbooster/eslint-config-next';
-  } else if (config.doesContainTypeScript) {
-    return config.doesContainJsxOrTsx ? '@willbooster/eslint-config-ts-react' : '@willbooster/eslint-config-ts';
-  } else {
-    if (config.doesContainJsxOrTsx) {
-      return '@willbooster/eslint-config-js-react';
-    } else if (config.doesContainJavaScript) {
-      return '@willbooster/eslint-config-js';
-    }
-  }
 }
 
 async function fetchRepoInfo(dirPath: string, packageJson: PackageJson): Promise<Record<string, unknown> | undefined> {

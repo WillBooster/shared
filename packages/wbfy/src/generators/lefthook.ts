@@ -181,20 +181,14 @@ ${typecheckCommand}
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
-  const supportedExtensions = [
-    ...extensions.prettier,
-    ...extensions.eslint,
-    ...(config.depending.wb || config.isBun ? extensions.biome : []),
-  ];
+  const supportedExtensions = [...extensions.prettierOnly, ...extensions.oxfmt, ...extensions.oxlint];
   if (config.doesContainPoetryLock) {
     supportedExtensions.push('py');
   }
   if (config.doesContainPubspecYaml) {
     supportedExtensions.push('dart');
   }
-  const filteredExtensions = [...new Set(supportedExtensions)]
-    .filter((extension) => config.isBun || !['astro', 'gql', 'svelte'].includes(extension))
-    .toSorted();
+  const filteredExtensions = [...new Set(supportedExtensions)].toSorted();
   return `**/*.{${filteredExtensions.join(',')}}`;
 }
 
@@ -210,21 +204,26 @@ function getCleanupCommand(config: PackageConfig): string {
     return `${command} && git add -- {staged_files}`;
   }
 
-  const eslintRuleSuffix =
-    config.doesContainJsxOrTsx || config.doesContainJsxOrTsxInPackages
-      ? ' --rule "{ react-hooks/exhaustive-deps: 0 }"'
-      : '';
-  const eslintPattern = extensions.eslint.map((extension) => String.raw`\.${extension}$`).join('|');
+  const oxlintPattern = extensions.oxlint.map((extension) => String.raw`\.${extension}$`).join('|');
+  const oxfmtPattern = extensions.oxfmt.map((extension) => String.raw`\.${extension}$`).join('|');
+  const prettierPattern = extensions.prettierOnly.map((extension) => String.raw`\.${extension}$`).join('|');
 
   return String.raw`
-eslint_files="$(printf '%s\n' {staged_files} | grep -E '(${eslintPattern})' || true)"
+oxlint_files="$(printf '%s\n' {staged_files} | grep -E '(${oxlintPattern})' || true)"
+oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' || true)"
+prettier_files="$(printf '%s\n' {staged_files} | grep -E '(${prettierPattern})' || true)"
 package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
 ${config.doesContainPoetryLock ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
-node node_modules/.bin/prettier --cache --write --ignore-unknown -- {staged_files}
-if [ -n "$eslint_files" ]; then
-  node node_modules/.bin/eslint --color --fix${eslintRuleSuffix} -- $eslint_files
+if [ -n "$oxfmt_files" ]; then
+  node node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern -c "$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config/.oxfmtrc.json"))')" $oxfmt_files
+fi
+if [ -n "$prettier_files" ]; then
+  node node_modules/.bin/prettier --cache --write --ignore-unknown -- $prettier_files
+fi
+if [ -n "$oxlint_files" ]; then
+  node node_modules/.bin/oxlint --fix $oxlint_files
 fi
 if [ -n "$package_json_files" ]; then
   node node_modules/.bin/sort-package-json -- $package_json_files
