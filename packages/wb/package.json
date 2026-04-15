@@ -2,22 +2,19 @@
   "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
   "description": "CLI tool for WillBooster projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wb"
   },
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
+  "type": "module",
   "bin": "bin/index.js",
   "files": [
     "bin/",
     "dist/"
   ],
-  "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -35,11 +32,12 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
+  "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.6.2",
-    "dotenv": "17.3.1",
+    "dotenv": "17.4.1",
     "dotenv-expand": "12.0.3",
-    "globby": "16.1.1",
+    "globby": "16.2.0",
     "kill-port": "2.0.1",
     "minimal-promise-pool": "6.0.1",
     "yargs": "18.0.0"
@@ -48,25 +46,27 @@
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/node-ts": "23.6.4",
     "@types/kill-port": "2.0.3",
-    "@types/node": "25.5.2",
+    "@types/node": "25.6.0",
     "@types/yargs": "17.0.35",
     "@willbooster/oxfmt-config": "1.2.0",
     "@willbooster/oxlint-config": "1.4.0",
     "@willbooster/prettier-config": "10.4.0",
     "at-decorators": "7.0.2",
-    "build-ts": "17.0.22",
+    "build-ts": "17.0.26",
     "oxfmt": "0.45.0",
-    "oxlint": "^1.60.0",
+    "oxlint": "1.60.0",
     "oxlint-tsgolint": "0.21.0",
-    "prettier": "3.8.1",
+    "prettier": "3.8.2",
     "prettier-plugin-java": "2.8.1",
     "sort-package-json": "3.6.1",
-    "type-fest": "5.4.4",
-    "typescript": "^5.9.3",
-    "vitest": "4.0.18"
+    "type-fest": "5.5.0",
+    "typescript": "6.0.2",
+    "vitest": "4.1.4"
   },
-  "prettier": "@willbooster/prettier-config",
   "engines": {
     "node": ">= 22.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -2,22 +2,15 @@
   "name": "@willbooster/shared-lib-react",
   "version": "0.0.0-semantically-released",
   "description": "Shared library for WillBooster React projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/shared-lib-react"
   },
-  "files": [
-    "bin/",
-    "dist/"
-  ],
-  "type": "module",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -25,9 +18,13 @@
       "import": "./dist/index.js"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "scripts": {
     "build": "build-ts lib",
     "build-storybook": "build-storybook",
@@ -45,41 +42,44 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
+  "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@babel/core": "7.29.0",
     "@mdx-js/react": "3.1.1",
     "@storybook/addon-actions": "9.0.8",
-    "@storybook/addon-docs": "10.2.19",
+    "@storybook/addon-docs": "10.3.5",
     "@storybook/addon-essentials": "8.6.14",
     "@storybook/addon-interactions": "8.6.14",
-    "@storybook/addon-links": "10.2.19",
+    "@storybook/addon-links": "10.3.5",
     "@storybook/builder-webpack4": "6.5.16",
     "@storybook/manager-webpack4": "6.5.16",
-    "@storybook/react": "10.2.19",
+    "@storybook/react": "10.3.5",
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/node-ts": "23.6.4",
-    "@types/node": "25.5.2",
+    "@types/node": "25.6.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@willbooster/oxfmt-config": "1.2.0",
     "@willbooster/oxlint-config": "1.4.0",
     "@willbooster/prettier-config": "10.4.0",
     "babel-loader": "10.1.1",
-    "build-ts": "17.0.22",
+    "build-ts": "17.0.26",
     "oxfmt": "0.45.0",
-    "oxlint": "^1.60.0",
+    "oxlint": "1.60.0",
     "oxlint-tsgolint": "0.21.0",
-    "prettier": "3.8.1",
+    "prettier": "3.8.2",
     "prettier-plugin-java": "2.8.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
     "sort-package-json": "3.6.1",
-    "typescript": "^5.9.3",
-    "vitest": "4.0.18"
+    "typescript": "6.0.2",
+    "vitest": "4.1.4"
   },
   "peerDependencies": {
     "react": "~19.2.0",
     "react-dom": "~19.2.0"
   },
-  "prettier": "@willbooster/prettier-config"
+  "publishConfig": {
+    "access": "public"
+  }
 }
