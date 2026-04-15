@@ -545,7 +545,9 @@ function getDependencySpecifier(dependency: string): string {
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
-  return dependency === '@willbooster/oxlint-config' || dependency === 'oxlint';
+  return (
+    dependency === '@willbooster/oxlint-config' || dependency === 'oxlint' || dependency === typescriptGoDependency
+  );
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {

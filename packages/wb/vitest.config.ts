@@ -5,6 +5,7 @@ export default defineConfig({
   oxc: {
     target: 'es2023',
   },
+  // Oxc does not yet handle the decorator syntax used by command tests.
   plugins: [
     babel({
       presets: [
