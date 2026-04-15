@@ -506,7 +506,7 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
   const packageManager = config.isBun ? 'bun' : 'yarn';
   const steps: Step[] = [
     { uses: 'actions/checkout@v6' },
-    { uses: 'actions/setup-node@v6', with: { 'check-latest': true } },
+    { uses: 'actions/setup-node@v6', with: { 'check-latest': true, 'node-version': 'lts/*' } },
     ...(config.isBun ? [{ uses: 'oven-sh/setup-bun@v1', with: { 'bun-version': 'latest' } }] : []),
     { run: `${packageManager} install` },
     { run: `${packageManager} run cleanup` },
