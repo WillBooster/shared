@@ -157,6 +157,10 @@ export class Project {
     return;
   }
 
+  hasOwnDependency(packageName: string): boolean {
+    return !!this.getOwnDependencyVersion(packageName);
+  }
+
   @memoizeOne
   get hasPlaywrightConfig(): boolean {
     try {

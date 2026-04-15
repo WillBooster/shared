@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
-import type { PackageJson } from 'type-fest';
 
 import { findDescendantProjects } from '../project.js';
 import type { Project } from '../project.js';
@@ -37,7 +36,7 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
     if (!project.packageJson.workspaces || project.hasSourceCode) {
       commands.push(...buildTypeScriptTypeCheckCommands(project));
     }
-    if (!project.packageJson.workspaces && hasDependency(project.packageJson, 'pyright')) {
+    if (!project.packageJson.workspaces && project.hasOwnDependency('pyright')) {
       commands.push('YARN pyright');
     }
     while (commands.length > 0) {
@@ -83,22 +82,13 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
 }
 
 function buildTypeScriptTypeCheckCommands(project: Project): string[] {
-  if (hasDependency(project.packageJson, '@typescript/native-preview')) {
+  if (project.hasOwnDependency('@typescript/native-preview')) {
     return ['BUN tsgo --noEmit'];
   }
-  if (hasDependency(project.packageJson, 'typescript')) {
+  if (project.hasOwnDependency('typescript')) {
     return ['BUN tsc --noEmit'];
   }
   return [];
-}
-
-function hasDependency(packageJson: PackageJson, packageName: string): boolean {
-  return !!(
-    packageJson.dependencies?.[packageName] ??
-    packageJson.devDependencies?.[packageName] ??
-    packageJson.optionalDependencies?.[packageName] ??
-    packageJson.peerDependencies?.[packageName]
-  );
 }
 
 export const tcCommand: CommandModule<unknown, TypeCheckCommandOptions> = {
