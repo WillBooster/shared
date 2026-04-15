@@ -199,27 +199,13 @@ async function main(): Promise<void> {
 }
 
 function refreshBunLock(rootDirPath: string): void {
-  const lockFilePath = path.join(rootDirPath, 'bun.lock');
-  const backupLockFilePath = path.join(rootDirPath, '.bun.lock.wbfy-backup');
-  fs.rmSync(backupLockFilePath, { force: true });
-  if (fs.existsSync(lockFilePath)) {
-    // Regenerate from scratch, but keep the previous lockfile so a registry or
-    // resolver failure cannot leave the repository without a lockfile.
-    fs.copyFileSync(lockFilePath, backupLockFilePath);
-    fs.rmSync(lockFilePath, { force: true });
+  // wbfy should update only the packages it explicitly manages through bun add.
+  // Running bun update here refreshes unrelated application dependencies and
+  // can change product behavior, so keep the existing lock and reconcile it.
+  const status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath);
+  if (status !== 0) {
+    throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
   }
-
-  const status = spawnSyncAndReturnStatus('bun', ['update'], rootDirPath);
-  if (status === 0 && fs.existsSync(lockFilePath)) {
-    fs.rmSync(backupLockFilePath, { force: true });
-    return;
-  }
-
-  if (fs.existsSync(backupLockFilePath)) {
-    fs.copyFileSync(backupLockFilePath, lockFilePath);
-    fs.rmSync(backupLockFilePath, { force: true });
-  }
-  throw new Error(`Failed to regenerate ${lockFilePath}: bun update exited with status ${status}`);
 }
 
 function getVersion(): string {
