@@ -6114,8 +6114,8 @@ __metadata:
     fastest-levenshtein: "npm:1.0.16"
     js-yaml: "npm:4.1.1"
     lefthook: "npm:2.1.5"
-    libsodium: "npm:0.8.3"
-    libsodium-wrappers: "npm:0.8.3"
+    libsodium: "npm:0.8.2"
+    libsodium-wrappers: "npm:0.8.2"
     minimal-promise-pool: "npm:6.0.1"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
@@ -13093,23 +13093,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"libsodium-wrappers@npm:0.8.3":
-  version: 0.8.3
-  resolution: "libsodium-wrappers@npm:0.8.3"
+"libsodium-wrappers@npm:0.8.2":
+  version: 0.8.2
+  resolution: "libsodium-wrappers@npm:0.8.2"
   dependencies:
     libsodium: "npm:^0.8.0"
-  checksum: 10c0/f0b4250a860fb002029176a3e3dc810c964beb3144b18f9a0550932e5fa08b0764fd6194629461e715926d9ce52f944f9ccd884aa7a62063a285f8216418baee
+  checksum: 10c0/4e0cdce7348bd2f45d4d6549e804b10e76bcebc8acbcd68f200188d3168a652730f0555d5aa2d964b31fa3dcacfca9b3c9a0d519b2e4f0640de2ab87d7cc11f9
   languageName: node
   linkType: hard
 
-"libsodium@npm:0.8.3":
-  version: 0.8.3
-  resolution: "libsodium@npm:0.8.3"
-  checksum: 10c0/c5f67c48f0b22ac9f36ed78cb59fe92e311de542c4fbdab5688790d1d7d6b2a8cf8bb413f678a0889ebc818df783910d78607c5d4ea5dc6a6b88387f94893214
-  languageName: node
-  linkType: hard
-
-"libsodium@npm:^0.8.0":
+"libsodium@npm:0.8.2, libsodium@npm:^0.8.0":
   version: 0.8.2
   resolution: "libsodium@npm:0.8.2"
   checksum: 10c0/e943b269331670e45d63885ee32dec5471daa4c78ddfbe35e00e27a5b0ea7b51e7fa8260142ba478dcba0918e8117e9151883c11466b2fab2638ec29a1f3482b
