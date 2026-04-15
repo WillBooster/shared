@@ -34,13 +34,11 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
   let removedNextDir = false as boolean;
   const promises = projects.descendants.map(async (project) => {
     const commands: string[] = [];
-    if (!project.packageJson.workspaces) {
+    if (!project.packageJson.workspaces || project.hasSourceCode) {
       commands.push(...buildTypeScriptTypeCheckCommands(project));
-      if (project.packageJson.devDependencies?.pyright) {
-        commands.push('YARN pyright');
-      }
-    } else if (project.hasSourceCode) {
-      commands.push(...buildTypeScriptTypeCheckCommands(project));
+    }
+    if (!project.packageJson.workspaces && hasDependency(project.packageJson, 'pyright')) {
+      commands.push('YARN pyright');
     }
     while (commands.length > 0) {
       const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {
