@@ -6326,9 +6326,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts-react@github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts-react":
-  version: 0.0.0-semantically-released
-  resolution: "@willbooster/eslint-config-ts-react@https://github.com/WillBooster/willbooster-configs.git#workspace=%40willbooster%2Feslint-config-ts-react&commit=fa815a8a73a3cc451d1be83f7dfe4e3228d42821"
+"@willbooster/eslint-config-ts-react@npm:*":
+  version: 12.0.0
+  resolution: "@willbooster/eslint-config-ts-react@npm:12.0.0"
   peerDependencies:
     "@eslint-react/eslint-plugin": ">=4.2.3"
     "@eslint/js": ">=10"
@@ -6346,13 +6346,13 @@ __metadata:
     globals: ">=16"
     typescript: ">=5"
     typescript-eslint: ">=8"
-  checksum: 10c0/ddeb6e41e4b7013014f2b1fd1ef21029ff2e3f6afc78682e30eac8a65dfd7031cc4abbf91a6d82218a165d9170b6c0ffa6b8de48b5c59240735137e573776636
+  checksum: 10c0/9e78716d214cb652ab3d4916117f752da0f8d17913a99f35decafa6f5d1979600f6d90bffdc2ffe934ec5894fa0a87fe13a24c80097cfd43a988024040238e54
   languageName: node
   linkType: hard
 
-"@willbooster/eslint-config-ts@github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts":
-  version: 0.0.0-semantically-released
-  resolution: "@willbooster/eslint-config-ts@https://github.com/WillBooster/willbooster-configs.git#workspace=%40willbooster%2Feslint-config-ts&commit=fa815a8a73a3cc451d1be83f7dfe4e3228d42821"
+"@willbooster/eslint-config-ts@npm:*":
+  version: 12.0.0
+  resolution: "@willbooster/eslint-config-ts@npm:12.0.0"
   peerDependencies:
     "@eslint/js": ">=10"
     eslint: ">=10"
@@ -6367,7 +6367,7 @@ __metadata:
     globals: ">=16"
     typescript: ">=5"
     typescript-eslint: ">=8"
-  checksum: 10c0/118761b98671c0a367ba6739a002871b773d8d3f8e9ebcd5f2f395627204d5cadc26d214ee5c71ef3dcf8c30db613af80c4e6d1f1e06da71a29dc498169d5359
+  checksum: 10c0/958a1c586eb18a845fb1d849efac32053fe51ef9e8344b44596a6b3b065d5234306f124362d11c50ea944a2bb8a29880e690006b98a31aa08ee6dc41677364c8
   languageName: node
   linkType: hard
 
@@ -6391,7 +6391,7 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts"
+    "@willbooster/eslint-config-ts": "npm:*"
     "@willbooster/prettier-config": "npm:10.4.0"
     blitz: "npm:3.0.2"
     build-ts: "npm:17.0.22"
@@ -6425,7 +6425,7 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts"
+    "@willbooster/eslint-config-ts": "npm:*"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     eslint: "npm:^10.2.0"
@@ -6472,7 +6472,7 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts"
+    "@willbooster/eslint-config-ts": "npm:*"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     dotenv: "npm:17.3.1"
@@ -6520,7 +6520,7 @@ __metadata:
     "@types/node": "npm:25.5.2"
     "@types/react": "npm:19.2.14"
     "@types/react-dom": "npm:19.2.3"
-    "@willbooster/eslint-config-ts-react": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts-react"
+    "@willbooster/eslint-config-ts-react": "npm:*"
     "@willbooster/prettier-config": "npm:10.4.0"
     babel-loader: "npm:10.1.1"
     build-ts: "npm:17.0.22"
@@ -6562,7 +6562,7 @@ __metadata:
     "@types/eslint": "npm:9.6.1"
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts"
+    "@willbooster/eslint-config-ts": "npm:*"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     eslint: "npm:^10.2.0"
@@ -6597,7 +6597,7 @@ __metadata:
     "@types/micromatch": "npm:4.0.10"
     "@types/node": "npm:25.5.2"
     "@types/yargs": "npm:17.0.35"
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts"
+    "@willbooster/eslint-config-ts": "npm:*"
     "@willbooster/prettier-config": "npm:10.4.0"
     at-decorators: "npm:7.0.2"
     build-ts: "npm:17.0.22"
@@ -6647,7 +6647,7 @@ __metadata:
     "@types/node": "npm:25.5.2"
     "@types/semver": "npm:^7"
     "@types/yargs": "npm:17.0.35"
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts"
+    "@willbooster/eslint-config-ts": "npm:*"
     "@willbooster/prettier-config": "npm:10.4.0"
     "@yarnpkg/core": "npm:4.6.0"
     build-ts: "npm:17.0.22"
@@ -21201,7 +21201,7 @@ __metadata:
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/eslint": "npm:9.6.1"
     "@types/node": "npm:25.5.2"
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts"
+    "@willbooster/eslint-config-ts": "npm:*"
     "@willbooster/prettier-config": "npm:10.4.0"
     conventional-changelog-conventionalcommits: "npm:9.3.0"
     eslint: "npm:^10.2.0"

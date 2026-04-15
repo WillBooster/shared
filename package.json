@@ -36,7 +36,7 @@
     "@tsconfig/node-ts": "23.6.4",
     "@types/eslint": "9.6.1",
     "@types/node": "25.5.2",
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts",
+    "@willbooster/eslint-config-ts": "*",
     "@willbooster/prettier-config": "10.4.0",
     "conventional-changelog-conventionalcommits": "9.3.0",
     "eslint": "^10.2.0",

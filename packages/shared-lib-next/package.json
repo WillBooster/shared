@@ -52,7 +52,7 @@
     "@types/eslint": "9.6.1",
     "@types/micromatch": "4.0.10",
     "@types/node": "25.5.2",
-    "@willbooster/eslint-config-ts": "github:WillBooster/willbooster-configs#workspace=@willbooster/eslint-config-ts",
+    "@willbooster/eslint-config-ts": "*",
     "@willbooster/prettier-config": "10.4.0",
     "build-ts": "17.0.22",
     "eslint": "^10.2.0",
