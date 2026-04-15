@@ -534,8 +534,13 @@ function removeObsoleteLintDependencies(
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
+  // Old wb releases had Bun-only lint behavior; managed projects need the
+  // current CLI when wbfy wires hooks or scripts through wb.
   return (
-    dependency === '@willbooster/oxlint-config' || dependency === 'oxlint' || dependency === typescriptGoDependency
+    dependency === '@willbooster/wb' ||
+    dependency === '@willbooster/oxlint-config' ||
+    dependency === 'oxlint' ||
+    dependency === typescriptGoDependency
   );
 }
 
