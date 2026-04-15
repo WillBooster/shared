@@ -4,13 +4,13 @@ import type { PackageConfig } from '../src/packageConfig.js';
 import { shouldSkipWillboosterConfigsPackage } from '../src/utils/willboosterConfigsUtil.js';
 
 describe('shouldSkipWillboosterConfigsPackage', () => {
-  test('skips ESLint config packages inside willbooster-configs', () => {
+  test('does not skip legacy ESLint config packages inside willbooster-configs', () => {
     const config = createConfig({
       isWillBoosterConfigs: true,
       packageJson: { name: '@willbooster/eslint-config-ts' },
     });
 
-    expect(shouldSkipWillboosterConfigsPackage(config)).toBe(true);
+    expect(shouldSkipWillboosterConfigsPackage(config)).toBe(false);
   });
 
   test('skips shared format config packages inside willbooster-configs', () => {
@@ -22,10 +22,10 @@ describe('shouldSkipWillboosterConfigsPackage', () => {
     expect(shouldSkipWillboosterConfigsPackage(config)).toBe(true);
   });
 
-  test('does not skip ESLint packages outside willbooster-configs', () => {
+  test('does not skip config packages outside willbooster-configs', () => {
     const config = createConfig({
       isWillBoosterConfigs: false,
-      packageJson: { name: '@willbooster/eslint-config-ts' },
+      packageJson: { name: '@willbooster/oxlint-config' },
     });
 
     expect(shouldSkipWillboosterConfigsPackage(config)).toBe(false);

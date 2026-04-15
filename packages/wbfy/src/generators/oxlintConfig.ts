@@ -19,7 +19,8 @@ export async function generateOxlintConfig(config: PackageConfig, rootConfig: Pa
       extends: [configPath.startsWith('.') ? configPath : `./${configPath}`],
       ignorePatterns: ['**/test/fixtures/**', '**/test-fixtures/**'],
       options: {
-        typeAware: false,
+        typeAware: true,
+        typeCheck: true,
       },
       rules: {
         'react-perf/jsx-no-new-object-as-prop': 'off',

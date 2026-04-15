@@ -37,30 +37,7 @@ export type LintCommandOptions = InferredOptionTypes<
 >;
 export type LintCommandArgv = ArgumentsCamelCase<LintCommandOptions> & { '--'?: unknown[]; _: unknown[] };
 
-const biomeExtensions = new Set([
-  'astro',
-  'cjs',
-  'css',
-  'cts',
-  'gql',
-  'htm',
-  'html',
-  'js',
-  'json',
-  'json5',
-  'jsonc',
-  'jsx',
-  'mjs',
-  'mts',
-  'svelte',
-  'ts',
-  'tsx',
-  'vue',
-  'yaml',
-  'yml',
-]);
-const eslintExtensions = new Set(['cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'ts', 'tsx']);
-const oxlintExtensions = new Set([...eslintExtensions, 'astro', 'svelte', 'vue']);
+const oxlintExtensions = new Set(['astro', 'cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'svelte', 'ts', 'tsx', 'vue']);
 const pythonExtensions = new Set(['py']);
 const dartExtensions = new Set(['dart']);
 const oxfmtExtensions = new Set([
@@ -105,7 +82,6 @@ const prettierExtensions = new Set([
   'yml',
 ]);
 const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !oxfmtExtensions.has(ext)));
-const biomePrettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !biomeExtensions.has(ext)));
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
 export const lintCommand: CommandModule<unknown, LintCommandOptions> = {
@@ -178,11 +154,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
           dartFilePathsByProject.set(project, dartFilePaths);
           if (fileKind !== 'directory') continue;
         }
-        if (
-          project.preferredLinter === 'biome' ||
-          fileKind === 'directory' ||
-          supportsLintingExtension(project, extension)
-        ) {
+        if (fileKind === 'directory' || supportsLintingExtension(project, extension)) {
           const lintFilePaths = lintFilePathsByProject.get(project) ?? [];
           lintFilePaths.push(lintPath);
           lintFilePathsByProject.set(project, lintFilePaths);
@@ -303,44 +275,12 @@ export function buildLintCommand(
   argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
   files?: string[]
 ): string | undefined {
-  if (project.preferredLinter === 'biome') {
-    let biomeArgs: string[];
-    if (argv.fix && argv.format) {
-      biomeArgs = ['check', '--write'];
-    } else if (argv.fix) {
-      biomeArgs = ['lint', '--fix'];
-    } else if (argv.format) {
-      biomeArgs = ['format', '--fix'];
-    } else {
-      biomeArgs = ['lint'];
-    }
-    return buildShellCommand([
-      'BUN',
-      'biome',
-      ...biomeArgs,
-      '--colors=force',
-      '--no-errors-on-unmatched',
-      '--files-ignore-unknown=true',
-      ...(argv.quiet ? ['--diagnostic-level=error'] : []),
-      ...(files?.length ? ['--'] : []),
-      ...(files ?? []),
-    ]);
-  }
-  if (project.preferredLinter === 'eslint') {
-    return buildShellCommand([
-      'YARN',
-      'eslint',
-      '--color',
-      ...(argv.quiet ? ['--quiet'] : []),
-      ...(argv.fix || argv.format ? ['--fix'] : []),
-      '--',
-      ...(files ?? ['.']),
-    ]);
-  }
   if (project.preferredLinter === 'oxlint') {
     return buildShellCommand([
       'YARN',
       'oxlint',
+      '--type-aware',
+      '--type-check',
       ...(argv.quiet ? ['--quiet'] : []),
       ...(argv.fix ? ['--fix'] : []),
       ...(files ?? ['.']),
@@ -395,14 +335,6 @@ export function buildPrettierArgs(
 ): string[] {
   const args = new Set<string>([`**/{.*/,}*.{${[...prettierOnlyExtensions].join(',')}}`, prettierFixtureIgnorePattern]);
   for (const project of projects) {
-    if (project.preferredLinter === 'biome' && !project.hasOxfmt) {
-      const projectPattern = path.join(
-        project.dirPath,
-        '**/{.*/,}*.{' + [...biomePrettierOnlyExtensions].join(',') + '}'
-      );
-      args.add(path.relative(selfDirPath, projectPattern) || projectPattern);
-      continue;
-    }
     if (!needsPrettier(project)) continue;
 
     const projectPattern = path.join(project.dirPath, '**/{.*/,}*.{' + [...prettierExtensions].join(',') + '}');
@@ -449,11 +381,7 @@ export function shouldFormatExplicitPathWithPrettier(
 ): boolean {
   if (project.hasOxfmt) return oxfmtExtensions.has(extension);
   if (needsPrettier(project)) return true;
-  return (
-    project.preferredLinter === 'biome' &&
-    !supportsLintingExtension(project, extension) &&
-    prettierExtensions.has(extension)
-  );
+  return prettierOnlyExtensions.has(extension);
 }
 
 export function buildExplicitFormatterArgs(
@@ -464,12 +392,6 @@ export function buildExplicitFormatterArgs(
 ): string[] {
   if (fileKind === 'directory' && project.hasOxfmt) {
     return [filePath];
-  }
-  if (fileKind === 'directory' && project.preferredLinter === 'biome') {
-    return [
-      path.join(filePath, '**/{.*/,}*.{' + [...biomePrettierOnlyExtensions].join(',') + '}'),
-      prettierFixtureIgnorePattern,
-    ];
   }
   if (fileKind === 'directory' && needsPrettier(project)) {
     return [filePath, prettierFixtureIgnorePattern];
@@ -514,22 +436,14 @@ export function getExplicitLintTargets(
 }
 
 function isPotentialLintTarget(extension: string): boolean {
-  return (
-    biomeExtensions.has(extension) ||
-    oxlintExtensions.has(extension) ||
-    eslintExtensions.has(extension) ||
-    pythonExtensions.has(extension) ||
-    dartExtensions.has(extension)
-  );
+  return oxlintExtensions.has(extension) || pythonExtensions.has(extension) || dartExtensions.has(extension);
 }
 
 function supportsLintingExtension(project: Pick<Project, 'preferredLinter'>, extension: string): boolean {
-  if (project.preferredLinter === 'biome') return biomeExtensions.has(extension);
   if (project.preferredLinter === 'oxlint') return oxlintExtensions.has(extension);
-  if (project.preferredLinter === 'eslint') return eslintExtensions.has(extension);
   return false;
 }
 
 function needsPrettier(project: Pick<Project, 'preferredLinter' | 'hasOxfmt'>): boolean {
-  return !project.hasOxfmt && (project.preferredLinter === 'eslint' || project.preferredLinter === 'oxlint');
+  return !project.hasOxfmt && project.preferredLinter === 'oxlint';
 }

@@ -26,7 +26,6 @@ export const extensions = {
   ].toSorted(),
   codeWith4IndentSize: ['go', 'gradle', 'java', 'py'].toSorted(),
   markdownLike: ['md'].toSorted(),
-  eslint: ['cjs', 'mjs', 'js', 'cts', 'mts', 'ts', 'tsx', 'jsx'].toSorted(),
   oxlint: ['astro', 'cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'svelte', 'ts', 'tsx', 'vue'].toSorted(),
   prettier: [
     'cjs',

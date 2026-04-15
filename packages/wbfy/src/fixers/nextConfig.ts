@@ -21,9 +21,6 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
 
     const existingProperties = new Set(objectLiteral.properties.map((property) => property.name?.getText()));
     const propertyTexts: string[] = [];
-    if (!existingProperties.has('eslint')) {
-      propertyTexts.push('eslint: { ignoreDuringBuilds: true }');
-    }
     if (!existingProperties.has('typescript')) {
       propertyTexts.push('typescript: { ignoreBuildErrors: true }');
     }

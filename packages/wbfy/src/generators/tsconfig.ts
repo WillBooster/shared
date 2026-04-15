@@ -20,6 +20,7 @@ const rootJsonObj = {
     allowSyntheticDefaultImports: true, // allow `import React from 'react'`
     esModuleInterop: true, // allow default import from CommonJS/AMD/UMD modules
     resolveJsonModule: true, // allow to import JSON files
+    rootDir: '.',
     importHelpers: false,
     noEmit: true,
   },
@@ -41,6 +42,7 @@ const subJsonObj = {
     allowSyntheticDefaultImports: true, // allow `import React from 'react'`
     esModuleInterop: true, // allow default import from CommonJS/AMD/UMD modules
     resolveJsonModule: true, // allow to import JSON files
+    rootDir: '.',
     importHelpers: false,
     noEmit: true,
   },
@@ -84,12 +86,9 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
           !dirPath.includes('@types') && !dirPath.includes('__tests__/') && !dirPath.includes('tests/')
       );
       newSettings.compilerOptions ??= {};
-      // The main tsconfig is for broad typechecking. WillBooster projects commonly keep
-      // TS config/scripts/tests beside src, so inferring rootDir here makes valid inputs fail TS6059.
       // Keep explicit emit settings because some repos have tsconfig.build.json files
       // that extend this config and rely on those options for tracked .d.ts outputs.
       newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitOptions };
-      delete newSettings.compilerOptions.rootDir;
 
       const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
       if (mergedTypes.length > 0) {
@@ -162,20 +161,13 @@ function pickExistingEmitOptions(
   compilerOptions: TsConfigJson['compilerOptions']
 ): Pick<
   NonNullable<TsConfigJson['compilerOptions']>,
-  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'outDir' | 'sourceMap'
+  'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'sourceMap'
 > {
   const emitOptions = {} as Pick<
     NonNullable<TsConfigJson['compilerOptions']>,
-    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'outDir' | 'sourceMap'
+    'declaration' | 'declarationMap' | 'emitDeclarationOnly' | 'noEmit' | 'sourceMap'
   >;
-  for (const key of [
-    'declaration',
-    'declarationMap',
-    'emitDeclarationOnly',
-    'noEmit',
-    'outDir',
-    'sourceMap',
-  ] as const) {
+  for (const key of ['declaration', 'declarationMap', 'emitDeclarationOnly', 'noEmit', 'sourceMap'] as const) {
     const value = compilerOptions?.[key];
     if (value !== undefined) {
       emitOptions[key] = value as never;

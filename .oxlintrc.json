@@ -7,7 +7,8 @@
     "**/test-fixtures/**"
   ],
   "options": {
-    "typeAware": false
+    "typeAware": true,
+    "typeCheck": true
   },
   "rules": {
     "react-perf/jsx-no-new-object-as-prop": "off",

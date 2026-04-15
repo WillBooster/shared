@@ -19,27 +19,15 @@ import {
 } from '../src/commands/lint.js';
 
 describe('lint', () => {
-  it('builds a biome command for biome projects', () => {
-    expect(buildLintCommand({ preferredLinter: 'biome' }, { fix: true, format: true }, ['/tmp/example.ts'])).toBe(
-      'BUN biome check --write --colors=force --no-errors-on-unmatched --files-ignore-unknown=true -- /tmp/example.ts'
-    );
-  });
-
-  it('builds an eslint command for eslint projects', () => {
-    expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: true }, ['/tmp/example.ts'])).toBe(
-      'YARN eslint --color --fix -- /tmp/example.ts'
-    );
-  });
-
   it('builds an oxlint command for oxlint projects', () => {
     expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: true, format: false }, ['/tmp/example.ts'])).toBe(
-      'YARN oxlint --fix /tmp/example.ts'
+      'YARN oxlint --type-aware --type-check --fix /tmp/example.ts'
     );
   });
 
-  it('uses the current directory when eslint runs without explicit files', () => {
-    expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: false })).toBe(
-      'YARN eslint --color -- .'
+  it('uses the current directory when oxlint runs without explicit files', () => {
+    expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: false, format: false })).toBe(
+      'YARN oxlint --type-aware --type-check .'
     );
   });
 
@@ -62,22 +50,21 @@ describe('lint', () => {
   });
 
   it('escapes shell-sensitive file paths', () => {
-    expect(buildLintCommand({ preferredLinter: 'eslint' }, { fix: false, format: false }, ['/tmp/evil"file.ts'])).toBe(
-      `YARN eslint --color -- '/tmp/evil"file.ts'`
+    expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: false, format: false }, ['/tmp/evil"file.ts'])).toBe(
+      `YARN oxlint --type-aware --type-check '/tmp/evil"file.ts'`
     );
   });
 
-  it('includes eslint project files in prettier args', () => {
+  it('keeps prettier args to prettier-only formats for oxlint projects', () => {
     expect(
       buildPrettierArgs('/repo', [
-        { dirPath: '/repo/packages/eslint-app', preferredLinter: 'eslint', hasOxfmt: false },
-        { dirPath: '/repo/packages/biome-app', preferredLinter: 'biome', hasOxfmt: false },
+        { dirPath: '/repo/packages/oxlint-app', preferredLinter: 'oxlint', hasOxfmt: false },
+        { dirPath: '/repo/packages/oxfmt-app', preferredLinter: 'oxlint', hasOxfmt: true },
       ])
     ).toEqual([
       '**/{.*/,}*.{java}',
       '!**/test{-,/}fixtures/**',
-      'packages/eslint-app/**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
-      'packages/biome-app/**/{.*/,}*.{java,md,scss}',
+      'packages/oxlint-app/**/{.*/,}*.{cjs,css,cts,htm,html,java,js,json,json5,jsonc,jsx,md,mjs,mts,scss,ts,tsx,vue,yaml,yml}',
     ]);
   });
 
@@ -115,9 +102,9 @@ describe('lint', () => {
     await expect(getLintTargetFileKind(filePath)).resolves.toBe('other');
   });
 
-  it('keeps prettier formatting for explicit markdown files in biome projects', () => {
-    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome', hasOxfmt: false }, 'md')).toBe(true);
-    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'biome', hasOxfmt: false }, 'ts')).toBe(false);
+  it('keeps prettier formatting only for prettier-only files without oxfmt', () => {
+    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: false }, 'java')).toBe(true);
+    expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: false }, 'md')).toBe(true);
   });
 
   it('prefers oxfmt formatting when available', () => {
@@ -125,21 +112,20 @@ describe('lint', () => {
     expect(shouldFormatExplicitPathWithPrettier({ preferredLinter: 'oxlint', hasOxfmt: true }, 'py')).toBe(false);
   });
 
-  it('uses a prettier-only glob for explicit directories in biome projects', () => {
-    expect(
-      buildExplicitFormatterArgs({ preferredLinter: 'biome', hasOxfmt: false }, '/tmp/example', 'directory', '')
-    ).toEqual(['/tmp/example/**/{.*/,}*.{java,md,scss}', '!**/test{-,/}fixtures/**']);
-  });
-
   it('keeps explicit files unchanged in prettier args', () => {
     expect(
-      buildExplicitFormatterArgs({ preferredLinter: 'biome', hasOxfmt: false }, '/tmp/example/README.md', 'other', 'md')
+      buildExplicitFormatterArgs(
+        { preferredLinter: 'oxlint', hasOxfmt: false },
+        '/tmp/example/README.md',
+        'other',
+        'md'
+      )
     ).toEqual(['/tmp/example/README.md']);
   });
 
-  it('keeps fixture ignores for explicit eslint directories', () => {
+  it('keeps fixture ignores for explicit oxlint directories without oxfmt', () => {
     expect(
-      buildExplicitFormatterArgs({ preferredLinter: 'eslint', hasOxfmt: false }, '/tmp/example', 'directory', '')
+      buildExplicitFormatterArgs({ preferredLinter: 'oxlint', hasOxfmt: false }, '/tmp/example', 'directory', '')
     ).toEqual(['/tmp/example', '!**/test{-,/}fixtures/**']);
   });
 
@@ -167,16 +153,16 @@ describe('lint', () => {
     expect(
       getExplicitLintTargets(
         [
-          { dirPath: '/repo', preferredLinter: 'eslint' },
-          { dirPath: '/repo/packages/a', preferredLinter: 'eslint' },
-          { dirPath: '/repo/packages/b', preferredLinter: 'biome' },
+          { dirPath: '/repo', preferredLinter: 'oxlint' },
+          { dirPath: '/repo/packages/a', preferredLinter: 'oxlint' },
+          { dirPath: '/repo/packages/b', preferredLinter: 'oxlint' },
         ] as never,
         '/repo/packages',
         'directory'
       )
     ).toEqual([
-      { lintPath: '/repo/packages/a', project: { dirPath: '/repo/packages/a', preferredLinter: 'eslint' } },
-      { lintPath: '/repo/packages/b', project: { dirPath: '/repo/packages/b', preferredLinter: 'biome' } },
+      { lintPath: '/repo/packages/a', project: { dirPath: '/repo/packages/a', preferredLinter: 'oxlint' } },
+      { lintPath: '/repo/packages/b', project: { dirPath: '/repo/packages/b', preferredLinter: 'oxlint' } },
     ]);
   });
 });
