@@ -3,8 +3,10 @@ import path from 'node:path';
 
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
+import type { PackageJson } from 'type-fest';
 
 import { findDescendantProjects } from '../project.js';
+import type { Project } from '../project.js';
 import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -33,17 +35,12 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
   const promises = projects.descendants.map(async (project) => {
     const commands: string[] = [];
     if (!project.packageJson.workspaces) {
-      if (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript) {
-        commands.push('BUN tsc --noEmit');
-      }
+      commands.push(...buildTypeScriptTypeCheckCommands(project));
       if (project.packageJson.devDependencies?.pyright) {
         commands.push('YARN pyright');
       }
-    } else if (
-      project.hasSourceCode &&
-      (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript)
-    ) {
-      commands.push('BUN tsc --noEmit');
+    } else if (project.hasSourceCode) {
+      commands.push(...buildTypeScriptTypeCheckCommands(project));
     }
     while (commands.length > 0) {
       const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {
@@ -85,6 +82,25 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
       )
     );
   return finalExitCode;
+}
+
+function buildTypeScriptTypeCheckCommands(project: Project): string[] {
+  if (hasDependency(project.packageJson, '@typescript/native-preview')) {
+    return ['BUN tsgo --noEmit'];
+  }
+  if (hasDependency(project.packageJson, 'typescript')) {
+    return ['BUN tsc --noEmit'];
+  }
+  return [];
+}
+
+function hasDependency(packageJson: PackageJson, packageName: string): boolean {
+  return !!(
+    packageJson.dependencies?.[packageName] ??
+    packageJson.devDependencies?.[packageName] ??
+    packageJson.optionalDependencies?.[packageName] ??
+    packageJson.peerDependencies?.[packageName]
+  );
 }
 
 export const tcCommand: CommandModule<unknown, TypeCheckCommandOptions> = {
