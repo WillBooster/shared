@@ -1,18 +1,7 @@
+import fs from 'node:fs';
+import { createRequire } from 'node:module';
+
 import { defineConfig } from 'oxlint';
-
-declare const process: {
-  getBuiltinModule(name: 'fs'): {
-    readFileSync(path: string, encoding: 'utf8'): string;
-  };
-  getBuiltinModule(name: 'module'): {
-    createRequire(url: string): {
-      resolve(specifier: string): string;
-    };
-  };
-};
-
-const fs = process.getBuiltinModule('fs');
-const { createRequire } = process.getBuiltinModule('module');
 const require = createRequire(import.meta.url);
 const sharedConfigPath = require.resolve('@willbooster/oxlint-config');
 const sharedConfig = parseJsonc(fs.readFileSync(sharedConfigPath, 'utf8')) as { ignorePatterns?: string[] };

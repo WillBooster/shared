@@ -12,28 +12,28 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
 
     await Promise.all([
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.oxlintrc.json'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'biome.json'), { force: true })),
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'biome.jsonc'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.eslintrc'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.eslintrc.cjs'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.eslintrc.js'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.eslintrc.json'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.eslintrc.yaml'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.eslintrc.yml'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.cjs'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.js'), { force: true })),
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.mjs'), { force: true })),
+      promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true })),
       promisePool.run(() => fsUtil.generateFile(filePath, configContent)),
     ]);
   });
 }
 
-const configContent = `import { defineConfig } from 'oxlint';
+const configContent = `import fs from 'node:fs';
+import { createRequire } from 'node:module';
 
-declare const process: {
-  getBuiltinModule(name: 'fs'): {
-    readFileSync(path: string, encoding: 'utf8'): string;
-  };
-  getBuiltinModule(name: 'module'): {
-    createRequire(url: string): {
-      resolve(specifier: string): string;
-    };
-  };
-};
+import { defineConfig } from 'oxlint';
 
-const fs = process.getBuiltinModule('fs');
-const { createRequire } = process.getBuiltinModule('module');
 const require = createRequire(import.meta.url);
 const sharedConfigPath = require.resolve('@willbooster/oxlint-config');
 const sharedConfig = parseJsonc(fs.readFileSync(sharedConfigPath, 'utf8')) as { ignorePatterns?: string[] };

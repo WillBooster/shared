@@ -666,7 +666,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       scripts = merge(
         { ...scripts },
         {
-          format: `sort-package-json && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format`,
+          format: `sort-package-json && yarn format-code && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format`,
           lint: `yarn workspaces foreach --all --parallel --verbose run lint`,
           'lint-fix': 'yarn workspaces foreach --all --parallel --verbose run lint-fix',
           prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(
