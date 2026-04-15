@@ -9,7 +9,7 @@
     "jsx": "react-jsx",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "noEmit": false,
+    "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "outDir": "dist",
     "resolveJsonModule": true,
@@ -24,6 +24,8 @@
   "exclude": ["packages/*/test/fixtures", "test/fixtures", "packages/*/test/fixtures/**/*", "test/fixtures/**/*"],
   "extends": ["@tsconfig/node-lts/tsconfig.json", "@tsconfig/node-ts/tsconfig.json"],
   "include": [
+    "*.config.ts",
+    "packages/*/*.config.ts",
     "packages/*/scripts/**/*",
     "packages/*/src/**/*",
     "packages/*/test/**/*",

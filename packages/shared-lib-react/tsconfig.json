@@ -10,7 +10,7 @@
     "lib": ["DOM", "ES2024", "ESNext.Array", "ESNext.Collection", "ESNext.Iterator", "ESNext.Promise"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "noEmit": false,
+    "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "outDir": "dist",
     "resolveJsonModule": true,
@@ -23,5 +23,5 @@
   },
   "exclude": ["test/fixtures", "test/fixtures/**/*"],
   "extends": ["@tsconfig/node-lts/tsconfig.json", "@tsconfig/node-ts/tsconfig.json"],
-  "include": ["scripts/**/*", "src/**/*", "test/**/*"]
+  "include": ["*.config.ts", "scripts/**/*", "src/**/*", "test/**/*"]
 }
