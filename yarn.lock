@@ -5960,13 +5960,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/oxlint-config@npm:1.3.1":
-  version: 1.3.1
-  resolution: "@willbooster/oxlint-config@npm:1.3.1"
+"@willbooster/oxlint-config@npm:1.3.2":
+  version: 1.3.2
+  resolution: "@willbooster/oxlint-config@npm:1.3.2"
   peerDependencies:
     oxlint: ">=1.60.0"
     oxlint-tsgolint: ">=0.18.1"
-  checksum: 10c0/4b1787498d7b8896af46ecc8329ee5f9400ce7e98eb07e9a4f68bb794306bf4342500ca88fae762dec58af5c2afdfe53eba4ced377dd2a434368b0bc652ad4a1
+  checksum: 10c0/5b62135edc674d6d91c82e5d1efa589c4726d1b96d1e6b87d0f283dbbc6ccdb1fd4a390e0f676038172c55f522e1d1365208a761f0e01e4f20a7dca9af7ad12d
   languageName: node
   linkType: hard
 
@@ -5988,7 +5988,7 @@ __metadata:
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/node": "npm:25.5.2"
     "@willbooster/oxfmt-config": "npm:1.1.0"
-    "@willbooster/oxlint-config": "npm:1.3.1"
+    "@willbooster/oxlint-config": "npm:1.3.2"
     "@willbooster/prettier-config": "npm:10.4.0"
     blitz: "npm:3.0.2"
     build-ts: "npm:17.0.22"
@@ -6011,7 +6011,7 @@ __metadata:
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/node": "npm:25.5.2"
     "@willbooster/oxfmt-config": "npm:1.1.0"
-    "@willbooster/oxlint-config": "npm:1.3.1"
+    "@willbooster/oxlint-config": "npm:1.3.2"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     next: "npm:16.1.6"
@@ -6047,7 +6047,7 @@ __metadata:
     "@types/bun": "npm:1.3.10"
     "@types/node": "npm:25.5.2"
     "@willbooster/oxfmt-config": "npm:1.1.0"
-    "@willbooster/oxlint-config": "npm:1.3.1"
+    "@willbooster/oxlint-config": "npm:1.3.2"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     dotenv: "npm:17.3.1"
@@ -6083,7 +6083,7 @@ __metadata:
     "@types/react": "npm:19.2.14"
     "@types/react-dom": "npm:19.2.3"
     "@willbooster/oxfmt-config": "npm:1.1.0"
-    "@willbooster/oxlint-config": "npm:1.3.1"
+    "@willbooster/oxlint-config": "npm:1.3.2"
     "@willbooster/prettier-config": "npm:10.4.0"
     babel-loader: "npm:10.1.1"
     build-ts: "npm:17.0.22"
@@ -6111,7 +6111,7 @@ __metadata:
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/node": "npm:25.5.2"
     "@willbooster/oxfmt-config": "npm:1.1.0"
-    "@willbooster/oxlint-config": "npm:1.3.1"
+    "@willbooster/oxlint-config": "npm:1.3.2"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.0.22"
     oxfmt: "npm:0.45.0"
@@ -6135,7 +6135,7 @@ __metadata:
     "@types/node": "npm:25.5.2"
     "@types/yargs": "npm:17.0.35"
     "@willbooster/oxfmt-config": "npm:1.1.0"
-    "@willbooster/oxlint-config": "npm:1.3.1"
+    "@willbooster/oxlint-config": "npm:1.3.2"
     "@willbooster/prettier-config": "npm:10.4.0"
     at-decorators: "npm:7.0.2"
     build-ts: "npm:17.0.22"
@@ -6174,7 +6174,7 @@ __metadata:
     "@types/semver": "npm:^7"
     "@types/yargs": "npm:17.0.35"
     "@willbooster/oxfmt-config": "npm:1.1.0"
-    "@willbooster/oxlint-config": "npm:1.3.1"
+    "@willbooster/oxlint-config": "npm:1.3.2"
     "@willbooster/prettier-config": "npm:10.4.0"
     "@yarnpkg/core": "npm:4.6.0"
     build-ts: "npm:17.0.22"
@@ -20150,7 +20150,7 @@ __metadata:
     "@tsconfig/node-ts": "npm:23.6.4"
     "@types/node": "npm:25.5.2"
     "@willbooster/oxfmt-config": "npm:1.1.0"
-    "@willbooster/oxlint-config": "npm:1.3.1"
+    "@willbooster/oxlint-config": "npm:1.3.2"
     "@willbooster/prettier-config": "npm:10.4.0"
     conventional-changelog-conventionalcommits: "npm:9.3.0"
     lefthook: "npm:2.1.5"
