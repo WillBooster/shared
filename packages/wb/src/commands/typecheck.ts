@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findDescendantProjects } from '../project.js';
+import type { Project } from '../project.js';
 import { runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -32,18 +33,11 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
   let removedNextDir = false as boolean;
   const promises = projects.descendants.map(async (project) => {
     const commands: string[] = [];
-    if (!project.packageJson.workspaces) {
-      if (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript) {
-        commands.push('BUN tsc --noEmit');
-      }
-      if (project.packageJson.devDependencies?.pyright) {
-        commands.push('YARN pyright');
-      }
-    } else if (
-      project.hasSourceCode &&
-      (project.packageJson.dependencies?.typescript || project.packageJson.devDependencies?.typescript)
-    ) {
-      commands.push('BUN tsc --noEmit');
+    if (!project.packageJson.workspaces || project.hasSourceCode) {
+      commands.push(...buildTypeScriptTypeCheckCommands(project));
+    }
+    if (!project.packageJson.workspaces && project.hasOwnDependency('pyright')) {
+      commands.push('YARN pyright');
     }
     while (commands.length > 0) {
       const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {
@@ -85,6 +79,16 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
       )
     );
   return finalExitCode;
+}
+
+function buildTypeScriptTypeCheckCommands(project: Project): string[] {
+  if (project.hasOwnDependency('@typescript/native-preview')) {
+    return ['BUN tsgo --noEmit'];
+  }
+  if (project.hasOwnDependency('typescript')) {
+    return ['BUN tsc --noEmit'];
+  }
+  return [];
 }
 
 export const tcCommand: CommandModule<unknown, TypeCheckCommandOptions> = {
