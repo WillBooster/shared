@@ -53,7 +53,13 @@ export function readEnvironmentVariables(
   cwd: string
 ): [Record<string, string>, [string, string[]][]] {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
-  const cascade = argv.cascadeEnv ?? getDefaultCascadeEnv(argv);
+  const cascade =
+    argv.cascadeEnv ??
+    (argv.cascadeNodeEnv
+      ? process.env.NODE_ENV || 'development'
+      : argv.autoCascadeEnv
+        ? process.env.WB_ENV || process.env.NODE_ENV || 'development'
+        : undefined);
   if (typeof cascade === 'string') {
     if (envPaths.length === 0) {
       envPaths.push(path.join(cwd, '.env'));
@@ -105,12 +111,6 @@ export function readEnvironmentVariables(
     }
   }
   return [expand({ parsed: envVars, processEnv: {} }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
-}
-
-function getDefaultCascadeEnv(argv: EnvReaderOptions): string | undefined {
-  if (argv.cascadeNodeEnv) return process.env.NODE_ENV || 'development';
-  if (argv.autoCascadeEnv) return process.env.WB_ENV || process.env.NODE_ENV || 'development';
-  return;
 }
 
 /**

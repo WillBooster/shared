@@ -221,19 +221,15 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
     const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv, ['db-url-or-path', 'restored']);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db studio', allProjects)) {
-      const dbUrlOrPath = getStudioDbUrlOrPath(argv, project);
+      const dbUrlOrPath = argv.restored
+        ? project.packageJson.dependencies?.blitz
+          ? 'db/restored.sqlite3'
+          : 'prisma/restored.sqlite3'
+        : argv.dbUrlOrPath?.toString();
       await runWithSpawn(getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions), project, argv);
     }
   },
 };
-
-function getStudioDbUrlOrPath(
-  argv: { dbUrlOrPath?: unknown; restored?: boolean },
-  project: Project
-): string | undefined {
-  if (!argv.restored) return argv.dbUrlOrPath?.toString();
-  return project.packageJson.dependencies?.blitz ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3';
-}
 
 const defaultCommandBuilder = { args: { type: 'array' } } as const;
 
