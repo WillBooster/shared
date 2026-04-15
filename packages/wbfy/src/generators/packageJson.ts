@@ -22,6 +22,7 @@ import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
+const typescriptGoDependency = '@typescript/native-preview';
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -259,7 +260,7 @@ function applyPackageJsonConventions(
   }
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
-    devDependencies.push('typescript');
+    devDependencies.push(typescriptGoDependency);
     if (config.isBun) {
       devDependencies.push('@types/bun');
     } else if (!config.depending.reactNative) {
@@ -515,6 +516,7 @@ async function removeDeprecatedStuff(
   delete jsonObj.dependencies.tslib;
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
+  delete jsonObj.devDependencies.typescript;
   delete jsonObj.devDependencies.lerna;
   // To install the latest pinst
   delete jsonObj.devDependencies.pinst;
@@ -647,7 +649,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern .`,
       prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`,
-      typecheck: 'tsc --noEmit',
+      typecheck: 'tsgo --noEmit',
     };
     if (config.doesContainSubPackageJsons) {
       scripts = merge(

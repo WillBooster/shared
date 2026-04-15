@@ -3,7 +3,6 @@ import type { PackageConfig } from '../packageConfig.js';
 const WILLBOOSTER_CONFIG_PACKAGE_NAMES = new Set(['@willbooster/oxlint-config', '@willbooster/prettier-config']);
 const pinnedDependencySpecifiers = {
   oxlint: '^1.60.0',
-  typescript: '^5.9.3',
 } as const;
 
 export function shouldSkipWillboosterConfigsPackage(config: PackageConfig): boolean {
