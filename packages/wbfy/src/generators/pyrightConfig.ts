@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import cloneDeep from 'lodash.clonedeep';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -17,7 +16,7 @@ const jsonObj = {
 
 export async function generatePyrightConfigJson(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generatePyrightConfigJson', async () => {
-    let newSettings: object = cloneDeep(jsonObj);
+    let newSettings: object = structuredClone(jsonObj);
     const filePath = path.resolve(config.dirPath, 'pyrightconfig.json');
     try {
       const oldContent = await fs.promises.readFile(filePath, 'utf8');

@@ -83,6 +83,7 @@ const prettierExtensions = new Set([
 ]);
 const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !oxfmtExtensions.has(ext)));
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
+const oxlintFixtureIgnorePattern = '**/test{-,/}fixtures/**';
 
 export const lintCommand: CommandModule<unknown, LintCommandOptions> = {
   command: 'lint [files...]',
@@ -281,6 +282,8 @@ export function buildLintCommand(
       'oxlint',
       ...(argv.quiet ? ['--quiet'] : []),
       ...(argv.fix ? ['--fix'] : []),
+      '--ignore-pattern',
+      oxlintFixtureIgnorePattern,
       ...(files ?? ['.']),
     ]);
   }

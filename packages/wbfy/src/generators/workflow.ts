@@ -6,7 +6,6 @@ import path from 'node:path';
 
 import merge from 'deepmerge';
 import yaml from 'js-yaml';
-import cloneDeep from 'lodash.clonedeep';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -321,7 +320,7 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
     return;
   }
 
-  let newSettings = cloneDeep(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
+  let newSettings = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
 
   try {
     const oldContent = await fs.promises.readFile(filePath, 'utf8');
@@ -501,7 +500,7 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
 
 function generateAutofixWorkflow(config: PackageConfig): Workflow {
   if (!config.isPublicRepo) {
-    return cloneDeep(privateRepoAutofixWorkflow);
+    return structuredClone(privateRepoAutofixWorkflow);
   }
 
   const packageManager = config.isBun ? 'bun' : 'yarn';
@@ -517,7 +516,7 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
   }
   steps.push({ uses: 'autofix-ci/action@v1' });
 
-  const autofixWorkflow = cloneDeep(publicRepoAutofixWorkflow);
+  const autofixWorkflow = structuredClone(publicRepoAutofixWorkflow);
   const autofixJob = autofixWorkflow.jobs.autofix ?? { 'runs-on': 'ubuntu-latest' };
   autofixWorkflow.jobs.autofix = { ...autofixJob, steps };
   return autofixWorkflow;

@@ -21,12 +21,14 @@ import {
 describe('lint', () => {
   it('builds an oxlint command for oxlint projects', () => {
     expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: true, format: false }, ['/tmp/example.ts'])).toBe(
-      'YARN oxlint --fix /tmp/example.ts'
+      "YARN oxlint --fix --ignore-pattern '**/test{-,/}fixtures/**' /tmp/example.ts"
     );
   });
 
   it('uses the current directory when oxlint runs without explicit files', () => {
-    expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: false, format: false })).toBe('YARN oxlint .');
+    expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: false, format: false })).toBe(
+      "YARN oxlint --ignore-pattern '**/test{-,/}fixtures/**' ."
+    );
   });
 
   it('builds poetry commands for explicit python files', () => {
@@ -49,7 +51,7 @@ describe('lint', () => {
 
   it('escapes shell-sensitive file paths', () => {
     expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: false, format: false }, ['/tmp/evil"file.ts'])).toBe(
-      `YARN oxlint '/tmp/evil"file.ts'`
+      `YARN oxlint --ignore-pattern '**/test{-,/}fixtures/**' '/tmp/evil"file.ts'`
     );
   });
 

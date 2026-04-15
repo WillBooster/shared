@@ -21,6 +21,7 @@ import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { getPinnedDependencySpecifier } from '../utils/willboosterConfigsUtil.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
+const oxlintFixtureIgnorePattern = '"**/test{-,/}fixtures/**"';
 const oxfmtConfigPath = `$(node -e 'console.log(require.resolve("@willbooster/oxfmt-config/.oxfmtrc.json"))')`;
 const obsoleteLintDependencies = [
   '@biomejs/biome',
@@ -652,7 +653,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       'check-for-ai': `yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet`,
       cleanup: 'yarn format && yarn lint-fix',
       format: `sort-package-json && yarn format-code && yarn prettify`,
-      lint: `oxlint .`,
+      lint: `oxlint --ignore-pattern ${oxlintFixtureIgnorePattern} .`,
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern -c "${oxfmtConfigPath}" .`,
       prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`,

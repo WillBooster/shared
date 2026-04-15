@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import cloneDeep from 'lodash.clonedeep';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -19,7 +18,7 @@ type Settings = typeof jsonObj & { packageRules?: { matchPackageNames: string[];
 
 export async function generateRenovateJson(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateRenovateJson', async () => {
-    let newSettings = cloneDeep(jsonObj) as Settings;
+    let newSettings = structuredClone(jsonObj) as Settings;
     const filePath = path.resolve(config.dirPath, 'renovate.json');
     if (fs.existsSync(`${filePath}5`)) {
       // Since it is difficult for parsing renovate.json5, we do nothing

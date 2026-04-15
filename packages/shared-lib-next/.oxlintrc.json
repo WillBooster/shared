@@ -1,15 +1,3 @@
 {
-  "extends": ["../../node_modules/@willbooster/oxlint-config/.oxlintrc.json"],
-  "ignorePatterns": ["**/test/fixtures/**", "**/test-fixtures/**"],
-  "options": {
-    "typeAware": false,
-    "typeCheck": false
-  },
-  "rules": {
-    "unicorn/no-nested-ternary": "off",
-    "unicorn/number-literal-case": "off",
-    "react-perf/jsx-no-new-object-as-prop": "off",
-    "react/react-in-jsx-scope": "off",
-    "unicorn/prefer-structured-clone": "off"
-  }
+  "extends": ["../../node_modules/@willbooster/oxlint-config/.oxlintrc.json"]
 }

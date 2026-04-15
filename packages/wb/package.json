@@ -2,22 +2,19 @@
   "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
   "description": "CLI tool for WillBooster projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wb"
   },
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
+  "type": "module",
   "bin": "bin/index.js",
   "files": [
     "bin/",
     "dist/"
   ],
-  "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -25,7 +22,7 @@
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn format-code && yarn prettify",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern -c \"$(node -e 'console.log(require.resolve(\"@willbooster/oxfmt-config/.oxfmtrc.json\"))')\" .",
-    "lint": "oxlint .",
+    "lint": "oxlint --ignore-pattern \"**/test{-,/}fixtures/**\" .",
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --cache --color --no-error-on-unmatched-pattern --write \"**/{.*/,}*.{java}\" \"!**/test{-,/}fixtures/**\" || true",
     "start": "build-ts run src/index.ts --",
@@ -35,6 +32,7 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
+  "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.6.2",
     "dotenv": "17.3.1",
@@ -65,8 +63,10 @@
     "typescript": "^5.9.3",
     "vitest": "4.0.18"
   },
-  "prettier": "@willbooster/prettier-config",
   "engines": {
     "node": ">= 18"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
