@@ -249,9 +249,9 @@ function applyPackageJsonConventions(
     }
   }
 
-  // build-ts owns declaration emit for libraries. Keeping older releases can
-  // make generated .d.ts files land under dist/src while package exports point
-  // at dist, so wbfy must update existing build-ts users.
+  // build-ts owns TypeScript execution and declaration emit. wbfy must always
+  // keep existing build-ts users current because older releases can emit .d.ts
+  // files at paths that no longer match package exports.
   if (jsonObj.dependencies[buildTsDependency]) {
     dependencies.push(buildTsDependency);
   } else if (
@@ -582,8 +582,8 @@ function isPublishedLintConfigPackage(jsonObj: PackageJson): boolean {
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
-  // Old wb releases had Bun-only lint behavior; managed projects need the
-  // current CLI when wbfy wires hooks or scripts through wb.
+  // wbfy-managed tools must be kept current even when the package already pins
+  // a concrete version. In particular, build-ts owns declaration output paths.
   return (
     dependency === '@willbooster/wb' ||
     dependency === buildTsDependency ||
