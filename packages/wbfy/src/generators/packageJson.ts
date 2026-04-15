@@ -283,10 +283,6 @@ function applyPackageJsonConventions(
   }
 
   if (config.eslintBase) {
-    if (config.eslintBase.includes('react')) {
-      delete jsonObj.devDependencies['eslint-plugin-react'];
-      delete jsonObj.devDependencies['eslint-plugin-react-hooks'];
-    }
     devDependencies.push(...eslintDeps[config.eslintBase]);
   }
 
@@ -478,13 +474,7 @@ function addPackageJsonDependencies(
     if (shouldUpdateExistingManagedDependency(dependency, packageJsonDependencies[dependency])) {
       dependenciesToInstall.push(dependency);
     }
-    if (
-      packageJsonDependencies[dependency] &&
-      !getPinnedDependencySpecifier(dependency) &&
-      !isWillBoosterEslintConfigDependency(dependency)
-    ) {
-      continue;
-    }
+    if (packageJsonDependencies[dependency] && !getPinnedDependencySpecifier(dependency)) continue;
     packageJsonDependencies[dependency] = getPackageJsonDependencyVersion(dependency);
   }
   return dependenciesToInstall;
@@ -542,10 +532,6 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   if (pinnedSpecifier) {
     return currentVersion !== getPackageJsonDependencyVersion(dependency);
   }
-  return isWillBoosterEslintConfigDependency(dependency);
-}
-
-function isWillBoosterEslintConfigDependency(dependency: string): boolean {
   return dependency.startsWith('@willbooster/eslint-config-');
 }
 
