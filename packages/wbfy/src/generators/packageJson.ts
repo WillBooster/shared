@@ -29,6 +29,7 @@ const obsoleteLintDependencies = [
   '@eslint/js',
   '@next/eslint-plugin-next',
   '@types/eslint',
+  '@types/micromatch',
   '@typescript-eslint/eslint-plugin',
   '@typescript-eslint/parser',
   '@willbooster/biome-config',
@@ -57,6 +58,7 @@ const obsoleteLintDependencies = [
   'eslint-plugin-unicorn',
   'eslint-plugin-unused-imports',
   'globals',
+  'micromatch',
   'typescript-eslint',
 ];
 
@@ -88,7 +90,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   const jsonObj = await readPackageJson(filePath);
   const packageManager = config.isBun ? 'bun' : 'yarn';
 
-  await removeDeprecatedStuff(jsonObj, config.dirPath);
+  await removeDeprecatedStuff(config, jsonObj);
   await updateScripts(config, jsonObj, packageManager);
   const dependencyUpdates = applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
@@ -525,8 +527,8 @@ function getLatestDependencyVersion(dependency: string): string {
 
 // TODO: remove the following migration code in future
 async function removeDeprecatedStuff(
-  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies' | 'peerDependencies'>,
-  dirPath: string
+  config: PackageConfig,
+  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies' | 'peerDependencies'>
 ): Promise<void> {
   if (jsonObj.author === 'WillBooster LLC') {
     jsonObj.author = 'WillBooster Inc.';
@@ -549,13 +551,13 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['format-python'];
   delete jsonObj.scripts.prettier;
   delete jsonObj.scripts['check-all'];
-  await promisePool.run(() => fs.promises.rm(path.resolve(dirPath, 'lerna.json'), { force: true }));
+  await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'lerna.json'), { force: true }));
 
-  // Packages that publish lint configs need their lint toolchain as package
-  // data, not just local repo tooling. Removing micromatch or ESLint peers here
-  // would break the exported config even though wbfy can lint the repo itself
-  // with oxlint.
-  if (!isPublishedLintConfigPackage(jsonObj)) {
+  // willbooster-configs subpackages publish config files as their product. Their
+  // ESLint and glob dependencies are package data, so removing them would break
+  // those published configs. Keep the migration scoped to this repository so
+  // every other repo keeps the normal obsolete-lint cleanup behavior.
+  if (!isWillboosterConfigsSubpackage(config)) {
     removeObsoleteLintDependencies(jsonObj);
   }
 }
@@ -570,13 +572,8 @@ function removeObsoleteLintDependencies(
   }
 }
 
-function isPublishedLintConfigPackage(jsonObj: PackageJson): boolean {
-  return (
-    typeof jsonObj.name === 'string' &&
-    jsonObj.name.includes('eslint-config') &&
-    typeof jsonObj.main === 'string' &&
-    /(?:^|\/)eslint\.config\.[cm]?js$/u.test(jsonObj.main)
-  );
+function isWillboosterConfigsSubpackage(config: PackageConfig): boolean {
+  return config.isWillBoosterConfigs && !config.isRoot;
 }
 
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
