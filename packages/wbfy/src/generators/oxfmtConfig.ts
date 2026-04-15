@@ -11,6 +11,7 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
     const legacyConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
     await promisePool.run(() => fs.promises.rm(legacyConfigPath, { force: true }));
+    if (fs.existsSync(filePath)) return;
     await promisePool.run(() => fsUtil.generateFile(filePath, configContent));
   });
 }

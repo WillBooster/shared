@@ -10,7 +10,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
 
-    await Promise.all([
+    const promises = [
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.oxlintrc.json'), { force: true })),
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'biome.json'), { force: true })),
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'biome.jsonc'), { force: true })),
@@ -24,8 +24,11 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.js'), { force: true })),
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.mjs'), { force: true })),
       promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true })),
-      promisePool.run(() => fsUtil.generateFile(filePath, configContent)),
-    ]);
+    ];
+    if (!fs.existsSync(filePath)) {
+      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, configContent)));
+    }
+    await Promise.all(promises);
   });
 }
 

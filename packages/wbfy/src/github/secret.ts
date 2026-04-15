@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import dotenv from 'dotenv';
-import sodium, { base64_variants, from_base64, from_string, ready, to_base64 } from 'libsodium-wrappers';
+import sodium from 'libsodium-wrappers';
 
 import { logger } from '../logger.js';
 import { options } from '../options.js';
@@ -42,7 +42,7 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
       });
       const { key, key_id: keyId } = response.data;
 
-      await ready;
+      await sodium.ready;
 
       for (const [name, secret] of Object.entries(parsed)) {
         if (
@@ -54,14 +54,14 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
         }
 
         // Convert Secret & Base64 key to Uint8Array.
-        const rawKey = from_base64(key, base64_variants.ORIGINAL);
-        const rawSec = from_string(secret);
+        const rawKey = sodium.from_base64(key, sodium.base64_variants.ORIGINAL);
+        const rawSec = sodium.from_string(secret);
 
         // Encrypt the secret using LibSodium
         const encBytes = sodium.crypto_box_seal(rawSec, rawKey);
 
         // Convert encrypted Uint8Array to Base64
-        const encBase64 = to_base64(encBytes, base64_variants.ORIGINAL);
+        const encBase64 = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
 
         // Requires Secrets permission
         await octokit.request('PUT /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
