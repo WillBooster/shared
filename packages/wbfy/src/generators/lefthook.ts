@@ -160,11 +160,10 @@ async function core(config: PackageConfig): Promise<void> {
 
 function getPrePushScript(config: PackageConfig): string {
   let lintCommand: string;
-  if (config.isBun) {
-    lintCommand = config.depending.wb ? 'bun --bun wb lint' : 'bun run lint';
-  } else {
-    lintCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
-  }
+  // `wb lint` is implemented for Bun runtime execution; Yarn projects still get
+  // generated lint scripts, so hooks must call those scripts instead.
+  if (config.isBun) lintCommand = config.depending.wb ? 'bun --bun wb lint' : 'bun run lint';
+  else lintCommand = 'yarn run lint';
   if (config.repository?.startsWith('github:WillBoosterLab/')) {
     return `
 #!/bin/bash
@@ -201,11 +200,10 @@ function getCleanupCommand(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
     return 'yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files} && git add -- {staged_files}';
   }
-  if (config.isBun || config.depending.wb) {
-    const packageManager = config.isBun ? 'bun' : 'yarn';
+  if (config.isBun) {
     const command = config.depending.wb
-      ? `${config.isBun ? 'bun --bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}`
-      : `${packageManager} run format && ${packageManager} run lint-fix`;
+      ? 'bun --bun wb lint --fix --format -- {staged_files}'
+      : 'bun run format && bun run lint-fix';
     return `${command} && git add -- {staged_files}`;
   }
 
