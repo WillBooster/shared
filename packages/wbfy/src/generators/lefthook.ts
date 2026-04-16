@@ -170,9 +170,7 @@ function getPrePushScript(config: PackageConfig): string {
   } else {
     lintCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
   }
-  const typecheckCommand = config.packageJson?.scripts?.typecheck
-    ? `\n${config.isBun ? 'bun run typecheck' : 'yarn typecheck'}`
-    : '';
+  // No separate typecheck step needed — the lint command already includes typechecking.
   if (config.repository?.startsWith('github:WillBoosterLab/')) {
     return `
 #!/bin/bash
@@ -184,10 +182,10 @@ if [ $(git branch --show-current) = "main" ] && [ $(git config user.email) != "e
   exit 1
 fi
 
-${lintCommand}${typecheckCommand}
+${lintCommand}
 `.trim();
   }
-  return `${lintCommand}${typecheckCommand}`;
+  return lintCommand;
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
