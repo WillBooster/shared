@@ -106,7 +106,6 @@ async function core(config: PackageConfig): Promise<void> {
   const settings: Partial<LefthookSettings> = {
     ...baseSettings,
     'pre-commit': {
-      ...preCommitSettings,
       jobs: preCommitSettings.jobs.map((job) =>
         job.name === 'cleanup'
           ? {
