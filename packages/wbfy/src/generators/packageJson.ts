@@ -566,10 +566,34 @@ function removeObsoleteLintDependencies(
   const preserveMicromatch = shouldPreserveMicromatch(config);
   for (const dependency of obsoleteLintDependencies) {
     if (preserveMicromatch && micromatchPackageNames.has(dependency)) continue;
+    if (shouldPreserveConfigPackageLintDependency(jsonObj, config, dependency)) continue;
     delete jsonObj.dependencies[dependency];
     delete jsonObj.devDependencies[dependency];
     delete jsonObj.peerDependencies[dependency];
   }
+}
+
+function shouldPreserveConfigPackageLintDependency(
+  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>,
+  config: PackageConfig,
+  dependency: string
+): boolean {
+  if (!isWillBoosterPublishedConfigPackage(config)) return false;
+  if (jsonObj.peerDependencies[dependency]) return true;
+
+  // Published config packages need local type-only deps to validate the
+  // package-provided config declarations under Yarn PnP.
+  return dependency === '@types/eslint' && !!jsonObj.peerDependencies.eslint;
+}
+
+function isWillBoosterPublishedConfigPackage(config: PackageConfig): boolean {
+  return (
+    config.isWillBoosterConfigs &&
+    !config.isRoot &&
+    config.packageJson?.private !== true &&
+    Array.isArray(config.packageJson?.files) &&
+    config.packageJson.files.length > 0
+  );
 }
 
 function shouldPreserveMicromatch(config: PackageConfig): boolean {
