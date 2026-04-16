@@ -1,8 +1,8 @@
-// oxlint-disable eslint-plugin-import/no-named-as-default-member -- LibSodium's namespace API keeps crypto helpers grouped.
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import dotenv from 'dotenv';
-import sodium from 'libsodium-wrappers';
+import type sodiumModule from 'libsodium-wrappers';
 
 import { logger } from '../logger.js';
 import { options } from '../options.js';
@@ -10,6 +10,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { getOctokit, gitHubUtil, hasGitHubToken } from '../utils/githubUtil.js';
 
 const DEPRECATED_SECRET_NAMES = ['READY_DISCORD_WEBHOOK_URL', 'GH_BOT_PAT', 'PUBLIC_GH_BOT_PAT'];
+const require = createRequire(import.meta.url);
 
 export async function setupSecrets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupSecrets', async () => {
@@ -43,6 +44,7 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
       });
       const { key, key_id: keyId } = response.data;
 
+      const sodium = getSodium();
       await sodium.ready;
 
       for (const [name, secret] of Object.entries(parsed)) {
@@ -77,4 +79,10 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
       console.warn('Skip setupSecrets due to:', (error as Error | undefined)?.stack ?? error);
     }
   });
+}
+
+function getSodium(): typeof sodiumModule {
+  // libsodium-wrappers' ESM entry can bind to libsodium@0.8.3, whose default
+  // export no longer exposes ready. The CommonJS entry keeps the API shape.
+  return require('libsodium-wrappers') as typeof sodiumModule;
 }
