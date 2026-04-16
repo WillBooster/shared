@@ -56,6 +56,45 @@ test('packed cli prints its version after npm install', { timeout: 120 * 1000 },
   }
 });
 
+test('packed cli invoked through npx fails when the target has no package config', { timeout: 120 * 1000 }, () => {
+  buildCli();
+
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-npx-invalid-target-'));
+  try {
+    const packResult = child_process.spawnSync(
+      'npm',
+      ['pack', packageDirPath, '--json', '--pack-destination', tempDirPath],
+      {
+        cwd: tempDirPath,
+        encoding: 'utf8',
+      }
+    );
+    expect(packResult.stderr).toBe('');
+    expect(packResult.status).toBe(0);
+
+    const [{ filename }] = JSON.parse(packResult.stdout) as [{ filename: string }];
+    const targetDirPath = path.join(tempDirPath, 'target');
+    fs.mkdirSync(targetDirPath);
+
+    const result = child_process.spawnSync(
+      'npx',
+      ['--yes', '--package', path.join(tempDirPath, filename), 'wbfy', '.'],
+      {
+        cwd: targetDirPath,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          npm_config_cache: path.join(tempDirPath, 'npm-cache'),
+        },
+      }
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('there is no valid package.json in .');
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
 function buildCli(): void {
   const buildResult = child_process.spawnSync('yarn', ['build'], {
     cwd: packageDirPath,
