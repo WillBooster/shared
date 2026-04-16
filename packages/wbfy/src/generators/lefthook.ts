@@ -32,6 +32,7 @@ interface LefthookJob {
   run?: string;
   script?: string;
   runner?: 'bash';
+  stage_fixed?: true;
 }
 
 const baseSettings: Omit<LefthookSettings, 'pre-commit'> = {
@@ -62,6 +63,7 @@ const preCommitSettings: LefthookSettings['pre-commit'] = {
       name: 'cleanup',
       glob: '',
       run: '',
+      stage_fixed: true,
     },
     {
       name: 'check-migrations',
@@ -199,14 +201,13 @@ function getCleanupGlobs(config: PackageConfig): string {
 
 function getCleanupCommand(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
-    return 'yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files} && git add -- {staged_files}';
+    return 'yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}';
   }
   if (config.isBun || config.depending.wb) {
     const packageManager = config.isBun ? 'bun' : 'yarn';
-    const command = config.depending.wb
+    return config.depending.wb
       ? `${config.isBun ? 'bun --bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}`
       : `${packageManager} run format && ${packageManager} run lint-fix`;
-    return `${command} && git add -- {staged_files}`;
   }
 
   const oxlintPattern = extensions.oxlint.map((extension) => String.raw`\.${extension}$`).join('|');
@@ -262,7 +263,6 @@ ${
 fi`
     : ''
 }
-git add -- {staged_files}
 `.trim();
 }
 
