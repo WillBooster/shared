@@ -14,58 +14,57 @@ import { spawnSync } from '../utils/spawnUtil.js';
 import { generateScripts } from './packageJson.js';
 
 interface LefthookSettings {
+  glob_matcher: 'doublestar';
   'post-merge': {
-    scripts: {
-      'prepare.sh': {
-        runner: 'bash';
-      };
-    };
+    jobs: LefthookJob[];
   };
   'pre-commit': {
-    commands: {
-      cleanup: {
-        glob: string;
-        run: string;
-      };
-      'check-migrations': {
-        glob: string;
-        run: string;
-      };
-    };
+    jobs: LefthookJob[];
   };
   'pre-push': {
-    scripts: {
-      'check.sh': {
-        runner: 'bash';
-      };
-    };
+    jobs: LefthookJob[];
   };
 }
 
+interface LefthookJob {
+  name: string;
+  glob?: string;
+  run?: string;
+  script?: string;
+  runner?: 'bash';
+}
+
 const baseSettings: Omit<LefthookSettings, 'pre-commit'> = {
+  glob_matcher: 'doublestar',
   'post-merge': {
-    scripts: {
-      'prepare.sh': {
+    jobs: [
+      {
+        name: 'prepare',
+        script: 'prepare.sh',
         runner: 'bash',
       },
-    },
+    ],
   },
   'pre-push': {
-    scripts: {
-      'check.sh': {
+    jobs: [
+      {
+        name: 'check',
+        script: 'check.sh',
         runner: 'bash',
       },
-    },
+    ],
   },
 };
 
 const preCommitSettings: LefthookSettings['pre-commit'] = {
-  commands: {
-    cleanup: {
+  jobs: [
+    {
+      name: 'cleanup',
       glob: '',
       run: '',
     },
-    'check-migrations': {
+    {
+      name: 'check-migrations',
       glob: '**/migration.sql',
       run: `
 if grep -q 'Warnings:' {staged_files}; then
@@ -74,7 +73,7 @@ if grep -q 'Warnings:' {staged_files}; then
 fi
 `.trim(),
     },
-  },
+  ],
 };
 
 const scripts = {
@@ -106,14 +105,15 @@ async function core(config: PackageConfig): Promise<void> {
     ...baseSettings,
     'pre-commit': {
       ...preCommitSettings,
-      commands: {
-        ...preCommitSettings.commands,
-        cleanup: {
-          ...preCommitSettings.commands.cleanup,
-          glob: getCleanupGlobs(config),
-          run: getCleanupCommand(config),
-        },
-      },
+      jobs: preCommitSettings.jobs.map((job) =>
+        job.name === 'cleanup'
+          ? {
+              ...job,
+              glob: getCleanupGlobs(config),
+              run: getCleanupCommand(config),
+            }
+          : job
+      ),
     },
   };
   if (!lint) {
