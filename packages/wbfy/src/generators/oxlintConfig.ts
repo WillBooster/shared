@@ -31,8 +31,9 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true }))
       );
     }
-    if (!existingContent) {
-      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, configContent)));
+    const newContent = getConfigContent(config);
+    if (!existingContent || existingContent === configContent) {
+      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, newContent)));
     }
     await Promise.all(promises);
   });
@@ -50,3 +51,24 @@ const configContent = `import config from '@willbooster/oxlint-config';
 
 export default config;
 `;
+
+function getConfigContent(config: PackageConfig): string {
+  if (!config.depending.next && !config.depending.blitz) return configContent;
+
+  return `import config from '@willbooster/oxlint-config';
+
+export default {
+  ...config,
+  overrides: [
+    ...(config.overrides ?? []),
+    {
+      files: ['pages/**/*.{js,jsx,ts,tsx}', 'src/pages/**/*.{js,jsx,ts,tsx}'],
+      rules: {
+        // Next/Blitz page file names define public routes, so casing rules must not rewrite URLs.
+        'unicorn/filename-case': 'off',
+      },
+    },
+  ],
+};
+`;
+}
