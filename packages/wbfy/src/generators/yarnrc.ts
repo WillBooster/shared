@@ -109,8 +109,12 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
 
     spawnSync('yarn', ['dlx', 'yarn-plugin-auto-install'], config.dirPath);
     // The target repo may not have prettier installed yet, and yarn-plugin-auto-install edits this file after js-yaml.
-    spawnSync('yarn', ['dlx', 'prettier', '--write', path.relative(config.dirPath, yarnrcYmlPath)], config.dirPath);
+    spawnSync('yarn', getYarnrcPrettierArgs(config.dirPath, yarnrcYmlPath), config.dirPath);
   });
+}
+
+export function getYarnrcPrettierArgs(dirPath: string, yarnrcYmlPath: string): string[] {
+  return ['dlx', 'prettier', '--no-config', '--write', path.relative(dirPath, yarnrcYmlPath)];
 }
 
 export function getLatestVersion(packageName: string, dirPath: string): string {
