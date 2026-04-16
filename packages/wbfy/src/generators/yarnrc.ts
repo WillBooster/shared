@@ -84,6 +84,7 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
       '@oxfmt/*',
       '@oxlint/*',
       '@oxlint-tsgolint/*',
+      'lefthook',
       'oxfmt',
       'oxlint',
       'oxlint-tsgolint',
