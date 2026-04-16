@@ -138,11 +138,25 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
   const filePath = path.resolve(config.dirPath, 'tsconfig.json');
   try {
     const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as TsConfigJson;
-    deleteLegacyModuleSettings(settings.compilerOptions, config);
+    normalizeNextTsconfigModuleSettings(settings.compilerOptions);
     await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
   } catch {
     // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
     // node10 resolver spellings that older projects commonly inherited.
+  }
+}
+
+function normalizeNextTsconfigModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
+  if (!compilerOptions) return;
+  if (
+    compilerOptions.moduleResolution === 'node' ||
+    compilerOptions.moduleResolution === 'Node' ||
+    compilerOptions.moduleResolution === 'node10' ||
+    compilerOptions.moduleResolution === undefined
+  ) {
+    // Next.js writes "node" during build when this option is missing, but
+    // tsgolint treats that spelling as the removed node10 resolver.
+    compilerOptions.moduleResolution = 'bundler';
   }
 }
 
