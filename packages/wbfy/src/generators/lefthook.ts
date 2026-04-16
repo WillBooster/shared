@@ -14,58 +14,59 @@ import { spawnSync } from '../utils/spawnUtil.js';
 import { generateScripts } from './packageJson.js';
 
 interface LefthookSettings {
+  glob_matcher: 'doublestar';
   'post-merge': {
-    scripts: {
-      'prepare.sh': {
-        runner: 'bash';
-      };
-    };
+    jobs: LefthookJob[];
   };
   'pre-commit': {
-    commands: {
-      cleanup: {
-        glob: string;
-        run: string;
-      };
-      'check-migrations': {
-        glob: string;
-        run: string;
-      };
-    };
+    jobs: LefthookJob[];
   };
   'pre-push': {
-    scripts: {
-      'check.sh': {
-        runner: 'bash';
-      };
-    };
+    jobs: LefthookJob[];
   };
 }
 
+interface LefthookJob {
+  name: string;
+  glob?: string;
+  run?: string;
+  script?: string;
+  runner?: 'bash';
+  stage_fixed?: true;
+}
+
 const baseSettings: Omit<LefthookSettings, 'pre-commit'> = {
+  glob_matcher: 'doublestar',
   'post-merge': {
-    scripts: {
-      'prepare.sh': {
+    jobs: [
+      {
+        name: 'prepare',
+        script: 'prepare.sh',
         runner: 'bash',
       },
-    },
+    ],
   },
   'pre-push': {
-    scripts: {
-      'check.sh': {
+    jobs: [
+      {
+        name: 'check',
+        script: 'check.sh',
         runner: 'bash',
       },
-    },
+    ],
   },
 };
 
 const preCommitSettings: LefthookSettings['pre-commit'] = {
-  commands: {
-    cleanup: {
+  jobs: [
+    {
+      name: 'cleanup',
       glob: '',
       run: '',
+      stage_fixed: true,
     },
-    'check-migrations': {
+    {
+      name: 'check-migrations',
       glob: '**/migration.sql',
       run: `
 if grep -q 'Warnings:' {staged_files}; then
@@ -74,7 +75,7 @@ if grep -q 'Warnings:' {staged_files}; then
 fi
 `.trim(),
     },
-  },
+  ],
 };
 
 const scripts = {
@@ -105,15 +106,15 @@ async function core(config: PackageConfig): Promise<void> {
   const settings: Partial<LefthookSettings> = {
     ...baseSettings,
     'pre-commit': {
-      ...preCommitSettings,
-      commands: {
-        ...preCommitSettings.commands,
-        cleanup: {
-          ...preCommitSettings.commands.cleanup,
-          glob: getCleanupGlobs(config),
-          run: getCleanupCommand(config),
-        },
-      },
+      jobs: preCommitSettings.jobs.map((job) =>
+        job.name === 'cleanup'
+          ? {
+              ...job,
+              glob: getCleanupGlobs(config),
+              run: getCleanupCommand(config),
+            }
+          : job
+      ),
     },
   };
   if (!lint) {
@@ -199,14 +200,13 @@ function getCleanupGlobs(config: PackageConfig): string {
 
 function getCleanupCommand(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
-    return 'yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files} && git add -- {staged_files}';
+    return 'yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}';
   }
   if (config.isBun || config.depending.wb) {
     const packageManager = config.isBun ? 'bun' : 'yarn';
-    const command = config.depending.wb
+    return config.depending.wb
       ? `${config.isBun ? 'bun --bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}`
       : `${packageManager} run format && ${packageManager} run lint-fix`;
-    return `${command} && git add -- {staged_files}`;
   }
 
   const oxlintPattern = extensions.oxlint.map((extension) => String.raw`\.${extension}$`).join('|');
@@ -262,7 +262,6 @@ ${
 fi`
     : ''
 }
-git add -- {staged_files}
 `.trim();
 }
 
