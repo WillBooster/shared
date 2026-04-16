@@ -53,7 +53,10 @@ const subJsonObj = {
 
 export async function generateTsconfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateTsconfig', async () => {
-    if (config.depending.blitz || config.depending.next) return;
+    if (config.depending.blitz || config.depending.next) {
+      await cleanupLegacyTsconfigModuleSettings(config);
+      return;
+    }
 
     let newSettings = structuredClone(config.isRoot ? rootJsonObj : subJsonObj) as TsConfigJson;
     const generatedTypes = getGeneratedTypes(config);
@@ -129,6 +132,32 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
+}
+
+async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promise<void> {
+  const filePath = path.resolve(config.dirPath, 'tsconfig.json');
+  try {
+    const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as TsConfigJson;
+    normalizeNextTsconfigModuleSettings(settings.compilerOptions);
+    await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
+  } catch {
+    // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
+    // node10 resolver spellings that older projects commonly inherited.
+  }
+}
+
+function normalizeNextTsconfigModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
+  if (!compilerOptions) return;
+  if (
+    compilerOptions.moduleResolution === 'node' ||
+    compilerOptions.moduleResolution === 'Node' ||
+    compilerOptions.moduleResolution === 'node10' ||
+    compilerOptions.moduleResolution === undefined
+  ) {
+    // Next.js writes "node" during build when this option is missing, but
+    // tsgolint treats that spelling as the removed node10 resolver.
+    compilerOptions.moduleResolution = 'bundler';
+  }
 }
 
 function getRootDir(config: PackageConfig): string {
