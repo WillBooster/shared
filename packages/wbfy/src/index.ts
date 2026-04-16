@@ -81,6 +81,7 @@ async function main(): Promise<void> {
   options.isVerbose = argv.verbose;
   options.doesUploadEnvVars = argv.env;
 
+  let hasInvalidPackageConfig = false;
   for (const rootDirPath of argv.paths as string[]) {
     const packagesDirPath = path.join(rootDirPath, 'packages');
     const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
@@ -94,6 +95,7 @@ async function main(): Promise<void> {
     }
     if (!rootConfig) {
       console.error(`there is no valid package.json in ${rootDirPath}`);
+      hasInvalidPackageConfig = true;
       continue;
     }
     const abbreviationPromise = fixTypos(rootConfig);
@@ -195,6 +197,9 @@ async function main(): Promise<void> {
     spawnSync(packageManager, ['cleanup'], rootDirPath);
 
     await installAgentSkills(rootConfig);
+  }
+  if (hasInvalidPackageConfig) {
+    process.exitCode = 1;
   }
 }
 
