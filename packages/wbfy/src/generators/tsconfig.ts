@@ -72,6 +72,11 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.include = newSettings.include?.filter((dirPath: string) => !dirPath.startsWith('packages/*/'));
       newSettings.exclude = newSettings.exclude?.filter((dirPath: string) => !dirPath.startsWith('packages/*/'));
     }
+    if (config.depending.prisma) {
+      // Prisma seeds and migration helper scripts often live outside src, but
+      // type-aware linting still needs them covered by the project config.
+      addIncludePath(newSettings, 'prisma/**/*');
+    }
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
     try {
@@ -140,6 +145,13 @@ function mergeTsconfigExtends(
   if (uniqueExtends.length === 0) return undefined;
   if (uniqueExtends.length === 1) return uniqueExtends[0];
   return uniqueExtends;
+}
+
+function addIncludePath(settings: TsConfigJson, dirPath: string): void {
+  settings.include ??= [];
+  if (!settings.include.includes(dirPath)) {
+    settings.include.push(dirPath);
+  }
 }
 
 function normalizeExtends(value: TsConfigJson['extends']): string[] {
