@@ -69,10 +69,14 @@ const preCommitSettings: LefthookSettings['pre-commit'] = {
       name: 'check-migrations',
       glob: '**/migration.sql',
       run: `
-if grep -q 'Warnings:' {staged_files}; then
-  echo "Migration SQL files ({staged_files}) contain warnings! Please solve the warnings and commit again."
-  exit 1
-fi
+failed=0
+for file in {staged_files}; do
+  if grep -q 'Warnings:' "$file"; then
+    echo "Migration SQL file ($file) contains warnings! Please solve the warnings and commit again."
+    failed=1
+  fi
+done
+exit "$failed"
 `.trim(),
     },
   ],
@@ -166,6 +170,9 @@ function getPrePushScript(config: PackageConfig): string {
   } else {
     lintCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
   }
+  const typecheckCommand = config.packageJson?.scripts?.typecheck
+    ? `\n${config.isBun ? 'bun run typecheck' : 'yarn typecheck'}`
+    : '';
   if (config.repository?.startsWith('github:WillBoosterLab/')) {
     return `
 #!/bin/bash
@@ -177,10 +184,10 @@ if [ $(git branch --show-current) = "main" ] && [ $(git config user.email) != "e
   exit 1
 fi
 
-${lintCommand}
+${lintCommand}${typecheckCommand}
 `.trim();
   }
-  return lintCommand;
+  return `${lintCommand}${typecheckCommand}`;
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
