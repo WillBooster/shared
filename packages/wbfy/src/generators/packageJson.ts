@@ -21,8 +21,16 @@ import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
-const typescriptGoDependency = '@typescript/native-preview';
+const obsoleteTypeScriptGoDependency = '@typescript/native-preview';
 const buildTsDependency = 'build-ts';
+const obsoleteTypecheckScripts = new Set([
+  'bun --bun wb typecheck',
+  'tsc --noEmit',
+  'tsgo --noEmit',
+  'wb typecheck',
+  'yarn workspaces foreach --all --parallel --verbose run typecheck',
+  'yarn workspaces foreach --parallel --verbose run typecheck',
+]);
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -136,6 +144,7 @@ async function updateScripts(
     jsonObj.scripts.prettify = (jsonObj.scripts.prettify ?? '') + (await generatePrettierSuffix(config.dirPath));
   }
   normalizeYarnWorkspaceForeachScripts(jsonObj.scripts);
+  removeObsoleteTypecheckScript(jsonObj.scripts);
 }
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
@@ -155,6 +164,13 @@ function addInstallStepToCheckForAi(scripts: PackageJson.Scripts, packageManager
     scripts['check-for-ai'] = `${packageManager} gen-code > /dev/null && ${scripts['check-for-ai']}`;
   }
   scripts['check-for-ai'] = `${packageManager} install > /dev/null && ${scripts['check-for-ai']}`;
+}
+
+function removeObsoleteTypecheckScript(scripts: PackageJson.Scripts): void {
+  const typecheckScript = scripts.typecheck;
+  if (typecheckScript && obsoleteTypecheckScripts.has(typecheckScript)) {
+    delete scripts.typecheck;
+  }
 }
 
 function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {
@@ -275,7 +291,6 @@ function applyPackageJsonConventions(
   }
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
-    devDependencies.push(typescriptGoDependency);
     if (config.isBun) {
       devDependencies.push('@types/bun');
     } else if (!config.depending.reactNative) {
@@ -544,6 +559,7 @@ async function removeDeprecatedStuff(
   delete jsonObj.dependencies.tslib;
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
+  delete jsonObj.devDependencies[obsoleteTypeScriptGoDependency];
   delete jsonObj.devDependencies.typescript;
   delete jsonObj.devDependencies.lerna;
   // To install the latest pinst
@@ -628,8 +644,7 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
     dependency === '@willbooster/wb' ||
     dependency === buildTsDependency ||
     dependency === '@willbooster/oxlint-config' ||
-    dependency === 'oxlint' ||
-    dependency === typescriptGoDependency
+    dependency === 'oxlint'
   );
 }
 
@@ -699,7 +714,6 @@ function buildNormalizedRepositoryForPackageJson(
 
 export function generateScripts(config: PackageConfig, oldScripts: PackageJson.Scripts): Record<string, string> {
   if (config.isBun) {
-    const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
     const scripts: Record<string, string> = {
       'check-all-for-ai': 'bun run check-for-ai && bun run test',
       'check-for-ai': 'bun run cleanup',
@@ -708,14 +722,12 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       lint: `bun --bun wb lint`,
       'lint-fix': 'bun --bun wb lint --fix',
       test: 'bun wb test',
-      typecheck: 'bun --bun wb typecheck',
     };
-    if (!hasTypecheck) {
-      delete scripts.typecheck;
+    if (config.depending.pyright) {
+      scripts.typecheck = 'pyright';
     }
     return scripts;
   } else {
-    const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
     const hasJsOrTs = doesContainJsOrTs(config);
     const oldTest = oldScripts.test;
     let scripts: Record<string, string> = {
@@ -727,7 +739,6 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern .`,
       prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`,
-      typecheck: 'tsgo --noEmit',
     };
     if (config.doesContainSubPackageJsons) {
       scripts = merge(
@@ -742,12 +753,10 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
           // CI=1 prevents vitest from enabling watch.
           // FORCE_COLOR=3 make wb enable color output.
           test: 'CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test',
-          typecheck: 'yarn workspaces foreach --all --parallel --verbose run typecheck',
         }
       );
     } else if (config.depending.pyright) {
-      scripts.typecheck = scripts.typecheck ? `${scripts.typecheck} && ` : '';
-      scripts.typecheck += 'pyright';
+      scripts.typecheck = 'pyright';
     }
     if (oldTest?.includes('wb test')) {
       scripts.test = oldTest;
@@ -757,11 +766,6 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       scripts.format = 'sort-package-json && yarn prettify';
       delete scripts.lint;
       delete scripts['lint-fix'];
-    }
-    if (!hasTypecheck) {
-      delete scripts.typecheck;
-    } else if (config.depending.wb) {
-      scripts.typecheck = 'wb typecheck';
     }
     return scripts;
   }

@@ -2,22 +2,19 @@
   "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
   "description": "CLI tool for WillBooster projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wb"
   },
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
+  "type": "module",
   "bin": "bin/index.js",
   "files": [
     "bin/",
     "dist/"
   ],
-  "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -31,10 +28,10 @@
     "start": "build-ts run src/index.ts --",
     "start-prod": "yarn build && yarn wb",
     "test": "WB_ENV=test vitest run test",
-    "typecheck": "tsgo --noEmit",
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
+  "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "chalk": "5.6.2",
     "dotenv": "17.4.1",
@@ -54,7 +51,6 @@
     "@types/kill-port": "2.0.3",
     "@types/node": "25.6.0",
     "@types/yargs": "17.0.35",
-    "@typescript/native-preview": "7.0.0-dev.20260415.1",
     "@willbooster/oxfmt-config": "1.2.0",
     "@willbooster/oxlint-config": "1.4.2",
     "@willbooster/prettier-config": "10.4.0",
@@ -70,8 +66,10 @@
     "type-fest": "5.5.0",
     "vitest": "4.1.4"
   },
-  "prettier": "@willbooster/prettier-config",
   "engines": {
     "node": ">= 22.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
