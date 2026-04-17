@@ -1,34 +1,34 @@
 import { describe, expect, test } from 'vitest';
 
 import type { PackageConfig } from '../src/packageConfig.js';
-import { shouldSkipWillboosterConfigsPackage } from '../src/utils/willboosterConfigsUtil.js';
+import { isPublishedWillboosterConfigsPackage } from '../src/utils/willboosterConfigsUtil.js';
 
-describe('shouldSkipWillboosterConfigsPackage', () => {
-  test('does not skip legacy ESLint config packages inside willbooster-configs', () => {
+describe('isPublishedWillboosterConfigsPackage', () => {
+  test('detects published config packages inside willbooster-configs', () => {
     const config = createConfig({
       isWillBoosterConfigs: true,
-      packageJson: { name: '@willbooster/eslint-config-ts' },
+      packageJson: { files: ['eslint.config.js'], name: '@willbooster/eslint-config-ts' },
     });
 
-    expect(shouldSkipWillboosterConfigsPackage(config)).toBe(false);
+    expect(isPublishedWillboosterConfigsPackage(config)).toBe(true);
   });
 
-  test('skips shared format config packages inside willbooster-configs', () => {
+  test('does not detect private helper packages', () => {
     const config = createConfig({
       isWillBoosterConfigs: true,
-      packageJson: { name: '@willbooster/prettier-config' },
+      packageJson: { name: '@willbooster/shared', private: true },
     });
 
-    expect(shouldSkipWillboosterConfigsPackage(config)).toBe(true);
+    expect(isPublishedWillboosterConfigsPackage(config)).toBe(false);
   });
 
-  test('does not skip config packages outside willbooster-configs', () => {
+  test('does not detect config packages outside willbooster-configs', () => {
     const config = createConfig({
       isWillBoosterConfigs: false,
-      packageJson: { name: '@willbooster/oxlint-config' },
+      packageJson: { files: ['config.mjs'], name: '@willbooster/oxlint-config' },
     });
 
-    expect(shouldSkipWillboosterConfigsPackage(config)).toBe(false);
+    expect(isPublishedWillboosterConfigsPackage(config)).toBe(false);
   });
 });
 

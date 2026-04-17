@@ -44,7 +44,6 @@ import { getPackageConfig } from './packageConfig.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
-import { shouldSkipWillboosterConfigsPackage } from './utils/willboosterConfigsUtil.js';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -146,9 +145,6 @@ async function main(): Promise<void> {
 
     const promises: Promise<void>[] = [];
     for (const config of allPackageConfigs) {
-      if (shouldSkipWillboosterConfigsPackage(config)) {
-        continue;
-      }
       if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
         promises.push(fixTypeDefinitions(config, config.isRoot ? allPackageConfigs : [config]));
       }
