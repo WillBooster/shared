@@ -1,15 +1,13 @@
 import type { PackageConfig } from '../packageConfig.js';
 
-const WBFY_OWNED_CONFIG_PACKAGE_NAMES = new Set([
-  '@willbooster/oxfmt-config',
-  '@willbooster/oxlint-config',
-  '@willbooster/prettier-config',
-]);
+const WBFY_OWNED_CONFIG_PACKAGE_NAME_PATTERN = /^@willbooster\/[^/]+-config$/u;
 
 export function shouldSkipWillboosterConfigsPackage(config: PackageConfig): boolean {
   const packageName = config.packageJson?.name;
   return (
-    config.isWillBoosterConfigs && typeof packageName === 'string' && WBFY_OWNED_CONFIG_PACKAGE_NAMES.has(packageName)
+    config.isWillBoosterConfigs &&
+    typeof packageName === 'string' &&
+    WBFY_OWNED_CONFIG_PACKAGE_NAME_PATTERN.test(packageName)
   );
 }
 
