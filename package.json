@@ -34,7 +34,7 @@
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/node-ts": "23.6.4",
     "@types/node": "25.6.0",
-    "@typescript/native-preview": "7.0.0-dev.20260416.2",
+    "@typescript/native-preview": "7.0.0-dev.20260417.1",
     "@willbooster/oxfmt-config": "1.2.0",
     "@willbooster/oxlint-config": "1.4.4",
     "@willbooster/prettier-config": "10.4.0",
@@ -52,5 +52,5 @@
   "engines": {
     "node": ">= 22.18.0"
   },
-  "packageManager": "yarn@4.14.0"
+  "packageManager": "yarn@4.14.1"
 }
