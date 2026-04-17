@@ -19,6 +19,7 @@ import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
+import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptGoDependency = '@typescript/native-preview';
@@ -578,22 +579,12 @@ function shouldPreserveConfigPackageLintDependency(
   config: PackageConfig,
   dependency: string
 ): boolean {
-  if (!isWillBoosterPublishedConfigPackage(config)) return false;
+  if (!isPublishedWillboosterConfigsPackage(config)) return false;
   if (jsonObj.peerDependencies[dependency]) return true;
 
   // Published config packages need local type-only deps to validate the
   // package-provided config declarations under Yarn PnP.
   return dependency === '@types/eslint' && !!jsonObj.peerDependencies.eslint;
-}
-
-function isWillBoosterPublishedConfigPackage(config: PackageConfig): boolean {
-  return (
-    config.isWillBoosterConfigs &&
-    !config.isRoot &&
-    config.packageJson?.private !== true &&
-    Array.isArray(config.packageJson?.files) &&
-    config.packageJson.files.length > 0
-  );
 }
 
 function shouldPreserveMicromatch(config: PackageConfig): boolean {
