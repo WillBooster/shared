@@ -2,15 +2,22 @@
   "name": "@willbooster/shared-lib-node",
   "version": "0.0.0-semantically-released",
   "description": "Shared library for WillBooster Node.js projects",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/shared-lib-node"
   },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "sideEffects": false,
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -23,13 +30,9 @@
       "import": "./src/index.ts"
     }
   },
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "bin/",
-    "dist/"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "build-ts lib",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -45,7 +48,6 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
-  "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "dotenv": "17.4.1",
     "dotenv-expand": "12.0.3"
@@ -68,7 +70,5 @@
     "sort-package-json": "3.6.1",
     "vitest": "4.1.4"
   },
-  "publishConfig": {
-    "access": "public"
-  }
+  "prettier": "@willbooster/prettier-config"
 }
