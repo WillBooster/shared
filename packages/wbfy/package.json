@@ -2,22 +2,19 @@
   "name": "@willbooster/wbfy",
   "version": "0.0.0-semantically-released",
   "description": "A tool for applying WillBooster's conventional configures to npm packages",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wbfy"
   },
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
+  "type": "module",
   "bin": "./bin/wbfy.js",
   "files": [
     "bin/",
     "dist/"
   ],
-  "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "build-ts app",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -36,6 +33,7 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
+  "prettier": "@willbooster/prettier-config",
   "dependencies": {
     "@octokit/core": "7.0.6",
     "deepmerge": "4.3.1",
@@ -63,7 +61,7 @@
     "@types/yargs": "17.0.35",
     "@typescript/native-preview": "7.0.0-dev.20260416.2",
     "@willbooster/oxfmt-config": "1.2.0",
-    "@willbooster/oxlint-config": "1.4.2",
+    "@willbooster/oxlint-config": "1.4.4",
     "@willbooster/prettier-config": "10.4.0",
     "@yarnpkg/core": "4.6.0",
     "build-ts": "17.1.0",
@@ -77,8 +75,10 @@
     "type-fest": "5.5.0",
     "vitest": "4.1.4"
   },
-  "prettier": "@willbooster/prettier-config",
   "engines": {
     "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

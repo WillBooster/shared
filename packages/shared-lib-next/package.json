@@ -2,22 +2,15 @@
   "name": "@willbooster/shared-lib-next",
   "version": "0.0.0-semantically-released",
   "description": "Shared library for WillBooster Next.js projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/shared-lib-next"
   },
-  "files": [
-    "bin/",
-    "dist/"
-  ],
-  "type": "module",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -30,9 +23,13 @@
       "import": "./src/index.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "scripts": {
     "build": "build-ts lib",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -48,13 +45,14 @@
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
+  "prettier": "@willbooster/prettier-config",
   "devDependencies": {
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/node-ts": "23.6.4",
     "@types/node": "25.6.0",
     "@typescript/native-preview": "7.0.0-dev.20260416.2",
     "@willbooster/oxfmt-config": "1.2.0",
-    "@willbooster/oxlint-config": "1.4.2",
+    "@willbooster/oxlint-config": "1.4.4",
     "@willbooster/prettier-config": "10.4.0",
     "build-ts": "17.1.0",
     "next": "16.2.3",
@@ -69,5 +67,7 @@
   "peerDependencies": {
     "next": "*"
   },
-  "prettier": "@willbooster/prettier-config"
+  "publishConfig": {
+    "access": "public"
+  }
 }
