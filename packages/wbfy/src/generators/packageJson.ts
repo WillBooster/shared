@@ -712,6 +712,8 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     };
     if (!hasTypecheck) {
       delete scripts.typecheck;
+    } else if (config.depending.pyright) {
+      scripts.typecheck += ' && pyright';
     }
     return scripts;
   } else {
