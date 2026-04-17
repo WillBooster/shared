@@ -41,6 +41,7 @@
     "prettify": "prettier --cache --color --no-error-on-unmatched-pattern --write \"**/{.*/,}*.{java}\" \"!**/test{-,/}fixtures/**\" || true",
     "storybook": "start-storybook -p 6006",
     "test/ci": "yarn build-storybook",
+    "typecheck": "tsgo --noEmit",
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
@@ -60,6 +61,7 @@
     "@types/node": "25.6.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "@typescript/native-preview": "7.0.0-dev.20260416.2",
     "@willbooster/oxfmt-config": "1.2.0",
     "@willbooster/oxlint-config": "1.4.2",
     "@willbooster/prettier-config": "10.4.0",

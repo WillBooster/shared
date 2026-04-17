@@ -31,6 +31,7 @@
     "start": "build-ts run src/index.ts --",
     "start-prod": "yarn build && yarn wb",
     "test": "WB_ENV=test vitest run test",
+    "typecheck": "tsgo --noEmit",
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
@@ -53,6 +54,7 @@
     "@types/kill-port": "2.0.3",
     "@types/node": "25.6.0",
     "@types/yargs": "17.0.35",
+    "@typescript/native-preview": "7.0.0-dev.20260416.2",
     "@willbooster/oxfmt-config": "1.2.0",
     "@willbooster/oxlint-config": "1.4.2",
     "@willbooster/prettier-config": "10.4.0",

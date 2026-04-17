@@ -44,6 +44,7 @@
     "lint-fix": "yarn lint --fix",
     "prettify": "prettier --cache --color --no-error-on-unmatched-pattern --write \"**/{.*/,}*.{java}\" \"!**/test{-,/}fixtures/**\" || true",
     "test": "vitest test/",
+    "typecheck": "tsgo --noEmit",
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
     "verify-code-with-tests": "yarn verify-code && yarn test"
   },
@@ -56,6 +57,7 @@
     "@tsconfig/node-ts": "23.6.4",
     "@types/bun": "1.3.11",
     "@types/node": "25.6.0",
+    "@typescript/native-preview": "7.0.0-dev.20260416.2",
     "@willbooster/oxfmt-config": "1.2.0",
     "@willbooster/oxlint-config": "1.4.2",
     "@willbooster/prettier-config": "10.4.0",
