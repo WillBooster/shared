@@ -6104,7 +6104,7 @@ __metadata:
     "@willbooster/oxlint-config": "npm:1.4.4"
     "@willbooster/prettier-config": "npm:10.4.0"
     build-ts: "npm:17.1.0"
-    dotenv: "npm:17.4.1"
+    dotenv: "npm:17.4.2"
     dotenv-expand: "npm:12.0.3"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
@@ -6198,7 +6198,7 @@ __metadata:
     at-decorators: "npm:7.0.2"
     build-ts: "npm:17.1.0"
     chalk: "npm:5.6.2"
-    dotenv: "npm:17.4.1"
+    dotenv: "npm:17.4.2"
     dotenv-expand: "npm:12.0.3"
     globby: "npm:16.2.0"
     kill-port: "npm:2.0.1"
@@ -6237,13 +6237,13 @@ __metadata:
     "@yarnpkg/core": "npm:4.6.0"
     build-ts: "npm:17.1.0"
     deepmerge: "npm:4.3.1"
-    dotenv: "npm:17.4.1"
+    dotenv: "npm:17.4.2"
     fast-glob: "npm:3.3.3"
     fastest-levenshtein: "npm:1.0.16"
     js-yaml: "npm:4.1.1"
     lefthook: "npm:2.1.5"
-    libsodium: "npm:0.8.2"
-    libsodium-wrappers: "npm:0.8.2"
+    libsodium: "npm:0.8.3"
+    libsodium-wrappers: "npm:0.8.3"
     minimal-promise-pool: "npm:6.0.1"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
@@ -9315,10 +9315,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"dotenv@npm:17.4.1":
-  version: 17.4.1
-  resolution: "dotenv@npm:17.4.1"
-  checksum: 10c0/eb6ae592ee1e8f6b7f62e0f0c2827c4f27bbe9e00abe9d7910e06456e63dccd42f011de94da9450a63c07ccc52c318f527c1b56ad8e2c81a1a16314b53d4fd99
+"dotenv@npm:17.4.2":
+  version: 17.4.2
+  resolution: "dotenv@npm:17.4.2"
+  checksum: 10c0/164f8e77a646c8446867d5b588d26ea6005c8ea7c5eb41cf926f6113d23f2191355f6e0cfd95ea9bab98394a5b0a3f1e51a8399711b666fe55cc7b0bd745f942
   languageName: node
   linkType: hard
 
@@ -13168,16 +13168,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"libsodium-wrappers@npm:0.8.2":
-  version: 0.8.2
-  resolution: "libsodium-wrappers@npm:0.8.2"
+"libsodium-wrappers@npm:0.8.3":
+  version: 0.8.3
+  resolution: "libsodium-wrappers@npm:0.8.3"
   dependencies:
     libsodium: "npm:^0.8.0"
-  checksum: 10c0/4e0cdce7348bd2f45d4d6549e804b10e76bcebc8acbcd68f200188d3168a652730f0555d5aa2d964b31fa3dcacfca9b3c9a0d519b2e4f0640de2ab87d7cc11f9
+  checksum: 10c0/f0b4250a860fb002029176a3e3dc810c964beb3144b18f9a0550932e5fa08b0764fd6194629461e715926d9ce52f944f9ccd884aa7a62063a285f8216418baee
   languageName: node
   linkType: hard
 
-"libsodium@npm:0.8.2, libsodium@npm:^0.8.0":
+"libsodium@npm:0.8.3":
+  version: 0.8.3
+  resolution: "libsodium@npm:0.8.3"
+  checksum: 10c0/c5f67c48f0b22ac9f36ed78cb59fe92e311de542c4fbdab5688790d1d7d6b2a8cf8bb413f678a0889ebc818df783910d78607c5d4ea5dc6a6b88387f94893214
+  languageName: node
+  linkType: hard
+
+"libsodium@npm:^0.8.0":
   version: 0.8.2
   resolution: "libsodium@npm:0.8.2"
   checksum: 10c0/e943b269331670e45d63885ee32dec5471daa4c78ddfbe35e00e27a5b0ea7b51e7fa8260142ba478dcba0918e8117e9151883c11466b2fab2638ec29a1f3482b
