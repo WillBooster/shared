@@ -33,6 +33,7 @@ const minimumReleaseAgeExcludes = [
   '@willbooster/shared-lib-react',
   '@willbooster/wb',
   'agent-runtime-kit',
+  'at-decorators',
   'build-ts',
   'one-way-git-sync',
   // ---------- END: We believe our packages are safe ----------

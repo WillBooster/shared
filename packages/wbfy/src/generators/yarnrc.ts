@@ -79,6 +79,7 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
       '@exercode/*',
       '@willbooster/*',
       'agent-runtime-kit',
+      'at-decorators',
       'build-ts',
       'one-way-git-sync',
       // ---------- END: We believe our packages are safe ----------

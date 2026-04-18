@@ -25,7 +25,6 @@ const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', '
 const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
-const atDecoratorsDependency = 'at-decorators';
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -275,11 +274,6 @@ function applyPackageJsonConventions(
   ) {
     devDependencies.push(buildTsDependency);
   }
-  // Decorator runtimes need to stay aligned with the current Stage 3 output.
-  if (jsonObj.dependencies[atDecoratorsDependency] || jsonObj.devDependencies[atDecoratorsDependency]) {
-    devDependencies.push(atDecoratorsDependency);
-  }
-
   if (doesContainJsOrTs(config)) {
     devDependencies.push(...oxlintDeps);
   }
@@ -664,7 +658,6 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   return (
     dependency === '@willbooster/wb' ||
     dependency === buildTsDependency ||
-    dependency === atDecoratorsDependency ||
     dependency === '@willbooster/oxlint-config' ||
     dependency === 'oxlint' ||
     dependency === typescriptGoDependency
