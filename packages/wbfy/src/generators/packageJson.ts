@@ -757,9 +757,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       'check-all-for-ai': 'yarn check-for-ai && yarn test',
       'check-for-ai': `yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet`,
       cleanup: 'yarn format && yarn lint-fix',
-      format: hasJava
-        ? `sort-package-json && yarn format-code && yarn prettify`
-        : `sort-package-json && yarn format-code`,
+      format: generateFormatScript(hasJsOrTs, hasJava),
       lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern .`,
@@ -795,7 +793,6 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     }
     if (!hasJsOrTs) {
       delete scripts['format-code'];
-      scripts.format = (scripts.format ?? 'sort-package-json').replace(' && yarn format-code', '');
       delete scripts.lint;
       delete scripts['lint-fix'];
     }
@@ -806,6 +803,17 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     }
     return scripts;
   }
+}
+
+function generateFormatScript(hasJsOrTs: boolean, hasJava: boolean): string {
+  const commands = ['sort-package-json'];
+  if (hasJsOrTs) {
+    commands.push('yarn format-code');
+  }
+  if (hasJava) {
+    commands.push('yarn prettify');
+  }
+  return commands.join(' && ');
 }
 
 async function generatePrettierSuffix(dirPath: string): Promise<string> {
