@@ -177,7 +177,7 @@ ${lintCommand}
 }
 
 function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
-  const jobs = preCommitSettings.jobs.map((job) =>
+  return preCommitSettings.jobs.map((job) =>
     job.name === 'cleanup'
       ? {
           ...job,
@@ -186,7 +186,6 @@ function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
         }
       : job
   );
-  return jobs;
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
@@ -283,14 +282,6 @@ fi`
 `.trim();
 }
 
-function hasGenI18nTsScript(config: PackageConfig): boolean {
-  return config.depending.genI18nTs && !!config.packageJson?.scripts?.['gen-i18n-ts'];
-}
-
-function getPackageManagerRunCommand(config: PackageConfig, scriptName: string): string {
-  return `${config.isBun ? 'bun' : 'yarn'} run ${scriptName}`;
-}
-
 function hasLocalWbWorkspace(config: PackageConfig): boolean {
   if (!config.isRoot) return false;
 
@@ -339,6 +330,14 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
     );
   }
   return postMergeCommands;
+}
+
+function hasGenI18nTsScript(config: PackageConfig): boolean {
+  return config.depending.genI18nTs && !!config.packageJson?.scripts?.['gen-i18n-ts'];
+}
+
+function getPackageManagerRunCommand(config: PackageConfig, scriptName: string): string {
+  return `${config.isBun ? 'bun' : 'yarn'} run ${scriptName}`;
 }
 
 function hasPythonPackageManager(config: PackageConfig): boolean {
