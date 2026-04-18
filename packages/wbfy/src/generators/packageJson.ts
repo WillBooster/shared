@@ -818,7 +818,7 @@ function generateFormatScript(hasJsOrTs: boolean, hasJava: boolean): string {
 
 async function generatePrettierSuffix(dirPath: string): Promise<string> {
   const filePath = path.resolve(dirPath, '.prettierignore');
-  const existingContent = await fs.promises.readFile(filePath, 'utf8');
+  const existingContent = await fs.promises.readFile(filePath, 'utf8').catch(() => '');
   const index = existingContent.indexOf(ignoreFileUtil.separatorPrefix);
   if (index === -1) return '';
 
