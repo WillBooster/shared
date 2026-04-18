@@ -128,8 +128,7 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
 }
 
 async function formatGeneratedPackageJson(filePath: string): Promise<void> {
-  const jsonObj = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as PackageJson;
-  await writeFormattedPackageJson(filePath, jsonObj);
+  await fsUtil.generateFile(filePath, sortPackageJson(await fs.promises.readFile(filePath, 'utf8')));
 }
 
 async function writeFormattedPackageJson(filePath: string, jsonObj: PackageJson): Promise<void> {
