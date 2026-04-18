@@ -81,6 +81,7 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
       'agent-runtime-kit',
       'at-decorators',
       'build-ts',
+      'gen-i18n-ts',
       'one-way-git-sync',
       // ---------- END: We believe our packages are safe ----------
 
