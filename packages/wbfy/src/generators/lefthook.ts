@@ -327,7 +327,7 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
   const genI18nTsCommand = getGenI18nTsCommand(config, config.packageJson?.scripts);
   if (genI18nTsCommand) {
     // gen-i18n-ts outputs are commonly ignored, so post-merge regenerates them after pulled resource changes.
-    postMergeCommands.push(String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "${genI18nTsCommand}"`);
+    postMergeCommands.push(String.raw`run_if_changed "(^|/)i18n/.*\.json$" "${genI18nTsCommand}"`);
   }
   return postMergeCommands;
 }
