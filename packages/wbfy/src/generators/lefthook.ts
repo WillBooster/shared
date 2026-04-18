@@ -70,6 +70,7 @@ const preCommitSettings: LefthookSettings['pre-commit'] = {
       glob: '**/migration.sql',
       run: `
 failed=0
+# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 for file in {staged_files}; do
   if grep -q 'Warnings:' "$file"; then
     echo "Migration SQL file ($file) contains warnings! Please solve the warnings and commit again."
@@ -205,12 +206,18 @@ function getCleanupGlobs(config: PackageConfig): string {
 
 function getCleanupCommand(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
-    return 'yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}';
+    return String.raw`
+# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
+yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
+`.trim();
   }
   if (config.isBun || config.depending.wb) {
     const packageManager = config.isBun ? 'bun' : 'yarn';
     return config.depending.wb
-      ? `${config.isBun ? 'bun --bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}`
+      ? `
+# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
+${config.isBun ? 'bun --bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}
+`.trim()
       : `${packageManager} run format && ${packageManager} run lint-fix`;
   }
 
@@ -220,6 +227,7 @@ function getCleanupCommand(config: PackageConfig): string {
   const hasJsOrTs = doesContainJsOrTs(config);
 
   return String.raw`
+# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 ${hasJsOrTs ? String.raw`oxlint_files="$(printf '%s\n' {staged_files} | grep -E '(${oxlintPattern})' || true)"` : ''}
 ${hasJsOrTs ? String.raw`oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' || true)"` : ''}
 prettier_files="$(printf '%s\n' {staged_files} | grep -E '(${prettierPattern})' || true)"
