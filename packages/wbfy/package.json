@@ -2,19 +2,22 @@
   "name": "@willbooster/wbfy",
   "version": "0.0.0-semantically-released",
   "description": "A tool for applying WillBooster's conventional configures to npm packages",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wbfy"
   },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "type": "module",
   "bin": "./bin/wbfy.js",
   "files": [
     "bin/",
     "dist/"
   ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "build-ts app",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -72,8 +75,5 @@
   },
   "engines": {
     "node": ">=24"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }
