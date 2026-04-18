@@ -23,6 +23,7 @@ import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfig
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptGoDependency = '@typescript/native-preview';
+const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const obsoleteLintDependencies = [
   '@biomejs/biome',
@@ -96,6 +97,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   await removeDeprecatedStuff(config, jsonObj);
   await updateScripts(config, jsonObj, packageManager);
+  moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
@@ -244,11 +246,7 @@ function applyPackageJsonConventions(
   }
 
   if (config.depending.wb || config.isBun) {
-    if (jsonObj.dependencies['@willbooster/wb']) {
-      dependencies.push('@willbooster/wb');
-    } else {
-      devDependencies.push('@willbooster/wb');
-    }
+    devDependencies.push(wbDependency);
     for (const [key, value] of Object.entries(jsonObj.scripts)) {
       if (typeof value !== 'string') continue;
       jsonObj.scripts[key] = value.replaceAll(/wb\s+db/gu, 'wb prisma');
@@ -258,9 +256,8 @@ function applyPackageJsonConventions(
   // build-ts owns TypeScript execution and declaration emit. wbfy must always
   // keep existing build-ts users current because older releases can emit .d.ts
   // files at paths that no longer match package exports.
-  if (jsonObj.dependencies[buildTsDependency]) {
-    dependencies.push(buildTsDependency);
-  } else if (
+  if (
+    jsonObj.dependencies[buildTsDependency] ||
     jsonObj.devDependencies[buildTsDependency] ||
     Object.values(jsonObj.scripts).some((script) => script?.includes(buildTsDependency))
   ) {
@@ -303,6 +300,14 @@ function applyPackageJsonConventions(
   }
 
   return { dependencies, devDependencies, pythonDevDependencies };
+}
+
+function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJson): void {
+  for (const dependency of [wbDependency, buildTsDependency]) {
+    if (!jsonObj.dependencies[dependency]) continue;
+    jsonObj.devDependencies[dependency] ??= jsonObj.dependencies[dependency];
+    delete jsonObj.dependencies[dependency];
+  }
 }
 
 async function normalizePackageMetadata(

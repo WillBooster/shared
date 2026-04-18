@@ -11,6 +11,8 @@ import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
+const runtimeDevDependencies = ['@willbooster/wb', 'build-ts'];
+
 const builder = {
   outside: {
     description: 'Whether the optimization is executed outside a docker container or not',
@@ -64,6 +66,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 };
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
+  promoteRuntimeDevDependencies(packageJson);
   if (!argv.outside) {
     delete packageJson.devDependencies;
     console.info('Removed all devDependencies.');
@@ -102,6 +105,25 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
     }
   }
   console.info('Removed devDependencies:', removedDeps.join(', ') || 'none');
+}
+
+function promoteRuntimeDevDependencies(packageJson: PackageJson): void {
+  const devDeps = packageJson.devDependencies ?? {};
+  const dependencies = packageJson.dependencies ?? {};
+  const promotedDeps: string[] = [];
+  for (const name of runtimeDevDependencies) {
+    const version = devDeps[name];
+    if (!version) continue;
+    if (!dependencies[name]) {
+      dependencies[name] = version;
+      promotedDeps.push(name);
+    }
+    delete devDeps[name];
+  }
+  if (promotedDeps.length > 0) {
+    packageJson.dependencies = dependencies;
+  }
+  console.info('Promoted runtime devDependencies:', promotedDeps.join(', ') || 'none');
 }
 
 function optimizeScripts(packageJson: PackageJson): void {
