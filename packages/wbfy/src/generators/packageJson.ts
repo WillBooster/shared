@@ -11,7 +11,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { getPackageManagerRunCommand, hasGenI18nTsScript } from '../utils/genI18nTs.js';
+import { getGenI18nTsCommand } from '../utils/genI18nTs.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
@@ -444,9 +444,9 @@ async function normalizePackageMetadata(
 }
 
 function addGenI18nTsPostinstallScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  if (!hasGenI18nTsScript(config, jsonObj.scripts)) return;
+  const command = getGenI18nTsCommand(config, jsonObj.scripts);
+  if (!command) return;
 
-  const command = `${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null`;
   const postinstall = jsonObj.scripts.postinstall;
   if (!postinstall) {
     jsonObj.scripts.postinstall = command;
