@@ -8,7 +8,6 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
-import { promisePool } from '../utils/promisePool.js';
 import { spawnSync } from '../utils/spawnUtil.js';
 
 import { generateScripts } from './packageJson.js';
@@ -141,19 +140,15 @@ async function core(config: PackageConfig): Promise<void> {
   if (lint) {
     const prePush = getPrePushScript(config);
     fs.mkdirSync(path.join(dirPath, 'pre-push'), { recursive: true });
-    await promisePool.run(() =>
-      fs.promises.writeFile(path.join(dirPath, 'pre-push', 'check.sh'), prePush + '\n', {
-        mode: 0o755,
-      })
-    );
+    await fs.promises.writeFile(path.join(dirPath, 'pre-push', 'check.sh'), prePush + '\n', {
+      mode: 0o755,
+    });
   }
   const postMergeCommand = `${scripts.postMerge}\n\n${generatePostMergeCommands(config).join('\n')}\n`;
   fs.mkdirSync(path.join(dirPath, 'post-merge'), { recursive: true });
-  await promisePool.run(() =>
-    fs.promises.writeFile(path.resolve(dirPath, 'post-merge', 'prepare.sh'), postMergeCommand, {
-      mode: 0o755,
-    })
-  );
+  await fs.promises.writeFile(path.resolve(dirPath, 'post-merge', 'prepare.sh'), postMergeCommand, {
+    mode: 0o755,
+  });
 }
 
 function getPrePushScript(config: PackageConfig): string {
@@ -191,14 +186,6 @@ function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
         }
       : job
   );
-  if (hasGenI18nTsScript(config)) {
-    // gen-i18n-ts outputs are commonly ignored, so keep local generated types fresh when resources change.
-    jobs.push({
-      name: 'gen-i18n-ts',
-      glob: 'i18n/*.json',
-      run: `${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null`,
-    });
-  }
   return jobs;
 }
 
@@ -346,6 +333,7 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
     );
   }
   if (hasGenI18nTsScript(config)) {
+    // gen-i18n-ts outputs are commonly ignored, so post-merge regenerates them after pulled resource changes.
     postMergeCommands.push(
       String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null"`
     );

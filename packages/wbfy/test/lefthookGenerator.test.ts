@@ -121,37 +121,37 @@ test('does not generate oxlint or oxfmt hooks for package-only projects', async 
   expect(lefthookConfig).not.toContain('oxlint');
 });
 
-test('runs gen-i18n-ts from lefthook when i18n resources change', async () => {
-  const dirPath = createTempDir();
+test('runs gen-i18n-ts from lefthook after pulled i18n resources change', async () => {
+  const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-lefthook-i18n-'));
 
-  await generateLefthookUpdatingPackageJson(
-    createConfig({
-      dirPath,
-      doesContainPackageJson: true,
-      doesContainTypeScript: true,
-      depending: {
-        ...createConfig().depending,
-        genI18nTs: true,
-      },
-      packageJson: {
-        scripts: {
-          'gen-i18n-ts': 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP',
+  try {
+    await generateLefthookUpdatingPackageJson(
+      createConfig({
+        dirPath,
+        doesContainPackageJson: true,
+        doesContainTypeScript: true,
+        depending: {
+          ...createConfig().depending,
+          genI18nTs: true,
         },
-      },
-    })
-  );
+        packageJson: {
+          scripts: {
+            'gen-i18n-ts': 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP',
+          },
+        },
+      })
+    );
 
-  const lefthookConfig = await fs.promises.readFile(path.join(dirPath, 'lefthook.yml'), 'utf8');
-  const postMergeScript = await fs.promises.readFile(
-    path.join(dirPath, '.lefthook', 'post-merge', 'prepare.sh'),
-    'utf8'
-  );
-  expect(lefthookConfig).toContain('name: gen-i18n-ts');
-  expect(lefthookConfig).toContain('glob: i18n/*.json');
-  expect(lefthookConfig).toContain('yarn gen-i18n-ts > /dev/null');
-  expect(postMergeScript).toContain(
-    String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "yarn gen-i18n-ts > /dev/null"`
-  );
+    const postMergeScript = await fs.promises.readFile(
+      path.join(dirPath, '.lefthook', 'post-merge', 'prepare.sh'),
+      'utf8'
+    );
+    expect(postMergeScript).toContain(
+      String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "yarn gen-i18n-ts > /dev/null"`
+    );
+  } finally {
+    await fs.promises.rm(dirPath, { force: true, recursive: true });
+  }
 });
 
 function createTempDir(): string {
