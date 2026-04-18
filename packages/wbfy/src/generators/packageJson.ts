@@ -11,6 +11,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { getPackageManagerRunCommand, hasGenI18nTsScript } from '../utils/genI18nTs.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
@@ -443,7 +444,7 @@ async function normalizePackageMetadata(
 }
 
 function addGenI18nTsPostinstallScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  if (!hasGenI18nTsScript(config, jsonObj)) return;
+  if (!hasGenI18nTsScript(config, jsonObj.scripts)) return;
 
   const command = `${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null`;
   const postinstall = jsonObj.scripts.postinstall;
@@ -452,14 +453,6 @@ function addGenI18nTsPostinstallScript(config: PackageConfig, jsonObj: WritableP
   } else if (!postinstall.includes(command)) {
     jsonObj.scripts.postinstall = `${postinstall} && ${command}`;
   }
-}
-
-function hasGenI18nTsScript(config: PackageConfig, jsonObj: WritablePackageJson): boolean {
-  return config.depending.genI18nTs && !!jsonObj.scripts['gen-i18n-ts'];
-}
-
-function getPackageManagerRunCommand(config: PackageConfig, scriptName: string): string {
-  return `${config.isBun ? 'bun' : 'yarn'} run ${scriptName}`;
 }
 
 async function normalizePublishedConfigPackageMetadata(
