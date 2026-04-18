@@ -39,9 +39,11 @@ export interface PackageConfig {
   doesContainJavaScript: boolean;
   doesContainTypeScript: boolean;
   doesContainJsxOrTsx: boolean;
+  doesContainJava: boolean;
   doesContainJavaScriptInPackages: boolean;
   doesContainTypeScriptInPackages: boolean;
   doesContainJsxOrTsxInPackages: boolean;
+  doesContainJavaInPackages: boolean;
 
   hasStartTestServer: boolean;
 
@@ -192,9 +194,11 @@ export async function getPackageConfig(
       doesContainJavaScript: containsAny('{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}', dirPath),
       doesContainTypeScript: containsAny('{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}', dirPath),
       doesContainJsxOrTsx: containsAny('{app,src,test}/**/*.{t,j}sx', dirPath),
+      doesContainJava: containsAny('**/*.java', dirPath),
       doesContainJavaScriptInPackages: containsAny('packages/**/{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}', dirPath),
       doesContainTypeScriptInPackages: containsAny('packages/**/{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}', dirPath),
       doesContainJsxOrTsxInPackages: containsAny('packages/**/{app,src,test}/**/*.{t,j}sx', dirPath),
+      doesContainJavaInPackages: containsAny('packages/**/*.java', dirPath),
       hasStartTestServer: !!packageJson.scripts?.['start-test-server'],
       depending: {
         blitz: !!dependencies.blitz,

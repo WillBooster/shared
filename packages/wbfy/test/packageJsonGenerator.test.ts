@@ -126,9 +126,11 @@ function createConfig(overrides: Partial<PackageConfig> = {}): PackageConfig {
     doesContainJavaScript: false,
     doesContainTypeScript: false,
     doesContainJsxOrTsx: false,
+    doesContainJava: false,
     doesContainJavaScriptInPackages: false,
     doesContainTypeScriptInPackages: false,
     doesContainJsxOrTsxInPackages: false,
+    doesContainJavaInPackages: false,
     hasStartTestServer: false,
     depending: {
       blitz: false,

@@ -8,3 +8,7 @@ export function doesContainJsOrTs(config: PackageConfig): boolean {
     config.doesContainTypeScriptInPackages
   );
 }
+
+export function doesContainJava(config: PackageConfig): boolean {
+  return config.doesContainJava || config.doesContainJavaInPackages;
+}
