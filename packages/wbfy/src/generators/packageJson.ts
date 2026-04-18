@@ -846,8 +846,8 @@ function removePrettierArtifacts(jsonObj: WritablePackageJson): void {
     delete section.prettier;
     delete section['prettier-plugin-java'];
     delete section['@willbooster/prettier-config'];
+    delete section['@types/prettier'];
   }
-  delete jsonObj.devDependencies?.['@types/prettier'];
 }
 
 async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {
