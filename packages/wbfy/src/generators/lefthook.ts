@@ -111,15 +111,7 @@ async function core(config: PackageConfig): Promise<void> {
   const settings: Partial<LefthookSettings> = {
     ...baseSettings,
     'pre-commit': {
-      jobs: preCommitSettings.jobs.map((job) =>
-        job.name === 'cleanup'
-          ? {
-              ...job,
-              glob: getCleanupGlobs(config),
-              run: getCleanupCommand(config),
-            }
-          : job
-      ),
+      jobs: getPreCommitJobs(config),
     },
   };
   if (!lint) {
@@ -187,6 +179,27 @@ ${lintCommand}
 `.trim();
   }
   return lintCommand;
+}
+
+function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
+  const jobs = preCommitSettings.jobs.map((job) =>
+    job.name === 'cleanup'
+      ? {
+          ...job,
+          glob: getCleanupGlobs(config),
+          run: getCleanupCommand(config),
+        }
+      : job
+  );
+  if (hasGenI18nTsScript(config)) {
+    // gen-i18n-ts outputs are commonly ignored, so keep local generated types fresh when resources change.
+    jobs.push({
+      name: 'gen-i18n-ts',
+      glob: 'i18n/*.json',
+      run: `${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null`,
+    });
+  }
+  return jobs;
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
@@ -283,6 +296,14 @@ fi`
 `.trim();
 }
 
+function hasGenI18nTsScript(config: PackageConfig): boolean {
+  return config.depending.genI18nTs && !!config.packageJson?.scripts?.['gen-i18n-ts'];
+}
+
+function getPackageManagerRunCommand(config: PackageConfig, scriptName: string): string {
+  return config.isBun ? `bun run ${scriptName}` : `yarn ${scriptName}`;
+}
+
 function hasLocalWbWorkspace(config: PackageConfig): boolean {
   if (!config.isRoot) return false;
 
@@ -322,6 +343,11 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
     postMergeCommands.push(
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/dotenv -c development -- node node_modules/.bin/prisma migrate deploy"`,
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/dotenv -c development -- node node_modules/.bin/prisma generate"`
+    );
+  }
+  if (hasGenI18nTsScript(config)) {
+    postMergeCommands.push(
+      String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null"`
     );
   }
   return postMergeCommands;

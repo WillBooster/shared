@@ -203,7 +203,7 @@ export async function getPackageConfig(
       depending: {
         blitz: !!dependencies.blitz,
         firebase: !!devDependencies['firebase-tools'],
-        genI18nTs: !!devDependencies['gen-i18n-ts'],
+        genI18nTs: !!dependencies['gen-i18n-ts'] || !!devDependencies['gen-i18n-ts'],
         litestream: dockerfile.includes('install-litestream.sh'),
         react: !!dependencies.react,
         next: !!dependencies.next,
