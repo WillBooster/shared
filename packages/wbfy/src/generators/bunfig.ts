@@ -37,6 +37,7 @@ const minimumReleaseAgeExcludes = [
   'agent-runtime-kit',
   'at-decorators',
   'build-ts',
+  'gen-i18n-ts',
   'one-way-git-sync',
   // ---------- END: We believe our packages are safe ----------
 
