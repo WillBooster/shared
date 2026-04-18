@@ -109,11 +109,11 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   // Yarn reads package.json from disk before deciding whether `yarn add -D`
   // conflicts with an existing regular dependency, so this write must finish
   // before installing the managed dependency updates below.
-  await writeFormattedPackageJson(filePath, jsonObj);
+  await fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2));
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, jsonObj, dependencyUpdates, packageManager);
-    await formatGeneratedPackageJson(filePath);
+    await fsUtil.generateFile(filePath, sortPackageJson(await fs.promises.readFile(filePath, 'utf8')));
   }
 }
 
@@ -125,14 +125,6 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   jsonObj.devDependencies = jsonObj.devDependencies ?? {};
   jsonObj.peerDependencies = jsonObj.peerDependencies ?? {};
   return jsonObj as WritablePackageJson;
-}
-
-async function formatGeneratedPackageJson(filePath: string): Promise<void> {
-  await fsUtil.generateFile(filePath, sortPackageJson(await fs.promises.readFile(filePath, 'utf8')));
-}
-
-async function writeFormattedPackageJson(filePath: string, jsonObj: PackageJson): Promise<void> {
-  await fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2));
 }
 
 async function updateScripts(
