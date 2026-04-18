@@ -288,7 +288,7 @@ function hasGenI18nTsScript(config: PackageConfig): boolean {
 }
 
 function getPackageManagerRunCommand(config: PackageConfig, scriptName: string): string {
-  return config.isBun ? `bun run ${scriptName}` : `yarn ${scriptName}`;
+  return `${config.isBun ? 'bun' : 'yarn'} run ${scriptName}`;
 }
 
 function hasLocalWbWorkspace(config: PackageConfig): boolean {

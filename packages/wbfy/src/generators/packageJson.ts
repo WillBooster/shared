@@ -459,7 +459,7 @@ function hasGenI18nTsScript(config: PackageConfig, jsonObj: WritablePackageJson)
 }
 
 function getPackageManagerRunCommand(config: PackageConfig, scriptName: string): string {
-  return config.isBun ? `bun run ${scriptName}` : `yarn ${scriptName}`;
+  return `${config.isBun ? 'bun' : 'yarn'} run ${scriptName}`;
 }
 
 async function normalizePublishedConfigPackageMetadata(

@@ -103,7 +103,7 @@ describe('generatePackageJson', () => {
     await promisePool.promiseAll();
 
     const packageJson = readPackageJson(dirPath);
-    expect(packageJson.scripts?.postinstall).toBe('yarn gen-i18n-ts > /dev/null');
+    expect(packageJson.scripts?.postinstall).toBe('yarn run gen-i18n-ts > /dev/null');
   });
 });
 

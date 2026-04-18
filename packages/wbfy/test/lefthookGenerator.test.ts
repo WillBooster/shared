@@ -147,7 +147,7 @@ test('runs gen-i18n-ts from lefthook after pulled i18n resources change', async 
       'utf8'
     );
     expect(postMergeScript).toContain(
-      String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "yarn gen-i18n-ts > /dev/null"`
+      String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "yarn run gen-i18n-ts > /dev/null"`
     );
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
