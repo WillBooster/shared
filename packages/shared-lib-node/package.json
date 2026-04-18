@@ -2,22 +2,15 @@
   "name": "@willbooster/shared-lib-node",
   "version": "0.0.0-semantically-released",
   "description": "Shared library for WillBooster Node.js projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/shared-lib-node"
   },
-  "files": [
-    "bin/",
-    "dist/"
-  ],
-  "type": "module",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -30,19 +23,22 @@
       "import": "./src/index.ts"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "scripts": {
     "build": "build-ts lib",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
     "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
-    "format": "sort-package-json && yarn format-code && yarn prettify",
+    "format": "sort-package-json && yarn format-code",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern .",
     "lint": "oxlint --no-error-on-unmatched-pattern .",
     "lint-fix": "yarn lint --fix",
-    "prettify": "prettier --cache --color --no-error-on-unmatched-pattern --write \"**/{.*/,}*.{java}\" \"!**/test{-,/}fixtures/**\" || true",
     "test": "vitest test/",
     "typecheck": "tsgo --noEmit",
     "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
@@ -60,15 +56,14 @@
     "@typescript/native-preview": "7.0.0-dev.20260417.1",
     "@willbooster/oxfmt-config": "1.2.1",
     "@willbooster/oxlint-config": "1.4.4",
-    "@willbooster/prettier-config": "10.4.0",
-    "build-ts": "17.1.0",
+    "build-ts": "17.1.2",
     "oxfmt": "0.45.0",
     "oxlint": "1.60.0",
     "oxlint-tsgolint": "0.21.0",
-    "prettier": "3.8.2",
-    "prettier-plugin-java": "2.8.1",
     "sort-package-json": "3.6.1",
     "vitest": "4.1.4"
   },
-  "prettier": "@willbooster/prettier-config"
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -1940,52 +1940,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@chevrotain/cst-dts-gen@npm:11.0.3":
-  version: 11.0.3
-  resolution: "@chevrotain/cst-dts-gen@npm:11.0.3"
-  dependencies:
-    "@chevrotain/gast": "npm:11.0.3"
-    "@chevrotain/types": "npm:11.0.3"
-    lodash-es: "npm:4.17.21"
-  checksum: 10c0/9e945a0611386e4e08af34c2d0b3af36c1af08f726b58145f11310f2aeafcb2d65264c06ec65a32df6b6a65771e6a55be70580c853afe3ceb51487e506967104
-  languageName: node
-  linkType: hard
-
-"@chevrotain/gast@npm:11.0.3":
-  version: 11.0.3
-  resolution: "@chevrotain/gast@npm:11.0.3"
-  dependencies:
-    "@chevrotain/types": "npm:11.0.3"
-    lodash-es: "npm:4.17.21"
-  checksum: 10c0/54fc44d7b4a7b0323f49d957dd88ad44504922d30cb226d93b430b0e09925efe44e0726068581d777f423fabfb878a2238ed2c87b690c0c0014ebd12b6968354
-  languageName: node
-  linkType: hard
-
-"@chevrotain/regexp-to-ast@npm:11.0.3":
-  version: 11.0.3
-  resolution: "@chevrotain/regexp-to-ast@npm:11.0.3"
-  checksum: 10c0/6939c5c94fbfb8c559a4a37a283af5ded8e6147b184a7d7bcf5ad1404d9d663c78d81602bd8ea8458ec497358a9e1671541099c511835d0be2cad46f00c62b3f
-  languageName: node
-  linkType: hard
-
-"@chevrotain/types@npm:11.0.3":
-  version: 11.0.3
-  resolution: "@chevrotain/types@npm:11.0.3"
-  checksum: 10c0/72fe8f0010ebef848e47faea14a88c6fdc3cdbafaef6b13df4a18c7d33249b1b675e37b05cb90a421700c7016dae7cd4187ab6b549e176a81cea434f69cd2503
-  languageName: node
-  linkType: hard
-
 "@chevrotain/types@npm:^9.1.0":
   version: 9.1.0
   resolution: "@chevrotain/types@npm:9.1.0"
   checksum: 10c0/eba764fde0a2953ca80653aaa8491027b758a0bb077d606936c6655386a04e03d3373598d5aafdde7ee27b7cc35cc91b010577f733601475c70c2bedcf2629df
-  languageName: node
-  linkType: hard
-
-"@chevrotain/utils@npm:11.0.3":
-  version: 11.0.3
-  resolution: "@chevrotain/utils@npm:11.0.3"
-  checksum: 10c0/b31972d1b2d444eef1499cf9b7576fc1793e8544910de33a3c18e07c270cfad88067f175d0ee63e7bc604713ebed647f8190db45cc8311852cd2d4fe2ef14068
   languageName: node
   linkType: hard
 
@@ -5494,9 +5452,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript/native-preview-darwin-arm64@npm:7.0.0-dev.20260410.1":
-  version: 7.0.0-dev.20260410.1
-  resolution: "@typescript/native-preview-darwin-arm64@npm:7.0.0-dev.20260410.1"
+"@typescript/native-preview-darwin-arm64@npm:7.0.0-dev.20260412.1":
+  version: 7.0.0-dev.20260412.1
+  resolution: "@typescript/native-preview-darwin-arm64@npm:7.0.0-dev.20260412.1"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
@@ -5508,9 +5466,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript/native-preview-darwin-x64@npm:7.0.0-dev.20260410.1":
-  version: 7.0.0-dev.20260410.1
-  resolution: "@typescript/native-preview-darwin-x64@npm:7.0.0-dev.20260410.1"
+"@typescript/native-preview-darwin-x64@npm:7.0.0-dev.20260412.1":
+  version: 7.0.0-dev.20260412.1
+  resolution: "@typescript/native-preview-darwin-x64@npm:7.0.0-dev.20260412.1"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
@@ -5522,9 +5480,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript/native-preview-linux-arm64@npm:7.0.0-dev.20260410.1":
-  version: 7.0.0-dev.20260410.1
-  resolution: "@typescript/native-preview-linux-arm64@npm:7.0.0-dev.20260410.1"
+"@typescript/native-preview-linux-arm64@npm:7.0.0-dev.20260412.1":
+  version: 7.0.0-dev.20260412.1
+  resolution: "@typescript/native-preview-linux-arm64@npm:7.0.0-dev.20260412.1"
   conditions: os=linux & cpu=arm64
   languageName: node
   linkType: hard
@@ -5536,9 +5494,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript/native-preview-linux-arm@npm:7.0.0-dev.20260410.1":
-  version: 7.0.0-dev.20260410.1
-  resolution: "@typescript/native-preview-linux-arm@npm:7.0.0-dev.20260410.1"
+"@typescript/native-preview-linux-arm@npm:7.0.0-dev.20260412.1":
+  version: 7.0.0-dev.20260412.1
+  resolution: "@typescript/native-preview-linux-arm@npm:7.0.0-dev.20260412.1"
   conditions: os=linux & cpu=arm
   languageName: node
   linkType: hard
@@ -5550,9 +5508,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript/native-preview-linux-x64@npm:7.0.0-dev.20260410.1":
-  version: 7.0.0-dev.20260410.1
-  resolution: "@typescript/native-preview-linux-x64@npm:7.0.0-dev.20260410.1"
+"@typescript/native-preview-linux-x64@npm:7.0.0-dev.20260412.1":
+  version: 7.0.0-dev.20260412.1
+  resolution: "@typescript/native-preview-linux-x64@npm:7.0.0-dev.20260412.1"
   conditions: os=linux & cpu=x64
   languageName: node
   linkType: hard
@@ -5564,9 +5522,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript/native-preview-win32-arm64@npm:7.0.0-dev.20260410.1":
-  version: 7.0.0-dev.20260410.1
-  resolution: "@typescript/native-preview-win32-arm64@npm:7.0.0-dev.20260410.1"
+"@typescript/native-preview-win32-arm64@npm:7.0.0-dev.20260412.1":
+  version: 7.0.0-dev.20260412.1
+  resolution: "@typescript/native-preview-win32-arm64@npm:7.0.0-dev.20260412.1"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
@@ -5578,9 +5536,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript/native-preview-win32-x64@npm:7.0.0-dev.20260410.1":
-  version: 7.0.0-dev.20260410.1
-  resolution: "@typescript/native-preview-win32-x64@npm:7.0.0-dev.20260410.1"
+"@typescript/native-preview-win32-x64@npm:7.0.0-dev.20260412.1":
+  version: 7.0.0-dev.20260412.1
+  resolution: "@typescript/native-preview-win32-x64@npm:7.0.0-dev.20260412.1"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
@@ -5592,17 +5550,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@typescript/native-preview@npm:7.0.0-dev.20260410.1":
-  version: 7.0.0-dev.20260410.1
-  resolution: "@typescript/native-preview@npm:7.0.0-dev.20260410.1"
+"@typescript/native-preview@npm:7.0.0-dev.20260412.1":
+  version: 7.0.0-dev.20260412.1
+  resolution: "@typescript/native-preview@npm:7.0.0-dev.20260412.1"
   dependencies:
-    "@typescript/native-preview-darwin-arm64": "npm:7.0.0-dev.20260410.1"
-    "@typescript/native-preview-darwin-x64": "npm:7.0.0-dev.20260410.1"
-    "@typescript/native-preview-linux-arm": "npm:7.0.0-dev.20260410.1"
-    "@typescript/native-preview-linux-arm64": "npm:7.0.0-dev.20260410.1"
-    "@typescript/native-preview-linux-x64": "npm:7.0.0-dev.20260410.1"
-    "@typescript/native-preview-win32-arm64": "npm:7.0.0-dev.20260410.1"
-    "@typescript/native-preview-win32-x64": "npm:7.0.0-dev.20260410.1"
+    "@typescript/native-preview-darwin-arm64": "npm:7.0.0-dev.20260412.1"
+    "@typescript/native-preview-darwin-x64": "npm:7.0.0-dev.20260412.1"
+    "@typescript/native-preview-linux-arm": "npm:7.0.0-dev.20260412.1"
+    "@typescript/native-preview-linux-arm64": "npm:7.0.0-dev.20260412.1"
+    "@typescript/native-preview-linux-x64": "npm:7.0.0-dev.20260412.1"
+    "@typescript/native-preview-win32-arm64": "npm:7.0.0-dev.20260412.1"
+    "@typescript/native-preview-win32-x64": "npm:7.0.0-dev.20260412.1"
   dependenciesMeta:
     "@typescript/native-preview-darwin-arm64":
       optional: true
@@ -5620,7 +5578,7 @@ __metadata:
       optional: true
   bin:
     tsgo: bin/tsgo.js
-  checksum: 10c0/4b5598aa58193b696dfc9ef3dce10b978144e45932d925291f7f92d9a82555dbb29d7c1d08b1474990393c8779559fa66e26decc88f5a72f6f0b9af40449ebd3
+  checksum: 10c0/e60bee05becc1f93c64d8e2f32421de61ded31bdc5a8cbfa3a08972e059bd13294ef951375ad103a4fc04be343e55292a6c687e68ef5e35e19ca11c57b57fae6
   languageName: node
   linkType: hard
 
@@ -6023,16 +5981,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@willbooster/prettier-config@npm:10.4.0":
-  version: 10.4.0
-  resolution: "@willbooster/prettier-config@npm:10.4.0"
-  peerDependencies:
-    prettier: ">=3"
-    prettier-plugin-java: ">=2.6"
-  checksum: 10c0/37c25f8664d13ab5caf25f57545cbbec4f8005c812ee45d291f2e7ab7ab040c3bcd7ecf1c05c0872da884e044f6139413336fb158777649e249913efe176945f
-  languageName: node
-  linkType: hard
-
 "@willbooster/shared-lib-blitz-next@workspace:packages/shared-lib-blitz-next":
   version: 0.0.0-use.local
   resolution: "@willbooster/shared-lib-blitz-next@workspace:packages/shared-lib-blitz-next"
@@ -6043,14 +5991,11 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260417.1"
     "@willbooster/oxfmt-config": "npm:1.2.1"
     "@willbooster/oxlint-config": "npm:1.4.4"
-    "@willbooster/prettier-config": "npm:10.4.0"
     blitz: "npm:3.0.2"
-    build-ts: "npm:17.1.0"
+    build-ts: "npm:17.1.2"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
-    prettier: "npm:3.8.2"
-    prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
     vitest: "npm:4.1.4"
   languageName: unknown
@@ -6066,14 +6011,11 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260417.1"
     "@willbooster/oxfmt-config": "npm:1.2.1"
     "@willbooster/oxlint-config": "npm:1.4.4"
-    "@willbooster/prettier-config": "npm:10.4.0"
-    build-ts: "npm:17.1.0"
+    build-ts: "npm:17.1.2"
     next: "npm:16.2.4"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
-    prettier: "npm:3.8.2"
-    prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
     vitest: "npm:4.1.4"
   peerDependencies:
@@ -6081,13 +6023,13 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/shared-lib-node@npm:8.3.2":
-  version: 8.3.2
-  resolution: "@willbooster/shared-lib-node@npm:8.3.2"
+"@willbooster/shared-lib-node@npm:8.5.4":
+  version: 8.5.4
+  resolution: "@willbooster/shared-lib-node@npm:8.5.4"
   dependencies:
-    dotenv: "npm:17.3.1"
+    dotenv: "npm:17.4.2"
     dotenv-expand: "npm:12.0.3"
-  checksum: 10c0/83e6d82793d649c81a36f70bd3e347a08d8ee4098a8c7f9415a3a7021a00dc6b15e8c84de4fe864a9516bf22a9c79a83d36f604a78c221d95c02ad1caccba5b9
+  checksum: 10c0/4626fbbdee08ed2ebba531c160485e09f1440abebb156fe928d88923ec8264abf1f73773052e7a45af0aa44199a3e2bc22cf76eab8c064452827cc89c1abf18b
   languageName: node
   linkType: hard
 
@@ -6102,15 +6044,12 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260417.1"
     "@willbooster/oxfmt-config": "npm:1.2.1"
     "@willbooster/oxlint-config": "npm:1.4.4"
-    "@willbooster/prettier-config": "npm:10.4.0"
-    build-ts: "npm:17.1.0"
+    build-ts: "npm:17.1.2"
     dotenv: "npm:17.4.2"
     dotenv-expand: "npm:12.0.3"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
-    prettier: "npm:3.8.2"
-    prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
     vitest: "npm:4.1.4"
   languageName: unknown
@@ -6138,14 +6077,11 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260417.1"
     "@willbooster/oxfmt-config": "npm:1.2.1"
     "@willbooster/oxlint-config": "npm:1.4.4"
-    "@willbooster/prettier-config": "npm:10.4.0"
     babel-loader: "npm:10.1.1"
-    build-ts: "npm:17.1.0"
+    build-ts: "npm:17.1.2"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
-    prettier: "npm:3.8.2"
-    prettier-plugin-java: "npm:2.8.1"
     react: "npm:19.2.5"
     react-dom: "npm:19.2.5"
     sort-package-json: "npm:3.6.1"
@@ -6166,13 +6102,10 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260417.1"
     "@willbooster/oxfmt-config": "npm:1.2.1"
     "@willbooster/oxlint-config": "npm:1.4.4"
-    "@willbooster/prettier-config": "npm:10.4.0"
-    build-ts: "npm:17.1.0"
+    build-ts: "npm:17.1.2"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
-    prettier: "npm:3.8.2"
-    prettier-plugin-java: "npm:2.8.1"
     sort-package-json: "npm:3.6.1"
     vitest: "npm:4.1.4"
   languageName: unknown
@@ -6194,9 +6127,8 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260417.1"
     "@willbooster/oxfmt-config": "npm:1.2.1"
     "@willbooster/oxlint-config": "npm:1.4.4"
-    "@willbooster/prettier-config": "npm:10.4.0"
     at-decorators: "npm:7.0.2"
-    build-ts: "npm:17.1.0"
+    build-ts: "npm:17.1.2"
     chalk: "npm:5.6.2"
     dotenv: "npm:17.4.2"
     dotenv-expand: "npm:12.0.3"
@@ -6206,8 +6138,6 @@ __metadata:
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
-    prettier: "npm:3.8.2"
-    prettier-plugin-java: "npm:2.8.1"
     rolldown: "npm:1.0.0-rc.15"
     sort-package-json: "npm:3.6.1"
     type-fest: "npm:5.5.0"
@@ -6233,9 +6163,8 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260417.1"
     "@willbooster/oxfmt-config": "npm:1.2.1"
     "@willbooster/oxlint-config": "npm:1.4.4"
-    "@willbooster/prettier-config": "npm:10.4.0"
     "@yarnpkg/core": "npm:4.6.0"
-    build-ts: "npm:17.1.0"
+    build-ts: "npm:17.1.2"
     deepmerge: "npm:4.3.1"
     dotenv: "npm:17.4.2"
     fast-glob: "npm:3.3.3"
@@ -6248,8 +6177,6 @@ __metadata:
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
-    prettier: "npm:3.8.2"
-    prettier-plugin-java: "npm:2.8.1"
     semver: "npm:7.7.4"
     simple-git: "npm:3.36.0"
     smol-toml: "npm:1.6.1"
@@ -7592,9 +7519,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"build-ts@npm:17.1.0":
-  version: 17.1.0
-  resolution: "build-ts@npm:17.1.0"
+"build-ts@npm:17.1.2":
+  version: 17.1.2
+  resolution: "build-ts@npm:17.1.2"
   dependencies:
     "@babel/core": "npm:7.29.0"
     "@babel/plugin-proposal-decorators": "npm:7.29.0"
@@ -7611,8 +7538,8 @@ __metadata:
     "@rollup/plugin-replace": "npm:6.0.3"
     "@rollup/plugin-terser": "npm:1.0.0"
     "@rollup/pluginutils": "npm:5.3.0"
-    "@typescript/native-preview": "npm:7.0.0-dev.20260410.1"
-    "@willbooster/shared-lib-node": "npm:8.3.2"
+    "@typescript/native-preview": "npm:7.0.0-dev.20260412.1"
+    "@willbooster/shared-lib-node": "npm:8.5.4"
     babel-plugin-polyfill-corejs3: "npm:0.14.2"
     babel-plugin-transform-remove-console: "npm:6.9.4"
     chalk: "npm:5.6.2"
@@ -7631,7 +7558,7 @@ __metadata:
     yargs: "npm:18.0.0"
   bin:
     build-ts: bin/index.js
-  checksum: 10c0/b5f34c71991925bb7cb262e84acbb99ac3409766e9badf8c09d0a0cdaf21e50607253a27969541669d33814d12c49e9988a507229123cc0273cf687f6208acfa
+  checksum: 10c0/b73c08772f1881c7bc75ea6dd57ad26f0ed0204cabdaaafe8658eae326f0e9fd16b75e02327b87a04c93d4c0c0c24a754b7947522c718cb8c7182dce79e5eebc
   languageName: node
   linkType: hard
 
@@ -7910,31 +7837,6 @@ __metadata:
   version: 2.1.3
   resolution: "check-error@npm:2.1.3"
   checksum: 10c0/878e99038fb6476316b74668cd6a498c7e66df3efe48158fa40db80a06ba4258742ac3ee2229c4a2a98c5e73f5dff84eb3e50ceb6b65bbd8f831eafc8338607d
-  languageName: node
-  linkType: hard
-
-"chevrotain-allstar@npm:0.3.1":
-  version: 0.3.1
-  resolution: "chevrotain-allstar@npm:0.3.1"
-  dependencies:
-    lodash-es: "npm:^4.17.21"
-  peerDependencies:
-    chevrotain: ^11.0.0
-  checksum: 10c0/5cadedffd3114eb06b15fd3939bb1aa6c75412dbd737fe302b52c5c24334f9cb01cee8edc1d1067d98ba80dddf971f1d0e94b387de51423fc6cf3c5d8b7ef27a
-  languageName: node
-  linkType: hard
-
-"chevrotain@npm:11.0.3":
-  version: 11.0.3
-  resolution: "chevrotain@npm:11.0.3"
-  dependencies:
-    "@chevrotain/cst-dts-gen": "npm:11.0.3"
-    "@chevrotain/gast": "npm:11.0.3"
-    "@chevrotain/regexp-to-ast": "npm:11.0.3"
-    "@chevrotain/types": "npm:11.0.3"
-    "@chevrotain/utils": "npm:11.0.3"
-    lodash-es: "npm:4.17.21"
-  checksum: 10c0/ffd425fa321e3f17e9833d7f44cd39f2743f066e92ca74b226176080ca5d455f853fe9091cdfd86354bd899d85c08b3bdc3f55b267e7d07124b048a88349765f
   languageName: node
   linkType: hard
 
@@ -9305,13 +9207,6 @@ __metadata:
   version: 16.0.0
   resolution: "dotenv@npm:16.0.0"
   checksum: 10c0/50c211ad5b0047d0e2ac10fcc5722979923a7dca6246569ccb41532f3e48b752d8ad5204a7f4c19e371276a4cd2c8beef5e79522fa6a3cc6856597944017f638
-  languageName: node
-  linkType: hard
-
-"dotenv@npm:17.3.1":
-  version: 17.3.1
-  resolution: "dotenv@npm:17.3.1"
-  checksum: 10c0/c78e0c2d5a549c751e544cc60e2b95e7cb67e0c551f42e094d161c6b297aa44b630a3c2dcacf5569e529a6c2a6b84e2ab9be8d37b299d425df5a18b81ce4a35f
   languageName: node
   linkType: hard
 
@@ -12577,17 +12472,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"java-parser@npm:3.0.1":
-  version: 3.0.1
-  resolution: "java-parser@npm:3.0.1"
-  dependencies:
-    chevrotain: "npm:11.0.3"
-    chevrotain-allstar: "npm:0.3.1"
-    lodash: "npm:4.17.21"
-  checksum: 10c0/9b60f1132b65785fe4f4c10785fc1638a4092aecf222f63706c119425d0ffb676b7229390abe289082cf837cd470df63f9b9383743d470816fa170240f8b1e22
-  languageName: node
-  linkType: hard
-
 "java-properties@npm:^1.0.2":
   version: 1.0.2
   resolution: "java-properties@npm:1.0.2"
@@ -13397,13 +13281,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lodash-es@npm:4.17.21":
-  version: 4.17.21
-  resolution: "lodash-es@npm:4.17.21"
-  checksum: 10c0/fb407355f7e6cd523a9383e76e6b455321f0f153a6c9625e21a8827d10c54c2a2341bd2ae8d034358b60e07325e1330c14c224ff582d04612a46a4f0479ff2f2
-  languageName: node
-  linkType: hard
-
 "lodash-es@npm:4.18.1, lodash-es@npm:^4.17.21":
   version: 4.18.1
   resolution: "lodash-es@npm:4.18.1"
@@ -13450,13 +13327,6 @@ __metadata:
   version: 4.7.0
   resolution: "lodash.uniqby@npm:4.7.0"
   checksum: 10c0/c505c0de20ca759599a2ba38710e8fb95ff2d2028e24d86c901ef2c74be8056518571b9b754bfb75053b2818d30dd02243e4a4621a6940c206bbb3f7626db656
-  languageName: node
-  linkType: hard
-
-"lodash@npm:4.17.21":
-  version: 4.17.21
-  resolution: "lodash@npm:4.17.21"
-  checksum: 10c0/d8cbea072bb08655bb4c989da418994b073a608dffa608b09ac04b43a791b12aeae7cd7ad919aa4c925f33b48490b5cfe6c1f71d827956071dae2e7bb3a6b74c
   languageName: node
   linkType: hard
 
@@ -15952,26 +15822,6 @@ __metadata:
     picocolors: "npm:^1.1.1"
     source-map-js: "npm:^1.2.1"
   checksum: 10c0/7cb2b32202ea1ead03f15cfbb2756a64a0f98942378e99b3dfce33678fe5eaf93e31d675a46e3a0dfb417d7b49b82d8999d0dd42a33c3b128e71ade0f978719a
-  languageName: node
-  linkType: hard
-
-"prettier-plugin-java@npm:2.8.1":
-  version: 2.8.1
-  resolution: "prettier-plugin-java@npm:2.8.1"
-  dependencies:
-    java-parser: "npm:3.0.1"
-  peerDependencies:
-    prettier: ^3.0.0
-  checksum: 10c0/85c8ded14a0aaf1df1d5367ebe0f18c9d7d7284780a13bd1e037ca0190ebc4d42e69a849ddd3a2440c4c14cc19fbeb3b57acec1a3cd61076e917a1432dd72c75
-  languageName: node
-  linkType: hard
-
-"prettier@npm:3.8.2":
-  version: 3.8.2
-  resolution: "prettier@npm:3.8.2"
-  bin:
-    prettier: bin/prettier.cjs
-  checksum: 10c0/2d64bd01d269c8dd6d8c423a2a2e1fb88230a53aac523204b327de40059ccf8bd8e6fe70b8ce6154b97ed4442e9fd878504ff8a5330f3a4f64bd13d1576f7652
   languageName: node
   linkType: hard
 
@@ -20162,14 +20012,11 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260417.1"
     "@willbooster/oxfmt-config": "npm:1.2.1"
     "@willbooster/oxlint-config": "npm:1.4.4"
-    "@willbooster/prettier-config": "npm:10.4.0"
     conventional-changelog-conventionalcommits: "npm:9.3.1"
     lefthook: "npm:2.1.5"
     oxfmt: "npm:0.45.0"
     oxlint: "npm:1.60.0"
     oxlint-tsgolint: "npm:0.21.0"
-    prettier: "npm:3.8.2"
-    prettier-plugin-java: "npm:2.8.1"
     semantic-release: "npm:25.0.3"
     sort-package-json: "npm:3.6.1"
   languageName: unknown
