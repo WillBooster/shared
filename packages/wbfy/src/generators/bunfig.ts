@@ -22,6 +22,8 @@ const minimumReleaseAgeExcludes = [
   '@exercode/problem-utils',
   '@willbooster/agent-skills',
   '@willbooster/babel-configs',
+  '@willbooster/monaco-loader',
+  '@willbooster/monaco-react',
   '@willbooster/oxfmt-config',
   '@willbooster/oxlint-config',
   '@willbooster/prettier-config',
