@@ -136,12 +136,13 @@ async function updateScripts(
   addStartTestServerScriptIfNeeded(config, jsonObj);
   addInstallStepToCheckForAi(jsonObj.scripts, packageManager);
 
+  const scripts = jsonObj.scripts;
   if (config.isBun || !doesContainJava(config)) {
-    delete jsonObj.scripts.prettify;
+    delete scripts.prettify;
   } else {
-    jsonObj.scripts.prettify = (jsonObj.scripts.prettify ?? '') + (await generatePrettierSuffix(config.dirPath));
+    scripts.prettify = (scripts.prettify ?? '') + (await generatePrettierSuffix(config.dirPath));
   }
-  normalizeYarnWorkspaceForeachScripts(jsonObj.scripts);
+  normalizeYarnWorkspaceForeachScripts(scripts);
 }
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
@@ -827,12 +828,18 @@ async function generatePrettierSuffix(dirPath: string): Promise<string> {
 
 function removePrettierArtifacts(jsonObj: WritablePackageJson): void {
   delete jsonObj.prettier;
-  for (const section of [jsonObj.dependencies, jsonObj.devDependencies, jsonObj.peerDependencies]) {
+  const dependencySections: Array<Partial<Record<string, string>> | undefined> = [
+    jsonObj.dependencies,
+    jsonObj.devDependencies,
+    jsonObj.peerDependencies,
+  ];
+  for (const section of dependencySections) {
+    if (!section) continue;
     delete section.prettier;
     delete section['prettier-plugin-java'];
     delete section['@willbooster/prettier-config'];
   }
-  delete jsonObj.devDependencies['@types/prettier'];
+  delete jsonObj.devDependencies?.['@types/prettier'];
 }
 
 async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {
