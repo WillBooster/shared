@@ -15,7 +15,7 @@ import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
-import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
+import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
@@ -136,7 +136,7 @@ async function updateScripts(
   addStartTestServerScriptIfNeeded(config, jsonObj);
   addInstallStepToCheckForAi(jsonObj.scripts, packageManager);
 
-  if (config.isBun) {
+  if (config.isBun || !doesContainJava(config)) {
     delete jsonObj.scripts.prettify;
   } else {
     jsonObj.scripts.prettify = (jsonObj.scripts.prettify ?? '') + (await generatePrettierSuffix(config.dirPath));
@@ -180,15 +180,22 @@ function applyPackageJsonConventions(
   jsonObj: WritablePackageJson
 ): DependencyUpdates {
   const dependencies: string[] = [];
-  const devDependencies = ['prettier', 'sort-package-json'];
+  const devDependencies = ['sort-package-json'];
   const pythonDevDependencies: string[] = [];
+  const hasJava = doesContainJava(config);
 
   if (
+    hasJava &&
     !fs.existsSync(path.join(rootConfig.dirPath, '.prettierrc.json')) &&
     !fs.existsSync(path.join(config.dirPath, '.prettierrc.json'))
   ) {
     jsonObj.prettier = '@willbooster/prettier-config';
     devDependencies.push('prettier-plugin-java', '@willbooster/prettier-config');
+  }
+  if (hasJava) {
+    devDependencies.push('prettier');
+  } else {
+    removePrettierArtifacts(jsonObj);
   }
 
   delete jsonObj.devDependencies['lint-staged'];
@@ -748,29 +755,37 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       'check-all-for-ai': 'yarn check-for-ai && yarn test',
       'check-for-ai': `yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet`,
       cleanup: 'yarn format && yarn lint-fix',
-      format: `sort-package-json && yarn format-code && yarn prettify`,
+      format: doesContainJava(config)
+        ? `sort-package-json && yarn format-code && yarn prettify`
+        : `sort-package-json && yarn format-code`,
       lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern .`,
-      prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`,
       typecheck: 'tsgo --noEmit',
     };
+    if (doesContainJava(config)) {
+      scripts.prettify = `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`;
+    }
     if (config.doesContainSubPackageJsons) {
       scripts = merge(
         { ...scripts },
         {
-          format: `sort-package-json && yarn format-code && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format`,
+          format: doesContainJava(config)
+            ? `sort-package-json && yarn format-code && yarn prettify && yarn workspaces foreach --all --parallel --verbose run format`
+            : `sort-package-json && yarn format-code && yarn workspaces foreach --all --parallel --verbose run format`,
           lint: `yarn workspaces foreach --all --parallel --verbose run lint`,
           'lint-fix': 'yarn workspaces foreach --all --parallel --verbose run lint-fix',
-          prettify: `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(
-            ','
-          )}}" "!**/packages/**" "!**/test{-,/}fixtures/**"`,
           // CI=1 prevents vitest from enabling watch.
           // FORCE_COLOR=3 make wb enable color output.
           test: 'CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test',
           typecheck: 'yarn workspaces foreach --all --parallel --verbose run typecheck',
         }
       );
+      if (doesContainJava(config)) {
+        scripts.prettify = `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(
+          ','
+        )}}" "!**/packages/**" "!**/test{-,/}fixtures/**"`;
+      }
     } else if (config.depending.pyright) {
       scripts.typecheck = scripts.typecheck ? `${scripts.typecheck} && ` : '';
       scripts.typecheck += 'pyright';
@@ -780,7 +795,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     }
     if (!hasJsOrTs) {
       delete scripts['format-code'];
-      scripts.format = 'sort-package-json && yarn prettify';
+      scripts.format = doesContainJava(config) ? 'sort-package-json && yarn prettify' : 'sort-package-json';
       delete scripts.lint;
       delete scripts['lint-fix'];
     }
@@ -809,6 +824,20 @@ async function generatePrettierSuffix(dirPath: string): Promise<string> {
     .filter((l) => l && !l.startsWith('#') && !l.includes('/'));
 
   return `${lines.map((line) => ` "!**/${line}/**"`).join('')} || true`;
+}
+
+function removePrettierArtifacts(jsonObj: WritablePackageJson): void {
+  delete jsonObj.prettier;
+  delete jsonObj.dependencies.prettier;
+  delete jsonObj.dependencies['prettier-plugin-java'];
+  delete jsonObj.dependencies['@willbooster/prettier-config'];
+  delete jsonObj.devDependencies.prettier;
+  delete jsonObj.devDependencies['prettier-plugin-java'];
+  delete jsonObj.devDependencies['@willbooster/prettier-config'];
+  delete jsonObj.devDependencies['@types/prettier'];
+  delete jsonObj.peerDependencies.prettier;
+  delete jsonObj.peerDependencies['prettier-plugin-java'];
+  delete jsonObj.peerDependencies['@willbooster/prettier-config'];
 }
 
 async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {

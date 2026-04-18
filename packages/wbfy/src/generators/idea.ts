@@ -5,7 +5,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
+import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
@@ -13,8 +13,8 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
     const dirPath = path.resolve(config.dirPath, '.idea');
     if (fs.existsSync(dirPath)) {
       const filePath = path.resolve(dirPath, 'watcherTasks.xml');
-      await (doesContainJsOrTs(config)
-        ? promisePool.run(() => fsUtil.generateFile(filePath, oxlintContent))
+      await (doesContainJsOrTs(config) || doesContainJava(config)
+        ? promisePool.run(() => fsUtil.generateFile(filePath, getWatcherTasksContent(config)))
         : promisePool.run(() => fs.promises.rm(filePath, { force: true })));
     }
   });
@@ -44,11 +44,13 @@ function createTaskOptions(runner: string, args: string, name: string, extension
 `;
 }
 
-const oxlintContent = `<?xml version="1.0" encoding="UTF-8"?>
+function getWatcherTasksContent(config: PackageConfig): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectTasksOptions">
-${extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern', 'Oxfmt', ext)).join('')}
-${extensions.prettierOnly.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('')}
+${doesContainJsOrTs(config) ? extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern', 'Oxfmt', ext)).join('') : ''}
+${doesContainJava(config) ? extensions.prettierOnly.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('') : ''}
   </component>
 </project>
 `;
+}
