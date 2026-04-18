@@ -47,7 +47,7 @@
     "libsodium-wrappers": "0.8.3",
     "minimal-promise-pool": "6.0.1",
     "semver": "7.7.4",
-    "simple-git": "3.35.2",
+    "simple-git": "3.36.0",
     "smol-toml": "1.6.1",
     "typescript": "6.0.2",
     "yargs": "18.0.0",
