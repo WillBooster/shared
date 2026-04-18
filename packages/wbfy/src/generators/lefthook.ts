@@ -7,8 +7,8 @@ import yaml from 'js-yaml';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
+import { getPackageManagerRunCommand, hasGenI18nTsScript } from '../utils/genI18nTs.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
-import { promisePool } from '../utils/promisePool.js';
 import { spawnSync } from '../utils/spawnUtil.js';
 
 import { generateScripts } from './packageJson.js';
@@ -111,15 +111,7 @@ async function core(config: PackageConfig): Promise<void> {
   const settings: Partial<LefthookSettings> = {
     ...baseSettings,
     'pre-commit': {
-      jobs: preCommitSettings.jobs.map((job) =>
-        job.name === 'cleanup'
-          ? {
-              ...job,
-              glob: getCleanupGlobs(config),
-              run: getCleanupCommand(config),
-            }
-          : job
-      ),
+      jobs: getPreCommitJobs(config),
     },
   };
   if (!lint) {
@@ -149,19 +141,15 @@ async function core(config: PackageConfig): Promise<void> {
   if (lint) {
     const prePush = getPrePushScript(config);
     fs.mkdirSync(path.join(dirPath, 'pre-push'), { recursive: true });
-    await promisePool.run(() =>
-      fs.promises.writeFile(path.join(dirPath, 'pre-push', 'check.sh'), prePush + '\n', {
-        mode: 0o755,
-      })
-    );
+    await fs.promises.writeFile(path.join(dirPath, 'pre-push', 'check.sh'), prePush + '\n', {
+      mode: 0o755,
+    });
   }
   const postMergeCommand = `${scripts.postMerge}\n\n${generatePostMergeCommands(config).join('\n')}\n`;
   fs.mkdirSync(path.join(dirPath, 'post-merge'), { recursive: true });
-  await promisePool.run(() =>
-    fs.promises.writeFile(path.resolve(dirPath, 'post-merge', 'prepare.sh'), postMergeCommand, {
-      mode: 0o755,
-    })
-  );
+  await fs.promises.writeFile(path.resolve(dirPath, 'post-merge', 'prepare.sh'), postMergeCommand, {
+    mode: 0o755,
+  });
 }
 
 function getPrePushScript(config: PackageConfig): string {
@@ -187,6 +175,18 @@ ${lintCommand}
 `.trim();
   }
   return lintCommand;
+}
+
+function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
+  return preCommitSettings.jobs.map((job) =>
+    job.name === 'cleanup'
+      ? {
+          ...job,
+          glob: getCleanupGlobs(config),
+          run: getCleanupCommand(config),
+        }
+      : job
+  );
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
@@ -322,6 +322,12 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
     postMergeCommands.push(
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/dotenv -c development -- node node_modules/.bin/prisma migrate deploy"`,
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/dotenv -c development -- node node_modules/.bin/prisma generate"`
+    );
+  }
+  if (hasGenI18nTsScript(config, config.packageJson?.scripts)) {
+    // gen-i18n-ts outputs are commonly ignored, so post-merge regenerates them after pulled resource changes.
+    postMergeCommands.push(
+      String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null"`
     );
   }
   return postMergeCommands;
