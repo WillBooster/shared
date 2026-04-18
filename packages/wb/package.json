@@ -2,19 +2,22 @@
   "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
   "description": "CLI tool for WillBooster projects",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wb"
   },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "type": "module",
   "bin": "bin/index.js",
   "files": [
     "bin/",
     "dist/"
   ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -65,8 +68,5 @@
   },
   "engines": {
     "node": ">= 22.18.0"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }

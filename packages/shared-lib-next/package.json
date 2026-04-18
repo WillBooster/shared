@@ -2,15 +2,22 @@
   "name": "@willbooster/shared-lib-next",
   "version": "0.0.0-semantically-released",
   "description": "Shared library for WillBooster Next.js projects",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/shared-lib-next"
   },
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
-  "sideEffects": false,
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "type": "module",
+  "sideEffects": false,
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -23,13 +30,9 @@
       "import": "./src/index.ts"
     }
   },
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "files": [
-    "bin/",
-    "dist/"
-  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "build-ts lib",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
@@ -61,8 +64,5 @@
   },
   "peerDependencies": {
     "next": "*"
-  },
-  "publishConfig": {
-    "access": "public"
   }
 }
