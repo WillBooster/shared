@@ -7,7 +7,7 @@ import yaml from 'js-yaml';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
-import { getPackageManagerRunCommand, hasGenI18nTsScript } from '../utils/genI18nTs.js';
+import { getGenI18nTsCommand } from '../utils/genI18nTs.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { spawnSync } from '../utils/spawnUtil.js';
 
@@ -324,11 +324,10 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/dotenv -c development -- node node_modules/.bin/prisma generate"`
     );
   }
-  if (hasGenI18nTsScript(config, config.packageJson?.scripts)) {
+  const genI18nTsCommand = getGenI18nTsCommand(config, config.packageJson?.scripts);
+  if (genI18nTsCommand) {
     // gen-i18n-ts outputs are commonly ignored, so post-merge regenerates them after pulled resource changes.
-    postMergeCommands.push(
-      String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null"`
-    );
+    postMergeCommands.push(String.raw`run_if_changed "(^|/)i18n/.*\.json$|(^|/)package\.json$" "${genI18nTsCommand}"`);
   }
   return postMergeCommands;
 }
