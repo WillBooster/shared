@@ -795,7 +795,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     }
     if (!hasJsOrTs) {
       delete scripts['format-code'];
-      scripts.format = hasJava ? 'sort-package-json && yarn prettify' : 'sort-package-json';
+      scripts.format = (scripts.format ?? 'sort-package-json').replace(' && yarn format-code', '');
       delete scripts.lint;
       delete scripts['lint-fix'];
     }
