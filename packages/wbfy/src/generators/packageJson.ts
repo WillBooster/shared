@@ -434,11 +434,32 @@ async function normalizePackageMetadata(
   } else if (config.depending.prisma && !jsonObj.scripts['gen-code']?.startsWith('prisma generate')) {
     jsonObj.scripts['gen-code'] = 'prisma generate';
   }
+  addGenI18nTsPostinstallScript(config, jsonObj);
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
     delete jsonObj.devDependencies['@types/prettier'];
   }
+}
+
+function addGenI18nTsPostinstallScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
+  if (!hasGenI18nTsScript(config, jsonObj)) return;
+
+  const command = `${getPackageManagerRunCommand(config, 'gen-i18n-ts')} > /dev/null`;
+  const postinstall = jsonObj.scripts.postinstall;
+  if (!postinstall) {
+    jsonObj.scripts.postinstall = command;
+  } else if (!postinstall.includes(command)) {
+    jsonObj.scripts.postinstall = `${postinstall} && ${command}`;
+  }
+}
+
+function hasGenI18nTsScript(config: PackageConfig, jsonObj: WritablePackageJson): boolean {
+  return config.depending.genI18nTs && !!jsonObj.scripts['gen-i18n-ts'];
+}
+
+function getPackageManagerRunCommand(config: PackageConfig, scriptName: string): string {
+  return config.isBun ? `bun run ${scriptName}` : `yarn ${scriptName}`;
 }
 
 async function normalizePublishedConfigPackageMetadata(

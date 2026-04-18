@@ -76,6 +76,35 @@ describe('generatePackageJson', () => {
     expect(packageJson.devDependencies).not.toHaveProperty('eslint');
     expect(packageJson).not.toHaveProperty('peerDependencies');
   });
+
+  test('generates i18n types after install when gen-i18n-ts is used', async () => {
+    const dirPath = await createPackageDir({
+      name: 'i18n-package',
+      private: true,
+      dependencies: {
+        'gen-i18n-ts': '4.0.6',
+      },
+      scripts: {
+        'gen-i18n-ts': 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP',
+        postinstall: 'custom-setup',
+      },
+    });
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      depending: {
+        ...createConfig().depending,
+        genI18nTs: true,
+      },
+      packageJson: readPackageJson(dirPath),
+    });
+
+    await generatePackageJson(config, config, true);
+    await promisePool.promiseAll();
+
+    const packageJson = readPackageJson(dirPath);
+    expect(packageJson.scripts?.postinstall).toBe('yarn gen-i18n-ts > /dev/null');
+  });
 });
 
 async function createPackageDir(packageJson: PackageJson): Promise<string> {
