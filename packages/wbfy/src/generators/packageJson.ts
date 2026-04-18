@@ -19,6 +19,7 @@ import { doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
+import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptGoDependency = '@typescript/native-preview';
@@ -328,6 +329,7 @@ async function normalizePackageMetadata(
   if (owner === 'WillBooster' || owner === 'WillBoosterLab') {
     jsonObj.author = 'WillBooster Inc.';
   }
+  await normalizePublishedConfigPackageMetadata(config, jsonObj);
   if (!config.isRoot && jsonObj.private && !jsonObj.main) {
     // Make VSCode possible to refactor code across subpackages.
     jsonObj.main = './src';
@@ -423,6 +425,30 @@ async function normalizePackageMetadata(
     delete jsonObj.devDependencies['@types/prettier'];
   }
 }
+
+async function normalizePublishedConfigPackageMetadata(
+  config: PackageConfig,
+  jsonObj: WritablePackageJson
+): Promise<void> {
+  if (!isPublishedWillboosterConfigsPackage(config)) return;
+
+  const configMjsPath = path.resolve(config.dirPath, 'config.mjs');
+  if (!fs.existsSync(configMjsPath)) return;
+
+  jsonObj.type = 'module';
+
+  const configDtsPath = path.resolve(config.dirPath, 'config.d.ts');
+  if (!fs.existsSync(configDtsPath)) return;
+
+  jsonObj.files = [...new Set([...(jsonObj.files ?? []), 'config.d.mts'])];
+  // NodeNext resolves a relative `./config.mjs` import to `config.d.mts`, not
+  // the package-level `types` field. Keep the published config importable from
+  // package-local TypeScript linter settings.
+  await promisePool.run(() => fsUtil.generateFile(path.resolve(config.dirPath, 'config.d.mts'), configDmtsContent));
+}
+
+const configDmtsContent = `export { default } from './config.js';
+`;
 
 function addDependencyVersionsToPackageJson(jsonObj: WritablePackageJson, dependencyUpdates: DependencyUpdates): void {
   const packageJsonDependencies = jsonObj.dependencies;
@@ -578,22 +604,12 @@ function shouldPreserveConfigPackageLintDependency(
   config: PackageConfig,
   dependency: string
 ): boolean {
-  if (!isWillBoosterPublishedConfigPackage(config)) return false;
+  if (!isPublishedWillboosterConfigsPackage(config)) return false;
   if (jsonObj.peerDependencies[dependency]) return true;
 
   // Published config packages need local type-only deps to validate the
   // package-provided config declarations under Yarn PnP.
   return dependency === '@types/eslint' && !!jsonObj.peerDependencies.eslint;
-}
-
-function isWillBoosterPublishedConfigPackage(config: PackageConfig): boolean {
-  return (
-    config.isWillBoosterConfigs &&
-    !config.isRoot &&
-    config.packageJson?.private !== true &&
-    Array.isArray(config.packageJson?.files) &&
-    config.packageJson.files.length > 0
-  );
 }
 
 function shouldPreserveMicromatch(config: PackageConfig): boolean {

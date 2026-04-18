@@ -1,10 +1,11 @@
 import type { PackageConfig } from '../packageConfig.js';
 
-const WILLBOOSTER_CONFIG_PACKAGE_NAMES = new Set(['@willbooster/oxlint-config', '@willbooster/prettier-config']);
-
-export function shouldSkipWillboosterConfigsPackage(config: PackageConfig): boolean {
-  const packageName = config.packageJson?.name;
+export function isPublishedWillboosterConfigsPackage(config: PackageConfig): boolean {
   return (
-    config.isWillBoosterConfigs && typeof packageName === 'string' && WILLBOOSTER_CONFIG_PACKAGE_NAMES.has(packageName)
+    config.isWillBoosterConfigs &&
+    !config.isRoot &&
+    config.packageJson?.private !== true &&
+    Array.isArray(config.packageJson?.files) &&
+    config.packageJson.files.length > 0
   );
 }
