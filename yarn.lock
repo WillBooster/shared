@@ -5058,7 +5058,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/babel__core@npm:^7, @types/babel__core@npm:^7.20.5":
+"@types/babel__core@npm:7.20.5, @types/babel__core@npm:^7.20.5":
   version: 7.20.5
   resolution: "@types/babel__core@npm:7.20.5"
   dependencies:
@@ -6187,7 +6187,7 @@ __metadata:
     "@rolldown/plugin-babel": "npm:0.2.2"
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
-    "@types/babel__core": "npm:^7"
+    "@types/babel__core": "npm:7.20.5"
     "@types/kill-port": "npm:2.0.3"
     "@types/node": "npm:25.6.0"
     "@types/yargs": "npm:17.0.35"
