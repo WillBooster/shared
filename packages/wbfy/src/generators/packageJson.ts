@@ -105,7 +105,10 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   removeEmptyDependencySections(jsonObj);
 
   if (config.isBun) delete jsonObj.packageManager;
-  await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2)));
+  // Yarn reads package.json from disk before deciding whether `yarn add -D`
+  // conflicts with an existing regular dependency, so this write must finish
+  // before installing the managed dependency updates below.
+  await fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2));
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, jsonObj, dependencyUpdates, packageManager);
