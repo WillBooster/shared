@@ -274,7 +274,6 @@ function applyPackageJsonConventions(
   ) {
     devDependencies.push(buildTsDependency);
   }
-
   if (doesContainJsOrTs(config)) {
     devDependencies.push(...oxlintDeps);
   }

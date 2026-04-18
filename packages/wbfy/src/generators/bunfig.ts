@@ -22,6 +22,8 @@ const minimumReleaseAgeExcludes = [
   '@exercode/problem-utils',
   '@willbooster/agent-skills',
   '@willbooster/babel-configs',
+  '@willbooster/monaco-loader',
+  '@willbooster/monaco-react',
   '@willbooster/oxfmt-config',
   '@willbooster/oxlint-config',
   '@willbooster/prettier-config',
@@ -33,6 +35,7 @@ const minimumReleaseAgeExcludes = [
   '@willbooster/shared-lib-react',
   '@willbooster/wb',
   'agent-runtime-kit',
+  'at-decorators',
   'build-ts',
   'one-way-git-sync',
   // ---------- END: We believe our packages are safe ----------
