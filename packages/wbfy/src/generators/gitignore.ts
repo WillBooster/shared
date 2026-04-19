@@ -36,7 +36,7 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
     const filePath = path.resolve(config.dirPath, '.gitignore');
     const content = (await fsUtil.readFileIgnoringError(filePath)) ?? '';
     let headUserContent = ignoreFileUtil.getHeadUserContent(content) + commonContent;
-    const tailUserContent = removeRedundantI18nException(ignoreFileUtil.getTailUserContent(content));
+    const tailUserContent = ignoreFileUtil.getTailUserContent(content);
 
     const names = [...defaultNames];
     if (config.doesContainGemfile) {
@@ -172,8 +172,4 @@ async function readCache(name: string): Promise<string | undefined> {
   } catch {
     // do nothing
   }
-}
-
-function removeRedundantI18nException(content: string): string {
-  return content.replaceAll(/\n# i18n\n!src\/__generated__\/\n?/g, '\n');
 }
