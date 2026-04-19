@@ -190,7 +190,10 @@ function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
-  const supportedExtensions = doesContainJava(config) ? [...extensions.prettierOnly] : [];
+  // `wb lint --format` can format prettier-only files directly; include them
+  // so adding the first Java file still triggers the cleanup hook.
+  const supportedExtensions =
+    config.isBun || config.depending.wb || doesContainJava(config) ? [...extensions.prettierOnly] : [];
   if (doesContainJsOrTs(config)) {
     supportedExtensions.push(...extensions.oxfmt, ...extensions.oxlint);
   }
