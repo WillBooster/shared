@@ -195,9 +195,7 @@ function applyPackageJsonConventions(
     jsonObj.prettier = '@willbooster/prettier-config';
     devDependencies.push('prettier-plugin-java', '@willbooster/prettier-config');
   }
-  // Bun projects use `wb lint --format`, and wb still invokes Prettier for
-  // prettier-only extensions even when the repository has no matching files.
-  if (hasJava || config.isBun) {
+  if (hasJava) {
     devDependencies.push('prettier');
   } else {
     removePrettierArtifacts(jsonObj);

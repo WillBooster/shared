@@ -137,6 +137,11 @@ export class Project {
   }
 
   @memoizeOne
+  get hasPrettier(): boolean {
+    return this.hasDependency('prettier');
+  }
+
+  @memoizeOne
   get hasPoetryLock(): boolean {
     return (
       fs.existsSync(path.join(this.dirPath, 'poetry.lock')) || fs.existsSync(path.join(this.rootDirPath, 'poetry.lock'))
