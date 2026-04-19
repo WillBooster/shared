@@ -247,7 +247,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   }
 
   if (argv.format) {
-    if (prettierArgs.length > 0) {
+    if (prettierArgs.length > 0 && projects.self.hasPrettier) {
       lintExitCodes.push(
         await runWithSpawnInParallel(
           buildShellCommand([
