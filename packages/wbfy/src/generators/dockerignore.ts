@@ -13,8 +13,6 @@ const commonContent = `
 **/*.sqlite3*
 **/.yarn/install-state.gz
 **/.venv
-!**/__generated__
-!**/__generated__/**
 `;
 
 export async function generateDockerignore(config: PackageConfig): Promise<void> {
