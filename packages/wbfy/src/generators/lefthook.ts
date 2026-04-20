@@ -159,6 +159,7 @@ function getPrePushScript(config: PackageConfig): string {
   } else {
     lintCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
   }
+  const quietLintCommand = `${lintCommand} --quiet`;
   // No separate typecheck step needed — the lint command already includes typechecking.
   if (config.repository?.startsWith('github:WillBoosterLab/')) {
     return `
@@ -171,10 +172,10 @@ if [ $(git branch --show-current) = "main" ] && [ $(git config user.email) != "e
   exit 1
 fi
 
-${lintCommand}
+${quietLintCommand}
 `.trim();
   }
-  return lintCommand;
+  return quietLintCommand;
 }
 
 function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
