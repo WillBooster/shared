@@ -121,6 +121,40 @@ test('does not generate oxlint or oxfmt hooks for package-only projects', async 
   expect(lefthookConfig).not.toContain('oxlint');
 });
 
+test('uses quiet lint in pre-push hooks for wb projects', async () => {
+  const dirPath = createTempDir();
+
+  await generateLefthookUpdatingPackageJson(
+    createConfig({
+      dirPath,
+      doesContainPackageJson: true,
+      doesContainTypeScript: true,
+      depending: {
+        ...createConfig().depending,
+        wb: true,
+      },
+    })
+  );
+
+  const prePushScript = await fs.promises.readFile(path.join(dirPath, '.lefthook', 'pre-push', 'check.sh'), 'utf8');
+  expect(prePushScript).toContain('yarn wb lint --quiet');
+});
+
+test('uses quiet lint in pre-push hooks for plain oxlint projects', async () => {
+  const dirPath = createTempDir();
+
+  await generateLefthookUpdatingPackageJson(
+    createConfig({
+      dirPath,
+      doesContainPackageJson: true,
+      doesContainTypeScript: true,
+    })
+  );
+
+  const prePushScript = await fs.promises.readFile(path.join(dirPath, '.lefthook', 'pre-push', 'check.sh'), 'utf8');
+  expect(prePushScript).toContain('yarn run lint --quiet');
+});
+
 test('runs gen-i18n-ts from lefthook after pulled i18n resources change', async () => {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-lefthook-i18n-'));
 
