@@ -6,6 +6,7 @@ import { afterEach, expect, test } from 'vitest';
 
 import { generateLefthookUpdatingPackageJson } from '../src/generators/lefthook.js';
 import type { PackageConfig } from '../src/packageConfig.js';
+import { createConfig as createBaseConfig } from './testConfig.js';
 
 const tempDirs: string[] = [];
 
@@ -195,59 +196,9 @@ function createTempDir(): string {
 }
 
 function createConfig(overrides: Partial<PackageConfig> = {}): PackageConfig {
-  return {
-    dirPath: '/tmp',
-    dockerfile: '',
+  return createBaseConfig({
     isRoot: true,
-    isPublicRepo: true,
-    isReferredByOtherRepo: false,
-    repository: 'github:WillBooster/example',
-    isWillBoosterRepo: true,
-    isBun: false,
-    isEsmPackage: false,
-    isWillBoosterConfigs: false,
-    doesContainSubPackageJsons: false,
-    doesContainDockerfile: false,
-    doesContainGemfile: false,
-    doesContainGoMod: false,
     doesContainPackageJson: false,
-    doesContainPoetryLock: false,
-    doesContainUvLock: false,
-    doesContainPomXml: false,
-    doesContainPubspecYaml: false,
-    doesContainTemplateYaml: false,
-    doesContainVscodeSettingsJson: false,
-    doesContainJavaScript: false,
-    doesContainTypeScript: false,
-    doesContainJsxOrTsx: false,
-    doesContainJava: false,
-    doesContainJavaScriptInPackages: false,
-    doesContainTypeScriptInPackages: false,
-    doesContainJsxOrTsxInPackages: false,
-    doesContainJavaInPackages: false,
-    hasStartTestServer: false,
-    depending: {
-      blitz: false,
-      firebase: false,
-      genI18nTs: false,
-      litestream: false,
-      next: false,
-      playwrightTest: false,
-      prisma: false,
-      pyright: false,
-      react: false,
-      reactNative: false,
-      semanticRelease: false,
-      storybook: false,
-      wb: false,
-    },
-    release: {
-      branches: [],
-      github: false,
-      npm: false,
-    },
-    hasVersionSettings: false,
-    packageJson: {},
     ...overrides,
-  };
+  });
 }

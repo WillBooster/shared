@@ -6,7 +6,7 @@ import { sortPackageJson } from 'sort-package-json';
 import type { PackageJson } from 'type-fest';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import type { PackageConfig } from '../src/packageConfig.js';
+import { createConfig } from './testConfig.js';
 
 const spawnSyncMock = vi.fn<(command: string, args: string[], cwd: string) => void>();
 
@@ -70,61 +70,4 @@ function readPackageJson(dirPath: string): PackageJson {
 
 function readPackageJsonText(dirPath: string): string {
   return fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8');
-}
-
-function createConfig(overrides: Partial<PackageConfig> = {}): PackageConfig {
-  return {
-    dirPath: '/tmp',
-    dockerfile: '',
-    isRoot: false,
-    isPublicRepo: true,
-    isReferredByOtherRepo: false,
-    repository: 'github:WillBooster/example',
-    isWillBoosterRepo: true,
-    isBun: false,
-    isEsmPackage: false,
-    isWillBoosterConfigs: false,
-    doesContainSubPackageJsons: false,
-    doesContainDockerfile: false,
-    doesContainGemfile: false,
-    doesContainGoMod: false,
-    doesContainPackageJson: true,
-    doesContainPoetryLock: false,
-    doesContainUvLock: false,
-    doesContainPomXml: false,
-    doesContainPubspecYaml: false,
-    doesContainTemplateYaml: false,
-    doesContainVscodeSettingsJson: false,
-    doesContainJavaScript: false,
-    doesContainTypeScript: false,
-    doesContainJsxOrTsx: false,
-    doesContainJava: false,
-    doesContainJavaScriptInPackages: false,
-    doesContainTypeScriptInPackages: false,
-    doesContainJsxOrTsxInPackages: false,
-    doesContainJavaInPackages: false,
-    hasStartTestServer: false,
-    depending: {
-      blitz: false,
-      firebase: false,
-      genI18nTs: false,
-      litestream: false,
-      next: false,
-      playwrightTest: false,
-      prisma: false,
-      pyright: false,
-      react: false,
-      reactNative: false,
-      semanticRelease: false,
-      storybook: false,
-      wb: false,
-    },
-    release: {
-      branches: [],
-      github: false,
-      npm: false,
-    },
-    hasVersionSettings: false,
-    ...overrides,
-  };
 }
