@@ -113,7 +113,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, jsonObj, dependencyUpdates, packageManager);
-    await formatPackageJsonWithProjectFormatter(config, packageManager, filePath);
+    formatPackageJsonWithProjectFormatter(config, packageManager, filePath);
   }
 }
 
@@ -574,11 +574,11 @@ function addPackageJsonDependencies(
   return dependenciesToInstall;
 }
 
-async function formatPackageJsonWithProjectFormatter(
+function formatPackageJsonWithProjectFormatter(
   config: PackageConfig,
   packageManager: 'bun' | 'yarn',
   filePath: string
-): Promise<void> {
+): void {
   const relativeFilePath = path.relative(config.dirPath, filePath);
   if (!relativeFilePath) return;
 
@@ -591,8 +591,6 @@ async function formatPackageJsonWithProjectFormatter(
   } else {
     spawnSync(packageManager, ['exec', 'sort-package-json', relativeFilePath], config.dirPath);
   }
-
-  await fsUtil.generateFile(filePath, await fs.promises.readFile(filePath, 'utf8'));
 }
 
 function getLatestDependencyVersion(dependency: string): string {
