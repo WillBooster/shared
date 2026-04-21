@@ -55,6 +55,16 @@ describe('generatePackageJson formatter compatibility', () => {
     await generatePackageJson(config, config, false);
 
     expect(spawnSyncMock).toHaveBeenCalledWith('yarn', ['exec', 'sort-package-json', 'package.json'], dirPath);
+    expect(
+      spawnSyncMock.mock.calls.filter(
+        ([command, args, cwd]) =>
+          command === 'yarn' &&
+          args[0] === 'exec' &&
+          args[1] === 'sort-package-json' &&
+          args[2] === 'package.json' &&
+          cwd === dirPath
+      )
+    ).toHaveLength(1);
     expect(sawPreformattedPackageJson).toBe(true);
     expect(readPackageJsonText(dirPath)).toBe(
       `${JSON.stringify(sortPackageJson(readPackageJson(dirPath)), undefined, 2)}\n`
