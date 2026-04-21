@@ -68,8 +68,7 @@ function getLatestMtimeMs(entryPath: string): number {
   if (!stat.isDirectory()) return stat.mtimeMs;
 
   return Math.max(
-    stat.mtimeMs,
-    ...fs.readdirSync(entryPath).map((name) => getLatestMtimeMs(path.join(entryPath, name)))
+    stat.mtimeMs, ...fs.readdirSync(entryPath).map((name) => getLatestMtimeMs(path.join(entryPath, name)))
   );
 }
 

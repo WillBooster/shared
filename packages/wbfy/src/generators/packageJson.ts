@@ -595,7 +595,7 @@ function formatPackageJsonWithProjectFormatter(
   if (packageManager === 'bun') {
     spawnSync('bunx', ['sort-package-json', relativeFilePath], config.dirPath);
   } else {
-    spawnSync(packageManager, ['exec', 'sort-package-json', relativeFilePath], config.dirPath);
+    spawnSync(packageManager, ['run', 'sort-package-json', relativeFilePath], config.dirPath);
   }
 }
 

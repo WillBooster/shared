@@ -39,7 +39,7 @@ describe('generatePackageJson formatter compatibility', () => {
     });
 
     spawnSyncMock.mockImplementation((command, args, cwd) => {
-      if (command === 'yarn' && args[0] === 'exec' && args[1] === 'sort-package-json' && args[2] === 'package.json') {
+      if (command === 'yarn' && args[0] === 'run' && args[1] === 'sort-package-json' && args[2] === 'package.json') {
         const packageJsonPath = path.join(cwd, 'package.json');
         const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson;
         // Simulate the target repository formatter by rewriting the file from the
@@ -50,12 +50,12 @@ describe('generatePackageJson formatter compatibility', () => {
 
     await generatePackageJson(config, config, false);
 
-    expect(spawnSyncMock).toHaveBeenCalledWith('yarn', ['exec', 'sort-package-json', 'package.json'], dirPath);
+    expect(spawnSyncMock).toHaveBeenCalledWith('yarn', ['run', 'sort-package-json', 'package.json'], dirPath);
     expect(
       spawnSyncMock.mock.calls.filter(
         ([command, args, cwd]) =>
           command === 'yarn' &&
-          args[0] === 'exec' &&
+          args[0] === 'run' &&
           args[1] === 'sort-package-json' &&
           args[2] === 'package.json' &&
           cwd === dirPath
