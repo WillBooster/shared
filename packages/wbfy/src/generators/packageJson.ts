@@ -113,7 +113,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, jsonObj, dependencyUpdates, packageManager);
-    await fsUtil.generateFile(filePath, sortPackageJson(await fs.promises.readFile(filePath, 'utf8')));
+    await formatPackageJsonWithProjectFormatter(config, packageManager, filePath);
   }
 }
 
@@ -572,6 +572,27 @@ function addPackageJsonDependencies(
     packageJsonDependencies[dependency] = getLatestDependencyVersion(dependency);
   }
   return dependenciesToInstall;
+}
+
+async function formatPackageJsonWithProjectFormatter(
+  config: PackageConfig,
+  packageManager: 'bun' | 'yarn',
+  filePath: string
+): Promise<void> {
+  const relativeFilePath = path.relative(config.dirPath, filePath);
+  if (!relativeFilePath) return;
+
+  // Reuse the target repository's own formatter after dependency installation so
+  // package.json matches whatever its current sort-package-json version expects.
+  // This avoids follow-up autofix commits caused only by formatter version drift
+  // between wbfy and the project being updated.
+  if (packageManager === 'bun') {
+    spawnSync('bunx', ['sort-package-json', relativeFilePath], config.dirPath);
+  } else {
+    spawnSync(packageManager, ['exec', 'sort-package-json', relativeFilePath], config.dirPath);
+  }
+
+  await fsUtil.generateFile(filePath, await fs.promises.readFile(filePath, 'utf8'));
 }
 
 function getLatestDependencyVersion(dependency: string): string {
