@@ -71,6 +71,7 @@ function generateAgentInstruction(
   - Follow the conventional commits; your commit message should start with \`feat:\`, \`fix:\`, etc.
   - If not specified, make sure to add a new line at the end of your commit message${rootConfig.isWillBoosterRepo ? ` with: \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`` : ''}.
   - Always create new commits. Avoid using \`--amend\`.
+- Always use heredoc syntax when passing multi-line content to any command.
 ${
   allConfigs.some((c) => c.hasStartTestServer)
     ? `- Use \`${packageManager} run start-test-server\` to launch a web server for debugging or testing.`
