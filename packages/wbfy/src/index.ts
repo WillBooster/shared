@@ -21,7 +21,7 @@ import { generateGitignore } from './generators/gitignore.js';
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
-import { formatPackageJsonWithProjectFormatter, generatePackageJson } from './generators/packageJson.js';
+import { generatePackageJson } from './generators/packageJson.js';
 import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
@@ -41,7 +41,6 @@ import { generateGitHubTemplates } from './github/template.js';
 import { logger } from './logger.js';
 import { options } from './options.js';
 import { getPackageConfig } from './packageConfig.js';
-import type { PackageConfig } from './packageConfig.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
@@ -192,7 +191,6 @@ async function main(): Promise<void> {
       spawnSync(packageManager, ['install', '--no-immutable'], rootDirPath);
     }
     spawnSync(packageManager, ['cleanup'], rootDirPath);
-    await formatPackageJsonsWithProjectFormatter(allPackageConfigs, packageManager);
 
     await installAgentSkills(rootConfig);
   }
@@ -208,20 +206,6 @@ function refreshBunLock(rootDirPath: string): void {
   const status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath);
   if (status !== 0) {
     throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
-  }
-}
-
-async function formatPackageJsonsWithProjectFormatter(
-  configs: PackageConfig[],
-  packageManager: 'bun' | 'yarn'
-): Promise<void> {
-  // Some target repos sort package.json differently between the library API and
-  // the CLI entry point of the same formatter version. Run the target repo's
-  // CLI one final time after all generators and cleanup steps so the finished
-  // tree already matches the autofix workflow's package.json order.
-  for (const config of configs) {
-    if (!config.isRoot && !config.doesContainPackageJson) continue;
-    await formatPackageJsonWithProjectFormatter(config, packageManager, path.resolve(config.dirPath, 'package.json'));
   }
 }
 

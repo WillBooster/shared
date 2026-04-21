@@ -574,7 +574,7 @@ function addPackageJsonDependencies(
   return dependenciesToInstall;
 }
 
-export async function formatPackageJsonWithProjectFormatter(
+async function formatPackageJsonWithProjectFormatter(
   config: PackageConfig,
   packageManager: 'bun' | 'yarn',
   filePath: string
