@@ -61,6 +61,8 @@ function generateAgentInstruction(
   - Continue modifying the tests and code until all tests pass.
   - Ensure tests reset any related persistent data, as our test infrastructure does not clear it automatically.
   - Prefer actual API calls over mocks. Use mocks when actual calls are impractical, have unintended side effects, or are explicitly requested.
+  - Always investigate the root cause of a test failure before fixing it.
+  - Avoid adding wait functions in E2E tests unless you are confident they are necessary.
 - When fixing issues, follow these rules:
   - Investigate the root cause first (e.g., by gathering debug logs, taking screenshots, etc.).
   - Fix the actual root cause instead of applying workarounds.
