@@ -8,6 +8,7 @@ import { describe, expect, test } from 'vitest';
 import { generatePackageJson } from '../src/generators/packageJson.js';
 import type { PackageConfig } from '../src/packageConfig.js';
 import { promisePool } from '../src/utils/promisePool.js';
+import { createConfig } from './testConfig.js';
 
 describe('generatePackageJson', () => {
   test('preserves lint peer dependencies for published willbooster config packages', async () => {
@@ -127,61 +128,4 @@ function createRootConfig(dirPath: string): PackageConfig {
       private: true,
     },
   });
-}
-
-function createConfig(overrides: Partial<PackageConfig> = {}): PackageConfig {
-  return {
-    dirPath: '/tmp',
-    dockerfile: '',
-    isRoot: false,
-    isPublicRepo: true,
-    isReferredByOtherRepo: false,
-    repository: 'github:WillBooster/example',
-    isWillBoosterRepo: true,
-    isBun: false,
-    isEsmPackage: false,
-    isWillBoosterConfigs: false,
-    doesContainSubPackageJsons: false,
-    doesContainDockerfile: false,
-    doesContainGemfile: false,
-    doesContainGoMod: false,
-    doesContainPackageJson: true,
-    doesContainPoetryLock: false,
-    doesContainUvLock: false,
-    doesContainPomXml: false,
-    doesContainPubspecYaml: false,
-    doesContainTemplateYaml: false,
-    doesContainVscodeSettingsJson: false,
-    doesContainJavaScript: false,
-    doesContainTypeScript: false,
-    doesContainJsxOrTsx: false,
-    doesContainJava: false,
-    doesContainJavaScriptInPackages: false,
-    doesContainTypeScriptInPackages: false,
-    doesContainJsxOrTsxInPackages: false,
-    doesContainJavaInPackages: false,
-    hasStartTestServer: false,
-    depending: {
-      blitz: false,
-      firebase: false,
-      genI18nTs: false,
-      litestream: false,
-      next: false,
-      playwrightTest: false,
-      prisma: false,
-      pyright: false,
-      react: false,
-      reactNative: false,
-      semanticRelease: false,
-      storybook: false,
-      wb: false,
-    },
-    release: {
-      branches: [],
-      github: false,
-      npm: false,
-    },
-    hasVersionSettings: false,
-    ...overrides,
-  };
 }

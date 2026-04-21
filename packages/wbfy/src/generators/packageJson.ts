@@ -108,13 +108,21 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (config.isBun) delete jsonObj.packageManager;
   // Yarn reads package.json from disk before deciding whether `yarn add -D`
   // conflicts with an existing regular dependency, so this write must finish
-  // before installing the managed dependency updates below.
-  await fsUtil.generateFile(filePath, JSON.stringify(sortPackageJson(jsonObj), undefined, 2));
+  // before installing the managed dependency updates below. Keep this baseline
+  // file sorted even when we later run the target repository's formatter so a
+  // mid-run interruption never leaves package.json in a partially managed order.
+  await fsUtil.generateFile(filePath, serializePackageJson(jsonObj));
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, jsonObj, dependencyUpdates, packageManager);
-    await fsUtil.generateFile(filePath, sortPackageJson(await fs.promises.readFile(filePath, 'utf8')));
+    formatPackageJsonWithProjectFormatter(config, packageManager, filePath);
   }
+}
+
+function serializePackageJson(jsonObj: WritablePackageJson): string {
+  // fsUtil.generateFile() normalizes the trailing newline, so keep the serializer
+  // focused on the JSON payload itself.
+  return JSON.stringify(sortPackageJson(jsonObj), undefined, 2);
 }
 
 async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
@@ -572,6 +580,25 @@ function addPackageJsonDependencies(
     packageJsonDependencies[dependency] = getLatestDependencyVersion(dependency);
   }
   return dependenciesToInstall;
+}
+
+function formatPackageJsonWithProjectFormatter(
+  config: PackageConfig,
+  packageManager: 'bun' | 'yarn',
+  filePath: string
+): void {
+  const relativeFilePath = path.relative(config.dirPath, filePath);
+  if (!relativeFilePath) return;
+
+  // Reuse the target repository's own formatter after dependency installation so
+  // package.json matches whatever its current sort-package-json version expects.
+  // This avoids follow-up autofix commits caused only by formatter version drift
+  // between wbfy and the project being updated.
+  if (packageManager === 'bun') {
+    spawnSync('bunx', ['sort-package-json', relativeFilePath], config.dirPath);
+  } else {
+    spawnSync(packageManager, ['sort-package-json', relativeFilePath], config.dirPath);
+  }
 }
 
 function getLatestDependencyVersion(dependency: string): string {
