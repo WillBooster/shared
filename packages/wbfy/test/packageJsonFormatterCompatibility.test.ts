@@ -37,15 +37,11 @@ describe('generatePackageJson formatter compatibility', () => {
       isRoot: true,
       packageJson: readPackageJson(dirPath),
     });
-    let sawPreformattedPackageJson = false;
 
     spawnSyncMock.mockImplementation((command, args, cwd) => {
       if (command === 'yarn' && args[0] === 'exec' && args[1] === 'sort-package-json' && args[2] === 'package.json') {
         const packageJsonPath = path.join(cwd, 'package.json');
-        const packageJsonText = fs.readFileSync(packageJsonPath, 'utf8');
-        const packageJson = JSON.parse(packageJsonText) as PackageJson;
-        sawPreformattedPackageJson =
-          packageJsonText !== `${JSON.stringify(sortPackageJson(packageJson), undefined, 2)}\n`;
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson;
         // Simulate the target repository formatter by rewriting the file from the
         // current in-memory content using the project's own sort-package-json CLI.
         fs.writeFileSync(packageJsonPath, `${JSON.stringify(sortPackageJson(packageJson), undefined, 2)}\n`);
@@ -65,7 +61,6 @@ describe('generatePackageJson formatter compatibility', () => {
           cwd === dirPath
       )
     ).toHaveLength(1);
-    expect(sawPreformattedPackageJson).toBe(true);
     expect(readPackageJsonText(dirPath)).toBe(
       `${JSON.stringify(sortPackageJson(readPackageJson(dirPath)), undefined, 2)}\n`
     );
@@ -74,10 +69,7 @@ describe('generatePackageJson formatter compatibility', () => {
 
 async function createPackageDir(packageJson: PackageJson): Promise<string> {
   const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-format-'));
-  await fs.promises.writeFile(
-    path.join(dirPath, 'package.json'),
-    `${JSON.stringify({ private: packageJson.private, scripts: packageJson.scripts, name: packageJson.name }, undefined, 2)}\n`
-  );
+  await fs.promises.writeFile(path.join(dirPath, 'package.json'), `${JSON.stringify(packageJson, undefined, 2)}\n`);
   await fs.promises.writeFile(path.join(dirPath, '.prettierignore'), '');
   return dirPath;
 }

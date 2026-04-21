@@ -6,16 +6,17 @@ import path from 'node:path';
 import { expect, test } from 'vitest';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..');
+const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
 
 test('applying wbfy keeps a small yarn project clean after rerunning cleanup', { timeout: 300 * 1000 }, () => {
-  buildCli();
+  ensureBuiltCli();
 
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
   try {
     writeSmallProjectFixture(tempDirPath);
 
     runCommand('git', ['init'], tempDirPath);
-    runCommand('node', [path.join(packageDirPath, 'dist', 'index.js'), tempDirPath], packageDirPath);
+    runCommand('node', [distIndexPath, tempDirPath], packageDirPath);
 
     runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
     runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
@@ -41,12 +42,35 @@ test('applying wbfy keeps a small yarn project clean after rerunning cleanup', {
   }
 });
 
-function buildCli(): void {
+function ensureBuiltCli(): void {
+  if (isDistUpToDate()) return;
+
   const buildResult = child_process.spawnSync('yarn', ['build'], {
     cwd: packageDirPath,
     encoding: 'utf8',
   });
   expect(buildResult.status).toBe(0);
+}
+
+function isDistUpToDate(): boolean {
+  if (!fs.existsSync(distIndexPath)) return false;
+
+  const distMtimeMs = fs.statSync(distIndexPath).mtimeMs;
+  for (const relativePath of ['bin/wbfy.js', 'package.json', 'src']) {
+    const entryPath = path.join(packageDirPath, relativePath);
+    if (getLatestMtimeMs(entryPath) > distMtimeMs) return false;
+  }
+  return true;
+}
+
+function getLatestMtimeMs(entryPath: string): number {
+  const stat = fs.statSync(entryPath);
+  if (!stat.isDirectory()) return stat.mtimeMs;
+
+  return Math.max(
+    stat.mtimeMs,
+    ...fs.readdirSync(entryPath).map((name) => getLatestMtimeMs(path.join(entryPath, name)))
+  );
 }
 
 function writeSmallProjectFixture(dirPath: string): void {

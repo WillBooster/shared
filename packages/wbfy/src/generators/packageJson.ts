@@ -108,11 +108,10 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (config.isBun) delete jsonObj.packageManager;
   // Yarn reads package.json from disk before deciding whether `yarn add -D`
   // conflicts with an existing regular dependency, so this write must finish
-  // before installing the managed dependency updates below. When dependency
-  // installation is enabled, defer the expensive formatter-specific key sort to
-  // the target repository's own CLI after installation so we don't sort the
-  // same package.json twice in one run.
-  await fsUtil.generateFile(filePath, serializePackageJson(jsonObj, skipAddingDeps));
+  // before installing the managed dependency updates below. Keep this baseline
+  // file sorted even when we later run the target repository's formatter so a
+  // mid-run interruption never leaves package.json in a partially managed order.
+  await fsUtil.generateFile(filePath, serializePackageJson(jsonObj));
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, jsonObj, dependencyUpdates, packageManager);
@@ -120,9 +119,8 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   }
 }
 
-function serializePackageJson(jsonObj: WritablePackageJson, useBundledFormatter: boolean): string {
-  const packageJson = useBundledFormatter ? sortPackageJson(jsonObj) : jsonObj;
-  return JSON.stringify(packageJson, undefined, 2);
+function serializePackageJson(jsonObj: WritablePackageJson): string {
+  return JSON.stringify(sortPackageJson(jsonObj), undefined, 2);
 }
 
 async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
