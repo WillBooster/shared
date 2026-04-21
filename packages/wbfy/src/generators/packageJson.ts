@@ -120,6 +120,8 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 }
 
 function serializePackageJson(jsonObj: WritablePackageJson): string {
+  // fsUtil.generateFile() normalizes the trailing newline, so keep the serializer
+  // focused on the JSON payload itself.
   return JSON.stringify(sortPackageJson(jsonObj), undefined, 2);
 }
 

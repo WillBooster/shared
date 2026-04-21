@@ -67,10 +67,11 @@ function getLatestMtimeMs(entryPath: string): number {
   const stat = fs.statSync(entryPath);
   if (!stat.isDirectory()) return stat.mtimeMs;
 
-  return Math.max(
-    stat.mtimeMs,
-    ...fs.readdirSync(entryPath).map((name) => getLatestMtimeMs(path.join(entryPath, name)))
-  );
+  let maxMtimeMs = stat.mtimeMs;
+  for (const name of fs.readdirSync(entryPath)) {
+    maxMtimeMs = Math.max(maxMtimeMs, getLatestMtimeMs(path.join(entryPath, name)));
+  }
+  return maxMtimeMs;
 }
 
 function writeSmallProjectFixture(dirPath: string): void {
