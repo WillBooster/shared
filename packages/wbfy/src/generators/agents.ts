@@ -76,7 +76,7 @@ function generateAgentInstruction(
 - Always use heredoc syntax when passing multi-line content to any command.
 ${
   allConfigs.some((c) => c.hasStartTestServer)
-    ? `- Use \`${packageManager} run start-test-server\` to launch a web server for debugging or testing.`
+    ? `- Use \`${packageManager} start-test-server\` to launch a web server for debugging or testing.`
     : ''
 }
 
