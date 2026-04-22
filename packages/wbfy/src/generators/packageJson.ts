@@ -549,7 +549,7 @@ function installNpmDependencies(
 ): void {
   if (dependencies.length === 0) return;
 
-  const dependencySpecifiers = [...new Set(dependencies)];
+  const dependencySpecifiers = [...new Set(dependencies.map(getDependencySpecifier))];
   if (config.isBun) {
     spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
   } else {
@@ -605,10 +605,25 @@ function getLatestDependencyVersion(dependency: string): string {
   const cachedVersion = latestDependencyVersionCache.get(dependency);
   if (cachedVersion) return cachedVersion;
 
-  const version =
-    spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
+  const version = getDependencyVersionFromNpm(dependency);
   latestDependencyVersionCache.set(dependency, version);
   return version;
+}
+
+function getDependencyVersionFromNpm(dependency: string): string {
+  // npm's latest dist-tag still tracks TS7 dev snapshots; wbfy should follow
+  // the public beta channel until the stable TS7 package layout is finalized.
+  return (
+    spawnSyncAndReturnStdout(
+      'npm',
+      ['show', getDependencySpecifier(dependency), 'version', '--workspaces=false'],
+      process.cwd()
+    ) || '*'
+  );
+}
+
+function getDependencySpecifier(dependency: string): string {
+  return dependency === typescriptGoDependency ? `${dependency}@beta` : dependency;
 }
 
 // TODO: remove the following migration code in future
