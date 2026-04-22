@@ -35,12 +35,13 @@ function shouldAddSqliteConnectionLimit(config: PackageConfig): boolean {
 
   // `connection_limit=1` only applies to Prisma's SQLite datasource handling.
   // Repos that opt into non-pure SQLite adapters should keep their URL as-is.
-  return !dependencies['@prisma/adapter-better-sqlite3'] &&
-    !dependencies['@prisma/adapter-libsql'];
+  return !dependencies['@prisma/adapter-better-sqlite3'] && !dependencies['@prisma/adapter-libsql'];
 }
 
 function normalizeSqliteDatabaseUrl(url: string, shouldAddConnectionLimit: boolean): string {
-  const [pathPart, queryPart] = url.split('?', 2);
+  const queryStart = url.indexOf('?');
+  const pathPart = queryStart !== -1 ? url.slice(0, queryStart) : url;
+  const queryPart = queryStart !== -1 ? url.slice(queryStart + 1) : '';
   const params = new URLSearchParams(queryPart);
 
   params.delete('connection_limit');
