@@ -36,8 +36,8 @@ const defaultConfig = toParsedObject({
   use: asObject({
     baseURL: literal('process.env.NEXT_PUBLIC_BASE_URL'),
     trace: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
-    screenshot: literal("process.env.CI ? 'only-on-failure' : 'only-on-failure'"),
-    video: literal("process.env.CI ? 'retain-on-failure' : 'retain-on-failure'"),
+    screenshot: literal("process.env.CI ? 'only-on-failure' : 'on'"),
+    video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
   }),
   webServer: asObject({
     command: literal("'yarn start-test-server'"),
