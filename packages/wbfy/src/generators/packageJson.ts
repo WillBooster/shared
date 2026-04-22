@@ -605,10 +605,16 @@ function getLatestDependencyVersion(dependency: string): string {
   const cachedVersion = latestDependencyVersionCache.get(dependency);
   if (cachedVersion) return cachedVersion;
 
-  const version =
-    spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
+  const version = getDependencyVersionFromNpm(dependency);
   latestDependencyVersionCache.set(dependency, version);
   return version;
+}
+
+function getDependencyVersionFromNpm(dependency: string): string {
+  // npm's latest dist-tag still tracks TS7 dev snapshots; wbfy should follow
+  // the public beta channel until the stable TS7 package layout is finalized.
+  const specifier = dependency === typescriptGoDependency ? `${dependency}@beta` : dependency;
+  return spawnSyncAndReturnStdout('npm', ['show', specifier, 'version', '--workspaces=false'], process.cwd()) || '*';
 }
 
 // TODO: remove the following migration code in future
