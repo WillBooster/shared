@@ -101,10 +101,61 @@ describe('generatePackageJson', () => {
     });
 
     await generatePackageJson(config, config, true);
-    await promisePool.promiseAll();
 
     const packageJson = readPackageJson(dirPath);
     expect(packageJson.scripts?.postinstall).toBe('yarn run gen-i18n-ts > /dev/null');
+  });
+
+  test('keeps typescript for next.js packages', async () => {
+    const dirPath = await createPackageDir({
+      name: 'next-package',
+      private: true,
+      dependencies: {
+        next: '16.1.6',
+      },
+      devDependencies: {
+        typescript: '6.0.3',
+      },
+    });
+    const config = createConfig({
+      dirPath,
+      depending: {
+        ...createConfig().depending,
+        next: true,
+      },
+      packageJson: readPackageJson(dirPath),
+    });
+
+    await generatePackageJson(config, createRootConfig(path.dirname(dirPath)), true);
+
+    const packageJson = readPackageJson(dirPath);
+    expect(packageJson.devDependencies?.typescript).toBe('6.0.3');
+  });
+
+  test('adds typescript for next.js packages that use tsgo', { timeout: 30_000 }, async () => {
+    const dirPath = await createPackageDir({
+      name: 'next-package',
+      private: true,
+      dependencies: {
+        next: '16.1.6',
+      },
+      devDependencies: {},
+    });
+    const config = createConfig({
+      dirPath,
+      doesContainTypeScript: true,
+      depending: {
+        ...createConfig().depending,
+        next: true,
+      },
+      packageJson: readPackageJson(dirPath),
+    });
+
+    await generatePackageJson(config, createRootConfig(path.dirname(dirPath)), true);
+
+    const packageJson = readPackageJson(dirPath);
+    expect(packageJson.devDependencies?.typescript).toMatch(/^6\./u);
+    expect(packageJson.devDependencies?.['@typescript/native-preview']).toBeDefined();
   });
 });
 
