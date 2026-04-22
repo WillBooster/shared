@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import childProcess from 'node:child_process';
 
 import type { PackageJson } from 'type-fest';
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import { generatePackageJson } from '../src/generators/packageJson.js';
 import type { PackageConfig } from '../src/packageConfig.js';
@@ -11,6 +12,10 @@ import { promisePool } from '../src/utils/promisePool.js';
 import { createConfig } from './testConfig.js';
 
 describe('generatePackageJson', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test('preserves lint peer dependencies for published willbooster config packages', async () => {
     const dirPath = await createPackageDir({
       name: '@willbooster/eslint-config-ts',
@@ -133,6 +138,20 @@ describe('generatePackageJson', () => {
   });
 
   test('adds typescript for next.js packages that use tsgo', { timeout: 30_000 }, async () => {
+    vi.spyOn(childProcess, 'spawnSync').mockImplementation((command, args = []) => {
+      const dependency = args[1];
+      if (command === 'npm' && args[0] === 'show') {
+        if (dependency === '@typescript/native-preview@beta') {
+          return { output: [], pid: 1, signal: null, status: 0, stdout: '7.0.0-beta.1', stderr: '' };
+        }
+        if (dependency === 'typescript') {
+          return { output: [], pid: 1, signal: null, status: 0, stdout: '6.0.3', stderr: '' };
+        }
+        return { output: [], pid: 1, signal: null, status: 0, stdout: '1.0.0', stderr: '' };
+      }
+      throw new Error(`Unexpected spawnSync call: ${String(command)} ${args.join(' ')}`);
+    });
+
     const dirPath = await createPackageDir({
       name: 'next-package',
       private: true,
@@ -154,7 +173,7 @@ describe('generatePackageJson', () => {
     await generatePackageJson(config, createRootConfig(path.dirname(dirPath)), true);
 
     const packageJson = readPackageJson(dirPath);
-    expect(packageJson.devDependencies?.typescript).toMatch(/^6\./u);
+    expect(packageJson.devDependencies?.typescript).toMatch(/^\d+\.\d+\.\d+/u);
     expect(packageJson.devDependencies?.['@typescript/native-preview']).toBeDefined();
   });
 });

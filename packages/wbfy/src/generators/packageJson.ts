@@ -651,7 +651,7 @@ async function removeDeprecatedStuff(
   // Next.js still requires the `typescript` package at build/dev time for
   // TypeScript projects even when repos use tsgo for explicit typechecking.
   if (!config.depending.next) {
-    delete jsonObj.devDependencies.typescript;
+    delete jsonObj.devDependencies[typescriptDependency];
   }
   delete jsonObj.devDependencies.lerna;
   // To install the latest pinst
