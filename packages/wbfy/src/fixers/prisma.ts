@@ -20,7 +20,9 @@ export async function fixPrismaEnvFiles(config: PackageConfig): Promise<void> {
           return `DATABASE_URL="${normalizeSqliteDatabaseUrl(url, shouldAddConnectionLimit)}"`;
         }
       );
-      await fs.writeFile(envFilePath, newContent);
+      if (newContent !== content) {
+        await fs.writeFile(envFilePath, newContent);
+      }
     }
   });
 }
