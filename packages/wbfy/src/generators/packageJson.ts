@@ -24,6 +24,7 @@ import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfig
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptGoDependency = '@typescript/native-preview';
+const typescriptDependency = 'typescript';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const obsoleteLintDependencies = [
@@ -294,6 +295,11 @@ function applyPackageJsonConventions(
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
     devDependencies.push(typescriptGoDependency);
+    if (config.depending.next) {
+      // Next.js still uses the `typescript` package during dev/build startup for
+      // TypeScript apps even when repositories delegate explicit typechecking to tsgo.
+      devDependencies.push(typescriptDependency);
+    }
     if (config.isBun) {
       devDependencies.push('@types/bun');
     } else if (!config.depending.reactNative) {
@@ -642,7 +648,11 @@ async function removeDeprecatedStuff(
   delete jsonObj.dependencies.tslib;
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
-  delete jsonObj.devDependencies.typescript;
+  // Next.js still requires the `typescript` package at build/dev time for
+  // TypeScript projects even when repos use tsgo for explicit typechecking.
+  if (!config.depending.next) {
+    delete jsonObj.devDependencies[typescriptDependency];
+  }
   delete jsonObj.devDependencies.lerna;
   // To install the latest pinst
   delete jsonObj.devDependencies.pinst;
