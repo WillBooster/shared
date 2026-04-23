@@ -59,7 +59,7 @@
     "at-decorators": "7.1.0",
     "build-ts": "17.1.6",
     "oxfmt": "0.45.0",
-    "oxlint": "1.60.0",
+    "oxlint": "1.61.0",
     "oxlint-tsgolint": "0.21.1",
     "rolldown": "1.0.0-rc.15",
     "sort-package-json": "3.6.1",
