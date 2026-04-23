@@ -57,7 +57,7 @@
     "build-ts": "17.1.6",
     "next": "16.2.4",
     "oxfmt": "0.45.0",
-    "oxlint": "1.60.0",
+    "oxlint": "1.61.0",
     "oxlint-tsgolint": "0.21.1",
     "sort-package-json": "3.6.1",
     "vitest": "4.1.4"

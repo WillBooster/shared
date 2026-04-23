@@ -108,7 +108,8 @@ export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
 - Place calling functions above the functions they call to maintain a clear top-down order.
   - e.g., \`function caller() { callee(); } function callee() { ... }\`
   - Unlike functions, place variable and type declarations ABOVE their usage.
-- Write comments that explain "why" rather than "what". Avoid stating what can be understood from the code itself.
+- Write comments that explain "why" and use JSDoc to explain "what".
+  - Avoid stating what can be easily understood from the code itself.
 - Prefer \`undefined\` over \`null\` unless explicitly required by APIs or libraries.
 - Prefer using a single template literal for prompts instead of \`join()\` with an array of strings.
 ${
