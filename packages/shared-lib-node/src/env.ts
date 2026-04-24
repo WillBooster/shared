@@ -135,7 +135,7 @@ function readEnvFile(filePath: string): Record<string, string> {
   const cached = cachedEnvVars.get(filePath);
   if (cached) return cached;
 
-  const parsed = config({ path: path.resolve(filePath), processEnv: {} }).parsed ?? {};
+  const parsed = config({ path: path.resolve(filePath), processEnv: {}, quiet: true }).parsed ?? {};
   cachedEnvVars.set(filePath, parsed);
   return parsed;
 }
