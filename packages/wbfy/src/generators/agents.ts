@@ -119,7 +119,8 @@ ${
 }
 ${
   allConfigs.some((c) => c.depending.react || c.depending.next)
-    ? `- Prefer \`useImmer\` for storing an array or an object to \`useState\`.`
+    ? `- Prefer lambda over \`function\` for React components, e.g., \`const Button: React.FC = () => {\`.
+- Prefer \`useImmer\` for storing an array or an object to \`useState\`.`
     : ''
 }
 ${
