@@ -64,7 +64,7 @@
     "@willbooster/oxfmt-config": "1.2.1",
     "@willbooster/oxlint-config": "1.4.4",
     "@yarnpkg/core": "4.6.0",
-    "build-ts": "17.1.7",
+    "build-ts": "17.1.8",
     "lefthook": "2.1.5",
     "oxfmt": "0.45.0",
     "oxlint": "1.61.0",
