@@ -112,6 +112,8 @@ export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
   - Avoid stating what can be easily understood from the code itself.
 - Prefer \`undefined\` over \`null\` unless explicitly required by APIs or libraries.
 - Prefer using a single template literal for prompts instead of \`join()\` with an array of strings.
+- Assume that all environment variables are properly defined.
+  - If validation is required, use \`assert\` to fail fast (e.g., during startup).
 ${
   allConfigs.some((c) => c.depending.genI18nTs)
     ? `- When introducing new string literals in React components, update the language resource files in the \`i18n\` directory (e.g., \`i18n/ja-JP.json\`). Reference these strings using the \`i18n\` utility. For example, use \`i18n.pages.home.title()\` for \`{ "pages": { "home": { "title": "My App" } } }\`.`
