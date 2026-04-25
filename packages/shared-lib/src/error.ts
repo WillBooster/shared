@@ -55,6 +55,10 @@ export async function ignoreEnoentAsync<T>(fn: () => Promise<T>): Promise<T | un
 export interface RetryOptions {
   beforeRetry?: (error: unknown) => Promise<void>;
   handleError?: (error: unknown) => Promise<void>;
+  /**
+   * The maximum number of total attempts, including the initial attempt.
+   * For example, `retryCount: 3` runs the function at most 3 times: 1 initial attempt and up to 2 retries.
+   */
   retryCount?: number;
   retryLogger?: (message: string) => void;
   shouldRetry?: (error: unknown) => boolean;
@@ -67,7 +71,7 @@ export interface RetryOptions {
  * @param func The function to retry.
  * @param beforeRetry The function to call immediately before retrying.
  * @param handleError The function to call when an error occurs.
- * @param retryCount The maximum number of retries.
+ * @param retryCount The maximum number of total attempts, including the initial attempt.
  * @param retryLogger The function to log retrying.
  * @param sleepMilliseconds The number of milliseconds to sleep before retrying.
  * @param updateSleepMilliseconds The function to update sleep milliseconds after each retry.
