@@ -70,6 +70,7 @@ const micromatchImportPattern =
   /\bfrom\s+['"]micromatch['"]|\brequire\(\s*['"]micromatch['"]\s*\)|\bimport\(\s*['"]micromatch['"]\s*\)/u;
 
 const latestDependencyVersionCache = new Map<string, string>();
+const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 
 type WritablePackageJson = SetRequired<
   PackageJson,
@@ -506,7 +507,7 @@ function addDependencyVersionsToPackageJson(jsonObj: WritablePackageJson, depend
 }
 
 function removeEmptyDependencySections(jsonObj: PackageJson): void {
-  for (const key of ['dependencies', 'devDependencies', 'peerDependencies'] as const) {
+  for (const key of dependencySectionKeys) {
     const section = jsonObj[key];
     if (section && Object.keys(section).length === 0) {
       Reflect.deleteProperty(jsonObj, key);
@@ -521,10 +522,10 @@ function installDependencyUpdates(
   packageManager: 'bun' | 'yarn'
 ): void {
   const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-  installNpmDependencies(config, packageManager, dependencies, false);
+  installNpmDependencies(config, packageManager, jsonObj.dependencies ?? {}, dependencies, false);
 
   const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-  installNpmDependencies(config, packageManager, devDependencies, true);
+  installNpmDependencies(config, packageManager, jsonObj.devDependencies ?? {}, devDependencies, true);
 
   const pythonPackageManager = getPythonPackageManager(config);
   if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
@@ -550,18 +551,39 @@ function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
 function installNpmDependencies(
   config: PackageConfig,
   packageManager: 'bun' | 'yarn',
+  packageJsonDependencies: Partial<Record<string, string>>,
   dependencies: string[],
   dev: boolean
 ): void {
   if (dependencies.length === 0) return;
 
-  const dependencySpecifiers = [...new Set(dependencies.map(getDependencySpecifier))];
-  if (config.isBun) {
-    spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
-  } else {
-    // Intentionally omit versions to update dependencies to the latest versions with Yarn.
-    spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), ...dependencySpecifiers], config.dirPath);
+  const dependencySpecifiers = [
+    ...new Set(
+      dependencies.map((dependency) =>
+        getInstallDependencySpecifier(dependency, packageJsonDependencies[dependency], packageManager)
+      )
+    ),
+  ];
+  spawnSync(
+    packageManager,
+    ['add', ...(dev ? ['-D'] : []), ...(config.isBun ? ['--exact'] : []), ...dependencySpecifiers],
+    config.dirPath
+  );
+}
+
+function getInstallDependencySpecifier(
+  dependency: string,
+  currentVersion: string | undefined,
+  packageManager: 'bun' | 'yarn'
+): string {
+  // Yarn prefers local workspaces when adding a bare package name. Passing the
+  // resolved version keeps managed tools as npm dependencies in config-package
+  // monorepos, where those package names can also exist as workspaces.
+  if (packageManager === 'yarn' && currentVersion && !isWorkspaceProtocolRange(currentVersion)) {
+    return `${dependency}@${currentVersion}`;
   }
+
+  return getDependencySpecifier(dependency);
 }
 
 function addPackageJsonDependencies(
@@ -607,31 +629,6 @@ function formatPackageJsonWithProjectFormatter(
   }
 }
 
-function getLatestDependencyVersion(dependency: string): string {
-  const cachedVersion = latestDependencyVersionCache.get(dependency);
-  if (cachedVersion) return cachedVersion;
-
-  const version = getDependencyVersionFromNpm(dependency);
-  latestDependencyVersionCache.set(dependency, version);
-  return version;
-}
-
-function getDependencyVersionFromNpm(dependency: string): string {
-  // npm's latest dist-tag still tracks TS7 dev snapshots; wbfy should follow
-  // the public beta channel until the stable TS7 package layout is finalized.
-  return (
-    spawnSyncAndReturnStdout(
-      'npm',
-      ['show', getDependencySpecifier(dependency), 'version', '--workspaces=false'],
-      process.cwd()
-    ) || '*'
-  );
-}
-
-function getDependencySpecifier(dependency: string): string {
-  return dependency === typescriptGoDependency ? `${dependency}@beta` : dependency;
-}
-
 // TODO: remove the following migration code in future
 async function removeDeprecatedStuff(
   config: PackageConfig,
@@ -640,6 +637,8 @@ async function removeDeprecatedStuff(
   if (jsonObj.author === 'WillBooster LLC') {
     jsonObj.author = 'WillBooster Inc.';
   }
+  removeSelfDependency(config, jsonObj);
+  replaceWillBoosterConfigsWorkspaceDependencyRanges(config, jsonObj);
   delete jsonObj.scripts['sort-package-json'];
   delete jsonObj.scripts['sort-all-package-json'];
   delete jsonObj.scripts['typecheck/warn'];
@@ -665,6 +664,67 @@ async function removeDeprecatedStuff(
   await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'lerna.json'), { force: true }));
 
   removeObsoleteLintDependencies(jsonObj, config);
+}
+
+function removeSelfDependency(
+  config: PackageConfig,
+  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
+): void {
+  const packageName = jsonObj.name || path.basename(config.dirPath);
+
+  // A package can import itself through Node's package self-reference without
+  // declaring itself; keeping that edge breaks monorepo release topological sorting.
+  for (const section of getDependencySections(jsonObj)) {
+    Reflect.deleteProperty(section, packageName);
+  }
+}
+
+function replaceWillBoosterConfigsWorkspaceDependencyRanges(config: PackageConfig, jsonObj: PackageJson): void {
+  if (!config.isWillBoosterConfigs) return;
+
+  for (const section of getDependencySections(jsonObj)) {
+    for (const [dependency, version] of Object.entries(section)) {
+      if (!version) continue;
+      if (!isWorkspaceProtocolRange(version)) continue;
+      // willbooster-configs publishes these packages independently, so generated
+      // package metadata must describe npm release edges instead of local
+      // workspace edges that release tooling treats as monorepo graph links.
+      // The final `yarn install --no-immutable` syncs the lockfile after this
+      // migration, even when the dependency is not part of wbfy's managed list.
+      section[dependency] = getLatestDependencyVersion(dependency);
+    }
+  }
+}
+
+function getDependencySections(jsonObj: PackageJson): Partial<Record<string, string>>[] {
+  return dependencySectionKeys
+    .map((key) => jsonObj[key])
+    .filter((section): section is Partial<Record<string, string>> => !!section);
+}
+
+function getLatestDependencyVersion(dependency: string): string {
+  const cachedVersion = latestDependencyVersionCache.get(dependency);
+  if (cachedVersion) return cachedVersion;
+
+  const version = getDependencyVersionFromNpm(dependency);
+  latestDependencyVersionCache.set(dependency, version);
+  return version;
+}
+
+function getDependencyVersionFromNpm(dependency: string): string {
+  // npm's latest dist-tag still tracks TS7 dev snapshots; wbfy should follow
+  // the public beta channel until the stable TS7 package layout is finalized.
+  return (
+    spawnSyncAndReturnStdout(
+      'npm',
+      ['show', getDependencySpecifier(dependency), 'version', '--workspaces=false'],
+      process.cwd()
+    ) || '*'
+  );
+}
+
+function getDependencySpecifier(dependency: string): string {
+  return dependency === typescriptGoDependency ? `${dependency}@beta` : dependency;
 }
 
 function removeObsoleteLintDependencies(
@@ -720,15 +780,19 @@ function doesProductCodeImportMicromatch(dirPath: string): boolean {
 function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
+  if (isWorkspaceProtocolRange(currentVersion)) return true;
   // wbfy-managed tools must be kept current even when the package already pins
   // a concrete version. In particular, build-ts owns declaration output paths.
   return (
     dependency === '@willbooster/wb' ||
     dependency === buildTsDependency ||
-    dependency === '@willbooster/oxlint-config' ||
-    dependency === 'oxlint' ||
+    oxlintDeps.includes(dependency) ||
     dependency === typescriptGoDependency
   );
+}
+
+function isWorkspaceProtocolRange(version: string): boolean {
+  return version.startsWith('workspace:');
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
