@@ -689,6 +689,8 @@ function replaceWillBoosterConfigsWorkspaceDependencyRanges(config: PackageConfi
       // willbooster-configs publishes these packages independently, so generated
       // package metadata must describe npm release edges instead of local
       // workspace edges that release tooling treats as monorepo graph links.
+      // The final `yarn install --no-immutable` syncs the lockfile after this
+      // migration, even when the dependency is not part of wbfy's managed list.
       section[dependency] = getLatestDependencyVersion(dependency);
     }
   }
