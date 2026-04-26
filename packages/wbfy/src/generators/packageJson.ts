@@ -576,6 +576,9 @@ function getInstallDependencySpecifier(
   currentVersion: string | undefined,
   packageManager: 'bun' | 'yarn'
 ): string {
+  // Yarn prefers local workspaces when adding a bare package name. Passing the
+  // resolved version keeps managed tools as npm dependencies in config-package
+  // monorepos, where those package names can also exist as workspaces.
   if (packageManager === 'yarn' && currentVersion && !isWorkspaceProtocolRange(currentVersion)) {
     return `${dependency}@${currentVersion}`;
   }
@@ -708,6 +711,9 @@ function replaceWillBoosterConfigsWorkspaceDependencyRanges(config: PackageConfi
     for (const [dependency, version] of Object.entries(section)) {
       if (!version) continue;
       if (!isWorkspaceProtocolRange(version)) continue;
+      // willbooster-configs publishes these packages independently, so generated
+      // package metadata must describe npm release edges instead of local
+      // workspace edges that release tooling treats as monorepo graph links.
       section[dependency] = getLatestDependencyVersion(dependency);
     }
   }
