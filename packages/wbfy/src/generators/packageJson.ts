@@ -564,11 +564,11 @@ function installNpmDependencies(
       )
     ),
   ];
-  if (config.isBun) {
-    spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
-  } else {
-    spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), ...dependencySpecifiers], config.dirPath);
-  }
+  spawnSync(
+    packageManager,
+    ['add', ...(dev ? ['-D'] : []), ...(config.isBun ? ['--exact'] : []), ...dependencySpecifiers],
+    config.dirPath
+  );
 }
 
 function getInstallDependencySpecifier(
