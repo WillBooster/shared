@@ -640,6 +640,7 @@ async function removeDeprecatedStuff(
   if (jsonObj.author === 'WillBooster LLC') {
     jsonObj.author = 'WillBooster Inc.';
   }
+  removeSelfDependency(jsonObj);
   delete jsonObj.scripts['sort-package-json'];
   delete jsonObj.scripts['sort-all-package-json'];
   delete jsonObj.scripts['typecheck/warn'];
@@ -665,6 +666,18 @@ async function removeDeprecatedStuff(
   await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'lerna.json'), { force: true }));
 
   removeObsoleteLintDependencies(jsonObj, config);
+}
+
+function removeSelfDependency(
+  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
+): void {
+  if (!jsonObj.name) return;
+
+  // A package can import itself through Node's package self-reference without
+  // declaring itself; keeping that edge breaks monorepo release topological sorting.
+  delete jsonObj.dependencies[jsonObj.name];
+  delete jsonObj.devDependencies[jsonObj.name];
+  delete jsonObj.peerDependencies[jsonObj.name];
 }
 
 function removeObsoleteLintDependencies(
