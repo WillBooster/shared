@@ -197,23 +197,8 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
     sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
   }
 
-  const lintExitCodes: number[] = [];
-  const lintRunOptions = { exitIfFailed: false, forceColor: true } as const;
-  if (argv.format && sortPackageJsonArgs.length > 0) {
-    lintExitCodes.push(
-      await runWithSpawnInParallel(
-        buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
-        projects.self,
-        argv,
-        lintRunOptions
-      )
-    );
-  }
-  if (lintExitCodes.some((exitCode) => exitCode !== 0)) {
-    return 1;
-  }
-
   const lintPromises: Promise<number>[] = [];
+  const lintRunOptions = { exitIfFailed: false, forceColor: true } as const;
   if (files.length > 0) {
     for (const [project, lintFilePaths] of lintFilePathsByProject) {
       const lintCommand = buildLintCommand(project, argv, lintFilePaths);
@@ -255,30 +240,42 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
       }
     }
   }
-  lintExitCodes.push(...(await Promise.all(lintPromises)));
+  const lintExitCodes = await Promise.all(lintPromises);
 
   if (missingLintToolForExplicitFiles || lintExitCodes.some((exitCode) => exitCode !== 0)) {
     return 1;
   }
 
-  if (argv.format && prettierArgs.length > 0 && projects.self.hasPrettier) {
-    lintExitCodes.push(
-      await runWithSpawnInParallel(
-        buildShellCommand([
-          'YARN',
-          'prettier',
-          '--cache',
-          '--color',
-          '--no-error-on-unmatched-pattern',
-          '--write',
-          '--',
-          ...prettierArgs,
-        ]),
-        projects.self,
-        argv,
-        { exitIfFailed: false, forceColor: true }
-      )
-    );
+  if (argv.format) {
+    if (prettierArgs.length > 0 && projects.self.hasPrettier) {
+      lintExitCodes.push(
+        await runWithSpawnInParallel(
+          buildShellCommand([
+            'YARN',
+            'prettier',
+            '--cache',
+            '--color',
+            '--no-error-on-unmatched-pattern',
+            '--write',
+            '--',
+            ...prettierArgs,
+          ]),
+          projects.self,
+          argv,
+          { exitIfFailed: false, forceColor: true }
+        )
+      );
+    }
+    if (sortPackageJsonArgs.length > 0) {
+      lintExitCodes.push(
+        await runWithSpawnInParallel(
+          buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
+          projects.self,
+          argv,
+          { exitIfFailed: false, forceColor: true }
+        )
+      );
+    }
   }
 
   return lintExitCodes.some((exitCode) => exitCode !== 0) ? 1 : 0;
