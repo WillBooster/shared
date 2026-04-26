@@ -700,7 +700,7 @@ function removeSelfDependency(
   // A package can import itself through Node's package self-reference without
   // declaring itself; keeping that edge breaks monorepo release topological sorting.
   for (const section of getDependencySections(jsonObj)) {
-    delete section[packageName];
+    Reflect.deleteProperty(section, packageName);
   }
 }
 
