@@ -2,29 +2,26 @@
   "name": "@willbooster/wb",
   "version": "0.0.0-semantically-released",
   "description": "CLI tool for WillBooster projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/wb"
   },
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
+  "type": "module",
   "bin": "bin/index.js",
   "files": [
     "bin/",
     "dist/"
   ],
-  "type": "module",
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
     "check-all-for-ai": "yarn check-for-ai && yarn test",
     "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn format-code",
-    "format-code": "oxfmt --write --no-error-on-unmatched-pattern .",
+    "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
     "lint": "oxlint --no-error-on-unmatched-pattern .",
     "lint-fix": "yarn lint --fix",
     "start": "build-ts run src/index.ts --",
@@ -68,5 +65,8 @@
   },
   "engines": {
     "node": ">= 22.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

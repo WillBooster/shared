@@ -826,7 +826,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       format: generateFormatScript(hasJsOrTs, hasJava),
       lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
-      'format-code': `oxfmt --write --no-error-on-unmatched-pattern .`,
+      'format-code': `oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'`,
       typecheck: 'tsgo --noEmit',
     };
     if (hasJava) {

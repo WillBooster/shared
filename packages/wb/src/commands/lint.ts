@@ -300,7 +300,14 @@ export function buildLintCommand(
 }
 
 export function buildOxfmtCommand(files?: string[]): string {
-  return buildShellCommand(['YARN', 'oxfmt', '--write', '--no-error-on-unmatched-pattern', ...(files ?? ['.'])]);
+  return buildShellCommand([
+    'YARN',
+    'oxfmt',
+    '--write',
+    '--no-error-on-unmatched-pattern',
+    ...(files ?? ['.']),
+    '!**/package.json',
+  ]);
 }
 
 export function buildPoetryCommand(

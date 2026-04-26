@@ -234,7 +234,7 @@ ${config.isBun ? 'bun --bun wb' : 'yarn wb'} lint --fix --format -- {staged_file
   return String.raw`
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 ${hasJsOrTs ? String.raw`oxlint_files="$(printf '%s\n' {staged_files} | grep -E '(${oxlintPattern})' || true)"` : ''}
-${hasJsOrTs ? String.raw`oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' || true)"` : ''}
+${hasJsOrTs ? String.raw`oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' | grep -v -E '(^|/)package\.json$' || true)"` : ''}
 ${hasJava ? String.raw`prettier_files="$(printf '%s\n' {staged_files} | grep -E '(${prettierPattern})' || true)"` : ''}
 package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
 ${hasPythonPackageManager(config) ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
@@ -244,7 +244,7 @@ ${
   hasJsOrTs
     ? String.raw`
 if [ -n "$oxfmt_files" ]; then
-  node node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern $oxfmt_files
+  node node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern '!**/package.json' $oxfmt_files
 fi
 `
     : ''
