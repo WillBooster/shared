@@ -393,7 +393,7 @@ async function normalizePackageMetadata(
         jsonObj.scripts['format-code'] = `dart format $(find ${dirs.join(
           ' '
         )} -name generated -prune -o -name '*.freezed.dart' -prune -o -name '*.g.dart' -prune -o -name '*.dart' -print)`;
-        jsonObj.scripts.format = (jsonObj.scripts.format ?? '') + ` && yarn format-code`;
+        jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format, config);
       }
     }
 
@@ -429,7 +429,7 @@ async function normalizePackageMetadata(
           jsonObj.scripts.lint = `${pythonRunner} flake8 ${dirNamesStr}`;
           jsonObj.scripts['lint-fix'] = 'yarn lint';
         }
-        jsonObj.scripts.format = (jsonObj.scripts.format ?? '') + ` && yarn format-code`;
+        jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format, config);
         dependencyUpdates.pythonDevDependencies.push('black', 'isort', 'flake8');
       }
     }
@@ -457,6 +457,13 @@ async function normalizePackageMetadata(
     // Because @types/prettier blocks prettier execution.
     delete jsonObj.devDependencies['@types/prettier'];
   }
+}
+
+function appendFormatCodeCommand(formatScript: string | undefined, config: PackageConfig): string {
+  // Bun projects may not have a Yarn lockfile, so generated package scripts
+  // must invoke local package scripts through the repository's package manager.
+  const scriptRunner = config.isBun ? 'bun run' : 'yarn';
+  return `${formatScript ?? ''} && ${scriptRunner} format-code`;
 }
 
 function addGenI18nTsPostinstallScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
