@@ -629,31 +629,6 @@ function formatPackageJsonWithProjectFormatter(
   }
 }
 
-function getLatestDependencyVersion(dependency: string): string {
-  const cachedVersion = latestDependencyVersionCache.get(dependency);
-  if (cachedVersion) return cachedVersion;
-
-  const version = getDependencyVersionFromNpm(dependency);
-  latestDependencyVersionCache.set(dependency, version);
-  return version;
-}
-
-function getDependencyVersionFromNpm(dependency: string): string {
-  // npm's latest dist-tag still tracks TS7 dev snapshots; wbfy should follow
-  // the public beta channel until the stable TS7 package layout is finalized.
-  return (
-    spawnSyncAndReturnStdout(
-      'npm',
-      ['show', getDependencySpecifier(dependency), 'version', '--workspaces=false'],
-      process.cwd()
-    ) || '*'
-  );
-}
-
-function getDependencySpecifier(dependency: string): string {
-  return dependency === typescriptGoDependency ? `${dependency}@beta` : dependency;
-}
-
 // TODO: remove the following migration code in future
 async function removeDeprecatedStuff(
   config: PackageConfig,
@@ -723,6 +698,31 @@ function getDependencySections(jsonObj: PackageJson): Partial<Record<string, str
   return dependencySectionKeys
     .map((key) => jsonObj[key])
     .filter((section): section is Partial<Record<string, string>> => !!section);
+}
+
+function getLatestDependencyVersion(dependency: string): string {
+  const cachedVersion = latestDependencyVersionCache.get(dependency);
+  if (cachedVersion) return cachedVersion;
+
+  const version = getDependencyVersionFromNpm(dependency);
+  latestDependencyVersionCache.set(dependency, version);
+  return version;
+}
+
+function getDependencyVersionFromNpm(dependency: string): string {
+  // npm's latest dist-tag still tracks TS7 dev snapshots; wbfy should follow
+  // the public beta channel until the stable TS7 package layout is finalized.
+  return (
+    spawnSyncAndReturnStdout(
+      'npm',
+      ['show', getDependencySpecifier(dependency), 'version', '--workspaces=false'],
+      process.cwd()
+    ) || '*'
+  );
+}
+
+function getDependencySpecifier(dependency: string): string {
+  return dependency === typescriptGoDependency ? `${dependency}@beta` : dependency;
 }
 
 function removeObsoleteLintDependencies(
