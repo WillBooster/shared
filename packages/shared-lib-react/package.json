@@ -2,22 +2,15 @@
   "name": "@willbooster/shared-lib-react",
   "version": "0.0.0-semantically-released",
   "description": "Shared library for WillBooster React projects",
-  "license": "Apache-2.0",
-  "author": "WillBooster Inc.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git",
     "directory": "packages/shared-lib-react"
   },
-  "files": [
-    "bin/",
-    "dist/"
-  ],
-  "type": "module",
+  "license": "Apache-2.0",
+  "author": "WillBooster Inc.",
   "sideEffects": false,
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -25,9 +18,13 @@
       "import": "./dist/index.js"
     }
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "bin/",
+    "dist/"
+  ],
   "scripts": {
     "build": "build-ts lib",
     "build-storybook": "build-storybook",
@@ -35,7 +32,7 @@
     "check-for-ai": "yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet",
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn format-code",
-    "format-code": "oxfmt --write --no-error-on-unmatched-pattern .",
+    "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
     "lint": "oxlint --no-error-on-unmatched-pattern .",
     "lint-fix": "yarn lint --fix",
     "storybook": "start-storybook -p 6006",
@@ -76,5 +73,8 @@
   "peerDependencies": {
     "react": "~19.2.0",
     "react-dom": "~19.2.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
