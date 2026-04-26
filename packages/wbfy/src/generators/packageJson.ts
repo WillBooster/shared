@@ -463,7 +463,7 @@ function appendFormatCodeCommand(formatScript: string | undefined, config: Packa
   // Bun projects may not have a Yarn lockfile, so generated package scripts
   // must invoke local package scripts through the repository's package manager.
   const scriptRunner = config.isBun ? 'bun run' : 'yarn';
-  return `${formatScript ?? ''} && ${scriptRunner} format-code`;
+  return formatScript ? `${formatScript} && ${scriptRunner} format-code` : `${scriptRunner} format-code`;
 }
 
 function addGenI18nTsPostinstallScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
