@@ -215,7 +215,10 @@ function getCleanupCommand(config: PackageConfig): string {
 yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
 `.trim();
   }
-  if (config.isBun || config.depending.wb) {
+  // Python-only Bun repos install wb for shared scripts but not Oxlint, so
+  // staged-file hooks must use the language-specific formatter path below.
+  const canUseWbForStagedFiles = doesContainJsOrTs(config) || doesContainJava(config);
+  if ((config.isBun || config.depending.wb) && canUseWbForStagedFiles) {
     const packageManager = config.isBun ? 'bun' : 'yarn';
     return config.depending.wb
       ? `
