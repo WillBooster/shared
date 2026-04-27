@@ -703,12 +703,13 @@ function removeWillBoosterConfigsManagedDependencies(
 ): void {
   if (!config.isWillBoosterConfigs) return;
 
+  const sections = getDependencySections(jsonObj);
   for (const dependency of oxlintDeps) {
     if (!dependency.startsWith('@willbooster/')) continue;
     // willbooster-configs publishes these managed config packages from the same
     // monorepo. Keeping them in subpackage metadata creates local workspace
     // graph edges that multi-semantic-release sorts as release dependencies.
-    for (const section of getDependencySections(jsonObj)) {
+    for (const section of sections) {
       Reflect.deleteProperty(section, dependency);
     }
   }
