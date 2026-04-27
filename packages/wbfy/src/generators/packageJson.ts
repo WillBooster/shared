@@ -663,6 +663,7 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['check-all'];
   await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'lerna.json'), { force: true }));
 
+  removeWillBoosterConfigsManagedDependencies(config, jsonObj);
   removeObsoleteLintDependencies(jsonObj, config);
 }
 
@@ -692,6 +693,23 @@ function replaceWillBoosterConfigsWorkspaceDependencyRanges(config: PackageConfi
       // The final `yarn install --no-immutable` syncs the lockfile after this
       // migration, even when the dependency is not part of wbfy's managed list.
       section[dependency] = getLatestDependencyVersion(dependency);
+    }
+  }
+}
+
+function removeWillBoosterConfigsManagedDependencies(
+  config: PackageConfig,
+  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
+): void {
+  if (!config.isWillBoosterConfigs) return;
+
+  for (const dependency of oxlintDeps) {
+    if (!dependency.startsWith('@willbooster/')) continue;
+    // willbooster-configs publishes these managed config packages from the same
+    // monorepo. Keeping them in subpackage metadata creates local workspace
+    // graph edges that multi-semantic-release sorts as release dependencies.
+    for (const section of getDependencySections(jsonObj)) {
+      Reflect.deleteProperty(section, dependency);
     }
   }
 }
