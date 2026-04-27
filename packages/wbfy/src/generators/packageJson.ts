@@ -27,6 +27,11 @@ const typescriptGoDependency = '@typescript/native-preview';
 const typescriptDependency = 'typescript';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
+const willBoosterConfigsManagedDependencies = [
+  '@willbooster/prettier-config',
+  wbDependency,
+  ...oxlintDeps.filter((dependency) => dependency.startsWith('@willbooster/')),
+];
 const obsoleteLintDependencies = [
   '@biomejs/biome',
   '@eslint-react/eslint-plugin',
@@ -704,8 +709,7 @@ function removeWillBoosterConfigsManagedDependencies(
   if (!config.isWillBoosterConfigs) return;
 
   const sections = getDependencySections(jsonObj);
-  for (const dependency of oxlintDeps) {
-    if (!dependency.startsWith('@willbooster/')) continue;
+  for (const dependency of willBoosterConfigsManagedDependencies) {
     // willbooster-configs publishes these managed config packages from the same
     // monorepo. Keeping them in subpackage metadata creates local workspace
     // graph edges that multi-semantic-release sorts as release dependencies.
