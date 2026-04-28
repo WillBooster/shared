@@ -741,14 +741,15 @@ async function removeUnusedTsconfigBaseDependencies(
     if (usedDependencySet.has(dependency) || existingTsconfigBaseDependencies.has(dependency)) continue;
     // wbfy owns these base-config packages. Remove stale variants when repo
     // capabilities change, such as Next.js taking ownership of tsconfig.json.
-    delete jsonObj.dependencies[dependency];
-    delete jsonObj.devDependencies[dependency];
+    for (const section of getDependencySections(jsonObj)) {
+      Reflect.deleteProperty(section, dependency);
+    }
   }
 }
 
 async function getExistingTsconfigBaseDependencies(config: PackageConfig): Promise<Set<string>> {
   const existingTsconfigBaseDependencies = new Set<string>();
-  const filePaths = fg.globSync('**/tsconfig*.json', {
+  const filePaths = await fg.glob('**/tsconfig*.json', {
     cwd: config.dirPath,
     dot: true,
     ignore: globIgnore,
