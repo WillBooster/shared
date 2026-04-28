@@ -110,7 +110,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   await removeDeprecatedStuff(config, jsonObj);
   await updateScripts(config, jsonObj, packageManager);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
-  const dependencyUpdates = applyPackageJsonConventions(config, rootConfig, jsonObj);
+  const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
   await updatePrivatePackages(jsonObj);
@@ -196,11 +196,11 @@ function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): voi
   }
 }
 
-function applyPackageJsonConventions(
+async function applyPackageJsonConventions(
   config: PackageConfig,
   rootConfig: PackageConfig,
   jsonObj: WritablePackageJson
-): DependencyUpdates {
+): Promise<DependencyUpdates> {
   const dependencies: string[] = [];
   const devDependencies = ['sort-package-json'];
   const pythonDevDependencies: string[] = [];
@@ -300,7 +300,7 @@ function applyPackageJsonConventions(
   }
 
   const tsconfigBaseDependencies = doesContainJsOrTs(config) ? getTsconfigBaseDependencies(config) : [];
-  removeUnusedTsconfigBaseDependencies(config, jsonObj, tsconfigBaseDependencies);
+  await removeUnusedTsconfigBaseDependencies(config, jsonObj, tsconfigBaseDependencies);
   if (doesContainJsOrTs(config)) {
     devDependencies.push(...tsconfigBaseDependencies);
   }
@@ -732,13 +732,13 @@ function removeWillBoosterConfigsManagedDependencies(
   }
 }
 
-function removeUnusedTsconfigBaseDependencies(
+async function removeUnusedTsconfigBaseDependencies(
   config: PackageConfig,
   jsonObj: WritablePackageJson,
   usedDependencies: string[]
-): void {
+): Promise<void> {
   const usedDependencySet = new Set(usedDependencies);
-  const existingTsconfigBaseDependencies = getExistingTsconfigBaseDependencies(config);
+  const existingTsconfigBaseDependencies = await getExistingTsconfigBaseDependencies(config);
   for (const dependency of managedTsconfigBaseDependencies) {
     if (usedDependencySet.has(dependency) || existingTsconfigBaseDependencies.has(dependency)) continue;
     // wbfy owns these base-config packages. Remove stale variants when repo
@@ -748,7 +748,7 @@ function removeUnusedTsconfigBaseDependencies(
   }
 }
 
-function getExistingTsconfigBaseDependencies(config: PackageConfig): Set<string> {
+async function getExistingTsconfigBaseDependencies(config: PackageConfig): Promise<Set<string>> {
   const existingTsconfigBaseDependencies = new Set<string>();
   const filePaths = fg.globSync('**/tsconfig*.json', {
     cwd: config.dirPath,
@@ -759,7 +759,10 @@ function getExistingTsconfigBaseDependencies(config: PackageConfig): Set<string>
   for (const filePath of filePaths) {
     const absoluteFilePath = path.resolve(config.dirPath, filePath);
     try {
-      const parsed = ts.parseConfigFileTextToJson(absoluteFilePath, fs.readFileSync(absoluteFilePath, 'utf8'));
+      const parsed = ts.parseConfigFileTextToJson(
+        absoluteFilePath,
+        await fs.promises.readFile(absoluteFilePath, 'utf8')
+      );
       if (parsed.error) {
         console.warn(
           `Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be parsed: ${formatTsDiagnostic(parsed.error)}`
