@@ -4,6 +4,7 @@ import path from 'node:path';
 import merge from 'deepmerge';
 import fg from 'fast-glob';
 import { sortPackageJson } from 'sort-package-json';
+import ts from 'typescript';
 import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
@@ -19,7 +20,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
-import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
+import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
@@ -295,8 +296,10 @@ function applyPackageJsonConventions(
     devDependencies.push(...oxlintDeps);
   }
 
+  const tsconfigBaseDependencies = doesContainJsOrTs(config) ? getTsconfigBaseDependencies(config) : [];
+  removeUnusedTsconfigBaseDependencies(config, jsonObj, tsconfigBaseDependencies);
   if (doesContainJsOrTs(config)) {
-    devDependencies.push(...getTsconfigBaseDependencies(config));
+    devDependencies.push(...tsconfigBaseDependencies);
   }
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
@@ -724,6 +727,47 @@ function removeWillBoosterConfigsManagedDependencies(
       Reflect.deleteProperty(section, dependency);
     }
   }
+}
+
+function removeUnusedTsconfigBaseDependencies(
+  config: PackageConfig,
+  jsonObj: WritablePackageJson,
+  usedDependencies: string[]
+): void {
+  const usedDependencySet = new Set(usedDependencies);
+  for (const dependency of managedTsconfigBaseDependencies) {
+    if (usedDependencySet.has(dependency) || isReferencedByExistingTsconfig(config, dependency)) continue;
+    // wbfy owns these base-config packages. Remove stale variants when repo
+    // capabilities change, such as Next.js taking ownership of tsconfig.json.
+    delete jsonObj.dependencies[dependency];
+    delete jsonObj.devDependencies[dependency];
+  }
+}
+
+function isReferencedByExistingTsconfig(config: PackageConfig, dependency: string): boolean {
+  const filePaths = fg.globSync('**/tsconfig*.json', {
+    cwd: config.dirPath,
+    dot: true,
+    ignore: globIgnore,
+  });
+
+  return filePaths.some((filePath) => {
+    const absoluteFilePath = path.resolve(config.dirPath, filePath);
+    try {
+      const parsed = ts.parseConfigFileTextToJson(absoluteFilePath, fs.readFileSync(absoluteFilePath, 'utf8'));
+      return normalizeTsconfigExtends((parsed.config as { extends?: unknown } | undefined)?.extends).some(
+        (value) => value === dependency || value.startsWith(`${dependency}/`)
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
+function normalizeTsconfigExtends(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
 }
 
 function getDependencySections(jsonObj: PackageJson): Partial<Record<string, string>>[] {
