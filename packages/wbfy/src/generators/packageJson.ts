@@ -61,7 +61,9 @@ const obsoleteLintDependencies = [
   'eslint-plugin-import-x',
   'eslint-plugin-perfectionist',
   'eslint-plugin-prettier',
+  'eslint-plugin-react',
   'eslint-plugin-react-compiler',
+  'eslint-plugin-react-hooks',
   'eslint-plugin-sort-class-members',
   'eslint-plugin-sort-destructure-keys',
   'eslint-plugin-storybook',
@@ -1049,6 +1051,7 @@ function removePrettierArtifacts(jsonObj: WritablePackageJson): void {
     if (!section) continue;
     delete section.prettier;
     delete section['prettier-plugin-java'];
+    delete section['prettier-plugin-prisma'];
     delete section['@willbooster/prettier-config'];
     delete section['@types/prettier'];
   }
