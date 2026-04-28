@@ -4,6 +4,7 @@ import path from 'node:path';
 import merge from 'deepmerge';
 import fg from 'fast-glob';
 import { sortPackageJson } from 'sort-package-json';
+import ts from 'typescript';
 import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
@@ -19,7 +20,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
-import { getTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
+import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
@@ -53,6 +54,7 @@ const obsoleteLintDependencies = [
   'biome',
   'eslint',
   'eslint-config-flat-gitignore',
+  'eslint-config-next',
   'eslint-config-prettier',
   'eslint-import-resolver-node',
   'eslint-import-resolver-typescript',
@@ -60,7 +62,9 @@ const obsoleteLintDependencies = [
   'eslint-plugin-import-x',
   'eslint-plugin-perfectionist',
   'eslint-plugin-prettier',
+  'eslint-plugin-react',
   'eslint-plugin-react-compiler',
+  'eslint-plugin-react-hooks',
   'eslint-plugin-sort-class-members',
   'eslint-plugin-sort-destructure-keys',
   'eslint-plugin-storybook',
@@ -106,7 +110,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   await removeDeprecatedStuff(config, jsonObj);
   await updateScripts(config, jsonObj, packageManager);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
-  const dependencyUpdates = applyPackageJsonConventions(config, rootConfig, jsonObj);
+  const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
   await updatePrivatePackages(jsonObj);
@@ -192,11 +196,11 @@ function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): voi
   }
 }
 
-function applyPackageJsonConventions(
+async function applyPackageJsonConventions(
   config: PackageConfig,
   rootConfig: PackageConfig,
   jsonObj: WritablePackageJson
-): DependencyUpdates {
+): Promise<DependencyUpdates> {
   const dependencies: string[] = [];
   const devDependencies = ['sort-package-json'];
   const pythonDevDependencies: string[] = [];
@@ -295,9 +299,9 @@ function applyPackageJsonConventions(
     devDependencies.push(...oxlintDeps);
   }
 
-  if (doesContainJsOrTs(config)) {
-    devDependencies.push(...getTsconfigBaseDependencies(config));
-  }
+  const tsconfigBaseDependencies = doesContainJsOrTs(config) ? getTsconfigBaseDependencies(config) : [];
+  await removeUnusedTsconfigBaseDependencies(config, jsonObj, tsconfigBaseDependencies);
+  devDependencies.push(...tsconfigBaseDependencies);
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
     devDependencies.push(typescriptGoDependency);
@@ -726,6 +730,72 @@ function removeWillBoosterConfigsManagedDependencies(
   }
 }
 
+async function removeUnusedTsconfigBaseDependencies(
+  config: PackageConfig,
+  jsonObj: WritablePackageJson,
+  usedDependencies: string[]
+): Promise<void> {
+  const usedDependencySet = new Set(usedDependencies);
+  const existingTsconfigBaseDependencies = await getExistingTsconfigBaseDependencies(config);
+  for (const dependency of managedTsconfigBaseDependencies) {
+    if (usedDependencySet.has(dependency) || existingTsconfigBaseDependencies.has(dependency)) continue;
+    // wbfy owns these base-config packages. Remove stale variants when repo
+    // capabilities change, such as Next.js taking ownership of tsconfig.json.
+    for (const section of getDependencySections(jsonObj)) {
+      Reflect.deleteProperty(section, dependency);
+    }
+  }
+}
+
+async function getExistingTsconfigBaseDependencies(config: PackageConfig): Promise<Set<string>> {
+  const existingTsconfigBaseDependencies = new Set<string>();
+  const filePaths = await fg.glob('**/tsconfig*.json', {
+    cwd: config.dirPath,
+    dot: true,
+    ignore: globIgnore,
+  });
+
+  for (const filePath of filePaths) {
+    const absoluteFilePath = path.resolve(config.dirPath, filePath);
+    try {
+      const parsed = ts.parseConfigFileTextToJson(
+        absoluteFilePath,
+        await fs.promises.readFile(absoluteFilePath, 'utf8')
+      );
+      if (parsed.error) {
+        console.warn(
+          `Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be parsed: ${formatTsDiagnostic(parsed.error)}`
+        );
+        return new Set(managedTsconfigBaseDependencies);
+      }
+      for (const value of normalizeTsconfigExtends((parsed.config as { extends?: unknown } | undefined)?.extends)) {
+        for (const dependency of managedTsconfigBaseDependencies) {
+          if (value === dependency || value.startsWith(`${dependency}/`)) {
+            existingTsconfigBaseDependencies.add(dependency);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be read: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return new Set(managedTsconfigBaseDependencies);
+    }
+  }
+
+  return existingTsconfigBaseDependencies;
+}
+
+function formatTsDiagnostic(diagnostic: ts.Diagnostic): string {
+  return ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+}
+
+function normalizeTsconfigExtends(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
 function getDependencySections(jsonObj: PackageJson): Partial<Record<string, string>>[] {
   return dependencySectionKeys
     .map((key) => jsonObj[key])
@@ -1005,6 +1075,7 @@ function removePrettierArtifacts(jsonObj: WritablePackageJson): void {
     if (!section) continue;
     delete section.prettier;
     delete section['prettier-plugin-java'];
+    delete section['prettier-plugin-prisma'];
     delete section['@willbooster/prettier-config'];
     delete section['@types/prettier'];
   }

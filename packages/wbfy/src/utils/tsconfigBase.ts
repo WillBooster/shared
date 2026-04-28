@@ -1,5 +1,12 @@
 import type { PackageConfig } from '../packageConfig.js';
 
+export const managedTsconfigBaseDependencies = [
+  '@tsconfig/bun',
+  '@tsconfig/node-lts',
+  '@tsconfig/node-ts',
+  '@tsconfig/react-native',
+];
+
 export function getTsconfigExtends(config: PackageConfig): string | string[] {
   if (config.isBun) {
     return '@tsconfig/bun/tsconfig.json';
@@ -11,6 +18,9 @@ export function getTsconfigExtends(config: PackageConfig): string | string[] {
 }
 
 export function getTsconfigBaseDependencies(config: PackageConfig): string[] {
+  if (config.depending.blitz || config.depending.next) {
+    return [];
+  }
   if (config.isBun) {
     return ['@tsconfig/bun'];
   }
