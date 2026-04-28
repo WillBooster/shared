@@ -738,8 +738,9 @@ function removeUnusedTsconfigBaseDependencies(
   usedDependencies: string[]
 ): void {
   const usedDependencySet = new Set(usedDependencies);
+  const existingTsconfigBaseDependencies = getExistingTsconfigBaseDependencies(config);
   for (const dependency of managedTsconfigBaseDependencies) {
-    if (usedDependencySet.has(dependency) || isReferencedByExistingTsconfig(config, dependency)) continue;
+    if (usedDependencySet.has(dependency) || existingTsconfigBaseDependencies.has(dependency)) continue;
     // wbfy owns these base-config packages. Remove stale variants when repo
     // capabilities change, such as Next.js taking ownership of tsconfig.json.
     delete jsonObj.dependencies[dependency];
@@ -747,33 +748,40 @@ function removeUnusedTsconfigBaseDependencies(
   }
 }
 
-function isReferencedByExistingTsconfig(config: PackageConfig, dependency: string): boolean {
+function getExistingTsconfigBaseDependencies(config: PackageConfig): Set<string> {
+  const existingTsconfigBaseDependencies = new Set<string>();
   const filePaths = fg.globSync('**/tsconfig*.json', {
     cwd: config.dirPath,
     dot: true,
     ignore: globIgnore,
   });
 
-  return filePaths.some((filePath) => {
+  for (const filePath of filePaths) {
     const absoluteFilePath = path.resolve(config.dirPath, filePath);
     try {
       const parsed = ts.parseConfigFileTextToJson(absoluteFilePath, fs.readFileSync(absoluteFilePath, 'utf8'));
       if (parsed.error) {
         console.warn(
-          `Preserve ${dependency} because ${absoluteFilePath} could not be parsed: ${formatTsDiagnostic(parsed.error)}`
+          `Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be parsed: ${formatTsDiagnostic(parsed.error)}`
         );
-        return true;
+        return new Set(managedTsconfigBaseDependencies);
       }
-      return normalizeTsconfigExtends((parsed.config as { extends?: unknown } | undefined)?.extends).some(
-        (value) => value === dependency || value.startsWith(`${dependency}/`)
-      );
+      for (const value of normalizeTsconfigExtends((parsed.config as { extends?: unknown } | undefined)?.extends)) {
+        for (const dependency of managedTsconfigBaseDependencies) {
+          if (value === dependency || value.startsWith(`${dependency}/`)) {
+            existingTsconfigBaseDependencies.add(dependency);
+          }
+        }
+      }
     } catch (error) {
       console.warn(
-        `Preserve ${dependency} because ${absoluteFilePath} could not be read: ${error instanceof Error ? error.message : String(error)}`
+        `Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be read: ${error instanceof Error ? error.message : String(error)}`
       );
-      return true;
+      return new Set(managedTsconfigBaseDependencies);
     }
-  });
+  }
+
+  return existingTsconfigBaseDependencies;
 }
 
 function formatTsDiagnostic(diagnostic: ts.Diagnostic): string {
