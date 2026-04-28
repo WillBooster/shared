@@ -301,9 +301,7 @@ async function applyPackageJsonConventions(
 
   const tsconfigBaseDependencies = doesContainJsOrTs(config) ? getTsconfigBaseDependencies(config) : [];
   await removeUnusedTsconfigBaseDependencies(config, jsonObj, tsconfigBaseDependencies);
-  if (doesContainJsOrTs(config)) {
-    devDependencies.push(...tsconfigBaseDependencies);
-  }
+  devDependencies.push(...tsconfigBaseDependencies);
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
     devDependencies.push(typescriptGoDependency);
