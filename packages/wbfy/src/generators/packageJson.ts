@@ -54,6 +54,7 @@ const obsoleteLintDependencies = [
   'biome',
   'eslint',
   'eslint-config-flat-gitignore',
+  'eslint-config-next',
   'eslint-config-prettier',
   'eslint-import-resolver-node',
   'eslint-import-resolver-typescript',
