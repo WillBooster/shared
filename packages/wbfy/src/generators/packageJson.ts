@@ -758,13 +758,26 @@ function isReferencedByExistingTsconfig(config: PackageConfig, dependency: strin
     const absoluteFilePath = path.resolve(config.dirPath, filePath);
     try {
       const parsed = ts.parseConfigFileTextToJson(absoluteFilePath, fs.readFileSync(absoluteFilePath, 'utf8'));
+      if (parsed.error) {
+        console.warn(
+          `Preserve ${dependency} because ${absoluteFilePath} could not be parsed: ${formatTsDiagnostic(parsed.error)}`
+        );
+        return true;
+      }
       return normalizeTsconfigExtends((parsed.config as { extends?: unknown } | undefined)?.extends).some(
         (value) => value === dependency || value.startsWith(`${dependency}/`)
       );
-    } catch {
-      return false;
+    } catch (error) {
+      console.warn(
+        `Preserve ${dependency} because ${absoluteFilePath} could not be read: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return true;
     }
   });
+}
+
+function formatTsDiagnostic(diagnostic: ts.Diagnostic): string {
+  return ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
 }
 
 function normalizeTsconfigExtends(value: unknown): string[] {
