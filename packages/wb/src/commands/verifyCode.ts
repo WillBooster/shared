@@ -6,7 +6,6 @@ import type { Project } from '../project.js';
 import { findRootAndSelfProjects } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { printBufferedOutput } from '../utils/output.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
@@ -42,15 +41,14 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
 };
 
 async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  await runPackageCommand('install', `${packageManager} install`, project, argv, { silent: true });
+  await runPackageCommand(`${packageManager} install`, project, argv);
   if (project.packageJson.scripts?.['gen-code']) {
-    await runPackageCommand('gen-code', `${packageManager} gen-code`, project, argv, {
-      silent: true,
-    });
+    await runPackageCommand(`${packageManager} gen-code`, project, argv);
   }
   await runInProcessCommand(
     'format',
-    () => lint({ ...argv, _: ['lint'], format: true, silent: true } as unknown as LintCommandArgv),
+    () =>
+      lint({ ...argv, _: ['lint'], format: true, printAllOutput: true, silent: true } as unknown as LintCommandArgv),
     {
       allowFailure: true,
       silent: true,
@@ -58,7 +56,15 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
   );
   await runInProcessCommand(
     'lint-fix',
-    () => lint({ ...argv, _: ['lint'], fix: true, quiet: true, silent: true } as unknown as LintCommandArgv),
+    () =>
+      lint({
+        ...argv,
+        _: ['lint'],
+        fix: true,
+        printAllOutput: true,
+        quiet: true,
+        silent: true,
+      } as unknown as LintCommandArgv),
     { silent: true }
   );
 }
@@ -71,7 +77,7 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
     return;
   }
 
-  await runPackageCommand('test', `${packageManager} test`, project, argv);
+  await runPackageCommand(`${packageManager} test`, project, argv);
 }
 
 async function runInProcessCommand(
@@ -95,45 +101,48 @@ async function runInProcessCommand(
 }
 
 async function runPackageCommand(
-  commandName: string,
   command: string,
   project: Project,
   argv: VerifyCodeCommandArgv,
-  options: { allowFailure?: boolean; silent?: boolean } = {}
+  options: { allowFailure?: boolean } = {}
 ): Promise<number> {
-  if (!options.silent) {
-    console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName) + chalk.gray(` at ${project.dirPath}`));
-  }
-  if (argv.verbose) {
-    console.info(chalk.gray(chalk.bold('Start (raw):'), command));
-  }
+  printCommand(command, project.dirPath);
   if (argv.dryRun) {
-    if (!options.silent) {
-      console.info(chalk.green(chalk.bold('Finished:'), commandName));
-    }
     return 0;
   }
 
   const ret = await spawnAsync(command, undefined, {
     cwd: project.dirPath,
-    env: configureEnv(project.env, { forceColor: true }),
+    env: configureEnv(project.env, { forceColor: false }),
     shell: true,
-    stdio: options.silent ? 'pipe' : 'inherit',
-    mergeOutAndError: options.silent,
+    stdio: 'pipe',
+    mergeOutAndError: true,
     killOnExit: true,
     verbose: argv.verbose,
   });
+  const exitCode = ret.status ?? 1;
+  printPackageCommandOutput(command, exitCode, ret.stdout);
 
-  if (options.silent) {
-    printBufferedOutput(ret.status ?? 1, ret.stdout);
+  if (exitCode !== 0 && !options.allowFailure) {
+    console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), command));
+    process.exit(exitCode);
   }
-  if (ret.status === 0 || options.allowFailure) {
-    if (!options.silent) {
-      console.info(chalk.green(chalk.bold('Finished:'), commandName));
-    }
-  } else {
-    console.info(chalk.red(chalk.bold(`Failed (exit code ${ret.status}):`), commandName));
-    process.exit(ret.status ?? 1);
+  return exitCode;
+}
+
+function printPackageCommandOutput(command: string, exitCode: number, output: string): void {
+  if (exitCode === 0 && command === `${packageManager} install`) {
+    console.info(chalk.green('Succeeded.'));
+    return;
   }
-  return ret.status ?? 1;
+
+  const trimmedOutput = output.trim();
+  if (trimmedOutput) {
+    process.stdout.write(trimmedOutput);
+    process.stdout.write('\n');
+  }
+}
+
+function printCommand(command: string, cwd: string): void {
+  console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${cwd}`));
 }

@@ -7,7 +7,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
 import type { BufferedRunResult } from '../scripts/run.js';
-import { runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
+import { normalizeScript, runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { printBufferedOutput } from '../utils/output.js';
 import { buildShellCommand } from '../utils/shell.js';
@@ -41,7 +41,11 @@ const _argumentsBuilder = {
 export type LintCommandOptions = InferredOptionTypes<
   typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder
 >;
-export type LintCommandArgv = ArgumentsCamelCase<LintCommandOptions> & { '--'?: unknown[]; _: unknown[] };
+export type LintCommandArgv = ArgumentsCamelCase<LintCommandOptions> & {
+  '--'?: unknown[];
+  _: unknown[];
+  printAllOutput?: boolean;
+};
 
 const oxlintExtensions = new Set(['astro', 'cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'svelte', 'ts', 'tsx', 'vue']);
 const pythonExtensions = new Set(['py']);
@@ -90,7 +94,8 @@ const prettierExtensions = new Set([
 const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !oxfmtExtensions.has(ext)));
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
-type LintRunResult = BufferedRunResult | { exitCode: number };
+type BufferedLintRunResult = BufferedRunResult & { command: string; cwd: string };
+type LintRunResult = BufferedLintRunResult | { exitCode: number };
 
 export const lintCommand: CommandModule<unknown, LintCommandOptions> = {
   command: 'lint [files...]',
@@ -206,7 +211,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   }
 
   const lintPromises: Promise<LintRunResult>[] = [];
-  const lintRunOptions = { exitIfFailed: false, forceColor: true } as const;
+  const lintRunOptions = { exitIfFailed: false, forceColor: !argv.printAllOutput } as const;
   if (files.length > 0) {
     for (const [project, lintFilePaths] of lintFilePathsByProject) {
       const lintCommand = buildLintCommand(project, argv, lintFilePaths);
@@ -247,7 +252,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
     }
   }
   const lintResults = await Promise.all(lintPromises);
-  printSilentLintOutputs(lintResults);
+  printSilentLintOutputs(lintResults, argv);
   const lintExitCodes = lintResults.map((result) => result.exitCode);
 
   if (missingLintToolForExplicitFiles || lintExitCodes.some((exitCode) => exitCode !== 0)) {
@@ -269,9 +274,9 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
         ]),
         projects.self,
         argv,
-        { exitIfFailed: false, forceColor: true }
+        lintRunOptions
       );
-      printSilentLintOutputs([prettierResult]);
+      printSilentLintOutputs([prettierResult], argv);
       lintExitCodes.push(prettierResult.exitCode);
     }
     if (sortPackageJsonArgs.length > 0) {
@@ -279,9 +284,9 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
         buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
         projects.self,
         argv,
-        { exitIfFailed: false, forceColor: true }
+        lintRunOptions
       );
-      printSilentLintOutputs([sortPackageJsonResult]);
+      printSilentLintOutputs([sortPackageJsonResult], argv);
       lintExitCodes.push(sortPackageJsonResult.exitCode);
     }
   }
@@ -296,17 +301,45 @@ function runLintCommand(
   options: Parameters<typeof runWithSpawnInParallel>[3]
 ): Promise<LintRunResult> {
   if (argv.silent) {
-    return runWithSpawnInParallelBuffered(command, project, argv, options);
+    const normalizedScript = normalizeScript(command, project);
+    return runWithSpawnInParallelBuffered(command, project, argv, options).then((result) => ({
+      ...result,
+      command: normalizedScript.printable,
+      cwd: project.dirPath,
+    }));
   }
   return runWithSpawnInParallel(command, project, argv, options).then((exitCode) => ({ exitCode }));
 }
 
-function printSilentLintOutputs(results: LintRunResult[]): void {
+function printSilentLintOutputs(results: LintRunResult[], argv: Pick<LintCommandArgv, 'printAllOutput'>): void {
   for (const result of results) {
     if (!('output' in result)) continue;
 
-    printBufferedOutput(result.exitCode, result.output);
+    if (argv.printAllOutput) {
+      printCommandOutput(result);
+    } else {
+      printBufferedOutput(result.exitCode, result.output);
+    }
   }
+}
+
+function printCommandOutput(result: BufferedLintRunResult): void {
+  console.info('\n' + chalk.cyan(chalk.bold('Command:'), result.command) + chalk.gray(` at ${result.cwd}`));
+
+  if (result.exitCode === 0 && shouldSuppressSuccessfulVerifyOutput(result.command)) {
+    console.info(chalk.green('Succeeded.'));
+    return;
+  }
+
+  const output = result.output.trim();
+  if (output) {
+    process.stdout.write(output);
+    process.stdout.write('\n');
+  }
+}
+
+function shouldSuppressSuccessfulVerifyOutput(command: string): boolean {
+  return command.includes(' oxfmt ') || command.includes(' sort-package-json ');
 }
 
 export function buildLintCommand(
