@@ -28,16 +28,16 @@ export interface BufferedRunResult {
 export async function runWithSpawn(
   script: string,
   project: Project,
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>> & { silent?: boolean },
   opts: Options = defaultOptions
 ): Promise<number> {
   const normalizedScript = normalizeScript(script, project);
-  printStart(normalizedScript.printable, project);
+  printStart(normalizedScript.printable, project, argv.silent ? 'Command' : 'Start');
   if (argv.verbose) {
     printStart(normalizedScript.runnable, project, 'Start (raw)', true);
   }
   if (argv.dryRun) {
-    printFinishedAndExitIfNeeded(normalizedScript.printable, 0, opts);
+    printFinishedAndExitIfNeeded(normalizedScript.printable, 0, opts, { silentSuccess: argv.silent });
     return 0;
   }
 
@@ -51,7 +51,7 @@ export async function runWithSpawn(
     verbose: argv.verbose,
   });
   opts.onSignal?.(ret.signal);
-  printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts);
+  printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts, { silentSuccess: argv.silent });
   return ret.status ?? 1;
 }
 
@@ -187,9 +187,11 @@ export function printStart(normalizedScript: string, project: Project, prefix = 
 export function printFinishedAndExitIfNeeded(
   script: string,
   exitCode: number | null,
-  opts: Omit<Options, 'timeout'>
+  opts: Omit<Options, 'timeout'>,
+  printOptions: { silentSuccess?: boolean } = {}
 ): void {
   if (exitCode === 0) {
+    if (printOptions.silentSuccess) return;
     console.info(chalk.green(chalk.bold('Finished:'), script));
   } else {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}): `), script));

@@ -79,15 +79,11 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
   switch (findWbTestCommand(project.packageJson.scripts?.test)) {
     case 'test': {
-      console.info('\n' + chalk.cyan(chalk.bold('Start:'), 'test'));
-      await test({ ...argv, _: ['test'], e2e: 'headless' } as unknown as TestCommandArgv);
-      console.info(chalk.green(chalk.bold('Finished:'), 'test'));
+      await test({ ...argv, _: ['test'], e2e: 'headless', silent: true } as unknown as TestCommandArgv);
       return;
     }
     case 'test-on-ci': {
-      console.info('\n' + chalk.cyan(chalk.bold('Start:'), 'test-on-ci'));
-      await testOnCi({ ...argv, _: ['test-on-ci'] } as unknown as Parameters<typeof testOnCi>[0]);
-      console.info(chalk.green(chalk.bold('Finished:'), 'test-on-ci'));
+      await testOnCi({ ...argv, _: ['test-on-ci'], silent: true } as unknown as Parameters<typeof testOnCi>[0]);
       return;
     }
   }
