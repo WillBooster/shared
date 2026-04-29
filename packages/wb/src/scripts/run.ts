@@ -5,7 +5,6 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { promisePool } from '../utils/promisePool.js';
-import { packageManagerWithRun } from '../utils/runtime.js';
 
 interface Options {
   ci?: boolean;
@@ -163,7 +162,7 @@ export function normalizeScript(script: string, project: Project): { printable: 
     .replaceAll('PRISMA ', project.packageJson.dependencies?.blitz ? 'YARN blitz prisma ' : 'YARN prisma ')
     .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ')
     // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`.
-    .replaceAll('YARN run ', `${projectPackageManagerWithRun} `);
+    .replaceAll('YARN run ', `${projectPackageManagerWithRun}${project.isBunAvailable ? '' : ' run'} `);
   if (project.isBunAvailable) {
     newScript = newScript
       .replaceAll('YARN build-ts run', 'bun --bun run')
@@ -178,8 +177,8 @@ export function normalizeScript(script: string, project: Project): { printable: 
   const printableScript = fixBunCommand(newScript.replaceAll('YARN ', `${projectPackageManagerWithRun} `));
   const runnableScript = fixBunCommand(
     newScript
-      // Because we need to use `yarn playwright` in a project depending on `artillery-engine-playwright`.
-      .replaceAll('YARN playwright ', `${packageManagerWithRun} playwright `)
+      // Keep Playwright as a package-manager command instead of resolving it through node_modules/.bin.
+      .replaceAll('YARN playwright ', `${projectPackageManagerWithRun} playwright `)
       .replaceAll('YARN ', !project.isBunAvailable && project.binExists ? '' : `${projectPackageManagerWithRun} `)
   );
   // Add cascade option when WB_ENV is defined
