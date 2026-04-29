@@ -7,6 +7,8 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
+import { generateToolConfigContent } from './toolConfigContent.js';
+
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     // willbooster-configs publishes config files as product code, so migration
@@ -43,16 +45,9 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
 }
 
 function getConfigContent(config: PackageConfig): string {
-  if (config.packageJson?.type === 'module') {
-    return `import config from '@willbooster/oxlint-config';
-
-export default config;
-`;
-  }
-
-  return `// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
-const oxlintConfig = require('@willbooster/oxlint-config');
-
-module.exports = oxlintConfig.default ?? oxlintConfig;
-`;
+  return generateToolConfigContent(config, {
+    commonJsVariableName: 'oxlintConfig',
+    packageName: '@willbooster/oxlint-config',
+    toolName: 'Oxlint',
+  });
 }

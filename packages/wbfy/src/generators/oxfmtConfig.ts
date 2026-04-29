@@ -6,6 +6,8 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
+import { generateToolConfigContent } from './toolConfigContent.js';
+
 export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
     const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
@@ -18,16 +20,9 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
 }
 
 function getConfigContent(config: PackageConfig): string {
-  if (config.packageJson?.type === 'module') {
-    return `import config from '@willbooster/oxfmt-config';
-
-export default config;
-`;
-  }
-
-  return `// oxlint-disable unicorn/prefer-module -- Oxfmt only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
-const oxfmtConfig = require('@willbooster/oxfmt-config');
-
-module.exports = oxfmtConfig.default ?? oxfmtConfig;
-`;
+  return generateToolConfigContent(config, {
+    commonJsVariableName: 'oxfmtConfig',
+    packageName: '@willbooster/oxfmt-config',
+    toolName: 'Oxfmt',
+  });
 }
