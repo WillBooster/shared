@@ -118,9 +118,12 @@ export async function test(argv: TestCommandArgv): Promise<void> {
     console.info(`Running "test" for ${project.name} ...`);
 
     // Run unit tests if needed
-    if (shouldRunUnit && fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) {
+    const defaultUnitTargets = getDefaultUnitTargets(project);
+    if (shouldRunUnit && defaultUnitTargets !== false) {
       const unitTargets = testTargets.filter((target) => target.includes('/unit'));
-      const unitArgv = { ...argv, targets: unitTargets.length > 0 ? unitTargets : undefined };
+      const targets =
+        unitTargets.length > 0 ? unitTargets : defaultUnitTargets.length > 0 ? defaultUnitTargets : undefined;
+      const unitArgv = { ...argv, targets };
       await runWithSpawn(scripts.testUnit(project, unitArgv), project, argv, { timeout: argv.unitTimeout });
     }
     // Skip e2e tests if not needed or no e2e directory exists
@@ -228,6 +231,16 @@ export async function test(argv: TestCommandArgv): Promise<void> {
       }
     }
   }
+}
+
+function getDefaultUnitTargets(project: Project): string[] | false {
+  if (fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) {
+    return [];
+  }
+  if (project.hasVitest && fs.existsSync(path.join(project.dirPath, 'test'))) {
+    return ['test'];
+  }
+  return false;
 }
 
 async function testOnDocker(
