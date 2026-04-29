@@ -303,6 +303,9 @@ function runLintCommand(
 ): Promise<LintRunResult> {
   if (argv.silent) {
     const normalizedScript = normalizeScript(command, project);
+    if (argv.rawOutput) {
+      printCommandHeader(normalizedScript.printable, project.dirPath);
+    }
     return runWithSpawnInParallelBuffered(command, project, argv, { ...options, printRawOutput: argv.rawOutput }).then(
       (result) => ({
         ...result,
@@ -332,7 +335,7 @@ function printSilentLintOutputs(
 }
 
 function printCommandOutput(result: BufferedLintRunResult): void {
-  console.info('\n' + chalk.cyan(chalk.bold('Command:'), result.command) + chalk.gray(` at ${result.cwd}`));
+  printCommandHeader(result.command, result.cwd);
 
   if (result.exitCode === 0 && shouldSuppressSuccessfulVerifyOutput(result.command)) {
     console.info(chalk.green('Succeeded.'));
@@ -344,6 +347,10 @@ function printCommandOutput(result: BufferedLintRunResult): void {
     process.stdout.write(output);
     process.stdout.write('\n');
   }
+}
+
+function printCommandHeader(command: string, cwd: string): void {
+  console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${cwd}`));
 }
 
 function shouldSuppressSuccessfulVerifyOutput(command: string): boolean {
