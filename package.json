@@ -24,9 +24,7 @@
     "prepare": "lefthook install || true",
     "release": "yarn multi-semantic-release --debug",
     "test": "CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test",
-    "typecheck": "yarn workspaces foreach --all --parallel --verbose run typecheck",
-    "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
-    "verify-code-with-tests": "yarn verify-code && yarn test"
+    "typecheck": "yarn workspaces foreach --all --parallel --verbose run typecheck"
   },
   "devDependencies": {
     "@anolilab/multi-semantic-release": "4.4.1",

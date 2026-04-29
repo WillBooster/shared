@@ -13,15 +13,24 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
     await Promise.all([
       promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true })),
-      promisePool.run(() => fsUtil.generateFile(filePath, configContent)),
+      promisePool.run(() => fsUtil.generateFile(filePath, getConfigContent(config))),
       // Current oxfmt auto-discovers oxfmt.config.ts but not oxfmt.config.mts.
       promisePool.run(() => fs.promises.rm(unusedMtsConfigPath, { force: true })),
     ]);
   });
 }
 
-const configContent = `// oxlint-disable unicorn/prefer-module -- Oxfmt only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
+function getConfigContent(config: PackageConfig): string {
+  if (config.packageJson?.type === 'module') {
+    return `import config from '@willbooster/oxfmt-config';
+
+export default config;
+`;
+  }
+
+  return `// oxlint-disable unicorn/prefer-module -- Oxfmt only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
 const oxfmtConfig = require('@willbooster/oxfmt-config');
 
 module.exports = oxfmtConfig.default ?? oxfmtConfig;
 `;
+}

@@ -40,9 +40,7 @@
     "lint": "oxlint --no-error-on-unmatched-pattern .",
     "lint-fix": "yarn lint --fix",
     "test": "vitest test/",
-    "typecheck": "tsgo --noEmit",
-    "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
-    "verify-code-with-tests": "yarn verify-code && yarn test"
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "dotenv": "17.4.2",
