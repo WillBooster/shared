@@ -10,7 +10,6 @@ import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv } from './test.js';
-import { testOnCi } from './testOnCi.js';
 
 const builder = {
   full: {
@@ -77,26 +76,18 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  switch (findWbTestCommand(project.packageJson.scripts?.test)) {
-    case 'test': {
-      await test({ ...argv, _: ['test'], e2e: 'headless', silent: true } as unknown as TestCommandArgv);
-      return;
-    }
-    case 'test-on-ci': {
-      await testOnCi({ ...argv, _: ['test-on-ci'], silent: true } as unknown as Parameters<typeof testOnCi>[0]);
-      return;
-    }
+  if (hasWbTestCommand(project.packageJson.scripts?.test)) {
+    await test({ ...argv, _: ['test'], e2e: 'headless', silent: true } as unknown as TestCommandArgv);
+    return;
   }
 
   await runPackageCommand(`${packageManager} test`, project, argv, { printRawOutput: true });
 }
 
-function findWbTestCommand(script: string | undefined): 'test' | 'test-on-ci' | undefined {
-  if (!script) return;
+function hasWbTestCommand(script: string | undefined): boolean {
+  if (!script) return false;
   const commandPrefix = String.raw`(?:^|[&(;|]\s*|\s)(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*(?:(?:yarn|bun|pnpm)\s+(?:run\s+)?)?wb\s+`;
-  if (new RegExp(`${commandPrefix}test-on-ci(?:\\s|$)`).test(script)) return 'test-on-ci';
-  if (new RegExp(`${commandPrefix}test(?:\\s|$)`).test(script)) return 'test';
-  return;
+  return new RegExp(`${commandPrefix}test(?:\\s|$)`).test(script);
 }
 
 async function runInProcessCommand(
