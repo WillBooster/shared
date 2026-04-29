@@ -13,7 +13,6 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     // must not remove package-provided linter settings.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
-    const unusedMtsConfigPath = path.resolve(config.dirPath, 'oxlint.config.mts');
     const existingContent = shouldPreservePublishedLinterConfig
       ? fs.existsSync(filePath)
         ? fs.readFileSync(filePath, 'utf8')
@@ -38,11 +37,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true }))
       );
     }
-    promises.push(
-      promisePool.run(() => fsUtil.generateFile(filePath, existingContent ?? getConfigContent(config))),
-      // Current oxlint auto-discovers oxlint.config.ts but not oxlint.config.mts.
-      promisePool.run(() => fs.promises.rm(unusedMtsConfigPath, { force: true }))
-    );
+    promises.push(promisePool.run(() => fsUtil.generateFile(filePath, existingContent ?? getConfigContent(config))));
     await Promise.all(promises);
   });
 }
