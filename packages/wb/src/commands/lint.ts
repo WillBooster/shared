@@ -333,7 +333,6 @@ function printCommandOutput(result: BufferedLintRunResult): void {
 
   const output = result.output.trim();
   if (output) {
-    process.stdout.write('\n');
     process.stdout.write(output);
     process.stdout.write('\n');
   }

@@ -138,7 +138,6 @@ function printPackageCommandOutput(command: string, exitCode: number, output: st
 
   const trimmedOutput = output.trim();
   if (trimmedOutput) {
-    process.stdout.write('\n');
     process.stdout.write(trimmedOutput);
     process.stdout.write('\n');
   }
