@@ -9,6 +9,7 @@ import { findDescendantProjects } from '../project.js';
 import type { BufferedRunResult } from '../scripts/run.js';
 import { runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { normalizeBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
 import { buildShellCommand } from '../utils/shell.js';
 
 const builder = {
@@ -303,25 +304,14 @@ function runLintCommand(
 function printSilentLintOutputs(results: LintRunResult[]): void {
   for (const result of results) {
     if (!('output' in result)) continue;
-    const output = removeNoColorWarning(result.output).trim();
-    if (result.exitCode === 0 && !hasWarningOutput(output)) continue;
+    if (!shouldPrintBufferedOutput(result.exitCode, result.output)) continue;
 
+    const output = normalizeBufferedOutput(result.output);
     if (output) {
       process.stdout.write(output);
       process.stdout.write('\n');
     }
   }
-}
-
-function hasWarningOutput(output: string): boolean {
-  return /\bwarn(?:ing)?s?\b/i.test(output.replaceAll(/\b0 warnings?\b/gi, ''));
-}
-
-function removeNoColorWarning(output: string): string {
-  return output.replaceAll(
-    /\(node:\d+\) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set\.\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\n?/g,
-    ''
-  );
 }
 
 export function buildLintCommand(

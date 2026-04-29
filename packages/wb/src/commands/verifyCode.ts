@@ -6,6 +6,7 @@ import type { Project } from '../project.js';
 import { findRootAndSelfProjects } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { normalizeBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
@@ -138,22 +139,11 @@ async function runPackageCommand(
 }
 
 function printOutputIfFailedOrWarned(exitCode: number, output: string): void {
-  const trimmedOutput = removeNoColorWarning(output).trim();
-  if (exitCode === 0 && !hasWarningOutput(trimmedOutput)) return;
+  if (!shouldPrintBufferedOutput(exitCode, output)) return;
 
+  const trimmedOutput = normalizeBufferedOutput(output);
   if (trimmedOutput) {
     process.stdout.write(trimmedOutput);
     process.stdout.write('\n');
   }
-}
-
-function hasWarningOutput(output: string): boolean {
-  return /\bwarn(?:ing)?s?\b/i.test(output.replaceAll(/\b0 warnings?\b/gi, ''));
-}
-
-function removeNoColorWarning(output: string): string {
-  return output.replaceAll(
-    /\(node:\d+\) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set\.\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\n?/g,
-    ''
-  );
 }
