@@ -45,6 +45,7 @@ export type LintCommandArgv = ArgumentsCamelCase<LintCommandOptions> & {
   '--'?: unknown[];
   _: unknown[];
   printAllOutput?: boolean;
+  rawOutput?: boolean;
 };
 
 const oxlintExtensions = new Set(['astro', 'cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'svelte', 'ts', 'tsx', 'vue']);
@@ -302,16 +303,23 @@ function runLintCommand(
 ): Promise<LintRunResult> {
   if (argv.silent) {
     const normalizedScript = normalizeScript(command, project);
-    return runWithSpawnInParallelBuffered(command, project, argv, options).then((result) => ({
-      ...result,
-      command: normalizedScript.printable,
-      cwd: project.dirPath,
-    }));
+    return runWithSpawnInParallelBuffered(command, project, argv, { ...options, printRawOutput: argv.rawOutput }).then(
+      (result) => ({
+        ...result,
+        command: normalizedScript.printable,
+        cwd: project.dirPath,
+      })
+    );
   }
   return runWithSpawnInParallel(command, project, argv, options).then((exitCode) => ({ exitCode }));
 }
 
-function printSilentLintOutputs(results: LintRunResult[], argv: Pick<LintCommandArgv, 'printAllOutput'>): void {
+function printSilentLintOutputs(
+  results: LintRunResult[],
+  argv: Pick<LintCommandArgv, 'printAllOutput' | 'rawOutput'>
+): void {
+  if (argv.rawOutput) return;
+
   for (const result of results) {
     if (!('output' in result)) continue;
 

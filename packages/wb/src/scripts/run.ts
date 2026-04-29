@@ -12,6 +12,7 @@ interface Options {
   exitIfFailed?: boolean;
   onSignal?: (signal: NodeJS.Signals | null) => void;
   forceColor?: boolean;
+  printRawOutput?: boolean;
   timeout?: number;
 }
 
@@ -80,6 +81,8 @@ export function runWithSpawnInParallel(
       timeout: opts.timeout,
       mergeOutAndError: true,
       killOnExit: true,
+      printingStdout: opts.printRawOutput,
+      printingStderr: opts.printRawOutput,
       verbose: argv.verbose,
     });
     opts.onSignal?.(ret.signal);
@@ -88,7 +91,7 @@ export function runWithSpawnInParallel(
       printStart(normalizedScript.runnable, project, 'Started (raw)', true);
     }
     const out = ret.stdout.trim();
-    if (out) {
+    if (out && !opts.printRawOutput) {
       process.stdout.write(out);
       process.stdout.write('\n');
     }
@@ -120,6 +123,8 @@ export function runWithSpawnInParallelBuffered(
       timeout: opts.timeout,
       mergeOutAndError: true,
       killOnExit: true,
+      printingStdout: opts.printRawOutput,
+      printingStderr: opts.printRawOutput,
       verbose: argv.verbose,
     });
     opts.onSignal?.(ret.signal);

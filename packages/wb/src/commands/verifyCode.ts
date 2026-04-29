@@ -48,7 +48,14 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
   await runInProcessCommand(
     'format',
     () =>
-      lint({ ...argv, _: ['lint'], format: true, printAllOutput: true, silent: true } as unknown as LintCommandArgv),
+      lint({
+        ...argv,
+        _: ['lint'],
+        format: true,
+        printAllOutput: true,
+        rawOutput: true,
+        silent: true,
+      } as unknown as LintCommandArgv),
     {
       allowFailure: true,
       silent: true,
@@ -63,6 +70,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
         fix: true,
         printAllOutput: true,
         quiet: true,
+        rawOutput: true,
         silent: true,
       } as unknown as LintCommandArgv),
     { silent: true }
@@ -77,7 +85,7 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
     return;
   }
 
-  await runPackageCommand(`${packageManager} test`, project, argv);
+  await runPackageCommand(`${packageManager} test`, project, argv, { printRawOutput: true });
 }
 
 async function runInProcessCommand(
@@ -104,7 +112,7 @@ async function runPackageCommand(
   command: string,
   project: Project,
   argv: VerifyCodeCommandArgv,
-  options: { allowFailure?: boolean } = {}
+  options: { allowFailure?: boolean; printRawOutput?: boolean } = {}
 ): Promise<number> {
   printCommand(command, project.dirPath);
   if (argv.dryRun) {
@@ -118,10 +126,14 @@ async function runPackageCommand(
     stdio: 'pipe',
     mergeOutAndError: true,
     killOnExit: true,
+    printingStdout: options.printRawOutput,
+    printingStderr: options.printRawOutput,
     verbose: argv.verbose,
   });
   const exitCode = ret.status ?? 1;
-  printPackageCommandOutput(command, exitCode, ret.stdout);
+  if (!options.printRawOutput) {
+    printPackageCommandOutput(command, exitCode, ret.stdout);
+  }
 
   if (exitCode !== 0 && !options.allowFailure) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), command));
