@@ -6,7 +6,6 @@ import type { Project } from '../project.js';
 import { findRootAndSelfProjects } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { printBufferedOutput } from '../utils/output.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
@@ -42,24 +41,19 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
 };
 
 async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  await runPackageCommand('install', `${packageManager} install`, project, argv, { silent: true });
+  await runPackageCommand(`${packageManager} install`, project, argv);
   if (project.packageJson.scripts?.['gen-code']) {
-    await runPackageCommand('gen-code', `${packageManager} gen-code`, project, argv, {
-      silent: true,
-    });
+    await runPackageCommand(`${packageManager} gen-code`, project, argv);
   }
   await runInProcessCommand(
     'format',
-    () => lint({ ...argv, _: ['lint'], format: true, silent: true } as unknown as LintCommandArgv),
+    () => lint({ ...argv, _: ['lint'], format: true } as unknown as LintCommandArgv),
     {
       allowFailure: true,
-      silent: true,
     }
   );
-  await runInProcessCommand(
-    'lint-fix',
-    () => lint({ ...argv, _: ['lint'], fix: true, quiet: true, silent: true } as unknown as LintCommandArgv),
-    { silent: true }
+  await runInProcessCommand('lint-fix', () =>
+    lint({ ...argv, _: ['lint'], fix: true, quiet: true } as unknown as LintCommandArgv)
   );
 }
 
@@ -71,22 +65,18 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
     return;
   }
 
-  await runPackageCommand('test', `${packageManager} test`, project, argv);
+  await runPackageCommand(`${packageManager} test`, project, argv);
 }
 
 async function runInProcessCommand(
   commandName: string,
   command: () => Promise<number | undefined>,
-  options: { allowFailure?: boolean; silent?: boolean } = {}
+  options: { allowFailure?: boolean } = {}
 ): Promise<number> {
-  if (!options.silent) {
-    console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
-  }
+  console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
   const exitCode = (await command()) ?? 0;
   if (exitCode === 0 || options.allowFailure) {
-    if (!options.silent) {
-      console.info(chalk.green(chalk.bold('Finished:'), commandName));
-    }
+    console.info(chalk.green(chalk.bold('Finished:'), commandName));
   } else {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
     process.exit(exitCode);
@@ -95,22 +85,14 @@ async function runInProcessCommand(
 }
 
 async function runPackageCommand(
-  commandName: string,
   command: string,
   project: Project,
   argv: VerifyCodeCommandArgv,
-  options: { allowFailure?: boolean; silent?: boolean } = {}
+  options: { allowFailure?: boolean } = {}
 ): Promise<number> {
-  if (!options.silent) {
-    console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName) + chalk.gray(` at ${project.dirPath}`));
-  }
-  if (argv.verbose) {
-    console.info(chalk.gray(chalk.bold('Start (raw):'), command));
-  }
+  console.info('\n' + chalk.cyan(chalk.bold('Start:'), command) + chalk.gray(` at ${project.dirPath}`));
   if (argv.dryRun) {
-    if (!options.silent) {
-      console.info(chalk.green(chalk.bold('Finished:'), commandName));
-    }
+    console.info(chalk.green(chalk.bold('Finished:'), command));
     return 0;
   }
 
@@ -118,21 +100,15 @@ async function runPackageCommand(
     cwd: project.dirPath,
     env: configureEnv(project.env, { forceColor: true }),
     shell: true,
-    stdio: options.silent ? 'pipe' : 'inherit',
-    mergeOutAndError: options.silent,
+    stdio: 'inherit',
     killOnExit: true,
     verbose: argv.verbose,
   });
 
-  if (options.silent) {
-    printBufferedOutput(ret.status ?? 1, ret.stdout);
-  }
   if (ret.status === 0 || options.allowFailure) {
-    if (!options.silent) {
-      console.info(chalk.green(chalk.bold('Finished:'), commandName));
-    }
+    console.info(chalk.green(chalk.bold('Finished:'), command));
   } else {
-    console.info(chalk.red(chalk.bold(`Failed (exit code ${ret.status}):`), commandName));
+    console.info(chalk.red(chalk.bold(`Failed (exit code ${ret.status}):`), command));
     process.exit(ret.status ?? 1);
   }
   return ret.status ?? 1;
