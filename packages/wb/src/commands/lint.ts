@@ -325,6 +325,9 @@ function printSilentLintOutputs(
     if (argv.printAllOutput) {
       printCommandOutput(result);
     } else {
+      if (argv.silent) {
+        printCommandHeader(result.command, result.cwd);
+      }
       printBufferedOutput(result.exitCode, result.output);
     }
   }
