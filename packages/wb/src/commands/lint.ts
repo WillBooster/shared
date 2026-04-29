@@ -315,9 +315,11 @@ function printSilentLintOutputs(
   results: LintRunResult[],
   argv: Pick<LintCommandArgv, 'printAllOutput' | 'silent'>
 ): void {
-  if (argv.silent && !argv.printAllOutput) return;
+  const printableResults =
+    argv.silent && !argv.printAllOutput ? results.filter((result) => result.exitCode !== 0) : results;
+  if (printableResults.length === 0) return;
 
-  for (const result of results) {
+  for (const result of printableResults) {
     if (!('output' in result)) continue;
 
     if (argv.printAllOutput) {

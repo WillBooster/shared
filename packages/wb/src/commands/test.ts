@@ -24,6 +24,7 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { httpServerPackages } from './httpServerPackages.js';
 
 const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
+const SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT = 200;
 
 const builder = {
   e2e: {
@@ -280,15 +281,17 @@ function runTestCommand(
 }
 
 function dedupeNoisyTestOutput(output: string): string {
-  const printedLines: string[] = [];
+  const recentPrintedLines: string[] = [];
   return output
     .split('\n')
     .filter((line) => {
       const normalizedLine = normalizeLineForSimilarity(line);
-      if (!normalizedLine) return true;
-      if (printedLines.some((printedLine) => areLinesSimilar(printedLine, normalizedLine))) return false;
+      if (recentPrintedLines.some((printedLine) => areLinesSimilar(printedLine, normalizedLine))) return false;
 
-      printedLines.push(normalizedLine);
+      recentPrintedLines.push(normalizedLine);
+      if (recentPrintedLines.length > SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT) {
+        recentPrintedLines.shift();
+      }
       return true;
     })
     .join('\n');
