@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findDescendantProjects, type Project } from '../project.js';
+import { findDescendantProjects } from '../project.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -47,8 +47,6 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       optimizeDevDependencies(argv, packageJson);
 
       optimizeScripts(packageJson);
-
-      optimizeDockerInstallPrepareScript(argv, project, packageJson);
 
       optimizeRootProps(packageJson);
 
@@ -151,26 +149,6 @@ function optimizeScripts(packageJson: PackageJson): void {
     }
   }
   console.info('Removed scripts:', removedScripts.join(', ') || 'none');
-}
-
-function optimizeDockerInstallPrepareScript(
-  argv: InferredOptionTypes<typeof builder>,
-  project: Project,
-  packageJson: PackageJson
-): void {
-  // The published wb binary may run under Node even when invoked by a Bun project script.
-  // Use the target project instead of the current CLI runtime when deciding Docker install steps.
-  if (!argv.outside || !project.isBunAvailable) return;
-
-  const devDependencyNames = Object.keys(packageJson.devDependencies ?? {});
-  if (devDependencyNames.length === 0) return;
-
-  // Bun validates the lockfile even with --production. This script lets Docker rewrite
-  // the image-local lockfile after --outside pruning, without hard-coding packages in app Dockerfiles.
-  const scripts = packageJson.scripts ?? {};
-  scripts['docker/install/prepare'] = `bun remove ${devDependencyNames.join(' ')}`;
-  packageJson.scripts = scripts;
-  console.info('Added docker/install/prepare script.');
 }
 
 function optimizeRootProps(packageJson: PackageJson): void {
