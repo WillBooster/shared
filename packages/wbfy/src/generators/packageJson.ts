@@ -677,6 +677,8 @@ async function removeDeprecatedStuff(
   delete jsonObj.scripts['format-python'];
   delete jsonObj.scripts.prettier;
   delete jsonObj.scripts['check-all'];
+  delete jsonObj.scripts['verify-code'];
+  delete jsonObj.scripts['verify-code-with-tests'];
   await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'lerna.json'), { force: true }));
 
   removeWillBoosterConfigsManagedDependencies(config, jsonObj);
@@ -971,6 +973,8 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       'lint-fix': 'bun --bun wb lint --fix',
       test: 'bun wb test',
       typecheck: 'bun --bun wb typecheck',
+      verify: 'bun --bun wb verify',
+      'verify-full': 'bun --bun wb verify --full',
     };
     if (!hasTypecheck) {
       delete scripts.typecheck;
@@ -1030,6 +1034,10 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       delete scripts.typecheck;
     } else if (config.depending.wb) {
       scripts.typecheck = 'wb typecheck';
+    }
+    if (config.depending.wb) {
+      scripts.verify = 'wb verify';
+      scripts['verify-full'] = 'wb verify --full';
     }
     return scripts;
   }
