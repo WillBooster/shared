@@ -48,6 +48,8 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
       optimizeScripts(packageJson);
 
+      optimizeDockerInstallPrepareScript(argv, packageJson);
+
       optimizeRootProps(packageJson);
 
       if (argv.dryRun) continue;
@@ -67,44 +69,10 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
   promoteRuntimeDevDependencies(packageJson);
-  if (!argv.outside) {
-    delete packageJson.devDependencies;
-    console.info('Removed all devDependencies.');
-    return;
-  }
+  if (argv.outside) return;
 
-  const devDeps = packageJson.devDependencies ?? {};
-  const nameWordsToBeRemoved = [
-    'artillery',
-    'concurrently',
-    'conventional-changelog-conventionalcommits',
-    'husky',
-    'imagemin',
-    'jest',
-    'kill-port',
-    'lint-staged',
-    'open-cli',
-    'playwright',
-    'prettier',
-    'pinst',
-    'railway',
-    'semantic-release',
-    'sort-package-json',
-    'wait-on',
-    'vitest',
-  ];
-  const removedDeps: string[] = [];
-  for (const name of Object.keys(devDeps)) {
-    if (
-      nameWordsToBeRemoved.some((word) => name.includes(word)) ||
-      (name.includes('willbooster') && name.includes('config'))
-    ) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete devDeps[name];
-      removedDeps.push(name);
-    }
-  }
-  console.info('Removed devDependencies:', removedDeps.join(', ') || 'none');
+  delete packageJson.devDependencies;
+  console.info('Removed all devDependencies.');
 }
 
 function promoteRuntimeDevDependencies(packageJson: PackageJson): void {
@@ -143,6 +111,18 @@ function optimizeScripts(packageJson: PackageJson): void {
     }
   }
   console.info('Removed scripts:', removedScripts.join(', ') || 'none');
+}
+
+function optimizeDockerInstallPrepareScript(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
+  if (!argv.outside || packageManager !== 'bun') return;
+
+  const devDependencyNames = Object.keys(packageJson.devDependencies ?? {});
+  if (devDependencyNames.length === 0) return;
+
+  const scripts = packageJson.scripts ?? {};
+  scripts['docker/install/prepare'] = `bun remove ${devDependencyNames.join(' ')}`;
+  packageJson.scripts = scripts;
+  console.info('Added docker/install/prepare script.');
 }
 
 function optimizeRootProps(packageJson: PackageJson): void {
