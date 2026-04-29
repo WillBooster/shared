@@ -47,13 +47,21 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
   }
   await runInProcessCommand(
     'format',
-    () => lint({ ...argv, _: ['lint'], format: true } as unknown as LintCommandArgv),
+    () =>
+      lint({ ...argv, _: ['lint'], format: true, printAllOutput: true, silent: true } as unknown as LintCommandArgv),
     {
       allowFailure: true,
     }
   );
   await runInProcessCommand('lint-fix', () =>
-    lint({ ...argv, _: ['lint'], fix: true, quiet: true } as unknown as LintCommandArgv)
+    lint({
+      ...argv,
+      _: ['lint'],
+      fix: true,
+      printAllOutput: true,
+      quiet: true,
+      silent: true,
+    } as unknown as LintCommandArgv)
   );
 }
 
