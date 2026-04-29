@@ -12,10 +12,13 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
     const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
-    await Promise.all([
-      promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true })),
-      promisePool.run(() => fsUtil.generateFile(filePath, getConfigContent(config))),
-    ]);
+    const existingContent = await fsUtil.readFileIgnoringError(filePath);
+    const desiredContent = getConfigContent(config);
+    const promises = [promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true }))];
+    if (normalizeContent(existingContent) !== normalizeContent(desiredContent)) {
+      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
+    }
+    await Promise.all(promises);
   });
 }
 
@@ -25,4 +28,8 @@ function getConfigContent(config: PackageConfig): string {
     packageName: '@willbooster/oxfmt-config',
     toolName: 'Oxfmt',
   });
+}
+
+function normalizeContent(content: string | undefined): string | undefined {
+  return content?.trim();
 }

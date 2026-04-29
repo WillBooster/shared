@@ -15,11 +15,9 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     // must not remove package-provided linter settings.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
-    const existingContent = shouldPreservePublishedLinterConfig
-      ? fs.existsSync(filePath)
-        ? fs.readFileSync(filePath, 'utf8')
-        : undefined
-      : undefined;
+    const existingContent = await fsUtil.readFileIgnoringError(filePath);
+    const desiredContent =
+      shouldPreservePublishedLinterConfig && existingContent ? existingContent : getConfigContent(config);
 
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
@@ -39,7 +37,9 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true }))
       );
     }
-    promises.push(promisePool.run(() => fsUtil.generateFile(filePath, existingContent ?? getConfigContent(config))));
+    if (normalizeContent(existingContent) !== normalizeContent(desiredContent)) {
+      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
+    }
     await Promise.all(promises);
   });
 }
@@ -50,4 +50,8 @@ function getConfigContent(config: PackageConfig): string {
     packageName: '@willbooster/oxlint-config',
     toolName: 'Oxlint',
   });
+}
+
+function normalizeContent(content: string | undefined): string | undefined {
+  return content?.trim();
 }
