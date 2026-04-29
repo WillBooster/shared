@@ -12,6 +12,7 @@ interface Options {
   exitIfFailed?: boolean;
   onSignal?: (signal: NodeJS.Signals | null) => void;
   forceColor?: boolean;
+  printRawOutput?: boolean;
   timeout?: number;
 }
 
@@ -27,16 +28,16 @@ export interface BufferedRunResult {
 export async function runWithSpawn(
   script: string,
   project: Project,
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>> & { silent?: boolean },
   opts: Options = defaultOptions
 ): Promise<number> {
   const normalizedScript = normalizeScript(script, project);
-  printStart(normalizedScript.printable, project);
+  printStart(normalizedScript.printable, project, argv.silent ? 'Command' : 'Start');
   if (argv.verbose) {
     printStart(normalizedScript.runnable, project, 'Start (raw)', true);
   }
   if (argv.dryRun) {
-    printFinishedAndExitIfNeeded(normalizedScript.printable, 0, opts);
+    printFinishedAndExitIfNeeded(normalizedScript.printable, 0, opts, { silentSuccess: argv.silent });
     return 0;
   }
 
@@ -44,13 +45,16 @@ export async function runWithSpawn(
     cwd: project.dirPath,
     env: configureEnv(project.env, opts),
     shell: true,
-    stdio: 'inherit',
+    stdio: argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
     killOnExit: true,
+    printingStdout: argv.silent,
+    printingStderr: argv.silent,
+    omitBlankLinesWhilePrinting: argv.silent,
     verbose: argv.verbose,
   });
   opts.onSignal?.(ret.signal);
-  printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts);
+  printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts, { silentSuccess: argv.silent });
   return ret.status ?? 1;
 }
 
@@ -80,6 +84,8 @@ export function runWithSpawnInParallel(
       timeout: opts.timeout,
       mergeOutAndError: true,
       killOnExit: true,
+      printingStdout: opts.printRawOutput,
+      printingStderr: opts.printRawOutput,
       verbose: argv.verbose,
     });
     opts.onSignal?.(ret.signal);
@@ -88,7 +94,7 @@ export function runWithSpawnInParallel(
       printStart(normalizedScript.runnable, project, 'Started (raw)', true);
     }
     const out = ret.stdout.trim();
-    if (out) {
+    if (out && !opts.printRawOutput) {
       process.stdout.write(out);
       process.stdout.write('\n');
     }
@@ -120,6 +126,8 @@ export function runWithSpawnInParallelBuffered(
       timeout: opts.timeout,
       mergeOutAndError: true,
       killOnExit: true,
+      printingStdout: opts.printRawOutput,
+      printingStderr: opts.printRawOutput,
       verbose: argv.verbose,
     });
     opts.onSignal?.(ret.signal);
@@ -182,9 +190,11 @@ export function printStart(normalizedScript: string, project: Project, prefix = 
 export function printFinishedAndExitIfNeeded(
   script: string,
   exitCode: number | null,
-  opts: Omit<Options, 'timeout'>
+  opts: Omit<Options, 'timeout'>,
+  printOptions: { silentSuccess?: boolean } = {}
 ): void {
   if (exitCode === 0) {
+    if (printOptions.silentSuccess) return;
     console.info(chalk.green(chalk.bold('Finished:'), script));
   } else {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}): `), script));

@@ -48,6 +48,8 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
       optimizeScripts(packageJson);
 
+      optimizeDockerInstallPrepareScript(argv, packageJson);
+
       optimizeRootProps(packageJson);
 
       if (argv.dryRun) continue;
@@ -67,13 +69,19 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
   promoteRuntimeDevDependencies(packageJson);
-  if (!argv.outside) {
-    delete packageJson.devDependencies;
-    console.info('Removed all devDependencies.');
+  if (argv.outside) {
+    removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson);
     return;
   }
 
+  delete packageJson.devDependencies;
+  console.info('Removed all devDependencies.');
+}
+
+function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: PackageJson): void {
   const devDeps = packageJson.devDependencies ?? {};
+  // In --outside mode, Docker still runs codegen/build before a second in-image optimization.
+  // Remove only tooling that is not needed for that build phase.
   const nameWordsToBeRemoved = [
     'artillery',
     'concurrently',
@@ -143,6 +151,20 @@ function optimizeScripts(packageJson: PackageJson): void {
     }
   }
   console.info('Removed scripts:', removedScripts.join(', ') || 'none');
+}
+
+function optimizeDockerInstallPrepareScript(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
+  if (!argv.outside || packageManager !== 'bun') return;
+
+  const devDependencyNames = Object.keys(packageJson.devDependencies ?? {});
+  if (devDependencyNames.length === 0) return;
+
+  // Bun validates the lockfile even with --production. This script lets Docker rewrite
+  // the image-local lockfile after --outside pruning, without hard-coding packages in app Dockerfiles.
+  const scripts = packageJson.scripts ?? {};
+  scripts['docker/install/prepare'] = `bun remove ${devDependencyNames.join(' ')}`;
+  packageJson.scripts = scripts;
+  console.info('Added docker/install/prepare script.');
 }
 
 function optimizeRootProps(packageJson: PackageJson): void {
