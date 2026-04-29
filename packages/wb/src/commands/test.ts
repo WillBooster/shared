@@ -95,9 +95,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
   }
 
   process.env.FORCE_COLOR ||= '3';
-  if (process.env.FORCE_COLOR) {
-    delete process.env.NO_COLOR;
-  }
+  delete process.env.NO_COLOR;
   process.env.WB_ENV ||= 'test';
 
   // Get test targets from positional arguments
