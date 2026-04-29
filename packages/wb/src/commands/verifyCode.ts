@@ -11,13 +11,19 @@ import { packageManager } from '../utils/runtime.js';
 import { lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv } from './test.js';
 
-const builder = {} as const;
+const builder = {
+  full: {
+    type: 'boolean',
+    default: false,
+    describe: 'Run tests after verifying project code',
+  },
+} as const;
 
 type VerifyCodeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 type VerifyCodeCommandArgv = ArgumentsCamelCase<VerifyCodeCommandOptions>;
 
 export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
-  command: 'verify-code',
+  command: 'verify',
   describe: 'Verify project code',
   builder,
   async handler(argv) {
@@ -28,22 +34,9 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
     }
 
     await verifyCode(projects.self, argv);
-  },
-};
-
-export const verifyCodeWithTestsCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
-  command: 'verify-code-with-tests',
-  describe: 'Verify project code and run tests',
-  builder,
-  async handler(argv) {
-    const projects = findRootAndSelfProjects(argv, false);
-    if (!projects) {
-      console.error(chalk.red('No project found.'));
-      process.exit(1);
+    if (argv.full) {
+      await runProjectTest(projects.self, argv);
     }
-
-    await verifyCode(projects.self, argv);
-    await runProjectTest(projects.self, argv);
   },
 };
 
@@ -54,18 +47,22 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
       silent: true,
     });
   }
-  await runInProcessCommand('format', () => lint({ ...argv, _: ['lint'], format: true } as LintCommandArgv), {
-    allowFailure: true,
-  });
+  await runInProcessCommand(
+    'format',
+    () => lint({ ...argv, _: ['lint'], format: true } as unknown as LintCommandArgv),
+    {
+      allowFailure: true,
+    }
+  );
   await runInProcessCommand('lint-fix', () =>
-    lint({ ...argv, _: ['lint'], fix: true, quiet: true } as LintCommandArgv)
+    lint({ ...argv, _: ['lint'], fix: true, quiet: true } as unknown as LintCommandArgv)
   );
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
   if (project.packageJson.scripts?.test?.includes('wb test')) {
     console.info('\n' + chalk.cyan(chalk.bold('Start:'), 'test'));
-    await test({ ...argv, _: ['test'], e2e: 'headless' } as TestCommandArgv);
+    await test({ ...argv, _: ['test'], e2e: 'headless' } as unknown as TestCommandArgv);
     console.info(chalk.green(chalk.bold('Finished:'), 'test'));
     return;
   }

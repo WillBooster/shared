@@ -29,8 +29,8 @@
     "test": "yarn run test/ci-setup && vitest test",
     "test/ci-setup": "rm -Rf test-fixtures/wbfy && mkdir -p test-fixtures && git clone https://github.com/WillBooster/test-fixtures-for-wbfy.git test-fixtures/wbfy",
     "typecheck": "tsgo --noEmit",
-    "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
-    "verify-code-with-tests": "yarn verify-code && yarn test"
+    "verify": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify",
+    "verify-full": "yarn verify --full"
   },
   "dependencies": {
     "@octokit/core": "7.0.6",
