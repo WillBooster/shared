@@ -25,6 +25,7 @@ import { httpServerPackages } from './httpServerPackages.js';
 
 const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
 const SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT = 200;
+const SIMILAR_TEST_OUTPUT_DISTANCE_RATIO = 0.05;
 
 const builder = {
   e2e: {
@@ -308,8 +309,9 @@ function normalizeLineForSimilarity(line: string): string {
 function areLinesSimilar(a: string, b: string): boolean {
   const maxLength = Math.max(a.length, b.length);
   if (maxLength === 0) return true;
+  if (Math.abs(a.length - b.length) > maxLength * SIMILAR_TEST_OUTPUT_DISTANCE_RATIO) return false;
 
-  return distance(a, b) / maxLength <= 0.05;
+  return distance(a, b) / maxLength <= SIMILAR_TEST_OUTPUT_DISTANCE_RATIO;
 }
 
 export function buildPlaywrightArgsForE2E(
