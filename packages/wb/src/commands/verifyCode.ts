@@ -76,18 +76,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  if (hasWbTestCommand(project.packageJson.scripts?.test)) {
-    await test({ ...argv, _: ['test'], e2e: 'headless', silent: true } as unknown as TestCommandArgv);
-    return;
-  }
-
-  await runPackageCommand(`${packageManager} test`, project, argv, { printRawOutput: true });
-}
-
-function hasWbTestCommand(script: string | undefined): boolean {
-  if (!script) return false;
-  const commandPrefix = String.raw`(?:^|[&(;|]\s*|\s)(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*(?:(?:yarn|bun|pnpm)\s+(?:run\s+)?)?wb\s+`;
-  return new RegExp(`${commandPrefix}test(?:\\s|$)`).test(script);
+  await test({ ...argv, _: ['test'], e2e: 'headless', silent: true } as unknown as TestCommandArgv);
 }
 
 async function runInProcessCommand(
