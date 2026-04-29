@@ -153,7 +153,7 @@ async function runPackageCommand(
  * enough that agents can fit the result in their working context.
  */
 function printPackageCommandOutput(command: string, exitCode: number, output: string): void {
-  if (exitCode === 0 && command === `${packageManager} install`) {
+  if (exitCode === 0 && shouldSuppressSuccessfulPackageCommandOutput(command)) {
     console.info(chalk.green('Succeeded.'));
     return;
   }
@@ -163,6 +163,10 @@ function printPackageCommandOutput(command: string, exitCode: number, output: st
     process.stdout.write(trimmedOutput);
     process.stdout.write('\n');
   }
+}
+
+function shouldSuppressSuccessfulPackageCommandOutput(command: string): boolean {
+  return command === `${packageManager} install` || command === `${packageManager} gen-code`;
 }
 
 function printCommand(command: string, cwd: string): void {
