@@ -6,6 +6,7 @@ import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
+import { drizzleScripts } from '../drizzleScripts.js';
 import { prismaScripts } from '../prismaScripts.js';
 
 export interface TestE2EOptions {
@@ -88,11 +89,16 @@ export abstract class BaseScripts {
       ecosystemConfigPath === undefined
         ? [
             `YARN wb buildIfNeeded ${argv.verbose ? '--verbose' : ''}`.trim(),
-            `node dist/index.js ${argv.normalizedArgsText ?? ''}`.trim(),
+            `${project.isBunAvailable ? 'BUN' : 'node'} dist/index.js ${argv.normalizedArgsText ?? ''}`.trim(),
           ]
         : [project.buildCommand, `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`];
 
-    return [...(project.hasPrisma ? prismaScripts.migrate(project).split('&&') : []), ...commands]
+    const migrationCommand = project.hasPrisma
+      ? prismaScripts.migrate(project)
+      : project.hasDrizzle
+        ? drizzleScripts.migrate(project)
+        : '';
+    return [...migrationCommand.split('&&'), ...commands]
       .filter(Boolean)
       .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
       .join(' && ');

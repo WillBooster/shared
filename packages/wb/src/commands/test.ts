@@ -243,7 +243,7 @@ function getDefaultUnitTargets(project: Project): string[] | false {
     return [];
   }
   if (project.hasVitest && fs.existsSync(path.join(project.dirPath, 'test'))) {
-    return ['test'];
+    return fs.existsSync(path.join(project.dirPath, 'test', 'e2e')) ? ['test', '--exclude', 'test/e2e/**'] : ['test'];
   }
   return false;
 }
