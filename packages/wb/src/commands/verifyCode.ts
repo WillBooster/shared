@@ -131,7 +131,10 @@ async function runPackageCommand(
 }
 
 function printPackageCommandOutput(command: string, exitCode: number, output: string): void {
-  if (exitCode === 0 && command === `${packageManager} install`) return;
+  if (exitCode === 0 && command === `${packageManager} install`) {
+    console.info(chalk.green('Succeeded.'));
+    return;
+  }
 
   const trimmedOutput = output.trim();
   if (trimmedOutput) {
