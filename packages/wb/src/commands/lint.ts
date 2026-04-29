@@ -302,14 +302,11 @@ function runLintCommand(
 ): Promise<LintRunResult> {
   if (argv.silent) {
     const normalizedScript = normalizeScript(command, project);
-    printCommandHeader(normalizedScript.printable, project.dirPath);
-    return runWithSpawnInParallelBuffered(command, project, argv, { ...options, printRawOutput: true }).then(
-      (result) => ({
-        ...result,
-        command: normalizedScript.printable,
-        cwd: project.dirPath,
-      })
-    );
+    return runWithSpawnInParallelBuffered(command, project, argv, options).then((result) => ({
+      ...result,
+      command: normalizedScript.printable,
+      cwd: project.dirPath,
+    }));
   }
   return runWithSpawnInParallel(command, project, argv, options).then((exitCode) => ({ exitCode }));
 }
@@ -318,7 +315,7 @@ function printSilentLintOutputs(
   results: LintRunResult[],
   argv: Pick<LintCommandArgv, 'printAllOutput' | 'silent'>
 ): void {
-  if (argv.silent) return;
+  if (argv.silent && !argv.printAllOutput) return;
 
   for (const result of results) {
     if (!('output' in result)) continue;
