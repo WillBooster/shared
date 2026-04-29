@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
@@ -33,12 +36,23 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       process.exit(1);
     }
 
-    await verifyCode(projects.self, argv);
-    if (argv.full) {
-      await runProjectTest(projects.self, argv);
-    }
+    await (argv.full ? verifyCodeFully(projects.self, argv) : verifyCode(projects.self, argv));
   },
 };
+
+async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
+  const reporter = startVerifyFullReporter(project);
+  try {
+    await verifyCode(project, argv);
+    await runProjectTest(project, argv);
+    reporter.succeed();
+  } catch (error) {
+    reporter.fail(error);
+    throw error;
+  } finally {
+    reporter.finish();
+  }
+}
 
 async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
   await runPackageCommand(`${packageManager} install`, project, argv);
@@ -148,4 +162,88 @@ function printPackageCommandOutput(command: string, exitCode: number, output: st
 
 function printCommand(command: string, cwd: string): void {
   console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${cwd}`));
+}
+
+function startVerifyFullReporter(project: Project): {
+  fail: (error?: unknown) => void;
+  finish: () => void;
+  succeed: () => void;
+} {
+  const startedAt = Date.now();
+  const wbDirPath = path.join(project.dirPath, '.wb');
+  fs.mkdirSync(wbDirPath, { recursive: true });
+
+  const logFilePath = path.join(wbDirPath, 'verify-full.log');
+  const logFile = fs.openSync(logFilePath, 'w');
+  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  let succeeded = false;
+  let finished = false;
+
+  process.stdout.write = teeWrite(process.stdout.fd, logFile) as typeof process.stdout.write;
+  process.stderr.write = teeWrite(process.stderr.fd, logFile) as typeof process.stderr.write;
+
+  const finish = (): void => {
+    if (finished) return;
+    finished = true;
+
+    process.stdout.write = originalStdoutWrite as typeof process.stdout.write;
+    process.stderr.write = originalStderrWrite as typeof process.stderr.write;
+
+    const elapsedTime = formatElapsedTime(Date.now() - startedAt);
+    const status = succeeded ? 'Succeeded' : 'Failed';
+    const summary = `${status} in ${elapsedTime}. Full log: ${logFilePath}\n`;
+    const coloredSummary = succeeded ? chalk.green(summary) : chalk.red(summary);
+    originalStdoutWrite(coloredSummary);
+    fs.writeSync(logFile, summary);
+    fs.closeSync(logFile);
+  };
+
+  process.once('exit', finish);
+
+  return {
+    fail: (error) => {
+      succeeded = false;
+      if (error) {
+        console.error(error);
+      }
+    },
+    finish: () => {
+      process.removeListener('exit', finish);
+      finish();
+    },
+    succeed: () => {
+      succeeded = true;
+    },
+  };
+}
+
+function teeWrite(outputFile: number, logFile: number): typeof process.stdout.write {
+  return ((
+    chunk: Uint8Array | string,
+    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
+    callback?: (error?: Error | null) => void
+  ) => {
+    const buffer =
+      typeof chunk === 'string'
+        ? Buffer.from(chunk, typeof encodingOrCallback === 'string' ? encodingOrCallback : 'utf8')
+        : chunk;
+    fs.writeSync(logFile, buffer);
+    fs.writeSync(outputFile, buffer);
+    if (typeof encodingOrCallback === 'function') {
+      encodingOrCallback();
+    }
+    callback?.();
+    return true;
+  }) as typeof process.stdout.write;
+}
+
+function formatElapsedTime(milliseconds: number): string {
+  const seconds = Math.round(milliseconds / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes === 0) {
+    return `${remainingSeconds}s`;
+  }
+  return `${minutes}m ${remainingSeconds}s`;
 }
