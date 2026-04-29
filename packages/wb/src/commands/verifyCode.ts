@@ -147,6 +147,11 @@ async function runPackageCommand(
   return exitCode;
 }
 
+/**
+ * `wb verify` is primarily consumed by AI coding agents.
+ * Keep its command output meaningful enough to diagnose failures, but minimal
+ * enough that agents can fit the result in their working context.
+ */
 function printPackageCommandOutput(command: string, exitCode: number, output: string): void {
   if (exitCode === 0 && command === `${packageManager} install`) {
     console.info(chalk.green('Succeeded.'));
