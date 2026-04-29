@@ -90,6 +90,8 @@ const prettierExtensions = new Set([
 const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !oxfmtExtensions.has(ext)));
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
+type LintRunResult = BufferedRunResult | { exitCode: number };
+
 export const lintCommand: CommandModule<unknown, LintCommandOptions> = {
   command: 'lint [files...]',
   describe: 'Lint code',
@@ -286,8 +288,6 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
 
   return lintExitCodes.some((exitCode) => exitCode !== 0) ? 1 : 0;
 }
-
-type LintRunResult = BufferedRunResult | { exitCode: number };
 
 function runLintCommand(
   command: string,
