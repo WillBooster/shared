@@ -69,10 +69,48 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
   promoteRuntimeDevDependencies(packageJson);
-  if (argv.outside) return;
+  if (argv.outside) {
+    removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson);
+    return;
+  }
 
   delete packageJson.devDependencies;
   console.info('Removed all devDependencies.');
+}
+
+function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: PackageJson): void {
+  const devDeps = packageJson.devDependencies ?? {};
+  const nameWordsToBeRemoved = [
+    'artillery',
+    'concurrently',
+    'conventional-changelog-conventionalcommits',
+    'husky',
+    'imagemin',
+    'jest',
+    'kill-port',
+    'lint-staged',
+    'open-cli',
+    'playwright',
+    'prettier',
+    'pinst',
+    'railway',
+    'semantic-release',
+    'sort-package-json',
+    'wait-on',
+    'vitest',
+  ];
+  const removedDeps: string[] = [];
+  for (const name of Object.keys(devDeps)) {
+    if (
+      nameWordsToBeRemoved.some((word) => name.includes(word)) ||
+      (name.includes('willbooster') && name.includes('config'))
+    ) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete devDeps[name];
+      removedDeps.push(name);
+    }
+  }
+  console.info('Removed devDependencies:', removedDeps.join(', ') || 'none');
 }
 
 function promoteRuntimeDevDependencies(packageJson: PackageJson): void {
