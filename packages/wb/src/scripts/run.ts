@@ -45,9 +45,12 @@ export async function runWithSpawn(
     cwd: project.dirPath,
     env: configureEnv(project.env, opts),
     shell: true,
-    stdio: 'inherit',
+    stdio: argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
     killOnExit: true,
+    printingStdout: argv.silent,
+    printingStderr: argv.silent,
+    omitBlankLinesWhilePrinting: argv.silent,
     verbose: argv.verbose,
   });
   opts.onSignal?.(ret.signal);

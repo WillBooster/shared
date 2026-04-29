@@ -42,6 +42,8 @@ export type SpawnAsyncOptions = (
   printingStdout?: boolean;
   /** If true, stderr data will be printed to console as it's received */
   printingStderr?: boolean;
+  /** If true, blank-only lines are skipped while printing stdout/stderr in realtime */
+  omitBlankLinesWhilePrinting?: boolean;
 };
 
 /**
@@ -82,10 +84,12 @@ export async function spawnAsync(
 
       let stdout = '';
       let stderr = '';
+      const stdoutPrinter = createRealtimePrinter(process.stdout, options?.omitBlankLinesWhilePrinting);
+      const stderrPrinter = createRealtimePrinter(process.stderr, options?.omitBlankLinesWhilePrinting);
       proc.stdout?.on('data', (data: string) => {
         stdout += data;
         if (options?.printingStdout) {
-          process.stdout.write(data);
+          stdoutPrinter.write(data);
         }
       });
       proc.stderr?.on('data', (data: string) => {
@@ -95,7 +99,7 @@ export async function spawnAsync(
           stderr += data;
         }
         if (options?.printingStderr) {
-          process.stderr.write(data);
+          stderrPrinter.write(data);
         }
       });
 
@@ -147,6 +151,8 @@ export async function spawnAsync(
       });
       proc.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
         removeKillOnExitHandlers();
+        stdoutPrinter.flush();
+        stderrPrinter.flush();
         if (proc.pid === undefined) {
           reject(new Error('Process has no pid.'));
         } else {
@@ -169,4 +175,42 @@ export async function spawnAsync(
       reject(error);
     }
   });
+}
+
+const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
+
+function createRealtimePrinter(
+  stream: NodeJS.WriteStream,
+  omitBlankLines = false
+): { write: (data: string) => void; flush: () => void } {
+  if (!omitBlankLines) {
+    return {
+      write: (data) => stream.write(data),
+      flush: () => {},
+    };
+  }
+
+  let pending = '';
+  return {
+    write: (data) => {
+      pending += data;
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!isBlankLine(line)) {
+          stream.write(`${line}\n`);
+        }
+      }
+    },
+    flush: () => {
+      if (!isBlankLine(pending)) {
+        stream.write(pending);
+      }
+      pending = '';
+    },
+  };
+}
+
+function isBlankLine(line: string): boolean {
+  return line.replaceAll(ANSI_ESCAPE_CODE_REGEXP, '').trim().length === 0;
 }
