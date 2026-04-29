@@ -24,6 +24,7 @@ const commonContent = `
 .playwright-cli/
 .serena/
 .tmp/
+.wb/
 __generated__/
 @willbooster/
 dist/

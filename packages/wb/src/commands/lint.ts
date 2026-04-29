@@ -6,8 +6,10 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
-import { runWithSpawnInParallel } from '../scripts/run.js';
+import type { BufferedRunResult } from '../scripts/run.js';
+import { runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { printBufferedOutput } from '../utils/output.js';
 import { buildShellCommand } from '../utils/shell.js';
 
 const builder = {
@@ -21,6 +23,10 @@ const builder = {
   },
   quiet: {
     description: 'Report errors only',
+    type: 'boolean',
+  },
+  silent: {
+    description: 'Print only failed or warning command output',
     type: 'boolean',
   },
 } as const;
@@ -83,6 +89,8 @@ const prettierExtensions = new Set([
 ]);
 const prettierOnlyExtensions = new Set([...prettierExtensions].filter((ext) => !oxfmtExtensions.has(ext)));
 const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
+
+type LintRunResult = BufferedRunResult | { exitCode: number };
 
 export const lintCommand: CommandModule<unknown, LintCommandOptions> = {
   command: 'lint [files...]',
@@ -197,27 +205,25 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
     sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
   }
 
-  const lintPromises: Promise<number>[] = [];
+  const lintPromises: Promise<LintRunResult>[] = [];
   const lintRunOptions = { exitIfFailed: false, forceColor: true } as const;
   if (files.length > 0) {
     for (const [project, lintFilePaths] of lintFilePathsByProject) {
       const lintCommand = buildLintCommand(project, argv, lintFilePaths);
       if (!lintCommand) continue;
 
-      lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
+      lintPromises.push(runLintCommand(lintCommand, project, argv, lintRunOptions));
     }
     if (argv.format) {
       for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
-        lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(oxfmtFilePaths), project, argv, lintRunOptions));
+        lintPromises.push(runLintCommand(buildOxfmtCommand(oxfmtFilePaths), project, argv, lintRunOptions));
       }
     }
     for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
-      lintPromises.push(
-        runWithSpawnInParallel(buildPoetryCommand(argv, pythonFilePaths), project, argv, lintRunOptions)
-      );
+      lintPromises.push(runLintCommand(buildPoetryCommand(argv, pythonFilePaths), project, argv, lintRunOptions));
     }
     for (const [project, dartFilePaths] of dartFilePathsByProject) {
-      lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv, dartFilePaths), project, argv, lintRunOptions));
+      lintPromises.push(runLintCommand(buildDartCommand(argv, dartFilePaths), project, argv, lintRunOptions));
     }
   } else {
     for (const project of projects.descendants) {
@@ -226,21 +232,23 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
       const lintCommand = buildLintCommand(project, argv);
       if (!lintCommand) continue;
 
-      lintPromises.push(runWithSpawnInParallel(lintCommand, project, argv, lintRunOptions));
+      lintPromises.push(runLintCommand(lintCommand, project, argv, lintRunOptions));
     }
     for (const project of projects.descendants) {
       if (project.hasPoetryLock) {
-        lintPromises.push(runWithSpawnInParallel(buildPoetryCommand(argv), project, argv, lintRunOptions));
+        lintPromises.push(runLintCommand(buildPoetryCommand(argv), project, argv, lintRunOptions));
       }
       if (project.hasPubspecYaml) {
-        lintPromises.push(runWithSpawnInParallel(buildDartCommand(argv), project, argv, lintRunOptions));
+        lintPromises.push(runLintCommand(buildDartCommand(argv), project, argv, lintRunOptions));
       }
       if (project.hasOxfmt && argv.format) {
-        lintPromises.push(runWithSpawnInParallel(buildOxfmtCommand(), project, argv, lintRunOptions));
+        lintPromises.push(runLintCommand(buildOxfmtCommand(), project, argv, lintRunOptions));
       }
     }
   }
-  const lintExitCodes = await Promise.all(lintPromises);
+  const lintResults = await Promise.all(lintPromises);
+  printSilentLintOutputs(lintResults);
+  const lintExitCodes = lintResults.map((result) => result.exitCode);
 
   if (missingLintToolForExplicitFiles || lintExitCodes.some((exitCode) => exitCode !== 0)) {
     return 1;
@@ -248,37 +256,57 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
 
   if (argv.format) {
     if (prettierArgs.length > 0 && projects.self.hasPrettier) {
-      lintExitCodes.push(
-        await runWithSpawnInParallel(
-          buildShellCommand([
-            'YARN',
-            'prettier',
-            '--cache',
-            '--color',
-            '--no-error-on-unmatched-pattern',
-            '--write',
-            '--',
-            ...prettierArgs,
-          ]),
-          projects.self,
-          argv,
-          { exitIfFailed: false, forceColor: true }
-        )
+      const prettierResult = await runLintCommand(
+        buildShellCommand([
+          'YARN',
+          'prettier',
+          '--cache',
+          '--color',
+          '--no-error-on-unmatched-pattern',
+          '--write',
+          '--',
+          ...prettierArgs,
+        ]),
+        projects.self,
+        argv,
+        { exitIfFailed: false, forceColor: true }
       );
+      printSilentLintOutputs([prettierResult]);
+      lintExitCodes.push(prettierResult.exitCode);
     }
     if (sortPackageJsonArgs.length > 0) {
-      lintExitCodes.push(
-        await runWithSpawnInParallel(
-          buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
-          projects.self,
-          argv,
-          { exitIfFailed: false, forceColor: true }
-        )
+      const sortPackageJsonResult = await runLintCommand(
+        buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
+        projects.self,
+        argv,
+        { exitIfFailed: false, forceColor: true }
       );
+      printSilentLintOutputs([sortPackageJsonResult]);
+      lintExitCodes.push(sortPackageJsonResult.exitCode);
     }
   }
 
   return lintExitCodes.some((exitCode) => exitCode !== 0) ? 1 : 0;
+}
+
+function runLintCommand(
+  command: string,
+  project: Project,
+  argv: LintCommandArgv,
+  options: Parameters<typeof runWithSpawnInParallel>[3]
+): Promise<LintRunResult> {
+  if (argv.silent) {
+    return runWithSpawnInParallelBuffered(command, project, argv, options);
+  }
+  return runWithSpawnInParallel(command, project, argv, options).then((exitCode) => ({ exitCode }));
+}
+
+function printSilentLintOutputs(results: LintRunResult[]): void {
+  for (const result of results) {
+    if (!('output' in result)) continue;
+
+    printBufferedOutput(result.exitCode, result.output);
+  }
 }
 
 export function buildLintCommand(
