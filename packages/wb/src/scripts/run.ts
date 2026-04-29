@@ -5,7 +5,7 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 import type { Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { promisePool } from '../utils/promisePool.js';
-import { isRunningOnBun, packageManagerWithRun } from '../utils/runtime.js';
+import { packageManagerWithRun } from '../utils/runtime.js';
 
 interface Options {
   ci?: boolean;
@@ -152,6 +152,7 @@ export function runWithSpawnInParallelBuffered(
  * Replace capitalized commands (e.g., YARN, PRISMA, BUN) with suitable commands.
  */
 export function normalizeScript(script: string, project: Project): { printable: string; runnable: string } {
+  const projectPackageManagerWithRun = project.isBunAvailable ? 'bun --bun run' : 'yarn';
   let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
@@ -161,9 +162,9 @@ export function normalizeScript(script: string, project: Project): { printable: 
     )
     .replaceAll('PRISMA ', project.packageJson.dependencies?.blitz ? 'YARN blitz prisma ' : 'YARN prisma ')
     .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ')
-    // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`
-    .replaceAll('YARN run ', isRunningOnBun ? 'bun --bun run ' : 'yarn run ');
-  if (isRunningOnBun) {
+    // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`.
+    .replaceAll('YARN run ', `${projectPackageManagerWithRun} `);
+  if (project.isBunAvailable) {
     newScript = newScript
       .replaceAll('YARN build-ts run', 'bun --bun run')
       .replaceAll('bun --bun run bun --bun run', 'bun --bun run')
@@ -174,17 +175,17 @@ export function normalizeScript(script: string, project: Project): { printable: 
       .replaceAll(/ --color --passWithNoTests(?: --allowOnly)?/g, '');
   }
   newScript = newScript.trim();
-  const printableScript = fixBunCommand(newScript.replaceAll('YARN ', `${packageManagerWithRun} `));
+  const printableScript = fixBunCommand(newScript.replaceAll('YARN ', `${projectPackageManagerWithRun} `));
   const runnableScript = fixBunCommand(
     newScript
       // Because we need to use `yarn playwright` in a project depending on `artillery-engine-playwright`.
       .replaceAll('YARN playwright ', `${packageManagerWithRun} playwright `)
-      .replaceAll('YARN ', !isRunningOnBun && project.binExists ? '' : `${packageManagerWithRun} `)
+      .replaceAll('YARN ', !project.isBunAvailable && project.binExists ? '' : `${projectPackageManagerWithRun} `)
   );
   // Add cascade option when WB_ENV is defined
   const cascadeOption = project.env.WB_ENV ? ` -c=${project.env.WB_ENV || 'development'}` : '';
   return {
-    printable: `${packageManagerWithRun} dotenv${cascadeOption} -- ${printableScript}`,
+    printable: `${projectPackageManagerWithRun} dotenv${cascadeOption} -- ${printableScript}`,
     runnable: runnableScript,
   };
 }
