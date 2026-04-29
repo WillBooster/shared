@@ -6,8 +6,18 @@ export function normalizeBufferedOutput(output: string): string {
   return removeNoColorWarning(output).trim();
 }
 
+export function printBufferedOutput(exitCode: number, output: string): void {
+  if (!shouldPrintBufferedOutput(exitCode, output)) return;
+
+  const normalizedOutput = normalizeBufferedOutput(output);
+  if (normalizedOutput) {
+    process.stdout.write(normalizedOutput);
+    process.stdout.write('\n');
+  }
+}
+
 function hasWarningOutput(output: string): boolean {
-  return /\bwarn(?:ing)?s?\b/i.test(output.replaceAll(/\b0 warnings?\b/gi, ''));
+  return /\bwarn(?:ing)?s?\b/i.test(output.replaceAll(/\b(?:0|no) warnings?\b/gi, ''));
 }
 
 function removeNoColorWarning(output: string): string {

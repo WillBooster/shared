@@ -6,7 +6,7 @@ import type { Project } from '../project.js';
 import { findRootAndSelfProjects } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { normalizeBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
+import { printBufferedOutput } from '../utils/output.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
@@ -125,7 +125,7 @@ async function runPackageCommand(
   });
 
   if (options.silent) {
-    printOutputIfFailedOrWarned(ret.status ?? 1, ret.stdout);
+    printBufferedOutput(ret.status ?? 1, ret.stdout);
   }
   if (ret.status === 0 || options.allowFailure) {
     if (!options.silent) {
@@ -136,14 +136,4 @@ async function runPackageCommand(
     process.exit(ret.status ?? 1);
   }
   return ret.status ?? 1;
-}
-
-function printOutputIfFailedOrWarned(exitCode: number, output: string): void {
-  if (!shouldPrintBufferedOutput(exitCode, output)) return;
-
-  const trimmedOutput = normalizeBufferedOutput(output);
-  if (trimmedOutput) {
-    process.stdout.write(trimmedOutput);
-    process.stdout.write('\n');
-  }
 }

@@ -9,7 +9,7 @@ import { findDescendantProjects } from '../project.js';
 import type { BufferedRunResult } from '../scripts/run.js';
 import { runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { normalizeBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
+import { printBufferedOutput } from '../utils/output.js';
 import { buildShellCommand } from '../utils/shell.js';
 
 const builder = {
@@ -304,13 +304,8 @@ function runLintCommand(
 function printSilentLintOutputs(results: LintRunResult[]): void {
   for (const result of results) {
     if (!('output' in result)) continue;
-    if (!shouldPrintBufferedOutput(result.exitCode, result.output)) continue;
 
-    const output = normalizeBufferedOutput(result.output);
-    if (output) {
-      process.stdout.write(output);
-      process.stdout.write('\n');
-    }
+    printBufferedOutput(result.exitCode, result.output);
   }
 }
 
