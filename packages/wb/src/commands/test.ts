@@ -283,19 +283,34 @@ function runTestCommand(
 
 function dedupeNoisyTestOutput(output: string): string {
   const recentPrintedLines: string[] = [];
+  const recentPrintedLineCounts = new Map<string, number>();
   return output
     .split('\n')
     .filter((line) => {
       const normalizedLine = normalizeLineForSimilarity(line);
+      if (recentPrintedLineCounts.has(normalizedLine)) return false;
       if (recentPrintedLines.some((printedLine) => areLinesSimilar(printedLine, normalizedLine))) return false;
 
-      recentPrintedLines.push(normalizedLine);
-      if (recentPrintedLines.length > SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT) {
-        recentPrintedLines.shift();
-      }
+      pushRecentPrintedLine(recentPrintedLines, recentPrintedLineCounts, normalizedLine);
       return true;
     })
     .join('\n');
+}
+
+function pushRecentPrintedLine(lines: string[], lineCounts: Map<string, number>, line: string): void {
+  lines.push(line);
+  lineCounts.set(line, (lineCounts.get(line) ?? 0) + 1);
+  if (lines.length <= SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT) return;
+
+  const removedLine = lines.shift();
+  if (removedLine === undefined) return;
+
+  const count = lineCounts.get(removedLine) ?? 0;
+  if (count <= 1) {
+    lineCounts.delete(removedLine);
+  } else {
+    lineCounts.set(removedLine, count - 1);
+  }
 }
 
 function normalizeLineForSimilarity(line: string): string {
@@ -303,7 +318,9 @@ function normalizeLineForSimilarity(line: string): string {
     .replaceAll(ANSI_ESCAPE_CODE_REGEXP, '')
     .trim()
     .replaceAll(/^(?:\[[^\]]+\]\s*)+/g, '')
-    .replaceAll(/\d+/g, '<number>');
+    .replaceAll(/\(node:\d+\)/g, '(node:<number>)')
+    .replaceAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g, '<timestamp>')
+    .replaceAll(/([?&]cache=)\d+/g, '$1<number>');
 }
 
 function areLinesSimilar(a: string, b: string): boolean {
