@@ -10,6 +10,7 @@ import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv } from './test.js';
+import { testOnCi } from './testOnCi.js';
 
 const builder = {
   full: {
@@ -78,14 +79,30 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  if (project.packageJson.scripts?.test?.includes('wb test')) {
-    console.info('\n' + chalk.cyan(chalk.bold('Start:'), 'test'));
-    await test({ ...argv, _: ['test'], e2e: 'headless' } as unknown as TestCommandArgv);
-    console.info(chalk.green(chalk.bold('Finished:'), 'test'));
-    return;
+  switch (findWbTestCommand(project.packageJson.scripts?.test)) {
+    case 'test': {
+      console.info('\n' + chalk.cyan(chalk.bold('Start:'), 'test'));
+      await test({ ...argv, _: ['test'], e2e: 'headless' } as unknown as TestCommandArgv);
+      console.info(chalk.green(chalk.bold('Finished:'), 'test'));
+      return;
+    }
+    case 'test-on-ci': {
+      console.info('\n' + chalk.cyan(chalk.bold('Start:'), 'test-on-ci'));
+      await testOnCi({ ...argv, _: ['test-on-ci'] } as unknown as Parameters<typeof testOnCi>[0]);
+      console.info(chalk.green(chalk.bold('Finished:'), 'test-on-ci'));
+      return;
+    }
   }
 
   await runPackageCommand(`${packageManager} test`, project, argv, { printRawOutput: true });
+}
+
+function findWbTestCommand(script: string | undefined): 'test' | 'test-on-ci' | undefined {
+  if (!script) return;
+  const commandPrefix = String.raw`(?:^|[&(;|]\s*|\s)(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*(?:(?:yarn|bun|pnpm)\s+(?:run\s+)?)?wb\s+`;
+  if (new RegExp(`${commandPrefix}test-on-ci(?:\\s|$)`).test(script)) return 'test-on-ci';
+  if (new RegExp(`${commandPrefix}test(?:\\s|$)`).test(script)) return 'test';
+  return;
 }
 
 async function runInProcessCommand(
