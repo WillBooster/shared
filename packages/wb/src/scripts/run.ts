@@ -160,9 +160,10 @@ export function normalizeScript(script: string, project: Project): { printable: 
       project.packageJson.dependencies?.blitz ? 'PRISMA generate ' : 'PRISMA generate --no-hints '
     )
     .replaceAll('PRISMA ', project.packageJson.dependencies?.blitz ? 'YARN blitz prisma ' : 'YARN prisma ')
-    .replaceAll('BUN ', project.isBunAvailable ? 'bun --bun run ' : 'YARN ')
+    .replaceAll('BUN run ', project.isBunAvailable ? `${projectPackageManagerWithRun} ` : 'YARN run ')
+    .replaceAll('BUN ', project.isBunAvailable ? `${projectPackageManagerWithRun} ` : 'YARN ')
     // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`.
-    .replaceAll('YARN run ', project.isBunAvailable ? 'bun --bun run ' : 'yarn run ');
+    .replaceAll('YARN run ', project.isBunAvailable ? `${projectPackageManagerWithRun} ` : 'yarn run ');
   if (project.isBunAvailable) {
     newScript = newScript
       .replaceAll('YARN build-ts run', 'bun --bun run')
