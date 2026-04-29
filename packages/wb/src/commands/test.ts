@@ -283,33 +283,41 @@ function runTestCommand(
 
 function dedupeNoisyTestOutput(output: string): string {
   const recentPrintedLines: string[] = [];
-  const recentPrintedLineCounts = new Map<string, number>();
-  return output
-    .split('\n')
-    .filter((line) => {
-      const normalizedLine = normalizeLineForSimilarity(line);
-      if (recentPrintedLineCounts.has(normalizedLine)) return false;
-      if (recentPrintedLines.some((printedLine) => areLinesSimilar(printedLine, normalizedLine))) return false;
+  const recentPrintedLineSet = new Set<string>();
+  const dedupedLines: string[] = [];
+  for (const line of iterateLines(output)) {
+    const normalizedLine = normalizeLineForSimilarity(line);
+    if (recentPrintedLineSet.has(normalizedLine)) continue;
+    if (recentPrintedLines.some((printedLine) => areLinesSimilar(printedLine, normalizedLine))) continue;
 
-      pushRecentPrintedLine(recentPrintedLines, recentPrintedLineCounts, normalizedLine);
-      return true;
-    })
-    .join('\n');
+    pushRecentPrintedLine(recentPrintedLines, recentPrintedLineSet, normalizedLine);
+    dedupedLines.push(line);
+  }
+  return dedupedLines.join('\n');
 }
 
-function pushRecentPrintedLine(lines: string[], lineCounts: Map<string, number>, line: string): void {
+function* iterateLines(output: string): Generator<string> {
+  let lineStartIndex = 0;
+  while (lineStartIndex <= output.length) {
+    const lineEndIndex = output.indexOf('\n', lineStartIndex);
+    if (lineEndIndex === -1) {
+      yield output.slice(lineStartIndex);
+      return;
+    }
+
+    yield output.slice(lineStartIndex, lineEndIndex);
+    lineStartIndex = lineEndIndex + 1;
+  }
+}
+
+function pushRecentPrintedLine(lines: string[], lineSet: Set<string>, line: string): void {
   lines.push(line);
-  lineCounts.set(line, (lineCounts.get(line) ?? 0) + 1);
+  lineSet.add(line);
   if (lines.length <= SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT) return;
 
   const removedLine = lines.shift();
-  if (removedLine === undefined) return;
-
-  const count = lineCounts.get(removedLine) ?? 0;
-  if (count <= 1) {
-    lineCounts.delete(removedLine);
-  } else {
-    lineCounts.set(removedLine, count - 1);
+  if (removedLine !== undefined) {
+    lineSet.delete(removedLine);
   }
 }
 
