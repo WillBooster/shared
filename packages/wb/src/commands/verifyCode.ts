@@ -114,7 +114,7 @@ async function runPackageCommand(
 
   const ret = await spawnAsync(command, undefined, {
     cwd: project.dirPath,
-    env: configureEnv(project.env, { forceColor: true }),
+    env: configureEnv(project.env, { forceColor: false }),
     shell: true,
     stdio: 'inherit',
     killOnExit: true,

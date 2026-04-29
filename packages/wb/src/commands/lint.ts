@@ -211,7 +211,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   }
 
   const lintPromises: Promise<LintRunResult>[] = [];
-  const lintRunOptions = { exitIfFailed: false, forceColor: true } as const;
+  const lintRunOptions = { exitIfFailed: false, forceColor: !argv.printAllOutput } as const;
   if (files.length > 0) {
     for (const [project, lintFilePaths] of lintFilePathsByProject) {
       const lintCommand = buildLintCommand(project, argv, lintFilePaths);
@@ -274,7 +274,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
         ]),
         projects.self,
         argv,
-        { exitIfFailed: false, forceColor: true }
+        { exitIfFailed: false, forceColor: !argv.printAllOutput }
       );
       printSilentLintOutputs([prettierResult], argv);
       lintExitCodes.push(prettierResult.exitCode);
@@ -284,7 +284,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
         buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
         projects.self,
         argv,
-        { exitIfFailed: false, forceColor: true }
+        { exitIfFailed: false, forceColor: !argv.printAllOutput }
       );
       printSilentLintOutputs([sortPackageJsonResult], argv);
       lintExitCodes.push(sortPackageJsonResult.exitCode);
