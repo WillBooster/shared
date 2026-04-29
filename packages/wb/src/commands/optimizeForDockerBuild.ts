@@ -80,6 +80,8 @@ function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, pack
 
 function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: PackageJson): void {
   const devDeps = packageJson.devDependencies ?? {};
+  // In --outside mode, Docker still runs codegen/build before a second in-image optimization.
+  // Remove only tooling that is not needed for that build phase.
   const nameWordsToBeRemoved = [
     'artillery',
     'concurrently',
@@ -157,6 +159,8 @@ function optimizeDockerInstallPrepareScript(argv: InferredOptionTypes<typeof bui
   const devDependencyNames = Object.keys(packageJson.devDependencies ?? {});
   if (devDependencyNames.length === 0) return;
 
+  // Bun validates the lockfile even with --production. This script lets Docker rewrite
+  // the image-local lockfile after --outside pruning, without hard-coding packages in app Dockerfiles.
   const scripts = packageJson.scripts ?? {};
   scripts['docker/install/prepare'] = `bun remove ${devDependencyNames.join(' ')}`;
   packageJson.scripts = scripts;
