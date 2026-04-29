@@ -274,7 +274,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
         ]),
         projects.self,
         argv,
-        { exitIfFailed: false, forceColor: !argv.printAllOutput }
+        lintRunOptions
       );
       printSilentLintOutputs([prettierResult], argv);
       lintExitCodes.push(prettierResult.exitCode);
@@ -284,7 +284,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
         buildShellCommand(['YARN', 'sort-package-json', '--', ...sortPackageJsonArgs]),
         projects.self,
         argv,
-        { exitIfFailed: false, forceColor: !argv.printAllOutput }
+        lintRunOptions
       );
       printSilentLintOutputs([sortPackageJsonResult], argv);
       lintExitCodes.push(sortPackageJsonResult.exitCode);

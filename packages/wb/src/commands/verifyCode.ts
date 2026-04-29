@@ -124,7 +124,7 @@ async function runPackageCommand(
   printPackageCommandOutput(command, exitCode, ret.stdout);
 
   if (exitCode !== 0 && !options.allowFailure) {
-    console.info(chalk.red(chalk.bold(`Failed (exit code ${ret.status}):`), command));
+    console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), command));
     process.exit(exitCode);
   }
   return exitCode;
