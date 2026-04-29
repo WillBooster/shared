@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import chalk from 'chalk';
+import { distance } from 'fastest-levenshtein';
 import type { Argv, ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
@@ -21,6 +22,10 @@ import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
+
+const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
+const SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT = 200;
+const SIMILAR_TEST_OUTPUT_DISTANCE_RATIO = 0.05;
 
 const builder = {
   e2e: {
@@ -124,7 +129,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
       const targets =
         unitTargets.length > 0 ? unitTargets : defaultUnitTargets.length > 0 ? defaultUnitTargets : undefined;
       const unitArgv = { ...argv, targets };
-      await runWithSpawn(scripts.testUnit(project, unitArgv), project, argv, { timeout: argv.unitTimeout });
+      await runTestCommand(scripts.testUnit(project, unitArgv), project, argv, { timeout: argv.unitTimeout });
     }
     // Skip e2e tests if not needed or no e2e directory exists
     if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
@@ -137,7 +142,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
 
     switch (argv.e2e) {
       case 'headless': {
-        await runWithSpawn(
+        await runTestCommand(
           await scripts.testE2EProduction(project, e2eArgv, {
             playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
             forwardedPlaywrightArgs,
@@ -148,7 +153,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
         continue;
       }
       case 'headless-dev': {
-        await runWithSpawn(
+        await runTestCommand(
           await scripts.testE2EDev(project, e2eArgv, {
             playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
             forwardedPlaywrightArgs,
@@ -182,7 +187,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
     if (deps.blitz || deps.next || devDeps['@remix-run/dev'] || devDeps.vite) {
       switch (argv.e2e) {
         case 'headed': {
-          await runWithSpawn(
+          await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
               playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--headed']),
               forwardedPlaywrightArgs,
@@ -193,7 +198,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
           break;
         }
         case 'headed-dev': {
-          await runWithSpawn(
+          await runTestCommand(
             await scripts.testE2EDev(project, e2eArgv, {
               playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--headed']),
               forwardedPlaywrightArgs,
@@ -204,7 +209,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
           break;
         }
         case 'debug': {
-          await runWithSpawn(
+          await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
               playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--debug']),
               forwardedPlaywrightArgs,
@@ -215,7 +220,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
           break;
         }
         case 'generate': {
-          await runWithSpawn(
+          await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
               playwrightArgs: ['codegen', `http://localhost:${project.env.PORT}`],
             }),
@@ -225,7 +230,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
           break;
         }
         case 'trace': {
-          await runWithSpawn(`BUN playwright show-trace`, project, argv);
+          await runTestCommand(`BUN playwright show-trace`, project, argv);
           break;
         }
       }
@@ -252,7 +257,7 @@ async function testOnDocker(
 ): Promise<void> {
   project.env.WB_DOCKER ||= '1';
   await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
-  process.exitCode = await runWithSpawn(
+  process.exitCode = await runTestCommand(
     await scripts.testE2EDocker(project, argv, {
       playwrightArgs,
       forwardedPlaywrightArgs,
@@ -262,6 +267,76 @@ async function testOnDocker(
     { exitIfFailed: false }
   );
   await runWithSpawn(dockerScripts.stop(project), project, argv);
+}
+
+function runTestCommand(
+  script: string,
+  project: Project,
+  argv: Parameters<typeof runWithSpawn>[2],
+  options: Parameters<typeof runWithSpawn>[3] = {}
+): Promise<number> {
+  return runWithSpawn(script, project, argv, {
+    ...options,
+    processSilentOutput: dedupeNoisyTestOutput,
+  });
+}
+
+function dedupeNoisyTestOutput(output: string): string {
+  const recentPrintedLines: string[] = [];
+  const recentPrintedLineSet = new Set<string>();
+  const dedupedLines: string[] = [];
+  for (const line of iterateLines(output)) {
+    const normalizedLine = normalizeLineForSimilarity(line);
+    if (recentPrintedLineSet.has(normalizedLine)) continue;
+    if (recentPrintedLines.some((printedLine) => areLinesSimilar(printedLine, normalizedLine))) continue;
+
+    pushRecentPrintedLine(recentPrintedLines, recentPrintedLineSet, normalizedLine);
+    dedupedLines.push(line);
+  }
+  return dedupedLines.join('\n');
+}
+
+function* iterateLines(output: string): Generator<string> {
+  let lineStartIndex = 0;
+  while (lineStartIndex <= output.length) {
+    const lineEndIndex = output.indexOf('\n', lineStartIndex);
+    if (lineEndIndex === -1) {
+      yield output.slice(lineStartIndex);
+      return;
+    }
+
+    yield output.slice(lineStartIndex, lineEndIndex);
+    lineStartIndex = lineEndIndex + 1;
+  }
+}
+
+function pushRecentPrintedLine(lines: string[], lineSet: Set<string>, line: string): void {
+  lines.push(line);
+  lineSet.add(line);
+  if (lines.length <= SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT) return;
+
+  const removedLine = lines.shift();
+  if (removedLine !== undefined) {
+    lineSet.delete(removedLine);
+  }
+}
+
+function normalizeLineForSimilarity(line: string): string {
+  return line
+    .replaceAll(ANSI_ESCAPE_CODE_REGEXP, '')
+    .trim()
+    .replaceAll(/^(?:\[[^\]]+\]\s*)+/g, '')
+    .replaceAll(/\(node:\d+\)/g, '(node:<number>)')
+    .replaceAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g, '<timestamp>')
+    .replaceAll(/([?&]cache=)\d+/g, '$1<number>');
+}
+
+function areLinesSimilar(a: string, b: string): boolean {
+  const maxLength = Math.max(a.length, b.length);
+  if (maxLength === 0) return true;
+  if (Math.abs(a.length - b.length) > maxLength * SIMILAR_TEST_OUTPUT_DISTANCE_RATIO) return false;
+
+  return distance(a, b) / maxLength <= SIMILAR_TEST_OUTPUT_DISTANCE_RATIO;
 }
 
 export function buildPlaywrightArgsForE2E(

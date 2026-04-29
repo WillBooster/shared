@@ -26,11 +26,28 @@ export class Project {
 
   @memoizeOne
   get isBunAvailable(): boolean {
+    if (this.hasBunToolVersion()) return true;
+    if (this.hasBunLockfile()) return true;
+    return this.hasBunPackageManager();
+  }
+
+  private hasBunToolVersion(): boolean {
     try {
       return /(^|\n)bun\s/.test(fs.readFileSync(path.join(this.rootDirPath, '.tool-versions'), 'utf8'));
     } catch {
       return false;
     }
+  }
+
+  private hasBunLockfile(): boolean {
+    // Some repositories rely on the lockfile or packageManager field instead of mise.
+    // Docker optimization must follow the target project, not the runtime that launched wb.
+    return ['bun.lock', 'bun.lockb'].some((fileName) => fs.existsSync(path.join(this.rootDirPath, fileName)));
+  }
+
+  private hasBunPackageManager(): boolean {
+    const packageManager = this.rootPackageJson?.packageManager ?? this.packageJson.packageManager;
+    return typeof packageManager === 'string' && packageManager.startsWith('bun@');
   }
 
   @memoizeOne

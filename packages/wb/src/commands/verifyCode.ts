@@ -147,8 +147,18 @@ async function runPackageCommand(
   return exitCode;
 }
 
+/**
+ * Prints package command output for `wb verify`.
+ *
+ * `wb verify` is primarily consumed by AI coding agents, so successful noisy
+ * commands are summarized while failure output remains available for diagnosis.
+ *
+ * @param command The executed command.
+ * @param exitCode The command exit code.
+ * @param output The merged stdout and stderr output from the command.
+ */
 function printPackageCommandOutput(command: string, exitCode: number, output: string): void {
-  if (exitCode === 0 && command === `${packageManager} install`) {
+  if (exitCode === 0 && (command === `${packageManager} install` || command === `${packageManager} gen-code`)) {
     console.info(chalk.green('Succeeded.'));
     return;
   }

@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findDescendantProjects } from '../project.js';
+import { findDescendantProjects, type Project } from '../project.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -48,7 +48,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
       optimizeScripts(packageJson);
 
-      optimizeDockerInstallPrepareScript(argv, packageJson);
+      optimizeDockerInstallPrepareScript(argv, project, packageJson);
 
       optimizeRootProps(packageJson);
 
@@ -153,8 +153,14 @@ function optimizeScripts(packageJson: PackageJson): void {
   console.info('Removed scripts:', removedScripts.join(', ') || 'none');
 }
 
-function optimizeDockerInstallPrepareScript(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
-  if (!argv.outside || packageManager !== 'bun') return;
+function optimizeDockerInstallPrepareScript(
+  argv: InferredOptionTypes<typeof builder>,
+  project: Project,
+  packageJson: PackageJson
+): void {
+  // The published wb binary may run under Node even when invoked by a Bun project script.
+  // Use the target project instead of the current CLI runtime when deciding Docker install steps.
+  if (!argv.outside || !project.isBunAvailable) return;
 
   const devDependencyNames = Object.keys(packageJson.devDependencies ?? {});
   if (devDependencyNames.length === 0) return;
