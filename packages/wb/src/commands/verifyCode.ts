@@ -51,17 +51,21 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
       lint({ ...argv, _: ['lint'], format: true, printAllOutput: true, silent: true } as unknown as LintCommandArgv),
     {
       allowFailure: true,
+      silent: true,
     }
   );
-  await runInProcessCommand('lint-fix', () =>
-    lint({
-      ...argv,
-      _: ['lint'],
-      fix: true,
-      printAllOutput: true,
-      quiet: true,
-      silent: true,
-    } as unknown as LintCommandArgv)
+  await runInProcessCommand(
+    'lint-fix',
+    () =>
+      lint({
+        ...argv,
+        _: ['lint'],
+        fix: true,
+        printAllOutput: true,
+        quiet: true,
+        silent: true,
+      } as unknown as LintCommandArgv),
+    { silent: true }
   );
 }
 
@@ -79,12 +83,16 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
 async function runInProcessCommand(
   commandName: string,
   command: () => Promise<number | undefined>,
-  options: { allowFailure?: boolean } = {}
+  options: { allowFailure?: boolean; silent?: boolean } = {}
 ): Promise<number> {
-  console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
+  if (!options.silent) {
+    console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
+  }
   const exitCode = (await command()) ?? 0;
   if (exitCode === 0 || options.allowFailure) {
-    console.info(chalk.green(chalk.bold('Finished:'), commandName));
+    if (!options.silent) {
+      console.info(chalk.green(chalk.bold('Finished:'), commandName));
+    }
   } else {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
     process.exit(exitCode);
