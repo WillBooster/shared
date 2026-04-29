@@ -1,11 +1,3 @@
-export function shouldPrintBufferedOutput(exitCode: number, output: string): boolean {
-  return exitCode !== 0 || hasWarningOutput(removeNoColorWarning(output));
-}
-
-export function normalizeBufferedOutput(output: string): string {
-  return removeNoColorWarning(output).trim();
-}
-
 export function printBufferedOutput(exitCode: number, output: string): void {
   if (!shouldPrintBufferedOutput(exitCode, output)) return;
 
@@ -14,6 +6,14 @@ export function printBufferedOutput(exitCode: number, output: string): void {
     process.stdout.write(normalizedOutput);
     process.stdout.write('\n');
   }
+}
+
+export function shouldPrintBufferedOutput(exitCode: number, output: string): boolean {
+  return exitCode !== 0 || hasWarningOutput(removeNoColorWarning(output));
+}
+
+export function normalizeBufferedOutput(output: string): string {
+  return removeNoColorWarning(output).trim();
 }
 
 function hasWarningOutput(output: string): boolean {
