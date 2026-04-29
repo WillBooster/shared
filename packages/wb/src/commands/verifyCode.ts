@@ -49,13 +49,16 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
   }
   await runInProcessCommand(
     'format',
-    () => lint({ ...argv, _: ['lint'], format: true } as unknown as LintCommandArgv),
+    () => lint({ ...argv, _: ['lint'], format: true, silent: true } as unknown as LintCommandArgv),
     {
       allowFailure: true,
+      silent: true,
     }
   );
-  await runInProcessCommand('lint-fix', () =>
-    lint({ ...argv, _: ['lint'], fix: true, quiet: true } as unknown as LintCommandArgv)
+  await runInProcessCommand(
+    'lint-fix',
+    () => lint({ ...argv, _: ['lint'], fix: true, quiet: true, silent: true } as unknown as LintCommandArgv),
+    { silent: true }
   );
 }
 
@@ -73,12 +76,16 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
 async function runInProcessCommand(
   commandName: string,
   command: () => Promise<number | undefined>,
-  options: { allowFailure?: boolean } = {}
+  options: { allowFailure?: boolean; silent?: boolean } = {}
 ): Promise<number> {
-  console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
+  if (!options.silent) {
+    console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
+  }
   const exitCode = (await command()) ?? 0;
   if (exitCode === 0 || options.allowFailure) {
-    console.info(chalk.green(chalk.bold('Finished:'), commandName));
+    if (!options.silent) {
+      console.info(chalk.green(chalk.bold('Finished:'), commandName));
+    }
   } else {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
     process.exit(exitCode);
@@ -93,12 +100,16 @@ async function runPackageCommand(
   argv: VerifyCodeCommandArgv,
   options: { allowFailure?: boolean; silent?: boolean } = {}
 ): Promise<number> {
-  console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName) + chalk.gray(` at ${project.dirPath}`));
+  if (!options.silent) {
+    console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName) + chalk.gray(` at ${project.dirPath}`));
+  }
   if (argv.verbose) {
     console.info(chalk.gray(chalk.bold('Start (raw):'), command));
   }
   if (argv.dryRun) {
-    console.info(chalk.green(chalk.bold('Finished:'), commandName));
+    if (!options.silent) {
+      console.info(chalk.green(chalk.bold('Finished:'), commandName));
+    }
     return 0;
   }
 
@@ -106,16 +117,43 @@ async function runPackageCommand(
     cwd: project.dirPath,
     env: configureEnv(project.env, { forceColor: true }),
     shell: true,
-    stdio: options.silent ? ['ignore', 'ignore', 'inherit'] : 'inherit',
+    stdio: options.silent ? 'pipe' : 'inherit',
+    mergeOutAndError: options.silent,
     killOnExit: true,
     verbose: argv.verbose,
   });
 
+  if (options.silent) {
+    printOutputIfFailedOrWarned(ret.status ?? 1, ret.stdout);
+  }
   if (ret.status === 0 || options.allowFailure) {
-    console.info(chalk.green(chalk.bold('Finished:'), commandName));
+    if (!options.silent) {
+      console.info(chalk.green(chalk.bold('Finished:'), commandName));
+    }
   } else {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${ret.status}):`), commandName));
     process.exit(ret.status ?? 1);
   }
   return ret.status ?? 1;
+}
+
+function printOutputIfFailedOrWarned(exitCode: number, output: string): void {
+  const trimmedOutput = removeNoColorWarning(output).trim();
+  if (exitCode === 0 && !hasWarningOutput(trimmedOutput)) return;
+
+  if (trimmedOutput) {
+    process.stdout.write(trimmedOutput);
+    process.stdout.write('\n');
+  }
+}
+
+function hasWarningOutput(output: string): boolean {
+  return /\bwarn(?:ing)?s?\b/i.test(output.replaceAll(/\b0 warnings?\b/gi, ''));
+}
+
+function removeNoColorWarning(output: string): string {
+  return output.replaceAll(
+    /\(node:\d+\) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set\.\n\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\n?/g,
+    ''
+  );
 }

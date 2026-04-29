@@ -19,6 +19,11 @@ const defaultOptions: Options = {
   exitIfFailed: true,
 };
 
+export interface BufferedRunResult {
+  exitCode: number;
+  output: string;
+}
+
 export async function runWithSpawn(
   script: string,
   project: Project,
@@ -89,6 +94,39 @@ export function runWithSpawnInParallel(
     }
     printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts);
     return ret.status ?? 1;
+  });
+}
+
+export function runWithSpawnInParallelBuffered(
+  script: string,
+  project: Project,
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof sharedOptionsBuilder>>>,
+  opts: Options = defaultOptions
+): Promise<BufferedRunResult> {
+  return promisePool.runAndWaitForReturnValue(async () => {
+    const normalizedScript = normalizeScript(script, project);
+    if (argv.dryRun) {
+      return {
+        exitCode: 0,
+        output: '',
+      };
+    }
+
+    const ret = await spawnAsync(normalizedScript.runnable, undefined, {
+      cwd: project.dirPath,
+      env: configureEnv(project.env, opts),
+      shell: true,
+      stdio: 'pipe',
+      timeout: opts.timeout,
+      mergeOutAndError: true,
+      killOnExit: true,
+      verbose: argv.verbose,
+    });
+    opts.onSignal?.(ret.signal);
+    return {
+      exitCode: ret.status ?? 1,
+      output: ret.stdout,
+    };
   });
 }
 
