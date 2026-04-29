@@ -182,6 +182,7 @@ function startVerifyFullReporter(project: Project): {
 
   process.stdout.write = teeWrite(process.stdout.fd, logFile) as typeof process.stdout.write;
   process.stderr.write = teeWrite(process.stderr.fd, logFile) as typeof process.stderr.write;
+  console.info(chalk.cyan(chalk.bold('Full log:'), logFilePath));
 
   const finish = (): void => {
     if (finished) return;
