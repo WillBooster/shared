@@ -7,7 +7,7 @@ interface ToolConfigContentOptions {
 }
 
 export function generateToolConfigContent(config: PackageConfig, options: ToolConfigContentOptions): string {
-  if (config.packageJson?.type === 'module') {
+  if (config.isEsmPackage) {
     return `import config from '${options.packageName}';
 
 export default config;
@@ -19,4 +19,8 @@ const ${options.commonJsVariableName} = require('${options.packageName}');
 
 module.exports = ${options.commonJsVariableName}.default ?? ${options.commonJsVariableName};
 `;
+}
+
+export function normalizeToolConfigContent(content: string | undefined): string | undefined {
+  return content?.trim();
 }

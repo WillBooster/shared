@@ -7,7 +7,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
-import { generateToolConfigContent } from './toolConfigContent.js';
+import { generateToolConfigContent, normalizeToolConfigContent } from './toolConfigContent.js';
 
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
@@ -37,7 +37,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true }))
       );
     }
-    if (normalizeContent(existingContent) !== normalizeContent(desiredContent)) {
+    if (normalizeToolConfigContent(existingContent) !== normalizeToolConfigContent(desiredContent)) {
       promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
     }
     await Promise.all(promises);
@@ -50,8 +50,4 @@ function getConfigContent(config: PackageConfig): string {
     packageName: '@willbooster/oxlint-config',
     toolName: 'Oxlint',
   });
-}
-
-function normalizeContent(content: string | undefined): string | undefined {
-  return content?.trim();
 }

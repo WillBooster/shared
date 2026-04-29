@@ -6,7 +6,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
-import { generateToolConfigContent } from './toolConfigContent.js';
+import { generateToolConfigContent, normalizeToolConfigContent } from './toolConfigContent.js';
 
 export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
@@ -15,7 +15,7 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
     const existingContent = await fsUtil.readFileIgnoringError(filePath);
     const desiredContent = getConfigContent(config);
     const promises = [promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true }))];
-    if (normalizeContent(existingContent) !== normalizeContent(desiredContent)) {
+    if (normalizeToolConfigContent(existingContent) !== normalizeToolConfigContent(desiredContent)) {
       promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
     }
     await Promise.all(promises);
@@ -28,8 +28,4 @@ function getConfigContent(config: PackageConfig): string {
     packageName: '@willbooster/oxfmt-config',
     toolName: 'Oxfmt',
   });
-}
-
-function normalizeContent(content: string | undefined): string | undefined {
-  return content?.trim();
 }
