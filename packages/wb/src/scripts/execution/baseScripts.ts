@@ -98,7 +98,7 @@ export abstract class BaseScripts {
       : project.hasDrizzle
         ? drizzleScripts.migrate(project)
         : '';
-    return [...migrationCommand.split('&&'), ...commands]
+    return [...(migrationCommand ? migrationCommand.split('&&') : []), ...commands]
       .filter(Boolean)
       .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
       .join(' && ');

@@ -33,18 +33,20 @@ class HttpServerScripts extends BaseScripts {
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const targets = argv.targets?.map(String);
+    const normalizedTargets = targets && targets.length > 0 ? targets : ['test/e2e/'];
     const testCommand = project.hasVitest
       ? buildShellCommand([
           'vitest',
           'run',
-          ...(targets && targets.length > 0 ? targets : ['test/e2e/']),
+          ...normalizedTargets,
           '--color',
           '--passWithNoTests',
           '--allowOnly',
           ...(argv.bail ? ['--bail=1'] : []),
         ])
       : project.isBunAvailable
-        ? buildShellCommand(['bun', 'test', ...(targets && targets.length > 0 ? targets : ['test/e2e/'])])
+        ? // Use literal `bun test`; the `BUN` placeholder normalizes to `bun --bun run` and may recurse into a `test` package script.
+          buildShellCommand(['bun', 'test', ...normalizedTargets])
         : 'echo "No tests."';
     return buildShellCommand([
       'YARN',
