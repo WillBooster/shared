@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import chalk from 'chalk';
+import { distance } from 'fastest-levenshtein';
 import type { Argv, ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
@@ -305,30 +306,7 @@ function areLinesSimilar(a: string, b: string): boolean {
   const maxLength = Math.max(a.length, b.length);
   if (maxLength === 0) return true;
 
-  return calculateEditDistance(a, b) / maxLength <= 0.05;
-}
-
-function calculateEditDistance(a: string, b: string): number {
-  if (a === b) return 0;
-  if (a.length === 0) return b.length;
-  if (b.length === 0) return a.length;
-
-  const previousDistances = Array.from({ length: b.length + 1 }, (_, index) => index);
-  const currentDistances = Array.from({ length: b.length + 1 }, () => 0);
-
-  for (let aIndex = 0; aIndex < a.length; aIndex++) {
-    currentDistances[0] = aIndex + 1;
-    for (let bIndex = 0; bIndex < b.length; bIndex++) {
-      const substitutionCost = a[aIndex] === b[bIndex] ? 0 : 1;
-      const insertionDistance = (currentDistances[bIndex] ?? Number.POSITIVE_INFINITY) + 1;
-      const deletionDistance = (previousDistances[bIndex + 1] ?? Number.POSITIVE_INFINITY) + 1;
-      const substitutionDistance = (previousDistances[bIndex] ?? Number.POSITIVE_INFINITY) + substitutionCost;
-      currentDistances[bIndex + 1] = Math.min(insertionDistance, deletionDistance, substitutionDistance);
-    }
-    previousDistances.splice(0, previousDistances.length, ...currentDistances);
-  }
-
-  return previousDistances[b.length] ?? 0;
+  return distance(a, b) / maxLength <= 0.05;
 }
 
 export function buildPlaywrightArgsForE2E(
