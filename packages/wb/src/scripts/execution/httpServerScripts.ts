@@ -46,7 +46,7 @@ class HttpServerScripts extends BaseScripts {
         ])
       : project.isBunAvailable
         ? // Use literal `bun test`; the `BUN` placeholder normalizes to `bun --bun run` and may recurse into a `test` package script.
-          buildShellCommand(['bun', 'test', ...normalizedTargets])
+          buildShellCommand(['bun', 'test', ...normalizedTargets, ...(argv.bail ? ['--bail'] : [])])
         : 'echo "No tests."';
     return buildShellCommand([
       'YARN',
