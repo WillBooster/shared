@@ -18,6 +18,7 @@ describe('HttpServerScripts.testE2E', () => {
       env: { WB_ENV: 'test', PORT: '3000' },
       packageJson: { scripts: {} },
       hasPlaywrightConfig: false,
+      hasVitest: true,
       hasPrisma: false,
       buildCommand: 'echo "no build"',
       findFile: vi.fn().mockImplementation(() => {
@@ -51,6 +52,7 @@ describe('HttpServerScripts.testE2E', () => {
       env: { WB_ENV: 'test', PORT: '3000' },
       packageJson: { scripts: {} },
       hasPlaywrightConfig: false,
+      hasVitest: true,
       hasPrisma: false,
       buildCommand: 'echo "no build"',
       findFile: vi.fn().mockImplementation(() => {
@@ -73,8 +75,8 @@ describe('HttpServerScripts.testE2E', () => {
         '--success',
         'first',
         'YARN wb buildIfNeeded && node dist/index.js && exit 1',
-        `wait-on -t 600000 -i 2000 http-get://127.0.0.1:3000
-        && ${buildShellCommand([
+        `wait-on -t 600000 -i 2000 http-get://127.0.0.1:3000 && ${buildShellCommand([
+          'YARN',
           'vitest',
           'run',
           `test/e2e/quo'te.spec.ts`,
@@ -82,6 +84,7 @@ describe('HttpServerScripts.testE2E', () => {
           '--color',
           '--passWithNoTests',
           '--allowOnly',
+          '--watch=false',
         ])}`,
       ])
     );

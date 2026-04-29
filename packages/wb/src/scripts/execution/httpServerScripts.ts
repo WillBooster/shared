@@ -33,6 +33,8 @@ class HttpServerScripts extends BaseScripts {
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const targets = argv.targets?.map(String);
+    const normalizedTargets = targets?.length ? targets : ['test/e2e/'];
+    const testCommand = this.testUnit(project, { ...argv, targets: normalizedTargets });
     return buildShellCommand([
       'YARN',
       'wb',
@@ -42,16 +44,7 @@ class HttpServerScripts extends BaseScripts {
       '--success',
       'first',
       `${startCommand} && exit 1`,
-      `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
-        && ${buildShellCommand([
-          'vitest',
-          'run',
-          ...(targets && targets.length > 0 ? targets : ['test/e2e/']),
-          '--color',
-          '--passWithNoTests',
-          '--allowOnly',
-          ...(argv.bail ? ['--bail=1'] : []),
-        ])}${suffix}`,
+      `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && ${testCommand}${suffix}`,
     ]);
   }
 }
