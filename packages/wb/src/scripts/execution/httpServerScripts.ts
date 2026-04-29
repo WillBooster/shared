@@ -34,20 +34,7 @@ class HttpServerScripts extends BaseScripts {
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const targets = argv.targets?.map(String);
     const normalizedTargets = targets && targets.length > 0 ? targets : ['test/e2e/'];
-    const testCommand = project.hasVitest
-      ? buildShellCommand([
-          'vitest',
-          'run',
-          ...normalizedTargets,
-          '--color',
-          '--passWithNoTests',
-          '--allowOnly',
-          ...(argv.bail ? ['--bail=1'] : []),
-        ])
-      : project.isBunAvailable
-        ? // Use literal `bun test`; the `BUN` placeholder normalizes to `bun --bun run` and may recurse into a `test` package script.
-          buildShellCommand(['bun', 'test', ...normalizedTargets, ...(argv.bail ? ['--bail'] : [])])
-        : 'echo "No tests."';
+    const testCommand = this.buildFallbackTestCommand(project, argv, normalizedTargets);
     return buildShellCommand([
       'YARN',
       'wb',
@@ -59,6 +46,25 @@ class HttpServerScripts extends BaseScripts {
       `${startCommand} && exit 1`,
       `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && ${testCommand}${suffix}`,
     ]);
+  }
+
+  private buildFallbackTestCommand(project: Project, argv: TestArgv, targets: string[]): string {
+    if (project.hasVitest) {
+      return buildShellCommand([
+        'vitest',
+        'run',
+        ...targets,
+        '--color',
+        '--passWithNoTests',
+        '--allowOnly',
+        ...(argv.bail ? ['--bail=1'] : []),
+      ]);
+    }
+    if (project.isBunAvailable) {
+      // Use literal `bun test`; the `BUN` placeholder normalizes to `bun --bun run` and may recurse into a `test` package script.
+      return buildShellCommand(['bun', 'test', ...targets, ...(argv.bail ? ['--bail'] : [])]);
+    }
+    return 'echo "No tests."';
   }
 }
 

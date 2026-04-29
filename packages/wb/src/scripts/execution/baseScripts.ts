@@ -89,7 +89,7 @@ export abstract class BaseScripts {
       ecosystemConfigPath === undefined
         ? [
             `YARN wb buildIfNeeded ${argv.verbose ? '--verbose' : ''}`.trim(),
-            `${project.isBunAvailable ? 'BUN' : 'node'} dist/index.js ${argv.normalizedArgsText ?? ''}`.trim(),
+            `${project.isBunAvailable ? 'bun' : 'node'} dist/index.js ${argv.normalizedArgsText ?? ''}`.trim(),
           ]
         : [project.buildCommand, `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`];
 
