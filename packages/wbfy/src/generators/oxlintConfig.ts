@@ -13,7 +13,12 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     // must not remove package-provided linter settings.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
-    const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
+    const unusedMtsConfigPath = path.resolve(config.dirPath, 'oxlint.config.mts');
+    const existingContent = shouldPreservePublishedLinterConfig
+      ? fs.existsSync(filePath)
+        ? fs.readFileSync(filePath, 'utf8')
+        : undefined
+      : undefined;
 
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
@@ -33,14 +38,17 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true }))
       );
     }
-    if (!existingContent) {
-      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, configContent)));
-    }
+    promises.push(
+      promisePool.run(() => fsUtil.generateFile(filePath, existingContent ?? configContent)),
+      // Current oxlint auto-discovers oxlint.config.ts but not oxlint.config.mts.
+      promisePool.run(() => fs.promises.rm(unusedMtsConfigPath, { force: true }))
+    );
     await Promise.all(promises);
   });
 }
 
-const configContent = `import config from '@willbooster/oxlint-config';
+const configContent = `// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
+const oxlintConfig = require('@willbooster/oxlint-config');
 
-export default config;
+module.exports = oxlintConfig.default ?? oxlintConfig;
 `;

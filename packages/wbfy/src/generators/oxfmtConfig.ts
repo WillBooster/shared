@@ -8,15 +8,20 @@ import { promisePool } from '../utils/promisePool.js';
 
 export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
-    const legacyConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
+    const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
+    const unusedMtsConfigPath = path.resolve(config.dirPath, 'oxfmt.config.mts');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
-    await promisePool.run(() => fs.promises.rm(legacyConfigPath, { force: true }));
-    if (fs.existsSync(filePath)) return;
-    await promisePool.run(() => fsUtil.generateFile(filePath, configContent));
+    await Promise.all([
+      promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true })),
+      promisePool.run(() => fsUtil.generateFile(filePath, configContent)),
+      // Current oxfmt auto-discovers oxfmt.config.ts but not oxfmt.config.mts.
+      promisePool.run(() => fs.promises.rm(unusedMtsConfigPath, { force: true })),
+    ]);
   });
 }
 
-const configContent = `import config from '@willbooster/oxfmt-config';
+const configContent = `// oxlint-disable unicorn/prefer-module -- Oxfmt only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
+const oxfmtConfig = require('@willbooster/oxfmt-config');
 
-export default config;
+module.exports = oxfmtConfig.default ?? oxfmtConfig;
 `;
