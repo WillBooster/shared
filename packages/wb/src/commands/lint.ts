@@ -326,6 +326,8 @@ function printSilentLintOutputs(results: LintRunResult[], argv: Pick<LintCommand
 function printCommandOutput(result: BufferedLintRunResult): void {
   console.info('\n' + chalk.cyan(chalk.bold('Command:'), result.command) + chalk.gray(` at ${result.cwd}`));
 
+  if (result.exitCode === 0 && result.command.includes(' oxfmt ')) return;
+
   const output = result.output.trim();
   if (output) {
     process.stdout.write('\n');

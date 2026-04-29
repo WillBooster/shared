@@ -106,9 +106,8 @@ async function runPackageCommand(
   argv: VerifyCodeCommandArgv,
   options: { allowFailure?: boolean } = {}
 ): Promise<number> {
-  console.info('\n' + chalk.cyan(chalk.bold('Start:'), command) + chalk.gray(` at ${project.dirPath}`));
+  printCommand(command, project.dirPath);
   if (argv.dryRun) {
-    console.info(chalk.green(chalk.bold('Finished:'), command));
     return 0;
   }
 
@@ -116,16 +115,32 @@ async function runPackageCommand(
     cwd: project.dirPath,
     env: configureEnv(project.env, { forceColor: false }),
     shell: true,
-    stdio: 'inherit',
+    stdio: 'pipe',
+    mergeOutAndError: true,
     killOnExit: true,
     verbose: argv.verbose,
   });
+  const exitCode = ret.status ?? 1;
+  printPackageCommandOutput(command, exitCode, ret.stdout);
 
-  if (ret.status === 0 || options.allowFailure) {
-    console.info(chalk.green(chalk.bold('Finished:'), command));
-  } else {
+  if (exitCode !== 0 && !options.allowFailure) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${ret.status}):`), command));
-    process.exit(ret.status ?? 1);
+    process.exit(exitCode);
   }
-  return ret.status ?? 1;
+  return exitCode;
+}
+
+function printPackageCommandOutput(command: string, exitCode: number, output: string): void {
+  if (exitCode === 0 && command === `${packageManager} install`) return;
+
+  const trimmedOutput = output.trim();
+  if (trimmedOutput) {
+    process.stdout.write('\n');
+    process.stdout.write(trimmedOutput);
+    process.stdout.write('\n');
+  }
+}
+
+function printCommand(command: string, cwd: string): void {
+  console.info('\n' + chalk.cyan(chalk.bold('Command:'), command) + chalk.gray(` at ${cwd}`));
 }
