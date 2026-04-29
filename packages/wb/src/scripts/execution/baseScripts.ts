@@ -93,12 +93,11 @@ export abstract class BaseScripts {
           ]
         : [project.buildCommand, `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`];
 
-    const migrationCommand = project.hasPrisma
-      ? prismaScripts.migrate(project)
-      : project.hasDrizzle
-        ? drizzleScripts.migrate(project)
-        : '';
-    return [...(migrationCommand ? migrationCommand.split('&&') : []), ...commands]
+    const migrationCommands = [
+      ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
+      ...(project.hasDrizzle ? [drizzleScripts.migrate(project)] : []),
+    ];
+    return [...migrationCommands.flatMap((cmd) => cmd.split('&&')), ...commands]
       .filter(Boolean)
       .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
       .join(' && ');
