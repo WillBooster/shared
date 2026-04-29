@@ -18,7 +18,7 @@ import { testCommand } from './commands/test.js';
 import { testOnCiCommand } from './commands/testOnCi.js';
 import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
-import { verifyCodeCommand, verifyCodeWithTestsCommand } from './commands/verifyCode.js';
+import { verifyCodeCommand } from './commands/verifyCode.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
 await yargs(hideBin(process.argv))
@@ -33,7 +33,6 @@ await yargs(hideBin(process.argv))
 
     removeNpmAndYarnEnvironmentVariables(process.env);
   })
-  .command(verifyCodeWithTestsCommand)
   .command(verifyCodeCommand)
   .command(buildIfNeededCommand)
   .command(concurrentlyCommand)
