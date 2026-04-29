@@ -37,9 +37,7 @@
     "lint-fix": "yarn lint --fix",
     "storybook": "start-storybook -p 6006",
     "test/ci": "yarn build-storybook",
-    "typecheck": "tsgo --noEmit",
-    "verify-code": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify-code",
-    "verify-code-with-tests": "yarn verify-code && yarn test"
+    "typecheck": "tsgo --noEmit"
   },
   "devDependencies": {
     "@babel/core": "7.29.0",

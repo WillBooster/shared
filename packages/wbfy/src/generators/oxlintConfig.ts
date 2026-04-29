@@ -7,13 +7,17 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
+import { generateToolConfigContent, normalizeToolConfigContent } from './toolConfigContent.js';
+
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     // willbooster-configs publishes config files as product code, so migration
     // must not remove package-provided linter settings.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
-    const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
+    const existingContent = await fsUtil.readFileIgnoringError(filePath);
+    const desiredContent =
+      shouldPreservePublishedLinterConfig && existingContent ? existingContent : getConfigContent(config);
 
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
@@ -33,14 +37,17 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true }))
       );
     }
-    if (!existingContent) {
-      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, configContent)));
+    if (normalizeToolConfigContent(existingContent) !== normalizeToolConfigContent(desiredContent)) {
+      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
     }
     await Promise.all(promises);
   });
 }
 
-const configContent = `import config from '@willbooster/oxlint-config';
-
-export default config;
-`;
+function getConfigContent(config: PackageConfig): string {
+  return generateToolConfigContent(config, {
+    commonJsVariableName: 'oxlintConfig',
+    packageName: '@willbooster/oxlint-config',
+    toolName: 'Oxlint',
+  });
+}

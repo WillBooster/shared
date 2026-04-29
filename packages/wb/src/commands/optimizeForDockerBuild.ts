@@ -6,11 +6,13 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findDescendantProjects, type Project } from '../project.js';
+import { findDescendantProjects } from '../project.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
+// These tools are declared as devDependencies in source repos, but optimized Docker
+// package.json files still need them for in-image codegen/build steps.
 const runtimeDevDependencies = ['@willbooster/wb', 'build-ts'];
 
 const builder = {
@@ -39,6 +41,8 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
         const deps = packageJson[key] ?? {};
         for (const [name, value] of Object.entries(deps)) {
           if (value?.startsWith('git@github.com:')) {
+            // Docker builds cannot access private SSH URLs unless credentials are forwarded.
+            // The Dockerfile copies those workspace packages into the image instead.
             deps[name] = `./${name}`;
           }
         }
@@ -47,8 +51,6 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       optimizeDevDependencies(argv, packageJson);
 
       optimizeScripts(packageJson);
-
-      optimizeDockerInstallPrepareScript(argv, project, packageJson);
 
       optimizeRootProps(packageJson);
 
@@ -70,10 +72,13 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
   promoteRuntimeDevDependencies(packageJson);
   if (argv.outside) {
+    // Outside optimization writes dist/package.json before Docker builds the app.
+    // Keep build-time packages for that later in-image build and remove only known non-build tooling.
     removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson);
     return;
   }
 
+  // Inside Docker, codegen/build has already finished, so production install should not see dev tooling.
   delete packageJson.devDependencies;
   console.info('Removed all devDependencies.');
 }
@@ -105,6 +110,7 @@ function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: Pack
   for (const name of Object.keys(devDeps)) {
     if (
       nameWordsToBeRemoved.some((word) => name.includes(word)) ||
+      // Shared config packages are needed only for lint/format/test commands, not Docker builds.
       (name.includes('willbooster') && name.includes('config'))
     ) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -151,26 +157,6 @@ function optimizeScripts(packageJson: PackageJson): void {
     }
   }
   console.info('Removed scripts:', removedScripts.join(', ') || 'none');
-}
-
-function optimizeDockerInstallPrepareScript(
-  argv: InferredOptionTypes<typeof builder>,
-  project: Project,
-  packageJson: PackageJson
-): void {
-  // The published wb binary may run under Node even when invoked by a Bun project script.
-  // Use the target project instead of the current CLI runtime when deciding Docker install steps.
-  if (!argv.outside || !project.isBunAvailable) return;
-
-  const devDependencyNames = Object.keys(packageJson.devDependencies ?? {});
-  if (devDependencyNames.length === 0) return;
-
-  // Bun validates the lockfile even with --production. This script lets Docker rewrite
-  // the image-local lockfile after --outside pruning, without hard-coding packages in app Dockerfiles.
-  const scripts = packageJson.scripts ?? {};
-  scripts['docker/install/prepare'] = `bun remove ${devDependencyNames.join(' ')}`;
-  packageJson.scripts = scripts;
-  console.info('Added docker/install/prepare script.');
 }
 
 function optimizeRootProps(packageJson: PackageJson): void {
