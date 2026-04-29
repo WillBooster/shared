@@ -12,6 +12,7 @@ interface Options {
   exitIfFailed?: boolean;
   onSignal?: (signal: NodeJS.Signals | null) => void;
   forceColor?: boolean;
+  processSilentOutput?: (output: string) => string;
   printRawOutput?: boolean;
   timeout?: number;
 }
@@ -41,18 +42,27 @@ export async function runWithSpawn(
     return 0;
   }
 
+  const shouldProcessSilentOutput = Boolean(argv.silent && opts.processSilentOutput);
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
     env: configureEnv(project.env, opts),
     shell: true,
     stdio: argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
+    mergeOutAndError: shouldProcessSilentOutput,
     killOnExit: true,
-    printingStdout: argv.silent,
-    printingStderr: argv.silent,
+    printingStdout: argv.silent && !shouldProcessSilentOutput,
+    printingStderr: argv.silent && !shouldProcessSilentOutput,
     omitBlankLinesWhilePrinting: argv.silent,
     verbose: argv.verbose,
   });
+  if (shouldProcessSilentOutput) {
+    const output = opts.processSilentOutput?.(ret.stdout).trim();
+    if (output) {
+      process.stdout.write(output);
+      process.stdout.write('\n');
+    }
+  }
   opts.onSignal?.(ret.signal);
   printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts, { silentSuccess: argv.silent });
   return ret.status ?? 1;
