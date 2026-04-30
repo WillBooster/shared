@@ -46,6 +46,17 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
   });
 }
 
+function getConfigContentWithManagedBlocks(
+  config: PackageConfig,
+  existingContent: string | undefined,
+  filePath: string
+): string {
+  const desiredContent = getConfigContent(config);
+  if (!existingContent) return desiredContent;
+  if (hasManagedBlocks(existingContent)) return replaceManagedBlocks(existingContent, desiredContent, filePath);
+  return desiredContent;
+}
+
 function getConfigContent(config: PackageConfig): string {
   if (config.isEsmPackage) {
     return `${getManagedBlock('base', "import config from '@willbooster/oxlint-config';")}
@@ -64,17 +75,6 @@ const config = oxlintBaseConfig.default ?? oxlintBaseConfig;`
 
 ${getManagedBlock('export', 'module.exports = config;')}
 `;
-}
-
-function getConfigContentWithManagedBlocks(
-  config: PackageConfig,
-  existingContent: string | undefined,
-  filePath: string
-): string {
-  const desiredContent = getConfigContent(config);
-  if (!existingContent) return desiredContent;
-  if (hasManagedBlocks(existingContent)) return replaceManagedBlocks(existingContent, desiredContent, filePath);
-  return desiredContent;
 }
 
 function hasManagedBlocks(content: string): boolean {
