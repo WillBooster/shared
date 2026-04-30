@@ -33,10 +33,10 @@ export function hasGitHubToken(owner: string): boolean {
 
 function getGitHubToken(owner?: string): string | undefined {
   if (owner === 'WillBooster') {
-    return process.env.GH_BOT_PAT_FOR_WILLBOOSTER ?? getGitHubCliToken();
+    return process.env.GH_BOT_PAT_FOR_WILLBOOSTER || getGitHubCliToken();
   }
   if (owner === 'WillBoosterLab') {
-    return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB ?? getGitHubCliToken();
+    return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB || getGitHubCliToken();
   }
   return (
     process.env.GH_BOT_PAT_FOR_WILLBOOSTER ||
@@ -50,13 +50,19 @@ function getGitHubToken(owner?: string): string | undefined {
 let gitHubCliToken: string | undefined;
 
 function getGitHubCliToken(): string | undefined {
-  if (gitHubCliToken !== undefined) return gitHubCliToken;
+  if (gitHubCliToken !== undefined) return gitHubCliToken || undefined;
 
   try {
     // Some local runs rely on GitHub CLI authentication instead of exported env tokens.
-    gitHubCliToken = childProcess.execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim() || undefined;
+    gitHubCliToken =
+      childProcess
+        .execFileSync('gh', ['auth', 'token'], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'ignore'],
+        })
+        .trim() || '';
   } catch {
-    gitHubCliToken = undefined;
+    gitHubCliToken = '';
   }
-  return gitHubCliToken;
+  return gitHubCliToken || undefined;
 }
