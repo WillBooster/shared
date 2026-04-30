@@ -1,3 +1,5 @@
+import childProcess from 'node:child_process';
+
 import { Octokit } from '@octokit/core';
 
 class GitHubUtil {
@@ -31,15 +33,30 @@ export function hasGitHubToken(owner: string): boolean {
 
 function getGitHubToken(owner?: string): string | undefined {
   if (owner === 'WillBooster') {
-    return process.env.GH_BOT_PAT_FOR_WILLBOOSTER;
+    return process.env.GH_BOT_PAT_FOR_WILLBOOSTER ?? getGitHubCliToken();
   }
   if (owner === 'WillBoosterLab') {
-    return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB;
+    return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB ?? getGitHubCliToken();
   }
   return (
     process.env.GH_BOT_PAT_FOR_WILLBOOSTER ||
     process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB ||
     process.env.GH_TOKEN ||
-    process.env.GITHUB_TOKEN
+    process.env.GITHUB_TOKEN ||
+    getGitHubCliToken()
   );
+}
+
+let gitHubCliToken: string | undefined;
+
+function getGitHubCliToken(): string | undefined {
+  if (gitHubCliToken !== undefined) return gitHubCliToken;
+
+  try {
+    // Some local runs rely on GitHub CLI authentication instead of exported env tokens.
+    gitHubCliToken = childProcess.execFileSync('gh', ['auth', 'token'], { encoding: 'utf8' }).trim() || undefined;
+  } catch {
+    gitHubCliToken = undefined;
+  }
+  return gitHubCliToken;
 }
