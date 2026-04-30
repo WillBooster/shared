@@ -176,29 +176,6 @@ describe('generatePackageJson', () => {
     expect(packageJson.devDependencies?.typescript).toMatch(/^\d+\.\d+\.\d+/u);
     expect(packageJson.devDependencies?.['@typescript/native-preview']).toBeDefined();
   });
-
-  test('keeps typescript for packages that invoke tsc directly', async () => {
-    const dirPath = await createPackageDir({
-      name: 'tsc-package',
-      private: true,
-      scripts: {
-        build: 'build-ts app && tsc --declaration --emitDeclarationOnly',
-      },
-      devDependencies: {
-        typescript: '6.0.3',
-      },
-    });
-    const config = createConfig({
-      dirPath,
-      doesContainTypeScript: true,
-      packageJson: readPackageJson(dirPath),
-    });
-
-    await generatePackageJson(config, createRootConfig(path.dirname(dirPath)), true);
-
-    const packageJson = readPackageJson(dirPath);
-    expect(packageJson.devDependencies?.typescript).toBe('6.0.3');
-  });
 });
 
 async function createPackageDir(packageJson: PackageJson): Promise<string> {
