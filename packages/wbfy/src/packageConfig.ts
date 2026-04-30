@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import fg from 'fast-glob';
 import { simpleGit } from 'simple-git';
+import toml from 'smol-toml';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
 
@@ -68,6 +69,7 @@ export interface PackageConfig {
     npm: boolean;
   };
   hasVersionSettings: boolean;
+  miseTasks: Record<string, string>;
   packageJson?: PackageJson;
   wbfyJson?: WbfyJson;
 }
@@ -226,6 +228,7 @@ export async function getPackageConfig(
         npm: releasePlugins.includes('@semantic-release/npm'),
       },
       hasVersionSettings,
+      miseTasks: await readMiseTasks(dirPath),
       packageJson,
       wbfyJson,
     };
@@ -253,6 +256,28 @@ function hasVersionSettingsFile(dirPath: string): boolean {
     fs.existsSync(path.join(current, '.mise.toml')) ||
     fs.existsSync(path.join(current, '.tool-versions'))
   );
+}
+
+async function readMiseTasks(dirPath: string): Promise<Record<string, string>> {
+  const tasks: Record<string, string> = {};
+  for (const fileName of ['mise.toml', '.mise.toml']) {
+    const filePath = path.resolve(dirPath, fileName);
+    try {
+      const settings = toml.parse(await fsp.readFile(filePath, 'utf8')) as { tasks?: Record<string, unknown> };
+      for (const [name, value] of Object.entries(settings.tasks ?? {})) {
+        if (typeof value === 'string') {
+          tasks[name] = value;
+        } else if (value && typeof value === 'object' && typeof (value as { run?: unknown }).run === 'string') {
+          tasks[name] = (value as { run: string }).run;
+        } else {
+          tasks[name] = '';
+        }
+      }
+    } catch {
+      // Missing or temporarily invalid mise files should not block other wbfy generators.
+    }
+  }
+  return tasks;
 }
 
 function containsAny(pattern: string, dirPath: string): boolean {

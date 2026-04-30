@@ -158,6 +158,38 @@ test('drops stale generated test globals when the package dependency is absent',
   expect(tsconfig.compilerOptions.types).toEqual(['node', 'custom-test-env']);
 });
 
+test('normalizes Next.js aliases for TypeScript 6 linting', async () => {
+  const dirPath = createTempDir();
+  await fs.promises.writeFile(
+    path.join(dirPath, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        baseUrl: '.',
+        moduleResolution: 'node',
+        paths: {
+          '@/*': ['src/*'],
+        },
+      },
+    })
+  );
+
+  await generateTsconfig(
+    createConfig({
+      dirPath,
+      depending: {
+        ...createConfig().depending,
+        next: true,
+      },
+    })
+  );
+  await promisePool.promiseAll();
+
+  const tsconfig = await readTsconfig(dirPath);
+  expect(tsconfig.compilerOptions.baseUrl).toBeUndefined();
+  expect(tsconfig.compilerOptions.moduleResolution).toBe('bundler');
+  expect(tsconfig.compilerOptions.paths).toEqual({ '@/*': ['./src/*'] });
+});
+
 function createTempDir(): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
   tempDirs.push(tempDir);
@@ -166,9 +198,12 @@ function createTempDir(): string {
 
 async function readTsconfig(dirPath: string): Promise<{
   compilerOptions: {
+    baseUrl?: string;
     declaration?: boolean;
+    moduleResolution?: string;
     noEmit?: boolean;
     outDir?: string;
+    paths?: Record<string, string[]>;
     rootDir?: string;
     sourceMap?: boolean;
     types?: string[];
@@ -177,9 +212,12 @@ async function readTsconfig(dirPath: string): Promise<{
 }> {
   return JSON.parse(await fs.promises.readFile(path.join(dirPath, 'tsconfig.json'), 'utf8')) as {
     compilerOptions: {
+      baseUrl?: string;
       declaration?: boolean;
+      moduleResolution?: string;
       noEmit?: boolean;
       outDir?: string;
+      paths?: Record<string, string[]>;
       rootDir?: string;
       sourceMap?: boolean;
       types?: string[];

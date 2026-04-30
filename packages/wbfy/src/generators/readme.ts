@@ -19,7 +19,8 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     }
 
     const repository = config.repository?.slice(config.repository.indexOf(':') + 1);
-    const fileNames = fs.readdirSync(`${config.dirPath}/.github/workflows`);
+    const workflowsPath = path.resolve(config.dirPath, '.github', 'workflows');
+    const fileNames = fs.existsSync(workflowsPath) ? fs.readdirSync(workflowsPath) : [];
     for (const fileName of fileNames) {
       if (!fileName.startsWith('test') && !fileName.startsWith('deploy')) continue;
 
