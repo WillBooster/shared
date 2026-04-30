@@ -74,11 +74,7 @@ function generateAgentInstruction(
   - If not specified, make sure to add a new line at the end of your commit message${rootConfig.isWillBoosterRepo ? ` with: \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`` : ''}.
   - Always create new commits. Avoid using \`--amend\`.
 - Always use heredoc syntax when passing multi-line content to any command.
-${
-  allConfigs.some((c) => c.hasStartTestServer)
-    ? `- Use \`${packageManager} start-test-server\` to launch a web server for debugging or testing.`
-    : ''
-}
+${hasStartTestServerScript(allConfigs) ? `- Use \`${packageManager} start-test-server\` to launch a web server for debugging or testing.` : ''}
 
 ${generateAgentCodingStyle(allConfigs)}
 `
@@ -119,6 +115,7 @@ ${
     ? `- When introducing new string literals in React components, update the language resource files in the \`i18n\` directory (e.g., \`i18n/ja-JP.json\`). Reference these strings using the \`i18n\` utility. For example, use \`i18n.pages.home.title()\` for \`{ "pages": { "home": { "title": "My App" } } }\`.`
     : ''
 }
+
 ${
   allConfigs.some((c) => c.depending.react || c.depending.next)
     ? `- Prefer lambda over \`function\` for React components, e.g., \`const Button: React.FC = () => {\`.
@@ -137,4 +134,14 @@ ${
     .replaceAll(/\.\n\n+-/g, '.\n-')
     .replaceAll(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+function hasStartTestServerScript(configs: PackageConfig[]): boolean {
+  return configs.some((config) => {
+    if (config.hasStartTestServer) return true;
+    // wbfy generates start-test-server later for Playwright repos once wb is
+    // present. Bun repos get wb as part of wbfy's managed toolchain, so agent
+    // instructions must anticipate the generated script during the first run.
+    return config.depending.playwrightTest && (config.depending.wb || config.isBun);
+  });
 }
