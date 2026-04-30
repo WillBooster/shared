@@ -265,19 +265,21 @@ async function readMiseTasks(dirPath: string): Promise<Record<string, string>> {
     try {
       const settings = toml.parse(await fsp.readFile(filePath, 'utf8')) as { tasks?: Record<string, unknown> };
       for (const [name, value] of Object.entries(settings.tasks ?? {})) {
-        if (typeof value === 'string') {
-          tasks[name] = value;
-        } else if (value && typeof value === 'object' && typeof (value as { run?: unknown }).run === 'string') {
-          tasks[name] = (value as { run: string }).run;
-        } else {
-          tasks[name] = '';
-        }
+        tasks[name] = readMiseTaskCommand(value);
       }
     } catch {
       // Missing or temporarily invalid mise files should not block other wbfy generators.
     }
   }
   return tasks;
+}
+
+function readMiseTaskCommand(value: unknown): string {
+  if (typeof value === 'string') return value;
+  // Preserve array-form mise commands so recursion checks can still see package script calls.
+  if (Array.isArray(value)) return value.filter((command): command is string => typeof command === 'string').join('\n');
+  if (value && typeof value === 'object') return readMiseTaskCommand((value as { run?: unknown }).run);
+  return '';
 }
 
 function containsAny(pattern: string, dirPath: string): boolean {
