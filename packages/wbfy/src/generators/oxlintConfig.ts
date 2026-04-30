@@ -9,6 +9,8 @@ import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfig
 
 import { normalizeToolConfigContent } from './toolConfigContent.js';
 
+type OxlintBlockName = 'base' | 'export';
+
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     // willbooster-configs publishes config files as product code, so migration
@@ -83,7 +85,7 @@ function hasManagedBlocks(content: string): boolean {
 
 function replaceManagedBlocks(existingContent: string, desiredContent: string, filePath: string): string {
   let content = existingContent;
-  for (const blockName of ['base', 'export'] as const) {
+  for (const blockName of ['base', 'export'] satisfies OxlintBlockName[]) {
     const replacement = extractManagedBlock(desiredContent, blockName);
     if (!replacement) continue;
 
@@ -97,31 +99,31 @@ function replaceManagedBlocks(existingContent: string, desiredContent: string, f
   return content;
 }
 
-function extractManagedBlock(content: string, blockName: 'base' | 'export'): string | undefined {
-  return new RegExp(
-    `${escapeRegExp(getStartMarker(blockName))}[\\s\\S]*?${escapeRegExp(getEndMarker(blockName))}`
-  ).exec(content)?.[0];
+function extractManagedBlock(content: string, blockName: OxlintBlockName): string | undefined {
+  return getManagedBlockRegExp(blockName).exec(content)?.[0];
 }
 
-function replaceManagedBlock(content: string, blockName: 'base' | 'export', replacement: string): string | undefined {
-  const pattern = new RegExp(
-    `${escapeRegExp(getStartMarker(blockName))}[\\s\\S]*?${escapeRegExp(getEndMarker(blockName))}`
-  );
+function replaceManagedBlock(content: string, blockName: OxlintBlockName, replacement: string): string | undefined {
+  const pattern = getManagedBlockRegExp(blockName);
   if (!pattern.test(content)) return undefined;
   return content.replace(pattern, replacement);
 }
 
-function getManagedBlock(blockName: 'base' | 'export', content: string): string {
+function getManagedBlockRegExp(blockName: OxlintBlockName): RegExp {
+  return new RegExp(`${escapeRegExp(getStartMarker(blockName))}[\\s\\S]*?${escapeRegExp(getEndMarker(blockName))}`);
+}
+
+function getManagedBlock(blockName: OxlintBlockName, content: string): string {
   return `${getStartMarker(blockName)}
 ${content}
 ${getEndMarker(blockName)}`;
 }
 
-function getStartMarker(blockName: 'base' | 'export'): string {
+function getStartMarker(blockName: OxlintBlockName): string {
   return `// wbfy:start oxlint-${blockName}`;
 }
 
-function getEndMarker(blockName: 'base' | 'export'): string {
+function getEndMarker(blockName: OxlintBlockName): string {
   return `// wbfy:end oxlint-${blockName}`;
 }
 
