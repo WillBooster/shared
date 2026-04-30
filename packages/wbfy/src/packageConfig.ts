@@ -280,21 +280,19 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
   const [org, name] = gitHubUtil.getOrgAndName(urlOrFullName);
   if (!org || !name) return;
 
-  const ret = { full_name: `${org}/${name}` };
   try {
     // Metadata permission
     const response = await getOctokit().request('GET /repos/{owner}/{repo}', {
       owner: org,
       repo: name,
     });
-    Object.assign(ret, response.data);
+    return response.data;
   } catch (error) {
     const redirectedFullName = getRedirectedRepoFullName(error);
     if (redirectedFullName) {
-      ret.full_name = redirectedFullName;
+      return { full_name: redirectedFullName };
     }
   }
-  return ret;
 }
 
 function getRedirectedRepoFullName(error: unknown): string | undefined {
