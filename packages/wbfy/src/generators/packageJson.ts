@@ -908,8 +908,9 @@ function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: Packag
 
   jsonObj.scripts ??= {};
   // mise often owns env loading and database preparation for local web servers.
-  // Prefer the repo task when it exists; otherwise fall back to wb's test server.
-  jsonObj.scripts['start-test-server'] = hasMiseTask(config, 'start') ? 'mise run start' : 'wb start --mode test';
+  // Prefer a dedicated non-recursive test-server task before falling back to the generic start task.
+  const taskName = getSafeMiseTaskName(config, ['start-test-server', 'start']);
+  jsonObj.scripts['start-test-server'] = taskName ? `mise run ${taskName}` : 'wb start --mode test';
 }
 
 function formatRepositoryForPackageJson(
@@ -1069,12 +1070,16 @@ function hasMiseTask(config: PackageConfig, name: string): boolean {
   return Object.hasOwn(config.miseTasks, name);
 }
 
+function getSafeMiseTaskName(config: PackageConfig, names: string[]): string | undefined {
+  return names.find((name) => hasMiseTask(config, name) && !doesMiseTaskCallPackageScript(config, name));
+}
+
 function doesMiseTaskCallPackageScript(config: PackageConfig, name: string): boolean {
   const task = config.miseTasks[name];
   if (!task) return false;
   const packageManagers = ['bun', 'yarn', 'npm', 'pnpm'];
   return packageManagers.some((packageManager) =>
-    new RegExp(String.raw`\b${packageManager}\s+(?:run\s+)?${escapeRegExp(name)}\b`, 'u').test(task)
+    new RegExp(String.raw`\b${packageManager}\s+(?:run\s+)?${escapeRegExp(name)}(?![a-zA-Z0-9_\-:.])`, 'u').test(task)
   );
 }
 
