@@ -305,9 +305,10 @@ async function applyPackageJsonConventions(
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
     devDependencies.push(typescriptGoDependency);
-    if (config.depending.next) {
+    if (config.depending.next || doesUseTscCommand(jsonObj)) {
       // Next.js still uses the `typescript` package during dev/build startup for
-      // TypeScript apps even when repositories delegate explicit typechecking to tsgo.
+      // TypeScript apps, and some packages still call `tsc` directly for
+      // declaration emit, even when explicit typechecking is delegated to tsgo.
       devDependencies.push(typescriptDependency);
     }
     if (config.isBun) {
@@ -344,6 +345,10 @@ function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJs
     jsonObj.devDependencies[dependency] ??= jsonObj.dependencies[dependency];
     delete jsonObj.dependencies[dependency];
   }
+}
+
+function doesUseTscCommand(jsonObj: Pick<WritablePackageJson, 'scripts'>): boolean {
+  return Object.values(jsonObj.scripts).some((script) => /(?:^|[&|;(]\s*)tsc(?:\s|$)/u.test(script ?? ''));
 }
 
 async function normalizePackageMetadata(
@@ -663,9 +668,9 @@ async function removeDeprecatedStuff(
   delete jsonObj.dependencies.tslib;
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
-  // Next.js still requires the `typescript` package at build/dev time for
-  // TypeScript projects even when repos use tsgo for explicit typechecking.
-  if (!config.depending.next) {
+  // Some tools still require the `typescript` package at build/dev time even
+  // when repos use tsgo for explicit typechecking.
+  if (!config.depending.next && !doesUseTscCommand(jsonObj)) {
     delete jsonObj.devDependencies[typescriptDependency];
   }
   delete jsonObj.devDependencies.lerna;
