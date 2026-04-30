@@ -29,6 +29,7 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       if (!repository) continue;
       const badge = `[![${badgeName}](https://github.com/${repository}/actions/workflows/${fileName}/badge.svg)](https://github.com/${repository}/actions/workflows/${fileName})`;
       if (fs.existsSync(path.resolve(config.dirPath, `.github/workflows/${fileName}`))) {
+        newContent = removeGitHubActionsBadge(newContent, badgeName, fileName);
         newContent = insertBadge(newContent, badge);
       }
     }
@@ -52,4 +53,22 @@ export function insertBadge(readme: string, badge: string): string {
     }
   }
   return `${readme}\n${badge}\n`;
+}
+
+export function removeGitHubActionsBadge(readme: string, badgeName: string, fileName: string): string {
+  const escapedBadgeName = escapeRegExp(badgeName);
+  const escapedFileName = escapeRegExp(fileName);
+  return readme
+    .replaceAll(
+      new RegExp(
+        String.raw`\[!\[${escapedBadgeName}\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}/badge\.svg\)\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}\)\n?`,
+        'gu'
+      ),
+      ''
+    )
+    .replaceAll(/\n\n\n+/g, '\n\n');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
