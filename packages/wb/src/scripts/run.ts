@@ -151,7 +151,7 @@ export function runWithSpawnInParallelBuffered(
  * Replace capitalized commands (e.g., YARN, PRISMA, BUN) with suitable commands.
  */
 export function normalizeScript(script: string, project: Project): { printable: string; runnable: string } {
-  const projectPackageManagerWithRun = project.isBunAvailable ? 'bun --bun run' : 'yarn';
+  const projectPackageManagerWithRun = project.usesBunPackageManager ? 'bun --bun run' : 'yarn';
   let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
@@ -160,19 +160,16 @@ export function normalizeScript(script: string, project: Project): { printable: 
       project.packageJson.dependencies?.blitz ? 'PRISMA generate ' : 'PRISMA generate --no-hints '
     )
     .replaceAll('PRISMA ', project.packageJson.dependencies?.blitz ? 'YARN blitz prisma ' : 'YARN prisma ')
-    .replaceAll('BUN run ', project.isBunAvailable ? `${projectPackageManagerWithRun} ` : 'YARN run ')
-    .replaceAll('BUN ', project.isBunAvailable ? `${projectPackageManagerWithRun} ` : 'YARN ')
+    .replaceAll('BUN run ', project.usesBunPackageManager ? `${projectPackageManagerWithRun} ` : 'YARN run ')
+    .replaceAll('BUN ', project.usesBunPackageManager ? `${projectPackageManagerWithRun} ` : 'YARN ')
     // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`.
-    .replaceAll('YARN run ', project.isBunAvailable ? `${projectPackageManagerWithRun} ` : 'yarn run ');
-  if (project.isBunAvailable) {
+    .replaceAll('YARN run ', project.usesBunPackageManager ? `${projectPackageManagerWithRun} ` : 'yarn run ');
+  if (project.usesBunPackageManager) {
     newScript = newScript
       .replaceAll('YARN build-ts run', 'bun --bun run')
       .replaceAll('bun --bun run bun --bun run', 'bun --bun run')
       // Because bun can run src/index.ts directly.
-      .replaceAll('dist/index.js', 'src/index.ts')
-      .replaceAll(/(?:YARN )?vitest run/g, 'bun test')
-      // '--allowOnly' is sometimes removed.
-      .replaceAll(/ --color --passWithNoTests(?: --allowOnly)?/g, '');
+      .replaceAll('dist/index.js', 'src/index.ts');
   }
   newScript = newScript.trim();
   const printableScript = fixBunCommand(newScript.replaceAll('YARN ', `${projectPackageManagerWithRun} `));
@@ -180,7 +177,10 @@ export function normalizeScript(script: string, project: Project): { printable: 
     newScript
       // Keep Playwright as a package-manager command instead of resolving it through node_modules/.bin.
       .replaceAll('YARN playwright ', `${projectPackageManagerWithRun} playwright `)
-      .replaceAll('YARN ', !project.isBunAvailable && project.binExists ? '' : `${projectPackageManagerWithRun} `)
+      .replaceAll(
+        'YARN ',
+        !project.usesBunPackageManager && project.binExists ? '' : `${projectPackageManagerWithRun} `
+      )
   );
   // Add cascade option when WB_ENV is defined
   const cascadeOption = project.env.WB_ENV ? ` -c=${project.env.WB_ENV || 'development'}` : '';

@@ -27,6 +27,11 @@ export class Project {
   @memoizeOne
   get isBunAvailable(): boolean {
     if (this.hasBunToolVersion()) return true;
+    return this.usesBunPackageManager;
+  }
+
+  @memoizeOne
+  get usesBunPackageManager(): boolean {
     if (this.hasBunLockfile()) return true;
     return this.hasBunPackageManager();
   }
