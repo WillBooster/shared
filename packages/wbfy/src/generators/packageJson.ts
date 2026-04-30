@@ -898,12 +898,19 @@ function isWorkspaceProtocolRange(version: string): boolean {
 }
 
 function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
-  if (!config.depending.playwrightTest || !config.depending.wb || jsonObj.scripts?.['start-test-server']) {
+  if (
+    !config.depending.playwrightTest ||
+    !(config.depending.wb || config.isBun) ||
+    jsonObj.scripts?.['start-test-server']
+  ) {
     return;
   }
 
   jsonObj.scripts ??= {};
-  jsonObj.scripts['start-test-server'] = 'wb start --mode test';
+  // mise often owns env loading and database preparation for local web servers.
+  // Prefer a dedicated non-recursive test-server task before falling back to the generic start task.
+  const taskName = getSafeMiseTaskName(config, ['start-test-server', 'start']);
+  jsonObj.scripts['start-test-server'] = taskName ? `mise run ${taskName}` : 'wb start --mode test';
 }
 
 function formatRepositoryForPackageJson(
@@ -976,6 +983,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       verify: 'bun --bun wb verify',
       'verify-full': 'bun --bun wb verify --full',
     };
+    applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     if (!hasTypecheck) {
       delete scripts.typecheck;
     } else if (config.depending.pyright) {
@@ -1039,8 +1047,48 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       scripts.verify = 'wb verify';
       scripts['verify-full'] = 'wb verify --full';
     }
+    applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     return scripts;
   }
+}
+
+function applyMiseTaskScripts(
+  config: PackageConfig,
+  scripts: Record<string, string>,
+  oldScripts: PackageJson.Scripts,
+  names: string[]
+): void {
+  for (const name of names) {
+    if (!hasMiseTask(config, name)) continue;
+    if (doesMiseTaskCallPackageScript(config, name)) continue;
+    if (oldScripts[name] && !isWbfyManagedMiseBridge(oldScripts[name], name) && !(name in scripts)) continue;
+    scripts[name] = `mise run ${name}`;
+  }
+}
+
+function hasMiseTask(config: PackageConfig, name: string): boolean {
+  return Object.hasOwn(config.miseTasks, name);
+}
+
+function getSafeMiseTaskName(config: PackageConfig, names: string[]): string | undefined {
+  return names.find((name) => hasMiseTask(config, name) && !doesMiseTaskCallPackageScript(config, name));
+}
+
+function doesMiseTaskCallPackageScript(config: PackageConfig, name: string): boolean {
+  const task = config.miseTasks[name];
+  if (!task) return false;
+  const packageManagers = ['bun', 'yarn', 'npm', 'pnpm'];
+  return packageManagers.some((packageManager) =>
+    new RegExp(String.raw`\b${packageManager}\s+(?:run\s+)?${escapeRegExp(name)}(?![a-zA-Z0-9_\-:.])`, 'u').test(task)
+  );
+}
+
+function isWbfyManagedMiseBridge(script: unknown, name: string): boolean {
+  return script === `mise run ${name}`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 function generateFormatScript(hasJsOrTs: boolean, hasJava: boolean): string {

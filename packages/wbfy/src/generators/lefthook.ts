@@ -155,7 +155,9 @@ async function core(config: PackageConfig): Promise<void> {
 function getPrePushScript(config: PackageConfig): string {
   let lintCommand: string;
   if (config.isBun) {
-    lintCommand = config.depending.wb ? 'bun --bun wb lint' : 'bun run lint';
+    // Bun repos receive wb as part of wbfy's managed toolchain, so generate the
+    // final hook command on the first run instead of changing it on the second.
+    lintCommand = 'bun --bun wb lint';
   } else {
     lintCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
   }
@@ -219,13 +221,10 @@ yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-tople
   // staged-file hooks must use the language-specific formatter path below.
   const canUseWbForStagedFiles = doesContainJsOrTs(config) || doesContainJava(config);
   if ((config.isBun || config.depending.wb) && canUseWbForStagedFiles) {
-    const packageManager = config.isBun ? 'bun' : 'yarn';
-    return config.depending.wb
-      ? `
+    return `
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 ${config.isBun ? 'bun --bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}
-`.trim()
-      : `${packageManager} run format && ${packageManager} run lint-fix`;
+`.trim();
   }
 
   const oxlintPattern = extensions.oxlint.map((extension) => String.raw`\.${extension}$`).join('|');

@@ -84,6 +84,7 @@ test('skips generating workflows for reusable-workflows repository', async () =>
       npm: false,
     },
     hasVersionSettings: false,
+    miseTasks: {},
     packageJson: {},
     wbfyJson: undefined,
   };

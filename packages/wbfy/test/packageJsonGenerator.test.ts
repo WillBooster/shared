@@ -176,6 +176,80 @@ describe('generatePackageJson', () => {
     expect(packageJson.devDependencies?.typescript).toMatch(/^\d+\.\d+\.\d+/u);
     expect(packageJson.devDependencies?.['@typescript/native-preview']).toBeDefined();
   });
+
+  test('bridges package scripts to mise tasks without creating recursive scripts', async () => {
+    const dirPath = await createPackageDir({
+      name: 'mise-package',
+      private: true,
+      scripts: {
+        caution: 'Use mise tasks instead.',
+      },
+      dependencies: {
+        next: '16.1.6',
+      },
+      devDependencies: {
+        '@playwright/test': '1.59.1',
+      },
+    });
+    const config = createConfig({
+      dirPath,
+      isBun: true,
+      doesContainTypeScript: true,
+      depending: {
+        ...createConfig().depending,
+        next: true,
+        playwrightTest: true,
+      },
+      miseTasks: {
+        build: 'bun run next build',
+        start: 'mise run db:push && bun run next dev',
+        test: 'bun run test:unit',
+        typecheck: 'bun run tsc --noEmit --pretty',
+      },
+      packageJson: readPackageJson(dirPath),
+    });
+
+    await generatePackageJson(config, createRootConfig(path.dirname(dirPath)), true);
+
+    const packageJson = readPackageJson(dirPath);
+    expect(packageJson.scripts?.build).toBe('mise run build');
+    expect(packageJson.scripts?.test).toBe('mise run test');
+    expect(packageJson.scripts?.typecheck).toBe('mise run typecheck');
+    expect(packageJson.scripts?.['start-test-server']).toBe('mise run start');
+    expect(packageJson.scripts?.start).toBe('mise run start');
+  });
+
+  test('prefers a dedicated mise start-test-server task when generating the test server script', async () => {
+    const dirPath = await createPackageDir({
+      name: 'mise-test-server-package',
+      private: true,
+      dependencies: {
+        next: '16.1.6',
+      },
+      devDependencies: {
+        '@playwright/test': '1.59.1',
+      },
+    });
+    const config = createConfig({
+      dirPath,
+      isBun: true,
+      depending: {
+        ...createConfig().depending,
+        next: true,
+        playwrightTest: true,
+      },
+      miseTasks: {
+        start: 'bun run next dev',
+        'start-test-server': 'mise run db:push && bun run next dev',
+      },
+      packageJson: readPackageJson(dirPath),
+    });
+
+    await generatePackageJson(config, createRootConfig(path.dirname(dirPath)), true);
+
+    const packageJson = readPackageJson(dirPath);
+    expect(packageJson.scripts?.['start-test-server']).toBe('mise run start-test-server');
+  });
 });
 
 async function createPackageDir(packageJson: PackageJson): Promise<string> {

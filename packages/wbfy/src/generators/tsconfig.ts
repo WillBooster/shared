@@ -139,6 +139,7 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
   try {
     const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as TsConfigJson;
     normalizeNextTsconfigModuleSettings(settings.compilerOptions);
+    normalizeNextTsconfigPathAliases(settings.compilerOptions);
     await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
   } catch {
     // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
@@ -158,6 +159,27 @@ function normalizeNextTsconfigModuleSettings(compilerOptions: TsConfigJson.Compi
     // tsgolint treats that spelling as the removed node10 resolver.
     compilerOptions.moduleResolution = 'bundler';
   }
+}
+
+function normalizeNextTsconfigPathAliases(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
+  if (!compilerOptions) return;
+
+  // tsgolint follows TypeScript 6 validation, where baseUrl is removed and
+  // path targets must be explicitly relative. Next.js still accepts the alias
+  // shape after each target is written with a leading ./.
+  delete compilerOptions.baseUrl;
+  if (!compilerOptions.paths) return;
+
+  for (const [alias, targets] of Object.entries(compilerOptions.paths)) {
+    compilerOptions.paths[alias] = normalizePathAliasTargets(targets);
+  }
+}
+
+function normalizePathAliasTargets(targets: string[]): string[] {
+  return targets.map((target) => {
+    if (target.startsWith('./') || target.startsWith('../') || path.isAbsolute(target)) return target;
+    return `./${target}`;
+  });
 }
 
 function getRootDir(config: PackageConfig): string {

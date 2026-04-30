@@ -58,6 +58,10 @@ Close #<IssueNumber>
 
 export async function generateGitHubTemplates(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateGitHubTemplates', async () => {
+    if (!config.isWillBoosterRepo) {
+      return;
+    }
+
     for (const [fileName, newContent] of Object.entries(templates)) {
       const content = applyPackageManagerTemplate(newContent, config);
       const filePath = path.resolve(config.dirPath, '.github', fileName);

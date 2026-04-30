@@ -141,6 +141,24 @@ test('uses quiet lint in pre-push hooks for wb projects', async () => {
   expect(prePushScript).toContain('yarn wb lint --quiet');
 });
 
+test('uses generated wb commands for Bun projects on the first run', async () => {
+  const dirPath = createTempDir();
+
+  await generateLefthookUpdatingPackageJson(
+    createConfig({
+      dirPath,
+      isBun: true,
+      doesContainPackageJson: true,
+      doesContainTypeScript: true,
+    })
+  );
+
+  const lefthookConfig = await fs.promises.readFile(path.join(dirPath, 'lefthook.yml'), 'utf8');
+  const prePushScript = await fs.promises.readFile(path.join(dirPath, '.lefthook', 'pre-push', 'check.sh'), 'utf8');
+  expect(lefthookConfig).toContain('bun --bun wb lint --fix --format -- {staged_files}');
+  expect(prePushScript).toContain('bun --bun wb lint --quiet');
+});
+
 test('uses quiet lint in pre-push hooks for plain oxlint projects', async () => {
   const dirPath = createTempDir();
 

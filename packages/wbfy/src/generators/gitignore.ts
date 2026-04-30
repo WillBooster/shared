@@ -28,6 +28,7 @@ const commonContent = `
 __generated__/
 @willbooster/
 dist/
+drizzle/mount/
 temp/
 tmp/
 `;
