@@ -153,7 +153,7 @@ async function updateScripts(
   removeLegacyInstallCommands(jsonObj.scripts);
 
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
-  addStartTestServerScriptIfNeeded(config, jsonObj);
+  delete jsonObj.scripts['start-test-server'];
   addInstallStepToCheckForAi(jsonObj.scripts, packageManager);
 
   const scripts = jsonObj.scripts;
@@ -898,22 +898,6 @@ function isWorkspaceProtocolRange(version: string): boolean {
   return version.startsWith('workspace:');
 }
 
-function addStartTestServerScriptIfNeeded(config: PackageConfig, jsonObj: PackageJson): void {
-  if (
-    !config.depending.playwrightTest ||
-    !(config.depending.wb || config.isBun) ||
-    jsonObj.scripts?.['start-test-server']
-  ) {
-    return;
-  }
-
-  jsonObj.scripts ??= {};
-  // mise often owns env loading and database preparation for local web servers.
-  // Prefer a dedicated non-recursive test-server task before falling back to the generic start task.
-  const taskName = getSafeMiseTaskName(config, ['start-test-server', 'start']);
-  jsonObj.scripts['start-test-server'] = taskName ? `mise run ${taskName}` : 'wb start --mode test';
-}
-
 function formatRepositoryForPackageJson(
   repository: PackageJson['repository'],
   existingRepository?: PackageJson['repository']
@@ -1076,10 +1060,6 @@ function applyMiseTaskScripts(
 
 function hasMiseTask(config: PackageConfig, name: string): boolean {
   return Object.hasOwn(config.miseTasks, name);
-}
-
-function getSafeMiseTaskName(config: PackageConfig, names: string[]): string | undefined {
-  return names.find((name) => hasMiseTask(config, name) && !doesMiseTaskCallPackageScript(config, name));
 }
 
 function doesMiseTaskCallPackageScript(config: PackageConfig, name: string): boolean {

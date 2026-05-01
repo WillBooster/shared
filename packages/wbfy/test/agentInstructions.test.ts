@@ -15,7 +15,7 @@ afterEach(async () => {
   tempDirs.length = 0;
 });
 
-test('mentions generated start-test-server for Bun Playwright projects on the first run', async () => {
+test('mentions wb test server startup for Playwright projects on the first run', async () => {
   const dirPath = createTempDir();
   const config = createConfig({
     dirPath,
@@ -35,7 +35,7 @@ test('mentions generated start-test-server for Bun Playwright projects on the fi
   await promisePool.promiseAll();
 
   const content = await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8');
-  expect(content).toContain('Use `bun start-test-server` to launch a web server for debugging or testing.');
+  expect(content).toContain('Use `wb start --mode test` to launch a web server for debugging or testing.');
 });
 
 function createTempDir(): string {

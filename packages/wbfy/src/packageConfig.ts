@@ -46,8 +46,6 @@ export interface PackageConfig {
   doesContainJsxOrTsxInPackages: boolean;
   doesContainJavaInPackages: boolean;
 
-  hasStartTestServer: boolean;
-
   depending: {
     blitz: boolean;
     firebase: boolean;
@@ -201,7 +199,6 @@ export async function getPackageConfig(
       doesContainTypeScriptInPackages: containsAny('packages/**/{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}', dirPath),
       doesContainJsxOrTsxInPackages: containsAny('packages/**/{app,src,test}/**/*.{t,j}sx', dirPath),
       doesContainJavaInPackages: containsAny('packages/**/*.java', dirPath),
-      hasStartTestServer: !!packageJson.scripts?.['start-test-server'],
       depending: {
         blitz: !!dependencies.blitz,
         firebase: !!devDependencies['firebase-tools'],

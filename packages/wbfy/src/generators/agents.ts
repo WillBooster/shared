@@ -74,7 +74,7 @@ function generateAgentInstruction(
   - If not specified, make sure to add a new line at the end of your commit message${rootConfig.isWillBoosterRepo ? ` with: \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`` : ''}.
   - Always create new commits. Avoid using \`--amend\`.
 - Always use heredoc syntax when passing multi-line content to any command.
-${hasStartTestServerScript(allConfigs) ? `- Use \`${packageManager} start-test-server\` to launch a web server for debugging or testing.` : ''}
+${hasPlaywrightTestServer(allConfigs) ? `- Use \`wb start --mode test\` to launch a web server for debugging or testing.` : ''}
 
 ${generateAgentCodingStyle(allConfigs)}
 `
@@ -137,12 +137,6 @@ ${
     .trim();
 }
 
-function hasStartTestServerScript(configs: PackageConfig[]): boolean {
-  return configs.some((config) => {
-    if (config.hasStartTestServer) return true;
-    // wbfy generates start-test-server later for Playwright repos once wb is
-    // present. Bun repos get wb as part of wbfy's managed toolchain, so agent
-    // instructions must anticipate the generated script during the first run.
-    return config.depending.playwrightTest && (config.depending.wb || config.isBun);
-  });
+function hasPlaywrightTestServer(configs: PackageConfig[]): boolean {
+  return configs.some((config) => config.depending.playwrightTest);
 }

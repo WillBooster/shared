@@ -62,7 +62,6 @@ test('skips generating workflows for reusable-workflows repository', async () =>
     doesContainTypeScriptInPackages: false,
     doesContainJsxOrTsxInPackages: false,
     doesContainJavaInPackages: false,
-    hasStartTestServer: false,
     depending: {
       blitz: false,
       firebase: false,

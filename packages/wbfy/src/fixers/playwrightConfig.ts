@@ -40,7 +40,7 @@ const defaultConfig = toParsedObject({
     video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
   }),
   webServer: asObject({
-    command: literal("'yarn start-test-server'"),
+    command: literal("'wb start --mode test'"),
     url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
     reuseExistingServer: literal('!!process.env.CI'),
     timeout: literal('300_000'),
@@ -84,14 +84,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
 
     // Keep filling missing defaults, but don't overwrite local adjustments on every regeneration.
     const merged = mergeParsedObjects(defaultConfig, parsed);
-    const hasStartTestServer = Boolean(config.packageJson?.scripts?.['start-test-server']);
-    const hasExistingWebServer = Boolean(parsed.properties.webServer);
-    // Only drop wbfy's default server command. Repos with custom Playwright
-    // server setup still need it even when they do not expose start-test-server.
-    if (!hasStartTestServer && !hasExistingWebServer) {
-      delete merged.properties.webServer;
-    }
-    setWebServerCommand(config, merged);
+    setWebServerCommand(merged);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
     const start = extractedObjectLiteral.node.getStart(extractedObjectLiteral.source);
@@ -160,13 +153,13 @@ function getEnvFilePaths(dirPath: string): string[] {
   return envFilePaths;
 }
 
-function setWebServerCommand(config: PackageConfig, object: ParsedObject): void {
+function setWebServerCommand(object: ParsedObject): void {
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
 
-  // wbfy owns the package script, so Playwright should consistently call that
-  // script while preserving the rest of each repository's webServer settings.
-  webServer.value.properties.command = literal(config.isBun ? "'bun start-test-server'" : "'yarn start-test-server'");
+  // wb owns the canonical test-server startup path; keep custom Playwright
+  // server settings while normalizing the command itself.
+  webServer.value.properties.command = literal("'wb start --mode test'");
 }
 
 function extractDefineConfigObjectLiteral(content: string): ExtractedObjectLiteral | undefined {

@@ -57,9 +57,9 @@ module.exports = staleConfig;
   await promisePool.promiseAll();
 
   const content = await readOxlintConfig(dirPath);
-  expect(content).toContain('const oxlintBaseConfig = require');
+  expect(content).toContain("import config from '@willbooster/oxlint-config';");
   expect(content).toContain("config.ignorePatterns?.push('generated/**');");
-  expect(content).toContain('module.exports = config;');
+  expect(content).toContain('export default config;');
   expect(content).not.toContain('staleConfig');
 });
 
