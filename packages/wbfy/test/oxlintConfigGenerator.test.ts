@@ -32,6 +32,9 @@ export default config;
   await promisePool.promiseAll();
 
   const content = await readOxlintConfig(dirPath);
+  expect(content).toContain(
+    '// @ts-nocheck -- Tool config files may be loaded as CommonJS before the package opts into ESM.'
+  );
   expect(content).toContain('// wbfy:start oxlint-base');
   expect(content).toContain('// wbfy:start oxlint-export');
   expect(content).not.toContain("config.ignorePatterns?.push('generated/**');");
@@ -57,6 +60,9 @@ module.exports = staleConfig;
   await promisePool.promiseAll();
 
   const content = await readOxlintConfig(dirPath);
+  expect(content).toContain(
+    '// @ts-nocheck -- Tool config files may be loaded as CommonJS before the package opts into ESM.'
+  );
   expect(content).toContain("import config from '@willbooster/oxlint-config';");
   expect(content).toContain("config.ignorePatterns?.push('generated/**');");
   expect(content).toContain('export default config;');

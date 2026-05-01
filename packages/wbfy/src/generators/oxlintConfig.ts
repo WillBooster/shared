@@ -10,6 +10,8 @@ import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfig
 import { normalizeToolConfigContent } from './toolConfigContent.js';
 
 type OxlintBlockName = 'base' | 'export';
+const tsNoCheckHeader =
+  '// @ts-nocheck -- Tool config files may be loaded as CommonJS before the package opts into ESM.';
 
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
@@ -55,15 +57,23 @@ function getConfigContentWithManagedBlocks(
 ): string {
   const desiredContent = getConfigContent();
   if (!existingContent) return desiredContent;
-  if (hasManagedBlocks(existingContent)) return replaceManagedBlocks(existingContent, desiredContent, filePath);
+  if (hasManagedBlocks(existingContent))
+    return addTsNoCheckHeader(replaceManagedBlocks(existingContent, desiredContent, filePath));
   return desiredContent;
 }
 
 function getConfigContent(): string {
-  return `${getManagedBlock('base', "import config from '@willbooster/oxlint-config';")}
+  return `${tsNoCheckHeader}
+${getManagedBlock('base', "import config from '@willbooster/oxlint-config';")}
 
 ${getManagedBlock('export', 'export default config;')}
 `;
+}
+
+function addTsNoCheckHeader(content: string): string {
+  if (content.startsWith(tsNoCheckHeader)) return content;
+  return `${tsNoCheckHeader}
+${content}`;
 }
 
 function hasManagedBlocks(content: string): boolean {

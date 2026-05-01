@@ -126,6 +126,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     // aliases without relying on baseUrl's broad fallback resolution.
     delete newSettings.compilerOptions?.baseUrl;
     deleteLegacyModuleSettings(newSettings.compilerOptions, config);
+    normalizeCommonJsTsconfigSettings(newSettings.compilerOptions, config);
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
@@ -266,6 +267,21 @@ function deleteLegacyModuleSettings(
   // Node base configs now pair their resolver with a matching module kind. Keeping
   // older ESNext overrides creates invalid generated configs for TS 6.
   delete compilerOptions.module;
+}
+
+function normalizeCommonJsTsconfigSettings(
+  compilerOptions: TsConfigJson.CompilerOptions | undefined,
+  config: PackageConfig
+): void {
+  if (!compilerOptions || config.isBun || config.depending.reactNative || config.isEsmPackage) return;
+
+  if (compilerOptions.module === 'commonjs') {
+    // @tsconfig/node-lts now provides moduleResolution=node16. TypeScript requires
+    // the module kind to move with that resolver, while verbatimModuleSyntax=false
+    // preserves the long-standing CommonJS emit shape for existing packages.
+    compilerOptions.module = 'Node16';
+  }
+  compilerOptions.verbatimModuleSyntax = false;
 }
 
 function pickExistingEmitMetadata(
