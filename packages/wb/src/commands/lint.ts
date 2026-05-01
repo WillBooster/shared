@@ -218,7 +218,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   const linterCommands: LintRunCommand[] = [];
   const lintRunOptions = { exitIfFailed: false, forceColor: !argv.printAllOutput } as const;
   const shouldRunFormatters = Boolean(argv.format);
-  const shouldRunLinters = !argv.format || Boolean(argv.fix);
+  const shouldRunLinters = !argv.format || argv.fix;
   if (files.length > 0) {
     if (shouldRunLinters) {
       for (const [project, lintFilePaths] of lintFilePathsByProject) {
@@ -252,7 +252,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   } else {
     for (const project of projects.descendants) {
       if (shouldRunLinters) {
-        if (!(project.packageJson.workspaces && !project.hasSourceCode)) {
+        if (!project.packageJson.workspaces || project.hasSourceCode) {
           const lintCommand = buildLintCommand(project, argv);
           if (lintCommand) linterCommands.push({ command: lintCommand, project });
         }
