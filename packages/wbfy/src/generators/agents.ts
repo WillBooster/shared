@@ -58,11 +58,11 @@ function generateAgentInstruction(
 - Create a new branch if the current branch is \`main\`.
 - Run any \`git\` commands sequentially.
 - Write tests ONLY if explicitly requested. If requested, follow these rules:
-  - Continue modifying the tests and code until all tests pass.
-  - Ensure tests reset any related persistent data, as our test infrastructure does not clear it automatically.
-  - Prefer actual API calls over mocks. Use mocks when actual calls are impractical, have unintended side effects, or are explicitly requested.
+  - Continue modifying tests and/or code until all tests pass.
+  - Ensure tests are idempotent and independent (e.g., reset persistent data) so they can run repeatedly or in parallel.
+  - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
   - Always investigate the root cause of a test failure before fixing it.
-  - Avoid adding wait functions in E2E tests unless you are confident they are necessary.
+  - Avoid adding wait functions in E2E tests unless strictly necessary.
 - When fixing issues, follow these rules:
   - Investigate the root cause first (e.g., by gathering debug logs, taking screenshots, etc.).
   - Fix the actual root cause instead of applying workarounds.
@@ -108,7 +108,7 @@ export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
   - Explain "why" in comments and "what" in JSDoc.
   - Avoid stating what can be easily understood from the code itself.
 - Prefer \`undefined\` over \`null\` unless explicitly required by APIs or libraries.
-- Prefer using a single template literal for prompts instead of \`join()\` with an array of strings.
+- Prefer using a single template literal for prompts instead of \`join()\` with a pre-computable array literal of strings.
 - Assume that all environment variables are properly defined.
   - If validation is required, use \`assert\` to fail fast (e.g., during startup).
 ${
