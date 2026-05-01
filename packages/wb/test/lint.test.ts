@@ -5,11 +5,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
-  buildDartCommand,
+  buildDartFormatCommand,
+  buildDartLintCommand,
   buildExplicitFormatterArgs,
   buildLintCommand,
   buildOxfmtCommand,
-  buildPoetryCommand,
+  buildPoetryFormatCommand,
+  buildPoetryLintCommand,
   buildPrettierArgs,
   getExplicitLintTargets,
   getLintTargetFileKind,
@@ -32,15 +34,15 @@ describe('lint', () => {
   });
 
   it('builds poetry commands for explicit python files', () => {
-    expect(buildPoetryCommand({ fix: true, format: true }, ['/tmp/example.py'])).toBe(
-      'poetry run isort --profile black --filter-files /tmp/example.py && poetry run black /tmp/example.py && poetry run flake8 /tmp/example.py'
+    expect(buildPoetryFormatCommand(['/tmp/example.py'])).toBe(
+      'poetry run isort --profile black --filter-files /tmp/example.py && poetry run black /tmp/example.py'
     );
+    expect(buildPoetryLintCommand({}, ['/tmp/example.py'])).toBe('poetry run flake8 /tmp/example.py');
   });
 
   it('builds dart commands for explicit dart files', () => {
-    expect(buildDartCommand({ fix: true, format: true }, ['/tmp/example.dart'])).toBe(
-      'dart format /tmp/example.dart && dart analyze /tmp/example.dart'
-    );
+    expect(buildDartFormatCommand(['/tmp/example.dart'])).toBe('dart format /tmp/example.dart');
+    expect(buildDartLintCommand(['/tmp/example.dart'])).toBe('dart analyze /tmp/example.dart');
   });
 
   it('builds an oxfmt command for explicit files', () => {

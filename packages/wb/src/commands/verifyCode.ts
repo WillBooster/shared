@@ -60,27 +60,13 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
     await runPackageCommand(`${packageManager} gen-code`, project, argv);
   }
   await runInProcessCommand(
-    'format',
-    () =>
-      lint({
-        ...argv,
-        _: ['lint'],
-        format: true,
-        printAllOutput: true,
-        silent: true,
-      } as unknown as LintCommandArgv),
-    {
-      allowFailure: true,
-      silent: true,
-    }
-  );
-  await runInProcessCommand(
-    'lint-fix',
+    'cleanup',
     () =>
       lint({
         ...argv,
         _: ['lint'],
         fix: true,
+        format: true,
         printAllOutput: true,
         quiet: true,
         silent: true,

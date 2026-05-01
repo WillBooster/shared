@@ -96,6 +96,10 @@ const prettierFixtureIgnorePattern = '!**/test{-,/}fixtures/**';
 
 type BufferedLintRunResult = BufferedRunResult & { command: string; cwd: string };
 type LintRunResult = BufferedLintRunResult | { exitCode: number };
+interface LintRunCommand {
+  command: string;
+  project: Project;
+}
 
 export const lintCommand: CommandModule<unknown, LintCommandOptions> = {
   command: 'lint [files...]',
@@ -210,56 +214,75 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
     sortPackageJsonArgs = projects.descendants.map((p) => p.packageJsonPath);
   }
 
-  const lintPromises: Promise<LintRunResult>[] = [];
+  const formatterCommands: LintRunCommand[] = [];
+  const linterCommands: LintRunCommand[] = [];
   const lintRunOptions = { exitIfFailed: false, forceColor: !argv.printAllOutput } as const;
+  const shouldRunFormatters = Boolean(argv.format);
+  const shouldRunLinters = !argv.format || argv.fix;
   if (files.length > 0) {
-    for (const [project, lintFilePaths] of lintFilePathsByProject) {
-      const lintCommand = buildLintCommand(project, argv, lintFilePaths);
-      if (!lintCommand) continue;
+    if (shouldRunLinters) {
+      for (const [project, lintFilePaths] of lintFilePathsByProject) {
+        const lintCommand = buildLintCommand(project, argv, lintFilePaths);
+        if (!lintCommand) continue;
 
-      lintPromises.push(runLintCommand(lintCommand, project, argv, lintRunOptions));
-    }
-    if (argv.format) {
-      for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
-        lintPromises.push(runLintCommand(buildOxfmtCommand(oxfmtFilePaths), project, argv, lintRunOptions));
+        linterCommands.push({ command: lintCommand, project });
       }
     }
     for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
-      lintPromises.push(runLintCommand(buildPoetryCommand(argv, pythonFilePaths), project, argv, lintRunOptions));
+      if (shouldRunLinters) {
+        linterCommands.push({ command: buildPoetryLintCommand(argv, pythonFilePaths), project });
+      }
+      if (shouldRunFormatters) {
+        formatterCommands.push({ command: buildPoetryFormatCommand(pythonFilePaths), project });
+      }
     }
     for (const [project, dartFilePaths] of dartFilePathsByProject) {
-      lintPromises.push(runLintCommand(buildDartCommand(argv, dartFilePaths), project, argv, lintRunOptions));
+      if (shouldRunLinters) {
+        linterCommands.push({ command: buildDartLintCommand(dartFilePaths), project });
+      }
+      if (shouldRunFormatters) {
+        formatterCommands.push({ command: buildDartFormatCommand(dartFilePaths), project });
+      }
+    }
+    if (shouldRunFormatters) {
+      for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
+        formatterCommands.push({ command: buildOxfmtCommand(oxfmtFilePaths), project });
+      }
     }
   } else {
     for (const project of projects.descendants) {
-      if (project.packageJson.workspaces && !project.hasSourceCode) continue;
-
-      const lintCommand = buildLintCommand(project, argv);
-      if (!lintCommand) continue;
-
-      lintPromises.push(runLintCommand(lintCommand, project, argv, lintRunOptions));
-    }
-    for (const project of projects.descendants) {
-      if (project.hasPoetryLock) {
-        lintPromises.push(runLintCommand(buildPoetryCommand(argv), project, argv, lintRunOptions));
+      if (shouldRunLinters) {
+        if (!project.packageJson.workspaces || project.hasSourceCode) {
+          const lintCommand = buildLintCommand(project, argv);
+          if (lintCommand) linterCommands.push({ command: lintCommand, project });
+        }
+        if (project.hasPoetryLock) linterCommands.push({ command: buildPoetryLintCommand(argv), project });
+        if (project.hasPubspecYaml) linterCommands.push({ command: buildDartLintCommand(), project });
       }
-      if (project.hasPubspecYaml) {
-        lintPromises.push(runLintCommand(buildDartCommand(argv), project, argv, lintRunOptions));
-      }
-      if (project.hasOxfmt && argv.format) {
-        lintPromises.push(runLintCommand(buildOxfmtCommand(), project, argv, lintRunOptions));
+      if (shouldRunFormatters) {
+        if (project.hasOxfmt) formatterCommands.push({ command: buildOxfmtCommand(), project });
+        if (project.hasPoetryLock) formatterCommands.push({ command: buildPoetryFormatCommand(), project });
+        if (project.hasPubspecYaml) formatterCommands.push({ command: buildDartFormatCommand(), project });
       }
     }
   }
-  const lintResults = await Promise.all(lintPromises);
-  printSilentLintOutputs(lintResults, argv);
-  const lintExitCodes = lintResults.map((result) => result.exitCode);
+  const lintExitCodes: number[] = [];
 
-  if (missingLintToolForExplicitFiles || lintExitCodes.some((exitCode) => exitCode !== 0)) {
+  if (shouldRunFormatters) {
+    const formatterResults = await runLintCommands(formatterCommands, argv, lintRunOptions);
+    printSilentLintOutputs(formatterResults, argv);
+    lintExitCodes.push(...formatterResults.map((result) => result.exitCode));
+
+    if (lintExitCodes.some((exitCode) => exitCode !== 0)) {
+      return 1;
+    }
+  }
+
+  if (missingLintToolForExplicitFiles) {
     return 1;
   }
 
-  if (argv.format) {
+  if (shouldRunFormatters) {
     if (prettierArgs.length > 0 && projects.self.hasPrettier) {
       const prettierResult = await runLintCommand(
         buildShellCommand([
@@ -289,9 +312,27 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
       printSilentLintOutputs([sortPackageJsonResult], argv);
       lintExitCodes.push(sortPackageJsonResult.exitCode);
     }
+
+    if (lintExitCodes.some((exitCode) => exitCode !== 0)) {
+      return 1;
+    }
+  }
+
+  if (shouldRunLinters) {
+    const linterResults = await runLintCommands(linterCommands, argv, lintRunOptions);
+    printSilentLintOutputs(linterResults, argv);
+    lintExitCodes.push(...linterResults.map((result) => result.exitCode));
   }
 
   return lintExitCodes.some((exitCode) => exitCode !== 0) ? 1 : 0;
+}
+
+function runLintCommands(
+  commands: LintRunCommand[],
+  argv: LintCommandArgv,
+  options: Parameters<typeof runWithSpawnInParallel>[3]
+): Promise<LintRunResult[]> {
+  return Promise.all(commands.map(({ command, project }) => runLintCommand(command, project, argv, options)));
 }
 
 function runLintCommand(
@@ -385,33 +426,27 @@ export function buildOxfmtCommand(files?: string[]): string {
   ]);
 }
 
-export function buildPoetryCommand(
-  argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
-  files?: string[]
-): string {
+export function buildPoetryFormatCommand(files?: string[]): string {
   const targets = files && files.length > 0 ? files : ['.'];
-  const commands =
-    argv.fix || argv.format
-      ? [
-          buildShellCommand(['poetry', 'run', 'isort', '--profile', 'black', '--filter-files', ...targets]),
-          buildShellCommand(['poetry', 'run', 'black', ...targets]),
-          buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...targets]),
-        ]
-      : [buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...targets])];
-  return commands.join(' && ');
+  return [
+    buildShellCommand(['poetry', 'run', 'isort', '--profile', 'black', '--filter-files', ...targets]),
+    buildShellCommand(['poetry', 'run', 'black', ...targets]),
+  ].join(' && ');
 }
 
-export function buildDartCommand(
-  argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
-  files?: string[]
-): string {
+export function buildPoetryLintCommand(argv: Partial<Pick<LintCommandOptions, 'quiet'>>, files?: string[]): string {
   const targets = files && files.length > 0 ? files : ['.'];
-  const commands: string[] = [];
-  if (argv.fix || argv.format) {
-    commands.push(buildShellCommand(['dart', 'format', ...targets]));
-  }
-  commands.push(buildShellCommand(['dart', 'analyze', ...targets]));
-  return commands.join(' && ');
+  return buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...targets]);
+}
+
+export function buildDartFormatCommand(files?: string[]): string {
+  const targets = files && files.length > 0 ? files : ['.'];
+  return buildShellCommand(['dart', 'format', ...targets]);
+}
+
+export function buildDartLintCommand(files?: string[]): string {
+  const targets = files && files.length > 0 ? files : ['.'];
+  return buildShellCommand(['dart', 'analyze', ...targets]);
 }
 
 export function buildPrettierArgs(
