@@ -29,8 +29,8 @@
     "test": "yarn run test/ci-setup && vitest test",
     "test/ci-setup": "rm -Rf test-fixtures/wbfy && mkdir -p test-fixtures && git clone https://github.com/WillBooster/test-fixtures-for-wbfy.git test-fixtures/wbfy",
     "typecheck": "tsgo --noEmit",
-    "verify": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify",
-    "verify-full": "yarn verify --full"
+    "verify": "wb verify",
+    "verify-full": "wb verify --full"
   },
   "dependencies": {
     "@octokit/core": "7.0.6",
@@ -60,6 +60,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260421.2",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.6",
+    "@willbooster/wb": "13.12.8",
     "@yarnpkg/core": "4.6.0",
     "build-ts": "17.1.8",
     "lefthook": "2.1.5",
