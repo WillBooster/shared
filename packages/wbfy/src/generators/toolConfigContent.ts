@@ -1,10 +1,18 @@
 interface ToolConfigContentOptions {
+  isEsmPackage: boolean;
   packageName: string;
 }
 
 export function generateToolConfigContent(options: ToolConfigContentOptions): string {
-  return `// @ts-nocheck -- Tool config files may be loaded as CommonJS before the package opts into ESM.
-import config from '${options.packageName}';
+  if (!options.isEsmPackage) {
+    return `// oxlint-disable unicorn/prefer-module -- Tool config files are auto-discovered as .ts, and CommonJS avoids Node typeless ESM warnings.
+const toolConfig = require('${options.packageName}');
+
+module.exports = toolConfig.default ?? toolConfig;
+`;
+  }
+
+  return `import config from '${options.packageName}';
 
 export default config;
 `;
