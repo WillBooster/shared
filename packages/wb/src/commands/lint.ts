@@ -246,31 +246,19 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
       }
     }
   } else {
-    if (shouldRunLinters) {
-      for (const project of projects.descendants) {
-        if (project.packageJson.workspaces && !project.hasSourceCode) continue;
-
-        const lintCommand = buildLintCommand(project, argv);
-        if (!lintCommand) continue;
-
-        linterCommands.push({ command: lintCommand, project });
-      }
-    }
     for (const project of projects.descendants) {
-      if (project.hasPoetryLock && shouldRunLinters) {
-        linterCommands.push({ command: buildPoetryLintCommand(argv), project });
+      if (shouldRunLinters && !(project.packageJson.workspaces && !project.hasSourceCode)) {
+        const lintCommand = buildLintCommand(project, argv);
+        if (lintCommand) linterCommands.push({ command: lintCommand, project });
       }
-      if (project.hasPubspecYaml && shouldRunLinters) {
-        linterCommands.push({ command: buildDartLintCommand(), project });
+      if (shouldRunLinters) {
+        if (project.hasPoetryLock) linterCommands.push({ command: buildPoetryLintCommand(argv), project });
+        if (project.hasPubspecYaml) linterCommands.push({ command: buildDartLintCommand(), project });
       }
-      if (project.hasOxfmt && shouldRunFormatters) {
-        formatterCommands.push({ command: buildOxfmtCommand(), project });
-      }
-      if (project.hasPoetryLock && shouldRunFormatters) {
-        formatterCommands.push({ command: buildPoetryFormatCommand(), project });
-      }
-      if (project.hasPubspecYaml && shouldRunFormatters) {
-        formatterCommands.push({ command: buildDartFormatCommand(), project });
+      if (shouldRunFormatters) {
+        if (project.hasOxfmt) formatterCommands.push({ command: buildOxfmtCommand(), project });
+        if (project.hasPoetryLock) formatterCommands.push({ command: buildPoetryFormatCommand(), project });
+        if (project.hasPubspecYaml) formatterCommands.push({ command: buildDartFormatCommand(), project });
       }
     }
   }
@@ -434,16 +422,7 @@ export function buildOxfmtCommand(files?: string[]): string {
   ]);
 }
 
-export function buildPoetryCommand(
-  argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
-  files?: string[]
-): string {
-  return argv.fix || argv.format
-    ? `${buildPoetryFormatCommand(files)} && ${buildPoetryLintCommand(argv, files)}`
-    : buildPoetryLintCommand(argv, files);
-}
-
-function buildPoetryFormatCommand(files?: string[]): string {
+export function buildPoetryFormatCommand(files?: string[]): string {
   const targets = files && files.length > 0 ? files : ['.'];
   return [
     buildShellCommand(['poetry', 'run', 'isort', '--profile', 'black', '--filter-files', ...targets]),
@@ -451,26 +430,17 @@ function buildPoetryFormatCommand(files?: string[]): string {
   ].join(' && ');
 }
 
-function buildPoetryLintCommand(argv: Partial<Pick<LintCommandOptions, 'quiet'>>, files?: string[]): string {
+export function buildPoetryLintCommand(argv: Partial<Pick<LintCommandOptions, 'quiet'>>, files?: string[]): string {
   const targets = files && files.length > 0 ? files : ['.'];
   return buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...targets]);
 }
 
-export function buildDartCommand(
-  argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
-  files?: string[]
-): string {
-  return argv.fix || argv.format
-    ? `${buildDartFormatCommand(files)} && ${buildDartLintCommand(files)}`
-    : buildDartLintCommand(files);
-}
-
-function buildDartFormatCommand(files?: string[]): string {
+export function buildDartFormatCommand(files?: string[]): string {
   const targets = files && files.length > 0 ? files : ['.'];
   return buildShellCommand(['dart', 'format', ...targets]);
 }
 
-function buildDartLintCommand(files?: string[]): string {
+export function buildDartLintCommand(files?: string[]): string {
   const targets = files && files.length > 0 ? files : ['.'];
   return buildShellCommand(['dart', 'analyze', ...targets]);
 }
