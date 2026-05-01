@@ -211,9 +211,9 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     await promisePool.run(() => fs.promises.rm(semanticYmlPath, { force: true, recursive: true }));
 
     const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
-    const obsoleteWorkflowFileNames = ['gen-pr-claude.yml', 'gen-pr-codex.yml', 'gen-pr-gemini.yml'];
-    for (const fileName of obsoleteWorkflowFileNames) {
-      await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, fileName), { force: true }));
+    for (const entry of entries) {
+      if (!entry.isFile() || !isObsoleteGenPrWorkflowFileName(entry.name)) continue;
+      await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, entry.name), { force: true }));
     }
     const fileNameSet = new Set([
       'test.yml',
@@ -222,8 +222,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       'close-comment.yml',
       ...entries
         .filter(
-          (dirent) =>
-            dirent.isFile() && dirent.name.endsWith('.yml') && !obsoleteWorkflowFileNames.includes(dirent.name)
+          (dirent) => dirent.isFile() && dirent.name.endsWith('.yml') && !isObsoleteGenPrWorkflowFileName(dirent.name)
         )
         .map((dirent) => dirent.name),
     ]);
@@ -241,6 +240,10 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
 
 export function isReusableWorkflowsRepo(repository?: string): boolean {
   return repository?.endsWith('/reusable-workflows') ?? false;
+}
+
+function isObsoleteGenPrWorkflowFileName(fileName: string): boolean {
+  return /^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName);
 }
 
 async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, kind: KnownKind): Promise<void> {
