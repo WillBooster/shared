@@ -276,7 +276,9 @@ async function applyPackageJsonConventions(
     }
   }
 
-  devDependencies.push(wbDependency);
+  if (!isWbPackage(jsonObj)) {
+    devDependencies.push(wbDependency);
+  }
   if (config.depending.wb || config.isBun) {
     for (const [key, value] of Object.entries(jsonObj.scripts)) {
       if (typeof value !== 'string') continue;
@@ -1042,11 +1044,20 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     } else if (config.depending.wb) {
       scripts.typecheck = 'wb typecheck';
     }
-    scripts.verify = 'wb verify';
-    scripts['verify-full'] = 'wb verify --full';
+    if (isWbPackage(config.packageJson)) {
+      scripts.verify = oldScripts.verify ?? 'yarn workspace @willbooster/wb start --working-dir "$INIT_CWD" verify';
+      scripts['verify-full'] = oldScripts['verify-full'] ?? 'yarn verify --full';
+    } else {
+      scripts.verify = 'wb verify';
+      scripts['verify-full'] = 'wb verify --full';
+    }
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     return scripts;
   }
+}
+
+function isWbPackage(packageJson: PackageJson | undefined): boolean {
+  return packageJson?.name === wbDependency;
 }
 
 function applyMiseTaskScripts(
