@@ -192,81 +192,6 @@ const workflows = {
       },
     },
   },
-  'gen-pr-claude': {
-    name: 'Generate PR with Claude Code',
-    on: {
-      issues: {
-        types: ['labeled'],
-      },
-      pull_request: {
-        types: ['labeled'],
-      },
-    },
-    jobs: {
-      'gen-pr': {
-        if: "contains(github.event.label.name, 'gen-pr-all') || contains(github.event.label.name, 'gen-pr-claude')",
-        uses: 'WillBooster/reusable-workflows/.github/workflows/gen-pr.yml@main',
-        with: {
-          'coding-tool': 'claude-code',
-          'issue-number': '${{ github.event.issue.number || github.event.number }}',
-          'test-command': 'yarn|bun check-all-for-ai',
-        },
-        secrets: {
-          CLAUDE_CODE_OAUTH_TOKEN: '${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}',
-        },
-      },
-    },
-  },
-  'gen-pr-codex': {
-    name: 'Generate PR with Codex CLI',
-    on: {
-      issues: {
-        types: ['labeled'],
-      },
-      pull_request: {
-        types: ['labeled'],
-      },
-    },
-    jobs: {
-      'gen-pr': {
-        if: "contains(github.event.label.name, 'gen-pr-all') || contains(github.event.label.name, 'gen-pr-codex')",
-        uses: 'WillBooster/reusable-workflows/.github/workflows/gen-pr.yml@main',
-        with: {
-          'coding-tool': 'codex-cli',
-          'issue-number': '${{ github.event.issue.number || github.event.number }}',
-          'test-command': 'yarn|bun check-all-for-ai',
-        },
-        secrets: {
-          OPENAI_API_KEY: '${{ secrets.OPENAI_API_KEY }}',
-        },
-      },
-    },
-  },
-  'gen-pr-gemini': {
-    name: 'Generate PR with Gemini CLI',
-    on: {
-      issues: {
-        types: ['labeled'],
-      },
-      pull_request: {
-        types: ['labeled'],
-      },
-    },
-    jobs: {
-      'gen-pr': {
-        if: "contains(github.event.label.name, 'gen-pr-all') || contains(github.event.label.name, 'gen-pr-gemini')",
-        uses: 'WillBooster/reusable-workflows/.github/workflows/gen-pr.yml@main',
-        with: {
-          'coding-tool': 'gemini-cli',
-          'issue-number': '${{ github.event.issue.number || github.event.number }}',
-          'test-command': 'yarn|bun check-all-for-ai',
-        },
-        secrets: {
-          GEMINI_API_KEY: '${{ secrets.GEMINI_API_KEY }}',
-        },
-      },
-    },
-  },
 } as const;
 
 type KnownKind = keyof typeof workflows | 'deploy' | 'autofix';
@@ -286,15 +211,21 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     await promisePool.run(() => fs.promises.rm(semanticYmlPath, { force: true, recursive: true }));
 
     const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
+    const obsoleteWorkflowFileNames = ['gen-pr-claude.yml', 'gen-pr-codex.yml', 'gen-pr-gemini.yml'];
+    for (const fileName of obsoleteWorkflowFileNames) {
+      await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, fileName), { force: true }));
+    }
     const fileNameSet = new Set([
       'test.yml',
       'autofix.yml',
       'semantic-pr.yml',
       'close-comment.yml',
-      'gen-pr-claude.yml',
-      'gen-pr-codex.yml',
-      'gen-pr-gemini.yml',
-      ...entries.filter((dirent) => dirent.isFile() && dirent.name.endsWith('.yml')).map((dirent) => dirent.name),
+      ...entries
+        .filter(
+          (dirent) =>
+            dirent.isFile() && dirent.name.endsWith('.yml') && !obsoleteWorkflowFileNames.includes(dirent.name)
+        )
+        .map((dirent) => dirent.name),
     ]);
     if (rootConfig.depending.semanticRelease) {
       fileNameSet.add('release.yml');
@@ -425,20 +356,10 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // Use trusted publishing instead of NPM_TOKEN
   delete job.secrets.NPM_TOKEN;
 
-  if (
-    kind === 'test' ||
-    kind === 'release' ||
-    kind === 'gen-pr-claude' ||
-    kind === 'gen-pr-codex' ||
-    kind === 'gen-pr-gemini'
-  ) {
+  if (kind === 'test' || kind === 'release') {
     job.secrets.GH_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
   }
 
-  // Set test-command for gen-pr workflows based on package manager
-  if (kind === 'gen-pr-claude' || kind === 'gen-pr-codex' || kind === 'gen-pr-gemini') {
-    job.with['test-command'] = config.isBun ? 'bun run check-all-for-ai' : 'yarn check-all-for-ai';
-  }
   if (job.secrets.FIREBASE_TOKEN) {
     job.secrets.GCP_SA_KEY_JSON_FOR_FIREBASE = '${{ secrets.GCP_SA_KEY_JSON_FOR_FIREBASE }}';
     delete job.secrets.FIREBASE_TOKEN;

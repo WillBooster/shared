@@ -51,10 +51,6 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
       await setupLabel(octokit, owner, repo, 't: test :test_tube:', 'BFDBFE');
       await setupLabel(octokit, owner, repo, 'project', '24292F');
       await setupLabel(octokit, owner, repo, 'focused :dart:', '22C55E');
-      await setupLabel(octokit, owner, repo, 'gen-pr-all :robot:', '00B4D8');
-      await setupLabel(octokit, owner, repo, 'gen-pr-claude :robot:', '00B4D8');
-      await setupLabel(octokit, owner, repo, 'gen-pr-codex :robot:', '00B4D8');
-      await setupLabel(octokit, owner, repo, 'gen-pr-gemini :robot:', '00B4D8');
 
       await deleteLabel(octokit, owner, repo, 'bug');
       await deleteLabel(octokit, owner, repo, 'documentation');
@@ -72,6 +68,10 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
       await deleteLabel(octokit, owner, repo, 'semantic-release');
       await deleteLabel(octokit, owner, repo, 'llm-pr :robot:');
       await deleteLabel(octokit, owner, repo, 'ai-pr :robot:');
+      await deleteLabel(octokit, owner, repo, 'gen-pr-all :robot:');
+      await deleteLabel(octokit, owner, repo, 'gen-pr-claude :robot:');
+      await deleteLabel(octokit, owner, repo, 'gen-pr-codex :robot:');
+      await deleteLabel(octokit, owner, repo, 'gen-pr-gemini :robot:');
     } catch (error) {
       console.warn('Skip setupLabels due to:', (error as Error | undefined)?.stack ?? error);
     }
