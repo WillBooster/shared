@@ -275,7 +275,7 @@ function normalizeCommonJsTsconfigSettings(
 ): void {
   if (!compilerOptions || config.isBun || config.depending.reactNative || config.isEsmPackage) return;
 
-  if (compilerOptions.module === 'commonjs') {
+  if (compilerOptions.module?.toLowerCase() === 'commonjs') {
     // @tsconfig/node-lts now provides moduleResolution=node16. TypeScript requires
     // the module kind to move with that resolver, while verbatimModuleSyntax=false
     // preserves the long-standing CommonJS emit shape for existing packages.
