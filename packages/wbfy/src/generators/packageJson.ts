@@ -277,8 +277,8 @@ async function applyPackageJsonConventions(
     }
   }
 
+  devDependencies.push(wbDependency);
   if (config.depending.wb || config.isBun) {
-    devDependencies.push(wbDependency);
     for (const [key, value] of Object.entries(jsonObj.scripts)) {
       if (typeof value !== 'string') continue;
       jsonObj.scripts[key] = value.replaceAll(/wb\s+db/gu, 'wb prisma');
@@ -1043,10 +1043,8 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     } else if (config.depending.wb) {
       scripts.typecheck = 'wb typecheck';
     }
-    if (config.depending.wb) {
-      scripts.verify = 'wb verify';
-      scripts['verify-full'] = 'wb verify --full';
-    }
+    scripts.verify = 'wb verify';
+    scripts['verify-full'] = 'wb verify --full';
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     return scripts;
   }
