@@ -251,11 +251,11 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
     }
   } else {
     for (const project of projects.descendants) {
-      if (shouldRunLinters && !(project.packageJson.workspaces && !project.hasSourceCode)) {
-        const lintCommand = buildLintCommand(project, argv);
-        if (lintCommand) linterCommands.push({ command: lintCommand, project });
-      }
       if (shouldRunLinters) {
+        if (!(project.packageJson.workspaces && !project.hasSourceCode)) {
+          const lintCommand = buildLintCommand(project, argv);
+          if (lintCommand) linterCommands.push({ command: lintCommand, project });
+        }
         if (project.hasPoetryLock) linterCommands.push({ command: buildPoetryLintCommand(argv), project });
         if (project.hasPubspecYaml) linterCommands.push({ command: buildDartLintCommand(), project });
       }
