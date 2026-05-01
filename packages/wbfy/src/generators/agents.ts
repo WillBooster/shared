@@ -66,8 +66,8 @@ function generateAgentInstruction(
 - When fixing issues, follow these rules:
   - Investigate the root cause first (e.g., by gathering debug logs, taking screenshots, etc.).
   - Fix the actual root cause instead of applying workarounds.
-- After making code changes, run \`${packageManager} check-all-for-ai\` to execute all tests (takes up to 1 hour), or \`${packageManager} check-for-ai\` for only type checking and linting (takes up to 10 minutes).
-  - If you are confident that your changes will not break any tests, you may use \`check-for-ai\`.
+- After making code changes, run \`${packageManager} verify-full\` to execute all tests (takes up to 1 hour), or \`${packageManager} verify\` for only type checking and linting (takes up to 10 minutes).
+  - If you are confident that your changes will not break any tests, you may use \`verify\`.
   - Use \`oxlint\` ignore comments with reasons (e.g., \`// oxlint-disable-next-line <rule> -- <reason>\`) if lint errors or warnings cannot be fixed.
 - Once you have verified your changes, commit and push them to the current (non-main) branch, then create a PR via \`gh\`.
   - Follow the conventional commits; your commit message should start with \`feat:\`, \`fix:\`, etc.
