@@ -40,7 +40,7 @@
     "lint": "oxlint --no-error-on-unmatched-pattern .",
     "lint-fix": "yarn lint --fix",
     "test": "vitest",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "wb typecheck",
     "verify": "wb verify",
     "verify-full": "wb verify --full"
   },
@@ -51,7 +51,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260421.2",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.6",
-    "@willbooster/wb": "13.12.8",
+    "@willbooster/wb": "13.12.9",
     "build-ts": "17.1.8",
     "oxfmt": "0.47.0",
     "oxlint": "1.62.0",

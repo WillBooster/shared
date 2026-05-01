@@ -5991,7 +5991,7 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260421.2"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.6"
-    "@willbooster/wb": "npm:13.12.8"
+    "@willbooster/wb": "npm:13.12.9"
     blitz: "npm:3.0.2"
     build-ts: "npm:17.1.8"
     oxfmt: "npm:0.47.0"
@@ -6012,7 +6012,7 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260421.2"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.6"
-    "@willbooster/wb": "npm:13.12.8"
+    "@willbooster/wb": "npm:13.12.9"
     build-ts: "npm:17.1.8"
     next: "npm:16.2.4"
     oxfmt: "npm:0.47.0"
@@ -6046,7 +6046,7 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260421.2"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.6"
-    "@willbooster/wb": "npm:13.12.8"
+    "@willbooster/wb": "npm:13.12.9"
     build-ts: "npm:17.1.8"
     dotenv: "npm:17.4.2"
     dotenv-expand: "npm:12.0.3"
@@ -6080,7 +6080,7 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260421.2"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.6"
-    "@willbooster/wb": "npm:13.12.8"
+    "@willbooster/wb": "npm:13.12.9"
     babel-loader: "npm:10.1.1"
     build-ts: "npm:17.1.8"
     oxfmt: "npm:0.47.0"
@@ -6106,7 +6106,7 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260421.2"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.6"
-    "@willbooster/wb": "npm:13.12.8"
+    "@willbooster/wb": "npm:13.12.9"
     build-ts: "npm:17.1.8"
     oxfmt: "npm:0.47.0"
     oxlint: "npm:1.62.0"
@@ -6116,9 +6116,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/wb@npm:13.12.8":
-  version: 13.12.8
-  resolution: "@willbooster/wb@npm:13.12.8"
+"@willbooster/wb@npm:13.12.9":
+  version: 13.12.9
+  resolution: "@willbooster/wb@npm:13.12.9"
   dependencies:
     chalk: "npm:5.6.2"
     dotenv: "npm:17.4.2"
@@ -6130,7 +6130,7 @@ __metadata:
     yargs: "npm:18.0.0"
   bin:
     wb: bin/index.js
-  checksum: 10c0/a2edc4cdf9208ce3d423388143683e657a4c9d83e21327fb8fc535a785d7496fcaf9210dd8bdfa799ab25a6534c12e15dc533a2277e98cd08cf87edeb270b6a2
+  checksum: 10c0/65c682bdf1cb3b01faea2e9128449e8a075e88c45c9b994bd19dbfd332b98176c1dd508f95ebf0af6e9216675a5ff92789874c927fa1281d965302b86f7f878d
   languageName: node
   linkType: hard
 
@@ -6187,7 +6187,7 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260421.2"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.6"
-    "@willbooster/wb": "npm:13.12.8"
+    "@willbooster/wb": "npm:13.12.9"
     "@yarnpkg/core": "npm:4.6.0"
     build-ts: "npm:17.1.8"
     deepmerge: "npm:4.3.1"
@@ -20043,7 +20043,7 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260421.2"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.6"
-    "@willbooster/wb": "npm:13.12.8"
+    "@willbooster/wb": "npm:13.12.9"
     conventional-changelog-conventionalcommits: "npm:9.3.1"
     lefthook: "npm:2.1.5"
     oxfmt: "npm:0.47.0"
