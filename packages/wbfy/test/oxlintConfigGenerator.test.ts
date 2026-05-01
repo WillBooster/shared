@@ -34,6 +34,9 @@ export default config;
   const content = await readOxlintConfig(dirPath);
   expect(content).toContain('// wbfy:start oxlint-base');
   expect(content).toContain('// wbfy:start oxlint-export');
+  expect(content).toContain("const oxlintBaseConfig = require('@willbooster/oxlint-config');");
+  expect(content).toContain('const config = oxlintBaseConfig.default ?? oxlintBaseConfig;');
+  expect(content).toContain('module.exports = config;');
   expect(content).not.toContain("config.ignorePatterns?.push('generated/**');");
 });
 
@@ -57,10 +60,21 @@ module.exports = staleConfig;
   await promisePool.promiseAll();
 
   const content = await readOxlintConfig(dirPath);
-  expect(content).toContain("import config from '@willbooster/oxlint-config';");
+  expect(content).toContain("const oxlintBaseConfig = require('@willbooster/oxlint-config');");
   expect(content).toContain("config.ignorePatterns?.push('generated/**');");
-  expect(content).toContain('export default config;');
+  expect(content).toContain('module.exports = config;');
   expect(content).not.toContain('staleConfig');
+});
+
+test('generates esm oxlint config for esm packages', async () => {
+  const dirPath = createTempDir();
+
+  await generateOxlintConfig(createConfig({ dirPath, isEsmPackage: true }), createConfig({ dirPath }));
+  await promisePool.promiseAll();
+
+  const content = await readOxlintConfig(dirPath);
+  expect(content).toContain("import config from '@willbooster/oxlint-config';");
+  expect(content).toContain('export default config;');
 });
 
 function createTempDir(): string {

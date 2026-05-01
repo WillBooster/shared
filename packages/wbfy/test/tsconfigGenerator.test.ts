@@ -40,6 +40,7 @@ test('generates explicit TS 6 types and rootDir for a root package', async () =>
   expect(tsconfig.compilerOptions.noEmit).toBe(true);
   expect(tsconfig.compilerOptions.rootDir).toBe('.');
   expect(tsconfig.compilerOptions.types).toEqual(['node', 'vitest/globals']);
+  expect(tsconfig.compilerOptions.verbatimModuleSyntax).toBe(false);
   expect(tsconfig.include).toContain('*.config.ts');
 });
 
@@ -124,6 +125,34 @@ test('sets subpackage rootDir to the repository root', async () => {
   expect(tsconfig.compilerOptions.noEmit).toBe(true);
   expect(tsconfig.compilerOptions.rootDir).toBe('../..');
   expect(tsconfig.compilerOptions.types).toEqual(['node']);
+  expect(tsconfig.compilerOptions.verbatimModuleSyntax).toBe(false);
+});
+
+test('normalizes legacy CommonJS module override for Node16 resolution', async () => {
+  const dirPath = createTempDir();
+  await fs.promises.mkdir(path.join(dirPath, 'src'), { recursive: true });
+  await fs.promises.writeFile(path.join(dirPath, 'src', 'index.ts'), 'export const value = 1;\n');
+  await fs.promises.writeFile(
+    path.join(dirPath, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        module: 'commonjs',
+      },
+    })
+  );
+
+  await generateTsconfig(
+    createConfig({
+      dirPath,
+      doesContainPackageJson: true,
+      doesContainTypeScript: true,
+    })
+  );
+  await promisePool.promiseAll();
+
+  const tsconfig = await readTsconfig(dirPath);
+  expect(tsconfig.compilerOptions.module).toBe('Node16');
+  expect(tsconfig.compilerOptions.verbatimModuleSyntax).toBe(false);
 });
 
 test('drops stale generated test globals when the package dependency is absent', async () => {
@@ -201,12 +230,14 @@ async function readTsconfig(dirPath: string): Promise<{
     baseUrl?: string;
     declaration?: boolean;
     moduleResolution?: string;
+    module?: string;
     noEmit?: boolean;
     outDir?: string;
     paths?: Record<string, string[]>;
     rootDir?: string;
     sourceMap?: boolean;
     types?: string[];
+    verbatimModuleSyntax?: boolean;
   };
   include?: string[];
 }> {
@@ -215,12 +246,14 @@ async function readTsconfig(dirPath: string): Promise<{
       baseUrl?: string;
       declaration?: boolean;
       moduleResolution?: string;
+      module?: string;
       noEmit?: boolean;
       outDir?: string;
       paths?: Record<string, string[]>;
       rootDir?: string;
       sourceMap?: boolean;
       types?: string[];
+      verbatimModuleSyntax?: boolean;
     };
     include?: string[];
   };

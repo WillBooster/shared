@@ -53,13 +53,30 @@ function getConfigContentWithManagedBlocks(
   existingContent: string | undefined,
   filePath: string
 ): string {
-  const desiredContent = getConfigContent();
+  const desiredContent = getConfigContent(config);
   if (!existingContent) return desiredContent;
   if (hasManagedBlocks(existingContent)) return replaceManagedBlocks(existingContent, desiredContent, filePath);
   return desiredContent;
 }
 
-function getConfigContent(): string {
+function getConfigContent(config: PackageConfig): string {
+  // Do not collapse this to a static import for every package. CommonJS packages
+  // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
+  // @willbooster/oxlint-config package triggers TS1479. Keep this in sync with
+  // literacy-test's generated config pattern.
+  if (!config.isEsmPackage) {
+    return `${getManagedBlock(
+      'base',
+      `// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
+const oxlintBaseConfig = require('@willbooster/oxlint-config');
+
+const config = oxlintBaseConfig.default ?? oxlintBaseConfig;`
+    )}
+
+${getManagedBlock('export', 'module.exports = config;')}
+`;
+  }
+
   return `${getManagedBlock('base', "import config from '@willbooster/oxlint-config';")}
 
 ${getManagedBlock('export', 'export default config;')}
