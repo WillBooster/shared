@@ -177,7 +177,7 @@ describe('generatePackageJson', () => {
     expect(packageJson.devDependencies?.['@typescript/native-preview']).toBeDefined();
   });
 
-  test('bridges package scripts to mise tasks without creating recursive scripts', async () => {
+  test('bridges regular package scripts to mise tasks without creating recursive scripts', async () => {
     const dirPath = await createPackageDir({
       name: 'mise-package',
       private: true,
@@ -215,11 +215,11 @@ describe('generatePackageJson', () => {
     expect(packageJson.scripts?.build).toBe('mise run build');
     expect(packageJson.scripts?.test).toBe('mise run test');
     expect(packageJson.scripts?.typecheck).toBe('mise run typecheck');
-    expect(packageJson.scripts?.['start-test-server']).toBe('mise run start');
+    expect(packageJson.scripts).not.toHaveProperty('start-test-server');
     expect(packageJson.scripts?.start).toBe('mise run start');
   });
 
-  test('prefers a dedicated mise start-test-server task when generating the test server script', async () => {
+  test('removes start-test-server even when a dedicated mise task exists', async () => {
     const dirPath = await createPackageDir({
       name: 'mise-test-server-package',
       private: true,
@@ -248,7 +248,7 @@ describe('generatePackageJson', () => {
     await generatePackageJson(config, createRootConfig(path.dirname(dirPath)), true);
 
     const packageJson = readPackageJson(dirPath);
-    expect(packageJson.scripts?.['start-test-server']).toBe('mise run start-test-server');
+    expect(packageJson.scripts).not.toHaveProperty('start-test-server');
   });
 });
 

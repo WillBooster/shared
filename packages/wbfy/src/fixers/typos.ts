@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import fg from 'fast-glob';
@@ -23,7 +22,8 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     for (const mdFile of docFiles) {
       const filePath = path.join(dirPath, mdFile);
       void promisePool.run(async () => {
-        const content = await fs.promises.readFile(filePath, 'utf8');
+        const content = await fsUtil.readFileIgnoringError(filePath);
+        if (content === undefined) return;
         let newContent = fixTyposInText(content);
         newContent = replaceWithConfig(newContent, packageConfig, 'doc');
         if (content !== newContent) {
@@ -45,7 +45,8 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     for (const tsFile of tsFiles) {
       const filePath = path.join(dirPath, tsFile);
       void promisePool.run(async () => {
-        const oldContent = await fs.promises.readFile(filePath, 'utf8');
+        const oldContent = await fsUtil.readFileIgnoringError(filePath);
+        if (oldContent === undefined) return;
         let newContent = fixTyposInCode(oldContent);
         newContent = replaceWithConfig(newContent, packageConfig, 'ts');
 
@@ -66,7 +67,8 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
     for (const file of textBasedFiles) {
       const filePath = path.join(dirPath, file);
       void promisePool.run(async () => {
-        const oldContent = await fs.promises.readFile(filePath, 'utf8');
+        const oldContent = await fsUtil.readFileIgnoringError(filePath);
+        if (oldContent === undefined) return;
         let newContent = fixTyposInText(oldContent);
         newContent = replaceWithConfig(newContent, packageConfig, 'text');
 

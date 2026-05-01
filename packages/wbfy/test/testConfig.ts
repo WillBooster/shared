@@ -31,7 +31,6 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     doesContainTypeScriptInPackages: false,
     doesContainJsxOrTsxInPackages: false,
     doesContainJavaInPackages: false,
-    hasStartTestServer: false,
     depending: {
       blitz: false,
       firebase: false,

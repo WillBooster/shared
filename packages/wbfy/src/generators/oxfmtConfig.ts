@@ -13,7 +13,7 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
     const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
     const existingContent = await fsUtil.readFileIgnoringError(filePath);
-    const desiredContent = getConfigContent(config);
+    const desiredContent = getConfigContent();
     const promises = [promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true }))];
     if (normalizeToolConfigContent(existingContent) !== normalizeToolConfigContent(desiredContent)) {
       promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
@@ -22,10 +22,8 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
   });
 }
 
-function getConfigContent(config: PackageConfig): string {
-  return generateToolConfigContent(config, {
-    commonJsVariableName: 'oxfmtConfig',
+function getConfigContent(): string {
+  return generateToolConfigContent({
     packageName: '@willbooster/oxfmt-config',
-    toolName: 'Oxfmt',
   });
 }
