@@ -107,7 +107,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   const packageManager = config.isBun ? 'bun' : 'yarn';
 
   await removeDeprecatedStuff(config, jsonObj);
-  await updateScripts(config, jsonObj, packageManager);
+  await updateScripts(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
@@ -145,16 +145,11 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   return jsonObj as WritablePackageJson;
 }
 
-async function updateScripts(
-  config: PackageConfig,
-  jsonObj: WritablePackageJson,
-  packageManager: 'bun' | 'yarn'
-): Promise<void> {
+async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
   removeLegacyInstallCommands(jsonObj.scripts);
 
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
   delete jsonObj.scripts['start-test-server'];
-  addInstallStepToCheckForAi(jsonObj.scripts, packageManager);
 
   const scripts = jsonObj.scripts;
   if (config.isBun || !doesContainJava(config)) {
@@ -173,15 +168,6 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
       scripts[key] = value.replaceAll(/yarn\s*(?:install\s*)?&&\s*/gu, '');
     }
   }
-}
-
-function addInstallStepToCheckForAi(scripts: PackageJson.Scripts, packageManager: 'bun' | 'yarn'): void {
-  if (!('check-for-ai' in scripts)) return;
-
-  if ('gen-code' in scripts) {
-    scripts['check-for-ai'] = `${packageManager} gen-code > /dev/null && ${scripts['check-for-ai']}`;
-  }
-  scripts['check-for-ai'] = `${packageManager} install > /dev/null && ${scripts['check-for-ai']}`;
 }
 
 function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {
@@ -385,7 +371,7 @@ async function normalizePackageMetadata(
       if (!config.doesContainJavaScript && !config.doesContainTypeScript) {
         delete jsonObj.scripts.lint;
         delete jsonObj.scripts['lint-fix'];
-        for (const scriptName of ['cleanup', 'check-for-ai']) {
+        for (const scriptName of ['cleanup']) {
           const script = jsonObj.scripts[scriptName];
           if (!script) continue;
           jsonObj.scripts[scriptName] = script.replace(/ ?&& ?yarn lint-fix(?: --quiet)?/, '');
@@ -658,6 +644,8 @@ async function removeDeprecatedStuff(
   replaceWillBoosterConfigsWorkspaceDependencyRanges(config, jsonObj);
   delete jsonObj.scripts['sort-package-json'];
   delete jsonObj.scripts['sort-all-package-json'];
+  delete jsonObj.scripts['check-all-for-ai'];
+  delete jsonObj.scripts['check-for-ai'];
   delete jsonObj.scripts['typecheck/warn'];
   delete jsonObj.scripts['typecheck:gen-code'];
   delete jsonObj.scripts['typecheck:codegen'];
@@ -957,8 +945,6 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
   if (config.isBun) {
     const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
     const scripts: Record<string, string> = {
-      'check-all-for-ai': 'bun run check-for-ai && bun run test',
-      'check-for-ai': 'bun run cleanup',
       cleanup: 'bun --bun wb lint --fix --format',
       format: `bun --bun wb lint --format`,
       lint: `bun --bun wb lint`,
@@ -981,8 +967,6 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const hasJava = doesContainJava(config);
     const oldTest = oldScripts.test;
     let scripts: Record<string, string> = {
-      'check-all-for-ai': 'yarn check-for-ai && yarn test',
-      'check-for-ai': `yarn format > /dev/null 2> /dev/null || true && yarn lint-fix --quiet`,
       cleanup: 'yarn format && yarn lint-fix',
       format: generateFormatScript(hasJsOrTs, hasJava),
       lint: `oxlint --no-error-on-unmatched-pattern .`,
