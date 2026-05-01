@@ -58,7 +58,7 @@ function generateAgentInstruction(
 - Create a new branch if the current branch is \`main\`.
 - Run any \`git\` commands sequentially.
 - Write tests ONLY if explicitly requested. If requested, follow these rules:
-  - Continue modifying both tests and code until all tests pass.
+  - Continue modifying tests and/or code until all tests pass.
   - Ensure tests are idempotent and independent (e.g., reset persistent data) so they can run repeatedly or in parallel.
   - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
   - Always investigate the root cause of a test failure before fixing it.
