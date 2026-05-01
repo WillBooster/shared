@@ -30,7 +30,6 @@ const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const willBoosterConfigsManagedDependencies = [
   '@willbooster/prettier-config',
-  wbDependency,
   ...oxlintDeps.filter((dependency) => dependency.startsWith('@willbooster/')),
 ];
 const obsoleteLintDependencies = [
