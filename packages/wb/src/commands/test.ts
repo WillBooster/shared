@@ -29,8 +29,7 @@ const SIMILAR_TEST_OUTPUT_DISTANCE_RATIO = 0.05;
 
 const builder = {
   e2e: {
-    description:
-      'E2e test mode: headless (default) | headless-dev | headed | headed-dev | docker | docker-debug | debug | generate | trace',
+    description: 'How to run E2E tests',
     type: 'string',
     choices: [
       'headless',
@@ -61,8 +60,9 @@ const builder = {
 
 const argumentsBuilder = {
   targets: {
-    description: 'Test target paths',
-    type: 'array',
+    array: true,
+    description: 'Unit or E2E test target paths',
+    type: 'string',
   },
 } as const;
 
@@ -81,7 +81,8 @@ export const testCommand: CommandModule<unknown, TestCommandOptions> = {
   builder: (yargs: Argv<unknown>): Argv<TestCommandOptions> =>
     yargs
       .parserConfiguration({ 'populate--': true })
-      .options({ ...builder, ...argumentsBuilder }) as Argv<TestCommandOptions>,
+      .options(builder)
+      .positional('targets', argumentsBuilder.targets) as Argv<TestCommandOptions>,
   async handler(argv) {
     await test(argv as TestCommandArgv);
   },
