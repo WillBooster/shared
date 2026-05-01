@@ -227,22 +227,26 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
 
         linterCommands.push({ command: lintCommand, project });
       }
-      for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
+    }
+    for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
+      if (shouldRunLinters) {
         linterCommands.push({ command: buildPoetryLintCommand(argv, pythonFilePaths), project });
       }
-      for (const [project, dartFilePaths] of dartFilePathsByProject) {
+      if (shouldRunFormatters) {
+        formatterCommands.push({ command: buildPoetryFormatCommand(pythonFilePaths), project });
+      }
+    }
+    for (const [project, dartFilePaths] of dartFilePathsByProject) {
+      if (shouldRunLinters) {
         linterCommands.push({ command: buildDartLintCommand(dartFilePaths), project });
+      }
+      if (shouldRunFormatters) {
+        formatterCommands.push({ command: buildDartFormatCommand(dartFilePaths), project });
       }
     }
     if (shouldRunFormatters) {
       for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
         formatterCommands.push({ command: buildOxfmtCommand(oxfmtFilePaths), project });
-      }
-      for (const [project, pythonFilePaths] of pythonFilePathsByProject) {
-        formatterCommands.push({ command: buildPoetryFormatCommand(pythonFilePaths), project });
-      }
-      for (const [project, dartFilePaths] of dartFilePathsByProject) {
-        formatterCommands.push({ command: buildDartFormatCommand(dartFilePaths), project });
       }
     }
   } else {
