@@ -60,6 +60,10 @@ function getConfigContentWithManagedBlocks(
 }
 
 function getConfigContent(config: PackageConfig): string {
+  // Do not collapse this to a static import for every package. CommonJS packages
+  // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
+  // @willbooster/oxlint-config package triggers TS1479. Keep this in sync with
+  // literacy-test's generated config pattern.
   if (!config.isEsmPackage) {
     return `${getManagedBlock(
       'base',
