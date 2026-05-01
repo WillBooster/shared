@@ -107,7 +107,7 @@ export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
 - Write comments that explain "why" and use JSDoc to explain "what".
   - Avoid stating what can be easily understood from the code itself.
 - Prefer \`undefined\` over \`null\` unless explicitly required by APIs or libraries.
-- Prefer using a single template literal for prompts instead of \`join()\` with an array of strings.
+- Prefer using a single template literal for prompts instead of \`join()\` with an array of string literals.
 - Assume that all environment variables are properly defined.
   - If validation is required, use \`assert\` to fail fast (e.g., during startup).
 ${
