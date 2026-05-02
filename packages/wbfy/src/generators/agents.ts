@@ -3,6 +3,7 @@ import path from 'node:path';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { getPackageManagerCommand } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
@@ -45,7 +46,7 @@ function generateAgentInstruction(
   toolName: string,
   extraContent?: string
 ): string {
-  const packageManager = rootConfig.isBun ? 'bun' : 'yarn';
+  const packageManager = getPackageManagerCommand(rootConfig);
   const baseContent = `
 ## Project Information
 
@@ -74,7 +75,7 @@ function generateAgentInstruction(
   - If not specified, make sure to add a new line at the end of your commit message${rootConfig.isWillBoosterRepo ? ` with: \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`` : ''}.
   - Always create new commits. Avoid using \`--amend\`.
 - Always use heredoc syntax when passing multi-line content to any command.
-${hasPlaywrightTestServer(allConfigs) ? `- Use \`wb start --mode test\` to launch a web server for debugging or testing.` : ''}
+${hasPlaywrightTestServer(allConfigs) ? `- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.` : ''}
 
 ${generateAgentCodingStyle(allConfigs)}
 `

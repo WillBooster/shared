@@ -35,7 +35,7 @@ test('mentions wb test server startup for Playwright projects on the first run',
   await promisePool.promiseAll();
 
   const content = await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8');
-  expect(content).toContain('Use `wb start --mode test` to launch a web server for debugging or testing.');
+  expect(content).toContain('Use `bun wb start --mode test` to launch a web server for debugging or testing.');
 });
 
 function createTempDir(): string {
