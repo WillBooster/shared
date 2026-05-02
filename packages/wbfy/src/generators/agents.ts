@@ -3,6 +3,7 @@ import path from 'node:path';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { getPackageManagerCommand } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
@@ -45,7 +46,7 @@ function generateAgentInstruction(
   toolName: string,
   extraContent?: string
 ): string {
-  const packageManager = rootConfig.isBun ? 'bun' : 'yarn';
+  const packageManager = getPackageManagerCommand(rootConfig);
   const baseContent = `
 ## Project Information
 

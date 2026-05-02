@@ -6,6 +6,7 @@ import ts from 'typescript';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { getPackageManagerCommand } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 type ParsedValue =
@@ -41,7 +42,7 @@ const createDefaultConfig = (config: PackageConfig): ParsedObject =>
       video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
     }),
     webServer: asObject({
-      command: literal(`'${getPackageManagerCommand(config)} wb start --mode test'`),
+      command: literal(getWbStartTestCommand(config)),
       url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
       reuseExistingServer: literal('!!process.env.CI'),
       timeout: literal('300_000'),
@@ -161,11 +162,11 @@ function setWebServerCommand(object: ParsedObject, config: PackageConfig): void 
   // wb owns the canonical test-server startup path; keep custom Playwright
   // server settings while normalizing the command itself. Invoke wb through the
   // package manager because target repos install wb as a package dependency.
-  webServer.value.properties.command = literal(`'${getPackageManagerCommand(config)} wb start --mode test'`);
+  webServer.value.properties.command = literal(getWbStartTestCommand(config));
 }
 
-function getPackageManagerCommand(config: PackageConfig): 'bun' | 'yarn' {
-  return config.isBun ? 'bun' : 'yarn';
+function getWbStartTestCommand(config: PackageConfig): string {
+  return `'${getPackageManagerCommand(config)} wb start --mode test'`;
 }
 
 function extractDefineConfigObjectLiteral(content: string): ExtractedObjectLiteral | undefined {
