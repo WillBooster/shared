@@ -30,32 +30,33 @@ const asObject = (properties: Record<string, ParsedValue>, extraMembers: string[
   value: toParsedObject(properties, extraMembers),
 });
 
-const defaultConfig = toParsedObject({
-  forbidOnly: literal('!!process.env.CI'),
-  retries: literal('process.env.PWDEBUG ? 0 : process.env.CI ? 5 : 1'),
-  use: asObject({
-    baseURL: literal('process.env.NEXT_PUBLIC_BASE_URL'),
-    trace: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
-    screenshot: literal("process.env.CI ? 'only-on-failure' : 'on'"),
-    video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
-  }),
-  webServer: asObject({
-    command: literal("'yarn wb start --mode test'"),
-    url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
-    reuseExistingServer: literal('!!process.env.CI'),
-    timeout: literal('300_000'),
-    stdout: literal("'pipe'"),
-    stderr: literal("'pipe'"),
-    env: literal(`{
+const createDefaultConfig = (config: PackageConfig): ParsedObject =>
+  toParsedObject({
+    forbidOnly: literal('!!process.env.CI'),
+    retries: literal('process.env.PWDEBUG ? 0 : process.env.CI ? 5 : 1'),
+    use: asObject({
+      baseURL: literal('process.env.NEXT_PUBLIC_BASE_URL'),
+      trace: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
+      screenshot: literal("process.env.CI ? 'only-on-failure' : 'on'"),
+      video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
+    }),
+    webServer: asObject({
+      command: literal(`'${getPackageManagerCommand(config)} wb start --mode test'`),
+      url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
+      reuseExistingServer: literal('!!process.env.CI'),
+      timeout: literal('300_000'),
+      stdout: literal("'pipe'"),
+      stderr: literal("'pipe'"),
+      env: literal(`{
   ...process.env,
   PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'true',
 }`),
-    gracefulShutdown: literal(`{
+      gracefulShutdown: literal(`{
   signal: 'SIGTERM',
   timeout: 500,
 }`),
-  }),
-});
+    }),
+  });
 
 function toParsedObject(properties: Record<string, ParsedValue>, extraMembers: string[] = []): ParsedObject {
   return {
@@ -83,8 +84,8 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     if (!parsed) return;
 
     // Keep filling missing defaults, but don't overwrite local adjustments on every regeneration.
-    const merged = mergeParsedObjects(defaultConfig, parsed);
-    setWebServerCommand(merged);
+    const merged = mergeParsedObjects(createDefaultConfig(config), parsed);
+    setWebServerCommand(merged, config);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
     const start = extractedObjectLiteral.node.getStart(extractedObjectLiteral.source);
@@ -153,14 +154,18 @@ function getEnvFilePaths(dirPath: string): string[] {
   return envFilePaths;
 }
 
-function setWebServerCommand(object: ParsedObject): void {
+function setWebServerCommand(object: ParsedObject, config: PackageConfig): void {
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
 
   // wb owns the canonical test-server startup path; keep custom Playwright
-  // server settings while normalizing the command itself. Invoke wb through
-  // Yarn because target repos install wb as a package dependency.
-  webServer.value.properties.command = literal("'yarn wb start --mode test'");
+  // server settings while normalizing the command itself. Invoke wb through the
+  // package manager because target repos install wb as a package dependency.
+  webServer.value.properties.command = literal(`'${getPackageManagerCommand(config)} wb start --mode test'`);
+}
+
+function getPackageManagerCommand(config: PackageConfig): 'bun' | 'yarn' {
+  return config.isBun ? 'bun' : 'yarn';
 }
 
 function extractDefineConfigObjectLiteral(content: string): ExtractedObjectLiteral | undefined {
