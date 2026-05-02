@@ -40,7 +40,7 @@ const defaultConfig = toParsedObject({
     video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
   }),
   webServer: asObject({
-    command: literal("'wb start --mode test'"),
+    command: literal("'yarn wb start --mode test'"),
     url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
     reuseExistingServer: literal('!!process.env.CI'),
     timeout: literal('300_000'),
@@ -158,8 +158,9 @@ function setWebServerCommand(object: ParsedObject): void {
   if (webServer?.kind !== 'object') return;
 
   // wb owns the canonical test-server startup path; keep custom Playwright
-  // server settings while normalizing the command itself.
-  webServer.value.properties.command = literal("'wb start --mode test'");
+  // server settings while normalizing the command itself. Invoke wb through
+  // Yarn because target repos install wb as a package dependency.
+  webServer.value.properties.command = literal("'yarn wb start --mode test'");
 }
 
 function extractDefineConfigObjectLiteral(content: string): ExtractedObjectLiteral | undefined {
