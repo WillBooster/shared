@@ -31,7 +31,8 @@ class DockerScripts {
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop(project), project);
     const allocateTty = additionalArgs.includes('/bin/bash');
-    return `docker run --rm ${allocateTty ? '-it ' : ''}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
+    const miseAgeKeyEnvOption = project.env.MISE_AGE_KEY ? '--env MISE_AGE_KEY ' : '';
+    return `docker run --rm ${allocateTty ? '-it ' : ''}${miseAgeKeyEnvOption}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
   }
 
   stop(project: Project): string {
