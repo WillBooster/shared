@@ -68,15 +68,15 @@ function getConfigContent(config: PackageConfig): string {
       `// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
 const oxlintBaseConfig = require('@willbooster/oxlint-config');
 
-const config = oxlintBaseConfig.default ?? oxlintBaseConfig;`
+const oxlintResolvedConfig = oxlintBaseConfig.default ?? oxlintBaseConfig;`
     )}
 
-${managedConfigBlocks.getBlock('export', 'module.exports = config;')}
+${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;')}
 `;
   }
 
-  return `${managedConfigBlocks.getBlock('base', "import config from '@willbooster/oxlint-config';")}
+  return `${managedConfigBlocks.getBlock('base', "import oxlintResolvedConfig from '@willbooster/oxlint-config';")}
 
-${managedConfigBlocks.getBlock('export', 'export default config;')}
+${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
 `;
 }
