@@ -26,11 +26,13 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     const desiredContent =
       shouldPreservePublishedLinterConfig && existingContent
         ? existingContent
-        : managedConfigBlocks.getConfigContent({
-            desiredContent: getConfigContent(config),
-            existingContent,
-            filePath,
-          });
+        : replaceLegacyConfigReferences(
+            managedConfigBlocks.getConfigContent({
+              desiredContent: getConfigContent(config),
+              existingContent,
+              filePath,
+            })
+          );
 
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
@@ -55,6 +57,10 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     }
     await Promise.all(promises);
   });
+}
+
+function replaceLegacyConfigReferences(content: string): string {
+  return content.replaceAll('config.', 'oxlintResolvedConfig.');
 }
 
 function getConfigContent(config: PackageConfig): string {

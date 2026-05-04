@@ -48,7 +48,7 @@ test('updates only managed blocks in marked oxlint config', async () => {
 const staleConfig = require('@willbooster/oxlint-config');
 // wbfy:end oxlint-base
 
-oxlintResolvedConfig.ignorePatterns?.push('generated/**');
+config.ignorePatterns?.push('generated/**');
 
 // wbfy:start oxlint-export
 module.exports = staleConfig;
