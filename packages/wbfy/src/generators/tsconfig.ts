@@ -150,9 +150,11 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
 }
 
 function addScriptsIncludeForFrameworkProject(settings: TsConfigJson): void {
-  if (settings.include?.includes('scripts/**/*')) return;
+  // Omitting include lets framework tsconfigs keep TypeScript's default
+  // "all TS/TSX files" behavior, which already covers scripts.
+  if (!settings.include) return;
+  if (settings.include.includes('scripts/**/*')) return;
 
-  settings.include ??= [];
   settings.include.push('scripts/**/*');
   settings.include.sort();
 }
