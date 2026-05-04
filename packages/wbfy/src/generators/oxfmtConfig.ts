@@ -7,7 +7,6 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
 import { normalizeConfigContent } from './configContent.js';
-import { generateOxfmtConfigContent } from './oxfmtConfigContent.js';
 
 export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
@@ -24,7 +23,18 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
 }
 
 function getConfigContent(config: PackageConfig): string {
-  return generateOxfmtConfigContent({
-    isEsmPackage: config.isEsmPackage,
-  });
+  // CommonJS packages need require/module.exports here: oxfmt config files are
+  // only auto-discovered as .ts, and the shared config package is ESM-only.
+  if (!config.isEsmPackage) {
+    return `// oxlint-disable unicorn/prefer-module -- Oxfmt config files are only auto-discovered as .ts, and CommonJS avoids Node typeless ESM warnings.
+const oxfmtConfig = require('@willbooster/oxfmt-config');
+
+module.exports = oxfmtConfig.default ?? oxfmtConfig;
+`;
+  }
+
+  return `import config from '@willbooster/oxfmt-config';
+
+export default config;
+`;
 }
