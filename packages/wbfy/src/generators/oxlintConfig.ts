@@ -7,7 +7,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
-import { normalizeToolConfigContent } from './toolConfigContent.js';
+import { normalizeConfigContent } from './configContent.js';
 
 type OxlintBlockName = 'base' | 'export';
 
@@ -41,7 +41,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true }))
       );
     }
-    if (normalizeToolConfigContent(existingContent) !== normalizeToolConfigContent(desiredContent)) {
+    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
       promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
     }
     await Promise.all(promises);
