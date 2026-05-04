@@ -1,96 +1,87 @@
 export type ConfigBlockName = 'base' | 'export';
 
-interface GetConfigContentWithManagedBlocksOptions {
+interface ManagedConfigBlocksOptions {
   blockNames: readonly ConfigBlockName[];
-  desiredContent: string;
-  existingContent: string | undefined;
-  filePath: string;
   markerPrefix: string;
   toolName: string;
 }
 
-export function getConfigContentWithManagedBlocks(options: GetConfigContentWithManagedBlocksOptions): string {
-  if (!options.existingContent) return options.desiredContent;
-  if (hasManagedBlocks(options.existingContent, options)) {
-    return replaceManagedBlocks(options.existingContent, options.desiredContent, options);
+interface GetConfigContentOptions {
+  desiredContent: string;
+  existingContent: string | undefined;
+  filePath: string;
+}
+
+export class ManagedConfigBlocks {
+  private readonly blockNames: readonly ConfigBlockName[];
+
+  private readonly markerPrefix: string;
+
+  private readonly toolName: string;
+
+  constructor(options: ManagedConfigBlocksOptions) {
+    this.blockNames = options.blockNames;
+    this.markerPrefix = options.markerPrefix;
+    this.toolName = options.toolName;
   }
-  return options.desiredContent;
-}
 
-export function getManagedBlock(
-  blockName: ConfigBlockName,
-  content: string,
-  options: Pick<GetConfigContentWithManagedBlocksOptions, 'markerPrefix'>
-): string {
-  return `${getStartMarker(blockName, options)}
-${content}
-${getEndMarker(blockName, options)}`;
-}
-
-function hasManagedBlocks(content: string, options: GetConfigContentWithManagedBlocksOptions): boolean {
-  return options.blockNames.some((blockName) => content.includes(getStartMarker(blockName, options)));
-}
-
-function replaceManagedBlocks(
-  existingContent: string,
-  desiredContent: string,
-  options: GetConfigContentWithManagedBlocksOptions
-): string {
-  let content = existingContent;
-  for (const blockName of options.blockNames) {
-    const replacement = extractManagedBlock(desiredContent, blockName, options);
-    if (!replacement) continue;
-
-    const nextContent = replaceManagedBlock(content, blockName, replacement, options);
-    if (!nextContent) {
-      console.warn(`Skipped updating incomplete ${blockName} block in ${options.toolName} config: ${options.filePath}`);
-      return existingContent;
+  getConfigContent(options: GetConfigContentOptions): string {
+    if (!options.existingContent) return options.desiredContent;
+    if (this.hasManagedBlocks(options.existingContent)) {
+      return this.replaceManagedBlocks(options.existingContent, options.desiredContent, options.filePath);
     }
-    content = nextContent;
+    return options.desiredContent;
   }
-  return content;
-}
 
-function extractManagedBlock(
-  content: string,
-  blockName: ConfigBlockName,
-  options: Pick<GetConfigContentWithManagedBlocksOptions, 'markerPrefix'>
-): string | undefined {
-  return getManagedBlockRegExp(blockName, options).exec(content)?.[0];
-}
+  getBlock(blockName: ConfigBlockName, content: string): string {
+    return `${this.getStartMarker(blockName)}
+${content}
+${this.getEndMarker(blockName)}`;
+  }
 
-function replaceManagedBlock(
-  content: string,
-  blockName: ConfigBlockName,
-  replacement: string,
-  options: Pick<GetConfigContentWithManagedBlocksOptions, 'markerPrefix'>
-): string | undefined {
-  const pattern = getManagedBlockRegExp(blockName, options);
-  if (!pattern.test(content)) return undefined;
-  return content.replace(pattern, replacement);
-}
+  private hasManagedBlocks(content: string): boolean {
+    return this.blockNames.some((blockName) => content.includes(this.getStartMarker(blockName)));
+  }
 
-function getManagedBlockRegExp(
-  blockName: ConfigBlockName,
-  options: Pick<GetConfigContentWithManagedBlocksOptions, 'markerPrefix'>
-): RegExp {
-  return new RegExp(
-    `${escapeRegExp(getStartMarker(blockName, options))}[\\s\\S]*?${escapeRegExp(getEndMarker(blockName, options))}`
-  );
-}
+  private replaceManagedBlocks(existingContent: string, desiredContent: string, filePath: string): string {
+    let content = existingContent;
+    for (const blockName of this.blockNames) {
+      const replacement = this.extractManagedBlock(desiredContent, blockName);
+      if (!replacement) continue;
 
-function getStartMarker(
-  blockName: ConfigBlockName,
-  options: Pick<GetConfigContentWithManagedBlocksOptions, 'markerPrefix'>
-): string {
-  return `// wbfy:start ${options.markerPrefix}-${blockName}`;
-}
+      const nextContent = this.replaceManagedBlock(content, blockName, replacement);
+      if (!nextContent) {
+        console.warn(`Skipped updating incomplete ${blockName} block in ${this.toolName} config: ${filePath}`);
+        return existingContent;
+      }
+      content = nextContent;
+    }
+    return content;
+  }
 
-function getEndMarker(
-  blockName: ConfigBlockName,
-  options: Pick<GetConfigContentWithManagedBlocksOptions, 'markerPrefix'>
-): string {
-  return `// wbfy:end ${options.markerPrefix}-${blockName}`;
+  private extractManagedBlock(content: string, blockName: ConfigBlockName): string | undefined {
+    return this.getManagedBlockRegExp(blockName).exec(content)?.[0];
+  }
+
+  private replaceManagedBlock(content: string, blockName: ConfigBlockName, replacement: string): string | undefined {
+    const pattern = this.getManagedBlockRegExp(blockName);
+    if (!pattern.test(content)) return undefined;
+    return content.replace(pattern, replacement);
+  }
+
+  private getManagedBlockRegExp(blockName: ConfigBlockName): RegExp {
+    return new RegExp(
+      `${escapeRegExp(this.getStartMarker(blockName))}[\\s\\S]*?${escapeRegExp(this.getEndMarker(blockName))}`
+    );
+  }
+
+  private getStartMarker(blockName: ConfigBlockName): string {
+    return `// wbfy:start ${this.markerPrefix}-${blockName}`;
+  }
+
+  private getEndMarker(blockName: ConfigBlockName): string {
+    return `// wbfy:end ${this.markerPrefix}-${blockName}`;
+  }
 }
 
 function escapeRegExp(value: string): string {

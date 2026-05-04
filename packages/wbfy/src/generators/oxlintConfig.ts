@@ -8,13 +8,13 @@ import { promisePool } from '../utils/promisePool.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
 import { normalizeConfigContent } from './configContent.js';
-import { getConfigContentWithManagedBlocks, getManagedBlock } from './managedConfigBlock.js';
+import { ManagedConfigBlocks } from './managedConfigBlock.js';
 
-const managedBlockOptions = {
+const managedConfigBlocks = new ManagedConfigBlocks({
   blockNames: ['base', 'export'],
   markerPrefix: 'oxlint',
   toolName: 'oxlint',
-} as const;
+});
 
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
@@ -26,8 +26,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     const desiredContent =
       shouldPreservePublishedLinterConfig && existingContent
         ? existingContent
-        : getConfigContentWithManagedBlocks({
-            ...managedBlockOptions,
+        : managedConfigBlocks.getConfigContent({
             desiredContent: getConfigContent(config),
             existingContent,
             filePath,
@@ -64,21 +63,20 @@ function getConfigContent(config: PackageConfig): string {
   // @willbooster/oxlint-config package triggers TS1479. Keep this in sync with
   // literacy-test's generated config pattern.
   if (!config.isEsmPackage) {
-    return `${getManagedBlock(
+    return `${managedConfigBlocks.getBlock(
       'base',
       `// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
 const oxlintBaseConfig = require('@willbooster/oxlint-config');
 
-const config = oxlintBaseConfig.default ?? oxlintBaseConfig;`,
-      managedBlockOptions
+const config = oxlintBaseConfig.default ?? oxlintBaseConfig;`
     )}
 
-${getManagedBlock('export', 'module.exports = config;', managedBlockOptions)}
+${managedConfigBlocks.getBlock('export', 'module.exports = config;')}
 `;
   }
 
-  return `${getManagedBlock('base', "import config from '@willbooster/oxlint-config';", managedBlockOptions)}
+  return `${managedConfigBlocks.getBlock('base', "import config from '@willbooster/oxlint-config';")}
 
-${getManagedBlock('export', 'export default config;', managedBlockOptions)}
+${managedConfigBlocks.getBlock('export', 'export default config;')}
 `;
 }

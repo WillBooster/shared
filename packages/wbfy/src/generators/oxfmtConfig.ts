@@ -7,21 +7,20 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
 import { normalizeConfigContent } from './configContent.js';
-import { getConfigContentWithManagedBlocks, getManagedBlock } from './managedConfigBlock.js';
+import { ManagedConfigBlocks } from './managedConfigBlock.js';
 
-const managedBlockOptions = {
+const managedConfigBlocks = new ManagedConfigBlocks({
   blockNames: ['base', 'export'],
   markerPrefix: 'oxfmt',
   toolName: 'oxfmt',
-} as const;
+});
 
 export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
     const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
     const existingContent = await fsUtil.readFileIgnoringError(filePath);
-    const desiredContent = getConfigContentWithManagedBlocks({
-      ...managedBlockOptions,
+    const desiredContent = managedConfigBlocks.getConfigContent({
       desiredContent: getConfigContent(config),
       existingContent,
       filePath,
@@ -38,21 +37,20 @@ function getConfigContent(config: PackageConfig): string {
   // CommonJS packages need require/module.exports here: oxfmt config files are
   // only auto-discovered as .ts, and the shared config package is ESM-only.
   if (!config.isEsmPackage) {
-    return `${getManagedBlock(
+    return `${managedConfigBlocks.getBlock(
       'base',
       `// oxlint-disable unicorn/prefer-module -- Oxfmt config files are only auto-discovered as .ts, and CommonJS avoids Node typeless ESM warnings.
 const oxfmtConfig = require('@willbooster/oxfmt-config');
 
-const config = oxfmtConfig.default ?? oxfmtConfig;`,
-      managedBlockOptions
+const config = oxfmtConfig.default ?? oxfmtConfig;`
     )}
 
-${getManagedBlock('export', 'module.exports = config;', managedBlockOptions)}
+${managedConfigBlocks.getBlock('export', 'module.exports = config;')}
 `;
   }
 
-  return `${getManagedBlock('base', "import config from '@willbooster/oxfmt-config';", managedBlockOptions)}
+  return `${managedConfigBlocks.getBlock('base', "import config from '@willbooster/oxfmt-config';")}
 
-${getManagedBlock('export', 'export default config;', managedBlockOptions)}
+${managedConfigBlocks.getBlock('export', 'export default config;')}
 `;
 }
