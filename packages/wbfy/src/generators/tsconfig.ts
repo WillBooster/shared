@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import fg from 'fast-glob';
 import type { TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
@@ -142,7 +141,7 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
     const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as TsConfigJson;
     normalizeNextTsconfigModuleSettings(settings.compilerOptions);
     normalizeNextTsconfigPathAliases(settings.compilerOptions);
-    await addScriptsIncludeForFrameworkProject(settings, config);
+    addScriptsIncludeForFrameworkProject(settings);
     await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
   } catch {
     // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
@@ -150,21 +149,12 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
   }
 }
 
-async function addScriptsIncludeForFrameworkProject(settings: TsConfigJson, config: PackageConfig): Promise<void> {
-  if (settings.include?.includes('scripts/**/*') || !(await doesContainScriptsTypeScript(config))) return;
+function addScriptsIncludeForFrameworkProject(settings: TsConfigJson): void {
+  if (settings.include?.includes('scripts/**/*')) return;
 
   settings.include ??= [];
   settings.include.push('scripts/**/*');
   settings.include.sort();
-}
-
-async function doesContainScriptsTypeScript(config: PackageConfig): Promise<boolean> {
-  const filePaths = await fg.glob('scripts/**/*.{cts,mts,ts,tsx}', {
-    cwd: config.dirPath,
-    onlyFiles: true,
-  });
-
-  return filePaths.length > 0;
 }
 
 function normalizeNextTsconfigModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
