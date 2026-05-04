@@ -6,16 +6,27 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
-import { generateToolConfigContent, normalizeToolConfigContent } from './toolConfigContent.js';
+import { normalizeConfigContent } from './configContent.js';
+import { ManagedConfigBlocks } from './managedConfigBlock.js';
+
+const managedConfigBlocks = new ManagedConfigBlocks({
+  blockNames: ['base', 'export'],
+  markerPrefix: 'oxfmt',
+  toolName: 'oxfmt',
+});
 
 export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
     const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
     const existingContent = await fsUtil.readFileIgnoringError(filePath);
-    const desiredContent = getConfigContent(config);
+    const desiredContent = managedConfigBlocks.getConfigContent({
+      desiredContent: getConfigContent(config),
+      existingContent,
+      filePath,
+    });
     const promises = [promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true }))];
-    if (normalizeToolConfigContent(existingContent) !== normalizeToolConfigContent(desiredContent)) {
+    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
       promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
     }
     await Promise.all(promises);
@@ -23,8 +34,23 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
 }
 
 function getConfigContent(config: PackageConfig): string {
-  return generateToolConfigContent({
-    isEsmPackage: config.isEsmPackage,
-    packageName: '@willbooster/oxfmt-config',
-  });
+  // CommonJS packages need require/module.exports here: oxfmt config files are
+  // only auto-discovered as .ts, and the shared config package is ESM-only.
+  if (!config.isEsmPackage) {
+    return `${managedConfigBlocks.getBlock(
+      'base',
+      `// oxlint-disable unicorn/prefer-module -- Oxfmt config files are only auto-discovered as .ts, and CommonJS avoids Node typeless ESM warnings.
+const oxfmtConfig = require('@willbooster/oxfmt-config');
+
+const config = oxfmtConfig.default ?? oxfmtConfig;`
+    )}
+
+${managedConfigBlocks.getBlock('export', 'module.exports = config;')}
+`;
+  }
+
+  return `${managedConfigBlocks.getBlock('base', "import config from '@willbooster/oxfmt-config';")}
+
+${managedConfigBlocks.getBlock('export', 'export default config;')}
+`;
 }
