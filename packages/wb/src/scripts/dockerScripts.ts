@@ -13,12 +13,15 @@ class DockerScripts {
     const prefix = project.dockerPackageJson.scripts?.['docker/build/prepare']
       ? 'YARN run docker/build/prepare && '
       : '';
+    const miseAgeKeySecretOption = project.env.MISE_AGE_KEY
+      ? '\n        --secret id=mise_age_key,env=MISE_AGE_KEY'
+      : '';
     return `cd ${path.dirname(project.findFile('Dockerfile'))}
     && ${prefix}YARN wb optimizeForDockerBuild --outside
     && YARN wb retry -- docker build -t ${project.dockerImageName}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo x86_64)
         --build-arg WB_ENV=${project.env.WB_ENV}
-        --build-arg WB_VERSION=${version} .`;
+        --build-arg WB_VERSION=${version}${miseAgeKeySecretOption} .`;
   }
 
   stopAndStart(project: Project, additionalOptions = '', additionalArgs = ''): string {
