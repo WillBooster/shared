@@ -219,6 +219,60 @@ test('normalizes Next.js aliases for TypeScript 6 linting', async () => {
   expect(tsconfig.compilerOptions.paths).toEqual({ '@/*': ['./src/*'] });
 });
 
+test('adds scripts include for Next.js projects', async () => {
+  const dirPath = createTempDir();
+  await fs.promises.writeFile(
+    path.join(dirPath, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        moduleResolution: 'bundler',
+      },
+      include: ['src/**/*'],
+    })
+  );
+
+  await generateTsconfig(
+    createConfig({
+      dirPath,
+      depending: {
+        ...createConfig().depending,
+        next: true,
+      },
+    })
+  );
+  await promisePool.promiseAll();
+
+  const tsconfig = await readTsconfig(dirPath);
+  expect(tsconfig.include).toEqual(['scripts/**/*', 'src/**/*']);
+});
+
+test('does not duplicate scripts include for Next.js projects', async () => {
+  const dirPath = createTempDir();
+  await fs.promises.writeFile(
+    path.join(dirPath, 'tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: {
+        moduleResolution: 'bundler',
+      },
+      include: ['scripts/**/*', 'src/**/*'],
+    })
+  );
+
+  await generateTsconfig(
+    createConfig({
+      dirPath,
+      depending: {
+        ...createConfig().depending,
+        next: true,
+      },
+    })
+  );
+  await promisePool.promiseAll();
+
+  const tsconfig = await readTsconfig(dirPath);
+  expect(tsconfig.include).toEqual(['scripts/**/*', 'src/**/*']);
+});
+
 function createTempDir(): string {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
   tempDirs.push(tempDir);

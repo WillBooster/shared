@@ -26,11 +26,13 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     const desiredContent =
       shouldPreservePublishedLinterConfig && existingContent
         ? existingContent
-        : managedConfigBlocks.getConfigContent({
-            desiredContent: getConfigContent(config),
-            existingContent,
-            filePath,
-          });
+        : replaceLegacyConfigReferences(
+            managedConfigBlocks.getConfigContent({
+              desiredContent: getConfigContent(config),
+              existingContent,
+              filePath,
+            })
+          );
 
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
@@ -57,6 +59,10 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
   });
 }
 
+function replaceLegacyConfigReferences(content: string): string {
+  return content.replaceAll('config.', 'oxlintResolvedConfig.');
+}
+
 function getConfigContent(config: PackageConfig): string {
   // Do not collapse this to a static import for every package. CommonJS packages
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
@@ -68,15 +74,15 @@ function getConfigContent(config: PackageConfig): string {
       `// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
 const oxlintBaseConfig = require('@willbooster/oxlint-config');
 
-const config = oxlintBaseConfig.default ?? oxlintBaseConfig;`
+const oxlintResolvedConfig = oxlintBaseConfig.default ?? oxlintBaseConfig;`
     )}
 
-${managedConfigBlocks.getBlock('export', 'module.exports = config;')}
+${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;')}
 `;
   }
 
-  return `${managedConfigBlocks.getBlock('base', "import config from '@willbooster/oxlint-config';")}
+  return `${managedConfigBlocks.getBlock('base', "import oxlintResolvedConfig from '@willbooster/oxlint-config';")}
 
-${managedConfigBlocks.getBlock('export', 'export default config;')}
+${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
 `;
 }

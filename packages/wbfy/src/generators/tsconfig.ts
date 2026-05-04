@@ -141,11 +141,22 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
     const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as TsConfigJson;
     normalizeNextTsconfigModuleSettings(settings.compilerOptions);
     normalizeNextTsconfigPathAliases(settings.compilerOptions);
+    addScriptsIncludeForFrameworkProject(settings);
     await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
   } catch {
     // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
     // node10 resolver spellings that older projects commonly inherited.
   }
+}
+
+function addScriptsIncludeForFrameworkProject(settings: TsConfigJson): void {
+  // Omitting include lets framework tsconfigs keep TypeScript's default
+  // "all TS/TSX files" behavior, which already covers scripts.
+  if (!settings.include) return;
+  if (settings.include.includes('scripts/**/*')) return;
+
+  settings.include.push('scripts/**/*');
+  settings.include.sort();
 }
 
 function normalizeNextTsconfigModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
