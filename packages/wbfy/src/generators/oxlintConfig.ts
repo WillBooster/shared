@@ -8,8 +8,13 @@ import { promisePool } from '../utils/promisePool.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 
 import { normalizeConfigContent } from './configContent.js';
+import { getConfigContentWithManagedBlocks, getManagedBlock } from './managedConfigBlock.js';
 
-type OxlintBlockName = 'base' | 'export';
+const managedBlockOptions = {
+  blockNames: ['base', 'export'],
+  markerPrefix: 'oxlint',
+  toolName: 'oxlint',
+} as const;
 
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
@@ -21,7 +26,12 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     const desiredContent =
       shouldPreservePublishedLinterConfig && existingContent
         ? existingContent
-        : getConfigContentWithManagedBlocks(config, existingContent, filePath);
+        : getConfigContentWithManagedBlocks({
+            ...managedBlockOptions,
+            desiredContent: getConfigContent(config),
+            existingContent,
+            filePath,
+          });
 
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
@@ -48,17 +58,6 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
   });
 }
 
-function getConfigContentWithManagedBlocks(
-  config: PackageConfig,
-  existingContent: string | undefined,
-  filePath: string
-): string {
-  const desiredContent = getConfigContent(config);
-  if (!existingContent) return desiredContent;
-  if (hasManagedBlocks(existingContent)) return replaceManagedBlocks(existingContent, desiredContent, filePath);
-  return desiredContent;
-}
-
 function getConfigContent(config: PackageConfig): string {
   // Do not collapse this to a static import for every package. CommonJS packages
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
@@ -70,67 +69,16 @@ function getConfigContent(config: PackageConfig): string {
       `// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
 const oxlintBaseConfig = require('@willbooster/oxlint-config');
 
-const config = oxlintBaseConfig.default ?? oxlintBaseConfig;`
+const config = oxlintBaseConfig.default ?? oxlintBaseConfig;`,
+      managedBlockOptions
     )}
 
-${getManagedBlock('export', 'module.exports = config;')}
+${getManagedBlock('export', 'module.exports = config;', managedBlockOptions)}
 `;
   }
 
-  return `${getManagedBlock('base', "import config from '@willbooster/oxlint-config';")}
+  return `${getManagedBlock('base', "import config from '@willbooster/oxlint-config';", managedBlockOptions)}
 
-${getManagedBlock('export', 'export default config;')}
+${getManagedBlock('export', 'export default config;', managedBlockOptions)}
 `;
-}
-
-function hasManagedBlocks(content: string): boolean {
-  return content.includes(getStartMarker('base')) || content.includes(getStartMarker('export'));
-}
-
-function replaceManagedBlocks(existingContent: string, desiredContent: string, filePath: string): string {
-  let content = existingContent;
-  for (const blockName of ['base', 'export'] satisfies OxlintBlockName[]) {
-    const replacement = extractManagedBlock(desiredContent, blockName);
-    if (!replacement) continue;
-
-    const nextContent = replaceManagedBlock(content, blockName, replacement);
-    if (!nextContent) {
-      console.warn(`Skipped updating incomplete ${blockName} block in oxlint config: ${filePath}`);
-      return existingContent;
-    }
-    content = nextContent;
-  }
-  return content;
-}
-
-function extractManagedBlock(content: string, blockName: OxlintBlockName): string | undefined {
-  return getManagedBlockRegExp(blockName).exec(content)?.[0];
-}
-
-function replaceManagedBlock(content: string, blockName: OxlintBlockName, replacement: string): string | undefined {
-  const pattern = getManagedBlockRegExp(blockName);
-  if (!pattern.test(content)) return undefined;
-  return content.replace(pattern, replacement);
-}
-
-function getManagedBlockRegExp(blockName: OxlintBlockName): RegExp {
-  return new RegExp(`${escapeRegExp(getStartMarker(blockName))}[\\s\\S]*?${escapeRegExp(getEndMarker(blockName))}`);
-}
-
-function getManagedBlock(blockName: OxlintBlockName, content: string): string {
-  return `${getStartMarker(blockName)}
-${content}
-${getEndMarker(blockName)}`;
-}
-
-function getStartMarker(blockName: OxlintBlockName): string {
-  return `// wbfy:start oxlint-${blockName}`;
-}
-
-function getEndMarker(blockName: OxlintBlockName): string {
-  return `// wbfy:end oxlint-${blockName}`;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
