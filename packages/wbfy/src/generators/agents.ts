@@ -75,6 +75,7 @@ function generateAgentInstruction(
   - If not specified, make sure to add a new line at the end of your commit message${rootConfig.isWillBoosterRepo ? ` with: \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`` : ''}.
   - Always create new commits. Avoid using \`--amend\`.
 - Always use heredoc syntax when passing multi-line content to any command.
+- Put temporary files in the \`.tmp\` or \`/tmp\` directory.
 ${hasPlaywrightTestServer(allConfigs) ? `- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.` : ''}
 
 ${generateAgentCodingStyle(allConfigs)}
