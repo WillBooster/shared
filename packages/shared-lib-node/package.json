@@ -56,8 +56,8 @@
     "@willbooster/oxlint-config": "1.4.6",
     "@willbooster/wb": "13.12.13",
     "build-ts": "17.1.10",
-    "oxfmt": "0.47.0",
-    "oxlint": "1.62.0",
+    "oxfmt": "0.48.0",
+    "oxlint": "1.63.0",
     "oxlint-tsgolint": "0.22.1",
     "sort-package-json": "3.6.1",
     "vitest": "4.1.4"
