@@ -82,7 +82,10 @@ test('omits root-only oxlint options for sub-package configs', async () => {
   const rootDirPath = createTempDir();
   const dirPath = createTempDir();
 
-  await generateOxlintConfig(createConfig({ dirPath, isEsmPackage: true }), createConfig({ dirPath: rootDirPath }));
+  await generateOxlintConfig(
+    createConfig({ dirPath, isEsmPackage: true, isRoot: false }),
+    createConfig({ dirPath: rootDirPath })
+  );
   await promisePool.promiseAll();
 
   const content = await readOxlintConfig(dirPath);
