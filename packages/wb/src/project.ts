@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
-import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import { readEnvironmentVariables, shouldSuppressEnvironmentOutput } from '@willbooster/shared-lib-node/src';
 import { memoizeOne } from 'at-decorators';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
@@ -110,8 +110,10 @@ export class Project {
     if (!this.loadEnv) return process.env;
 
     const [envVars, envPathAndLoadedEnvVarCountPairs] = readEnvironmentVariables(this.argv, this.dirPath);
-    for (const [envPath, count] of envPathAndLoadedEnvVarCountPairs) {
-      console.info(`Loaded ${count} environment variables from ${envPath}`);
+    if (!shouldSuppressEnvironmentOutput(this.argv)) {
+      for (const [envPath, count] of envPathAndLoadedEnvVarCountPairs) {
+        console.info(`Loaded ${count} environment variables from ${envPath}`);
+      }
     }
     return { ...envVars, ...process.env };
   }

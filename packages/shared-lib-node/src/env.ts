@@ -34,6 +34,10 @@ export const yargsOptionsBuilderForEnv = {
     type: 'string',
     default: '.env.example',
   },
+  'quiet-env': {
+    description: 'Suppress .env file loading information.',
+    type: 'boolean',
+  },
   verbose: {
     description: 'Whether to show verbose information',
     type: 'boolean',
@@ -77,7 +81,8 @@ export function readEnvironmentVariables(
     );
   }
   envPaths = envPaths.filter((envPath) => fs.existsSync(envPath)).map((envPath) => path.relative(cwd, envPath));
-  if (argv.verbose) {
+  const shouldSuppressOutput = shouldSuppressEnvironmentOutput(argv);
+  if (argv.verbose && !shouldSuppressOutput) {
     console.info(`WB_ENV: ${process.env.WB_ENV}, NODE_ENV: ${process.env.NODE_ENV}`);
     console.info('Reading env files:', envPaths.join(', '));
   }
@@ -93,11 +98,11 @@ export function readEnvironmentVariables(
       }
     }
     envPathAndLoadedEnvVarNames.push([envPath, keys]);
-    if (argv.verbose && keys.length > 0) {
+    if (argv.verbose && !shouldSuppressOutput && keys.length > 0) {
       console.info(`Read ${keys.length} environment variables from ${envPath}`);
     }
   }
-  if (!argv.verbose) {
+  if (!argv.verbose && !shouldSuppressOutput) {
     console.info(
       `Read env files: ${envPathAndLoadedEnvVarNames.map(([envPath, keys]) => (keys.length > 0 ? `${envPath} (${keys.join(', ')})` : envPath)).join(', ') || 'nothing'}`
     );
@@ -111,6 +116,11 @@ export function readEnvironmentVariables(
     }
   }
   return [expand({ parsed: envVars, processEnv: {} }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
+}
+
+export function shouldSuppressEnvironmentOutput(argv: EnvReaderOptions): boolean {
+  const outputOptions = argv as EnvReaderOptions & { quietEnv?: boolean; silent?: boolean };
+  return outputOptions.quietEnv === true || outputOptions.silent === true;
 }
 
 /**

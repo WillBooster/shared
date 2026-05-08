@@ -36,6 +36,9 @@ export function buildEnvReaderOptionArgs(argv: EnvReaderOptions): string[] {
       }
     }
   }
+  if ((argv as EnvReaderOptions & { silent?: boolean }).silent === true && getOptionValue(argv, 'quiet-env') !== true) {
+    args.push('--quiet-env');
+  }
   return args;
 }
 
