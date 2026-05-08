@@ -64,6 +64,8 @@ function replaceLegacyConfigReferences(content: string): string {
 }
 
 function getConfigContent(config: PackageConfig): string {
+  const isRootConfig = config.isRoot;
+
   // Do not collapse this to a static import for every package. CommonJS packages
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
   // @willbooster/oxlint-config package triggers TS1479. Keep this in sync with
@@ -74,15 +76,30 @@ function getConfigContent(config: PackageConfig): string {
       `// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
 const oxlintBaseConfig = require('@willbooster/oxlint-config');
 
-const oxlintResolvedConfig = oxlintBaseConfig.default ?? oxlintBaseConfig;`
+${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig)}`
     )}
 
 ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;')}
 `;
   }
 
-  return `${managedConfigBlocks.getBlock('base', "import oxlintResolvedConfig from '@willbooster/oxlint-config';")}
+  return `${managedConfigBlocks.getBlock(
+    'base',
+    `import oxlintBaseConfig from '@willbooster/oxlint-config';
+
+${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
+  )}
 
 ${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
 `;
+}
+
+function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean): string {
+  if (isRootConfig) {
+    return `const oxlintResolvedConfig = ${baseConfigName};`;
+  }
+
+  return `// Oxlint only supports type-aware options in the root config, while it
+// still auto-discovers package-local config files in monorepos.
+const { options: _rootOnlyOptions, ...oxlintResolvedConfig } = ${baseConfigName};`;
 }

@@ -73,7 +73,24 @@ test('generates esm oxlint config for esm packages', async () => {
   await promisePool.promiseAll();
 
   const content = await readOxlintConfig(dirPath);
-  expect(content).toContain("import oxlintResolvedConfig from '@willbooster/oxlint-config';");
+  expect(content).toContain("import oxlintBaseConfig from '@willbooster/oxlint-config';");
+  expect(content).toContain('const oxlintResolvedConfig = oxlintBaseConfig;');
+  expect(content).toContain('export default oxlintResolvedConfig;');
+});
+
+test('omits root-only oxlint options for sub-package configs', async () => {
+  const rootDirPath = createTempDir();
+  const dirPath = createTempDir();
+
+  await generateOxlintConfig(
+    createConfig({ dirPath, isEsmPackage: true, isRoot: false }),
+    createConfig({ dirPath: rootDirPath })
+  );
+  await promisePool.promiseAll();
+
+  const content = await readOxlintConfig(dirPath);
+  expect(content).toContain('options: _rootOnlyOptions');
+  expect(content).toContain('...oxlintResolvedConfig');
   expect(content).toContain('export default oxlintResolvedConfig;');
 });
 
