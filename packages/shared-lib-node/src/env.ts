@@ -120,7 +120,7 @@ export function readEnvironmentVariables(
 
 export function shouldSuppressEnvironmentOutput(argv: EnvReaderOptions): boolean {
   const outputOptions = argv as EnvReaderOptions & { quietEnv?: boolean; silent?: boolean };
-  return outputOptions.quietEnv === true || outputOptions.silent === true;
+  return outputOptions.quietEnv === true || (outputOptions.quietEnv !== false && outputOptions.silent === true);
 }
 
 /**
