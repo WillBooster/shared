@@ -5057,12 +5057,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/bun@npm:1.3.12":
-  version: 1.3.12
-  resolution: "@types/bun@npm:1.3.12"
+"@types/bun@npm:1.3.13":
+  version: 1.3.13
+  resolution: "@types/bun@npm:1.3.13"
   dependencies:
-    bun-types: "npm:1.3.12"
-  checksum: 10c0/dacc8c77819f1d851657c5d80b1b2928dd7752016c53ae6a406f4f9a8291a5fea0799e77da99a511f4d9080e31bb97106be57f9b1a5f2a35dd235f5854953e4e
+    bun-types: "npm:1.3.13"
+  checksum: 10c0/02e7229d3e1b51a5a001800da38644f860fdb9f273956bee5c2f9068cd2aec4fd493fc20ce03d0c4bd62838ddddd69d5cb36747301c9db878eb7679808125cb5
   languageName: node
   linkType: hard
 
@@ -6041,7 +6041,7 @@ __metadata:
   dependencies:
     "@tsconfig/node-lts": "npm:24.0.0"
     "@tsconfig/node-ts": "npm:23.6.4"
-    "@types/bun": "npm:1.3.12"
+    "@types/bun": "npm:1.3.13"
     "@types/node": "npm:25.6.0"
     "@typescript/native-preview": "npm:7.0.0-dev.20260421.2"
     "@willbooster/oxfmt-config": "npm:1.2.2"
@@ -7594,12 +7594,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"bun-types@npm:1.3.12":
-  version: 1.3.12
-  resolution: "bun-types@npm:1.3.12"
+"bun-types@npm:1.3.13":
+  version: 1.3.13
+  resolution: "bun-types@npm:1.3.13"
   dependencies:
     "@types/node": "npm:*"
-  checksum: 10c0/adc61bfc37e91ad59ef4f9ecaef17c9a80bd221ee494aefed8034414623a695e0be3bed54c45f3238b3a0483ae0bf1d09b112122c266ba12ff0da1e66cdf7124
+  checksum: 10c0/27dd2d002df056f729cf1fe5cf2bca3980389d0b019a30dc658f10cf40a5a5a7a3b4966afd030c4d94ac7cc019dfd28bbdc8852dcc3d5fc13d4d5b99864d9e9d
   languageName: node
   linkType: hard
 
