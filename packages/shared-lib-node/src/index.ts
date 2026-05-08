@@ -2,6 +2,7 @@ export {
   readEnvironmentVariables,
   readAndApplyEnvironmentVariables,
   removeNpmAndYarnEnvironmentVariables,
+  shouldSuppressEnvironmentOutput,
   yargsOptionsBuilderForEnv,
 } from './env.js';
 export type { EnvReaderOptions } from './env.js';

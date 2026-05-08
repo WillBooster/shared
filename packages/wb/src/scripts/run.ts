@@ -11,8 +11,12 @@ interface Options {
   exitIfFailed?: boolean;
   onSignal?: (signal: NodeJS.Signals | null) => void;
   forceColor?: boolean;
+  omitSilentStart?: boolean;
   processSilentOutput?: (output: string) => string;
   printRawOutput?: boolean;
+  printSilentOutputOnFailureOnly?: boolean;
+  silentProgressIntervalMs?: number;
+  silentSuccessMessage?: string;
   timeout?: number;
 }
 
@@ -32,7 +36,9 @@ export async function runWithSpawn(
   opts: Options = defaultOptions
 ): Promise<number> {
   const normalizedScript = normalizeScript(script, project);
-  printStart(normalizedScript.printable, project, argv.silent ? 'Command' : 'Start');
+  if (!(argv.silent && opts.omitSilentStart && !argv.dryRun)) {
+    printStart(normalizedScript.printable, project, argv.silent ? 'Command' : 'Start');
+  }
   if (argv.verbose) {
     printStart(normalizedScript.runnable, project, 'Start (raw)', true);
   }
@@ -41,7 +47,17 @@ export async function runWithSpawn(
     return 0;
   }
 
-  const shouldProcessSilentOutput = Boolean(argv.silent && opts.processSilentOutput);
+  const shouldProcessSilentOutput = Boolean(
+    argv.silent && (opts.processSilentOutput ?? opts.printSilentOutputOnFailureOnly)
+  );
+  let wroteSilentProgress = false;
+  const progressTimer =
+    argv.silent && opts.silentProgressIntervalMs
+      ? setInterval(() => {
+          process.stdout.write('.');
+          wroteSilentProgress = true;
+        }, opts.silentProgressIntervalMs)
+      : undefined;
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
     env: configureEnv(project.env, opts),
@@ -54,17 +70,28 @@ export async function runWithSpawn(
     printingStderr: argv.silent && !shouldProcessSilentOutput,
     omitBlankLinesWhilePrinting: argv.silent,
     verbose: argv.verbose,
+  }).finally(() => {
+    if (progressTimer) {
+      clearInterval(progressTimer);
+    }
   });
-  if (shouldProcessSilentOutput) {
-    const output = opts.processSilentOutput?.(ret.stdout).trim();
+  const exitCode = ret.status ?? 1;
+  if (wroteSilentProgress) {
+    process.stdout.write('\n');
+  }
+  if (shouldProcessSilentOutput && (!opts.printSilentOutputOnFailureOnly || exitCode !== 0)) {
+    const output = (opts.processSilentOutput ? opts.processSilentOutput(ret.stdout) : ret.stdout).trim();
     if (output) {
       process.stdout.write(output);
       process.stdout.write('\n');
     }
   }
+  if (argv.silent && exitCode === 0 && opts.silentSuccessMessage) {
+    console.info(chalk.green(opts.silentSuccessMessage));
+  }
   opts.onSignal?.(ret.signal);
-  printFinishedAndExitIfNeeded(normalizedScript.printable, ret.status, opts, { silentSuccess: argv.silent });
-  return ret.status ?? 1;
+  printFinishedAndExitIfNeeded(normalizedScript.printable, exitCode, opts, { silentSuccess: argv.silent });
+  return exitCode;
 }
 
 export function runWithSpawnInParallel(

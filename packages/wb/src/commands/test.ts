@@ -131,7 +131,7 @@ export async function test(argv: TestCommandArgv): Promise<void> {
       const targets =
         unitTargets.length > 0 ? unitTargets : defaultUnitTargets.length > 0 ? defaultUnitTargets : undefined;
       const unitArgv = { ...argv, targets };
-      await runTestCommand(scripts.testUnit(project, unitArgv), project, argv, { timeout: argv.unitTimeout });
+      await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, argv, { timeout: argv.unitTimeout });
     }
     // Skip e2e tests if not needed or no e2e directory exists
     if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
@@ -280,6 +280,21 @@ function runTestCommand(
   return runWithSpawn(script, project, argv, {
     ...options,
     processSilentOutput: dedupeNoisyTestOutput,
+  });
+}
+
+function runUnitTestCommand(
+  script: string,
+  project: Project,
+  argv: Parameters<typeof runWithSpawn>[2],
+  options: Parameters<typeof runWithSpawn>[3] = {}
+): Promise<number> {
+  return runWithSpawn(script, project, argv, {
+    ...options,
+    omitSilentStart: true,
+    printSilentOutputOnFailureOnly: true,
+    silentProgressIntervalMs: 10_000,
+    silentSuccessMessage: 'Unit tests passed.',
   });
 }
 
