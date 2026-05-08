@@ -36,7 +36,7 @@ export async function runWithSpawn(
   opts: Options = defaultOptions
 ): Promise<number> {
   const normalizedScript = normalizeScript(script, project);
-  if (!(argv.silent && opts.omitSilentStart)) {
+  if (!(argv.silent && opts.omitSilentStart && !argv.dryRun)) {
     printStart(normalizedScript.printable, project, argv.silent ? 'Command' : 'Start');
   }
   if (argv.verbose) {
