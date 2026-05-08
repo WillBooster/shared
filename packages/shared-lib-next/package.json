@@ -51,7 +51,7 @@
     "@willbooster/oxlint-config": "1.4.6",
     "@willbooster/wb": "13.12.13",
     "build-ts": "17.1.10",
-    "next": "16.2.4",
+    "next": "16.2.6",
     "oxfmt": "0.48.0",
     "oxlint": "1.63.0",
     "oxlint-tsgolint": "0.22.1",
