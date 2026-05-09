@@ -6,13 +6,9 @@ import type { PackageConfig } from '../packageConfig.js';
 
 export async function installAgentSkills(rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('installAgentSkills', async () => {
-    // TODO: We are temporarily removing agent skills from the repo
+    // TODO: We are temporarily not installing managed agent skills into repos.
     // await runInstallAgentSkills(rootConfig);
     await Promise.all([
-      fs.rm(path.resolve(rootConfig.dirPath, '.agents'), {
-        force: true,
-        recursive: true,
-      }),
       fs.rm(path.resolve(rootConfig.dirPath, '.claude'), {
         force: true,
         recursive: true,
