@@ -23,6 +23,17 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
   });
 }
 
+function getWatcherTasksContent(config: PackageConfig): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectTasksOptions">
+${doesContainJsOrTs(config) ? extensions.oxfmt.map((ext) => createTaskOptions('node', `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`, 'Oxfmt', ext)).join('') : ''}
+${doesContainJava(config) ? extensions.prettierOnly.map((ext) => createTaskOptions('node', `${prettierNodeEntrypoint} --cache --write`, 'Prettier', ext)).join('') : ''}
+  </component>
+</project>
+`;
+}
+
 function createTaskOptions(runner: string, args: string, name: string, extension: string): string {
   return `    <TaskOptions isEnabled="true">
       <option name="arguments" value="${args} $FilePathRelativeToProjectRoot$" />
@@ -44,16 +55,5 @@ function createTaskOptions(runner: string, args: string, name: string, extension
       <option name="workingDir" value="$ProjectFileDir$" />
       <envs />
     </TaskOptions>
-`;
-}
-
-function getWatcherTasksContent(config: PackageConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="ProjectTasksOptions">
-${doesContainJsOrTs(config) ? extensions.oxfmt.map((ext) => createTaskOptions('node', `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`, 'Oxfmt', ext)).join('') : ''}
-${doesContainJava(config) ? extensions.prettierOnly.map((ext) => createTaskOptions('node', `${prettierNodeEntrypoint} --cache --write`, 'Prettier', ext)).join('') : ''}
-  </component>
-</project>
 `;
 }
