@@ -8,10 +8,9 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
-// Windows package-manager shims can be .cmd wrappers, which are not valid
-// JavaScript when IDEA invokes them through node.
-const oxfmtNodeEntrypoint = 'node_modules/oxfmt/bin/oxfmt';
-const prettierNodeEntrypoint = 'node_modules/prettier/bin/prettier.cjs';
+// Keep wrapper scripts in the File Watcher program field so node never parses package-manager shims.
+const oxfmtProgram = '$ProjectFileDir$/node_modules/.bin/oxfmt';
+const prettierProgram = '$ProjectFileDir$/node_modules/.bin/prettier';
 
 export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateIdeaSettings', async () => {
@@ -26,23 +25,19 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
 }
 
 function getWatcherTasksContent(config: PackageConfig): string {
-  const taskOptions = [
-    ...(doesContainJsOrTs(config)
-      ? extensions.oxfmt.map((ext) =>
-          createTaskOptions(
-            'node',
-            `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`,
-            'Oxfmt',
-            ext
-          )
-        )
-      : []),
-    ...(doesContainJava(config)
-      ? extensions.prettierOnly.map((ext) =>
-          createTaskOptions('node', `${prettierNodeEntrypoint} --cache --write`, 'Prettier', ext)
-        )
-      : []),
-  ];
+  const taskOptions: string[] = [];
+  if (doesContainJsOrTs(config)) {
+    taskOptions.push(
+      ...extensions.oxfmt.map((ext) =>
+        createTaskOptions(oxfmtProgram, '--write --no-error-on-unmatched-pattern !**/package.json', 'Oxfmt', ext)
+      )
+    );
+  }
+  if (doesContainJava(config)) {
+    taskOptions.push(
+      ...extensions.prettierOnly.map((ext) => createTaskOptions(prettierProgram, '--cache --write', 'Prettier', ext))
+    );
+  }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
