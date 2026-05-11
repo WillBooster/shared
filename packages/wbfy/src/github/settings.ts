@@ -31,7 +31,6 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
             headers: {
               'X-GitHub-Api-Version': '2022-11-28',
             },
-            ...(config.repository?.startsWith('github:WillBooster/') ? { allow_auto_merge: true } : {}),
           }),
         {
           shouldRetry: (error) => !isGitHubPermissionOrVisibilityError(error),
