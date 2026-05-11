@@ -8,6 +8,8 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
+// Windows package-manager shims can be .cmd wrappers, which are not valid
+// JavaScript when IDEA invokes them through node.
 const oxfmtNodeEntrypoint = 'node_modules/oxfmt/bin/oxfmt';
 const prettierNodeEntrypoint = 'node_modules/prettier/bin/prettier.cjs';
 
@@ -24,12 +26,28 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
 }
 
 function getWatcherTasksContent(config: PackageConfig): string {
+  const taskOptions = [
+    ...(doesContainJsOrTs(config)
+      ? extensions.oxfmt.map((ext) =>
+          createTaskOptions(
+            'node',
+            `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`,
+            'Oxfmt',
+            ext
+          )
+        )
+      : []),
+    ...(doesContainJava(config)
+      ? extensions.prettierOnly.map((ext) =>
+          createTaskOptions('node', `${prettierNodeEntrypoint} --cache --write`, 'Prettier', ext)
+        )
+      : []),
+  ];
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectTasksOptions">
-${doesContainJsOrTs(config) ? extensions.oxfmt.map((ext) => createTaskOptions('node', `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`, 'Oxfmt', ext)).join('') : ''}
-${doesContainJava(config) ? extensions.prettierOnly.map((ext) => createTaskOptions('node', `${prettierNodeEntrypoint} --cache --write`, 'Prettier', ext)).join('') : ''}
-  </component>
+${taskOptions.join('')}  </component>
 </project>
 `;
 }
