@@ -11,6 +11,7 @@ import { promisePool } from '../utils/promisePool.js';
 // IDEA invokes File Watcher arguments through node, so pass JavaScript entrypoints
 // instead of package-manager wrapper scripts.
 const oxfmtNodeEntrypoint = 'node_modules/oxfmt/bin/oxfmt';
+// wbfy installs the current Prettier package, so generated watchers use the current bin layout.
 const prettierNodeEntrypoint = 'node_modules/prettier/bin/prettier.cjs';
 
 export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
@@ -28,23 +29,12 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
 function getWatcherTasksContent(config: PackageConfig): string {
   const taskOptions: string[] = [];
   if (doesContainJsOrTs(config)) {
-    taskOptions.push(
-      ...extensions.oxfmt.map((ext) =>
-        createTaskOptions(
-          'node',
-          `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`,
-          'Oxfmt',
-          ext
-        )
-      )
-    );
+    const args = `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`;
+    taskOptions.push(...extensions.oxfmt.map((ext) => createTaskOptions('node', args, 'Oxfmt', ext)));
   }
   if (doesContainJava(config)) {
-    taskOptions.push(
-      ...extensions.prettierOnly.map((ext) =>
-        createTaskOptions('node', `${prettierNodeEntrypoint} --cache --write`, 'Prettier', ext)
-      )
-    );
+    const args = `${prettierNodeEntrypoint} --cache --write`;
+    taskOptions.push(...extensions.prettierOnly.map((ext) => createTaskOptions('node', args, 'Prettier', ext)));
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
