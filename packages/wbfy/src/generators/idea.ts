@@ -48,7 +48,8 @@ function getWatcherTasksContent(config: PackageConfig): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectTasksOptions">
-${taskOptions.join('')}  </component>
+    ${taskOptions.join('')}
+  </component>
 </project>
 `;
 }
