@@ -8,6 +8,11 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
+// Keep package-manager shims in the File Watcher program field so node does not
+// parse wrapper scripts passed through arguments.
+const oxfmtProgram = '$ProjectFileDir$/node_modules/.bin/oxfmt';
+const prettierProgram = '$ProjectFileDir$/node_modules/.bin/prettier';
+
 export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateIdeaSettings', async () => {
     const dirPath = path.resolve(config.dirPath, '.idea');
@@ -18,6 +23,35 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
         : promisePool.run(() => fs.promises.rm(filePath, { force: true })));
     }
   });
+}
+
+function getWatcherTasksContent(config: PackageConfig): string {
+  const taskOptions = [
+    {
+      args: '--write --no-error-on-unmatched-pattern !**/package.json',
+      condition: doesContainJsOrTs(config),
+      extensions: extensions.oxfmt,
+      name: 'Oxfmt',
+      program: oxfmtProgram,
+    },
+    {
+      args: '--cache --write',
+      condition: doesContainJava(config),
+      extensions: extensions.prettierOnly,
+      name: 'Prettier',
+      program: prettierProgram,
+    },
+  ]
+    .filter((task) => task.condition)
+    .flatMap((task) => task.extensions.map((ext) => createTaskOptions(task.program, task.args, task.name, ext)));
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectTasksOptions">
+    ${taskOptions.join('')}
+  </component>
+</project>
+`;
 }
 
 function createTaskOptions(runner: string, args: string, name: string, extension: string): string {
@@ -41,16 +75,5 @@ function createTaskOptions(runner: string, args: string, name: string, extension
       <option name="workingDir" value="$ProjectFileDir$" />
       <envs />
     </TaskOptions>
-`;
-}
-
-function getWatcherTasksContent(config: PackageConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="ProjectTasksOptions">
-${doesContainJsOrTs(config) ? extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern !**/package.json', 'Oxfmt', ext)).join('') : ''}
-${doesContainJava(config) ? extensions.prettierOnly.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('') : ''}
-  </component>
-</project>
 `;
 }
