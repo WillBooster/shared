@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import merge from 'deepmerge';
 import fg from 'fast-glob';
+import semver from 'semver';
 import { sortPackageJson } from 'sort-package-json';
 import ts from 'typescript';
 import type { PackageJson, SetRequired } from 'type-fest';
@@ -872,14 +873,19 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
+  if (dependency === typescriptGoDependency) return isNewerManagedDependencyVersion(dependency, currentVersion);
   // wbfy-managed tools must be kept current even when the package already pins
   // a concrete version. In particular, build-ts owns declaration output paths.
-  return (
-    dependency === '@willbooster/wb' ||
-    dependency === buildTsDependency ||
-    oxlintDeps.includes(dependency) ||
-    dependency === typescriptGoDependency
-  );
+  return dependency === '@willbooster/wb' || dependency === buildTsDependency || oxlintDeps.includes(dependency);
+}
+
+function isNewerManagedDependencyVersion(dependency: string, currentVersion: string): boolean {
+  const latestVersion = getLatestDependencyVersion(dependency);
+  const validLatestVersion = semver.valid(latestVersion);
+  const validCurrentVersion = semver.valid(currentVersion);
+  // The TypeScript beta dist-tag can lag behind newer concrete dev snapshots
+  // already pinned by Renovate. Keep the existing pin instead of downgrading.
+  return !validLatestVersion || !validCurrentVersion || semver.gt(validLatestVersion, validCurrentVersion);
 }
 
 function isWorkspaceProtocolRange(version: string): boolean {
