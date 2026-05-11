@@ -100,6 +100,9 @@ function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean)
   }
 
   return `// Oxlint only supports type-aware options in the root config, while it
-// still auto-discovers package-local config files in monorepos.
-const { options: _rootOnlyOptions, ...oxlintResolvedConfig } = ${baseConfigName};`;
+// still auto-discovers package-local config files in monorepos. Keep this as a
+// plain object copy so package typechecks do not export oxlint's private helper
+// types through the generated config variable.
+const oxlintResolvedConfig: Record<string, unknown> = { ...${baseConfigName} };
+delete oxlintResolvedConfig.options;`;
 }
