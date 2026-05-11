@@ -712,9 +712,9 @@ function removeWillBoosterConfigsManagedDependencies(
 
   const sections = getDependencySections(jsonObj);
   for (const dependency of willBoosterConfigsManagedDependencies) {
-    // willbooster-configs publishes these managed config packages from the same
-    // monorepo. Keeping them in subpackage metadata creates local workspace
-    // graph edges that multi-semantic-release sorts as release dependencies.
+    // willbooster-configs owns these config packages. Package-local formatter
+    // and linter config files are repo tooling, not published package data, so
+    // the package metadata only needs the formatter/linter executables.
     for (const section of sections) {
       Reflect.deleteProperty(section, dependency);
     }
