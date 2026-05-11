@@ -20,15 +20,15 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
   });
 }
 
-function createTaskOptions(runner: string, args: string, name: string, fileExtension: string): string {
+function createTaskOptions(runner: string, args: string, name: string, extension: string): string {
   return `    <TaskOptions isEnabled="true">
       <option name="arguments" value="${args} $FilePathRelativeToProjectRoot$" />
       <option name="checkSyntaxErrors" value="false" />
       <option name="description" />
       <option name="exitCodeBehavior" value="ERROR" />
-      <option name="fileExtension" value="${fileExtension}" />
+      <option name="fileExtension" value="${extension}" />
       <option name="immediateSync" value="false" />
-      <option name="name" value="${name}" />
+      <option name="name" value="${name} (.${extension})" />
       <option name="output" value="$FilePathRelativeToProjectRoot$" />
       <option name="outputFilters">
         <array />
@@ -45,15 +45,11 @@ function createTaskOptions(runner: string, args: string, name: string, fileExten
 }
 
 function getWatcherTasksContent(config: PackageConfig): string {
-  // IntelliJ File Watchers accept pipe-separated extensions, so keep each command in one task.
-  const oxfmtExtensions = extensions.oxfmt.join('|');
-  const prettierOnlyExtensions = extensions.prettierOnly.join('|');
-
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectTasksOptions">
-${doesContainJsOrTs(config) ? createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern !**/package.json', 'Oxfmt', oxfmtExtensions) : ''}
-${doesContainJava(config) ? createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', prettierOnlyExtensions) : ''}
+${doesContainJsOrTs(config) ? extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern !**/package.json', 'Oxfmt', ext)).join('') : ''}
+${doesContainJava(config) ? extensions.prettierOnly.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('') : ''}
   </component>
 </project>
 `;
