@@ -8,6 +8,9 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
+const oxfmtNodeEntrypoint = 'node_modules/oxfmt/bin/oxfmt';
+const prettierNodeEntrypoint = 'node_modules/prettier/bin/prettier.cjs';
+
 export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateIdeaSettings', async () => {
     const dirPath = path.resolve(config.dirPath, '.idea');
@@ -48,8 +51,8 @@ function getWatcherTasksContent(config: PackageConfig): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ProjectTasksOptions">
-${doesContainJsOrTs(config) ? extensions.oxfmt.map((ext) => createTaskOptions('node', 'node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern !**/package.json', 'Oxfmt', ext)).join('') : ''}
-${doesContainJava(config) ? extensions.prettierOnly.map((ext) => createTaskOptions('node', 'node_modules/.bin/prettier --cache --write', 'Prettier', ext)).join('') : ''}
+${doesContainJsOrTs(config) ? extensions.oxfmt.map((ext) => createTaskOptions('node', `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`, 'Oxfmt', ext)).join('') : ''}
+${doesContainJava(config) ? extensions.prettierOnly.map((ext) => createTaskOptions('node', `${prettierNodeEntrypoint} --cache --write`, 'Prettier', ext)).join('') : ''}
   </component>
 </project>
 `;
