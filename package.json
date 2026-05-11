@@ -34,7 +34,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260504.1",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.6",
-    "@willbooster/wb": "13.12.13",
+    "@willbooster/wb": "13.12.17",
     "conventional-changelog-conventionalcommits": "9.3.1",
     "lefthook": "2.1.6",
     "oxfmt": "0.48.0",
