@@ -26,17 +26,24 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
 }
 
 function getWatcherTasksContent(config: PackageConfig): string {
-  const taskOptions: string[] = [];
-  if (doesContainJsOrTs(config)) {
-    const args = '--write --no-error-on-unmatched-pattern !**/package.json';
-    taskOptions.push(...extensions.oxfmt.map((ext) => createTaskOptions(oxfmtProgram, args, 'Oxfmt', ext)));
-  }
-  if (doesContainJava(config)) {
-    const args = '--cache --write';
-    taskOptions.push(
-      ...extensions.prettierOnly.map((ext) => createTaskOptions(prettierProgram, args, 'Prettier', ext))
-    );
-  }
+  const taskOptions = [
+    {
+      args: '--write --no-error-on-unmatched-pattern !**/package.json',
+      condition: doesContainJsOrTs(config),
+      extensions: extensions.oxfmt,
+      name: 'Oxfmt',
+      program: oxfmtProgram,
+    },
+    {
+      args: '--cache --write',
+      condition: doesContainJava(config),
+      extensions: extensions.prettierOnly,
+      name: 'Prettier',
+      program: prettierProgram,
+    },
+  ]
+    .filter((task) => task.condition)
+    .flatMap((task) => task.extensions.map((ext) => createTaskOptions(task.program, task.args, task.name, ext)));
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
