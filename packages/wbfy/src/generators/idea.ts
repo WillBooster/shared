@@ -8,9 +8,10 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
-// Keep wrapper scripts in the File Watcher program field so node never parses package-manager shims.
-const oxfmtProgram = '$ProjectFileDir$/node_modules/.bin/oxfmt';
-const prettierProgram = '$ProjectFileDir$/node_modules/.bin/prettier';
+// IDEA invokes File Watcher arguments through node, so pass JavaScript entrypoints
+// instead of package-manager wrapper scripts.
+const oxfmtNodeEntrypoint = 'node_modules/oxfmt/bin/oxfmt';
+const prettierNodeEntrypoint = 'node_modules/prettier/bin/prettier.cjs';
 
 export async function generateIdeaSettings(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateIdeaSettings', async () => {
@@ -29,13 +30,20 @@ function getWatcherTasksContent(config: PackageConfig): string {
   if (doesContainJsOrTs(config)) {
     taskOptions.push(
       ...extensions.oxfmt.map((ext) =>
-        createTaskOptions(oxfmtProgram, '--write --no-error-on-unmatched-pattern !**/package.json', 'Oxfmt', ext)
+        createTaskOptions(
+          'node',
+          `${oxfmtNodeEntrypoint} --write --no-error-on-unmatched-pattern !**/package.json`,
+          'Oxfmt',
+          ext
+        )
       )
     );
   }
   if (doesContainJava(config)) {
     taskOptions.push(
-      ...extensions.prettierOnly.map((ext) => createTaskOptions(prettierProgram, '--cache --write', 'Prettier', ext))
+      ...extensions.prettierOnly.map((ext) =>
+        createTaskOptions('node', `${prettierNodeEntrypoint} --cache --write`, 'Prettier', ext)
+      )
     );
   }
 
