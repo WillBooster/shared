@@ -172,6 +172,11 @@ async function main(): Promise<void> {
       if (doesContainJsOrTs(config)) {
         promises.push(generateOxfmtConfig(config));
         promises.push(generateOxlintConfig(config, rootConfig));
+      } else if (!config.isRoot && config.doesContainPackageJson && doesContainJsOrTs(rootConfig)) {
+        // Monorepo verification can invoke oxlint from every workspace. Give
+        // non-code packages a local config so oxlint does not climb to the
+        // root config and reject root-only type-aware options from a package cwd.
+        promises.push(generateOxlintConfig(config, rootConfig));
       }
       if (config.depending.pyright) {
         promises.push(generatePyrightConfigJson(config));
