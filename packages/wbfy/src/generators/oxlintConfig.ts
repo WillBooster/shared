@@ -19,20 +19,22 @@ const managedConfigBlocks = new ManagedConfigBlocks({
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     // willbooster-configs publishes config files as product code, so migration
-    // must not remove package-provided linter settings.
+    // must not remove package-provided linter settings. Generated files with
+    // managed blocks are still safe to update.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
     const existingContent = await fsUtil.readFileIgnoringError(filePath);
-    const desiredContent =
-      shouldPreservePublishedLinterConfig && existingContent
-        ? existingContent
-        : replaceLegacyConfigReferences(
-            managedConfigBlocks.getConfigContent({
-              desiredContent: getConfigContent(config),
-              existingContent,
-              filePath,
-            })
-          );
+    const shouldPreserveExistingContent =
+      shouldPreservePublishedLinterConfig && existingContent && !managedConfigBlocks.hasManagedBlocks(existingContent);
+    const desiredContent = shouldPreserveExistingContent
+      ? existingContent
+      : replaceLegacyConfigReferences(
+          managedConfigBlocks.getConfigContent({
+            desiredContent: getConfigContent(config),
+            existingContent,
+            filePath,
+          })
+        );
 
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
@@ -100,6 +102,9 @@ function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean)
   }
 
   return `// Oxlint only supports type-aware options in the root config, while it
-// still auto-discovers package-local config files in monorepos.
-const { options: _rootOnlyOptions, ...oxlintResolvedConfig } = ${baseConfigName};`;
+// still auto-discovers package-local config files in monorepos. Keep this as a
+// plain object copy so package typechecks do not export oxlint's private helper
+// types through the generated config variable.
+const oxlintResolvedConfig: Record<string, unknown> = { ...${baseConfigName} };
+delete oxlintResolvedConfig.options;`;
 }

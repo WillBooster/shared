@@ -89,8 +89,8 @@ test('omits root-only oxlint options for sub-package configs', async () => {
   await promisePool.promiseAll();
 
   const content = await readOxlintConfig(dirPath);
-  expect(content).toContain('options: _rootOnlyOptions');
-  expect(content).toContain('...oxlintResolvedConfig');
+  expect(content).toContain('const oxlintResolvedConfig: Record<string, unknown> = { ...oxlintBaseConfig };');
+  expect(content).toContain('delete oxlintResolvedConfig.options;');
   expect(content).toContain('export default oxlintResolvedConfig;');
 });
 

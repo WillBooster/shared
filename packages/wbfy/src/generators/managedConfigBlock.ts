@@ -39,7 +39,7 @@ ${content}
 ${this.getEndMarker(blockName)}`;
   }
 
-  private hasManagedBlocks(content: string): boolean {
+  hasManagedBlocks(content: string): boolean {
     return this.blockNames.some((blockName) => content.includes(this.getStartMarker(blockName)));
   }
 
