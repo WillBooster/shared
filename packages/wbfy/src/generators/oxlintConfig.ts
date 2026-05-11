@@ -19,20 +19,22 @@ const managedConfigBlocks = new ManagedConfigBlocks({
 export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     // willbooster-configs publishes config files as product code, so migration
-    // must not remove package-provided linter settings.
+    // must not remove package-provided linter settings. Generated files with
+    // managed blocks are still safe to update.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
     const existingContent = await fsUtil.readFileIgnoringError(filePath);
-    const desiredContent =
-      shouldPreservePublishedLinterConfig && existingContent
-        ? existingContent
-        : replaceLegacyConfigReferences(
-            managedConfigBlocks.getConfigContent({
-              desiredContent: getConfigContent(config),
-              existingContent,
-              filePath,
-            })
-          );
+    const shouldPreserveExistingContent =
+      shouldPreservePublishedLinterConfig && existingContent && !managedConfigBlocks.hasManagedBlocks(existingContent);
+    const desiredContent = shouldPreserveExistingContent
+      ? existingContent
+      : replaceLegacyConfigReferences(
+          managedConfigBlocks.getConfigContent({
+            desiredContent: getConfigContent(config),
+            existingContent,
+            filePath,
+          })
+        );
 
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
