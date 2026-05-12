@@ -14,6 +14,7 @@ import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 type Settings = {
   approvedGitRepositories?: string[];
   defaultSemverRangePrefix: string;
+  enableScripts?: boolean;
   nmMode: string;
   nodeLinker: string;
   npmMinimalAgeGate?: string;
@@ -66,11 +67,16 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
       // do nothing
     }
     settings.defaultSemverRangePrefix = '';
+    // Install-time scripts are a common supply-chain execution path. Keep this
+    // explicit so stale project settings cannot re-enable them globally.
+    settings.enableScripts = false;
     settings.nodeLinker = 'node-modules';
     settings.nmMode = 'hardlinks-global';
     settings.npmMinimalAgeGate = '5d';
     settings.approvedGitRepositories = [
       // Yarn 4.14 blocks git dependencies unless the repository URL is explicitly allowed.
+      'https://github.com/WillBooster/*.git',
+      'ssh://git@github.com/WillBooster/*.git',
       'https://github.com/WillBoosterLab/*.git',
       'ssh://git@github.com/WillBoosterLab/*.git',
     ];

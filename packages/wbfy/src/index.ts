@@ -41,6 +41,7 @@ import { generateGitHubTemplates } from './github/template.js';
 import { logger } from './logger.js';
 import { options } from './options.js';
 import { getPackageConfig } from './packageConfig.js';
+import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
@@ -110,6 +111,7 @@ async function main(): Promise<void> {
         console.info(config);
       }
     }
+    assertSafeDependencySources(allPackageConfigs);
 
     // Install yarn berry
     await generateYarnrcYml(rootConfig);
