@@ -71,6 +71,7 @@ function isGitDependencySpecifier(specifier: string): boolean {
     isGitHubShorthandSpecifier(specifier) ||
     /^(?:bitbucket|gist|gitlab):/u.test(specifier) ||
     /^https?:\/\/github\.com\//u.test(specifier) ||
+    /^https?:\/\/(?:bitbucket\.org|gitlab\.com)\//u.test(specifier) ||
     /^https?:\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
     /^ssh:\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
     /^[^@\s]+@[^:\s]+:\S+(?:#\S+)?$/u.test(specifier) ||
