@@ -14,6 +14,7 @@ import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 type Settings = {
   approvedGitRepositories?: string[];
   defaultSemverRangePrefix: string;
+  enableScripts?: boolean;
   nmMode: string;
   nodeLinker: string;
   npmMinimalAgeGate?: string;
@@ -66,6 +67,9 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
       // do nothing
     }
     settings.defaultSemverRangePrefix = '';
+    // Install-time scripts are a common supply-chain execution path. Keep this
+    // explicit so stale project settings cannot re-enable them globally.
+    settings.enableScripts = false;
     settings.nodeLinker = 'node-modules';
     settings.nmMode = 'hardlinks-global';
     settings.npmMinimalAgeGate = '5d';
