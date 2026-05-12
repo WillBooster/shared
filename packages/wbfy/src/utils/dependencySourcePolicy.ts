@@ -15,7 +15,7 @@ const allowedGitDependencyPatterns = [
     `^(?:git\\+)?ssh://git@github\\.com[:/]${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`,
     'u'
   ),
-  new RegExp(`^git@github\\.com:${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`, 'u'),
+  new RegExp(`^(?:git\\+)?git@github\\.com:${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`, 'u'),
 ];
 
 interface DisallowedDependencySource {
