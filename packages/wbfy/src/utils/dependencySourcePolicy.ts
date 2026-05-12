@@ -69,18 +69,13 @@ function getDisallowedDependencySources(config: PackageConfig): DisallowedDepend
 function isGitDependencySpecifier(specifier: string): boolean {
   return (
     isGitHubShorthandSpecifier(specifier) ||
-    /^(?:bitbucket|gist|gitlab):/u.test(specifier) ||
-    /^https?:\/\/github\.com\//u.test(specifier) ||
-    /^https?:\/\/(?:bitbucket\.org|gitlab\.com)\//u.test(specifier) ||
-    /^https?:\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
-    /^ssh:\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
+    /^(?:bitbucket|gist|github|gitlab):/u.test(specifier) ||
+    /^https?:\/\/(?:bitbucket\.org|github\.com|gitlab\.com)\//u.test(specifier) ||
+    /^(?:https?|ssh):\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
     /^[^@\s]+@[^:\s]+:\S+(?:#\S+)?$/u.test(specifier) ||
-    specifier.startsWith('github:') ||
     specifier.startsWith('git:') ||
     specifier.startsWith('git+') ||
-    specifier.startsWith('ssh://git@') ||
-    specifier.startsWith('https://github.com/') ||
-    specifier.startsWith('git@github.com:')
+    specifier.startsWith('ssh://git@')
   );
 }
 
