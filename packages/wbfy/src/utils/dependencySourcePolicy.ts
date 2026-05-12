@@ -5,6 +5,7 @@ import type { PackageConfig } from '../packageConfig.js';
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 const allowedGitHubOrganizationPattern = String.raw`(?:WillBooster|WillBoosterLab)`;
 const allowedGitDependencyPatterns = [
+  new RegExp(`^${allowedGitHubOrganizationPattern}/[^#\\s]+(?:#\\S+)?$`, 'u'),
   new RegExp(`^github:${allowedGitHubOrganizationPattern}/[^#\\s]+(?:#\\S+)?$`, 'u'),
   new RegExp(
     `^(?:git\\+)?https://github\\.com/${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`,
@@ -67,6 +68,11 @@ function getDisallowedDependencySources(config: PackageConfig): DisallowedDepend
 
 function isGitDependencySpecifier(specifier: string): boolean {
   return (
+    isGitHubShorthandSpecifier(specifier) ||
+    /^(?:bitbucket|gist|gitlab):/u.test(specifier) ||
+    /^https?:\/\/github\.com\//u.test(specifier) ||
+    /^https?:\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
+    /^ssh:\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
     specifier.startsWith('github:') ||
     specifier.startsWith('git:') ||
     specifier.startsWith('git+') ||
@@ -74,6 +80,10 @@ function isGitDependencySpecifier(specifier: string): boolean {
     specifier.startsWith('https://github.com/') ||
     specifier.startsWith('git@github.com:')
   );
+}
+
+function isGitHubShorthandSpecifier(specifier: string): boolean {
+  return /^[a-zA-Z0-9][\w.-]*\/[\w.-]+(?:#\S+)?$/u.test(specifier);
 }
 
 function isAllowedGitDependencySpecifier(specifier: string): boolean {
