@@ -3,6 +3,19 @@ import path from 'node:path';
 import type { PackageConfig } from '../packageConfig.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
+const allowedGitHubOrganizationPattern = String.raw`(?:WillBooster|WillBoosterLab)`;
+const allowedGitDependencyPatterns = [
+  new RegExp(`^github:${allowedGitHubOrganizationPattern}/[^#\\s]+(?:#\\S+)?$`, 'u'),
+  new RegExp(
+    `^(?:git\\+)?https://github\\.com/${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`,
+    'u'
+  ),
+  new RegExp(
+    `^(?:git\\+)?ssh://git@github\\.com/${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`,
+    'u'
+  ),
+  new RegExp(`^git@github\\.com:${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`, 'u'),
+];
 
 interface DisallowedDependencySource {
   dependencyName: string;
@@ -23,7 +36,7 @@ export function assertSafeDependencySources(configs: PackageConfig[]): void {
     .join('\n');
 
   throw new Error(
-    `Disallowed Git dependency sources found.\nOnly WillBoosterLab GitHub dependencies are allowed.\n${details}`
+    `Disallowed Git dependency sources found.\nOnly WillBooster and WillBoosterLab GitHub dependencies are allowed.\n${details}`
   );
 }
 
@@ -64,10 +77,5 @@ function isGitDependencySpecifier(specifier: string): boolean {
 }
 
 function isAllowedGitDependencySpecifier(specifier: string): boolean {
-  return (
-    /^github:WillBoosterLab\/[^#\s]+(?:#\S+)?$/u.test(specifier) ||
-    /^(?:git\+)?https:\/\/github\.com\/WillBoosterLab\/[^#\s]+(?:\.git)?(?:#\S+)?$/u.test(specifier) ||
-    /^(?:git\+)?ssh:\/\/git@github\.com\/WillBoosterLab\/[^#\s]+(?:\.git)?(?:#\S+)?$/u.test(specifier) ||
-    /^git@github\.com:WillBoosterLab\/[^#\s]+(?:\.git)?(?:#\S+)?$/u.test(specifier)
-  );
+  return allowedGitDependencyPatterns.some((pattern) => pattern.test(specifier));
 }

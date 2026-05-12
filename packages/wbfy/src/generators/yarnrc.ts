@@ -75,6 +75,8 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
     settings.npmMinimalAgeGate = '5d';
     settings.approvedGitRepositories = [
       // Yarn 4.14 blocks git dependencies unless the repository URL is explicitly allowed.
+      'https://github.com/WillBooster/*.git',
+      'ssh://git@github.com/WillBooster/*.git',
       'https://github.com/WillBoosterLab/*.git',
       'ssh://git@github.com/WillBoosterLab/*.git',
     ];
