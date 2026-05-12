@@ -12,7 +12,7 @@ const allowedGitDependencyPatterns = [
     'u'
   ),
   new RegExp(
-    `^(?:git\\+)?ssh://git@github\\.com/${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`,
+    `^(?:git\\+)?ssh://git@github\\.com[:/]${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`,
     'u'
   ),
   new RegExp(`^git@github\\.com:${allowedGitHubOrganizationPattern}/[^#\\s]+(?:\\.git)?(?:#\\S+)?$`, 'u'),
@@ -73,6 +73,7 @@ function isGitDependencySpecifier(specifier: string): boolean {
     /^https?:\/\/github\.com\//u.test(specifier) ||
     /^https?:\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
     /^ssh:\/\/\S+\.git(?:#\S+)?$/u.test(specifier) ||
+    /^[^@\s]+@[^:\s]+:\S+(?:#\S+)?$/u.test(specifier) ||
     specifier.startsWith('github:') ||
     specifier.startsWith('git:') ||
     specifier.startsWith('git+') ||
