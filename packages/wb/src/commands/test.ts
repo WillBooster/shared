@@ -74,6 +74,10 @@ export type TestArgv = Partial<
 
 export type TestCommandArgv = ArgumentsCamelCase<TestCommandOptions> & { '--'?: string[] };
 
+export interface TestRunOptions {
+  exitIfFailed?: boolean;
+}
+
 export const testCommand: CommandModule<unknown, TestCommandOptions> = {
   command: 'test [targets...]',
   describe:
@@ -84,15 +88,15 @@ export const testCommand: CommandModule<unknown, TestCommandOptions> = {
       .options(builder)
       .positional('targets', argumentsBuilder.targets) as Argv<TestCommandOptions>,
   async handler(argv) {
-    await test(argv as TestCommandArgv);
+    process.exit(await test(argv as TestCommandArgv));
   },
 };
 
-export async function test(argv: TestCommandArgv): Promise<void> {
+export async function test(argv: TestCommandArgv, options: TestRunOptions = {}): Promise<number> {
   const projects = await findDescendantProjects(argv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
-    process.exit(1);
+    return 1;
   }
 
   process.env.FORCE_COLOR ||= '3';
@@ -131,7 +135,13 @@ export async function test(argv: TestCommandArgv): Promise<void> {
       const targets =
         unitTargets.length > 0 ? unitTargets : defaultUnitTargets.length > 0 ? defaultUnitTargets : undefined;
       const unitArgv = { ...argv, targets };
-      await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, argv, { timeout: argv.unitTimeout });
+      const exitCode = await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, argv, {
+        exitIfFailed: options.exitIfFailed,
+        timeout: argv.unitTimeout,
+      });
+      if (exitCode !== 0) {
+        return exitCode;
+      }
     }
     // Skip e2e tests if not needed or no e2e directory exists
     if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
@@ -144,100 +154,120 @@ export async function test(argv: TestCommandArgv): Promise<void> {
 
     switch (argv.e2e) {
       case 'headless': {
-        await runTestCommand(
+        const exitCode = await runTestCommand(
           await scripts.testE2EProduction(project, e2eArgv, {
             playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
             forwardedPlaywrightArgs,
           }),
           project,
-          argv
+          argv,
+          { exitIfFailed: options.exitIfFailed }
         );
+        if (exitCode !== 0) return exitCode;
         continue;
       }
       case 'headless-dev': {
-        await runTestCommand(
+        const exitCode = await runTestCommand(
           await scripts.testE2EDev(project, e2eArgv, {
             playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
             forwardedPlaywrightArgs,
           }),
           project,
-          argv
+          argv,
+          { exitIfFailed: options.exitIfFailed }
         );
+        if (exitCode !== 0) return exitCode;
         continue;
       }
       case 'docker': {
-        await testOnDocker(
+        const exitCode = await testOnDocker(
           project,
           e2eArgv,
           scripts,
           buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
-          forwardedPlaywrightArgs
+          forwardedPlaywrightArgs,
+          options
         );
+        if (exitCode !== 0) return exitCode;
         continue;
       }
       case 'docker-debug': {
-        await testOnDocker(
+        const exitCode = await testOnDocker(
           project,
           e2eArgv,
           scripts,
           buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--debug']),
-          forwardedPlaywrightArgs
+          forwardedPlaywrightArgs,
+          options
         );
+        if (exitCode !== 0) return exitCode;
         continue;
       }
     }
     if (deps.blitz || deps.next || devDeps['@remix-run/dev'] || devDeps.vite) {
       switch (argv.e2e) {
         case 'headed': {
-          await runTestCommand(
+          const exitCode = await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
               playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--headed']),
               forwardedPlaywrightArgs,
             }),
             project,
-            argv
+            argv,
+            { exitIfFailed: options.exitIfFailed }
           );
+          if (exitCode !== 0) return exitCode;
           break;
         }
         case 'headed-dev': {
-          await runTestCommand(
+          const exitCode = await runTestCommand(
             await scripts.testE2EDev(project, e2eArgv, {
               playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--headed']),
               forwardedPlaywrightArgs,
             }),
             project,
-            argv
+            argv,
+            { exitIfFailed: options.exitIfFailed }
           );
+          if (exitCode !== 0) return exitCode;
           break;
         }
         case 'debug': {
-          await runTestCommand(
+          const exitCode = await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
               playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--debug']),
               forwardedPlaywrightArgs,
             }),
             project,
-            argv
+            argv,
+            { exitIfFailed: options.exitIfFailed }
           );
+          if (exitCode !== 0) return exitCode;
           break;
         }
         case 'generate': {
-          await runTestCommand(
+          const exitCode = await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
               playwrightArgs: ['codegen', `http://localhost:${project.env.PORT}`],
             }),
             project,
-            argv
+            argv,
+            { exitIfFailed: options.exitIfFailed }
           );
+          if (exitCode !== 0) return exitCode;
           break;
         }
         case 'trace': {
-          await runTestCommand(`BUN playwright show-trace`, project, argv);
+          const exitCode = await runTestCommand(`BUN playwright show-trace`, project, argv, {
+            exitIfFailed: options.exitIfFailed,
+          });
+          if (exitCode !== 0) return exitCode;
           break;
         }
       }
     }
   }
+  return 0;
 }
 
 function getDefaultUnitTargets(project: Project): string[] | false {
@@ -255,11 +285,17 @@ async function testOnDocker(
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof argumentsBuilder>>,
   scripts: BaseScripts,
   playwrightArgs?: string[],
-  forwardedPlaywrightArgs?: string[]
-): Promise<void> {
+  forwardedPlaywrightArgs?: string[],
+  options: TestRunOptions = {}
+): Promise<number> {
   project.env.WB_DOCKER ||= '1';
-  await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
-  process.exitCode = await runTestCommand(
+  const buildExitCode = await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv, {
+    exitIfFailed: options.exitIfFailed,
+  });
+  if (buildExitCode !== 0) {
+    return buildExitCode;
+  }
+  const testExitCode = await runTestCommand(
     await scripts.testE2EDocker(project, argv, {
       playwrightArgs,
       forwardedPlaywrightArgs,
@@ -268,7 +304,16 @@ async function testOnDocker(
     argv,
     { exitIfFailed: false }
   );
-  await runWithSpawn(dockerScripts.stop(project), project, argv);
+  const stopExitCode = await runWithSpawn(dockerScripts.stop(project), project, argv, {
+    exitIfFailed: options.exitIfFailed,
+  });
+  if (testExitCode !== 0) {
+    if (options.exitIfFailed !== false) {
+      process.exit(testExitCode);
+    }
+    return testExitCode;
+  }
+  return stopExitCode;
 }
 
 function runTestCommand(

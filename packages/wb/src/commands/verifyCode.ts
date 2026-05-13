@@ -76,7 +76,26 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  await test({ ...argv, _: ['test'], e2e: 'headless', silent: true } as unknown as TestCommandArgv);
+  const testArgv = { ...argv, _: ['test'], e2e: 'headless', silent: true } as unknown as TestCommandArgv;
+  const exitCode = await test(testArgv, { exitIfFailed: false });
+  if (exitCode === 0) return;
+
+  if (!project.packageJson.scripts?.['db-reset']) {
+    console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), 'test'));
+    process.exit(exitCode);
+  }
+
+  console.info(
+    chalk.yellow('Tests failed. This project defines "db-reset", so wb will reset the database once and retry tests.')
+  );
+  await runPackageCommand(`${packageManager} db-reset`, project, argv, { printRawOutput: true });
+
+  const retryExitCode = await test(testArgv, { exitIfFailed: false });
+  if (retryExitCode !== 0) {
+    console.info(chalk.red(chalk.bold(`Failed (exit code ${retryExitCode}):`), 'test after db-reset retry'));
+    process.exit(retryExitCode);
+  }
+  console.info(chalk.green('Tests passed after db-reset retry.'));
 }
 
 async function runInProcessCommand(
