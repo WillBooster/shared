@@ -72,9 +72,12 @@ class PrismaScripts {
 
   seed(project: Project, scriptPath?: string): string {
     if (project.packageJson.dependencies?.blitz) return `YARN blitz db seed${scriptPath ? ` -f ${scriptPath}` : ''}`;
-    if (scriptPath) return `BUN build-ts run ${scriptPath}`;
+    if (scriptPath) return buildSeedScriptCommand(project, scriptPath);
     if ((project.packageJson.prisma as Record<string, string> | undefined)?.seed) return `YARN prisma db seed`;
-    return `if [ -e "prisma/seeds.ts" ]; then BUN build-ts run prisma/seeds.ts; fi`;
+    if (fs.existsSync(path.join(project.dirPath, 'src', 'scripts', 'seed.ts'))) {
+      return buildSeedScriptCommand(project, 'src/scripts/seed.ts');
+    }
+    return `if [ -e "prisma/seeds.ts" ]; then ${buildSeedScriptCommand(project, 'prisma/seeds.ts')}; fi`;
   }
 
   studio(project: Project, dbUrlOrPath?: string, additionalOptions = ''): string {
@@ -114,6 +117,10 @@ function buildRemoveSqliteDbCommand(dbPath: string): string {
 
 function buildWalCheckpointAndRemoveSqliteSidecarFilesCommand(dbPath: string): string {
   return `if [ -f "${dbPath}" ]; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | PRISMA db execute --stdin --url "${FILE_SCHEMA}${dbPath}"; fi && rm -f "${dbPath}".* "${dbPath}"-*`;
+}
+
+function buildSeedScriptCommand(project: Project, scriptPath: string): string {
+  return project.isBunAvailable ? `BUN run ${scriptPath}` : `BUN build-ts run ${scriptPath}`;
 }
 
 export function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {

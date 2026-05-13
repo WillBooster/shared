@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import type { Project } from '../project.js';
@@ -27,8 +28,10 @@ class DrizzleScripts {
   }
 
   seed(project: Project, scriptPath?: string): string {
-    if (scriptPath) return `BUN build-ts run ${scriptPath}`;
+    if (scriptPath) return buildSeedScriptCommand(project, scriptPath);
     if (project.packageJson.scripts?.seed) return 'YARN run seed';
+    const defaultSeedPath = path.join(project.dirPath, 'src', 'scripts', 'seed.ts');
+    if (fs.existsSync(defaultSeedPath)) return buildSeedScriptCommand(project, 'src/scripts/seed.ts');
     return 'true';
   }
 
@@ -57,6 +60,10 @@ function getFileDatabaseUrlPath(project: Project): string | undefined {
   if (!rawDbPath) return;
 
   return rawDbPath;
+}
+
+function buildSeedScriptCommand(project: Project, scriptPath: string): string {
+  return project.isBunAvailable ? `BUN run ${scriptPath}` : `BUN build-ts run ${scriptPath}`;
 }
 
 export const drizzleScripts = new DrizzleScripts();
