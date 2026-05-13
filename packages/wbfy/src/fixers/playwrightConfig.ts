@@ -42,7 +42,7 @@ const createDefaultConfig = (config: PackageConfig): ParsedObject =>
       video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
     }),
     webServer: asObject({
-      command: literal(getWbStartTestCommand(config)),
+      command: literal(getPlaywrightServerCommand(config)),
       url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
       reuseExistingServer: literal('!!process.env.CI'),
       timeout: literal('300_000'),
