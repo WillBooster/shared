@@ -105,15 +105,27 @@ const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   },
 };
 
-const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+const migrateBuilder = {
+  ...builder,
+  'check-idempotency': {
+    description: 'Run the migration command twice to confirm it is idempotent.',
+    type: 'boolean',
+  },
+} as const;
+
+const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateBuilder>> = {
   command: 'migrate',
   describe: 'Apply migration to DB with initializing it',
-  builder,
+  builder: migrateBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv);
+    const unknownOptions = extractUnknownOptions(argv, ['check-idempotency']);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
-      await runWithSpawn(getDatabaseOrmScripts(orm).migrate(project, unknownOptions), project, argv);
+      const migrateScript = getDatabaseOrmScripts(orm).migrate(project, unknownOptions);
+      await runWithSpawn(migrateScript, project, argv);
+      if (argv.checkIdempotency) {
+        await runWithSpawn(migrateScript, project, argv);
+      }
     }
   },
 };
