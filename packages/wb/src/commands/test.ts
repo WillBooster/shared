@@ -308,9 +308,6 @@ async function testOnDocker(
     exitIfFailed: options.exitIfFailed,
   });
   if (testExitCode !== 0) {
-    if (options.exitIfFailed !== false) {
-      process.exit(testExitCode);
-    }
     return testExitCode;
   }
   return stopExitCode;
