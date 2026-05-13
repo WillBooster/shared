@@ -123,8 +123,12 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
       const ormScripts = getDatabaseOrmScripts(orm);
       await runWithSpawn(ormScripts.migrate(project, unknownOptions), project, argv);
-      if (argv.checkIdempotency && !isProductionEnvironment(project)) {
-        await runWithSpawn(ormScripts.deploy(project, unknownOptions), project, argv);
+      if (argv.checkIdempotency) {
+        if (isProductionEnvironment(project)) {
+          console.info(chalk.yellow(`Skipping idempotency check for ${project.name} in production environment.`));
+        } else {
+          await runWithSpawn(ormScripts.deploy(project, unknownOptions), project, argv);
+        }
       }
     }
   },
