@@ -17,17 +17,12 @@ import { viteScripts } from '../scripts/execution/viteScripts.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { promisePool } from '../utils/promisePool.js';
-import { buildShellCommand } from '../utils/shell.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
 
 const testOnCiBuilder = {
   silent: {
     description: 'Reduce redundant outputs',
-    type: 'boolean',
-  },
-  'use-playwright-web-server': {
-    description: 'Let Playwright launch the configured webServer instead of launching a wb-managed server.',
     type: 'boolean',
   },
 } as const;
@@ -77,7 +72,7 @@ export async function testOnCi(
     console.info(`Running "test-on-ci" for ${project.name} ...`);
 
     const hasDockerfile = project.hasDockerfile;
-    if (hasDockerfile && !argv.usePlaywrightWebServer) {
+    if (hasDockerfile) {
       await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
     }
     if (fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) {
@@ -85,21 +80,10 @@ export async function testOnCi(
       await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv);
     }
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
-      if (argv.usePlaywrightWebServer) {
-        await promisePool.promiseAll();
-        process.exitCode = await runWithSpawn(
-          buildShellCommand(['BUN', 'playwright', 'test', 'test/e2e/', '--max-failures=1']),
-          project,
-          argv,
-          {
-            exitIfFailed: false,
-          }
-        );
-        continue;
+      if (!hasDockerfile) {
+        // Confirm app startup for projects where wb will run E2E tests without Docker.
+        await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
       }
-
-      // Confirm dev server startup for consistency across projects with E2E tests.
-      await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
       await promisePool.promiseAll();
       if (hasDockerfile) {
         project.env.WB_DOCKER ||= '1';
