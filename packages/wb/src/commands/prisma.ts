@@ -121,10 +121,10 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
     const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv, ['check-idempotency']);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
-      const migrateScript = getDatabaseOrmScripts(orm).migrate(project, unknownOptions);
-      await runWithSpawn(migrateScript, project, argv);
+      const ormScripts = getDatabaseOrmScripts(orm);
+      await runWithSpawn(ormScripts.migrate(project, unknownOptions), project, argv);
       if (argv.checkIdempotency && !isProductionEnvironment(project)) {
-        await runWithSpawn(migrateScript, project, argv);
+        await runWithSpawn(ormScripts.deploy(project, unknownOptions), project, argv);
       }
     }
   },
