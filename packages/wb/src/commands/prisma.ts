@@ -105,18 +105,38 @@ const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   },
 };
 
-const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+const migrateBuilder = {
+  ...builder,
+  'check-idempotency': {
+    description: 'Run the migration command twice to confirm it is idempotent.',
+    type: 'boolean',
+  },
+} as const;
+
+const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateBuilder>> = {
   command: 'migrate',
   describe: 'Apply migration to DB with initializing it',
-  builder,
+  builder: migrateBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
-    const unknownOptions = extractUnknownOptions(argv);
+    const unknownOptions = extractUnknownOptions(argv, ['check-idempotency']);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
-      await runWithSpawn(getDatabaseOrmScripts(orm).migrate(project, unknownOptions), project, argv);
+      const ormScripts = getDatabaseOrmScripts(orm);
+      await runWithSpawn(ormScripts.migrate(project, unknownOptions), project, argv);
+      if (argv.checkIdempotency) {
+        if (isProductionEnvironment(project)) {
+          console.info(chalk.yellow(`Skipping idempotency check for ${project.name} in production environment.`));
+        } else {
+          await runWithSpawn(ormScripts.deploy(project, unknownOptions), project, argv);
+        }
+      }
     }
   },
 };
+
+function isProductionEnvironment(project: Project): boolean {
+  return project.env.WB_ENV === 'production' || project.env.MISE_ENV === 'production';
+}
 
 const migrateDevCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'migrate-dev',
