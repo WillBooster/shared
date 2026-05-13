@@ -219,10 +219,13 @@ describe('generatePackageJson', () => {
     expect(packageJson.scripts?.start).toBe('mise run start');
   });
 
-  test('removes start-test-server even when a dedicated mise task exists', async () => {
+  test('preserves start-test-server when a dedicated script exists', async () => {
     const dirPath = await createPackageDir({
       name: 'mise-test-server-package',
       private: true,
+      scripts: {
+        'start-test-server': 'mise run db:push && bun run next dev',
+      },
       dependencies: {
         next: '16.1.6',
       },
@@ -240,7 +243,6 @@ describe('generatePackageJson', () => {
       },
       miseTasks: {
         start: 'bun run next dev',
-        'start-test-server': 'mise run db:push && bun run next dev',
       },
       packageJson: readPackageJson(dirPath),
     });
@@ -248,7 +250,7 @@ describe('generatePackageJson', () => {
     await generatePackageJson(config, createRootConfig(path.dirname(dirPath)), true);
 
     const packageJson = readPackageJson(dirPath);
-    expect(packageJson.scripts).not.toHaveProperty('start-test-server');
+    expect(packageJson.scripts?.['start-test-server']).toBe('mise run db:push && bun run next dev');
   });
 });
 

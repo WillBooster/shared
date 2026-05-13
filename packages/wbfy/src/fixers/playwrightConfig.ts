@@ -159,13 +159,16 @@ function setWebServerCommand(object: ParsedObject, config: PackageConfig): void 
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
 
-  // wb owns the canonical test-server startup path; keep custom Playwright
-  // server settings while normalizing the command itself. Invoke wb through the
-  // package manager because target repos install wb as a package dependency.
-  webServer.value.properties.command = literal(getWbStartTestCommand(config));
+  // Some repositories need a custom Playwright server command for framework- or
+  // database-specific setup. Preserve that explicit hook instead of replacing it
+  // with wb's canonical startup path.
+  webServer.value.properties.command = literal(getPlaywrightServerCommand(config));
 }
 
-function getWbStartTestCommand(config: PackageConfig): string {
+function getPlaywrightServerCommand(config: PackageConfig): string {
+  if (config.packageJson.scripts?.['start-test-server']) {
+    return `'${getPackageManagerCommand(config)} start-test-server'`;
+  }
   return `'${getPackageManagerCommand(config)} wb start --mode test'`;
 }
 

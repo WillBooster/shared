@@ -150,7 +150,9 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
   removeLegacyInstallCommands(jsonObj.scripts);
 
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
-  delete jsonObj.scripts['start-test-server'];
+  if (!config.packageJson.scripts?.['start-test-server']) {
+    delete jsonObj.scripts['start-test-server'];
+  }
 
   const scripts = jsonObj.scripts;
   if (config.isBun || !doesContainJava(config)) {
