@@ -123,12 +123,16 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
       const migrateScript = getDatabaseOrmScripts(orm).migrate(project, unknownOptions);
       await runWithSpawn(migrateScript, project, argv);
-      if (argv.checkIdempotency) {
+      if (argv.checkIdempotency && !isProductionEnvironment(project)) {
         await runWithSpawn(migrateScript, project, argv);
       }
     }
   },
 };
+
+function isProductionEnvironment(project: Project): boolean {
+  return project.env.WB_ENV === 'production' || project.env.MISE_ENV === 'production';
+}
 
 const migrateDevCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'migrate-dev',
