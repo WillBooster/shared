@@ -5,8 +5,8 @@ import type { Project } from '../project.js';
 const FILE_SCHEMA = 'file:';
 
 class DrizzleScripts {
-  deploy(project: Project, additionalOptions = ''): string {
-    return this.migrate(project, additionalOptions);
+  deploy(_project: Project, additionalOptions = ''): string {
+    return `YARN drizzle-kit migrate ${additionalOptions}`;
   }
 
   reset(project: Project, additionalOptions = ''): string {
