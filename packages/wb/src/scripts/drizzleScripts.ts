@@ -9,8 +9,8 @@ class DrizzleScripts {
     return this.migrate(project, additionalOptions);
   }
 
-  migrate(_project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit migrate ${additionalOptions}`;
+  migrate(project: Project, additionalOptions = ''): string {
+    return `YARN drizzle-kit migrate ${additionalOptions} && ${this.seed(project)}`;
   }
 
   migrateDev(_project: Project, additionalOptions = ''): string {
