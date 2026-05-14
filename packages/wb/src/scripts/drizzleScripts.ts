@@ -9,14 +9,6 @@ class DrizzleScripts {
     return this.migrate(project, additionalOptions);
   }
 
-  migrate(project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit migrate ${additionalOptions} && ${this.seed(project)}`;
-  }
-
-  migrateDev(_project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit generate ${additionalOptions}`;
-  }
-
   reset(project: Project, additionalOptions = ''): string {
     const removeCommand = buildRemoveSqliteDbCommand(project);
     if (!removeCommand) {
@@ -24,6 +16,14 @@ class DrizzleScripts {
     }
 
     return `${removeCommand} && ${this.migrate(project, additionalOptions)}`;
+  }
+
+  migrate(project: Project, additionalOptions = ''): string {
+    return `YARN drizzle-kit migrate ${additionalOptions} && ${this.seed(project)}`;
+  }
+
+  migrateDev(_project: Project, additionalOptions = ''): string {
+    return `YARN drizzle-kit generate ${additionalOptions}`;
   }
 
   seed(project: Project, scriptPath?: string): string {
