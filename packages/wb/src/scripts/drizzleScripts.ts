@@ -5,25 +5,27 @@ import type { Project } from '../project.js';
 const FILE_SCHEMA = 'file:';
 
 class DrizzleScripts {
-  deploy(project: Project, additionalOptions = ''): string {
-    return this.migrate(project, additionalOptions);
-  }
-
-  migrate(_project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit migrate ${additionalOptions}`;
-  }
-
-  migrateDev(_project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit generate ${additionalOptions}`;
-  }
-
   reset(project: Project, additionalOptions = ''): string {
     const removeCommand = buildRemoveSqliteDbCommand(project);
     if (!removeCommand) {
       return "echo 'wb db reset supports Drizzle only when DATABASE_PATH or file: DATABASE_URL is set.' && exit 1";
     }
 
-    return `${removeCommand} && ${this.migrate(project, additionalOptions)} && ${this.seed(project)}`;
+    return `${removeCommand} && ${this.migrate(project, additionalOptions)}`;
+  }
+
+  migrate(project: Project, additionalOptions = ''): string {
+    const seedCommand = this.seed(project);
+    const migrateCommand = this.deploy(project, additionalOptions);
+    return seedCommand === 'true' ? migrateCommand : `${migrateCommand} && ${seedCommand}`;
+  }
+
+  deploy(_project: Project, additionalOptions = ''): string {
+    return `YARN drizzle-kit migrate ${additionalOptions}`;
+  }
+
+  migrateDev(_project: Project, additionalOptions = ''): string {
+    return `YARN drizzle-kit generate ${additionalOptions}`;
   }
 
   seed(project: Project, scriptPath?: string): string {
