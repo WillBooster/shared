@@ -23,7 +23,7 @@ class DrizzleScripts {
       return "echo 'wb db reset supports Drizzle only when DATABASE_PATH or file: DATABASE_URL is set.' && exit 1";
     }
 
-    return `${removeCommand} && ${this.migrate(project, additionalOptions)} && ${this.seed(project)}`;
+    return `${removeCommand} && ${this.migrate(project, additionalOptions)}`;
   }
 
   seed(project: Project, scriptPath?: string): string {
