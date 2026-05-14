@@ -5,10 +5,6 @@ import type { Project } from '../project.js';
 const FILE_SCHEMA = 'file:';
 
 class DrizzleScripts {
-  deploy(_project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit migrate ${additionalOptions}`;
-  }
-
   reset(project: Project, additionalOptions = ''): string {
     const removeCommand = buildRemoveSqliteDbCommand(project);
     if (!removeCommand) {
@@ -19,7 +15,13 @@ class DrizzleScripts {
   }
 
   migrate(project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit migrate ${additionalOptions} && ${this.seed(project)}`;
+    const seedCommand = this.seed(project);
+    const migrateCommand = this.deploy(project, additionalOptions);
+    return seedCommand === 'true' ? migrateCommand : `${migrateCommand} && ${seedCommand}`;
+  }
+
+  deploy(_project: Project, additionalOptions = ''): string {
+    return `YARN drizzle-kit migrate ${additionalOptions}`;
   }
 
   migrateDev(_project: Project, additionalOptions = ''): string {
