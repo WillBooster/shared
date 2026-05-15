@@ -39,7 +39,7 @@ function getConfigContent(config: PackageConfig): string {
   if (!config.isEsmPackage) {
     return `${managedConfigBlocks.getBlock(
       'base',
-      `// oxlint-disable unicorn/prefer-module -- Oxfmt config files are only auto-discovered as .ts, and CommonJS avoids Node typeless ESM warnings.
+      `// oxlint-disable typescript(TS2591), unicorn/prefer-module -- Oxfmt config files are only auto-discovered as .ts, and CommonJS avoids Node typeless ESM warnings.
 const oxfmtConfig = require('@willbooster/oxfmt-config');
 
 const oxfmtResolvedConfig = oxfmtConfig.default ?? oxfmtConfig;`
