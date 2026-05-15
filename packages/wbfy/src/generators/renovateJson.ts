@@ -15,7 +15,7 @@ const jsonObj = {
 };
 
 type Settings = Omit<typeof jsonObj, 'extends'> & {
-  extends?: string | string[];
+  extends?: string[];
   packageRules?: { matchPackageNames: string[]; enabled?: boolean }[];
 };
 
@@ -33,7 +33,7 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
       newSettings = merge.all([newSettings, oldSettings, newSettings], {
         arrayMerge: overwriteMerge,
       }) as Settings;
-      newSettings.extends = mergeRenovateExtends(jsonObj.extends, oldSettings.extends);
+      newSettings.extends = mergeRenovateExtends(jsonObj.extends, oldSettings.extends ?? []);
     } catch {
       // do nothing
     }
@@ -57,12 +57,6 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
   });
 }
 
-function mergeRenovateExtends(generatedExtends: string | string[], existingExtends: string | string[] = []): string[] {
-  return [...new Set([...normalizeExtends(generatedExtends), ...normalizeExtends(existingExtends)])].filter(
-    (item) => item !== '@willbooster'
-  );
-}
-
-function normalizeExtends(value: string | string[]): string[] {
-  return Array.isArray(value) ? value : [value];
+function mergeRenovateExtends(generatedExtends: string[], existingExtends: string[]): string[] {
+  return [...new Set([...generatedExtends, ...existingExtends])].filter((item) => item !== '@willbooster');
 }
