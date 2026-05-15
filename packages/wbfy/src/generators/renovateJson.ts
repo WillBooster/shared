@@ -14,7 +14,10 @@ const jsonObj = {
   extends: ['github>WillBooster/willbooster-configs:renovate.json5'],
 };
 
-type Settings = typeof jsonObj & { packageRules?: { matchPackageNames: string[]; enabled?: boolean }[] };
+type Settings = Omit<typeof jsonObj, 'extends'> & {
+  extends?: string[];
+  packageRules?: { matchPackageNames: string[]; enabled?: boolean }[];
+};
 
 export async function generateRenovateJson(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateRenovateJson', async () => {
@@ -30,7 +33,7 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
       newSettings = merge.all([newSettings, oldSettings, newSettings], {
         arrayMerge: overwriteMerge,
       }) as Settings;
-      newSettings.extends = newSettings.extends.filter((item: string) => item !== '@willbooster');
+      newSettings.extends = mergeRenovateExtends(jsonObj.extends, oldSettings.extends ?? []);
     } catch {
       // do nothing
     }
@@ -52,4 +55,8 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
+}
+
+function mergeRenovateExtends(generatedExtends: string[], existingExtends: string[]): string[] {
+  return [...new Set([...generatedExtends, ...existingExtends])].filter((item) => item !== '@willbooster');
 }
