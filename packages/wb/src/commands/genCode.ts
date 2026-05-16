@@ -80,11 +80,13 @@ function getGenCodeScripts(project: Project, argv: GenCodeCommandArgv): string[]
 function getChakraTypegenScript(project: Project, useStrict: boolean): string | undefined {
   if (!project.hasOwnDependency('@chakra-ui/cli')) return;
 
-  if (fs.existsSync(path.join(project.dirPath, 'src', 'core', 'theme.ts'))) {
-    return 'YARN chakra-cli tokens src/core/theme.ts';
+  const coreThemePath = 'src/core/theme.ts';
+  if (fs.existsSync(path.join(project.dirPath, coreThemePath))) {
+    return `YARN chakra-cli tokens ${coreThemePath}`;
   }
-  if (fs.existsSync(path.join(project.dirPath, 'src', 'theme.ts'))) {
-    return `YARN chakra typegen src/theme.ts${useStrict ? ' --strict' : ''}`;
+  const themePath = 'src/theme.ts';
+  if (fs.existsSync(path.join(project.dirPath, themePath))) {
+    return `YARN chakra typegen ${themePath}${useStrict ? ' --strict' : ''}`;
   }
   return;
 }
