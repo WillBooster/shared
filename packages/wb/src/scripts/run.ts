@@ -250,10 +250,20 @@ export function configureEnv(
   if (opts.ci) {
     newEnv.CI = '1';
   }
-  if (opts.forceColor) {
-    newEnv.FORCE_COLOR = '3';
-  }
+  configureColorEnv(newEnv, opts.forceColor);
   return newEnv;
+}
+
+export function configureColorEnv(env: Record<string, string | undefined>, forceColor?: boolean): void {
+  if (forceColor) {
+    env.FORCE_COLOR = '3';
+    delete env.NO_COLOR;
+    return;
+  }
+
+  if (env.NO_COLOR !== undefined && env.FORCE_COLOR !== undefined) {
+    delete env.FORCE_COLOR;
+  }
 }
 
 function fixBunCommand(command: string): string {

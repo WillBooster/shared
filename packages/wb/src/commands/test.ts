@@ -18,7 +18,7 @@ import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { viteScripts } from '../scripts/execution/viteScripts.js';
-import { runWithSpawn } from '../scripts/run.js';
+import { configureColorEnv, runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
@@ -99,8 +99,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     return 1;
   }
 
-  process.env.FORCE_COLOR ||= '3';
-  delete process.env.NO_COLOR;
+  configureColorEnv(process.env, true);
   process.env.WB_ENV ||= 'test';
 
   // Get test targets from positional arguments

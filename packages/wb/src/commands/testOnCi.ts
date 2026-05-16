@@ -14,7 +14,7 @@ import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { viteScripts } from '../scripts/execution/viteScripts.js';
-import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
+import { configureColorEnv, runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { promisePool } from '../utils/promisePool.js';
 
@@ -48,7 +48,7 @@ export async function testOnCi(
   }
 
   process.env.CI ||= '1';
-  process.env.FORCE_COLOR ||= '3';
+  configureColorEnv(process.env, true);
   process.env.WB_ENV ||= 'test';
 
   for (const project of projects.descendants) {

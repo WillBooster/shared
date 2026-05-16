@@ -993,9 +993,8 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
           format: `${scripts.format} && yarn workspaces foreach --all --parallel --verbose run format`,
           lint: `yarn workspaces foreach --all --parallel --verbose run lint`,
           'lint-fix': 'yarn workspaces foreach --all --parallel --verbose run lint-fix',
-          // CI=1 prevents vitest from enabling watch.
-          // FORCE_COLOR=3 make wb enable color output.
-          test: 'CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test',
+          // CI=1 prevents vitest from enabling watch. Color policy belongs to wb, not generated package scripts.
+          test: 'CI=1 yarn workspaces foreach --all --verbose run test',
           typecheck: 'yarn workspaces foreach --all --parallel --verbose run typecheck',
         }
       );
