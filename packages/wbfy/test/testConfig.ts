@@ -33,6 +33,8 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     doesContainJavaInPackages: false,
     depending: {
       blitz: false,
+      chakra: false,
+      drizzle: false,
       firebase: false,
       genI18nTs: false,
       litestream: false,

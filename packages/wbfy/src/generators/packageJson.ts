@@ -436,17 +436,11 @@ async function normalizePackageMetadata(
     jsonObj.repository = formatRepositoryForPackageJson(config.repository ?? jsonObj.repository, jsonObj.repository);
   }
 
-  if (config.depending.blitz) {
-    if (!jsonObj.scripts['gen-code']?.startsWith('blitz codegen')) {
-      jsonObj.scripts['gen-code'] = 'blitz codegen';
-    } else if (!jsonObj.scripts['gen-code'].includes('blitz prisma generate')) {
-      jsonObj.scripts['gen-code'] = jsonObj.scripts['gen-code'].replace(
-        'blitz codegen',
-        'blitz codegen && blitz prisma generate'
-      );
-    }
-  } else if (config.depending.prisma && !jsonObj.scripts['gen-code']?.startsWith('prisma generate')) {
-    jsonObj.scripts['gen-code'] = 'prisma generate';
+  const genCodeScript = jsonObj.scripts['gen-code'];
+  if (genCodeScript?.includes('No code generation needed')) {
+    delete jsonObj.scripts['gen-code'];
+  } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
+    jsonObj.scripts['gen-code'] = 'wb gen-code';
   }
   addGenI18nTsPostinstallScript(config, jsonObj);
 
@@ -454,6 +448,15 @@ async function normalizePackageMetadata(
     // Because @types/prettier blocks prettier execution.
     delete jsonObj.devDependencies['@types/prettier'];
   }
+}
+
+function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: string | undefined): boolean {
+  return (
+    config.depending.blitz ||
+    config.depending.chakra ||
+    config.depending.prisma ||
+    (config.depending.drizzle && !!oldGenCodeScript?.includes('drizzle-kit check'))
+  );
 }
 
 function appendFormatCodeCommand(formatScript: string | undefined, config: PackageConfig): string {
