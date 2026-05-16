@@ -10,8 +10,8 @@ interface Options {
   ci?: boolean;
   exitIfFailed?: boolean;
   onSignal?: (signal: NodeJS.Signals | null) => void;
-  forceColor?: boolean;
   omitSilentStart?: boolean;
+  preserveColor?: boolean;
   processSilentOutput?: (output: string) => string;
   printRawOutput?: boolean;
   printSilentOutputOnFailureOnly?: boolean;
@@ -60,7 +60,7 @@ export async function runWithSpawn(
       : undefined;
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
-    env: configureEnv(project.env, opts),
+    env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? (argv.silent ? true : undefined) }),
     shell: true,
     stdio: argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
@@ -114,7 +114,7 @@ export function runWithSpawnInParallel(
 
     const ret = await spawnAsync(normalizedScript.runnable, undefined, {
       cwd: project.dirPath,
-      env: configureEnv(project.env, opts),
+      env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
       shell: true,
       stdio: 'pipe',
       timeout: opts.timeout,
@@ -156,7 +156,7 @@ export function runWithSpawnInParallelBuffered(
 
     const ret = await spawnAsync(normalizedScript.runnable, undefined, {
       cwd: project.dirPath,
-      env: configureEnv(project.env, opts),
+      env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
       shell: true,
       stdio: 'pipe',
       timeout: opts.timeout,
@@ -250,10 +250,23 @@ export function configureEnv(
   if (opts.ci) {
     newEnv.CI = '1';
   }
-  if (opts.forceColor) {
-    newEnv.FORCE_COLOR = '3';
-  }
+  configureColorEnv(newEnv, opts.preserveColor);
   return newEnv;
+}
+
+/**
+ * Configures child-process color environment variables for wb-managed output.
+ *
+ * @param env The child-process environment to mutate.
+ * @param preserveColor Whether wb should preserve colors for output that it captures and reprints to an interactive TTY.
+ */
+export function configureColorEnv(env: Record<string, string | undefined>, preserveColor?: boolean): void {
+  if (env.NO_COLOR !== undefined || preserveColor === false) {
+    // NO_COLOR and preserveColor=false are explicit no-color choices, so inherited FORCE_COLOR must not leak through.
+    delete env.FORCE_COLOR;
+  } else if (preserveColor && process.stdout.isTTY) {
+    env.FORCE_COLOR ||= '3';
+  }
 }
 
 function fixBunCommand(command: string): string {

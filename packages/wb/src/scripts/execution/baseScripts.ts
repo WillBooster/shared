@@ -182,7 +182,6 @@ export abstract class BaseScripts {
         'vitest',
         'run',
         ...(targets?.length ? targets : ['test/unit/']),
-        '--color',
         '--passWithNoTests',
         '--allowOnly',
         '--watch=false',

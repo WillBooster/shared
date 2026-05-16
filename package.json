@@ -21,7 +21,7 @@
     "lint-fix": "yarn workspaces foreach --all --parallel --verbose run lint-fix",
     "prepare": "lefthook install || true",
     "release": "yarn multi-semantic-release --debug",
-    "test": "CI=1 FORCE_COLOR=3 yarn workspaces foreach --all --verbose run test",
+    "test": "CI=1 yarn workspaces foreach --all --verbose run test",
     "typecheck": "wb typecheck",
     "verify": "wb verify",
     "verify-full": "wb verify --full"

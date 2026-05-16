@@ -190,7 +190,7 @@ describe('runConcurrently', () => {
     expect(exitCode).toBe(0);
   });
 
-  it('passes ci and forceColor through to child environments', async () => {
+  it('passes ci through to child environments', async () => {
     const spawnMock = vi.spyOn(child_process, 'spawn').mockImplementation((_command, _options) => {
       const child = {
         once(event: string, listener: (...args: unknown[]) => void) {
@@ -213,14 +213,12 @@ describe('runConcurrently', () => {
         killOthersOnFail: false,
         success: 'all',
         ci: true,
-        forceColor: true,
       })
     ).resolves.toBe(0);
 
     expect(spawnMock).toHaveBeenCalledOnce();
     const spawnOptions = spawnMock.mock.calls[0]?.[1] as child_process.SpawnOptions;
     expect(spawnOptions.env?.CI).toBe('1');
-    expect(spawnOptions.env?.FORCE_COLOR).toBe('3');
   });
 
   it('returns failure when a child process emits an error', async () => {

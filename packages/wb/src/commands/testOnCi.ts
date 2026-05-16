@@ -47,11 +47,10 @@ export async function testOnCi(
     process.exit(1);
   }
 
-  process.env.CI ||= '1';
-  process.env.FORCE_COLOR ||= '3';
-  process.env.WB_ENV ||= 'test';
-
   for (const project of projects.descendants) {
+    project.env.CI ||= '1';
+    project.env.WB_ENV ||= 'test';
+
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;

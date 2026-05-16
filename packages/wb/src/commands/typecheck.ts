@@ -44,7 +44,7 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
         // Disable interactive mode
         ci: projects.descendants.length > 1,
         exitIfFailed: false,
-        forceColor: true,
+        preserveColor: true,
       });
 
       // Re-try type checking after removing `.next` directory
