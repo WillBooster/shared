@@ -17,6 +17,11 @@ const builder = {
     type: 'boolean',
     default: false,
   },
+  'drizzle-strict': {
+    description: 'Fail when drizzle-kit check fails.',
+    type: 'boolean',
+    default: false,
+  },
 } as const;
 
 type GenCodeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
@@ -37,7 +42,9 @@ export const genCodeCommand: CommandModule<unknown, GenCodeCommandOptions> = {
     for (const project of prepareForRunningCommand('gen-code', projects.descendants)) {
       const scripts = getGenCodeScripts(project, argv);
       if (scripts.length === 0) {
-        console.info(chalk.yellow(`No code generation needed for ${project.name}.`));
+        if (argv.verbose) {
+          console.info(chalk.yellow(`No code generation needed for ${project.name}.`));
+        }
         continue;
       }
       generated = true;
@@ -72,7 +79,7 @@ function getGenCodeScripts(project: Project, argv: GenCodeCommandArgv): string[]
   // Existing Drizzle+Chakra repositories only generated Chakra types. Keep the
   // Drizzle compatibility check limited to Drizzle-only gen-code scripts.
   if (scripts.length === 0 && drizzleConfigPath) {
-    scripts.push(`YARN drizzle-kit check --config ${drizzleConfigPath} || true`);
+    scripts.push(`YARN drizzle-kit check --config ${drizzleConfigPath}${argv.drizzleStrict ? '' : ' || true'}`);
   }
   return scripts;
 }
