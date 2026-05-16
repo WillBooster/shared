@@ -451,9 +451,12 @@ async function normalizePackageMetadata(
 }
 
 function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: string | undefined): boolean {
-  if (config.depending.blitz || config.depending.chakra || config.depending.prisma) return true;
-  if (config.depending.drizzle && oldGenCodeScript?.includes('drizzle-kit check')) return true;
-  return false;
+  return (
+    config.depending.blitz ||
+    config.depending.chakra ||
+    config.depending.prisma ||
+    (config.depending.drizzle && !!oldGenCodeScript?.includes('drizzle-kit check'))
+  );
 }
 
 function appendFormatCodeCommand(formatScript: string | undefined, config: PackageConfig): string {
