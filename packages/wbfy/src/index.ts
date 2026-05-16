@@ -26,6 +26,7 @@ import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
 import { generatePyrightConfigJson } from './generators/pyrightConfig.js';
+import { fixRailwayignore } from './generators/railwayignore.js';
 import { generateReadme } from './generators/readme.js';
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJson } from './generators/renovateJson.js';
@@ -134,6 +135,7 @@ async function main(): Promise<void> {
       generateGitattributes(rootConfig),
       generateGitHubTemplates(rootConfig),
       generateIdeaSettings(rootConfig),
+      fixRailwayignore(rootConfig),
       generateRenovateJson(rootConfig),
       generateReleaserc(rootConfig),
       ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
