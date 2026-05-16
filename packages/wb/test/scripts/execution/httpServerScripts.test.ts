@@ -74,7 +74,7 @@ describe('HttpServerScripts.testE2E', () => {
         '--kill-others',
         '--success',
         'first',
-        'YARN wb buildIfNeeded && node dist/index.js && exit 1',
+        'echo "no build" && node dist/index.js && exit 1',
         `wait-on -t 600000 -i 2000 http-get://127.0.0.1:3000 && ${buildShellCommand([
           'YARN',
           'vitest',
