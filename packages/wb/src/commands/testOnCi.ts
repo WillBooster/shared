@@ -50,9 +50,7 @@ export async function testOnCi(
   for (const project of projects.descendants) {
     project.env.CI ||= '1';
     project.env.WB_ENV ||= 'test';
-  }
 
-  for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;

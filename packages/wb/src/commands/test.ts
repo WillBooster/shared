@@ -99,16 +99,14 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     return 1;
   }
 
-  for (const project of projects.descendants) {
-    project.env.WB_ENV ||= 'test';
-  }
-
   // Get test targets from positional arguments
   const testTargets = (argv.targets ?? []) as string[];
   const forwardedPlaywrightArgs = argv['--'] ?? [];
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
 
   for (const project of projects.descendants) {
+    project.env.WB_ENV ||= 'test';
+
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;

@@ -264,12 +264,8 @@ export function configureColorEnv(env: Record<string, string | undefined>, prese
   if (env.NO_COLOR !== undefined || preserveColor === false) {
     // NO_COLOR and preserveColor=false are explicit no-color choices, so inherited FORCE_COLOR must not leak through.
     delete env.FORCE_COLOR;
-    return;
-  }
-
-  if (preserveColor && process.stdout.isTTY) {
+  } else if (preserveColor && process.stdout.isTTY) {
     env.FORCE_COLOR ||= '3';
-    return;
   }
 }
 
