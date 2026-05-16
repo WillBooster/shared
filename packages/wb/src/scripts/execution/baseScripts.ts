@@ -102,7 +102,7 @@ export abstract class BaseScripts {
 
   protected buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
     return [
-      `YARN wb buildIfNeeded ${argv.verbose ? '--verbose' : ''}`.trim(),
+      project.buildCommand,
       `${project.isBunAvailable ? 'bun' : 'node'} dist/index.js ${argv.normalizedArgsText ?? ''}`.trim(),
     ];
   }
