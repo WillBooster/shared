@@ -47,8 +47,10 @@ export async function testOnCi(
     process.exit(1);
   }
 
-  process.env.CI ||= '1';
-  process.env.WB_ENV ||= 'test';
+  for (const project of projects.descendants) {
+    project.env.CI ||= '1';
+    project.env.WB_ENV ||= 'test';
+  }
 
   for (const project of projects.descendants) {
     const deps = project.packageJson.dependencies ?? {};

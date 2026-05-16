@@ -99,7 +99,9 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     return 1;
   }
 
-  process.env.WB_ENV ||= 'test';
+  for (const project of projects.descendants) {
+    project.env.WB_ENV ||= 'test';
+  }
 
   // Get test targets from positional arguments
   const testTargets = (argv.targets ?? []) as string[];
