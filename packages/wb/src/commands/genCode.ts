@@ -68,8 +68,11 @@ function getGenCodeScripts(project: Project, argv: GenCodeCommandArgv): string[]
     scripts.push(chakraTypegenScript);
   }
 
-  if (scripts.length === 0 && shouldRunDrizzleCheck(project)) {
-    scripts.push(`YARN drizzle-kit check --config ${getDrizzleConfigPath(project)} || true`);
+  const drizzleConfigPath = project.hasDrizzle ? getDrizzleConfigPath(project) : undefined;
+  // Existing Drizzle+Chakra repositories only generated Chakra types. Keep the
+  // Drizzle compatibility check limited to Drizzle-only gen-code scripts.
+  if (scripts.length === 0 && drizzleConfigPath) {
+    scripts.push(`YARN drizzle-kit check --config ${drizzleConfigPath} || true`);
   }
   return scripts;
 }
@@ -86,12 +89,7 @@ function getChakraTypegenScript(project: Project, useStrict: boolean): string | 
   return;
 }
 
-function shouldRunDrizzleCheck(project: Project): boolean {
-  return project.hasDrizzle && fs.existsSync(path.join(project.dirPath, getDrizzleConfigPath(project)));
-}
-
-function getDrizzleConfigPath(project: Project): string {
-  const defaultConfigPath = 'drizzle.config.ts';
-  const candidates = [defaultConfigPath, 'drizzle.config.mts', 'drizzle.config.js', 'drizzle.config.mjs'];
-  return candidates.find((filePath) => fs.existsSync(path.join(project.dirPath, filePath))) ?? defaultConfigPath;
+function getDrizzleConfigPath(project: Project): string | undefined {
+  const candidates = ['drizzle.config.ts', 'drizzle.config.mts', 'drizzle.config.js', 'drizzle.config.mjs'];
+  return candidates.find((filePath) => fs.existsSync(path.join(project.dirPath, filePath)));
 }
