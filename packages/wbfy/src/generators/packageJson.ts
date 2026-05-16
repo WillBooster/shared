@@ -455,7 +455,7 @@ async function normalizePackageMetadata(
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    jsonObj.scripts['gen-code'] = 'wb gen-code';
+    jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
   addGenI18nTsPostinstallScript(config, jsonObj);
 

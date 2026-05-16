@@ -6,6 +6,7 @@ import type { CommandModule } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
+import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 
 const builder = {} as const;
@@ -42,10 +43,10 @@ function getGenCodeScripts(project: Project): string[] {
   if (project.hasOwnDependency('blitz')) {
     scripts.push('YARN blitz codegen');
     if (project.hasPrisma) {
-      scripts.push('YARN blitz prisma generate');
+      scripts.push(prismaScripts.generate(project));
     }
   } else if (project.hasPrisma) {
-    scripts.push('PRISMA generate');
+    scripts.push(prismaScripts.generate(project));
   }
 
   const chakraTypegenScript = getChakraScript(project);

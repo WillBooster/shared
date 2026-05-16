@@ -28,6 +28,7 @@ export const prismaCommand: CommandModule = {
       .command(createLitestreamConfigCommand)
       .command(deployCommand)
       .command(deployForceCommand)
+      .command(generateCommand)
       .command(listBackupsCommand)
       .command(migrateCommand)
       .command(migrateDevCommand)
@@ -89,6 +90,19 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
     const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
     for (const { project } of prepareForRunningDatabaseOrmCommand('prisma deploy-force', allProjects)) {
       await runWithSpawn(prismaScripts.deployForce(project), project, argv);
+    }
+  },
+};
+
+const generateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+  command: 'generate',
+  describe: 'Generate ORM client code',
+  builder,
+  async handler(argv) {
+    const allProjects = await findDatabaseOrmProjects(argv);
+    const unknownOptions = extractUnknownOptions(argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db generate', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).generate(project, unknownOptions), project, argv);
     }
   },
 };
