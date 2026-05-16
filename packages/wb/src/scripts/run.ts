@@ -10,8 +10,8 @@ interface Options {
   ci?: boolean;
   exitIfFailed?: boolean;
   onSignal?: (signal: NodeJS.Signals | null) => void;
-  forceColor?: boolean;
   omitSilentStart?: boolean;
+  preserveColor?: boolean;
   processSilentOutput?: (output: string) => string;
   printRawOutput?: boolean;
   printSilentOutputOnFailureOnly?: boolean;
@@ -60,7 +60,7 @@ export async function runWithSpawn(
       : undefined;
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
-    env: configureEnv(project.env, opts),
+    env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? Boolean(argv.silent) }),
     shell: true,
     stdio: argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
@@ -114,7 +114,7 @@ export function runWithSpawnInParallel(
 
     const ret = await spawnAsync(normalizedScript.runnable, undefined, {
       cwd: project.dirPath,
-      env: configureEnv(project.env, opts),
+      env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
       shell: true,
       stdio: 'pipe',
       timeout: opts.timeout,
@@ -156,7 +156,7 @@ export function runWithSpawnInParallelBuffered(
 
     const ret = await spawnAsync(normalizedScript.runnable, undefined, {
       cwd: project.dirPath,
-      env: configureEnv(project.env, opts),
+      env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? true }),
       shell: true,
       stdio: 'pipe',
       timeout: opts.timeout,
@@ -250,19 +250,20 @@ export function configureEnv(
   if (opts.ci) {
     newEnv.CI = '1';
   }
-  configureColorEnv(newEnv, opts.forceColor);
+  configureColorEnv(newEnv, opts.preserveColor);
   return newEnv;
 }
 
-export function configureColorEnv(env: Record<string, string | undefined>, forceColor?: boolean): void {
-  if (forceColor) {
-    env.FORCE_COLOR = '3';
-    delete env.NO_COLOR;
+export function configureColorEnv(env: Record<string, string | undefined>, preserveColor?: boolean): void {
+  if (env.NO_COLOR !== undefined) {
+    // NO_COLOR is an explicit user preference. wb may preserve color lost through pipes, but it should not override this.
+    delete env.FORCE_COLOR;
     return;
   }
 
-  if (env.NO_COLOR !== undefined && env.FORCE_COLOR !== undefined) {
-    delete env.FORCE_COLOR;
+  if (preserveColor && process.stdout.isTTY) {
+    env.FORCE_COLOR ||= '3';
+    return;
   }
 }
 

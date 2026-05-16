@@ -984,7 +984,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       typecheck: 'tsgo --noEmit',
     };
     if (hasJava) {
-      scripts.prettify = `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`;
+      scripts.prettify = `prettier --cache --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`;
     }
     if (config.doesContainSubPackageJsons) {
       scripts = merge(
@@ -999,7 +999,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
         }
       );
       if (hasJava) {
-        scripts.prettify = `prettier --cache --color --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(
+        scripts.prettify = `prettier --cache --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(
           ','
         )}}" "!**/packages/**" "!**/test{-,/}fixtures/**"`;
       }

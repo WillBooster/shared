@@ -81,7 +81,6 @@ describe('HttpServerScripts.testE2E', () => {
           'run',
           `test/e2e/quo'te.spec.ts`,
           'test/e2e/space path.spec.ts',
-          '--color',
           '--passWithNoTests',
           '--allowOnly',
           '--watch=false',

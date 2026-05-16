@@ -216,7 +216,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
 
   const formatterCommands: LintRunCommand[] = [];
   const linterCommands: LintRunCommand[] = [];
-  const lintRunOptions = { exitIfFailed: false, forceColor: !argv.printAllOutput } as const;
+  const lintRunOptions = { exitIfFailed: false, preserveColor: !argv.printAllOutput } as const;
   const shouldRunFormatters = Boolean(argv.format);
   const shouldRunLinters = !argv.format || argv.fix;
   if (files.length > 0) {
@@ -289,7 +289,6 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
           'YARN',
           'prettier',
           '--cache',
-          '--color',
           '--no-error-on-unmatched-pattern',
           '--write',
           '--',
