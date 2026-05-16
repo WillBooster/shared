@@ -58,6 +58,7 @@ interface Types {
 
 interface Job {
   'runs-on'?: string;
+  'timeout-minutes'?: number;
   permissions?: Record<string, string>;
   steps?: Step[];
   uses?: string;
@@ -354,6 +355,7 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
 }
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
+  removeExecutionFieldsFromReusableWorkflowJob(job);
   job.with ??= {};
   job.secrets ??= {};
   // Use trusted publishing instead of NPM_TOKEN
@@ -421,6 +423,14 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   } else {
     delete job.secrets;
   }
+}
+
+function removeExecutionFieldsFromReusableWorkflowJob(job: Job): void {
+  // Reusable workflow caller jobs cannot define runner execution fields.
+  // Existing repositories often had local jobs before wbfy migrated them to `uses`.
+  delete job['runs-on'];
+  delete job['timeout-minutes'];
+  delete job.steps;
 }
 
 function generateAutofixWorkflow(config: PackageConfig): Workflow {
