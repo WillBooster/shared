@@ -446,11 +446,8 @@ async function normalizePackageMetadata(
   const genCodeScript = jsonObj.scripts['gen-code'];
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
-  } else {
-    const generatedGenCodeScript = getGeneratedGenCodeScript(config, genCodeScript);
-    if (generatedGenCodeScript) {
-      jsonObj.scripts['gen-code'] = generatedGenCodeScript;
-    }
+  } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
+    jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
   addGenI18nTsPostinstallScript(config, jsonObj);
 
@@ -460,20 +457,13 @@ async function normalizePackageMetadata(
   }
 }
 
-function getGeneratedGenCodeScript(config: PackageConfig, oldGenCodeScript: string | undefined): string | undefined {
-  if (
+function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: string | undefined): boolean {
+  return (
     config.depending.blitz ||
     config.depending.chakra ||
+    config.depending.prisma ||
     (config.depending.drizzle && !!oldGenCodeScript?.includes('drizzle-kit check'))
-  ) {
-    return oldGenCodeScript;
-  }
-  if (config.depending.prisma) {
-    // The published wb versions used by generated projects expose Prisma through
-    // `wb prisma`, but do not consistently expose the aggregate `wb gen-code`.
-    return 'wb prisma generate';
-  }
-  return;
+  );
 }
 
 function appendFormatCodeCommand(formatScript: string | undefined, config: PackageConfig): string {

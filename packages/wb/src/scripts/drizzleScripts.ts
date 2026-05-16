@@ -24,8 +24,12 @@ class DrizzleScripts {
     return `YARN drizzle-kit migrate ${additionalOptions}`;
   }
 
-  migrateDev(_project: Project, additionalOptions = ''): string {
+  generate(_project: Project, additionalOptions = ''): string {
     return `YARN drizzle-kit generate ${additionalOptions}`;
+  }
+
+  migrateDev(_project: Project, additionalOptions = ''): string {
+    return this.generate(_project, additionalOptions);
   }
 
   seed(project: Project, scriptPath?: string): string {

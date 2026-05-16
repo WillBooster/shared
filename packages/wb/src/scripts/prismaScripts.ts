@@ -29,6 +29,10 @@ class PrismaScripts {
     return `PRISMA migrate deploy ${additionalOptions}`;
   }
 
+  generate(_: Project, additionalOptions = ''): string {
+    return ['PRISMA generate', additionalOptions].filter(Boolean).join(' ');
+  }
+
   deployForce(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
     const removeDbCommand = buildRemoveSqliteDbCommand(`${dirPath}/prod.sqlite3`);
@@ -44,7 +48,7 @@ class PrismaScripts {
   }
 
   migrate(project: Project, additionalOptions = ''): string {
-    return `PRISMA migrate deploy ${additionalOptions} && PRISMA generate && ${this.seed(project)}`;
+    return `PRISMA migrate deploy ${additionalOptions} && ${this.generate(project)} && ${this.seed(project)}`;
   }
 
   migrateDev(_: Project, additionalOptions = ''): string {

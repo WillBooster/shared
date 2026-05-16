@@ -183,8 +183,8 @@ export function normalizeScript(script: string, project: Project): { printable: 
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
     .replaceAll(
-      'PRISMA generate ',
-      project.packageJson.dependencies?.blitz ? 'PRISMA generate ' : 'PRISMA generate --no-hints '
+      /PRISMA generate(?!\s+--no-hints)(?=\s|$)/gu,
+      project.packageJson.dependencies?.blitz ? 'PRISMA generate' : 'PRISMA generate --no-hints'
     )
     .replaceAll('PRISMA ', project.packageJson.dependencies?.blitz ? 'YARN blitz prisma ' : 'YARN prisma ')
     .replaceAll('BUN run ', project.usesBunPackageManager ? `${projectPackageManagerWithRun} ` : 'YARN run ')
