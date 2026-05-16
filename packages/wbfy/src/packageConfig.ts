@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import fg from 'fast-glob';
 import { simpleGit } from 'simple-git';
-import toml from 'smol-toml';
+import { parse as parseToml } from 'smol-toml';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
 
@@ -60,6 +60,8 @@ export interface PackageConfig {
     semanticRelease: boolean;
     storybook: boolean;
     wb: boolean;
+    chakra: boolean;
+    drizzle: boolean;
   };
   release: {
     branches: string[];
@@ -201,6 +203,8 @@ export async function getPackageConfig(
       doesContainJavaInPackages: containsAny('packages/**/*.java', dirPath),
       depending: {
         blitz: !!dependencies.blitz,
+        chakra: !!devDependencies['@chakra-ui/cli'],
+        drizzle: !!dependencies['drizzle-orm'] || !!devDependencies['drizzle-kit'],
         firebase: !!devDependencies['firebase-tools'],
         genI18nTs: !!dependencies['gen-i18n-ts'] || !!devDependencies['gen-i18n-ts'],
         litestream: dockerfile.includes('install-litestream.sh'),
@@ -260,7 +264,7 @@ async function readMiseTasks(dirPath: string): Promise<Record<string, string>> {
   for (const fileName of ['mise.toml', '.mise.toml']) {
     const filePath = path.resolve(dirPath, fileName);
     try {
-      const settings = toml.parse(await fsp.readFile(filePath, 'utf8')) as { tasks?: Record<string, unknown> };
+      const settings = parseToml(await fsp.readFile(filePath, 'utf8')) as { tasks?: Record<string, unknown> };
       for (const [name, value] of Object.entries(settings.tasks ?? {})) {
         tasks[name] = readMiseTaskCommand(value);
       }
