@@ -84,15 +84,30 @@ export abstract class BaseScripts {
 
   protected abstract startDevProtected(_: Project, argv: ScriptArgv): string;
   protected startProductionProtected(project: Project, argv: ScriptArgv): string {
-    const ecosystemConfigPath = findEcosystemConfigPath(project);
-    const commands =
-      ecosystemConfigPath === undefined
-        ? [
-            `YARN wb buildIfNeeded ${argv.verbose ? '--verbose' : ''}`.trim(),
-            `${project.isBunAvailable ? 'bun' : 'node'} dist/index.js ${argv.normalizedArgsText ?? ''}`.trim(),
-          ]
-        : [project.buildCommand, `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`];
+    const customStartScriptPath = findCustomProductionStartScriptPath(project);
+    if (customStartScriptPath) {
+      return this.buildProductionCommand(project, argv, [
+        project.buildCommand,
+        `${buildShellCommand(['bash', customStartScriptPath])} ${argv.normalizedArgsText ?? ''}`.trim(),
+      ]);
+    }
 
+    const ecosystemConfigPath = findEcosystemConfigPath(project);
+    const commands = ecosystemConfigPath
+      ? [project.buildCommand, `pm2-runtime start --no-autorestart ${ecosystemConfigPath}`]
+      : this.buildDefaultProductionStartCommands(project, argv);
+
+    return this.buildProductionCommand(project, argv, commands);
+  }
+
+  protected buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
+    return [
+      project.buildCommand,
+      `${project.isBunAvailable ? 'bun' : 'node'} dist/index.js ${argv.normalizedArgsText ?? ''}`.trim(),
+    ];
+  }
+
+  protected buildProductionCommand(project: Project, argv: ScriptArgv, commands: string[]): string {
     const migrationCommands = [
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
       ...(project.hasDrizzle ? [drizzleScripts.migrate(project)] : []),
@@ -200,6 +215,14 @@ export abstract class BaseScripts {
     return `${this.waitApp(
       project
     )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
+  }
+}
+
+function findCustomProductionStartScriptPath(project: Project): string | undefined {
+  try {
+    return project.findFile('scripts/start-production.sh');
+  } catch {
+    return;
   }
 }
 

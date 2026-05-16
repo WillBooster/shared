@@ -15,6 +15,10 @@ class NextScripts extends BaseScripts {
   protected override startDevProtected(_: Project, argv: ScriptArgv): string {
     return `next dev --turbopack ${argv.normalizedArgsText ?? ''}`;
   }
+
+  protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
+    return [project.buildCommand, `next start ${argv.normalizedArgsText ?? ''}`.trim()];
+  }
 }
 
 export const nextScripts = new NextScripts();
