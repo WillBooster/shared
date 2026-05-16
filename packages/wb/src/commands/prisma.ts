@@ -123,7 +123,7 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
       const ormScripts = getDatabaseOrmScripts(orm);
       await runWithSpawn(ormScripts.migrate(project, unknownOptions), project, argv);
-      if (argv.checkIdempotency) {
+      if (shouldCheckIdempotency(project, argv.checkIdempotency)) {
         if (isProductionEnvironment(project)) {
           console.info(chalk.yellow(`Skipping idempotency check for ${project.name} in production environment.`));
         } else {
@@ -133,6 +133,14 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
     }
   },
 };
+
+function shouldCheckIdempotency(project: Project, checkIdempotency: boolean | undefined): boolean {
+  return checkIdempotency ?? isDockerEnabled(project);
+}
+
+function isDockerEnabled(project: Project): boolean {
+  return !!project.env.WB_DOCKER && project.env.WB_DOCKER !== '0' && project.env.WB_DOCKER !== 'false';
+}
 
 function isProductionEnvironment(project: Project): boolean {
   return project.env.WB_ENV === 'production' || project.env.MISE_ENV === 'production';
