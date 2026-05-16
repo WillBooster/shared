@@ -913,9 +913,9 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
   if (dependency === typescriptGoDependency) return isNewerManagedDependencyVersion(dependency, currentVersion);
-  // wbfy-managed tools must be kept current even when the package already pins
-  // a concrete version. In particular, build-ts owns declaration output paths.
-  return dependency === '@willbooster/wb' || dependency === buildTsDependency || oxlintDeps.includes(dependency);
+  // wbfy owns these tool baselines, but applying wbfy should not downgrade a
+  // repository that already pins a newer reviewed release.
+  return baselineManagedDependencies.has(dependency) && isNewerManagedDependencyVersion(dependency, currentVersion);
 }
 
 function isNewerManagedDependencyVersion(dependency: string, currentVersion: string): boolean {
