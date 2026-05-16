@@ -159,6 +159,7 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
     scripts.prettify = (scripts.prettify ?? '') + (await generatePrettierSuffix(config.dirPath));
   }
   normalizeYarnWorkspaceForeachScripts(scripts);
+  normalizeRailwayCliScript(config, scripts);
 }
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
@@ -180,6 +181,12 @@ function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): voi
       'yarn workspaces foreach --all'
     );
   }
+}
+
+function normalizeRailwayCliScript(config: PackageConfig, scripts: PackageJson.Scripts): void {
+  if (config.isBun || !scripts.railway?.includes('@railway/cli')) return;
+
+  scripts.railway = 'YARN_ENABLE_SCRIPTS=true yarn dlx @railway/cli';
 }
 
 async function applyPackageJsonConventions(
