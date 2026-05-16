@@ -60,7 +60,7 @@ export async function runWithSpawn(
       : undefined;
   const ret = await spawnAsync(normalizedScript.runnable, undefined, {
     cwd: project.dirPath,
-    env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? Boolean(argv.silent) }),
+    env: configureEnv(project.env, { ...opts, preserveColor: opts.preserveColor ?? (argv.silent ? true : undefined) }),
     shell: true,
     stdio: argv.silent ? 'pipe' : 'inherit',
     timeout: opts.timeout,
