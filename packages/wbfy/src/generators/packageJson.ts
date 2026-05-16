@@ -437,7 +437,7 @@ async function normalizePackageMetadata(
   }
 
   if (shouldGenerateWbGenCodeScript(config, jsonObj.scripts['gen-code'])) {
-    jsonObj.scripts['gen-code'] = generateWbGenCodeScript(jsonObj.scripts['gen-code']);
+    jsonObj.scripts['gen-code'] = 'wb gen-code';
   }
   addGenI18nTsPostinstallScript(config, jsonObj);
 
@@ -450,11 +450,8 @@ async function normalizePackageMetadata(
 function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: string | undefined): boolean {
   if (config.depending.blitz || config.depending.chakra || config.depending.prisma) return true;
   if (config.depending.drizzle && oldGenCodeScript?.includes('drizzle-kit check')) return true;
+  if (oldGenCodeScript?.includes('No code generation needed')) return true;
   return false;
-}
-
-function generateWbGenCodeScript(oldGenCodeScript: string | undefined): string {
-  return oldGenCodeScript?.includes('--strict') ? 'wb gen-code --chakra-strict' : 'wb gen-code';
 }
 
 function appendFormatCodeCommand(formatScript: string | undefined, config: PackageConfig): string {
