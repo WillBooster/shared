@@ -254,9 +254,15 @@ export function configureEnv(
   return newEnv;
 }
 
+/**
+ * Configures child-process color environment variables for wb-managed output.
+ *
+ * @param env The child-process environment to mutate.
+ * @param preserveColor Whether wb should preserve colors for output that it captures and reprints to an interactive TTY.
+ */
 export function configureColorEnv(env: Record<string, string | undefined>, preserveColor?: boolean): void {
-  if (env.NO_COLOR !== undefined) {
-    // NO_COLOR is an explicit user preference. wb may preserve color lost through pipes, but it should not override this.
+  if (env.NO_COLOR !== undefined || preserveColor === false) {
+    // NO_COLOR and preserveColor=false are explicit no-color choices, so inherited FORCE_COLOR must not leak through.
     delete env.FORCE_COLOR;
     return;
   }
