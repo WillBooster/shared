@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import merge from 'deepmerge';
 import fg from 'fast-glob';
@@ -29,9 +30,7 @@ const typescriptGoDependency = '@typescript/native-preview';
 const typescriptDependency = 'typescript';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
-const wbfyPackageJson = JSON.parse(
-  fs.readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
-) as PackageJson;
+const wbfyPackageJson = readWbfyPackageJson();
 const managedDependencyVersions = {
   ...wbfyPackageJson.dependencies,
   ...wbfyPackageJson.devDependencies,
@@ -832,6 +831,21 @@ function getManagedDependencyVersion(dependency: string): string | undefined {
   // baseline instead of live npm latest so generated lockfiles do not pull
   // unreviewed tool releases into every repository at runtime.
   return managedDependencyVersions[dependency];
+}
+
+function readWbfyPackageJson(): PackageJson {
+  let dirPath = path.dirname(fileURLToPath(import.meta.url));
+  while (true) {
+    const packageJsonPath = path.join(dirPath, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson;
+      if (packageJson.name === '@willbooster/wbfy') return packageJson;
+    }
+
+    const parentDirPath = path.dirname(dirPath);
+    if (parentDirPath === dirPath) throw new Error('Could not find @willbooster/wbfy package.json');
+    dirPath = parentDirPath;
+  }
 }
 
 function getDependencyVersionFromNpm(dependency: string): string {
