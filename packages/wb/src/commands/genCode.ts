@@ -53,32 +53,23 @@ function getGenCodeScripts(project: Project): string[] {
     scripts.push(chakraTypegenScript);
   }
 
-  scripts.push(...getDrizzleOnlyCompatibilityScripts(project, scripts));
+  const drizzleConfigPath = scripts.length === 0 && project.hasDrizzle ? getDrizzleConfigPath(project) : undefined;
+  if (drizzleConfigPath) {
+    scripts.push(`YARN drizzle-kit check --config ${drizzleConfigPath} || true`);
+  }
   return scripts;
 }
 
 function getChakraScript(project: Project): string | undefined {
   if (!project.hasOwnDependency('@chakra-ui/cli')) return;
 
-  const coreThemePath = 'src/core/theme.ts';
-  if (getDependencyMajor(project, '@chakra-ui/cli') === 2 && fileExists(project, coreThemePath)) {
-    return `YARN chakra-cli tokens ${coreThemePath}`;
+  if (getOwnDependencyMajor(project, '@chakra-ui/cli') === 2) {
+    return 'YARN chakra-cli tokens src/core/theme.ts';
   }
-  const themePath = 'src/theme.ts';
-  if (fileExists(project, themePath)) {
-    return `YARN chakra typegen ${themePath} --strict`;
-  }
-  if (fileExists(project, coreThemePath)) {
-    return `YARN chakra-cli tokens ${coreThemePath}`;
+  if (fileExists(project, 'src/theme.ts')) {
+    return 'YARN chakra typegen src/theme.ts --strict';
   }
   return;
-}
-
-function getDrizzleOnlyCompatibilityScripts(project: Project, alreadyGeneratedScripts: string[]): string[] {
-  if (alreadyGeneratedScripts.length > 0 || !project.hasDrizzle) return [];
-
-  const drizzleConfigPath = getDrizzleConfigPath(project);
-  return drizzleConfigPath ? [`YARN drizzle-kit check --config ${drizzleConfigPath} || true`] : [];
 }
 
 function getDrizzleConfigPath(project: Project): string | undefined {
@@ -86,20 +77,15 @@ function getDrizzleConfigPath(project: Project): string | undefined {
   return candidates.find((filePath) => fileExists(project, filePath));
 }
 
-function getDependencyMajor(project: Project, packageName: string): number | undefined {
-  const version = getOwnDependencyVersion(project, packageName);
-  const major = version?.match(/\d+/u)?.[0];
-  return major === undefined ? undefined : Number(major);
-}
-
-function getOwnDependencyVersion(project: Project, packageName: string): string | undefined {
+function getOwnDependencyMajor(project: Project, packageName: string): number | undefined {
   const packageJson = project.packageJson;
-  return (
+  const version =
     packageJson.dependencies?.[packageName] ??
     packageJson.devDependencies?.[packageName] ??
     packageJson.optionalDependencies?.[packageName] ??
-    packageJson.peerDependencies?.[packageName]
-  );
+    packageJson.peerDependencies?.[packageName];
+  const major = version?.match(/\d+/u)?.[0];
+  return major === undefined ? undefined : Number(major);
 }
 
 function fileExists(project: Project, filePath: string): boolean {
