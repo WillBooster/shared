@@ -135,7 +135,7 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
 };
 
 function shouldCheckIdempotency(project: Project, checkIdempotency: boolean | undefined): boolean {
-  return checkIdempotency === true || isDockerEnabled(project);
+  return checkIdempotency ?? isDockerEnabled(project);
 }
 
 function isDockerEnabled(project: Project): boolean {
