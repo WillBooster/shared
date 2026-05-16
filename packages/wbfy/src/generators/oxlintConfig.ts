@@ -75,7 +75,8 @@ function getConfigContent(config: PackageConfig): string {
   if (!config.isEsmPackage) {
     return `${managedConfigBlocks.getBlock(
       'base',
-      `// oxlint-disable typescript(TS2591), unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids Node typeless ESM warnings.
+      `/// <reference types="node" />
+// oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
 const oxlintBaseConfig = require('@willbooster/oxlint-config');
 
 ${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig)}`
