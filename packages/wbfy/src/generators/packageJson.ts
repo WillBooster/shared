@@ -581,9 +581,7 @@ function installNpmDependencies(
 
   const dependencySpecifiers = [
     ...new Set(
-      dependencies.map((dependency) =>
-        getInstallDependencySpecifier(dependency, packageJsonDependencies[dependency], packageManager)
-      )
+      dependencies.map((dependency) => getInstallDependencySpecifier(dependency, packageJsonDependencies[dependency]))
     ),
   ];
   spawnSync(
@@ -593,15 +591,11 @@ function installNpmDependencies(
   );
 }
 
-function getInstallDependencySpecifier(
-  dependency: string,
-  currentVersion: string | undefined,
-  packageManager: 'bun' | 'yarn'
-): string {
-  // Yarn prefers local workspaces when adding a bare package name. Passing the
-  // resolved version keeps managed tools as npm dependencies in config-package
-  // monorepos, where those package names can also exist as workspaces.
-  if (packageManager === 'yarn' && currentVersion && !isWorkspaceProtocolRange(currentVersion)) {
+function getInstallDependencySpecifier(dependency: string, currentVersion: string | undefined): string {
+  // Package managers resolve a bare add target against live registry state.
+  // Passing the resolved version keeps generated installs aligned with the
+  // package.json baseline we just wrote.
+  if (currentVersion && !isWorkspaceProtocolRange(currentVersion)) {
     return `${dependency}@${currentVersion}`;
   }
 
