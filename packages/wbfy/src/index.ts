@@ -10,6 +10,7 @@ import { fixPrismaEnvFiles } from './fixers/prisma.js';
 import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js';
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
+import { fixWbDbCommand } from './fixers/wbDbCommand.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import { generateBunfigToml } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
@@ -188,6 +189,7 @@ async function main(): Promise<void> {
     }
     await Promise.all(promises);
     await promisePool.promiseAll();
+    await fixWbDbCommand(rootConfig);
 
     const packageManager = rootConfig.isBun ? 'bun' : 'yarn';
     // Refresh lock files
