@@ -10,11 +10,26 @@ import { promisePool } from '../utils/promisePool.js';
 const oldCommand = 'wb prisma';
 const newCommand = 'wb db';
 const maxTextFileBytes = 1024 * 1024;
+const migrationTargets = [
+  '**/*.{cjs,cts,js,json,jsx,md,mdc,mjs,mts,sh,tsx,ts,toml,txt,yaml,yml}',
+  '**/.env',
+  '**/.env.*',
+  '**/.github/workflows/*',
+  '**/.gitignore',
+  '**/.dockerignore',
+  '**/Dockerfile',
+  '**/Dockerfile.*',
+  '**/Makefile',
+  '**/mise.toml',
+  '**/.mise.toml',
+  '**/lefthook.yml',
+  '**/package.json',
+];
 
 export async function fixWbDbCommand(rootConfig: PackageConfig): Promise<void> {
   if (rootConfig.repoAuthor === 'WillBooster' && rootConfig.repoName === 'shared') return;
 
-  const filePaths = await fg('**/*', {
+  const filePaths = await fg(migrationTargets, {
     absolute: true,
     cwd: rootConfig.dirPath,
     dot: true,
