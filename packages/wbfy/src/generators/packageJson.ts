@@ -281,13 +281,6 @@ async function applyPackageJsonConventions(
   if (!isWbPackage(jsonObj)) {
     devDependencies.push(wbDependency);
   }
-  if (config.depending.wb || config.isBun) {
-    for (const [key, value] of Object.entries(jsonObj.scripts)) {
-      if (typeof value !== 'string') continue;
-      jsonObj.scripts[key] = value.replaceAll(/wb\s+db/gu, 'wb prisma');
-    }
-  }
-
   // build-ts owns TypeScript execution and declaration emit. wbfy must always
   // keep existing build-ts users current because older releases can emit .d.ts
   // files at paths that no longer match package exports.
@@ -999,6 +992,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       verify: 'bun --bun wb verify',
       'verify-full': 'bun --bun wb verify --full',
     };
+    applyDatabaseScripts(config, scripts, 'bun --bun wb db');
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     if (!hasTypecheck) {
       delete scripts.typecheck;
@@ -1063,9 +1057,18 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       scripts.verify = 'wb verify';
       scripts['verify-full'] = 'wb verify --full';
     }
+    applyDatabaseScripts(config, scripts, 'wb db');
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     return scripts;
   }
+}
+
+function applyDatabaseScripts(config: PackageConfig, scripts: Record<string, string>, wbDbCommand: string): void {
+  if (!config.depending.prisma && !config.depending.drizzle) return;
+
+  scripts['db-create-migration'] = `${wbDbCommand} migrate-dev`;
+  scripts['db-migrate'] = `${wbDbCommand} migrate --check-idempotency`;
+  scripts['db-view'] = `${wbDbCommand} studio`;
 }
 
 function isWbPackage(packageJson: PackageJson | undefined): boolean {
