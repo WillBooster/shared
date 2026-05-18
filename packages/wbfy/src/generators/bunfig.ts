@@ -51,6 +51,10 @@ const minimumReleaseAgeExcludes = [
   '@typescript/native-preview-linux-x64',
   '@typescript/native-preview-win32-arm64',
   '@typescript/native-preview-win32-x64',
+  // Bun itself releases its first-party type packages in lockstep with the
+  // runtime, so generated Bun repos must be able to install them immediately.
+  '@types/bun',
+  'bun-types',
   'oxfmt',
   '@oxfmt/binding-android-arm-eabi',
   '@oxfmt/binding-android-arm64',
