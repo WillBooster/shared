@@ -18,6 +18,7 @@ Commands:
   wb lint [files...]            Lint code
   wb maintenance <action>       Start or stop a lightweight maintenance page
                                 server.
+                                Example: wb maintenance start
   wb optimizeForDockerBuild     Optimize configuration when building a Docker
                                 image
   wb prisma                     Run database commands              [aliases: db]
