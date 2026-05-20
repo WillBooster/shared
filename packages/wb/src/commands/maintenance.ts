@@ -91,7 +91,7 @@ server.listen(${port}, '0.0.0.0', () => {
 
 export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
   command: 'maintenance <action>',
-  describe: 'Start or stop a lightweight maintenance page server.',
+  describe: 'Start or stop a lightweight maintenance page server. Example: wb maintenance start',
   builder: (yargs: Argv<unknown>) =>
     yargs
       .positional('action', {
@@ -107,8 +107,13 @@ export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
       process.exit(1);
     }
 
-    const port = parsePort(project.env.PORT);
     const action = argv.action;
+    if (project.env.WB_ENV === 'test') {
+      console.info(`Skip maintenance ${action} because WB_ENV is test.`);
+      return;
+    }
+
+    const port = parsePort(project.env.PORT);
     if (action === 'start') {
       await startMaintenanceServer(project, port);
       return;
