@@ -30,13 +30,14 @@ const typescriptGoDependency = '@typescript/native-preview';
 const typescriptDependency = 'typescript';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
+const lefthookDependency = 'lefthook';
 const wbfyPackageJson = readWbfyPackageJson();
 const managedDependencyVersions = {
   ...wbfyPackageJson.dependencies,
   ...wbfyPackageJson.devDependencies,
   ...wbfyPackageJson.peerDependencies,
 };
-const baselineManagedDependencies = new Set([wbDependency, buildTsDependency, ...oxlintDeps]);
+const baselineManagedDependencies = new Set([wbDependency, buildTsDependency, lefthookDependency, ...oxlintDeps]);
 const willBoosterConfigsManagedDependencies = [
   '@willbooster/prettier-config',
   ...oxlintDeps.filter((dependency) => dependency.startsWith('@willbooster/')),
@@ -232,7 +233,7 @@ async function applyPackageJsonConventions(
     delete jsonObj.scripts.prepack;
     delete jsonObj.scripts.postpack;
     jsonObj.scripts.prepare = 'lefthook install || true';
-    devDependencies.push('lefthook');
+    devDependencies.push(lefthookDependency);
 
     if (config.depending.semanticRelease) {
       if (
