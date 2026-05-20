@@ -4,12 +4,4 @@ set -e
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 
-if [ -f "${SCRIPT_DIR}/cleanup.sh" ]; then
-  WB_KEEP_DOCKER_SCRIPTS=1 bash "${SCRIPT_DIR}/cleanup.sh"
-  exit
-fi
-
-apt-get purge -qq -y curl wget || true
-apt-get autoremove -qq -y
-apt-get clean -qq
-rm -rf /var/lib/apt/lists/*
+WB_KEEP_DOCKER_SCRIPTS=1 bash "${SCRIPT_DIR}/cleanup.sh"
