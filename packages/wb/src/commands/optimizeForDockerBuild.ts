@@ -1,6 +1,7 @@
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
@@ -59,6 +60,9 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       const distDirPath = argv.outside ? path.join(project.dirPath, 'dist') : project.dirPath;
       await fs.promises.mkdir(distDirPath, { recursive: true });
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
+      if (argv.outside) {
+        await writeDockerShellScripts(path.join(distDirPath, 'bash'));
+      }
     }
     if (!argv.dryRun && !argv.outside) {
       child_process.spawnSync(packageManager, ['install'], {
@@ -68,6 +72,33 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
   },
 };
+
+async function writeDockerShellScripts(dirPath: string): Promise<void> {
+  const sourceDirPath = findDockerShellScriptsDirPath();
+  await fs.promises.mkdir(dirPath, { recursive: true });
+  for (const dirent of await fs.promises.readdir(sourceDirPath, { withFileTypes: true })) {
+    if (!dirent.isFile() || !dirent.name.endsWith('.sh')) continue;
+
+    const targetFilePath = path.join(dirPath, dirent.name);
+    await fs.promises.copyFile(path.join(sourceDirPath, dirent.name), targetFilePath);
+    await fs.promises.chmod(targetFilePath, 0o755);
+  }
+  console.info(`Generated Docker shell scripts: ${path.relative(process.cwd(), dirPath) || dirPath}`);
+}
+
+function findDockerShellScriptsDirPath(): string {
+  let currentDirPath = path.dirname(fileURLToPath(import.meta.url));
+  for (;;) {
+    const candidate = path.join(currentDirPath, 'docker', 'bash');
+    if (fs.existsSync(candidate)) return candidate;
+
+    const parentDirPath = path.dirname(currentDirPath);
+    if (parentDirPath === currentDirPath) {
+      throw new Error('Docker shell scripts directory not found.');
+    }
+    currentDirPath = parentDirPath;
+  }
+}
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
   promoteRuntimeDevDependencies(packageJson);
