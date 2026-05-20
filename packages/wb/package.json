@@ -13,6 +13,7 @@
   "bin": "bin/index.js",
   "files": [
     "bin/",
+    "docker/",
     "dist/"
   ],
   "scripts": {

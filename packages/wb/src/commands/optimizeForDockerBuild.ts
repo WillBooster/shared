@@ -1,13 +1,13 @@
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findDescendantProjects } from '../project.js';
-import { dockerScriptFiles } from '../scripts/dockerScriptFiles.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -74,13 +74,30 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 };
 
 async function writeDockerShellScripts(dirPath: string): Promise<void> {
+  const sourceDirPath = findDockerShellScriptsDirPath();
   await fs.promises.mkdir(dirPath, { recursive: true });
-  for (const [fileName, content] of Object.entries(dockerScriptFiles)) {
-    const filePath = path.join(dirPath, fileName);
-    await fs.promises.writeFile(filePath, content, { encoding: 'utf8', mode: 0o755 });
-    await fs.promises.chmod(filePath, 0o755);
+  for (const dirent of await fs.promises.readdir(sourceDirPath, { withFileTypes: true })) {
+    if (!dirent.isFile() || !dirent.name.endsWith('.sh')) continue;
+
+    const targetFilePath = path.join(dirPath, dirent.name);
+    await fs.promises.copyFile(path.join(sourceDirPath, dirent.name), targetFilePath);
+    await fs.promises.chmod(targetFilePath, 0o755);
   }
   console.info(`Generated Docker shell scripts: ${path.relative(process.cwd(), dirPath) || dirPath}`);
+}
+
+function findDockerShellScriptsDirPath(): string {
+  let currentDirPath = path.dirname(fileURLToPath(import.meta.url));
+  for (;;) {
+    const candidate = path.join(currentDirPath, 'docker', 'bash');
+    if (fs.existsSync(candidate)) return candidate;
+
+    const parentDirPath = path.dirname(currentDirPath);
+    if (parentDirPath === currentDirPath) {
+      throw new Error('Docker shell scripts directory not found.');
+    }
+    currentDirPath = parentDirPath;
+  }
 }
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
