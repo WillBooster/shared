@@ -10,6 +10,7 @@ import { concurrentlyCommand } from './commands/concurrently.js';
 import { genCodeCommand } from './commands/genCode.js';
 import { killPortIfNonCiCommand } from './commands/killPortIfNonCi.js';
 import { lintCommand } from './commands/lint.js';
+import { maintenanceCommand } from './commands/maintenance.js';
 import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
 import { prismaCommand } from './commands/prisma.js';
 import { retryCommand } from './commands/retry.js';
@@ -40,6 +41,7 @@ await yargs(hideBin(process.argv))
   .command(genCodeCommand)
   .command(killPortIfNonCiCommand)
   .command(lintCommand)
+  .command(maintenanceCommand)
   .command(optimizeForDockerBuildCommand)
   .command(prismaCommand)
   .command(retryCommand)

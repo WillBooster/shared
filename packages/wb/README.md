@@ -16,6 +16,8 @@ Commands:
   wb kill-port-if-non-ci        Kill the port specified by PORT environment
                                 variable if non-CI.
   wb lint [files...]            Lint code
+  wb maintenance <action>       Start or stop a lightweight maintenance page
+                                server.
   wb optimizeForDockerBuild     Optimize configuration when building a Docker
                                 image
   wb prisma                     Run database commands              [aliases: db]
