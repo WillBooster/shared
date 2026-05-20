@@ -1,4 +1,5 @@
 import child_process from 'node:child_process';
+import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
@@ -173,10 +174,7 @@ function stopMaintenanceServer(project: Project, port: number): void {
 
 function parsePort(portEnv: string | undefined): number {
   const port = Number(portEnv);
-  if (!Number.isInteger(port) || port <= 0) {
-    console.error(chalk.red(`PORT environment variable is invalid: ${portEnv}`));
-    process.exit(1);
-  }
+  assert.ok(Number.isInteger(port) && port > 0, `PORT environment variable is invalid: ${portEnv}`);
   return port;
 }
 
