@@ -6,6 +6,7 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 
 # Force to use 0.5.10 since the latest litestream is very unstable.
 apt-get -qq install -y --no-install-recommends curl \
+  && LITESTREAM_VERSION=$(curl --silent "https://api.github.com/repos/benbjohnson/litestream/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/^v//') \
   && LITESTREAM_VERSION=0.5.10 \
   && DEB_FILE="litestream-${LITESTREAM_VERSION}-linux-${ARCH}.deb" \
   && echo "Installing Litestream: ${DEB_FILE}" \
