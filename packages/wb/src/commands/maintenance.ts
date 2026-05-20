@@ -63,16 +63,14 @@ function getMaintenanceServerSource(port: number, pidPath: string): string {
 import fs from 'node:fs';
 import http from 'node:http';
 
-const port = ${port};
 const pidPath = ${JSON.stringify(pidPath)};
-const body = ${JSON.stringify(maintenanceHtml)};
 
 const server = http.createServer((_request, response) => {
   response.writeHead(503, {
     'cache-control': 'no-store',
     'content-type': 'text/html; charset=utf-8',
   });
-  response.end(body);
+  response.end(${JSON.stringify(maintenanceHtml)});
 });
 
 server.on('error', () => {
@@ -84,7 +82,7 @@ server.on('error', () => {
   process.exit(1);
 });
 
-server.listen(port, '0.0.0.0', () => {
+server.listen(${port}, '0.0.0.0', () => {
   fs.writeFileSync(pidPath, String(process.pid) + '\n');
 });
 `;
