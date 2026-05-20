@@ -57,21 +57,14 @@ const maintenanceHtml = `<!doctype html>
     </main>
   </body>
 </html>`;
-const maintenanceServerSource = String.raw`
+
+function getMaintenanceServerSource(port: number, pidPath: string): string {
+  return String.raw`
 import fs from 'node:fs';
 import http from 'node:http';
 
-const port = Number(process.env.PORT);
-if (!Number.isInteger(port) || port <= 0) {
-  console.error('PORT environment variable is invalid.');
-  process.exit(1);
-}
-const pidPath = process.env.WB_MAINTENANCE_PID_PATH;
-if (!pidPath) {
-  console.error('WB_MAINTENANCE_PID_PATH environment variable is not set.');
-  process.exit(1);
-}
-
+const port = ${port};
+const pidPath = ${JSON.stringify(pidPath)};
 const body = ${JSON.stringify(maintenanceHtml)};
 
 const server = http.createServer((_request, response) => {
@@ -96,6 +89,7 @@ server.listen(port, '0.0.0.0', () => {
   fs.writeFileSync(pidPath, String(process.pid) + '\n');
 });
 `;
+}
 
 export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
   command: 'maintenance <action>',
@@ -145,11 +139,15 @@ async function startMaintenanceServer(project: Project, port: number): Promise<v
   }
   fs.mkdirSync(path.dirname(pidPath), { recursive: true });
 
-  const child = child_process.spawn(process.execPath, ['--input-type=module', '--eval', maintenanceServerSource], {
-    detached: true,
-    env: { ...project.env, PORT: String(port), WB_MAINTENANCE_PID_PATH: pidPath },
-    stdio: 'ignore',
-  });
+  const child = child_process.spawn(
+    process.execPath,
+    ['--input-type=module', '--eval', getMaintenanceServerSource(port, pidPath)],
+    {
+      detached: true,
+      env: project.env,
+      stdio: 'ignore',
+    }
+  );
   if (child.pid === undefined) {
     throw new Error('Failed to start maintenance server.');
   }
