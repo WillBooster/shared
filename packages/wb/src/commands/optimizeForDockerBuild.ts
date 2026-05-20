@@ -7,6 +7,7 @@ import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findDescendantProjects } from '../project.js';
+import { dockerScriptFiles } from '../scripts/dockerScriptFiles.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -59,6 +60,9 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       const distDirPath = argv.outside ? path.join(project.dirPath, 'dist') : project.dirPath;
       await fs.promises.mkdir(distDirPath, { recursive: true });
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
+      if (argv.outside) {
+        await writeDockerShellScripts(path.join(distDirPath, 'bash'));
+      }
     }
     if (!argv.dryRun && !argv.outside) {
       child_process.spawnSync(packageManager, ['install'], {
@@ -68,6 +72,16 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
   },
 };
+
+async function writeDockerShellScripts(dirPath: string): Promise<void> {
+  await fs.promises.mkdir(dirPath, { recursive: true });
+  for (const [fileName, content] of Object.entries(dockerScriptFiles)) {
+    const filePath = path.join(dirPath, fileName);
+    await fs.promises.writeFile(filePath, content, { encoding: 'utf8', mode: 0o755 });
+    await fs.promises.chmod(filePath, 0o755);
+  }
+  console.info(`Generated Docker shell scripts: ${path.relative(process.cwd(), dirPath) || dirPath}`);
+}
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
   promoteRuntimeDevDependencies(packageJson);
