@@ -10,6 +10,9 @@ import { findSelfProject, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 const builder = {} as const;
+type MaintenanceArgv = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder> & {
+  action: 'start' | 'stop';
+};
 const maintenanceHtml = `<!doctype html>
 <html lang="ja">
   <head>
@@ -54,11 +57,17 @@ const maintenanceHtml = `<!doctype html>
   </body>
 </html>`;
 const maintenanceServerSource = String.raw`
+import fs from 'node:fs';
 import http from 'node:http';
 
 const port = Number(process.env.PORT);
 if (!Number.isInteger(port) || port <= 0) {
   console.error('PORT environment variable is invalid.');
+  process.exit(1);
+}
+const pidPath = process.env.WB_MAINTENANCE_PID_PATH;
+if (!pidPath) {
+  console.error('WB_MAINTENANCE_PID_PATH environment variable is not set.');
   process.exit(1);
 }
 
@@ -73,13 +82,21 @@ const server = http.createServer((_request, response) => {
   response.end(body);
 });
 
-server.listen(port, '0.0.0.0');
+server.on('error', () => {
+  try {
+    fs.rmSync(pidPath, { force: true });
+  } catch {
+    // do nothing
+  }
+  process.exit(1);
+});
+
+server.listen(port, '0.0.0.0', () => {
+  fs.writeFileSync(pidPath, String(process.pid) + '\n');
+});
 `;
 
-export const maintenanceCommand: CommandModule<
-  unknown,
-  InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>
-> = {
+export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
   command: 'maintenance <action>',
   describe: 'Start or stop a lightweight maintenance page server.',
   builder: (yargs: Argv<unknown>) =>
@@ -89,7 +106,7 @@ export const maintenanceCommand: CommandModule<
         describe: 'Maintenance server action',
         type: 'string',
       })
-      .options(builder) as unknown as Argv<InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>>,
+      .options(builder) as unknown as Argv<MaintenanceArgv>,
   async handler(argv) {
     const project = findSelfProject(argv);
     if (!project) {
@@ -98,7 +115,7 @@ export const maintenanceCommand: CommandModule<
     }
 
     const port = parsePort(project.env.PORT);
-    const action = String(argv.action);
+    const action = argv.action;
     if (action === 'start') {
       await startMaintenanceServer(project, port);
       return;
@@ -126,15 +143,15 @@ async function startMaintenanceServer(project: Project, port: number): Promise<v
 
   const child = child_process.spawn(process.execPath, ['--input-type=module', '--eval', maintenanceServerSource], {
     detached: true,
-    env: { ...process.env, PORT: String(port) },
+    env: { ...project.env, PORT: String(port), WB_MAINTENANCE_PID_PATH: pidPath },
     stdio: 'ignore',
   });
   if (child.pid === undefined) {
     throw new Error('Failed to start maintenance server.');
   }
 
-  fs.writeFileSync(pidPath, `${child.pid}\n`);
   child.unref();
+  await waitForPidFile(pidPath, child.pid);
   console.info(`Started maintenance server on port ${port}.`);
 }
 
@@ -146,8 +163,10 @@ function stopMaintenanceServer(project: Project, port: number): void {
     return;
   }
 
-  if (isProcessRunning(pid)) {
+  try {
     process.kill(pid, 'SIGTERM');
+  } catch {
+    // do nothing
   }
   removePidFile(pidPath);
   console.info(`Stopped maintenance server on port ${port}.`);
@@ -210,4 +229,22 @@ function removePidFile(pidPath: string): void {
   } catch {
     // do nothing
   }
+}
+
+async function waitForPidFile(pidPath: string, pid: number): Promise<void> {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (readPid(pidPath) !== undefined) return;
+    if (!isProcessRunning(pid)) break;
+    await sleep(50);
+  }
+
+  removePidFile(pidPath);
+  throw new Error('Failed to start maintenance server.');
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

@@ -36,7 +36,7 @@ const managedDependencyVersions = {
   ...wbfyPackageJson.devDependencies,
   ...wbfyPackageJson.peerDependencies,
 };
-const baselineManagedDependencies = new Set([wbDependency, buildTsDependency, ...oxlintDeps]);
+const baselineManagedDependencies = new Set([wbDependency, buildTsDependency, 'lefthook', ...oxlintDeps]);
 const willBoosterConfigsManagedDependencies = [
   '@willbooster/prettier-config',
   ...oxlintDeps.filter((dependency) => dependency.startsWith('@willbooster/')),
