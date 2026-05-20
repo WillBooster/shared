@@ -4,8 +4,8 @@ import path from 'node:path';
 import type { Project } from '../project.js';
 
 const FILE_SCHEMA = 'file:';
-const LITESTREAM_CONFIG_OPTION =
-  '-config "$(if [ -f litestream.yml ]; then echo litestream.yml; else echo /etc/litestream.yml; fi)"';
+const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
+const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
 
 const POSSIBLE_PRISMA_PATHS = [
   { schemaPath: path.join('prisma', 'schema.prisma'), dbPath: 'prisma' },
@@ -38,15 +38,16 @@ class PrismaScripts {
   deployForce(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
     const removeDbCommand = buildRemoveSqliteDbCommand(`${dirPath}/prod.sqlite3`);
+    const litestreamConfigOption = getLitestreamConfigOption(project);
     // `prisma migrate reset` can fail depending on the state of the existing database, so we remove it first.
     // Don't skip "migrate deploy" because restored database may be older than the current schema.
     return `${removeDbCommand}; PRISMA migrate reset --force --skip-seed && ${removeDbCommand}
-      && litestream restore ${LITESTREAM_CONFIG_OPTION} -o ${dirPath}/prod.sqlite3 ${dirPath}/prod.sqlite3 && ls -ahl ${dirPath}/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
+      && litestream restore ${litestreamConfigOption} -o ${dirPath}/prod.sqlite3 ${dirPath}/prod.sqlite3 && ls -ahl ${dirPath}/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
   listBackups(project: Project): string {
     const dirPath = getDatabaseDirPath(project);
-    return `litestream ltx ${LITESTREAM_CONFIG_OPTION} ${dirPath}/prod.sqlite3`;
+    return `litestream ltx ${getLitestreamConfigOption(project)} ${dirPath}/prod.sqlite3`;
   }
 
   migrate(project: Project, additionalOptions = ''): string {
@@ -73,7 +74,7 @@ class PrismaScripts {
 
   restore(project: Project, outputPath: string): string {
     const dirPath = getDatabaseDirPath(project);
-    return `rm -Rf ${outputPath}*; litestream restore ${LITESTREAM_CONFIG_OPTION} -o ${outputPath} ${dirPath}/prod.sqlite3`;
+    return `rm -Rf ${outputPath}*; litestream restore ${getLitestreamConfigOption(project)} -o ${outputPath} ${dirPath}/prod.sqlite3`;
   }
 
   seed(project: Project, scriptPath?: string): string {
@@ -112,6 +113,13 @@ function getDatabaseDirPath(project: Project): string {
 function getPrismaBaseDir(project: Project): string | undefined {
   return POSSIBLE_PRISMA_PATHS.find(({ schemaPath }) => fs.existsSync(path.resolve(project.dirPath, schemaPath)))
     ?.dbPath;
+}
+
+function getLitestreamConfigOption(project: Project): string {
+  const localConfigPath = path.join(project.dirPath, LITESTREAM_CONFIG_FILE_NAME);
+  if (fs.existsSync(localConfigPath)) return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
+  if (fs.existsSync(DEFAULT_LITESTREAM_CONFIG_PATH)) return `-config ${DEFAULT_LITESTREAM_CONFIG_PATH}`;
+  return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
 }
 
 function buildRemoveSqliteDbCommand(dbPath: string): string {
