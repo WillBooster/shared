@@ -71,7 +71,6 @@ const server = http.createServer((_request, response) => {
   response.writeHead(503, {
     'cache-control': 'no-store',
     'content-type': 'text/html; charset=utf-8',
-    'retry-after': '300',
   });
   response.end(body);
 });
