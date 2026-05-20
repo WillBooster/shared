@@ -1,13 +1,14 @@
 import child_process from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
 import path from 'node:path';
+import { setTimeout } from 'node:timers/promises';
 
 import chalk from 'chalk';
 import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { isPortAvailable } from '../utils/port.js';
 
 const builder = {} as const;
 type MaintenanceArgv = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder> & {
@@ -138,7 +139,10 @@ async function startMaintenanceServer(project: Project, port: number): Promise<v
   }
   removePidFile(pidPath);
 
-  await assertPortAvailable(port);
+  if (!(await isPortAvailable(port))) {
+    console.error(chalk.red(`Port ${port} is already in use.`));
+    process.exit(1);
+  }
   fs.mkdirSync(path.dirname(pidPath), { recursive: true });
 
   const child = child_process.spawn(process.execPath, ['--input-type=module', '--eval', maintenanceServerSource], {
@@ -181,26 +185,6 @@ function parsePort(portEnv: string | undefined): number {
   return port;
 }
 
-async function assertPortAvailable(port: number): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const server = net.createServer();
-    server.once('error', reject);
-    server.once('listening', () => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    });
-    server.listen(port, '0.0.0.0');
-  }).catch((error) => {
-    console.error(chalk.red(`Port ${port} is already in use.`));
-    throw error;
-  });
-}
-
 function getPidPath(project: Project, port: number): string {
   return path.join(project.rootDirPath, '.tmp', `wb-maintenance-server-${port}.pid`);
 }
@@ -236,15 +220,9 @@ async function waitForPidFile(pidPath: string, pid: number): Promise<void> {
   while (Date.now() < deadline) {
     if (readPid(pidPath) !== undefined) return;
     if (!isProcessRunning(pid)) break;
-    await sleep(50);
+    await setTimeout(50);
   }
 
   removePidFile(pidPath);
   throw new Error('Failed to start maintenance server.');
-}
-
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
