@@ -93,15 +93,16 @@ export const testCommand: CommandModule<unknown, TestCommandOptions> = {
 };
 
 export async function test(argv: TestCommandArgv, options: TestRunOptions = {}): Promise<number> {
-  const projects = await findDescendantProjects(withDefaultTestCascadeEnv(argv));
+  const testArgv = withDefaultTestCascadeEnv(argv);
+  const projects = await findDescendantProjects(testArgv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
     return 1;
   }
 
   // Get test targets from positional arguments
-  const testTargets = (argv.targets ?? []) as string[];
-  const forwardedPlaywrightArgs = argv['--'] ?? [];
+  const testTargets = (testArgv.targets ?? []) as string[];
+  const forwardedPlaywrightArgs = testArgv['--'] ?? [];
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
 
   for (const project of projects.descendants) {
@@ -132,10 +133,10 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
       const unitTargets = testTargets.filter((target) => target.includes('/unit'));
       const targets =
         unitTargets.length > 0 ? unitTargets : defaultUnitTargets.length > 0 ? defaultUnitTargets : undefined;
-      const unitArgv = { ...argv, targets };
-      const exitCode = await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, argv, {
+      const unitArgv = { ...testArgv, targets };
+      const exitCode = await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, testArgv, {
         exitIfFailed: options.exitIfFailed,
-        timeout: argv.unitTimeout,
+        timeout: testArgv.unitTimeout,
       });
       if (exitCode !== 0) {
         return exitCode;
@@ -148,9 +149,9 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
 
     // Get e2e targets for this project
     const e2eTargets = testTargets.filter((target) => target.includes('/e2e'));
-    const e2eArgv = { ...argv, targets: e2eTargets.length > 0 ? e2eTargets : undefined };
+    const e2eArgv = { ...testArgv, targets: e2eTargets.length > 0 ? e2eTargets : undefined };
 
-    switch (argv.e2e) {
+    switch (testArgv.e2e) {
       case 'headless': {
         const exitCode = await runTestCommand(
           await scripts.testE2EProduction(project, e2eArgv, {
@@ -158,7 +159,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
             forwardedPlaywrightArgs,
           }),
           project,
-          argv,
+          testArgv,
           { exitIfFailed: options.exitIfFailed }
         );
         if (exitCode !== 0) return exitCode;
@@ -171,7 +172,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
             forwardedPlaywrightArgs,
           }),
           project,
-          argv,
+          testArgv,
           { exitIfFailed: options.exitIfFailed }
         );
         if (exitCode !== 0) return exitCode;
@@ -203,7 +204,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
       }
     }
     if (deps.blitz || deps.next || devDeps['@remix-run/dev'] || devDeps.vite) {
-      switch (argv.e2e) {
+      switch (testArgv.e2e) {
         case 'headed': {
           const exitCode = await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
@@ -211,7 +212,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
               forwardedPlaywrightArgs,
             }),
             project,
-            argv,
+            testArgv,
             { exitIfFailed: options.exitIfFailed }
           );
           if (exitCode !== 0) return exitCode;
@@ -224,7 +225,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
               forwardedPlaywrightArgs,
             }),
             project,
-            argv,
+            testArgv,
             { exitIfFailed: options.exitIfFailed }
           );
           if (exitCode !== 0) return exitCode;
@@ -237,7 +238,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
               forwardedPlaywrightArgs,
             }),
             project,
-            argv,
+            testArgv,
             { exitIfFailed: options.exitIfFailed }
           );
           if (exitCode !== 0) return exitCode;
@@ -249,14 +250,14 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
               playwrightArgs: ['codegen', `http://localhost:${project.env.PORT}`],
             }),
             project,
-            argv,
+            testArgv,
             { exitIfFailed: options.exitIfFailed }
           );
           if (exitCode !== 0) return exitCode;
           break;
         }
         case 'trace': {
-          const exitCode = await runTestCommand(`BUN playwright show-trace`, project, argv, {
+          const exitCode = await runTestCommand(`BUN playwright show-trace`, project, testArgv, {
             exitIfFailed: options.exitIfFailed,
           });
           if (exitCode !== 0) return exitCode;
