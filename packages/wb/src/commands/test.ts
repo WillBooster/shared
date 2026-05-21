@@ -93,7 +93,7 @@ export const testCommand: CommandModule<unknown, TestCommandOptions> = {
 };
 
 export async function test(argv: TestCommandArgv, options: TestRunOptions = {}): Promise<number> {
-  const projects = await findDescendantProjects(argv);
+  const projects = await findDescendantProjects(withDefaultTestCascadeEnv(argv));
   if (!projects) {
     console.error(chalk.red('No project found.'));
     return 1;
@@ -266,6 +266,13 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     }
   }
   return 0;
+}
+
+function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {
+  if (argv.env?.length || argv.cascadeEnv || argv.cascadeNodeEnv || argv.autoCascadeEnv === false) {
+    return argv;
+  }
+  return { ...argv, cascadeEnv: 'test' };
 }
 
 function getDefaultUnitTargets(project: Project): string[] | false {
