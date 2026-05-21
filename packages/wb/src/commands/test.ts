@@ -269,7 +269,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   return 0;
 }
 
-function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {
+export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {
   if (argv.env?.length || argv.cascadeEnv || argv.cascadeNodeEnv || argv.autoCascadeEnv === false) {
     return argv;
   }

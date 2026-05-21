@@ -4,7 +4,13 @@ import { describe, expect, it } from 'vitest';
 import yargs from 'yargs';
 
 import { retryCommand } from '../src/commands/retry.js';
-import { buildPlaywrightArgsForE2E, resolveTestExecutionTargets, testCommand } from '../src/commands/test.js';
+import {
+  buildPlaywrightArgsForE2E,
+  resolveTestExecutionTargets,
+  testCommand,
+  type TestCommandArgv,
+  withDefaultTestCascadeEnv,
+} from '../src/commands/test.js';
 
 describe('buildPlaywrightArgsForE2E', () => {
   it('uses the default e2e directory when no explicit target is provided', () => {
@@ -83,5 +89,31 @@ describe('resolveTestExecutionTargets', () => {
       shouldRunUnit: true,
       shouldRunE2e: true,
     });
+  });
+});
+
+describe('withDefaultTestCascadeEnv', () => {
+  it('uses test cascade by default', () => {
+    expect(withDefaultTestCascadeEnv({} as TestCommandArgv)).toMatchObject({
+      cascadeEnv: 'test',
+    });
+  });
+
+  it('keeps explicit cascade env', () => {
+    const argv = { cascadeEnv: 'staging' } as TestCommandArgv;
+
+    expect(withDefaultTestCascadeEnv(argv)).toBe(argv);
+  });
+
+  it('keeps explicit env files', () => {
+    const argv = { env: ['.env.custom'] } as unknown as TestCommandArgv;
+
+    expect(withDefaultTestCascadeEnv(argv)).toBe(argv);
+  });
+
+  it('keeps disabled auto cascade env', () => {
+    const argv = { autoCascadeEnv: false } as TestCommandArgv;
+
+    expect(withDefaultTestCascadeEnv(argv)).toBe(argv);
   });
 });
