@@ -125,6 +125,8 @@ const workflows = {
     permissions: {
       // for linter fix
       contents: 'write',
+      // for pkg-preflight PR file listing
+      'pull-requests': 'read',
     },
     jobs: {
       test: {
