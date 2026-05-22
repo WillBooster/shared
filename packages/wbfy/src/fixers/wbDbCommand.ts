@@ -29,8 +29,8 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
   if (rootConfig.repoAuthor === 'WillBooster' && rootConfig.repoName === 'shared') return;
 
   const promisePool = new PromisePool<void>();
-  // `promiseAll()` only waits for tasks already admitted to the pool; awaiting
-  // these `run()` promises also covers tasks still waiting for capacity.
+  // `run()` resolves after a task enters the pool, while `promiseAll()` waits
+  // for admitted tasks to finish. Both waits are needed to cover queued work.
   const replacementPromises: Promise<void>[] = [];
   for (const config of packageConfigs) {
     const command = selectWbDatabaseCommand(config);
