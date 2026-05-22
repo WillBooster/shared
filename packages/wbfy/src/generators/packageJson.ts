@@ -993,7 +993,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       verify: 'bun --bun wb verify',
       'verify-full': 'bun --bun wb verify --full',
     };
-    applyDatabaseScripts(config, scripts, 'bun --bun wb db');
+    applyDatabaseScripts(config, scripts, `bun --bun ${getWbDatabaseCommand(config)}`);
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     if (!hasTypecheck) {
       delete scripts.typecheck;
@@ -1058,7 +1058,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       scripts.verify = 'wb verify';
       scripts['verify-full'] = 'wb verify --full';
     }
-    applyDatabaseScripts(config, scripts, 'wb db');
+    applyDatabaseScripts(config, scripts, getWbDatabaseCommand(config));
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     return scripts;
   }
@@ -1070,6 +1070,11 @@ function applyDatabaseScripts(config: PackageConfig, scripts: Record<string, str
   scripts['db-create-migration'] = `${wbDbCommand} migrate-dev`;
   scripts['db-migrate'] = `${wbDbCommand} migrate --check-idempotency`;
   scripts['db-view'] = `${wbDbCommand} studio`;
+}
+
+function getWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' {
+  if (config.depending.prisma) return 'wb prisma';
+  return 'wb db';
 }
 
 function isWbPackage(packageJson: PackageJson | undefined): boolean {
