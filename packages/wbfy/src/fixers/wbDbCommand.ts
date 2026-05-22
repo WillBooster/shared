@@ -7,7 +7,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 
-const wbDatabaseCommandPattern = /\bwb\s+(?:db|prisma)\b/g;
+const wbDatabaseCommandPattern = String.raw`\bwb\s+(?:db|prisma)\b`;
 const maxTextFileBytes = 1024 * 1024;
 const migrationTargets = [
   '**/*.{cjs,cts,js,json,jsx,md,mdc,mjs,mts,sh,tsx,ts,toml,txt,yaml,yml}',
@@ -29,6 +29,7 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
   if (rootConfig.repoAuthor === 'WillBooster' && rootConfig.repoName === 'shared') return;
 
   const promisePool = new PromisePool<void>();
+  const replacementPromises: Promise<void>[] = [];
   for (const config of packageConfigs) {
     const command = selectWbDatabaseCommand(config);
     if (!command) continue;
@@ -40,8 +41,11 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
       ignore: ['**/.git/**', ...(config.isRoot ? ['packages/**'] : []), ...globIgnore],
       onlyFiles: true,
     });
-    await Promise.all(filePaths.map((filePath) => promisePool.run(() => replaceWbDatabaseCommand(filePath, command))));
+    for (const filePath of filePaths) {
+      replacementPromises.push(promisePool.run(() => replaceWbDatabaseCommand(filePath, command)));
+    }
   }
+  await Promise.all(replacementPromises);
   await promisePool.promiseAll();
 }
 
@@ -52,11 +56,14 @@ function selectWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' |
 
 async function replaceWbDatabaseCommand(filePath: string, command: 'wb db' | 'wb prisma'): Promise<void> {
   const content = await readTextFile(filePath);
-  if (!content || content.search(wbDatabaseCommandPattern) === -1) return;
+  if (!content || content.search(new RegExp(wbDatabaseCommandPattern, 'u')) === -1) return;
 
   // Temporary migration: normalize command spelling by ORM so Prisma keeps the
   // native command name while Drizzle uses the generic database command.
-  await fsUtil.generateFile(filePath, content.replace(wbDatabaseCommandPattern, command));
+  const newContent = content.replaceAll(new RegExp(wbDatabaseCommandPattern, 'gu'), command);
+  if (newContent === content) return;
+
+  await fsUtil.generateFile(filePath, newContent);
 }
 
 async function readTextFile(filePath: string): Promise<string | undefined> {
