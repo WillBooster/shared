@@ -7,7 +7,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 
-const wbDatabaseCommandPattern = String.raw`\bwb\s+(?:db|prisma)\b`;
+const wbDatabaseCommandRegex = /\bwb\s+(?:db|prisma)\b/gu;
 const maxTextFileBytes = 1024 * 1024;
 const migrationTargets = [
   '**/*.{cjs,cts,js,json,jsx,md,mdc,mjs,mts,sh,tsx,ts,toml,txt,yaml,yml}',
@@ -29,6 +29,8 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
   if (rootConfig.repoAuthor === 'WillBooster' && rootConfig.repoName === 'shared') return;
 
   const promisePool = new PromisePool<void>();
+  // `promiseAll()` only waits for tasks already admitted to the pool; awaiting
+  // these `run()` promises also covers tasks still waiting for capacity.
   const replacementPromises: Promise<void>[] = [];
   for (const config of packageConfigs) {
     const command = selectWbDatabaseCommand(config);
@@ -56,11 +58,11 @@ function selectWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' |
 
 async function replaceWbDatabaseCommand(filePath: string, command: 'wb db' | 'wb prisma'): Promise<void> {
   const content = await readTextFile(filePath);
-  if (!content || content.search(new RegExp(wbDatabaseCommandPattern, 'u')) === -1) return;
+  if (!content) return;
 
   // Temporary migration: normalize command spelling by ORM so Prisma keeps the
   // native command name while Drizzle uses the generic database command.
-  const newContent = content.replaceAll(new RegExp(wbDatabaseCommandPattern, 'gu'), command);
+  const newContent = content.replaceAll(wbDatabaseCommandRegex, command);
   if (newContent === content) return;
 
   await fsUtil.generateFile(filePath, newContent);
