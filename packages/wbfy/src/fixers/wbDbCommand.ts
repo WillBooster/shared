@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 
 import fg from 'fast-glob';
+import { PromisePool } from 'minimal-promise-pool';
 
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -8,7 +9,7 @@ import { globIgnore } from '../utils/globUtil.js';
 
 const oldCommand = 'wb prisma';
 const newCommand = 'wb db';
-const oldPrismaDbCommand = 'wb prisma db';
+const oldCommandPattern = /\bwb\s+prisma(?:\s+db)?\b/g;
 const maxTextFileBytes = 1024 * 1024;
 const migrationTargets = [
   '**/*.{cjs,cts,js,json,jsx,md,mdc,mjs,mts,sh,tsx,ts,toml,txt,yaml,yml}',
@@ -37,7 +38,9 @@ export async function fixWbDbCommand(rootConfig: PackageConfig): Promise<void> {
     onlyFiles: true,
   });
 
-  await Promise.all(filePaths.map(replaceWbPrismaCommand));
+  const promisePool = new PromisePool<void>();
+  await Promise.all(filePaths.map((filePath) => promisePool.run(() => replaceWbPrismaCommand(filePath))));
+  await promisePool.promiseAll();
 }
 
 async function replaceWbPrismaCommand(filePath: string): Promise<void> {
@@ -48,10 +51,7 @@ async function replaceWbPrismaCommand(filePath: string): Promise<void> {
   // migrated from the legacy `wb prisma` spelling to `wb db`. Some repositories
   // used `wb prisma db ...`, so the optional `db` segment must collapse instead
   // of producing `wb db db ...`.
-  await fsUtil.generateFile(
-    filePath,
-    content.replaceAll(oldPrismaDbCommand, newCommand).replaceAll(oldCommand, newCommand)
-  );
+  await fsUtil.generateFile(filePath, content.replace(oldCommandPattern, newCommand));
 }
 
 async function readTextFile(filePath: string): Promise<string | undefined> {

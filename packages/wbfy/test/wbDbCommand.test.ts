@@ -14,9 +14,9 @@ test('migrates legacy wb prisma commands without duplicating db', async () => {
 
   await fs.writeFile(
     dockerfilePath,
-    ['RUN yarn wb prisma db push', 'RUN yarn wb prisma create-litestream-config', 'RUN yarn wb prisma migrate'].join(
-      '\n'
-    )
+    `RUN yarn wb prisma db push
+RUN yarn wb prisma create-litestream-config
+RUN yarn wb prisma  db migrate`
   );
   await fs.writeFile(packageJsonPath, JSON.stringify({ scripts: { 'db-reset': 'wb prisma reset' } }));
 
@@ -24,7 +24,10 @@ test('migrates legacy wb prisma commands without duplicating db', async () => {
     await fixWbDbCommand(createConfig({ dirPath, repoAuthor: 'WillBoosterLab', repoName: 'example' }));
 
     await expect(fs.readFile(dockerfilePath, 'utf8')).resolves.toBe(
-      `${['RUN yarn wb db push', 'RUN yarn wb db create-litestream-config', 'RUN yarn wb db migrate'].join('\n')}\n`
+      `RUN yarn wb db push
+RUN yarn wb db create-litestream-config
+RUN yarn wb db migrate
+`
     );
     await expect(fs.readFile(packageJsonPath, 'utf8')).resolves.toBe(
       `${JSON.stringify({ scripts: { 'db-reset': 'wb db reset' } })}\n`
