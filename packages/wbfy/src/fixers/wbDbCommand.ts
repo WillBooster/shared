@@ -7,9 +7,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 
-const oldCommand = 'wb prisma';
-const newCommand = 'wb db';
-const oldCommandPattern = /\bwb\s+prisma\b/g;
+const wbDatabaseCommandPattern = /\bwb\s+(?:db|prisma)\b/g;
 const maxTextFileBytes = 1024 * 1024;
 const migrationTargets = [
   '**/*.{cjs,cts,js,json,jsx,md,mdc,mjs,mts,sh,tsx,ts,toml,txt,yaml,yml}',
@@ -27,30 +25,38 @@ const migrationTargets = [
   '**/package.json',
 ];
 
-export async function fixWbDbCommand(rootConfig: PackageConfig): Promise<void> {
+export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs = [rootConfig]): Promise<void> {
   if (rootConfig.repoAuthor === 'WillBooster' && rootConfig.repoName === 'shared') return;
 
-  const filePaths = await fg(migrationTargets, {
-    absolute: true,
-    cwd: rootConfig.dirPath,
-    dot: true,
-    ignore: ['**/.git/**', ...globIgnore],
-    onlyFiles: true,
-  });
-
   const promisePool = new PromisePool<void>();
-  await Promise.all(filePaths.map((filePath) => promisePool.run(() => replaceWbPrismaCommand(filePath))));
+  for (const config of packageConfigs) {
+    const command = selectWbDatabaseCommand(config);
+    if (!command) continue;
+
+    const filePaths = await fg(migrationTargets, {
+      absolute: true,
+      cwd: config.dirPath,
+      dot: true,
+      ignore: ['**/.git/**', ...(config.isRoot ? ['packages/**'] : []), ...globIgnore],
+      onlyFiles: true,
+    });
+    await Promise.all(filePaths.map((filePath) => promisePool.run(() => replaceWbDatabaseCommand(filePath, command))));
+  }
   await promisePool.promiseAll();
 }
 
-async function replaceWbPrismaCommand(filePath: string): Promise<void> {
-  const content = await readTextFile(filePath);
-  if (!content?.includes(oldCommand)) return;
+function selectWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' | undefined {
+  if (config.depending.prisma) return 'wb prisma';
+  if (config.depending.drizzle) return 'wb db';
+}
 
-  // Temporary migration: remove this fixer after all repositories have been
-  // migrated from the legacy `wb prisma` spelling to `wb db`. `wb db` is an
-  // alias for `wb prisma`, so `wb prisma db push` must become `wb db db push`.
-  await fsUtil.generateFile(filePath, content.replace(oldCommandPattern, newCommand));
+async function replaceWbDatabaseCommand(filePath: string, command: 'wb db' | 'wb prisma'): Promise<void> {
+  const content = await readTextFile(filePath);
+  if (!content || content.search(wbDatabaseCommandPattern) === -1) return;
+
+  // Temporary migration: normalize command spelling by ORM so Prisma keeps the
+  // native command name while Drizzle uses the generic database command.
+  await fsUtil.generateFile(filePath, content.replace(wbDatabaseCommandPattern, command));
 }
 
 async function readTextFile(filePath: string): Promise<string | undefined> {
