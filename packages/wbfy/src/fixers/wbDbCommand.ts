@@ -9,7 +9,7 @@ import { globIgnore } from '../utils/globUtil.js';
 
 const oldCommand = 'wb prisma';
 const newCommand = 'wb db';
-const oldCommandPattern = /\bwb\s+prisma(?:\s+db)?\b/g;
+const oldCommandPattern = /\bwb\s+prisma\b/g;
 const maxTextFileBytes = 1024 * 1024;
 const migrationTargets = [
   '**/*.{cjs,cts,js,json,jsx,md,mdc,mjs,mts,sh,tsx,ts,toml,txt,yaml,yml}',
@@ -48,9 +48,8 @@ async function replaceWbPrismaCommand(filePath: string): Promise<void> {
   if (!content?.includes(oldCommand)) return;
 
   // Temporary migration: remove this fixer after all repositories have been
-  // migrated from the legacy `wb prisma` spelling to `wb db`. Some repositories
-  // used `wb prisma db ...`, so the optional `db` segment must collapse instead
-  // of producing `wb db db ...`.
+  // migrated from the legacy `wb prisma` spelling to `wb db`. `wb db` is an
+  // alias for `wb prisma`, so `wb prisma db push` must become `wb db db push`.
   await fsUtil.generateFile(filePath, content.replace(oldCommandPattern, newCommand));
 }
 
