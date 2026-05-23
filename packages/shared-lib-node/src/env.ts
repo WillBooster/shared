@@ -142,7 +142,7 @@ function readMiseEnvironmentVariables(
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  if (result.status !== 0 || !result.stdout.trim()) return [{}, []];
+  if (result.error || result.status !== 0 || !result.stdout?.trim()) return [{}, []];
 
   let parsed: unknown;
   try {
@@ -155,8 +155,8 @@ function readMiseEnvironmentVariables(
   const envVars: Record<string, string> = {};
   const keys: string[] = [];
   for (const [key, value] of Object.entries(parsed)) {
-    if (key in currentEnvVars) continue;
     if (typeof value !== 'string') continue;
+    if (key in currentEnvVars || process.env[key] === value) continue;
     envVars[key] = value;
     keys.push(key);
   }
