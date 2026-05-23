@@ -1,0 +1,4 @@
+[env]
+ENV = "test3"
+MISE_ENV = "test"
+PORT = "5002"

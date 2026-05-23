@@ -115,7 +115,7 @@ export class Project {
         console.info(`Loaded ${count} environment variables from ${envPath}`);
       }
     }
-    return { ...envVars, ...process.env };
+    return { ...process.env, ...envVars };
   }
 
   @memoizeOne

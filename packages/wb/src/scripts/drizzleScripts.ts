@@ -20,6 +20,13 @@ class DrizzleScripts {
     return seedCommand === 'true' ? migrateCommand : `${migrateCommand} && ${seedCommand}`;
   }
 
+  migrateForStart(project: Project, additionalOptions = ''): string {
+    if (isTestEnvironment(project) && buildRemoveSqliteDbCommand(project)) {
+      return this.reset(project, additionalOptions);
+    }
+    return this.migrate(project, additionalOptions);
+  }
+
   deploy(_project: Project, additionalOptions = ''): string {
     return `YARN drizzle-kit migrate ${additionalOptions}`;
   }
@@ -66,3 +73,7 @@ function getFileDatabaseUrlPath(project: Project): string | undefined {
 }
 
 export const drizzleScripts = new DrizzleScripts();
+
+function isTestEnvironment(project: Project): boolean {
+  return project.env.WB_ENV === 'test' || project.env.MISE_ENV === 'test';
+}

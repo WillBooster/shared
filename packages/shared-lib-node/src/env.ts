@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import childProcess from 'node:child_process';
 
 import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
@@ -102,6 +103,14 @@ export function readEnvironmentVariables(
       console.info(`Read ${keys.length} environment variables from ${envPath}`);
     }
   }
+  const [miseEnvVars, miseEnvVarNames] = readMiseEnvironmentVariables(cwd, cascade, envVars);
+  Object.assign(envVars, miseEnvVars);
+  if (miseEnvVarNames.length > 0) {
+    envPathAndLoadedEnvVarNames.push([miseEnvironmentSourceName(cascade), miseEnvVarNames]);
+    if (argv.verbose && !shouldSuppressOutput) {
+      console.info(`Read ${miseEnvVarNames.length} environment variables from ${miseEnvironmentSourceName(cascade)}`);
+    }
+  }
   if (!argv.verbose && !shouldSuppressOutput) {
     console.info(
       `Read env files: ${envPathAndLoadedEnvVarNames.map(([envPath, keys]) => (keys.length > 0 ? `${envPath} (${keys.join(', ')})` : envPath)).join(', ') || 'nothing'}`
@@ -116,6 +125,56 @@ export function readEnvironmentVariables(
     }
   }
   return [expand({ parsed: envVars, processEnv: {} }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
+}
+
+function readMiseEnvironmentVariables(
+  cwd: string,
+  cascade: string | undefined,
+  currentEnvVars: Record<string, string>
+): [Record<string, string>, string[]] {
+  if (!hasProjectMiseConfig(cwd)) return [{}, []];
+
+  const args = ['env', '--json', '--cd', cwd];
+  if (cascade) {
+    args.push('--env', cascade);
+  }
+  const result = childProcess.spawnSync('mise', args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.status !== 0 || !result.stdout.trim()) return [{}, []];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return [{}, []];
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [{}, []];
+
+  const envVars: Record<string, string> = {};
+  const keys: string[] = [];
+  for (const [key, value] of Object.entries(parsed)) {
+    if (key in currentEnvVars) continue;
+    if (typeof value !== 'string') continue;
+    envVars[key] = value;
+    keys.push(key);
+  }
+  return [envVars, keys];
+}
+
+function hasProjectMiseConfig(cwd: string): boolean {
+  for (let currentPath = path.resolve(cwd); ; currentPath = path.dirname(currentPath)) {
+    if (fs.existsSync(path.join(currentPath, 'mise.toml')) || fs.existsSync(path.join(currentPath, '.mise.toml'))) {
+      return true;
+    }
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) return false;
+  }
+}
+
+function miseEnvironmentSourceName(cascade: string | undefined): string {
+  return cascade ? `mise env --env ${cascade}` : 'mise env';
 }
 
 export function shouldSuppressEnvironmentOutput(argv: EnvReaderOptions): boolean {
