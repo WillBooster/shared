@@ -303,6 +303,10 @@ export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?
   return new Project(dirPath, argv, loadEnv);
 }
 
+export function isProjectEnvironment(project: Project, name: string): boolean {
+  return project.env.WB_ENV === name || project.env.MISE_ENV === name;
+}
+
 export async function findDescendantProjects(
   argv: EnvReaderOptions,
   loadEnv = true,

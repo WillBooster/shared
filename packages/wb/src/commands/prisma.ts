@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { DatabaseOrm, Project } from '../project.js';
-import { findDescendantProjects } from '../project.js';
+import { findDescendantProjects, isProjectEnvironment } from '../project.js';
 import { drizzleScripts } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -157,7 +157,7 @@ function isDockerEnabled(project: Project): boolean {
 }
 
 function isProductionEnvironment(project: Project): boolean {
-  return project.env.WB_ENV === 'production' || project.env.MISE_ENV === 'production';
+  return isProjectEnvironment(project, 'production');
 }
 
 const migrateDevCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {

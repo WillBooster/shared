@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import type { Project } from '../project.js';
+import { isProjectEnvironment, type Project } from '../project.js';
 
 const FILE_SCHEMA = 'file:';
 
@@ -21,7 +21,7 @@ class DrizzleScripts {
   }
 
   migrateForStart(project: Project, additionalOptions = ''): string {
-    if (isTestEnvironment(project) && buildRemoveSqliteDbCommand(project)) {
+    if (isProjectEnvironment(project, 'test') && buildRemoveSqliteDbCommand(project)) {
       return this.reset(project, additionalOptions);
     }
     return this.migrate(project, additionalOptions);
@@ -73,7 +73,3 @@ function getFileDatabaseUrlPath(project: Project): string | undefined {
 }
 
 export const drizzleScripts = new DrizzleScripts();
-
-function isTestEnvironment(project: Project): boolean {
-  return project.env.WB_ENV === 'test' || project.env.MISE_ENV === 'test';
-}
