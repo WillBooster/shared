@@ -49,6 +49,20 @@ class TestScriptsWithWait extends BaseScripts {
   }
 }
 
+class TestProductionScripts extends BaseScripts {
+  constructor() {
+    super(false);
+  }
+
+  protected startDevProtected(_: Project, _argv: ScriptArgv): string {
+    return 'start-dev';
+  }
+
+  protected override buildDefaultProductionStartCommands(_project: Project, _argv: ScriptArgv): string[] {
+    return ['build', 'start'];
+  }
+}
+
 describe('BaseScripts.testE2E', () => {
   const project = {
     env: { WB_ENV: 'test', PORT: '3000' },
@@ -247,5 +261,23 @@ describe('BaseScripts.testE2E', () => {
     expect(command).toContain('--include-root-env=false');
     expect(command).toContain('--auto-cascade-env=false');
     expect(command).toContain('--check-env=.env.required');
+  });
+
+  it('resets file-based Drizzle databases before test starts', async () => {
+    const scripts = new TestProductionScripts();
+    const drizzleProject = {
+      buildCommand: 'build',
+      dirPath: '/tmp/app',
+      env: { DATABASE_URL: 'file:./drizzle/mount/test.sqlite3', WB_ENV: 'test', PORT: '3000' },
+      hasDrizzle: true,
+      hasPrisma: false,
+      packageJson: { scripts: {} },
+    } as unknown as Project;
+
+    const command = await scripts.startTest(drizzleProject, {} as ScriptArgv);
+
+    expect(command).toContain('rm -f "/tmp/app/drizzle/mount/test.sqlite3"');
+    expect(command).toContain('YARN drizzle-kit migrate');
+    expect(command).toContain('build && start');
   });
 });

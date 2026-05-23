@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import childProcess from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
 
@@ -68,4 +69,29 @@ describe('project', () => {
 
     expect(findSelfProject({}, false, path.join(dirPath, 'packages', 'sub1'))?.preferredLinter).toBe('oxlint');
   });
+
+  it.runIf(isMiseAvailable())(
+    'lets mise env override an already-activated shell env for project commands',
+    async () => {
+      const dirPath = path.join('..', 'shared-lib-node', 'test', 'fixtures', 'app3');
+      const originalPort = process.env.PORT;
+      try {
+        process.env.PORT = '9999';
+        const project = findSelfProject({ cascadeEnv: 'test' }, true, dirPath);
+
+        expect(project?.env.PORT).toBe('5002');
+        expect(project?.env.MISE_ENV).toBe('test');
+      } finally {
+        if (originalPort === undefined) {
+          delete process.env.PORT;
+        } else {
+          process.env.PORT = originalPort;
+        }
+      }
+    }
+  );
 });
+
+function isMiseAvailable(): boolean {
+  return childProcess.spawnSync('mise', ['--version'], { stdio: 'ignore' }).status === 0;
+}

@@ -1,3 +1,5 @@
+import childProcess from 'node:child_process';
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { readAndApplyEnvironmentVariables, readEnvironmentVariables } from '../src/env.js';
@@ -69,6 +71,23 @@ describe('readAndApplyEnvironmentVariables()', () => {
     expect(process.env.PORT).toBe('9999');
     expect(process.env.NAME).toBe('override');
   });
+
+  it.runIf(isMiseAvailable())('should load env vars from mise toml with --auto-cascade-env', () => {
+    const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app3');
+    expect(envVars).toMatchObject({ ENV: 'development3', MISE_ONLY: 'base3', NAME: 'app3', PORT: '5001' });
+  });
+
+  it.runIf(isMiseAvailable())('should load env vars from mise environment toml with --cascade-env=test', () => {
+    const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app3');
+    expect(envVars).toMatchObject({ ENV: 'test3', MISE_ONLY: 'base3', NAME: 'app3', PORT: '5002' });
+  });
+
+  it.runIf(isMiseAvailable())('should not apply mise env vars over existing process.env values', () => {
+    process.env.PORT = '9999';
+    const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app3');
+    expect(envVars).toMatchObject({ ENV: 'test3', MISE_ONLY: 'base3', NAME: 'app3', PORT: '5002' });
+    expect(process.env.PORT).toBe('9999');
+  });
 });
 
 describe('readEnvironmentVariables()', () => {
@@ -88,3 +107,7 @@ describe('readEnvironmentVariables()', () => {
     expect(process.env.NAME).toBe('override');
   });
 });
+
+function isMiseAvailable(): boolean {
+  return childProcess.spawnSync('mise', ['--version'], { stdio: 'ignore' }).status === 0;
+}

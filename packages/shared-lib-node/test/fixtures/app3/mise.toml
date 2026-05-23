@@ -1,0 +1,6 @@
+[env]
+ENV = "development3"
+MISE_ONLY = "base3"
+MISE_ENV = "development"
+NAME = "app3"
+PORT = "5001"

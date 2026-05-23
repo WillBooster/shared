@@ -115,7 +115,7 @@ export class Project {
         console.info(`Loaded ${count} environment variables from ${envPath}`);
       }
     }
-    return { ...envVars, ...process.env };
+    return { ...process.env, ...envVars };
   }
 
   @memoizeOne
@@ -301,6 +301,10 @@ export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
 
   return new Project(dirPath, argv, loadEnv);
+}
+
+export function isProjectEnvironment(project: Project, name: string): boolean {
+  return project.env.WB_ENV === name || project.env.MISE_ENV === name;
 }
 
 export async function findDescendantProjects(
