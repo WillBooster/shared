@@ -189,7 +189,7 @@ async function main(): Promise<void> {
     }
     await Promise.all(promises);
     await promisePool.promiseAll();
-    await fixWbDbCommand(rootConfig);
+    await fixWbDbCommand(rootConfig, allPackageConfigs);
 
     const packageManager = rootConfig.isBun ? 'bun' : 'yarn';
     // Refresh lock files

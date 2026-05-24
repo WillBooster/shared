@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import type { Project } from '../project.js';
+import { isProjectEnvironment, type Project } from '../project.js';
 
 const FILE_SCHEMA = 'file:';
 
@@ -18,6 +18,13 @@ class DrizzleScripts {
     const seedCommand = this.seed(project);
     const migrateCommand = this.deploy(project, additionalOptions);
     return seedCommand === 'true' ? migrateCommand : `${migrateCommand} && ${seedCommand}`;
+  }
+
+  migrateForStart(project: Project, additionalOptions = ''): string {
+    if (isProjectEnvironment(project, 'test') && buildRemoveSqliteDbCommand(project)) {
+      return this.reset(project, additionalOptions);
+    }
+    return this.migrate(project, additionalOptions);
   }
 
   deploy(_project: Project, additionalOptions = ''): string {

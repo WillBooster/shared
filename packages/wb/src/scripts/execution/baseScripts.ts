@@ -110,7 +110,7 @@ export abstract class BaseScripts {
   protected buildProductionCommand(project: Project, argv: ScriptArgv, commands: string[]): string {
     const migrationCommands = [
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
-      ...(project.hasDrizzle ? [drizzleScripts.migrate(project)] : []),
+      ...(project.hasDrizzle ? [drizzleScripts.migrateForStart(project)] : []),
     ];
     return [...migrationCommands.flatMap((cmd) => cmd.split('&&')), ...commands]
       .filter(Boolean)
