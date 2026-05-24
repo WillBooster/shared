@@ -6,13 +6,13 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findRootAndSelfProjects } from '../project.js';
+import { findRootAndSelfProjects, findSelfProject } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
-import { test, type TestCommandArgv } from './test.js';
+import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
 
 const builder = {
   full: {
@@ -24,6 +24,7 @@ const builder = {
 
 type VerifyCodeCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 type VerifyCodeCommandArgv = ArgumentsCamelCase<VerifyCodeCommandOptions>;
+type PackageCommandArgv = Pick<VerifyCodeCommandArgv, 'dryRun' | 'verbose'>;
 
 export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
   command: 'verify',
@@ -76,7 +77,12 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  const testArgv = { ...argv, _: ['test'], e2e: 'headless', silent: true } as unknown as TestCommandArgv;
+  const testArgv = withDefaultTestCascadeEnv({
+    ...argv,
+    _: ['test'],
+    e2e: 'headless',
+    silent: true,
+  } as unknown as TestCommandArgv);
   const exitCode = await test(testArgv, { exitIfFailed: false });
   if (exitCode === 0) return;
 
@@ -88,7 +94,9 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
   console.info(
     chalk.yellow('Tests failed. This project defines "db-reset", so wb will reset the database once and retry tests.')
   );
-  await runPackageCommand(`${packageManager} db-reset`, project, argv, { printRawOutput: true });
+  await runPackageCommand(`${packageManager} db-reset`, findTestProject(project, testArgv), testArgv, {
+    printRawOutput: true,
+  });
 
   const retryExitCode = await test(testArgv, { exitIfFailed: false });
   if (retryExitCode !== 0) {
@@ -96,6 +104,14 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
     process.exit(retryExitCode);
   }
   console.info(chalk.green('Tests passed after db-reset retry.'));
+}
+
+function findTestProject(project: Project, argv: TestCommandArgv): Project {
+  const testProject = findSelfProject(argv, true, project.dirPath);
+  if (!testProject) {
+    throw new Error(`Project not found: ${project.dirPath}`);
+  }
+  return testProject;
 }
 
 async function runInProcessCommand(
@@ -121,7 +137,7 @@ async function runInProcessCommand(
 async function runPackageCommand(
   command: string,
   project: Project,
-  argv: VerifyCodeCommandArgv,
+  argv: PackageCommandArgv,
   options: { allowFailure?: boolean; printRawOutput?: boolean } = {}
 ): Promise<number> {
   printCommand(command, project.dirPath);
