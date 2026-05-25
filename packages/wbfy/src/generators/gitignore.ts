@@ -88,7 +88,6 @@ packaged.yaml
     if (rootConfig.depending.firebase || config.depending.firebase) {
       names.push('firebase');
     }
-    // Prisma and Drizzle commonly use local SQLite files for development and tests.
     if (config.depending.prisma || config.depending.drizzle) {
       headUserContent += `*.sqlite3*
 `;
