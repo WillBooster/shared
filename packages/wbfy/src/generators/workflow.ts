@@ -443,7 +443,7 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
   if (config.packageJson?.scripts?.build) {
     steps.push({ run: `${packageManager} run build` });
   }
-  steps.push({ uses: 'autofix-ci/action@v1' });
+  steps.push({ uses: 'autofix-ci/action@v1.3.4' });
 
   const autofixWorkflow = structuredClone(publicRepoAutofixWorkflow);
   const autofixJob = autofixWorkflow.jobs.autofix ?? { 'runs-on': 'ubuntu-latest' };
