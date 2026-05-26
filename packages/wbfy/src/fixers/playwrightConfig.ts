@@ -31,14 +31,14 @@ const asObject = (properties: Record<string, ParsedValue>, extraMembers: string[
   value: toParsedObject(properties, extraMembers),
 });
 
-function createDefaultConfig(config: PackageConfig, shouldUseBaseUrl: boolean): ParsedObject {
+function createDefaultConfig(config: PackageConfig, shouldUseAppServerDefaults: boolean): ParsedObject {
   const use = toParsedObject({
     trace: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
     screenshot: literal("process.env.CI ? 'only-on-failure' : 'on'"),
     video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
   });
 
-  if (shouldUseBaseUrl) {
+  if (shouldUseAppServerDefaults) {
     use.properties.baseURL = literal('process.env.NEXT_PUBLIC_BASE_URL');
     use.memberOrder.unshift({ kind: 'property', key: 'baseURL' });
   }
@@ -47,7 +47,7 @@ function createDefaultConfig(config: PackageConfig, shouldUseBaseUrl: boolean): 
     forbidOnly: literal('!!process.env.CI'),
     retries: literal('process.env.PWDEBUG ? 0 : process.env.CI ? 5 : 1'),
     use: { kind: 'object', value: use },
-    ...(shouldUseBaseUrl
+    ...(shouldUseAppServerDefaults
       ? {
           webServer: asObject({
             command: literal(getWbStartTestCommand(config)),
@@ -94,8 +94,9 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     if (!parsed) return;
 
     // Keep filling missing defaults, but don't overwrite local adjustments on every regeneration.
-    const shouldUseBaseUrl = await doesDefineNextPublicBaseUrl(config.dirPath);
-    const merged = mergeParsedObjects(createDefaultConfig(config, shouldUseBaseUrl), parsed);
+    const shouldUseAppServerDefaults =
+      (await doesDefineNextPublicBaseUrl(config.dirPath)) && shouldManageAppServerDefaults(config, parsed);
+    const merged = mergeParsedObjects(createDefaultConfig(config, shouldUseAppServerDefaults), parsed);
     setWebServerCommand(merged, config);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
@@ -130,6 +131,28 @@ function mergeParsedValue(base: ParsedValue | undefined, override: ParsedValue):
     return { kind: 'object', value: mergeParsedObjects(base.value, override.value) };
   }
   return override;
+}
+
+function shouldManageAppServerDefaults(config: PackageConfig, parsed: ParsedObject): boolean {
+  return (
+    config.depending.next ||
+    parsed.properties.webServer !== undefined ||
+    doesObjectHaveBaseUrl(parsed.properties.use) ||
+    doesValueContainLiteral({ kind: 'object', value: parsed }, 'NEXT_PUBLIC_BASE_URL')
+  );
+}
+
+function doesObjectHaveBaseUrl(value: ParsedValue | undefined): boolean {
+  return value?.kind === 'object' && value.value.properties.baseURL !== undefined;
+}
+
+function doesValueContainLiteral(value: ParsedValue, literalText: string): boolean {
+  if (value.kind === 'literal') return value.value.includes(literalText);
+  if (value.kind === 'array') return value.value.some((child) => doesValueContainLiteral(child, literalText));
+  return (
+    value.value.extraMembers.some((member) => member.includes(literalText)) ||
+    Object.values(value.value.properties).some((child) => doesValueContainLiteral(child, literalText))
+  );
 }
 
 async function doesDefineNextPublicBaseUrl(dirPath: string): Promise<boolean> {
