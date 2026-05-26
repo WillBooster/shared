@@ -123,6 +123,8 @@ const workflows = {
       'cancel-in-progress': true,
     },
     permissions: {
+      // for skip-duplicate-actions to cancel outdated runs
+      actions: 'write',
       // for linter fix
       contents: 'write',
       // for pkg-preflight PR file listing
@@ -441,7 +443,7 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
   if (config.packageJson?.scripts?.build) {
     steps.push({ run: `${packageManager} run build` });
   }
-  steps.push({ uses: 'autofix-ci/action@v1' });
+  steps.push({ uses: 'autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a' });
 
   const autofixWorkflow = structuredClone(publicRepoAutofixWorkflow);
   const autofixJob = autofixWorkflow.jobs.autofix ?? { 'runs-on': 'ubuntu-latest' };
