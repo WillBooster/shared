@@ -123,6 +123,8 @@ const workflows = {
       'cancel-in-progress': true,
     },
     permissions: {
+      // for skip-duplicate-actions to cancel outdated runs
+      actions: 'write',
       // for linter fix
       contents: 'write',
       // for pkg-preflight PR file listing
