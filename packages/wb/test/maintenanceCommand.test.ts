@@ -73,7 +73,7 @@ function spawnNodeServer(port: number): childProcess.ChildProcess {
 }
 
 function terminateProcessGroup(child: childProcess.ChildProcess): void {
-  if (child.exitCode !== null || child.pid === undefined) return;
+  if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) return;
 
   try {
     process.kill(-child.pid, 'SIGTERM');
@@ -83,7 +83,7 @@ function terminateProcessGroup(child: childProcess.ChildProcess): void {
 }
 
 async function waitForExit(child: childProcess.ChildProcess): Promise<void> {
-  if (child.exitCode !== null) return;
+  if (child.exitCode !== null || child.signalCode !== null) return;
 
   let timeoutId: NodeJS.Timeout | undefined;
   try {
