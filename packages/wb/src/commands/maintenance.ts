@@ -1,5 +1,4 @@
 import assert from 'node:assert';
-import { once } from 'node:events';
 import http from 'node:http';
 
 import chalk from 'chalk';
@@ -104,18 +103,24 @@ function parsePort(portEnv: string | undefined): number {
 async function startMaintenanceServer(project: Project, port: number): Promise<void> {
   await killPortContainerAndProcess(port, project);
   const server = createMaintenanceServer();
-  server.on('error', (error) => {
+  try {
+    await listenMaintenanceServer(server, port, handleRuntimeMaintenanceServerError);
+  } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err.code === 'EADDRINUSE') {
       console.error(chalk.red(`Port ${port} is already in use.`));
     } else {
-      console.error(chalk.red(`Maintenance server error: ${error.message}`));
+      console.error(chalk.red(`Maintenance server error: ${err.message}`));
     }
     process.exit(1);
-  });
-  await listenMaintenanceServer(server, port);
+  }
   console.info(`Started maintenance server on port ${port}.`);
   await waitForShutdown(server);
+}
+
+function handleRuntimeMaintenanceServerError(error: Error): void {
+  console.error(chalk.red(`Maintenance server error: ${error.message}`));
+  process.exit(1);
 }
 
 async function stopMaintenanceServer(project: Project, port: number): Promise<void> {
@@ -133,10 +138,25 @@ function createMaintenanceServer(): http.Server {
   });
 }
 
-async function listenMaintenanceServer(server: http.Server, port: number): Promise<void> {
-  const listening = once(server, 'listening');
-  server.listen(port, '0.0.0.0');
-  await listening;
+async function listenMaintenanceServer(
+  server: http.Server,
+  port: number,
+  onRuntimeError: (error: Error) => void
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onStartupError = (error: Error): void => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = (): void => {
+      server.off('error', onStartupError);
+      server.on('error', onRuntimeError);
+      resolve();
+    };
+    server.once('error', onStartupError);
+    server.once('listening', onListening);
+    server.listen(port, '0.0.0.0');
+  });
 }
 
 async function waitForShutdown(server: http.Server): Promise<void> {
