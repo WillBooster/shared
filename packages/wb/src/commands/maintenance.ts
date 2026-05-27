@@ -125,8 +125,17 @@ function parsePort(portEnv: string | undefined): number {
 
 async function listenMaintenanceServer(server: http.Server, port: number): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, '0.0.0.0', resolve);
+    const onError = (error: Error): void => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = (): void => {
+      server.off('error', onError);
+      resolve();
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port, '0.0.0.0');
   }).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'EADDRINUSE') {
       console.error(chalk.red(`Port ${port} is already in use.`));
@@ -139,6 +148,8 @@ async function listenMaintenanceServer(server: http.Server, port: number): Promi
 async function waitForShutdown(server: http.Server): Promise<void> {
   await new Promise<void>((resolve) => {
     const shutdown = (): void => {
+      process.off('SIGINT', shutdown);
+      process.off('SIGTERM', shutdown);
       server.close(() => {
         resolve();
       });

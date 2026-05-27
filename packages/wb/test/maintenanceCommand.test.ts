@@ -4,7 +4,7 @@ import { once } from 'node:events';
 
 import { describe, expect, it } from 'vitest';
 
-describe.skipIf(process.platform === 'win32')('wb maintenance', () => {
+describe('wb maintenance', () => {
   it('runs start in the foreground until SIGTERM', async () => {
     const port = await findAvailablePort();
     const maintenance = spawnWbMaintenance('start', port);
@@ -86,14 +86,21 @@ function terminateProcessGroup(child: childProcess.ChildProcess): void {
 async function waitForExit(child: childProcess.ChildProcess): Promise<void> {
   if (child.exitCode !== null) return;
 
-  await Promise.race([
-    once(child, 'exit'),
-    new Promise<void>((_resolve, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Timed out waiting for process ${child.pid ?? '<unknown>'} to exit.`));
-      }, 10_000);
-    }),
-  ]);
+  let timeoutId: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      once(child, 'exit'),
+      new Promise<void>((_resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Timed out waiting for process ${child.pid ?? '<unknown>'} to exit.`));
+        }, 10_000);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 async function findAvailablePort(): Promise<number> {
