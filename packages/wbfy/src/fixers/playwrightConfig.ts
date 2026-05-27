@@ -31,33 +31,44 @@ const asObject = (properties: Record<string, ParsedValue>, extraMembers: string[
   value: toParsedObject(properties, extraMembers),
 });
 
-const createDefaultConfig = (config: PackageConfig): ParsedObject =>
-  toParsedObject({
+function createDefaultConfig(config: PackageConfig, shouldUseAppServerDefaults: boolean): ParsedObject {
+  const use = toParsedObject({
+    trace: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
+    screenshot: literal("process.env.CI ? 'only-on-failure' : 'on'"),
+    video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
+  });
+
+  if (shouldUseAppServerDefaults) {
+    use.properties.baseURL = literal('process.env.NEXT_PUBLIC_BASE_URL');
+    use.memberOrder.unshift({ kind: 'property', key: 'baseURL' });
+  }
+
+  return toParsedObject({
     forbidOnly: literal('!!process.env.CI'),
     retries: literal('process.env.PWDEBUG ? 0 : process.env.CI ? 5 : 1'),
-    use: asObject({
-      baseURL: literal('process.env.NEXT_PUBLIC_BASE_URL'),
-      trace: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
-      screenshot: literal("process.env.CI ? 'only-on-failure' : 'on'"),
-      video: literal("process.env.CI ? 'on-first-retry' : 'retain-on-failure'"),
-    }),
-    webServer: asObject({
-      command: literal(getWbStartTestCommand(config)),
-      url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
-      reuseExistingServer: literal('!!process.env.CI'),
-      timeout: literal('300_000'),
-      stdout: literal("'pipe'"),
-      stderr: literal("'pipe'"),
-      env: literal(`{
+    use: { kind: 'object', value: use },
+    ...(shouldUseAppServerDefaults
+      ? {
+          webServer: asObject({
+            command: literal(getWbStartTestCommand(config)),
+            url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
+            reuseExistingServer: literal('!!process.env.CI'),
+            timeout: literal('300_000'),
+            stdout: literal("'pipe'"),
+            stderr: literal("'pipe'"),
+            env: literal(`{
   ...process.env,
   PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'true',
 }`),
-      gracefulShutdown: literal(`{
+            gracefulShutdown: literal(`{
   signal: 'SIGTERM',
   timeout: 500,
 }`),
-    }),
+          }),
+        }
+      : {}),
   });
+}
 
 function toParsedObject(properties: Record<string, ParsedValue>, extraMembers: string[] = []): ParsedObject {
   return {
@@ -75,8 +86,6 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
   if (!fs.existsSync(filePath)) return;
 
   return logger.functionIgnoringException('fixPlaywrightConfig', async () => {
-    await assertNextPublicBaseUrl(config.dirPath);
-
     const oldContent = await fs.promises.readFile(filePath, 'utf8');
     const extractedObjectLiteral = extractDefineConfigObjectLiteral(oldContent);
     if (!extractedObjectLiteral) return;
@@ -85,7 +94,9 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     if (!parsed) return;
 
     // Keep filling missing defaults, but don't overwrite local adjustments on every regeneration.
-    const merged = mergeParsedObjects(createDefaultConfig(config), parsed);
+    const shouldUseAppServerDefaults =
+      (await doesDefineNextPublicBaseUrl(config.dirPath)) && shouldManageAppServerDefaults(config, parsed);
+    const merged = mergeParsedObjects(createDefaultConfig(config, shouldUseAppServerDefaults), parsed);
     setWebServerCommand(merged, config);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
@@ -122,19 +133,43 @@ function mergeParsedValue(base: ParsedValue | undefined, override: ParsedValue):
   return override;
 }
 
-async function assertNextPublicBaseUrl(dirPath: string): Promise<void> {
+function shouldManageAppServerDefaults(config: PackageConfig, parsed: ParsedObject): boolean {
+  return (
+    config.depending.next ||
+    parsed.properties.webServer !== undefined ||
+    doesObjectHaveBaseUrl(parsed.properties.use) ||
+    doesValueContainLiteral({ kind: 'object', value: parsed }, 'NEXT_PUBLIC_BASE_URL')
+  );
+}
+
+function doesObjectHaveBaseUrl(value: ParsedValue | undefined): boolean {
+  return value?.kind === 'object' && value.value.properties.baseURL !== undefined;
+}
+
+function doesValueContainLiteral(value: ParsedValue, literalText: string): boolean {
+  if (value.kind === 'literal') return value.value.includes(literalText);
+  if (value.kind === 'array') return value.value.some((child) => doesValueContainLiteral(child, literalText));
+  return (
+    value.value.extraMembers.some((member) => member.includes(literalText)) ||
+    Object.values(value.value.properties).some((child) => doesValueContainLiteral(child, literalText))
+  );
+}
+
+async function doesDefineNextPublicBaseUrl(dirPath: string): Promise<boolean> {
   for (const envFilePath of getEnvFilePaths(dirPath)) {
     try {
       const content = await fs.promises.readFile(envFilePath, 'utf8');
       if (/NEXT_PUBLIC_BASE_URL\s*=/m.test(content)) {
-        return;
+        return true;
       }
     } catch {
       // Missing env files are expected in some repos.
     }
   }
 
-  throw new Error('NEXT_PUBLIC_BASE_URL is required for Playwright. Define NEXT_PUBLIC_BASE_URL in the target repo.');
+  // Some Playwright configs only define browser projects or fixtures and do not
+  // start a web app. Avoid forcing an app-server URL into those packages.
+  return false;
 }
 
 function getEnvFilePaths(dirPath: string): string[] {
