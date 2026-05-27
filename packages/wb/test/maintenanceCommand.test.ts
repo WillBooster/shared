@@ -3,11 +3,13 @@ import { once } from 'node:events';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as projectModule from '../src/project.js';
+
 const findSelfProjectMock = vi.fn();
 const killPortContainerAndProcessMock = vi.fn();
 
 vi.mock('../src/project.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/project.js')>()),
+  ...(await importOriginal<typeof projectModule>()),
   findSelfProject: findSelfProjectMock,
 }));
 
@@ -54,7 +56,7 @@ describe('maintenanceCommand', () => {
     await maintenanceCommand.handler({ action: 'stop' } as never);
 
     expect(killPortContainerAndProcessMock).toHaveBeenCalledOnce();
-    expect(killPortContainerAndProcessMock).toHaveBeenCalledWith(32123, project);
+    expect(killPortContainerAndProcessMock).toHaveBeenCalledWith(32_123, project);
   });
 });
 
