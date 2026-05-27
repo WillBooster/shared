@@ -87,7 +87,7 @@ async function waitForExit(child: childProcess.ChildProcess): Promise<void> {
   if (child.exitCode !== null) return;
 
   await Promise.race([
-    once(child, 'exit').then(() => {}),
+    once(child, 'exit'),
     new Promise<void>((_resolve, reject) => {
       setTimeout(() => {
         reject(new Error(`Timed out waiting for process ${child.pid ?? '<unknown>'} to exit.`));
