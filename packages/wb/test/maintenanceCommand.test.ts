@@ -1,64 +1,100 @@
+import childProcess from 'node:child_process';
 import http from 'node:http';
 import { once } from 'node:events';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import type * as projectModule from '../src/project.js';
-
-const findSelfProjectMock = vi.fn();
-const killPortContainerAndProcessMock = vi.fn();
-
-vi.mock('../src/project.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof projectModule>()),
-  findSelfProject: findSelfProjectMock,
-}));
-
-vi.mock('../src/utils/process.js', () => ({
-  killPortContainerAndProcess: killPortContainerAndProcessMock,
-}));
-
-const { maintenanceCommand } = await import('../src/commands/maintenance.js');
-
-describe('maintenanceCommand', () => {
-  beforeEach(() => {
-    findSelfProjectMock.mockReset();
-    killPortContainerAndProcessMock.mockReset();
-    killPortContainerAndProcessMock.mockResolvedValue(undefined);
-  });
-
-  it('runs the maintenance server in the foreground until SIGTERM', async () => {
+describe.skipIf(process.platform === 'win32')('wb maintenance', () => {
+  it('runs start in the foreground until SIGTERM', async () => {
     const port = await findAvailablePort();
-    findSelfProjectMock.mockReturnValue({
-      env: { PORT: String(port), WB_ENV: 'development' },
-    });
+    const maintenance = spawnWbMaintenance('start', port);
 
-    if (!maintenanceCommand.handler) throw new Error('maintenanceCommand.handler is undefined.');
+    try {
+      await waitForHttpStatus(port, 503);
+    } finally {
+      terminateProcessGroup(maintenance);
+      await waitForExit(maintenance);
+    }
+  }, 20_000);
 
-    const handlerPromise = maintenanceCommand.handler({ action: 'start' } as never);
-    await waitForHttpStatus(port, 503);
+  it('stops a listener on the configured port without relying on a pid file', async () => {
+    const port = await findAvailablePort();
+    const server = spawnNodeServer(port);
 
-    process.emit('SIGTERM', 'SIGTERM');
-    await expect(handlerPromise).resolves.toBeUndefined();
-    expect(killPortContainerAndProcessMock).toHaveBeenCalledWith(
-      port,
-      expect.objectContaining({ env: expect.anything() })
-    );
-  });
+    try {
+      await waitForHttpStatus(port, 200);
 
-  it('stops maintenance by killing the configured port without requiring a pid file', async () => {
-    const project = {
-      env: { PORT: '32123', WB_ENV: 'development' },
-    };
-    findSelfProjectMock.mockReturnValue(project);
+      const result = childProcess.spawnSync(
+        'yarn',
+        ['workspace', '@willbooster/wb', 'start', 'maintenance', 'stop', '--quiet-env'],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+          env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
+          timeout: 20_000,
+        }
+      );
 
-    if (!maintenanceCommand.handler) throw new Error('maintenanceCommand.handler is undefined.');
-
-    await maintenanceCommand.handler({ action: 'stop' } as never);
-
-    expect(killPortContainerAndProcessMock).toHaveBeenCalledOnce();
-    expect(killPortContainerAndProcessMock).toHaveBeenCalledWith(32_123, project);
-  });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain(`Stopped maintenance server on port ${port}.`);
+      await waitForExit(server);
+    } finally {
+      terminateProcessGroup(server);
+    }
+  }, 30_000);
 });
+
+function spawnWbMaintenance(action: 'start' | 'stop', port: number): childProcess.ChildProcess {
+  return childProcess.spawn('yarn', ['workspace', '@willbooster/wb', 'start', 'maintenance', action, '--quiet-env'], {
+    cwd: process.cwd(),
+    detached: true,
+    env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
+    stdio: 'ignore',
+  });
+}
+
+function spawnNodeServer(port: number): childProcess.ChildProcess {
+  return childProcess.spawn(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--eval',
+      `
+        import http from 'node:http';
+        const server = http.createServer((_request, response) => response.end('ok'));
+        server.listen(${JSON.stringify(port)}, '0.0.0.0');
+        setInterval(() => {}, 1000);
+      `,
+    ],
+    {
+      detached: true,
+      stdio: 'ignore',
+    }
+  );
+}
+
+function terminateProcessGroup(child: childProcess.ChildProcess): void {
+  if (child.exitCode !== null || child.pid === undefined) return;
+
+  try {
+    process.kill(-child.pid, 'SIGTERM');
+  } catch {
+    // do nothing
+  }
+}
+
+async function waitForExit(child: childProcess.ChildProcess): Promise<void> {
+  if (child.exitCode !== null) return;
+
+  await Promise.race([
+    once(child, 'exit').then(() => {}),
+    new Promise<void>((_resolve, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Timed out waiting for process ${child.pid ?? '<unknown>'} to exit.`));
+      }, 10_000);
+    }),
+  ]);
+}
 
 async function findAvailablePort(): Promise<number> {
   const server = http.createServer();
@@ -81,11 +117,11 @@ async function findAvailablePort(): Promise<number> {
 }
 
 async function waitForHttpStatus(port: number, expectedStatus: number): Promise<void> {
-  const deadline = Date.now() + 5000;
+  const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
     const status = await fetchStatus(port);
     if (status === expectedStatus) return;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`Timed out waiting for HTTP ${expectedStatus} on port ${port}.`);
 }
