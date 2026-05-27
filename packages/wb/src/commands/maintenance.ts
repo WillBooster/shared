@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { once } from 'node:events';
 import http from 'node:http';
 
 import chalk from 'chalk';
@@ -128,25 +129,18 @@ function parsePort(portEnv: string | undefined): number {
 }
 
 async function listenMaintenanceServer(server: http.Server, port: number): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const onError = (error: Error): void => {
-      server.off('listening', onListening);
-      reject(error);
-    };
-    const onListening = (): void => {
-      server.off('error', onError);
-      resolve();
-    };
-    server.once('error', onError);
-    server.once('listening', onListening);
+  try {
+    const listening = once(server, 'listening');
     server.listen(port, '0.0.0.0');
-  }).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === 'EADDRINUSE') {
+    await listening;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'EADDRINUSE') {
       console.error(chalk.red(`Port ${port} is already in use.`));
       process.exit(1);
     }
     throw error;
-  });
+  }
 }
 
 async function waitForShutdown(server: http.Server): Promise<void> {
@@ -154,6 +148,7 @@ async function waitForShutdown(server: http.Server): Promise<void> {
     const shutdown = (): void => {
       process.off('SIGINT', shutdown);
       process.off('SIGTERM', shutdown);
+      process.off('SIGQUIT', shutdown);
       server.close(() => {
         resolve();
       });
@@ -161,5 +156,6 @@ async function waitForShutdown(server: http.Server): Promise<void> {
     };
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
+    process.once('SIGQUIT', shutdown);
   });
 }
