@@ -95,14 +95,25 @@ export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
   },
 };
 
+function parsePort(portEnv: string | undefined): number {
+  const port = Number(portEnv);
+  assert.ok(Number.isInteger(port) && port > 0, `PORT environment variable is invalid: ${portEnv}`);
+  return port;
+}
+
 async function startMaintenanceServer(project: Project, port: number): Promise<void> {
   await killPortContainerAndProcess(port, project);
   const server = createMaintenanceServer();
-  await listenMaintenanceServer(server, port);
   server.on('error', (error) => {
-    console.error(chalk.red(`Maintenance server error: ${error.message}`));
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === 'EADDRINUSE') {
+      console.error(chalk.red(`Port ${port} is already in use.`));
+    } else {
+      console.error(chalk.red(`Maintenance server error: ${error.message}`));
+    }
     process.exit(1);
   });
+  await listenMaintenanceServer(server, port);
   console.info(`Started maintenance server on port ${port}.`);
   await waitForShutdown(server);
 }
@@ -122,25 +133,10 @@ function createMaintenanceServer(): http.Server {
   });
 }
 
-function parsePort(portEnv: string | undefined): number {
-  const port = Number(portEnv);
-  assert.ok(Number.isInteger(port) && port > 0, `PORT environment variable is invalid: ${portEnv}`);
-  return port;
-}
-
 async function listenMaintenanceServer(server: http.Server, port: number): Promise<void> {
-  try {
-    const listening = once(server, 'listening');
-    server.listen(port, '0.0.0.0');
-    await listening;
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code === 'EADDRINUSE') {
-      console.error(chalk.red(`Port ${port} is already in use.`));
-      process.exit(1);
-    }
-    throw error;
-  }
+  const listening = once(server, 'listening');
+  server.listen(port, '0.0.0.0');
+  await listening;
 }
 
 async function waitForShutdown(server: http.Server): Promise<void> {
