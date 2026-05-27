@@ -63,7 +63,6 @@ function spawnNodeServer(port: number): childProcess.ChildProcess {
         import http from 'node:http';
         const server = http.createServer((_request, response) => response.end('ok'));
         server.listen(${JSON.stringify(port)}, '0.0.0.0');
-        setInterval(() => {}, 1000);
       `,
     ],
     {
