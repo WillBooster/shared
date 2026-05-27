@@ -98,6 +98,9 @@ async function startMaintenanceServer(project: Project, port: number): Promise<v
   await killPortContainerAndProcess(port, project);
   const server = createMaintenanceServer();
   await listenMaintenanceServer(server, port);
+  server.on('error', (error) => {
+    console.error(chalk.red(`Maintenance server error: ${error.message}`));
+  });
   console.info(`Started maintenance server on port ${port}.`);
   await waitForShutdown(server);
 }
@@ -153,6 +156,7 @@ async function waitForShutdown(server: http.Server): Promise<void> {
       server.close(() => {
         resolve();
       });
+      server.closeAllConnections();
     };
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
