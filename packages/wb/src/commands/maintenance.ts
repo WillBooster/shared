@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import http from 'node:http';
+import { setTimeout } from 'node:timers/promises';
 
 import chalk from 'chalk';
 import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
@@ -119,7 +120,7 @@ async function createAndListenMaintenanceServer(port: number): Promise<http.Serv
       await closeMaintenanceServer(server);
       const err = error as NodeJS.ErrnoException;
       if (err.code === 'EADDRINUSE' && attempt < maintenanceListenMaxAttempts) {
-        await sleep(maintenanceListenRetryDelayMs);
+        await setTimeout(maintenanceListenRetryDelayMs);
         continue;
       }
       handleMaintenanceStartupError(port, err);
@@ -186,8 +187,13 @@ async function waitForShutdown(server: http.Server): Promise<void> {
       process.off('SIGTERM', shutdown);
       process.off('SIGQUIT', shutdown);
       void (async () => {
-        await closeMaintenanceServer(server);
-        resolve();
+        try {
+          await closeMaintenanceServer(server);
+        } catch (error) {
+          console.error(chalk.red(`Failed to close maintenance server: ${(error as Error).message}`));
+        } finally {
+          resolve();
+        }
       })();
     };
     process.once('SIGINT', shutdown);
@@ -211,8 +217,4 @@ async function closeMaintenanceServer(server: http.Server): Promise<void> {
     });
     server.closeAllConnections();
   });
-}
-
-async function sleep(milliseconds: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
