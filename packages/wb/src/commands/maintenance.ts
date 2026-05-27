@@ -77,7 +77,7 @@ const server = http.createServer((_request, response) => {
 server.on('error', (error) => {
   try {
     fs.rmSync(pidPath, { force: true });
-    fs.writeFileSync(errorPath, error.code || error.message || 'UNKNOWN');
+    fs.writeFileSync(errorPath, error?.code || error?.message || 'UNKNOWN');
   } catch {
     // do nothing
   }
@@ -228,14 +228,6 @@ function removePidFile(pidPath: string): void {
   }
 }
 
-function removeErrorFile(errorPath: string): void {
-  try {
-    fs.rmSync(errorPath, { force: true });
-  } catch {
-    // do nothing
-  }
-}
-
 async function waitForMaintenanceServer(pidPath: string, errorPath: string, pid: number, port: number): Promise<void> {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
@@ -243,17 +235,33 @@ async function waitForMaintenanceServer(pidPath: string, errorPath: string, pid:
     const error = readError(errorPath);
     if (error !== undefined) {
       removeErrorFile(errorPath);
-      if (error === 'EADDRINUSE') {
-        console.error(chalk.red(`Port ${port} is already in use.`));
-        process.exit(1);
-      }
-      throw new Error(`Failed to start maintenance server: ${error}`);
+      handleMaintenanceServerError(error, port);
     }
     if (!isProcessRunning(pid)) break;
     await setTimeout(50);
   }
 
+  const finalError = readError(errorPath);
   removePidFile(pidPath);
   removeErrorFile(errorPath);
+  if (finalError !== undefined) {
+    handleMaintenanceServerError(finalError, port);
+  }
   throw new Error('Failed to start maintenance server.');
+}
+
+function handleMaintenanceServerError(error: string, port: number): never {
+  if (error === 'EADDRINUSE') {
+    console.error(chalk.red(`Port ${port} is already in use.`));
+    process.exit(1);
+  }
+  throw new Error(`Failed to start maintenance server: ${error}`);
+}
+
+function removeErrorFile(errorPath: string): void {
+  try {
+    fs.rmSync(errorPath, { force: true });
+  } catch {
+    // do nothing
+  }
 }
