@@ -12,6 +12,8 @@ const builder = {} as const;
 type MaintenanceArgv = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder> & {
   action: 'start' | 'stop';
 };
+const maintenanceListenMaxAttempts = 5;
+const maintenanceListenRetryDelayMs = 100;
 const maintenanceHtml = `<!doctype html>
 <html lang="ja">
   <head>
@@ -102,20 +104,38 @@ function parsePort(portEnv: string | undefined): number {
 
 async function startMaintenanceServer(project: Project, port: number): Promise<void> {
   await killPortContainerAndProcess(port, project);
-  const server = createMaintenanceServer();
-  try {
-    await listenMaintenanceServer(server, port, handleRuntimeMaintenanceServerError);
-  } catch (error) {
-    const err = error as NodeJS.ErrnoException;
-    if (err.code === 'EADDRINUSE') {
-      console.error(chalk.red(`Port ${port} is already in use.`));
-    } else {
-      console.error(chalk.red(`Maintenance server error: ${err.message}`));
-    }
-    process.exit(1);
-  }
+  const server = await createAndListenMaintenanceServer(port);
   console.info(`Started maintenance server on port ${port}.`);
   await waitForShutdown(server);
+}
+
+async function createAndListenMaintenanceServer(port: number): Promise<http.Server> {
+  for (let attempt = 1; attempt <= maintenanceListenMaxAttempts; attempt++) {
+    const server = createMaintenanceServer();
+    try {
+      await listenMaintenanceServer(server, port, handleRuntimeMaintenanceServerError);
+      return server;
+    } catch (error) {
+      await closeMaintenanceServer(server);
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'EADDRINUSE' && attempt < maintenanceListenMaxAttempts) {
+        await sleep(maintenanceListenRetryDelayMs);
+        continue;
+      }
+      handleMaintenanceStartupError(port, err);
+    }
+  }
+
+  throw new Error('Unreachable maintenance server startup state.');
+}
+
+function handleMaintenanceStartupError(port: number, error: NodeJS.ErrnoException): never {
+  if (error.code === 'EADDRINUSE') {
+    console.error(chalk.red(`Port ${port} is already in use.`));
+  } else {
+    console.error(chalk.red(`Maintenance server error: ${error.message}`));
+  }
+  process.exit(1);
 }
 
 function handleRuntimeMaintenanceServerError(error: Error): void {
@@ -165,13 +185,34 @@ async function waitForShutdown(server: http.Server): Promise<void> {
       process.off('SIGINT', shutdown);
       process.off('SIGTERM', shutdown);
       process.off('SIGQUIT', shutdown);
-      server.close(() => {
+      void (async () => {
+        await closeMaintenanceServer(server);
         resolve();
-      });
-      server.closeAllConnections();
+      })();
     };
     process.once('SIGINT', shutdown);
     process.once('SIGTERM', shutdown);
     process.once('SIGQUIT', shutdown);
   });
+}
+
+async function closeMaintenanceServer(server: http.Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') {
+          resolve();
+          return;
+        }
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+    server.closeAllConnections();
+  });
+}
+
+async function sleep(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
