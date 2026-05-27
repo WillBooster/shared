@@ -123,8 +123,6 @@ const workflows = {
       'cancel-in-progress': true,
     },
     permissions: {
-      // for skip-duplicate-actions to cancel outdated runs
-      actions: 'write',
       // for linter fix
       contents: 'write',
       // for pkg-preflight PR file listing
@@ -327,6 +325,8 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
     }
     case 'test': {
       // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
+      // The reusable test workflow no longer needs Actions write access.
+      delete newSettings.permissions?.actions;
       if (newSettings.on?.pull_request) {
         delete newSettings.on.pull_request['paths-ignore'];
       }
