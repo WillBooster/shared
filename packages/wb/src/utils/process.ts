@@ -1,4 +1,5 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { setTimeout } from 'node:timers/promises';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import killPortProcess from 'kill-port';
@@ -9,6 +10,7 @@ import { printFinishedAndExitIfNeeded, printStart } from '../scripts/run.js';
 import { isPortAvailable } from './port.js';
 
 const killed = new Set<number | string>();
+const staleProcessWaitMs = 1000;
 
 export async function killPortProcessImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
   const available = await isPortAvailable(port);
@@ -30,8 +32,54 @@ export async function killPortProcessImmediatelyAndOnExit(port: number, project:
 export async function killPortContainerAndProcess(port: number, project: Project): Promise<void> {
   // We should stop Docker containers first because `kill-port` may fail to stop Docker containers.
   await stopDockerContainerByPort(port, project);
+  if (process.platform !== 'win32') {
+    killListeningProcessesByPort(port);
+    return;
+  }
+
   try {
     await killPortProcess(port);
+  } catch {
+    // do nothing
+  }
+}
+
+function killListeningProcessesByPort(port: number): void {
+  for (const pid of listListeningProcessIds(port)) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // do nothing
+    }
+  }
+}
+
+function listListeningProcessIds(port: number): number[] {
+  try {
+    const stdout = execFileSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000,
+    });
+    return stdout
+      .split(/\s+/)
+      .map((pid) => Number(pid.trim()))
+      .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
+  } catch {
+    return [];
+  }
+}
+
+export async function removeStaleProcess(pid: number): Promise<void> {
+  await setTimeout(staleProcessWaitMs);
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return;
+  }
+
+  try {
+    process.kill(pid, 'SIGKILL');
   } catch {
     // do nothing
   }
