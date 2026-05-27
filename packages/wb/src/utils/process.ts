@@ -27,7 +27,7 @@ export async function killPortProcessImmediatelyAndOnExit(port: number, project:
   }
 }
 
-async function killPortContainerAndProcess(port: number, project: Project): Promise<void> {
+export async function killPortContainerAndProcess(port: number, project: Project): Promise<void> {
   // We should stop Docker containers first because `kill-port` may fail to stop Docker containers.
   await stopDockerContainerByPort(port, project);
   try {

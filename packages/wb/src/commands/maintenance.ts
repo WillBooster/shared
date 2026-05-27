@@ -1,7 +1,5 @@
-import child_process from 'node:child_process';
 import assert from 'node:assert';
-import fs from 'node:fs';
-import path from 'node:path';
+import http from 'node:http';
 import { setTimeout } from 'node:timers/promises';
 
 import chalk from 'chalk';
@@ -9,12 +7,14 @@ import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { isPortAvailable } from '../utils/port.js';
+import { killPortContainerAndProcess } from '../utils/process.js';
 
 const builder = {} as const;
 type MaintenanceArgv = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder> & {
   action: 'start' | 'stop';
 };
+const maintenanceListenMaxAttempts = 5;
+const maintenanceListenRetryDelayMs = 100;
 const maintenanceHtml = `<!doctype html>
 <html lang="ja">
   <head>
@@ -59,36 +59,6 @@ const maintenanceHtml = `<!doctype html>
   </body>
 </html>`;
 
-function getMaintenanceServerSource(port: number, pidPath: string): string {
-  return String.raw`
-import fs from 'node:fs';
-import http from 'node:http';
-
-const pidPath = ${JSON.stringify(pidPath)};
-
-const server = http.createServer((_request, response) => {
-  response.writeHead(503, {
-    'cache-control': 'no-store',
-    'content-type': 'text/html; charset=utf-8',
-  });
-  response.end(${JSON.stringify(maintenanceHtml)});
-});
-
-server.on('error', () => {
-  try {
-    fs.rmSync(pidPath, { force: true });
-  } catch {
-    // do nothing
-  }
-  process.exit(1);
-});
-
-server.listen(${port}, '0.0.0.0', () => {
-  fs.writeFileSync(pidPath, String(process.pid) + '\n');
-});
-`;
-}
-
 export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
   command: 'maintenance <action>',
   describe: 'Start or stop a lightweight maintenance page server. Example: wb maintenance start',
@@ -119,7 +89,7 @@ export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
       return;
     }
     if (action === 'stop') {
-      stopMaintenanceServer(project, port);
+      await stopMaintenanceServer(project, port);
       return;
     }
 
@@ -127,100 +97,124 @@ export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
   },
 };
 
-async function startMaintenanceServer(project: Project, port: number): Promise<void> {
-  const pidPath = getPidPath(project, port);
-  const existingPid = readPid(pidPath);
-  if (existingPid !== undefined && isProcessRunning(existingPid)) {
-    console.info(`Maintenance server is already running on port ${port}.`);
-    return;
-  }
-  removePidFile(pidPath);
-
-  if (!(await isPortAvailable(port))) {
-    console.error(chalk.red(`Port ${port} is already in use.`));
-    process.exit(1);
-  }
-  fs.mkdirSync(path.dirname(pidPath), { recursive: true });
-
-  const child = child_process.spawn(
-    process.execPath,
-    ['--input-type=module', '--eval', getMaintenanceServerSource(port, pidPath)],
-    {
-      detached: true,
-      env: project.env,
-      stdio: 'ignore',
-    }
-  );
-  if (child.pid === undefined) {
-    throw new Error('Failed to start maintenance server.');
-  }
-
-  child.unref();
-  await waitForPidFile(pidPath, child.pid);
-  console.info(`Started maintenance server on port ${port}.`);
-}
-
-function stopMaintenanceServer(project: Project, port: number): void {
-  const pidPath = getPidPath(project, port);
-  const pid = readPid(pidPath);
-  if (pid === undefined) {
-    console.info(`Maintenance server is not running on port ${port}.`);
-    return;
-  }
-
-  try {
-    process.kill(pid, 'SIGTERM');
-  } catch {
-    // do nothing
-  }
-  removePidFile(pidPath);
-  console.info(`Stopped maintenance server on port ${port}.`);
-}
-
 function parsePort(portEnv: string | undefined): number {
   const port = Number(portEnv);
   assert.ok(Number.isInteger(port) && port > 0, `PORT environment variable is invalid: ${portEnv}`);
   return port;
 }
 
-function getPidPath(project: Project, port: number): string {
-  return path.join(project.rootDirPath, '.tmp', `wb-maintenance-server-${port}.pid`);
+async function startMaintenanceServer(project: Project, port: number): Promise<void> {
+  await killPortContainerAndProcess(port, project);
+  const server = await createAndListenMaintenanceServer(port);
+  console.info(`Started maintenance server on port ${port}.`);
+  await waitForShutdown(server);
 }
 
-function readPid(pidPath: string): number | undefined {
-  try {
-    const pid = Number(fs.readFileSync(pidPath, 'utf8').trim());
-    return Number.isInteger(pid) && pid > 0 ? pid : undefined;
-  } catch {
-    return;
+async function createAndListenMaintenanceServer(port: number): Promise<http.Server> {
+  for (let attempt = 1; attempt <= maintenanceListenMaxAttempts; attempt++) {
+    const server = createMaintenanceServer();
+    try {
+      await listenMaintenanceServer(server, port, handleRuntimeMaintenanceServerError);
+      return server;
+    } catch (error) {
+      await closeMaintenanceServer(server);
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === 'EADDRINUSE' && attempt < maintenanceListenMaxAttempts) {
+        await setTimeout(maintenanceListenRetryDelayMs);
+        continue;
+      }
+      handleMaintenanceStartupError(port, err);
+    }
   }
+
+  throw new Error('Unreachable maintenance server startup state.');
 }
 
-function isProcessRunning(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+function handleMaintenanceStartupError(port: number, error: NodeJS.ErrnoException): never {
+  if (error.code === 'EADDRINUSE') {
+    console.error(chalk.red(`Port ${port} is already in use.`));
+  } else {
+    console.error(chalk.red(`Maintenance server error: ${error.message}`));
   }
+  process.exit(1);
 }
 
-function removePidFile(pidPath: string): void {
-  try {
-    fs.rmSync(pidPath, { force: true });
-  } catch {
-    // do nothing
-  }
+function handleRuntimeMaintenanceServerError(error: Error): void {
+  console.error(chalk.red(`Maintenance server error: ${error.message}`));
+  process.exit(1);
 }
 
-async function waitForPidFile(pidPath: string, pid: number): Promise<void> {
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    if (readPid(pidPath) !== undefined) return;
-    if (!isProcessRunning(pid)) break;
-    await setTimeout(50);
-  }
+async function stopMaintenanceServer(project: Project, port: number): Promise<void> {
+  await killPortContainerAndProcess(port, project);
+  console.info(`Stopped maintenance server on port ${port}.`);
+}
 
-  removePidFile(pidPath);
-  throw new Error('Failed to start maintenance server.');
+function createMaintenanceServer(): http.Server {
+  return http.createServer((_request, response) => {
+    response.writeHead(503, {
+      'cache-control': 'no-store',
+      'content-type': 'text/html; charset=utf-8',
+    });
+    response.end(maintenanceHtml);
+  });
+}
+
+async function listenMaintenanceServer(
+  server: http.Server,
+  port: number,
+  onRuntimeError: (error: Error) => void
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const onStartupError = (error: Error): void => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = (): void => {
+      server.off('error', onStartupError);
+      server.on('error', onRuntimeError);
+      resolve();
+    };
+    server.once('error', onStartupError);
+    server.once('listening', onListening);
+    server.listen(port, '0.0.0.0');
+  });
+}
+
+async function waitForShutdown(server: http.Server): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const shutdown = (): void => {
+      process.off('SIGINT', shutdown);
+      process.off('SIGTERM', shutdown);
+      process.off('SIGQUIT', shutdown);
+      void (async () => {
+        try {
+          await closeMaintenanceServer(server);
+        } catch (error) {
+          console.error(chalk.red(`Failed to close maintenance server: ${(error as Error).message}`));
+        } finally {
+          resolve();
+        }
+      })();
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+    process.once('SIGQUIT', shutdown);
+  });
+}
+
+async function closeMaintenanceServer(server: http.Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ERR_SERVER_NOT_RUNNING') {
+          resolve();
+          return;
+        }
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+    server.closeAllConnections();
+  });
 }
