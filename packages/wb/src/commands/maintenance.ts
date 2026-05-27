@@ -9,7 +9,6 @@ import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { isPortAvailable } from '../utils/port.js';
 
 const builder = {} as const;
 type MaintenanceArgv = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder> & {
@@ -59,12 +58,13 @@ const maintenanceHtml = `<!doctype html>
   </body>
 </html>`;
 
-function getMaintenanceServerSource(port: number, pidPath: string): string {
+function getMaintenanceServerSource(port: number, pidPath: string, errorPath: string): string {
   return String.raw`
 import fs from 'node:fs';
 import http from 'node:http';
 
 const pidPath = ${JSON.stringify(pidPath)};
+const errorPath = ${JSON.stringify(errorPath)};
 
 const server = http.createServer((_request, response) => {
   response.writeHead(503, {
@@ -74,9 +74,10 @@ const server = http.createServer((_request, response) => {
   response.end(${JSON.stringify(maintenanceHtml)});
 });
 
-server.on('error', () => {
+server.on('error', (error) => {
   try {
     fs.rmSync(pidPath, { force: true });
+    fs.writeFileSync(errorPath, error.code || error.message || 'UNKNOWN');
   } catch {
     // do nothing
   }
@@ -84,6 +85,11 @@ server.on('error', () => {
 });
 
 server.listen(${port}, '0.0.0.0', () => {
+  try {
+    fs.rmSync(errorPath, { force: true });
+  } catch {
+    // do nothing
+  }
   fs.writeFileSync(pidPath, String(process.pid) + '\n');
 });
 `;
@@ -129,22 +135,19 @@ export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
 
 async function startMaintenanceServer(project: Project, port: number): Promise<void> {
   const pidPath = getPidPath(project, port);
+  const errorPath = getErrorPath(project, port);
   const existingPid = readPid(pidPath);
   if (existingPid !== undefined && isProcessRunning(existingPid)) {
     console.info(`Maintenance server is already running on port ${port}.`);
     return;
   }
   removePidFile(pidPath);
-
-  if (!(await isPortAvailable(port))) {
-    console.error(chalk.red(`Port ${port} is already in use.`));
-    process.exit(1);
-  }
+  removeErrorFile(errorPath);
   fs.mkdirSync(path.dirname(pidPath), { recursive: true });
 
   const child = child_process.spawn(
     process.execPath,
-    ['--input-type=module', '--eval', getMaintenanceServerSource(port, pidPath)],
+    ['--input-type=module', '--eval', getMaintenanceServerSource(port, pidPath, errorPath)],
     {
       detached: true,
       env: project.env,
@@ -156,7 +159,7 @@ async function startMaintenanceServer(project: Project, port: number): Promise<v
   }
 
   child.unref();
-  await waitForPidFile(pidPath, child.pid);
+  await waitForMaintenanceServer(pidPath, errorPath, child.pid, port);
   console.info(`Started maintenance server on port ${port}.`);
 }
 
@@ -187,10 +190,22 @@ function getPidPath(project: Project, port: number): string {
   return path.join(project.rootDirPath, '.tmp', `wb-maintenance-server-${port}.pid`);
 }
 
+function getErrorPath(project: Project, port: number): string {
+  return path.join(project.rootDirPath, '.tmp', `wb-maintenance-server-${port}.error`);
+}
+
 function readPid(pidPath: string): number | undefined {
   try {
     const pid = Number(fs.readFileSync(pidPath, 'utf8').trim());
     return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  } catch {
+    return;
+  }
+}
+
+function readError(errorPath: string): string | undefined {
+  try {
+    return fs.readFileSync(errorPath, 'utf8').trim() || undefined;
   } catch {
     return;
   }
@@ -213,14 +228,32 @@ function removePidFile(pidPath: string): void {
   }
 }
 
-async function waitForPidFile(pidPath: string, pid: number): Promise<void> {
+function removeErrorFile(errorPath: string): void {
+  try {
+    fs.rmSync(errorPath, { force: true });
+  } catch {
+    // do nothing
+  }
+}
+
+async function waitForMaintenanceServer(pidPath: string, errorPath: string, pid: number, port: number): Promise<void> {
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
     if (readPid(pidPath) !== undefined) return;
+    const error = readError(errorPath);
+    if (error !== undefined) {
+      removeErrorFile(errorPath);
+      if (error === 'EADDRINUSE') {
+        console.error(chalk.red(`Port ${port} is already in use.`));
+        process.exit(1);
+      }
+      throw new Error(`Failed to start maintenance server: ${error}`);
+    }
     if (!isProcessRunning(pid)) break;
     await setTimeout(50);
   }
 
   removePidFile(pidPath);
+  removeErrorFile(errorPath);
   throw new Error('Failed to start maintenance server.');
 }
