@@ -123,7 +123,6 @@ async function startMaintenanceServer(project: Project, port: number, delayMs: n
   };
   const handleSignal = (): void => {
     abortController.abort();
-    void cleanup().finally(() => process.exit(0));
   };
   const removeSignalHandlers = (): void => {
     process.off('SIGINT', handleSignal);
@@ -288,6 +287,14 @@ async function killMaintenanceProcess(project: Project, port: number): Promise<v
   await removeMaintenancePidFile(pidFilePath);
 }
 
+async function removeMaintenancePidFile(pidFilePath: string, expectedPid?: number): Promise<void> {
+  if (expectedPid !== undefined) {
+    const pid = await readMaintenancePidFile(pidFilePath);
+    if (pid !== expectedPid) return;
+  }
+  await fs.rm(pidFilePath, { force: true });
+}
+
 async function readMaintenancePidFile(pidFilePath: string): Promise<number | undefined> {
   try {
     const pidText = await fs.readFile(pidFilePath, 'utf8');
@@ -296,14 +303,6 @@ async function readMaintenancePidFile(pidFilePath: string): Promise<number | und
   } catch {
     return undefined;
   }
-}
-
-async function removeMaintenancePidFile(pidFilePath: string, expectedPid?: number): Promise<void> {
-  if (expectedPid !== undefined) {
-    const pid = await readMaintenancePidFile(pidFilePath);
-    if (pid !== expectedPid) return;
-  }
-  await fs.rm(pidFilePath, { force: true });
 }
 
 function maintenancePidFilePath(project: Project, port: number): string {

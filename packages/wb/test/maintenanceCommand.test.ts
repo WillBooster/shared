@@ -42,7 +42,7 @@ describe('wb maintenance', () => {
   it('does not start maintenance when the app already listens after the delay', async () => {
     const port = await findAvailablePort();
     await removePidFile(port);
-    const maintenance = spawnWbMaintenance('start', port, ['--delay-ms', '100']);
+    const maintenance = spawnWbMaintenance('start', port, ['--delay-ms', '2000']);
     let server: childProcess.ChildProcess | undefined;
 
     try {
