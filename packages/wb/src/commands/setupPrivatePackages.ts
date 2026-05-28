@@ -49,6 +49,10 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       await fs.promises.cp(privatePackage.sourceDirPath, privatePackage.targetDirPath, {
         recursive: true,
         force: true,
+        filter: (src) => {
+          const segments = path.relative(privatePackage.sourceDirPath, src).split(path.sep);
+          return !segments.includes('node_modules') && !segments.includes('.git');
+        },
       });
       console.info(
         `Copied ${privatePackage.name} to ${path.relative(projects.root.dirPath, privatePackage.targetDirPath)}`
@@ -65,6 +69,7 @@ async function collectPrivatePackages(
   outDirPath: string
 ): Promise<Map<string, PrivatePackage>> {
   const copiedPackages = new Map<string, PrivatePackage>();
+  // Start from the root package.json by design; workspace package dependencies are outside this command's target.
   const packageNamesToCopy = findPrivateGitDependencyNames(rootPackageJson);
 
   for (let index = 0; index < packageNamesToCopy.length; index++) {
@@ -76,7 +81,7 @@ async function collectPrivatePackages(
     copiedPackages.set(packageName, privatePackage);
 
     for (const packageJsonPath of await findPackageJsonPaths(privatePackage.sourceDirPath)) {
-      const packageJson = readPackageJson(packageJsonPath);
+      const packageJson = await readPackageJson(packageJsonPath);
       for (const nestedPackageName of findPrivateGitDependencyNames(packageJson)) {
         if (!copiedPackages.has(nestedPackageName) && !packageNamesToCopy.includes(nestedPackageName)) {
           packageNamesToCopy.push(nestedPackageName);
@@ -126,7 +131,7 @@ async function replacePrivateGitDependencies(
 ): Promise<void> {
   for (const privatePackage of copiedPackages.values()) {
     for (const packageJsonPath of await findPackageJsonPaths(privatePackage.targetDirPath)) {
-      const packageJson = readPackageJson(packageJsonPath);
+      const packageJson = await readPackageJson(packageJsonPath);
       if (!replacePackageJsonDependencies(packageJsonPath, packageJson, copiedPackages)) continue;
 
       await fs.promises.writeFile(packageJsonPath, `${JSON.stringify(packageJson, undefined, 2)}\n`, 'utf8');
@@ -174,8 +179,8 @@ async function findPackageJsonPaths(dirPath: string): Promise<string[]> {
   return packageJsonPaths;
 }
 
-function readPackageJson(packageJsonPath: string): PackageJson {
-  return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson;
+async function readPackageJson(packageJsonPath: string): Promise<PackageJson> {
+  return JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf8')) as PackageJson;
 }
 
 function isPrivateGitDependency(value: unknown): value is string {
