@@ -24,7 +24,7 @@ const builder = {
   },
 } as const;
 
-export const setupPrivatePackagesCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, InferredOptionTypes<typeof builder>> = {
   command: 'setup-private-packages',
   describe: 'Copy private git dependencies for Docker builds',
   builder,
@@ -69,6 +69,7 @@ async function collectPrivatePackages(
 
   for (let index = 0; index < packageNamesToCopy.length; index++) {
     const packageName = packageNamesToCopy[index];
+    if (!packageName) continue;
     if (copiedPackages.has(packageName)) continue;
 
     const privatePackage = buildPrivatePackage(rootDirPath, outDirPath, packageName);
@@ -126,7 +127,7 @@ async function replacePrivateGitDependencies(
   for (const privatePackage of copiedPackages.values()) {
     for (const packageJsonPath of await findPackageJsonPaths(privatePackage.targetDirPath)) {
       const packageJson = readPackageJson(packageJsonPath);
-      if (!replacePackageJsonDependencies(packageJson, copiedPackages)) continue;
+      if (!replacePackageJsonDependencies(packageJsonPath, packageJson, copiedPackages)) continue;
 
       await fs.promises.writeFile(packageJsonPath, `${JSON.stringify(packageJson, undefined, 2)}\n`, 'utf8');
       console.info(`Rewrote private dependencies in ${path.relative(outDirPath, packageJsonPath)}`);
@@ -135,6 +136,7 @@ async function replacePrivateGitDependencies(
 }
 
 function replacePackageJsonDependencies(
+  packageJsonPath: string,
   packageJson: PackageJson,
   copiedPackages: Map<string, PrivatePackage>
 ): boolean {
@@ -145,9 +147,10 @@ function replacePackageJsonDependencies(
 
     for (const [name, value] of Object.entries(dependencies)) {
       if (!isPrivateGitDependency(value)) continue;
-      if (!copiedPackages.has(name)) continue;
+      const targetPackage = copiedPackages.get(name);
+      if (!targetPackage) continue;
 
-      dependencies[name] = `file:../${toUnscopedPackageName(name)}`;
+      dependencies[name] = `file:${path.relative(path.dirname(packageJsonPath), targetPackage.targetDirPath)}`;
       changed = true;
     }
   }
@@ -157,7 +160,7 @@ function replacePackageJsonDependencies(
 async function findPackageJsonPaths(dirPath: string): Promise<string[]> {
   const packageJsonPaths: string[] = [];
   for (const dirent of await fs.promises.readdir(dirPath, { withFileTypes: true })) {
-    if (dirent.name === 'node_modules') continue;
+    if (dirent.name === 'node_modules' || dirent.name === '.git') continue;
 
     const childPath = path.join(dirPath, dirent.name);
     if (dirent.isDirectory()) {
