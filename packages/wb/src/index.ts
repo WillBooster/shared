@@ -15,6 +15,7 @@ import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild
 import { prismaCommand } from './commands/prisma.js';
 import { retryCommand } from './commands/retry.js';
 import { setupCommand } from './commands/setup.js';
+import { setupPrivatePackagesCommand } from './commands/setupPrivatePackages.js';
 import { startCommand } from './commands/start.js';
 import { testCommand } from './commands/test.js';
 import { testOnCiCommand } from './commands/testOnCi.js';
@@ -46,6 +47,7 @@ await yargs(hideBin(process.argv))
   .command(prismaCommand)
   .command(retryCommand)
   .command(setupCommand)
+  .command(setupPrivatePackagesCommand)
   .command(startCommand)
   .command(testCommand)
   .command(testOnCiCommand)
