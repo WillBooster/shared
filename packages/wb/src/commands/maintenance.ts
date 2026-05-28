@@ -125,7 +125,7 @@ async function startMaintenanceServer(project: Project, port: number, delayMs: n
     console.info(`Started maintenance server on port ${port}.`);
     await waitForShutdown(server);
   } finally {
-    await removeMaintenancePidFile(pidFilePath);
+    await removeMaintenancePidFile(pidFilePath, process.pid);
   }
 }
 
@@ -274,7 +274,11 @@ async function readMaintenancePidFile(pidFilePath: string): Promise<number | und
   }
 }
 
-async function removeMaintenancePidFile(pidFilePath: string): Promise<void> {
+async function removeMaintenancePidFile(pidFilePath: string, expectedPid?: number): Promise<void> {
+  if (expectedPid !== undefined) {
+    const pid = await readMaintenancePidFile(pidFilePath);
+    if (pid !== expectedPid) return;
+  }
   await fs.rm(pidFilePath, { force: true });
 }
 

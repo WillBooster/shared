@@ -201,7 +201,8 @@ async function removePidFile(port: number): Promise<void> {
 }
 
 function maintenancePidFilePath(port: number): string {
-  return path.join(process.cwd(), '..', '..', '.wb', `maintenance-${port}.pid`);
+  const rootDir = process.cwd().endsWith('packages/wb') ? path.resolve(process.cwd(), '../..') : process.cwd();
+  return path.join(rootDir, '.wb', `maintenance-${port}.pid`);
 }
 
 async function fetchStatus(port: number): Promise<number | undefined> {
