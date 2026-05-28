@@ -6402,6 +6402,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@willbooster/wb@npm:13.19.8":
+  version: 13.19.8
+  resolution: "@willbooster/wb@npm:13.19.8"
+  dependencies:
+    chalk: "npm:5.6.2"
+    dotenv: "npm:17.4.2"
+    dotenv-expand: "npm:13.0.0"
+    fastest-levenshtein: "npm:1.0.16"
+    globby: "npm:16.2.0"
+    kill-port: "npm:2.0.1"
+    minimal-promise-pool: "npm:6.0.2"
+    yargs: "npm:18.0.0"
+  bin:
+    wb: bin/index.js
+  checksum: 10c0/1032ed72ffd65f7cba695986ee84fe1dff5509e508b24e27a8e2ef87cf515df7d92e880ed645c83fee72c54764a0b562f7296f2566015a733e7b6310e59638c8
+  languageName: node
+  linkType: hard
+
 "@willbooster/wb@workspace:packages/wb":
   version: 0.0.0-use.local
   resolution: "@willbooster/wb@workspace:packages/wb"
@@ -20401,7 +20419,7 @@ __metadata:
     "@typescript/native-preview": "npm:7.0.0-dev.20260504.1"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.6"
-    "@willbooster/wb": "npm:13.19.7"
+    "@willbooster/wb": "npm:13.19.8"
     conventional-changelog-conventionalcommits: "npm:9.3.1"
     lefthook: "npm:2.1.6"
     oxfmt: "npm:0.50.0"
