@@ -65,8 +65,8 @@ export async function removeStaleProcess(pid: number): Promise<void> {
     await setTimeout(staleProcessPollIntervalMs);
     try {
       process.kill(pid, 0);
-    } catch {
-      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return;
     }
   }
 

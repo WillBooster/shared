@@ -117,15 +117,39 @@ async function startMaintenanceServer(project: Project, port: number, delayMs: n
   assert.ok(Number.isFinite(delayMs) && delayMs >= 0, `delay-ms must be greater than or equal to 0: ${delayMs}`);
 
   const pidFilePath = await writeMaintenancePidFile(project, port);
+  const abortController = new AbortController();
+  const cleanup = async (): Promise<void> => {
+    await removeMaintenancePidFile(pidFilePath, process.pid);
+  };
+  const handleSignal = (): void => {
+    abortController.abort();
+    void cleanup().finally(() => process.exit(0));
+  };
+  const removeSignalHandlers = (): void => {
+    process.off('SIGINT', handleSignal);
+    process.off('SIGTERM', handleSignal);
+    process.off('SIGQUIT', handleSignal);
+  };
+
+  process.once('SIGINT', handleSignal);
+  process.once('SIGTERM', handleSignal);
+  process.once('SIGQUIT', handleSignal);
+
   try {
-    await setTimeout(delayMs);
+    await setTimeout(delayMs, undefined, { signal: abortController.signal });
+    removeSignalHandlers();
     const server = await createAndListenMaintenanceServer(port);
     if (!server) return;
 
     console.info(`Started maintenance server on port ${port}.`);
     await waitForShutdown(server);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') return;
+
+    throw error;
   } finally {
-    await removeMaintenancePidFile(pidFilePath, process.pid);
+    removeSignalHandlers();
+    await cleanup();
   }
 }
 
@@ -253,7 +277,7 @@ async function writeMaintenancePidFile(project: Project, port: number): Promise<
 async function killMaintenanceProcess(project: Project, port: number): Promise<void> {
   const pidFilePath = maintenancePidFilePath(project, port);
   const pid = await readMaintenancePidFile(pidFilePath);
-  if (pid !== undefined) {
+  if (pid !== undefined && pid !== process.pid) {
     try {
       treeKill(pid, 'SIGTERM');
     } catch {
@@ -283,5 +307,9 @@ async function removeMaintenancePidFile(pidFilePath: string, expectedPid?: numbe
 }
 
 function maintenancePidFilePath(project: Project, port: number): string {
-  return path.join(project.rootDirPath, maintenancePidDirectoryName, `maintenance-${port}.pid`);
+  return getMaintenancePidFilePath(project.rootDirPath, port);
+}
+
+export function getMaintenancePidFilePath(rootDirPath: string, port: number): string {
+  return path.join(rootDirPath, maintenancePidDirectoryName, `maintenance-${port}.pid`);
 }

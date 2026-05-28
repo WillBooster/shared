@@ -6,6 +6,8 @@ import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { getMaintenancePidFilePath } from '../src/commands/maintenance.js';
+
 describe('wb maintenance', () => {
   it('runs start in the foreground until SIGTERM', async () => {
     const port = await findAvailablePort();
@@ -202,7 +204,7 @@ async function removePidFile(port: number): Promise<void> {
 
 function maintenancePidFilePath(port: number): string {
   const rootDir = process.cwd().endsWith('packages/wb') ? path.resolve(process.cwd(), '../..') : process.cwd();
-  return path.join(rootDir, '.wb', `maintenance-${port}.pid`);
+  return getMaintenancePidFilePath(rootDir, port);
 }
 
 async function fetchStatus(port: number): Promise<number | undefined> {
