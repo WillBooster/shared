@@ -24,6 +24,7 @@ type MaintenanceArgv = InferredOptionTypes<typeof builder & typeof sharedOptions
 };
 const maintenanceListenMaxAttempts = 5;
 const maintenanceListenRetryDelayMs = 100;
+const maxTimeoutDelayMs = 2_147_483_647;
 const maintenancePidDirectoryName = '.wb';
 const maintenanceHtml = `<!doctype html>
 <html lang="ja">
@@ -114,7 +115,10 @@ function parsePort(portEnv: string | undefined): number {
 }
 
 async function startMaintenanceServer(project: Project, port: number, delayMs: number): Promise<void> {
-  assert.ok(Number.isFinite(delayMs) && delayMs >= 0, `delay-ms must be greater than or equal to 0: ${delayMs}`);
+  assert.ok(
+    Number.isFinite(delayMs) && delayMs >= 0 && delayMs <= maxTimeoutDelayMs,
+    `delay-ms must be between 0 and ${maxTimeoutDelayMs}: ${delayMs}`
+  );
 
   const pidFilePath = await writeMaintenancePidFile(project, port);
   const abortController = new AbortController();
@@ -284,7 +288,7 @@ async function killMaintenanceProcess(project: Project, port: number): Promise<v
     }
     await removeStaleProcess(pid);
   }
-  await removeMaintenancePidFile(pidFilePath);
+  await removeMaintenancePidFile(pidFilePath, pid);
 }
 
 async function removeMaintenancePidFile(pidFilePath: string, expectedPid?: number): Promise<void> {
