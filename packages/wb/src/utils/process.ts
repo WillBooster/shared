@@ -1,7 +1,7 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { setTimeout } from 'node:timers/promises';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
-import killPortProcess from 'kill-port';
 
 import type { Project } from '../project.js';
 import { printFinishedAndExitIfNeeded, printStart } from '../scripts/run.js';
@@ -9,6 +9,8 @@ import { printFinishedAndExitIfNeeded, printStart } from '../scripts/run.js';
 import { isPortAvailable } from './port.js';
 
 const killed = new Set<number | string>();
+const staleProcessPollIntervalMs = 100;
+const staleProcessMaxPolls = 10;
 
 export async function killPortProcessImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
   const available = await isPortAvailable(port);
@@ -28,10 +30,48 @@ export async function killPortProcessImmediatelyAndOnExit(port: number, project:
 }
 
 export async function killPortContainerAndProcess(port: number, project: Project): Promise<void> {
-  // We should stop Docker containers first because `kill-port` may fail to stop Docker containers.
   await stopDockerContainerByPort(port, project);
+  killListeningProcessesByPort(port);
+}
+
+function killListeningProcessesByPort(port: number): void {
+  for (const pid of listListeningProcessIds(port)) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // do nothing
+    }
+  }
+}
+
+function listListeningProcessIds(port: number): number[] {
   try {
-    await killPortProcess(port);
+    const stdout = execFileSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000,
+    });
+    return stdout
+      .split(/\s+/)
+      .map((pid) => Number(pid.trim()))
+      .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid);
+  } catch {
+    return [];
+  }
+}
+
+export async function removeStaleProcess(pid: number): Promise<void> {
+  for (let i = 0; i < staleProcessMaxPolls; i++) {
+    await setTimeout(staleProcessPollIntervalMs);
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') return;
+    }
+  }
+
+  try {
+    process.kill(pid, 'SIGKILL');
   } catch {
     // do nothing
   }

@@ -1,20 +1,31 @@
 import assert from 'node:assert';
+import fs from 'node:fs/promises';
 import http from 'node:http';
+import path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 
+import { treeKill } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject, type Project } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { killPortContainerAndProcess } from '../utils/process.js';
+import { killPortContainerAndProcess, removeStaleProcess } from '../utils/process.js';
 
-const builder = {} as const;
+const builder = {
+  'delay-ms': {
+    default: 5000,
+    describe: 'Delay before starting the maintenance page server.',
+    type: 'number',
+  },
+} as const;
 type MaintenanceArgv = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder> & {
   action: 'start' | 'stop';
 };
 const maintenanceListenMaxAttempts = 5;
 const maintenanceListenRetryDelayMs = 100;
+const maxTimeoutDelayMs = 2_147_483_647;
+const maintenancePidDirectoryName = '.wb';
 const maintenanceHtml = `<!doctype html>
 <html lang="ja">
   <head>
@@ -85,7 +96,7 @@ export const maintenanceCommand: CommandModule<unknown, MaintenanceArgv> = {
 
     const port = parsePort(project.env.PORT);
     if (action === 'start') {
-      await startMaintenanceServer(project, port);
+      await startMaintenanceServer(project, port, argv.delayMs);
       return;
     }
     if (action === 'stop') {
@@ -103,14 +114,49 @@ function parsePort(portEnv: string | undefined): number {
   return port;
 }
 
-async function startMaintenanceServer(project: Project, port: number): Promise<void> {
-  await killPortContainerAndProcess(port, project);
-  const server = await createAndListenMaintenanceServer(port);
-  console.info(`Started maintenance server on port ${port}.`);
-  await waitForShutdown(server);
+async function startMaintenanceServer(project: Project, port: number, delayMs: number): Promise<void> {
+  assert.ok(
+    Number.isFinite(delayMs) && delayMs >= 0 && delayMs <= maxTimeoutDelayMs,
+    `delay-ms must be between 0 and ${maxTimeoutDelayMs}: ${delayMs}`
+  );
+
+  const pidFilePath = await writeMaintenancePidFile(project, port);
+  const abortController = new AbortController();
+  const cleanup = async (): Promise<void> => {
+    await removeMaintenancePidFile(pidFilePath, process.pid);
+  };
+  const handleSignal = (): void => {
+    abortController.abort();
+  };
+  const removeSignalHandlers = (): void => {
+    process.off('SIGINT', handleSignal);
+    process.off('SIGTERM', handleSignal);
+    process.off('SIGQUIT', handleSignal);
+  };
+
+  process.once('SIGINT', handleSignal);
+  process.once('SIGTERM', handleSignal);
+  process.once('SIGQUIT', handleSignal);
+
+  try {
+    await setTimeout(delayMs, undefined, { signal: abortController.signal });
+    removeSignalHandlers();
+    const server = await createAndListenMaintenanceServer(port);
+    if (!server) return;
+
+    console.info(`Started maintenance server on port ${port}.`);
+    await waitForShutdown(server);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') return;
+
+    throw error;
+  } finally {
+    removeSignalHandlers();
+    await cleanup();
+  }
 }
 
-async function createAndListenMaintenanceServer(port: number): Promise<http.Server> {
+async function createAndListenMaintenanceServer(port: number): Promise<http.Server | undefined> {
   for (let attempt = 1; attempt <= maintenanceListenMaxAttempts; attempt++) {
     const server = createMaintenanceServer();
     try {
@@ -122,6 +168,10 @@ async function createAndListenMaintenanceServer(port: number): Promise<http.Serv
       if (err.code === 'EADDRINUSE' && attempt < maintenanceListenMaxAttempts) {
         await setTimeout(maintenanceListenRetryDelayMs);
         continue;
+      }
+      if (err.code === 'EADDRINUSE') {
+        console.info(`Skip maintenance server because port ${port} is already in use.`);
+        return undefined;
       }
       handleMaintenanceStartupError(port, err);
     }
@@ -145,6 +195,7 @@ function handleRuntimeMaintenanceServerError(error: Error): void {
 }
 
 async function stopMaintenanceServer(project: Project, port: number): Promise<void> {
+  await killMaintenanceProcess(project, port);
   await killPortContainerAndProcess(port, project);
   console.info(`Stopped maintenance server on port ${port}.`);
 }
@@ -217,4 +268,51 @@ async function closeMaintenanceServer(server: http.Server): Promise<void> {
     });
     server.closeAllConnections();
   });
+}
+
+async function writeMaintenancePidFile(project: Project, port: number): Promise<string> {
+  const pidFilePath = maintenancePidFilePath(project, port);
+  await fs.mkdir(path.dirname(pidFilePath), { recursive: true });
+  await fs.writeFile(pidFilePath, `${process.pid}\n`, 'utf8');
+  return pidFilePath;
+}
+
+async function killMaintenanceProcess(project: Project, port: number): Promise<void> {
+  const pidFilePath = maintenancePidFilePath(project, port);
+  const pid = await readMaintenancePidFile(pidFilePath);
+  if (pid !== undefined && pid !== process.pid) {
+    try {
+      treeKill(pid, 'SIGTERM');
+    } catch {
+      // do nothing
+    }
+    await removeStaleProcess(pid);
+  }
+  await removeMaintenancePidFile(pidFilePath, pid);
+}
+
+async function removeMaintenancePidFile(pidFilePath: string, expectedPid?: number): Promise<void> {
+  if (expectedPid !== undefined) {
+    const pid = await readMaintenancePidFile(pidFilePath);
+    if (pid !== expectedPid) return;
+  }
+  await fs.rm(pidFilePath, { force: true });
+}
+
+async function readMaintenancePidFile(pidFilePath: string): Promise<number | undefined> {
+  try {
+    const pidText = await fs.readFile(pidFilePath, 'utf8');
+    const pid = Number(pidText.trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function maintenancePidFilePath(project: Project, port: number): string {
+  return getMaintenancePidFilePath(project.rootDirPath, port);
+}
+
+export function getMaintenancePidFilePath(rootDirPath: string, port: number): string {
+  return path.join(rootDirPath, maintenancePidDirectoryName, `maintenance-${port}.pid`);
 }

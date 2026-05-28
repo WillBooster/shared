@@ -1,13 +1,17 @@
 import childProcess from 'node:child_process';
 import http from 'node:http';
 import { once } from 'node:events';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+
+import { getMaintenancePidFilePath } from '../src/commands/maintenance.js';
 
 describe('wb maintenance', () => {
   it('runs start in the foreground until SIGTERM', async () => {
     const port = await findAvailablePort();
-    const maintenance = spawnWbMaintenance('start', port);
+    const maintenance = spawnWbMaintenance('start', port, ['--delay-ms', '0']);
 
     try {
       await waitForHttpStatus(port, 503);
@@ -17,23 +21,53 @@ describe('wb maintenance', () => {
     }
   }, 20_000);
 
+  it('stops delayed start before it starts listening', async () => {
+    const port = await findAvailablePort();
+    await removePidFile(port);
+    const maintenance = spawnWbMaintenance('start', port, ['--delay-ms', '10000']);
+
+    try {
+      await waitForPidFile(port);
+      const result = runWbMaintenanceStop(port);
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain(`Stopped maintenance server on port ${port}.`);
+      await waitForExit(maintenance);
+      await expect(fetchStatus(port)).resolves.toBeUndefined();
+    } finally {
+      terminateProcessGroup(maintenance);
+    }
+  }, 30_000);
+
+  it('does not start maintenance when the app already listens after the delay', async () => {
+    const port = await findAvailablePort();
+    await removePidFile(port);
+    const maintenance = spawnWbMaintenance('start', port, ['--delay-ms', '2000']);
+    let server: childProcess.ChildProcess | undefined;
+
+    try {
+      await waitForPidFile(port);
+      server = spawnNodeServer(port);
+      await waitForHttpStatus(port, 200);
+      await waitForExit(maintenance);
+      await expect(fetchStatus(port)).resolves.toBe(200);
+    } finally {
+      terminateProcessGroup(maintenance);
+      if (server) {
+        terminateProcessGroup(server);
+      }
+    }
+  }, 30_000);
+
   it('stops a listener on the configured port without relying on a pid file', async () => {
     const port = await findAvailablePort();
+    await removePidFile(port);
     const server = spawnNodeServer(port);
 
     try {
       await waitForHttpStatus(port, 200);
 
-      const result = childProcess.spawnSync(
-        'yarn',
-        ['workspace', '@willbooster/wb', 'start', 'maintenance', 'stop', '--quiet-env'],
-        {
-          cwd: process.cwd(),
-          encoding: 'utf8',
-          env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
-          timeout: 20_000,
-        }
-      );
+      const result = runWbMaintenanceStop(port);
 
       expect(result.status).toBe(0);
       expect(result.stdout).toContain(`Stopped maintenance server on port ${port}.`);
@@ -44,13 +78,30 @@ describe('wb maintenance', () => {
   }, 30_000);
 });
 
-function spawnWbMaintenance(action: 'start' | 'stop', port: number): childProcess.ChildProcess {
-  return childProcess.spawn('yarn', ['workspace', '@willbooster/wb', 'start', 'maintenance', action, '--quiet-env'], {
-    cwd: process.cwd(),
-    detached: true,
-    env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
-    stdio: 'ignore',
-  });
+function spawnWbMaintenance(action: 'start' | 'stop', port: number, args: string[] = []): childProcess.ChildProcess {
+  return childProcess.spawn(
+    'yarn',
+    ['workspace', '@willbooster/wb', 'start', 'maintenance', action, '--quiet-env', ...args],
+    {
+      cwd: process.cwd(),
+      detached: true,
+      env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
+      stdio: 'ignore',
+    }
+  );
+}
+
+function runWbMaintenanceStop(port: number): childProcess.SpawnSyncReturns<string> {
+  return childProcess.spawnSync(
+    'yarn',
+    ['workspace', '@willbooster/wb', 'start', 'maintenance', 'stop', '--quiet-env'],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
+      timeout: 20_000,
+    }
+  );
 }
 
 function spawnNodeServer(port: number): childProcess.ChildProcess {
@@ -130,6 +181,30 @@ async function waitForHttpStatus(port: number, expectedStatus: number): Promise<
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`Timed out waiting for HTTP ${expectedStatus} on port ${port}.`);
+}
+
+async function waitForPidFile(port: number): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  const pidFilePath = maintenancePidFilePath(port);
+  while (Date.now() < deadline) {
+    try {
+      await fs.access(pidFilePath);
+      return;
+    } catch {
+      // continue waiting
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Timed out waiting for ${pidFilePath}.`);
+}
+
+async function removePidFile(port: number): Promise<void> {
+  await fs.rm(maintenancePidFilePath(port), { force: true });
+}
+
+function maintenancePidFilePath(port: number): string {
+  const rootDir = process.cwd().endsWith('packages/wb') ? path.resolve(process.cwd(), '../..') : process.cwd();
+  return getMaintenancePidFilePath(rootDir, port);
 }
 
 async function fetchStatus(port: number): Promise<number | undefined> {
