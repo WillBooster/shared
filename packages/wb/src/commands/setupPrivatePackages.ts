@@ -36,6 +36,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     }
 
     const outDirPath = path.resolve(projects.root.dirPath, argv.outDir);
+    assertSubdirectory(projects.root.dirPath, outDirPath);
     const copiedPackages = await collectPrivatePackages(projects.root.dirPath, projects.root.packageJson, outDirPath);
 
     if (argv.dryRun) {
@@ -71,6 +72,7 @@ async function collectPrivatePackages(
   const copiedPackages = new Map<string, PrivatePackage>();
   // Start from the root package.json by design; workspace package dependencies are outside this command's target.
   const packageNamesToCopy = findPrivateGitDependencyNames(rootPackageJson);
+  const queuedPackageNames = new Set(packageNamesToCopy);
 
   for (let index = 0; index < packageNamesToCopy.length; index++) {
     const packageName = packageNamesToCopy[index];
@@ -83,7 +85,8 @@ async function collectPrivatePackages(
     for (const packageJsonPath of await findPackageJsonPaths(privatePackage.sourceDirPath)) {
       const packageJson = await readPackageJson(packageJsonPath);
       for (const nestedPackageName of findPrivateGitDependencyNames(packageJson)) {
-        if (!copiedPackages.has(nestedPackageName) && !packageNamesToCopy.includes(nestedPackageName)) {
+        if (!queuedPackageNames.has(nestedPackageName)) {
+          queuedPackageNames.add(nestedPackageName);
           packageNamesToCopy.push(nestedPackageName);
         }
       }
@@ -91,6 +94,14 @@ async function collectPrivatePackages(
   }
 
   return copiedPackages;
+}
+
+function assertSubdirectory(rootDirPath: string, outDirPath: string): void {
+  const relativePath = path.relative(rootDirPath, outDirPath);
+  if (relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)) return;
+
+  console.error(chalk.red(`Output directory must be a subdirectory of the project root: ${outDirPath}`));
+  process.exit(1);
 }
 
 function buildPrivatePackage(rootDirPath: string, outDirPath: string, packageName: string): PrivatePackage {
