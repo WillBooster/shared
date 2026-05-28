@@ -262,6 +262,7 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
   try {
     const oldContent = await fs.promises.readFile(filePath, 'utf8');
     const oldSettings = yaml.load(oldContent) as Workflow;
+    removeJobsReplacedByReusableWorkflow(newSettings, oldSettings);
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   } catch {
     // do nothing
@@ -424,6 +425,18 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     job.secrets = newSecrets;
   } else {
     delete job.secrets;
+  }
+}
+
+function removeJobsReplacedByReusableWorkflow(newSettings: Workflow, oldSettings: Workflow): void {
+  if (!oldSettings.jobs) return;
+
+  for (const [jobName, job] of Object.entries(newSettings.jobs)) {
+    if (!job.uses?.includes('/reusable-workflows/')) continue;
+
+    // Reusable workflow jobs cannot also contain local fields such as `runs-on`, `env`, or `steps`.
+    // Drop the old local job body so migration to the reusable workflow produces valid YAML.
+    delete oldSettings.jobs[jobName];
   }
 }
 
