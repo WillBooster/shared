@@ -196,6 +196,7 @@ async function findRepositoryRuleset(
 }
 
 function isGitHubPermissionOrVisibilityError(error: unknown): boolean {
-  if (!error || typeof error !== 'object' || !('status' in error)) return false;
-  return error.status === 401 || error.status === 403 || error.status === 404;
+  if (!error || typeof error !== 'object') return false;
+  const status = (error as { status?: number }).status;
+  return status === 401 || status === 403 || status === 404;
 }
