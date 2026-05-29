@@ -139,33 +139,28 @@ export async function setupRepositoryRulesets(config: PackageConfig): Promise<vo
 
 async function upsertProtectMainRuleset(octokit: Octokit, owner: string, repo: string): Promise<void> {
   const existingRuleset = await findRepositoryRuleset(octokit, owner, repo, PROTECT_MAIN_RULESET.name);
-
   const existingRulesetId = existingRuleset?.id;
-  if (existingRulesetId) {
-    await withRetry(
-      () =>
-        octokit.request('PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}', {
+
+  await withRetry(
+    async () => {
+      if (existingRulesetId) {
+        await octokit.request('PUT /repos/{owner}/{repo}/rulesets/{ruleset_id}', {
           owner,
           repo,
           ruleset_id: existingRulesetId,
           ...PROTECT_MAIN_RULESET,
           headers: GITHUB_API_VERSION_HEADER,
-        }),
-      {
-        shouldRetry: (error) => !isGitHubPermissionOrVisibilityError(error),
+        });
+        return;
       }
-    );
-    return;
-  }
 
-  await withRetry(
-    () =>
-      octokit.request('POST /repos/{owner}/{repo}/rulesets', {
+      await octokit.request('POST /repos/{owner}/{repo}/rulesets', {
         owner,
         repo,
         ...PROTECT_MAIN_RULESET,
         headers: GITHUB_API_VERSION_HEADER,
-      }),
+      });
+    },
     {
       shouldRetry: (error) => !isGitHubPermissionOrVisibilityError(error),
     }
@@ -191,7 +186,8 @@ async function findRepositoryRuleset(
       shouldRetry: (error) => !isGitHubPermissionOrVisibilityError(error),
     }
   );
-  const rulesets = response.data as RepositoryRulesetSummary[];
+  const rulesets = response.data;
+  if (!Array.isArray(rulesets)) return;
   return rulesets.find((ruleset) => ruleset.name === rulesetName && ruleset.source_type === 'Repository');
 }
 
