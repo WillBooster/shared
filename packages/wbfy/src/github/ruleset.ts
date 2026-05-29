@@ -120,7 +120,7 @@ export async function setupRepositoryRulesets(config: PackageConfig): Promise<vo
   return logger.functionIgnoringException('setupRepositoryRulesets', async () => {
     const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
     if (!owner || !repo) return;
-    if (owner !== 'WillBooster' && owner !== 'WillBoosterLab') return;
+    if (owner !== 'WillBooster') return;
     if (!hasGitHubToken(owner)) return;
 
     const octokit = getOctokit(owner);
