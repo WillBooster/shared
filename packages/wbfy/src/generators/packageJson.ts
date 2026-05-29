@@ -236,7 +236,9 @@ async function applyPackageJsonConventions(
     devDependencies.push(lefthookDependency);
 
     if (config.depending.semanticRelease) {
-      if (
+      if (doesReleaseScriptInstallSemanticRelease(jsonObj.scripts.release)) {
+        delete jsonObj.devDependencies['semantic-release'];
+      } else if (
         !jsonObj.devDependencies['semantic-release'] &&
         !jsonObj.devDependencies['multi-semantic-release'] &&
         !jsonObj.devDependencies['@qiwi/multi-semantic-release']
@@ -333,6 +335,11 @@ async function applyPackageJsonConventions(
   }
 
   return { dependencies, devDependencies, pythonDevDependencies };
+}
+
+function doesReleaseScriptInstallSemanticRelease(script: unknown): boolean {
+  if (typeof script !== 'string') return false;
+  return /\b(?:bunx|npx|pnpm\s+dlx|yarn\s+dlx)\s+semantic-release(?:@\S+)?\b/u.test(script);
 }
 
 function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJson): void {
