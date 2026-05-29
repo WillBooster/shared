@@ -62,7 +62,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
 }
 
 function replaceLegacyConfigReferences(content: string): string {
-  return content.replaceAll('config.', 'oxlintResolvedConfig.');
+  return content.replaceAll(/(?<![./])\bconfig\./gu, 'oxlintResolvedConfig.');
 }
 
 function getConfigContent(config: PackageConfig): string {
