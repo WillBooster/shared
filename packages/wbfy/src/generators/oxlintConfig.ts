@@ -62,11 +62,12 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
 }
 
 function replaceLegacyConfigReferences(content: string): string {
-  return content.replaceAll('config.', 'oxlintResolvedConfig.');
+  return content.replaceAll(/(?<![./])\bconfig\./gu, 'oxlintResolvedConfig.');
 }
 
 function getConfigContent(config: PackageConfig): string {
   const isRootConfig = config.isRoot;
+  const oxlintBaseConfigModule = getOxlintBaseConfigModule(config);
 
   // Do not collapse this to a static import for every package. CommonJS packages
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
@@ -88,13 +89,17 @@ ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;
 
   return `${managedConfigBlocks.getBlock(
     'base',
-    `import oxlintBaseConfig from '@willbooster/oxlint-config';
+    `import oxlintBaseConfig from '${oxlintBaseConfigModule}';
 
 ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
   )}
 
 ${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
 `;
+}
+
+function getOxlintBaseConfigModule(config: PackageConfig): string {
+  return config.packageJson?.name === '@willbooster/oxlint-config' ? './config.mjs' : '@willbooster/oxlint-config';
 }
 
 function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean): string {
