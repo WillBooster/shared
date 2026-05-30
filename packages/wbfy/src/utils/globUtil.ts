@@ -1,5 +1,6 @@
 export const globIgnore = [
   '**/node_modules/**',
+  '**/.antigravitycli/**',
   '**/.venv/**',
   '**/test-fixtures/**',
   '**/test/fixtures/**',
