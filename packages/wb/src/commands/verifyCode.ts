@@ -68,8 +68,6 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
         _: ['lint'],
         fix: true,
         format: true,
-        printAllOutput: true,
-        quiet: true,
         silent: true,
       } as unknown as LintCommandArgv),
     { silent: true }
