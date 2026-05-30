@@ -14,6 +14,7 @@ const defaultNames = ['windows', 'macos', 'linux', 'jetbrains', 'visualstudiocod
 
 const commonContent = `
 !.keep
+.antigravitycli/
 .aider*
 .env.production
 */mount/*.hash
