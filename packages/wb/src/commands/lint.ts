@@ -9,7 +9,7 @@ import { findDescendantProjects } from '../project.js';
 import type { BufferedRunResult } from '../scripts/run.js';
 import { normalizeScript, runWithSpawnInParallel, runWithSpawnInParallelBuffered } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { printBufferedOutput } from '../utils/output.js';
+import { printBufferedOutput, shouldPrintBufferedOutput } from '../utils/output.js';
 import { buildShellCommand } from '../utils/shell.js';
 
 const builder = {
@@ -356,7 +356,9 @@ function printSilentLintOutputs(
   argv: Pick<LintCommandArgv, 'printAllOutput' | 'silent'>
 ): void {
   const printableResults =
-    argv.silent && !argv.printAllOutput ? results.filter((result) => result.exitCode !== 0) : results;
+    argv.silent && !argv.printAllOutput
+      ? results.filter((result) => 'output' in result && shouldPrintBufferedOutput(result.exitCode, result.output))
+      : results;
   if (printableResults.length === 0) return;
 
   for (const result of printableResults) {
