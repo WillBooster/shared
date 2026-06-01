@@ -2,9 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { Project } from '../project.js';
-import { getFileDatabaseUrlPath } from '../project.js';
+import { FILE_SCHEMA, getFileDatabaseUrlPath } from '../project.js';
 
-const FILE_SCHEMA = 'file:';
 const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
 const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
 

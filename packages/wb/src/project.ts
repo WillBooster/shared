@@ -11,7 +11,7 @@ import { isCI } from './utils/ci.js';
 
 export type DatabaseOrm = 'prisma' | 'drizzle';
 
-const FILE_SCHEMA = 'file:';
+export const FILE_SCHEMA = 'file:';
 
 export class Project {
   private readonly argv: EnvReaderOptions;
