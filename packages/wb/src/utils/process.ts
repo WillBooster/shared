@@ -12,7 +12,8 @@ const killed = new Set<number | string>();
 const staleProcessPollIntervalMs = 100;
 const staleProcessMaxPolls = 10;
 const portAvailabilityPollIntervalMs = 100;
-const portAvailabilityMaxPolls = 50;
+const portAvailabilityTimeoutMs = 5000;
+const portAvailabilityMaxPolls = portAvailabilityTimeoutMs / portAvailabilityPollIntervalMs;
 
 export async function killPortProcessImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
   const available = await isPortAvailable(port);
@@ -88,9 +89,7 @@ async function waitForPortToBeAvailable(port: number): Promise<void> {
   }
 
   throw new Error(
-    `Timed out waiting for port ${port} to become available after ${
-      (portAvailabilityMaxPolls * portAvailabilityPollIntervalMs) / 1000
-    } seconds.`
+    `Timed out waiting for port ${port} to become available after ${portAvailabilityTimeoutMs / 1000} seconds.`
   );
 }
 
