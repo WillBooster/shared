@@ -63,6 +63,11 @@ const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<
   builder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
+    if (allProjects.length > 1) {
+      throw new Error(
+        'Creating Litestream configuration for multiple projects at once is not supported because they would overwrite each other.'
+      );
+    }
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db create-litestream-config', allProjects)) {
       createLitestreamConfig(project, orm);
     }
