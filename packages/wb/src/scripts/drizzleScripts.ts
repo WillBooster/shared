@@ -8,9 +8,9 @@ const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
 
 class DrizzleScripts {
   cleanUpLitestream(project: Project): string {
-    const dbPath = getSqliteDbPathOrError(project, 'cleanup-litestream');
-    const walCheckpointCommand = `if [ -f "${dbPath}" ] && command -v sqlite3 >/dev/null; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | sqlite3 "${dbPath}" && rm -f "${dbPath}-wal" "${dbPath}-shm"; fi`;
-    return `${walCheckpointCommand}; rm -f "${dbPath}".* "${dbPath}"-litestream*; rm -Rf "${path.dirname(dbPath)}/.${path.basename(dbPath)}"* || true`;
+    const dbPath = getAbsoluteSqliteDbPath(project, 'cleanup-litestream');
+    const walCheckpointCommand = `if [ -f "${dbPath}" ] && command -v sqlite3 >/dev/null; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | sqlite3 "${dbPath}"; fi`;
+    return `${walCheckpointCommand}; rm -f "${dbPath}".* "${dbPath}"-*; rm -Rf "${path.dirname(dbPath)}/.${path.basename(dbPath)}"* || true`;
   }
 
   reset(project: Project, additionalOptions = ''): string {
@@ -40,7 +40,7 @@ class DrizzleScripts {
   }
 
   deployForce(project: Project): string {
-    const dbPath = getSqliteDbPathOrError(project, 'deploy-force');
+    const dbPath = getAbsoluteSqliteDbPath(project, 'deploy-force');
     const removeDbCommand = buildRemoveSqliteDbFamilyCommand(dbPath);
     const litestreamConfigOption = getLitestreamConfigOption(project);
     return `${removeDbCommand}; ${this.deploy(project)} && ${removeDbCommand}
@@ -92,6 +92,11 @@ function getSqliteDbPathOrError(project: Project, commandName: string): string {
     throw new Error(`wb db ${commandName} supports Drizzle only when DATABASE_PATH or file: DATABASE_URL is set.`);
   }
   return dbPath;
+}
+
+function getAbsoluteSqliteDbPath(project: Project, commandName: string): string {
+  const dbPath = getSqliteDbPathOrError(project, commandName);
+  return path.isAbsolute(dbPath) ? dbPath : path.resolve(project.dirPath, dbPath);
 }
 
 function getSqliteDbPath(project: Project): string | undefined {
