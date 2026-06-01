@@ -84,7 +84,6 @@ async function waitForPortToBeAvailable(port: number): Promise<void> {
   for (let i = 0; i < portAvailabilityMaxPolls; i++) {
     if (await isPortAvailable(port)) return;
 
-    killListeningProcessesByPort(port);
     await setTimeout(portAvailabilityPollIntervalMs);
   }
 
