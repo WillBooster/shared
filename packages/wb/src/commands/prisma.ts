@@ -50,9 +50,9 @@ const cleanUpLitestreamCommand: CommandModule<unknown, InferredOptionTypes<typeo
   describe: 'Clean up temporal Litestream files',
   builder,
   async handler(argv) {
-    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
-    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma cleanup-litestream', allProjects)) {
-      await runWithSpawn(prismaScripts.cleanUpLitestream(project), project, argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db cleanup-litestream', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).cleanUpLitestream(project), project, argv);
     }
   },
 };
@@ -92,9 +92,9 @@ const deployForceCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   describe: "Force to apply migration to DB utilizing Litestream's backup without initializing it",
   builder,
   async handler(argv) {
-    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
-    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma deploy-force', allProjects)) {
-      await runWithSpawn(prismaScripts.deployForce(project), project, argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db deploy-force', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).deployForce(project), project, argv);
     }
   },
 };
