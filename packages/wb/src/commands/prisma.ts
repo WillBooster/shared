@@ -353,9 +353,7 @@ function getFileDatabaseUrlPath(project: Project): string | undefined {
   const dbUrl = project.env.DATABASE_URL;
   if (!dbUrl?.startsWith('file:')) return;
 
-  const dbPath = dbUrl.slice('file:'.length).replace(/[?#].*$/, '');
-  if (!dbPath) return;
-  return dbPath;
+  return dbUrl.slice('file:'.length).replace(/[?#].*$/, '') || undefined;
 }
 
 interface DatabaseOrmProject {
