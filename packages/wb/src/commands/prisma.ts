@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { DatabaseOrm, Project } from '../project.js';
-import { findDescendantProjects, isProjectEnvironment } from '../project.js';
+import { findDescendantProjects, getFileDatabaseUrlPath, isProjectEnvironment } from '../project.js';
 import { drizzleScripts } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -62,9 +62,14 @@ const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<
   describe: 'Create Litestream configuration file',
   builder,
   async handler(argv) {
-    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
-    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma create-litestream-config', allProjects)) {
-      createLitestreamConfig(project);
+    const allProjects = await findDatabaseOrmProjects(argv);
+    if (allProjects.length > 1) {
+      throw new Error(
+        'Creating Litestream configuration for multiple projects at once is not supported because they would overwrite each other.'
+      );
+    }
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db create-litestream-config', allProjects)) {
+      createLitestreamConfig(project, orm);
     }
   },
 };
@@ -292,9 +297,8 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
   },
 };
 
-function createLitestreamConfig(project: Project): void {
-  const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
-  const dbPath = `${dirName}/mount/prod.sqlite3`;
+function createLitestreamConfig(project: Project, orm: DatabaseOrm): void {
+  const dbPath = getLitestreamDbPath(project, orm);
   const requiredEnvVars = {
     CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID,
     CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME: project.env.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME,
@@ -335,6 +339,19 @@ function createLitestreamConfig(project: Project): void {
       cause: error,
     });
   }
+}
+
+function getLitestreamDbPath(project: Project, orm: DatabaseOrm): string {
+  if (orm === 'prisma') {
+    const dirName = project.packageJson.dependencies?.blitz ? 'db' : 'prisma';
+    return `${dirName}/mount/prod.sqlite3`;
+  }
+
+  const dbPath = project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
+  if (!dbPath) {
+    throw new Error('wb db create-litestream-config for Drizzle requires DATABASE_PATH or file: DATABASE_URL.');
+  }
+  return dbPath;
 }
 
 interface DatabaseOrmProject {
