@@ -11,6 +11,8 @@ import { isPortAvailable } from './port.js';
 const killed = new Set<number | string>();
 const staleProcessPollIntervalMs = 100;
 const staleProcessMaxPolls = 10;
+const portAvailabilityPollIntervalMs = 100;
+const portAvailabilityMaxPolls = 50;
 
 export async function killPortProcessImmediatelyAndOnExit(port: number, project: Project): Promise<void> {
   const available = await isPortAvailable(port);
@@ -32,6 +34,7 @@ export async function killPortProcessImmediatelyAndOnExit(port: number, project:
 export async function killPortContainerAndProcess(port: number, project: Project): Promise<void> {
   await stopDockerContainerByPort(port, project);
   killListeningProcessesByPort(port);
+  await waitForPortToBeAvailable(port);
 }
 
 function killListeningProcessesByPort(port: number): void {
@@ -75,6 +78,17 @@ export async function removeStaleProcess(pid: number): Promise<void> {
   } catch {
     // do nothing
   }
+}
+
+async function waitForPortToBeAvailable(port: number): Promise<void> {
+  for (let i = 0; i < portAvailabilityMaxPolls; i++) {
+    if (await isPortAvailable(port)) return;
+
+    killListeningProcessesByPort(port);
+    await setTimeout(portAvailabilityPollIntervalMs);
+  }
+
+  throw new Error(`Timed out waiting for port ${port} to become available.`);
 }
 
 export async function stopDockerContainerByImageName(imageName: string, project: Project): Promise<void> {
