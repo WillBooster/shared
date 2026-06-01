@@ -7,6 +7,7 @@ import { hideBin } from 'yargs/helpers';
 
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
 import { concurrentlyCommand } from './commands/concurrently.js';
+import { dotenvCommand } from './commands/dotenv.js';
 import { genCodeCommand } from './commands/genCode.js';
 import { killPortIfNonCiCommand } from './commands/killPortIfNonCi.js';
 import { lintCommand } from './commands/lint.js';
@@ -39,6 +40,7 @@ await yargs(hideBin(process.argv))
   .command(verifyCodeCommand)
   .command(buildIfNeededCommand)
   .command(concurrentlyCommand)
+  .command(dotenvCommand)
   .command(genCodeCommand)
   .command(killPortIfNonCiCommand)
   .command(lintCommand)
