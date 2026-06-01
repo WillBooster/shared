@@ -87,7 +87,11 @@ async function waitForPortToBeAvailable(port: number): Promise<void> {
     await setTimeout(portAvailabilityPollIntervalMs);
   }
 
-  throw new Error(`Timed out waiting for port ${port} to become available.`);
+  throw new Error(
+    `Timed out waiting for port ${port} to become available after ${
+      (portAvailabilityMaxPolls * portAvailabilityPollIntervalMs) / 1000
+    } seconds.`
+  );
 }
 
 export async function stopDockerContainerByImageName(imageName: string, project: Project): Promise<void> {
