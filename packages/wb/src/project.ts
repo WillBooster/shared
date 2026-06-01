@@ -11,6 +11,8 @@ import { isCI } from './utils/ci.js';
 
 export type DatabaseOrm = 'prisma' | 'drizzle';
 
+const FILE_SCHEMA = 'file:';
+
 export class Project {
   private readonly argv: EnvReaderOptions;
   private readonly loadEnv: boolean;
@@ -288,6 +290,15 @@ export class Project {
       return;
     }
   }
+}
+
+export function getFileDatabaseUrlPath(project: Pick<Project, 'env'>): string | undefined {
+  const dbUrl = project.env.DATABASE_URL;
+  if (!dbUrl?.startsWith(FILE_SCHEMA)) return;
+
+  const rawPath = dbUrl.slice(FILE_SCHEMA.length).replace(/[?#].*$/, '');
+  const normalizedPath = rawPath.startsWith('//') ? rawPath.slice(2) : rawPath;
+  return normalizedPath || undefined;
 }
 
 export interface FoundProjects {

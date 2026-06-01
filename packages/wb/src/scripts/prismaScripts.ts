@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { Project } from '../project.js';
+import { getFileDatabaseUrlPath } from '../project.js';
 
 const FILE_SCHEMA = 'file:';
 const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
@@ -131,10 +132,7 @@ function buildWalCheckpointAndRemoveSqliteSidecarFilesCommand(dbPath: string): s
 }
 
 export function cleanUpSqliteDbIfNeeded(project: Project): string | undefined {
-  const dbUrl = project.env.DATABASE_URL;
-  if (!dbUrl?.startsWith(FILE_SCHEMA)) return;
-
-  const rawDbPath = dbUrl.slice(FILE_SCHEMA.length).replace(/[?#].*$/, '');
+  const rawDbPath = getFileDatabaseUrlPath(project);
   if (!rawDbPath) return;
 
   const baseDir = getPrismaBaseDir(project);

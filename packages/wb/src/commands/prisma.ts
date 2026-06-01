@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { DatabaseOrm, Project } from '../project.js';
-import { findDescendantProjects, isProjectEnvironment } from '../project.js';
+import { findDescendantProjects, getFileDatabaseUrlPath, isProjectEnvironment } from '../project.js';
 import { drizzleScripts } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -347,15 +347,6 @@ function getLitestreamDbPath(project: Project, orm: DatabaseOrm): string {
     throw new Error('wb db create-litestream-config for Drizzle requires DATABASE_PATH or file: DATABASE_URL.');
   }
   return dbPath;
-}
-
-function getFileDatabaseUrlPath(project: Project): string | undefined {
-  const dbUrl = project.env.DATABASE_URL;
-  if (!dbUrl?.startsWith('file:')) return;
-
-  const rawPath = dbUrl.slice('file:'.length).replace(/[?#].*$/, '');
-  const normalizedPath = rawPath.startsWith('//') ? rawPath.slice(2) : rawPath;
-  return normalizedPath || undefined;
 }
 
 interface DatabaseOrmProject {

@@ -1,8 +1,6 @@
 import path from 'node:path';
 
-import { isProjectEnvironment, type Project } from '../project.js';
-
-const FILE_SCHEMA = 'file:';
+import { getFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
 
 class DrizzleScripts {
   reset(project: Project, additionalOptions = ''): string {
@@ -60,16 +58,6 @@ function buildRemoveSqliteDbCommand(project: Project): string | undefined {
 
   const absolutePath = path.isAbsolute(dbPath) ? dbPath : path.resolve(project.dirPath, dbPath);
   return `rm -f "${absolutePath}" "${absolutePath}-wal" "${absolutePath}-shm"`;
-}
-
-function getFileDatabaseUrlPath(project: Project): string | undefined {
-  const dbUrl = project.env.DATABASE_URL;
-  if (!dbUrl?.startsWith(FILE_SCHEMA)) return;
-
-  const rawDbPath = dbUrl.slice(FILE_SCHEMA.length).replace(/[?#].*$/, '');
-  if (!rawDbPath) return;
-
-  return rawDbPath;
 }
 
 export const drizzleScripts = new DrizzleScripts();
