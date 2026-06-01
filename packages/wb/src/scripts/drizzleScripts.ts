@@ -1,8 +1,18 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { getFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
 
+const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
+const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
+
 class DrizzleScripts {
+  cleanUpLitestream(project: Project): string {
+    const dbPath = getSqliteDbPathOrError(project, 'cleanup-litestream');
+    const walCheckpointCommand = `if [ -f "${dbPath}" ] && command -v sqlite3 >/dev/null; then printf 'PRAGMA wal_checkpoint(TRUNCATE);' | sqlite3 "${dbPath}" && rm -f "${dbPath}-wal" "${dbPath}-shm"; fi`;
+    return `${walCheckpointCommand}; rm -f "${dbPath}".* "${dbPath}"-litestream*; rm -Rf "${path.dirname(dbPath)}/.${path.basename(dbPath)}"* || true`;
+  }
+
   reset(project: Project, additionalOptions = ''): string {
     const removeCommand = buildRemoveSqliteDbCommand(project);
     if (!removeCommand) {
@@ -29,6 +39,14 @@ class DrizzleScripts {
     return `YARN drizzle-kit migrate ${additionalOptions}`;
   }
 
+  deployForce(project: Project): string {
+    const dbPath = getSqliteDbPathOrError(project, 'deploy-force');
+    const removeDbCommand = buildRemoveSqliteDbFamilyCommand(dbPath);
+    const litestreamConfigOption = getLitestreamConfigOption(project);
+    return `${removeDbCommand}; ${this.deploy(project)} && ${removeDbCommand}
+      && litestream restore ${litestreamConfigOption} -o "${dbPath}" "${dbPath}" && ls -ahl "${dbPath}" && ALLOW_TO_SKIP_SEED=0 ${this.deploy(project)}`;
+  }
+
   generate(_project: Project, additionalOptions = ''): string {
     return `YARN drizzle-kit generate ${additionalOptions}`;
   }
@@ -53,11 +71,38 @@ class DrizzleScripts {
 }
 
 function buildRemoveSqliteDbCommand(project: Project): string | undefined {
-  const dbPath = project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
+  const dbPath = getSqliteDbPath(project);
   if (!dbPath) return;
 
   const absolutePath = path.isAbsolute(dbPath) ? dbPath : path.resolve(project.dirPath, dbPath);
-  return `rm -f "${absolutePath}" "${absolutePath}-wal" "${absolutePath}-shm"`;
+  return buildRemoveSqliteDbCommandForPath(absolutePath);
+}
+
+function buildRemoveSqliteDbCommandForPath(dbPath: string): string {
+  return `rm -f "${dbPath}" "${dbPath}-wal" "${dbPath}-shm"`;
+}
+
+function buildRemoveSqliteDbFamilyCommand(dbPath: string): string {
+  return `rm -Rf "${dbPath}"*`;
+}
+
+function getSqliteDbPathOrError(project: Project, commandName: string): string {
+  const dbPath = getSqliteDbPath(project);
+  if (!dbPath) {
+    throw new Error(`wb db ${commandName} supports Drizzle only when DATABASE_PATH or file: DATABASE_URL is set.`);
+  }
+  return dbPath;
+}
+
+function getSqliteDbPath(project: Project): string | undefined {
+  return project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
+}
+
+function getLitestreamConfigOption(project: Project): string {
+  const localConfigPath = path.join(project.dirPath, LITESTREAM_CONFIG_FILE_NAME);
+  if (fs.existsSync(localConfigPath)) return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
+  if (fs.existsSync(DEFAULT_LITESTREAM_CONFIG_PATH)) return `-config ${DEFAULT_LITESTREAM_CONFIG_PATH}`;
+  return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
 }
 
 export const drizzleScripts = new DrizzleScripts();
