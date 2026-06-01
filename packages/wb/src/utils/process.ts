@@ -25,7 +25,11 @@ export async function killPortProcessImmediatelyAndOnExit(port: number, project:
     if (killed.has(port)) return;
 
     killed.add(port);
-    await killPortContainerAndProcess(port, project);
+    try {
+      await killPortContainerAndProcess(port, project);
+    } catch {
+      // Ignore errors while the process is already shutting down.
+    }
   };
   for (const signal of ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT']) {
     process.on(signal, killFunc);
