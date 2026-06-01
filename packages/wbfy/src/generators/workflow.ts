@@ -360,8 +360,10 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
   job.secrets ??= {};
-  // Use trusted publishing instead of NPM_TOKEN
-  delete job.secrets.NPM_TOKEN;
+  // Public npm releases use trusted publishing, but private Verdaccio releases still require NPM_TOKEN.
+  if (kind === 'release' && config.isPublicRepo) {
+    delete job.secrets.NPM_TOKEN;
+  }
 
   if (kind === 'test' || kind === 'release') {
     job.secrets.GH_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
