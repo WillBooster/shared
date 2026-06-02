@@ -51,14 +51,7 @@ function readAndApplyEnvironmentVariables(options, cwd) {
 
 function readEnvironmentVariables(options, cwd) {
   let envPaths = (options.env ?? []).map((envPath) => path.resolve(cwd, envPath));
-  const cascade =
-    options.cascadeEnv ??
-    (options.cascadeNodeEnv
-      ? process.env.NODE_ENV || 'development'
-      : options.autoCascadeEnv
-        ? process.env.WB_ENV || process.env.NODE_ENV || 'development'
-        : undefined);
-  if (cascade) {
+  if (options.cascadeEnv) {
     if (envPaths.length === 0) {
       envPaths.push(path.join(cwd, '.env'));
       if (options.includeRootEnv ?? true) {
@@ -69,9 +62,9 @@ function readEnvironmentVariables(options, cwd) {
       }
     }
     envPaths = envPaths.flatMap((envPath) => [
-      `${envPath}.${cascade}.local`,
+      `${envPath}.${options.cascadeEnv}.local`,
       `${envPath}.local`,
-      `${envPath}.${cascade}`,
+      `${envPath}.${options.cascadeEnv}`,
       envPath,
     ]);
   }
@@ -85,7 +78,7 @@ function readEnvironmentVariables(options, cwd) {
       }
     }
   }
-  Object.assign(envVars, readMiseEnvironmentVariables(cwd, cascade, envVars));
+  Object.assign(envVars, readMiseEnvironmentVariables(cwd, options.cascadeEnv, envVars));
   if (options.checkEnv) {
     const missingKeys = Object.keys(readEnvFile(path.join(cwd, options.checkEnv))).filter(
       (key) => !(key in envVars) && !(key in process.env)
@@ -186,14 +179,6 @@ function parseDotenvArgs(args) {
       options.cascadeEnv = arg.slice('-c='.length);
     } else if (arg.startsWith('--cascade-env=')) {
       options.cascadeEnv = arg.slice('--cascade-env='.length);
-    } else if (arg === '--cascade-node-env') {
-      options.cascadeNodeEnv = true;
-    } else if (arg === '--cascade-node-env=false' || arg === '--no-cascade-node-env') {
-      options.cascadeNodeEnv = false;
-    } else if (arg === '--auto-cascade-env') {
-      options.autoCascadeEnv = true;
-    } else if (arg === '--auto-cascade-env=false' || arg === '--no-auto-cascade-env') {
-      options.autoCascadeEnv = false;
     } else if (arg === '-e' || arg === '--env') {
       options.env = [...(options.env ?? []), nextValue()];
     } else if (arg.startsWith('--env=')) {
@@ -222,7 +207,7 @@ function parseDotenvArgs(args) {
 }
 
 function normalizeParsedDotenvArgs(parsed) {
-  if (!parsed.options.cascadeEnv && !parsed.options.cascadeNodeEnv && !parsed.options.autoCascadeEnv && !parsed.options.env) {
+  if (!parsed.options.cascadeEnv && !parsed.options.env) {
     parsed.options.env = ['.env'];
   }
   return parsed;

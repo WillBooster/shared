@@ -8,9 +8,7 @@ import {
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 interface DotenvOptions {
-  autoCascadeEnv?: boolean;
   cascadeEnv?: string;
-  cascadeNodeEnv?: boolean;
   checkEnv?: string;
   env?: string[];
   includeRootEnv?: boolean;
@@ -111,8 +109,6 @@ function getParsedDotenvArgsFromYargs(argv: ArgumentsCamelCase): ParsedDotenvArg
     command,
     options: {
       cascadeEnv: typeof argv.cascadeEnv === 'string' ? argv.cascadeEnv : undefined,
-      cascadeNodeEnv: typeof argv.cascadeNodeEnv === 'boolean' ? argv.cascadeNodeEnv : undefined,
-      autoCascadeEnv: typeof argv.autoCascadeEnv === 'boolean' ? argv.autoCascadeEnv : undefined,
       checkEnv: process.argv.some((arg) => arg === '--check-env' || arg.startsWith('--check-env='))
         ? String(argv.checkEnv)
         : undefined,
@@ -149,14 +145,6 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
       options.cascadeEnv = arg.slice('-c='.length);
     } else if (arg.startsWith('--cascade-env=')) {
       options.cascadeEnv = arg.slice('--cascade-env='.length);
-    } else if (arg === '--cascade-node-env') {
-      options.cascadeNodeEnv = true;
-    } else if (arg === '--cascade-node-env=false' || arg === '--no-cascade-node-env') {
-      options.cascadeNodeEnv = false;
-    } else if (arg === '--auto-cascade-env') {
-      options.autoCascadeEnv = true;
-    } else if (arg === '--auto-cascade-env=false' || arg === '--no-auto-cascade-env') {
-      options.autoCascadeEnv = false;
     } else if (arg === '-e' || arg === '--env') {
       options.env = [...(options.env ?? []), nextValue()];
     } else if (arg.startsWith('--env=')) {
@@ -185,12 +173,7 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
 }
 
 function normalizeParsedDotenvArgs(parsed: ParsedDotenvArgs): ParsedDotenvArgs {
-  if (
-    !parsed.options.cascadeEnv &&
-    !parsed.options.cascadeNodeEnv &&
-    !parsed.options.autoCascadeEnv &&
-    !parsed.options.env
-  ) {
+  if (!parsed.options.cascadeEnv && !parsed.options.env) {
     parsed.options.env = ['.env'];
   }
   return parsed;
