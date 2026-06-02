@@ -83,6 +83,9 @@ const obsoleteLintDependencies = [
   'micromatch',
   'typescript-eslint',
 ];
+const obsoleteToolDependencies = ['dotenv-cli'];
+const dotenvCliCommandPattern =
+  /(^|(?:&&|\|\||;)\s*)(?:(?:yarn|bun(?:\s+--bun)?|pnpm|npm)\s+(?:run\s+)?|(?:npx|bunx|pnpm\s+dlx|yarn\s+dlx)\s+)?dotenv(?:-cli)?\s+--\s*/gu;
 const micromatchPackageNames = new Set(['micromatch', '@types/micromatch']);
 const micromatchImportPattern =
   /\bfrom\s+['"]micromatch['"]|\brequire\(\s*['"]micromatch['"]\s*\)|\bimport\(\s*['"]micromatch['"]\s*\)/u;
@@ -686,6 +689,8 @@ async function removeDeprecatedStuff(
 
   removeWillBoosterConfigsManagedDependencies(config, jsonObj);
   removeObsoleteLintDependencies(jsonObj, config);
+  removeObsoleteToolDependencies(jsonObj);
+  normalizeDotenvCliScripts(jsonObj.scripts);
 }
 
 function removeSelfDependency(
@@ -870,6 +875,23 @@ function removeObsoleteLintDependencies(
     delete jsonObj.dependencies[dependency];
     delete jsonObj.devDependencies[dependency];
     delete jsonObj.peerDependencies[dependency];
+  }
+}
+
+function removeObsoleteToolDependencies(
+  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
+): void {
+  for (const dependency of obsoleteToolDependencies) {
+    for (const section of getDependencySections(jsonObj)) {
+      Reflect.deleteProperty(section, dependency);
+    }
+  }
+}
+
+function normalizeDotenvCliScripts(scripts: PackageJson.Scripts): void {
+  for (const [key, value] of Object.entries(scripts)) {
+    if (typeof value !== 'string') continue;
+    scripts[key] = value.replaceAll(dotenvCliCommandPattern, '$1wb dotenv -- ');
   }
 }
 
