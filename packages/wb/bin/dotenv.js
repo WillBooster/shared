@@ -51,7 +51,14 @@ function readAndApplyEnvironmentVariables(options, cwd) {
 
 function readEnvironmentVariables(options, cwd) {
   let envPaths = (options.env ?? []).map((envPath) => path.resolve(cwd, envPath));
-  if (options.cascadeEnv) {
+  const cascade =
+    options.cascadeEnv ??
+    (options.cascadeNodeEnv
+      ? process.env.NODE_ENV || 'development'
+      : options.autoCascadeEnv
+        ? process.env.WB_ENV || process.env.NODE_ENV || 'development'
+        : undefined);
+  if (cascade) {
     if (envPaths.length === 0) {
       envPaths.push(path.join(cwd, '.env'));
       if (options.includeRootEnv ?? true) {
@@ -62,9 +69,9 @@ function readEnvironmentVariables(options, cwd) {
       }
     }
     envPaths = envPaths.flatMap((envPath) => [
-      `${envPath}.${options.cascadeEnv}.local`,
+      `${envPath}.${cascade}.local`,
       `${envPath}.local`,
-      `${envPath}.${options.cascadeEnv}`,
+      `${envPath}.${cascade}`,
       envPath,
     ]);
   }
@@ -78,7 +85,7 @@ function readEnvironmentVariables(options, cwd) {
       }
     }
   }
-  Object.assign(envVars, readMiseEnvironmentVariables(cwd, options.cascadeEnv, envVars));
+  Object.assign(envVars, readMiseEnvironmentVariables(cwd, cascade, envVars));
   if (options.checkEnv) {
     const missingKeys = Object.keys(readEnvFile(path.join(cwd, options.checkEnv))).filter(
       (key) => !(key in envVars) && !(key in process.env)
@@ -175,8 +182,18 @@ function parseDotenvArgs(args) {
     };
     if (arg === '-c' || arg === '--cascade-env') {
       options.cascadeEnv = nextValue();
+    } else if (arg.startsWith('-c=')) {
+      options.cascadeEnv = arg.slice('-c='.length);
     } else if (arg.startsWith('--cascade-env=')) {
       options.cascadeEnv = arg.slice('--cascade-env='.length);
+    } else if (arg === '--cascade-node-env') {
+      options.cascadeNodeEnv = true;
+    } else if (arg === '--cascade-node-env=false' || arg === '--no-cascade-node-env') {
+      options.cascadeNodeEnv = false;
+    } else if (arg === '--auto-cascade-env') {
+      options.autoCascadeEnv = true;
+    } else if (arg === '--auto-cascade-env=false' || arg === '--no-auto-cascade-env') {
+      options.autoCascadeEnv = false;
     } else if (arg === '-e' || arg === '--env') {
       options.env = [...(options.env ?? []), nextValue()];
     } else if (arg.startsWith('--env=')) {
@@ -187,8 +204,12 @@ function parseDotenvArgs(args) {
       options.checkEnv = arg.slice('--check-env='.length);
     } else if (arg === '--include-root-env') {
       options.includeRootEnv = true;
-    } else if (arg === '--no-include-root-env') {
+    } else if (arg === '--include-root-env=false' || arg === '--no-include-root-env') {
       options.includeRootEnv = false;
+    } else if (arg === '--quiet' || arg === '--quiet-env') {
+      options.quietEnv = true;
+    } else if (arg === '--verbose' || arg === '-v') {
+      options.verbose = true;
     } else if (arg === '--working-dir') {
       options.workingDir = nextValue();
     } else if (arg.startsWith('--working-dir=')) {
@@ -201,7 +222,7 @@ function parseDotenvArgs(args) {
 }
 
 function normalizeParsedDotenvArgs(parsed) {
-  if (!parsed.options.cascadeEnv && !parsed.options.env) {
+  if (!parsed.options.cascadeEnv && !parsed.options.cascadeNodeEnv && !parsed.options.autoCascadeEnv && !parsed.options.env) {
     parsed.options.env = ['.env'];
   }
   return parsed;
