@@ -66,7 +66,12 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
 }
 
 function readAndApplyEnvironmentVariables(cwd: string): void {
-  const parsed = config({ path: path.join(cwd, '.env'), processEnv: {}, quiet: true }).parsed ?? {};
+  const parsed = {
+    ...config({ path: path.join(cwd, '.env'), processEnv: {}, quiet: true }).parsed,
+    ...(process.env.WB_ENV
+      ? (config({ path: path.join(cwd, `.env.${process.env.WB_ENV}`), processEnv: {}, quiet: true }).parsed ?? {})
+      : {}),
+  };
   const envVars = expand({ parsed, processEnv: {} }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {

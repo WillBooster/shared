@@ -34,7 +34,11 @@ export function runDotenvCommand(args) {
 }
 
 function readAndApplyEnvironmentVariables(cwd) {
-  const envVars = readEnvFile(path.join(cwd, '.env'));
+  const parsed = {
+    ...readEnvFile(path.join(cwd, '.env')),
+    ...(process.env.WB_ENV ? readEnvFile(path.join(cwd, `.env.${process.env.WB_ENV}`)) : {}),
+  };
+  const envVars = expand({ parsed, processEnv: {} }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;
@@ -43,8 +47,7 @@ function readAndApplyEnvironmentVariables(cwd) {
 }
 
 function readEnvFile(filePath) {
-  const parsed = config({ path: path.resolve(filePath), processEnv: {}, quiet: true }).parsed ?? {};
-  return expand({ parsed, processEnv: {} }).parsed ?? parsed;
+  return config({ path: path.resolve(filePath), processEnv: {}, quiet: true }).parsed ?? {};
 }
 
 function removeNpmAndYarnEnvironmentVariables(envVars) {
