@@ -209,10 +209,8 @@ export function normalizeScript(script: string, project: Project): { printable: 
         !project.usesBunPackageManager && project.binExists ? '' : `${projectPackageManagerWithRun} `
       )
   );
-  // Add cascade option when WB_ENV is defined
-  const cascadeOption = project.env.WB_ENV ? ` -c=${project.env.WB_ENV || 'development'}` : '';
   return {
-    printable: `${projectPackageManagerWithRun} dotenv${cascadeOption} -- ${printableScript}`,
+    printable: `${projectPackageManagerWithRun} dotenv -- ${printableScript}`,
     runnable: runnableScript,
   };
 }

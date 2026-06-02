@@ -326,8 +326,8 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
     );
   } else if (config.depending.prisma) {
     postMergeCommands.push(
-      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/dotenv -c development -- node node_modules/.bin/prisma migrate deploy"`,
-      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/dotenv -c development -- node node_modules/.bin/prisma generate"`
+      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/wb prisma deploy"`,
+      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/wb prisma generate"`
     );
   }
   const genI18nTsCommand = getGenI18nTsCommand(config, config.packageJson?.scripts);
