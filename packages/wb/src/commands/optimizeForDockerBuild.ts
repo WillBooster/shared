@@ -241,10 +241,10 @@ async function writePrunedBunLockfile(project: Project, packageJson: PackageJson
     '.tool-versions',
   ]);
   try {
-    runBunPrunedLockfileInstall(workspace.installDirPath);
+    runBunPrunedLockfileInstall(workspace.installDirPath, project.env);
     // Bun can leave stale transitive resolutions after the first omit-mode install. A second pass stabilizes the
     // generated lockfile so Docker can later run `bun install --omit=dev --frozen-lockfile` without rewriting it.
-    runBunPrunedLockfileInstall(workspace.installDirPath);
+    runBunPrunedLockfileInstall(workspace.installDirPath, project.env);
 
     const generatedLockfilePath = findFirstExistingFile(workspace.rootDirPath, ['bun.lock', 'bun.lockb']);
     if (!generatedLockfilePath) throw new Error('bun install --lockfile-only did not generate a lockfile.');
@@ -257,9 +257,10 @@ async function writePrunedBunLockfile(project: Project, packageJson: PackageJson
   }
 }
 
-function runBunPrunedLockfileInstall(installDirPath: string): void {
+function runBunPrunedLockfileInstall(installDirPath: string, env: Record<string, string | undefined>): void {
   const result = child_process.spawnSync('bun', ['install', '--omit=dev', '--ignore-scripts'], {
     cwd: installDirPath,
+    env,
     stdio: 'inherit',
   });
   throwIfCommandFailed(result, 'bun install --omit=dev --ignore-scripts');
