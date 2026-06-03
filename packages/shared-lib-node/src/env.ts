@@ -9,6 +9,7 @@ import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 export const yargsOptionsBuilderForEnv = {
   env: {
     description: '.env files to be loaded.',
+    nargs: 1,
     type: 'array',
   },
   'cascade-env': {
