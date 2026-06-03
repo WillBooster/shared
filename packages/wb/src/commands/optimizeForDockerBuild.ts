@@ -48,12 +48,16 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       process.exit(1);
     }
 
+    const changedRootDirPaths = new Set<string>();
     const dockerLockfileRequests: DockerLockfileRequest[] = [];
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
       const rewrittenDependencies = rewritePrivateGitHubDependencies(project, packageJson);
       const prunedDependencies = optimizeDevDependencies(argv, packageJson);
       const dependenciesChanged = prunedDependencies.length > 0 || rewrittenDependencies.length > 0;
+      if (dependenciesChanged) {
+        changedRootDirPaths.add(project.rootDirPath);
+      }
 
       optimizeScripts(packageJson);
 
@@ -66,14 +70,13 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
       if (argv.outside) {
         await writeDockerShellScripts(path.join(distDirPath, 'bash'));
-        dockerLockfileRequests.push({ dependenciesChanged, distDirPath, packageJson, project });
+        // Docker lockfile output is intentionally root-only. wb assumes monorepos are rooted by package.json and use
+        // packages/*; package dist manifests are installed through the root Docker context, not as standalone projects.
+        if (project.dirPath === project.rootDirPath) {
+          dockerLockfileRequests.push({ dependenciesChanged, distDirPath, packageJson, project });
+        }
       }
     }
-    const changedRootDirPaths = new Set(
-      dockerLockfileRequests
-        .filter((request) => request.dependenciesChanged)
-        .map((request) => request.project.rootDirPath)
-    );
     for (const request of dockerLockfileRequests) {
       const writeLockfile =
         request.dependenciesChanged || changedRootDirPaths.has(request.project.dirPath)
@@ -456,15 +459,7 @@ function usesBunPackageManager(rootDirPath: string): boolean {
   if (['bun.lock', 'bun.lockb'].some((fileName) => fs.existsSync(path.join(rootDirPath, fileName)))) return true;
 
   const rootPackageJson = getRootPackageJson(rootDirPath);
-  if (typeof rootPackageJson?.packageManager === 'string' && rootPackageJson.packageManager.startsWith('bun@')) {
-    return true;
-  }
-
-  try {
-    return /(^|\n)bun\s/.test(fs.readFileSync(path.join(rootDirPath, '.tool-versions'), 'utf8'));
-  } catch {
-    return false;
-  }
+  return typeof rootPackageJson?.packageManager === 'string' && rootPackageJson.packageManager.startsWith('bun@');
 }
 
 function throwIfCommandFailed(result: child_process.SpawnSyncReturns<Buffer>, command: string): void {
