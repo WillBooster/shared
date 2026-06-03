@@ -247,7 +247,7 @@ async function writePrunedBunLockfile(project: Project, packageJson: PackageJson
     runBunPrunedLockfileInstall(workspace.installDirPath, project.env);
 
     const generatedLockfilePath = findFirstExistingFile(workspace.rootDirPath, ['bun.lock', 'bun.lockb']);
-    if (!generatedLockfilePath) throw new Error('bun install --lockfile-only did not generate a lockfile.');
+    if (!generatedLockfilePath) throw new Error('bun install --omit=dev --ignore-scripts did not generate a lockfile.');
 
     const targetLockfilePath = path.join(distDirPath, path.basename(generatedLockfilePath));
     await fs.promises.copyFile(generatedLockfilePath, targetLockfilePath);
