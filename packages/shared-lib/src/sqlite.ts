@@ -6,17 +6,6 @@ export interface RunSqlitePragmasOptions {
   ignoreBusy?: boolean;
 }
 
-export function runConnectionLevelSqlitePragmas(executor: SqlitePragmaExecutor): void {
-  runSqlitePragmas(executor, getConnectionLevelSqlitePragmas());
-}
-
-export function runPersistentSqlitePragmas(
-  executor: SqlitePragmaExecutor,
-  options: RunSqlitePragmasOptions = {}
-): void {
-  runSqlitePragmas(executor, getPersistentSqlitePragmas(), options);
-}
-
 export function runSqlitePragmas(
   executor: SqlitePragmaExecutor,
   pragmas: string,
