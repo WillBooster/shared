@@ -17,7 +17,8 @@ import { prepareForRunningCommand } from './commandUtils.js';
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 const localPackageCopyIgnoredDirNames = new Set(['.git', '.tmp', 'node_modules']);
 
-interface PrunedLockfileRequest {
+interface DockerLockfileRequest {
+  dependenciesChanged: boolean;
   distDirPath: string;
   packageJson: PackageJson;
   project: Project;
@@ -47,11 +48,12 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       process.exit(1);
     }
 
-    const prunedLockfileRequests: PrunedLockfileRequest[] = [];
+    const dockerLockfileRequests: DockerLockfileRequest[] = [];
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
       const rewrittenDependencies = rewritePrivateGitHubDependencies(project, packageJson);
       const prunedDependencies = optimizeDevDependencies(argv, packageJson);
+      const dependenciesChanged = prunedDependencies.length > 0 || rewrittenDependencies.length > 0;
 
       optimizeScripts(packageJson);
 
@@ -64,15 +66,20 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
       if (argv.outside) {
         await writeDockerShellScripts(path.join(distDirPath, 'bash'));
-        if (prunedDependencies.length > 0 || rewrittenDependencies.length > 0) {
-          prunedLockfileRequests.push({ distDirPath, packageJson, project });
-        } else {
-          await copySourceLockfile(project, distDirPath);
-        }
+        dockerLockfileRequests.push({ dependenciesChanged, distDirPath, packageJson, project });
       }
     }
-    for (const request of prunedLockfileRequests) {
-      await writePrunedLockfile(request.project, request.packageJson, request.distDirPath);
+    const changedRootDirPaths = new Set(
+      dockerLockfileRequests
+        .filter((request) => request.dependenciesChanged)
+        .map((request) => request.project.rootDirPath)
+    );
+    for (const request of dockerLockfileRequests) {
+      const writeLockfile =
+        request.dependenciesChanged || changedRootDirPaths.has(request.project.dirPath)
+          ? writePrunedLockfile
+          : copySourceLockfile;
+      await writeLockfile(request.project, request.packageJson, request.distDirPath);
     }
     if (!argv.dryRun && !argv.outside) {
       child_process.spawnSync(packageManager, ['install'], {
@@ -195,7 +202,7 @@ async function writePrunedLockfile(project: Project, packageJson: PackageJson, d
   await lockfileWriter(project, packageJson, distDirPath);
 }
 
-async function copySourceLockfile(project: Project, distDirPath: string): Promise<void> {
+async function copySourceLockfile(project: Project, _packageJson: PackageJson, distDirPath: string): Promise<void> {
   const sourceLockfilePath = project.usesBunPackageManager
     ? findFirstExistingProjectFile(project, ['bun.lock', 'bun.lockb'])
     : findFirstExistingProjectFile(project, ['yarn.lock']);
