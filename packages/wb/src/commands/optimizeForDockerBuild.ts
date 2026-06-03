@@ -23,6 +23,11 @@ interface PrunedLockfileRequest {
   project: Project;
 }
 
+interface LockfileWorkspace {
+  installDirPath: string;
+  rootDirPath: string;
+}
+
 const builder = {
   outside: {
     description: 'Whether the optimization is executed outside a docker container or not',
@@ -45,17 +50,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     const prunedLockfileRequests: PrunedLockfileRequest[] = [];
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
-      for (const key of dependencySectionKeys) {
-        const deps = packageJson[key] ?? {};
-        for (const [name, value] of Object.entries(deps)) {
-          if (value?.startsWith('git@github.com:')) {
-            // Docker builds cannot access private SSH URLs unless credentials are forwarded.
-            // The Dockerfile copies those workspace packages into the image instead.
-            deps[name] = `./${name}`;
-          }
-        }
-      }
-
+      const rewrittenDependencies = rewritePrivateGitHubDependencies(packageJson);
       const prunedDependencies = optimizeDevDependencies(argv, packageJson);
 
       optimizeScripts(packageJson);
@@ -69,7 +64,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
       if (argv.outside) {
         await writeDockerShellScripts(path.join(distDirPath, 'bash'));
-        if (prunedDependencies.length > 0) {
+        if (prunedDependencies.length > 0 || rewrittenDependencies.length > 0) {
           prunedLockfileRequests.push({ distDirPath, packageJson, project });
         }
       }
@@ -85,6 +80,23 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
   },
 };
+
+function rewritePrivateGitHubDependencies(packageJson: PackageJson): string[] {
+  const rewrittenDependencies: string[] = [];
+  for (const key of dependencySectionKeys) {
+    const deps = packageJson[key] ?? {};
+    for (const [name, value] of Object.entries(deps)) {
+      if (value?.startsWith('git@github.com:')) {
+        // Docker builds cannot access private SSH URLs unless credentials are forwarded.
+        // The Dockerfile copies those workspace packages into the image instead.
+        deps[name] = `./${name}`;
+        rewrittenDependencies.push(`${key}.${name}`);
+      }
+    }
+  }
+  console.info('Rewrote private GitHub dependencies:', rewrittenDependencies.join(', ') || 'none');
+  return rewrittenDependencies;
+}
 
 async function writeDockerShellScripts(dirPath: string): Promise<void> {
   const sourceDirPath = findDockerShellScriptsDirPath();
@@ -172,54 +184,54 @@ async function writePrunedLockfile(project: Project, packageJson: PackageJson, d
 }
 
 async function writePrunedBunLockfile(project: Project, packageJson: PackageJson, distDirPath: string): Promise<void> {
-  const sourceLockfilePath = findFirstExistingFile(project.dirPath, ['bun.lock', 'bun.lockb']);
+  const sourceLockfilePath = findFirstExistingProjectFile(project, ['bun.lock', 'bun.lockb']);
   if (!sourceLockfilePath) {
     console.info('Skipped pruned Bun lockfile generation because no Bun lockfile was found.');
     return;
   }
 
-  const tempDirPath = await prepareLockfileWorkspace(project, packageJson, [
+  const workspace = await prepareLockfileWorkspace(project, packageJson, [
     path.basename(sourceLockfilePath),
     'bunfig.toml',
   ]);
   try {
     const result = child_process.spawnSync('bun', ['install', '--lockfile-only'], {
-      cwd: tempDirPath,
+      cwd: workspace.installDirPath,
       stdio: 'inherit',
     });
-    if (result.status !== 0) throw new Error(`bun install --lockfile-only exited with status ${result.status}`);
+    throwIfCommandFailed(result, 'bun install --lockfile-only');
 
-    const generatedLockfilePath = findFirstExistingFile(tempDirPath, ['bun.lock', 'bun.lockb']);
+    const generatedLockfilePath = findFirstExistingFile(workspace.rootDirPath, ['bun.lock', 'bun.lockb']);
     if (!generatedLockfilePath) throw new Error('bun install --lockfile-only did not generate a lockfile.');
 
     const targetLockfilePath = path.join(distDirPath, path.basename(generatedLockfilePath));
     await fs.promises.copyFile(generatedLockfilePath, targetLockfilePath);
     console.info(`Generated pruned Bun lockfile: ${path.relative(process.cwd(), targetLockfilePath)}`);
   } finally {
-    await fs.promises.rm(tempDirPath, { recursive: true, force: true });
+    await fs.promises.rm(workspace.rootDirPath, { recursive: true, force: true });
   }
 }
 
 async function writePrunedYarnLockfile(project: Project, packageJson: PackageJson, distDirPath: string): Promise<void> {
-  const sourceLockfilePath = path.join(project.dirPath, 'yarn.lock');
-  if (!fs.existsSync(sourceLockfilePath)) {
+  const sourceLockfilePath = findFirstExistingProjectFile(project, ['yarn.lock']);
+  if (!sourceLockfilePath) {
     console.info('Skipped pruned Yarn lockfile generation because no yarn.lock was found.');
     return;
   }
 
-  const tempDirPath = await prepareLockfileWorkspace(project, packageJson, ['yarn.lock', '.yarnrc.yml', '.yarn']);
+  const workspace = await prepareLockfileWorkspace(project, packageJson, ['yarn.lock', '.yarnrc.yml', '.yarn']);
   try {
     const result = child_process.spawnSync('yarn', ['install', '--mode=update-lockfile'], {
-      cwd: tempDirPath,
+      cwd: workspace.installDirPath,
       stdio: 'inherit',
     });
-    if (result.status !== 0) throw new Error(`yarn install --mode=update-lockfile exited with status ${result.status}`);
+    throwIfCommandFailed(result, 'yarn install --mode=update-lockfile');
 
     const targetLockfilePath = path.join(distDirPath, 'yarn.lock');
-    await fs.promises.copyFile(path.join(tempDirPath, 'yarn.lock'), targetLockfilePath);
+    await fs.promises.copyFile(path.join(workspace.rootDirPath, 'yarn.lock'), targetLockfilePath);
     console.info(`Generated pruned Yarn lockfile: ${path.relative(process.cwd(), targetLockfilePath)}`);
   } finally {
-    await fs.promises.rm(tempDirPath, { recursive: true, force: true });
+    await fs.promises.rm(workspace.rootDirPath, { recursive: true, force: true });
   }
 }
 
@@ -227,12 +239,17 @@ async function prepareLockfileWorkspace(
   project: Project,
   packageJson: PackageJson,
   packageManagerFiles: string[]
-): Promise<string> {
+): Promise<LockfileWorkspace> {
   const tempDirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-docker-lock-'));
-  await fs.promises.writeFile(path.join(tempDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
+  const relativeProjectDirPath = path.relative(project.rootDirPath, project.dirPath);
+  const tempProjectDirPath = path.resolve(tempDirPath, relativeProjectDirPath);
+
+  await copyRootPackageJson(project, tempDirPath);
+  await fs.promises.mkdir(tempProjectDirPath, { recursive: true });
+  await fs.promises.writeFile(path.join(tempProjectDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
 
   for (const fileName of packageManagerFiles) {
-    const sourcePath = path.join(project.dirPath, fileName);
+    const sourcePath = path.join(project.rootDirPath, fileName);
     if (!fs.existsSync(sourcePath)) continue;
 
     const targetPath = path.join(tempDirPath, fileName);
@@ -240,15 +257,23 @@ async function prepareLockfileWorkspace(
     await fs.promises.cp(sourcePath, targetPath, { recursive: true });
   }
 
-  await copyLocalPackageReferences(project, packageJson, tempDirPath);
+  await copyLocalPackageReferences(project, packageJson, tempProjectDirPath, tempDirPath);
   await copyWorkspacePackageReferences(project, packageJson, tempDirPath);
-  return tempDirPath;
+  return { installDirPath: tempProjectDirPath, rootDirPath: tempDirPath };
+}
+
+async function copyRootPackageJson(project: Project, tempDirPath: string): Promise<void> {
+  const sourcePackageJsonPath = path.join(project.rootDirPath, 'package.json');
+  if (!fs.existsSync(sourcePackageJsonPath)) return;
+
+  await fs.promises.copyFile(sourcePackageJsonPath, path.join(tempDirPath, 'package.json'));
 }
 
 async function copyLocalPackageReferences(
   project: Project,
   packageJson: PackageJson,
-  tempDirPath: string
+  tempProjectDirPath: string,
+  tempRootDirPath: string
 ): Promise<void> {
   for (const dependencies of dependencySectionKeys.map((sectionKey) => packageJson[sectionKey] ?? {})) {
     for (const dependencySpecifier of Object.values(dependencies)) {
@@ -257,7 +282,7 @@ async function copyLocalPackageReferences(
 
       await copyLocalPackageDirectory(
         path.resolve(project.dirPath, relativePackagePath),
-        path.resolve(tempDirPath, relativePackagePath)
+        getSafeTempPackagePath(tempRootDirPath, tempProjectDirPath, relativePackagePath)
       );
     }
   }
@@ -268,17 +293,17 @@ async function copyWorkspacePackageReferences(
   packageJson: PackageJson,
   tempDirPath: string
 ): Promise<void> {
-  const workspacePatterns = getWorkspacePatterns(packageJson);
+  const workspacePatterns = getWorkspacePatterns(getRootPackageJson(project) ?? packageJson);
   if (workspacePatterns.length === 0) return;
 
   const workspacePackageJsonPaths = await globby(
     workspacePatterns.map((pattern) => `${pattern.replace(/\/$/, '')}/package.json`),
-    { cwd: project.dirPath, onlyFiles: true }
+    { cwd: project.rootDirPath, onlyFiles: true }
   );
   for (const packageJsonPath of workspacePackageJsonPaths) {
     const relativePackageDirPath = path.dirname(packageJsonPath);
     await copyLocalPackageDirectory(
-      path.resolve(project.dirPath, relativePackageDirPath),
+      path.resolve(project.rootDirPath, relativePackageDirPath),
       path.resolve(tempDirPath, relativePackageDirPath)
     );
     await copyOptimizedWorkspacePackageJson(project, relativePackageDirPath, tempDirPath);
@@ -290,7 +315,7 @@ async function copyOptimizedWorkspacePackageJson(
   relativePackageDirPath: string,
   tempDirPath: string
 ): Promise<void> {
-  const optimizedPackageJsonPath = path.resolve(project.dirPath, relativePackageDirPath, 'dist/package.json');
+  const optimizedPackageJsonPath = path.resolve(project.rootDirPath, relativePackageDirPath, 'dist/package.json');
   if (!fs.existsSync(optimizedPackageJsonPath)) return;
 
   await fs.promises.copyFile(
@@ -308,8 +333,27 @@ async function copyLocalPackageDirectory(sourceDirPath: string, targetDirPath: s
   await fs.promises.mkdir(path.dirname(targetDirPath), { recursive: true });
   await fs.promises.cp(sourceDirPath, targetDirPath, {
     recursive: true,
-    filter: (sourcePath) => !sourcePath.split(path.sep).some((part) => localPackageCopyIgnoredDirNames.has(part)),
+    filter: (sourcePath) => shouldCopyLocalPackagePath(sourceDirPath, sourcePath),
   });
+}
+
+function shouldCopyLocalPackagePath(sourceDirPath: string, sourcePath: string): boolean {
+  const relativePath = path.relative(sourceDirPath, sourcePath);
+  if (!relativePath) return true;
+
+  return !relativePath.split(path.sep).some((part) => localPackageCopyIgnoredDirNames.has(part));
+}
+
+function getSafeTempPackagePath(
+  tempRootDirPath: string,
+  tempProjectDirPath: string,
+  relativePackagePath: string
+): string {
+  const targetDirPath = path.resolve(tempProjectDirPath, relativePackagePath);
+  if (targetDirPath !== tempRootDirPath && !targetDirPath.startsWith(`${tempRootDirPath}${path.sep}`)) {
+    throw new Error(`Local package path escapes the temporary lockfile workspace: ${relativePackagePath}`);
+  }
+  return targetDirPath;
 }
 
 function getWorkspacePatterns(packageJson: PackageJson): string[] {
@@ -334,6 +378,27 @@ function findFirstExistingFile(dirPath: string, fileNames: string[]): string | u
     const filePath = path.join(dirPath, fileName);
     if (fs.existsSync(filePath)) return filePath;
   }
+  return undefined;
+}
+
+function findFirstExistingProjectFile(project: Project, fileNames: string[]): string | undefined {
+  for (const fileName of fileNames) {
+    const filePath = path.join(project.rootDirPath, fileName);
+    if (fs.existsSync(filePath)) return filePath;
+  }
+  return undefined;
+}
+
+function getRootPackageJson(project: Project): PackageJson | undefined {
+  const packageJsonPath = path.join(project.rootDirPath, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) return undefined;
+
+  return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson;
+}
+
+function throwIfCommandFailed(result: child_process.SpawnSyncReturns<Buffer>, command: string): void {
+  if (result.error) throw new Error(`${command} failed: ${result.error.message}`);
+  if (result.status !== 0) throw new Error(`${command} exited with status ${result.status}`);
 }
 
 function optimizeScripts(packageJson: PackageJson): void {
