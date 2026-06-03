@@ -319,7 +319,13 @@ async function prepareLockfileWorkspace(
       await fs.promises.cp(sourcePath, targetPath, { recursive: true });
     }
 
-    await copyLocalPackageReferences(project.dirPath, packageJson, tempProjectDirPath, tempDirPath);
+    await copyLocalPackageReferences(
+      project.rootDirPath,
+      project.dirPath,
+      packageJson,
+      tempProjectDirPath,
+      tempDirPath
+    );
     await copyWorkspacePackageReferences(project.rootDirPath, packageJson, tempDirPath);
     return { installDirPath: tempProjectDirPath, rootDirPath: tempDirPath };
   } catch (error) {
@@ -347,6 +353,7 @@ async function copyRootPackageJson(rootDirPath: string, tempDirPath: string): Pr
 }
 
 async function copyLocalPackageReferences(
+  rootDirPath: string,
   packageDirPath: string,
   packageJson: PackageJson,
   tempProjectDirPath: string,
@@ -358,7 +365,7 @@ async function copyLocalPackageReferences(
       if (!relativePackagePath) continue;
 
       await copyLocalPackageDirectory(
-        path.resolve(packageDirPath, relativePackagePath),
+        getLocalPackageSourcePath(rootDirPath, packageDirPath, relativePackagePath),
         getSafeTempPackagePath(tempRootDirPath, tempProjectDirPath, relativePackagePath)
       );
     }
@@ -389,12 +396,25 @@ async function copyWorkspacePackageReferences(
       tempDirPath
     );
     await copyLocalPackageReferences(
+      rootDirPath,
       path.resolve(rootDirPath, relativePackageDirPath),
       workspacePackageJson,
       path.resolve(tempDirPath, relativePackageDirPath),
       tempDirPath
     );
   }
+}
+
+function getLocalPackageSourcePath(rootDirPath: string, packageDirPath: string, relativePackagePath: string): string {
+  const sourceDirPath = path.resolve(packageDirPath, relativePackagePath);
+  if (fs.existsSync(sourceDirPath)) return sourceDirPath;
+
+  const relativeSourceDirPath = path.relative(rootDirPath, sourceDirPath);
+  const [scopeDirName, packageDirName] = relativeSourceDirPath.split(path.sep);
+  if (scopeDirName === '@willbooster' && packageDirName) {
+    return path.join(rootDirPath, 'node_modules', '@willbooster', packageDirName);
+  }
+  return sourceDirPath;
 }
 
 async function copyOptimizedWorkspacePackageJson(
