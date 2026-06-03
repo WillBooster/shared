@@ -14,7 +14,6 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { getGenI18nTsCommand } from '../utils/genI18nTs.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
@@ -464,7 +463,7 @@ async function normalizePackageMetadata(
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
     jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
-  addGenI18nTsPostinstallScript(config, jsonObj);
+  removeGenI18nTsPostinstallScript(jsonObj);
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
@@ -476,6 +475,7 @@ function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: 
   return (
     config.depending.blitz ||
     config.depending.chakra ||
+    config.depending.genI18nTs ||
     config.depending.prisma ||
     (config.depending.drizzle && !!oldGenCodeScript?.includes('drizzle-kit check'))
   );
@@ -488,15 +488,20 @@ function appendFormatCodeCommand(formatScript: string | undefined, config: Packa
   return formatScript ? `${formatScript} && ${scriptRunner} format-code` : `${scriptRunner} format-code`;
 }
 
-function addGenI18nTsPostinstallScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  const command = getGenI18nTsCommand(config, jsonObj.scripts);
-  if (!command) return;
-
+function removeGenI18nTsPostinstallScript(jsonObj: WritablePackageJson): void {
   const postinstall = jsonObj.scripts.postinstall;
-  if (!postinstall) {
-    jsonObj.scripts.postinstall = command;
-  } else if (!postinstall.includes(command)) {
-    jsonObj.scripts.postinstall = `${postinstall} && ${command}`;
+  if (!postinstall) return;
+
+  const commands = postinstall.split(/\s*&&\s*/u);
+  const remainingCommands = commands.filter(
+    (command) => !/^(?:bun|yarn) run gen-i18n-ts > \/dev\/null$/u.test(command)
+  );
+  if (remainingCommands.length === commands.length) return;
+
+  if (remainingCommands.length > 0) {
+    jsonObj.scripts.postinstall = remainingCommands.join(' && ');
+  } else {
+    delete jsonObj.scripts.postinstall;
   }
 }
 
