@@ -234,6 +234,7 @@ async function writePrunedBunLockfile(project: Project, packageJson: PackageJson
   const workspace = await prepareLockfileWorkspace(project, packageJson, [
     path.basename(sourceLockfilePath),
     'bunfig.toml',
+    '.tool-versions',
   ]);
   try {
     const result = child_process.spawnSync('bun', ['install', '--lockfile-only'], {
@@ -260,7 +261,12 @@ async function writePrunedYarnLockfile(project: Project, packageJson: PackageJso
     return;
   }
 
-  const workspace = await prepareLockfileWorkspace(project, packageJson, ['yarn.lock', '.yarnrc.yml', '.yarn']);
+  const workspace = await prepareLockfileWorkspace(project, packageJson, [
+    'yarn.lock',
+    '.yarnrc.yml',
+    '.yarn',
+    '.tool-versions',
+  ]);
   try {
     const result = child_process.spawnSync('yarn', ['install', '--mode=update-lockfile'], {
       cwd: workspace.installDirPath,
