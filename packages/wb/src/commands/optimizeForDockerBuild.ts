@@ -319,7 +319,13 @@ async function prepareLockfileWorkspace(
       await fs.promises.cp(sourcePath, targetPath, { recursive: true });
     }
 
-    await copyLocalPackageReferences(project, packageJson, tempProjectDirPath, tempDirPath);
+    await copyLocalPackageReferences(
+      project.rootDirPath,
+      project.dirPath,
+      packageJson,
+      tempProjectDirPath,
+      tempDirPath
+    );
     await copyWorkspacePackageReferences(project.rootDirPath, packageJson, tempDirPath);
     return { installDirPath: tempProjectDirPath, rootDirPath: tempDirPath };
   } catch (error) {
@@ -347,7 +353,8 @@ async function copyRootPackageJson(rootDirPath: string, tempDirPath: string): Pr
 }
 
 async function copyLocalPackageReferences(
-  project: Project,
+  rootDirPath: string,
+  packageDirPath: string,
   packageJson: PackageJson,
   tempProjectDirPath: string,
   tempRootDirPath: string
@@ -358,7 +365,7 @@ async function copyLocalPackageReferences(
       if (!relativePackagePath) continue;
 
       await copyLocalPackageDirectory(
-        path.resolve(project.dirPath, relativePackagePath),
+        getLocalPackageSourcePath(rootDirPath, packageDirPath, relativePackagePath),
         getSafeTempPackagePath(tempRootDirPath, tempProjectDirPath, relativePackagePath)
       );
     }
@@ -383,22 +390,46 @@ async function copyWorkspacePackageReferences(
       path.resolve(rootDirPath, relativePackageDirPath),
       path.resolve(tempDirPath, relativePackageDirPath)
     );
-    await copyOptimizedWorkspacePackageJson(rootDirPath, relativePackageDirPath, tempDirPath);
+    const workspacePackageJson = await copyOptimizedWorkspacePackageJson(
+      rootDirPath,
+      relativePackageDirPath,
+      tempDirPath
+    );
+    await copyLocalPackageReferences(
+      rootDirPath,
+      path.resolve(rootDirPath, relativePackageDirPath),
+      workspacePackageJson,
+      path.resolve(tempDirPath, relativePackageDirPath),
+      tempDirPath
+    );
   }
+}
+
+function getLocalPackageSourcePath(rootDirPath: string, packageDirPath: string, relativePackagePath: string): string {
+  const sourceDirPath = path.resolve(packageDirPath, relativePackagePath);
+  if (fs.existsSync(sourceDirPath)) return sourceDirPath;
+
+  const relativeSourceDirPath = path.relative(rootDirPath, sourceDirPath);
+  const [scopeDirName, packageDirName] = relativeSourceDirPath.split(path.sep);
+  if (scopeDirName === '@willbooster' && packageDirName) {
+    return path.join(rootDirPath, 'node_modules', '@willbooster', packageDirName);
+  }
+  return sourceDirPath;
 }
 
 async function copyOptimizedWorkspacePackageJson(
   rootDirPath: string,
   relativePackageDirPath: string,
   tempDirPath: string
-): Promise<void> {
+): Promise<PackageJson> {
   const optimizedPackageJsonPath = path.resolve(rootDirPath, relativePackageDirPath, 'dist/package.json');
-  if (!fs.existsSync(optimizedPackageJsonPath)) return;
+  const targetPackageJsonPath = path.resolve(tempDirPath, relativePackageDirPath, 'package.json');
+  if (!fs.existsSync(optimizedPackageJsonPath)) {
+    return JSON.parse(await fs.promises.readFile(targetPackageJsonPath, 'utf8')) as PackageJson;
+  }
 
-  await fs.promises.copyFile(
-    optimizedPackageJsonPath,
-    path.resolve(tempDirPath, relativePackageDirPath, 'package.json')
-  );
+  await fs.promises.copyFile(optimizedPackageJsonPath, targetPackageJsonPath);
+  return JSON.parse(await fs.promises.readFile(targetPackageJsonPath, 'utf8')) as PackageJson;
 }
 
 async function copyLocalPackageDirectory(sourceDirPath: string, targetDirPath: string): Promise<void> {
