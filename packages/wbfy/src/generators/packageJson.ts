@@ -297,7 +297,11 @@ async function applyPackageJsonConventions(
     jsonObj.devDependencies[buildTsDependency] ||
     Object.values(jsonObj.scripts).some((script) => script?.includes(buildTsDependency))
   ) {
-    devDependencies.push(buildTsDependency);
+    if (shouldKeepBuildTsAsRuntimeDependency(jsonObj)) {
+      dependencies.push(buildTsDependency);
+    } else {
+      devDependencies.push(buildTsDependency);
+    }
   }
   if (doesContainJsOrTs(config)) {
     devDependencies.push(...oxlintDeps);
@@ -348,11 +352,19 @@ function doesReleaseScriptInstallSemanticRelease(script: unknown): boolean {
 }
 
 function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJson): void {
-  for (const dependency of [wbDependency, buildTsDependency]) {
+  const dependenciesToMove = shouldKeepBuildTsAsRuntimeDependency(jsonObj)
+    ? [wbDependency]
+    : [wbDependency, buildTsDependency];
+  for (const dependency of dependenciesToMove) {
     if (!jsonObj.dependencies[dependency]) continue;
     jsonObj.devDependencies[dependency] ??= jsonObj.dependencies[dependency];
     delete jsonObj.dependencies[dependency];
   }
+}
+
+function shouldKeepBuildTsAsRuntimeDependency(jsonObj: PackageJson): boolean {
+  const prisma = jsonObj.prisma as { seed?: unknown } | undefined;
+  return typeof prisma?.seed === 'string' && prisma.seed.includes(buildTsDependency);
 }
 
 async function normalizePackageMetadata(

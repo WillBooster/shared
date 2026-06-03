@@ -41,3 +41,38 @@ test('moves gen-i18n-ts execution from postinstall to gen-code', async () => {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
 });
+
+test('keeps build-ts as a runtime dependency when prisma seed uses it', async () => {
+  const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
+  const packageJsonPath = path.join(dirPath, 'package.json');
+
+  await fs.writeFile(
+    packageJsonPath,
+    JSON.stringify({
+      dependencies: {
+        'build-ts': '17.0.0',
+      },
+      prisma: {
+        seed: 'build-ts run prisma/seed.ts',
+      },
+      scripts: {},
+    })
+  );
+
+  try {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+    });
+    await generatePackageJson(config, config, true);
+
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
+      dependencies: Record<string, string | undefined>;
+      devDependencies: Record<string, string | undefined>;
+    };
+    expect(packageJson.dependencies['build-ts']).toBeDefined();
+    expect(packageJson.devDependencies['build-ts']).toBeUndefined();
+  } finally {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  }
+});
