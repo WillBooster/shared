@@ -22,6 +22,7 @@ interface DockerLockfileRequest {
   distDirPath: string;
   packageJson: PackageJson;
   project: Project;
+  rootDirPath: string;
 }
 
 interface LockfileWorkspace {
@@ -49,9 +50,10 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
 
     const dockerLockfileRequests: DockerLockfileRequest[] = [];
+    const rootDirPath = projects.root.dirPath;
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
-      const rewrittenDependencies = rewritePrivateGitHubDependencies(project, packageJson);
+      const rewrittenDependencies = rewritePrivateGitHubDependencies(rootDirPath, project.dirPath, packageJson);
       const prunedDependencies = optimizeDevDependencies(argv, packageJson);
       const dependenciesChanged = prunedDependencies.length > 0 || rewrittenDependencies.length > 0;
 
@@ -66,20 +68,18 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       await fs.promises.writeFile(path.join(distDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
       if (argv.outside) {
         await writeDockerShellScripts(path.join(distDirPath, 'bash'));
-        dockerLockfileRequests.push({ dependenciesChanged, distDirPath, packageJson, project });
+        dockerLockfileRequests.push({ dependenciesChanged, distDirPath, packageJson, project, rootDirPath });
       }
     }
     const changedRootDirPaths = new Set(
-      dockerLockfileRequests
-        .filter((request) => request.dependenciesChanged)
-        .map((request) => request.project.rootDirPath)
+      dockerLockfileRequests.filter((request) => request.dependenciesChanged).map((request) => request.rootDirPath)
     );
     for (const request of dockerLockfileRequests) {
       const writeLockfile =
         request.dependenciesChanged || changedRootDirPaths.has(request.project.dirPath)
           ? writePrunedLockfile
           : copySourceLockfile;
-      await writeLockfile(request.project, request.packageJson, request.distDirPath);
+      await writeLockfile(request.rootDirPath, request.project, request.packageJson, request.distDirPath);
     }
     if (!argv.dryRun && !argv.outside) {
       child_process.spawnSync(packageManager, ['install'], {
@@ -90,8 +90,12 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
   },
 };
 
-function rewritePrivateGitHubDependencies(project: Project, packageJson: PackageJson): string[] {
-  return rewritePrivateGitHubDependenciesForDir(project.rootDirPath, project.dirPath, packageJson);
+function rewritePrivateGitHubDependencies(
+  rootDirPath: string,
+  packageDirPath: string,
+  packageJson: PackageJson
+): string[] {
+  return rewritePrivateGitHubDependenciesForDir(rootDirPath, packageDirPath, packageJson);
 }
 
 function rewritePrivateGitHubDependenciesForDir(
@@ -205,15 +209,25 @@ function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: Pack
   return removedDeps;
 }
 
-async function writePrunedLockfile(project: Project, packageJson: PackageJson, distDirPath: string): Promise<void> {
+async function writePrunedLockfile(
+  rootDirPath: string,
+  project: Project,
+  packageJson: PackageJson,
+  distDirPath: string
+): Promise<void> {
   const lockfileWriter = project.usesBunPackageManager ? writePrunedBunLockfile : writePrunedYarnLockfile;
-  await lockfileWriter(project, packageJson, distDirPath);
+  await lockfileWriter(rootDirPath, project, packageJson, distDirPath);
 }
 
-async function copySourceLockfile(project: Project, _packageJson: PackageJson, distDirPath: string): Promise<void> {
+async function copySourceLockfile(
+  rootDirPath: string,
+  project: Project,
+  _packageJson: PackageJson,
+  distDirPath: string
+): Promise<void> {
   const sourceLockfilePath = project.usesBunPackageManager
-    ? findFirstExistingProjectFile(project, ['bun.lock', 'bun.lockb'])
-    : findFirstExistingProjectFile(project, ['yarn.lock']);
+    ? findFirstExistingProjectFile(rootDirPath, ['bun.lock', 'bun.lockb'])
+    : findFirstExistingProjectFile(rootDirPath, ['yarn.lock']);
   if (!sourceLockfilePath) return;
 
   const targetLockfilePath = path.join(distDirPath, path.basename(sourceLockfilePath));
@@ -221,14 +235,19 @@ async function copySourceLockfile(project: Project, _packageJson: PackageJson, d
   console.info(`Copied Docker lockfile: ${path.relative(process.cwd(), targetLockfilePath)}`);
 }
 
-async function writePrunedBunLockfile(project: Project, packageJson: PackageJson, distDirPath: string): Promise<void> {
-  const sourceLockfilePath = findFirstExistingProjectFile(project, ['bun.lock', 'bun.lockb']);
+async function writePrunedBunLockfile(
+  rootDirPath: string,
+  project: Project,
+  packageJson: PackageJson,
+  distDirPath: string
+): Promise<void> {
+  const sourceLockfilePath = findFirstExistingProjectFile(rootDirPath, ['bun.lock', 'bun.lockb']);
   if (!sourceLockfilePath) {
     console.info('Skipped pruned Bun lockfile generation because no Bun lockfile was found.');
     return;
   }
 
-  const workspace = await prepareLockfileWorkspace(project, packageJson, [
+  const workspace = await prepareLockfileWorkspace(rootDirPath, project, packageJson, [
     path.basename(sourceLockfilePath),
     'bunfig.toml',
   ]);
@@ -250,14 +269,23 @@ async function writePrunedBunLockfile(project: Project, packageJson: PackageJson
   }
 }
 
-async function writePrunedYarnLockfile(project: Project, packageJson: PackageJson, distDirPath: string): Promise<void> {
-  const sourceLockfilePath = findFirstExistingProjectFile(project, ['yarn.lock']);
+async function writePrunedYarnLockfile(
+  rootDirPath: string,
+  project: Project,
+  packageJson: PackageJson,
+  distDirPath: string
+): Promise<void> {
+  const sourceLockfilePath = findFirstExistingProjectFile(rootDirPath, ['yarn.lock']);
   if (!sourceLockfilePath) {
     console.info('Skipped pruned Yarn lockfile generation because no yarn.lock was found.');
     return;
   }
 
-  const workspace = await prepareLockfileWorkspace(project, packageJson, ['yarn.lock', '.yarnrc.yml', '.yarn']);
+  const workspace = await prepareLockfileWorkspace(rootDirPath, project, packageJson, [
+    'yarn.lock',
+    '.yarnrc.yml',
+    '.yarn',
+  ]);
   try {
     const result = child_process.spawnSync('yarn', ['install', '--mode=update-lockfile'], {
       cwd: workspace.installDirPath,
@@ -274,21 +302,22 @@ async function writePrunedYarnLockfile(project: Project, packageJson: PackageJso
 }
 
 async function prepareLockfileWorkspace(
+  rootDirPath: string,
   project: Project,
   packageJson: PackageJson,
   packageManagerFiles: string[]
 ): Promise<LockfileWorkspace> {
   const tempDirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-docker-lock-'));
   try {
-    const relativeProjectDirPath = path.relative(project.rootDirPath, project.dirPath);
+    const relativeProjectDirPath = path.relative(rootDirPath, project.dirPath);
     const tempProjectDirPath = path.resolve(tempDirPath, relativeProjectDirPath);
 
-    await copyRootPackageJson(project, tempDirPath);
+    await copyRootPackageJson(rootDirPath, tempDirPath);
     await fs.promises.mkdir(tempProjectDirPath, { recursive: true });
     await fs.promises.writeFile(path.join(tempProjectDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
 
     for (const fileName of packageManagerFiles) {
-      const sourcePath = path.join(project.rootDirPath, fileName);
+      const sourcePath = path.join(rootDirPath, fileName);
       if (!fs.existsSync(sourcePath)) continue;
 
       const targetPath = path.join(tempDirPath, fileName);
@@ -297,7 +326,7 @@ async function prepareLockfileWorkspace(
     }
 
     await copyLocalPackageReferences(project, packageJson, tempProjectDirPath, tempDirPath);
-    await copyWorkspacePackageReferences(project, packageJson, tempDirPath);
+    await copyWorkspacePackageReferences(rootDirPath, packageJson, tempDirPath);
     return { installDirPath: tempProjectDirPath, rootDirPath: tempDirPath };
   } catch (error) {
     await fs.promises.rm(tempDirPath, { recursive: true, force: true });
@@ -305,11 +334,11 @@ async function prepareLockfileWorkspace(
   }
 }
 
-async function copyRootPackageJson(project: Project, tempDirPath: string): Promise<void> {
-  const optimizedPackageJsonPath = path.join(project.rootDirPath, 'dist', 'package.json');
+async function copyRootPackageJson(rootDirPath: string, tempDirPath: string): Promise<void> {
+  const optimizedPackageJsonPath = path.join(rootDirPath, 'dist', 'package.json');
   const sourcePackageJsonPath = fs.existsSync(optimizedPackageJsonPath)
     ? optimizedPackageJsonPath
-    : path.join(project.rootDirPath, 'package.json');
+    : path.join(rootDirPath, 'package.json');
   if (!fs.existsSync(sourcePackageJsonPath)) return;
 
   if (sourcePackageJsonPath === optimizedPackageJsonPath) {
@@ -318,7 +347,7 @@ async function copyRootPackageJson(project: Project, tempDirPath: string): Promi
   }
 
   const rootPackageJson = JSON.parse(await fs.promises.readFile(sourcePackageJsonPath, 'utf8')) as PackageJson;
-  rewritePrivateGitHubDependenciesForDir(project.rootDirPath, project.rootDirPath, rootPackageJson);
+  rewritePrivateGitHubDependenciesForDir(rootDirPath, rootDirPath, rootPackageJson);
   removeUnnecessaryDevDependenciesForOutsideDockerBuild(rootPackageJson);
   await fs.promises.writeFile(path.join(tempDirPath, 'package.json'), JSON.stringify(rootPackageJson), 'utf8');
 }
@@ -343,33 +372,33 @@ async function copyLocalPackageReferences(
 }
 
 async function copyWorkspacePackageReferences(
-  project: Project,
+  rootDirPath: string,
   packageJson: PackageJson,
   tempDirPath: string
 ): Promise<void> {
-  const workspacePatterns = getWorkspacePatterns(getRootPackageJson(project) ?? packageJson);
+  const workspacePatterns = getWorkspacePatterns(getRootPackageJson(rootDirPath) ?? packageJson);
   if (workspacePatterns.length === 0) return;
 
   const workspacePackageJsonPaths = await globby(
     workspacePatterns.map((pattern) => `${pattern.replace(/\/$/, '')}/package.json`),
-    { cwd: project.rootDirPath, onlyFiles: true }
+    { cwd: rootDirPath, onlyFiles: true }
   );
   for (const packageJsonPath of workspacePackageJsonPaths) {
     const relativePackageDirPath = path.dirname(packageJsonPath);
     await copyLocalPackageDirectory(
-      path.resolve(project.rootDirPath, relativePackageDirPath),
+      path.resolve(rootDirPath, relativePackageDirPath),
       path.resolve(tempDirPath, relativePackageDirPath)
     );
-    await copyOptimizedWorkspacePackageJson(project, relativePackageDirPath, tempDirPath);
+    await copyOptimizedWorkspacePackageJson(rootDirPath, relativePackageDirPath, tempDirPath);
   }
 }
 
 async function copyOptimizedWorkspacePackageJson(
-  project: Project,
+  rootDirPath: string,
   relativePackageDirPath: string,
   tempDirPath: string
 ): Promise<void> {
-  const optimizedPackageJsonPath = path.resolve(project.rootDirPath, relativePackageDirPath, 'dist/package.json');
+  const optimizedPackageJsonPath = path.resolve(rootDirPath, relativePackageDirPath, 'dist/package.json');
   if (!fs.existsSync(optimizedPackageJsonPath)) return;
 
   await fs.promises.copyFile(
@@ -435,16 +464,16 @@ function findFirstExistingFile(dirPath: string, fileNames: string[]): string | u
   return undefined;
 }
 
-function findFirstExistingProjectFile(project: Project, fileNames: string[]): string | undefined {
+function findFirstExistingProjectFile(rootDirPath: string, fileNames: string[]): string | undefined {
   for (const fileName of fileNames) {
-    const filePath = path.join(project.rootDirPath, fileName);
+    const filePath = path.join(rootDirPath, fileName);
     if (fs.existsSync(filePath)) return filePath;
   }
   return undefined;
 }
 
-function getRootPackageJson(project: Project): PackageJson | undefined {
-  const packageJsonPath = path.join(project.rootDirPath, 'package.json');
+function getRootPackageJson(rootDirPath: string): PackageJson | undefined {
+  const packageJsonPath = path.join(rootDirPath, 'package.json');
   if (!fs.existsSync(packageJsonPath)) return undefined;
 
   return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson;
