@@ -215,7 +215,7 @@ async function writePrunedLockfile(
   packageJson: PackageJson,
   distDirPath: string
 ): Promise<void> {
-  const lockfileWriter = project.usesBunPackageManager ? writePrunedBunLockfile : writePrunedYarnLockfile;
+  const lockfileWriter = usesBunPackageManager(rootDirPath) ? writePrunedBunLockfile : writePrunedYarnLockfile;
   await lockfileWriter(rootDirPath, project, packageJson, distDirPath);
 }
 
@@ -225,7 +225,7 @@ async function copySourceLockfile(
   _packageJson: PackageJson,
   distDirPath: string
 ): Promise<void> {
-  const sourceLockfilePath = project.usesBunPackageManager
+  const sourceLockfilePath = usesBunPackageManager(rootDirPath)
     ? findFirstExistingProjectFile(rootDirPath, ['bun.lock', 'bun.lockb'])
     : findFirstExistingProjectFile(rootDirPath, ['yarn.lock']);
   if (!sourceLockfilePath) return;
@@ -477,6 +477,21 @@ function getRootPackageJson(rootDirPath: string): PackageJson | undefined {
   if (!fs.existsSync(packageJsonPath)) return undefined;
 
   return JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson;
+}
+
+function usesBunPackageManager(rootDirPath: string): boolean {
+  if (['bun.lock', 'bun.lockb'].some((fileName) => fs.existsSync(path.join(rootDirPath, fileName)))) return true;
+
+  const rootPackageJson = getRootPackageJson(rootDirPath);
+  if (typeof rootPackageJson?.packageManager === 'string' && rootPackageJson.packageManager.startsWith('bun@')) {
+    return true;
+  }
+
+  try {
+    return /(^|\n)bun\s/.test(fs.readFileSync(path.join(rootDirPath, '.tool-versions'), 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 function throwIfCommandFailed(result: child_process.SpawnSyncReturns<Buffer>, command: string): void {
