@@ -98,53 +98,14 @@ function findDockerShellScriptsDirPath(): string {
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
   if (argv.outside) {
-    // Outside optimization writes dist/package.json before Docker builds the app.
-    // Keep dependency sections aligned with the source lockfile and remove only known non-build tooling.
-    removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson);
+    // Outside optimization writes dist/package.json before Docker builds the app. Keep dependency sections aligned with
+    // the source lockfile so package managers can install with frozen lockfiles in the later Docker build.
     return;
   }
 
   // Inside Docker, codegen/build has already finished, so production install should not see dev tooling.
   delete packageJson.devDependencies;
   console.info('Removed all devDependencies.');
-}
-
-function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: PackageJson): void {
-  const devDeps = packageJson.devDependencies ?? {};
-  // In --outside mode, Docker still runs codegen/build before a second in-image optimization.
-  // Remove only tooling that is not needed for that build phase.
-  const nameWordsToBeRemoved = [
-    'artillery',
-    'concurrently',
-    'conventional-changelog-conventionalcommits',
-    'husky',
-    'imagemin',
-    'jest',
-    'kill-port',
-    'lint-staged',
-    'open-cli',
-    'playwright',
-    'prettier',
-    'pinst',
-    'railway',
-    'semantic-release',
-    'sort-package-json',
-    'wait-on',
-    'vitest',
-  ];
-  const removedDeps: string[] = [];
-  for (const name of Object.keys(devDeps)) {
-    if (
-      nameWordsToBeRemoved.some((word) => name.includes(word)) ||
-      // Shared config packages are needed only for lint/format/test commands, not Docker builds.
-      (name.includes('willbooster') && name.includes('config'))
-    ) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete devDeps[name];
-      removedDeps.push(name);
-    }
-  }
-  console.info('Removed devDependencies:', removedDeps.join(', ') || 'none');
 }
 
 function optimizeScripts(packageJson: PackageJson): void {
