@@ -353,7 +353,14 @@ function doesReleaseScriptInstallSemanticRelease(script: unknown): boolean {
 
 function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJson): void {
   if (shouldKeepBuildTsAsRuntimeDependency(jsonObj)) {
-    jsonObj.dependencies[buildTsDependency] ??= jsonObj.devDependencies[buildTsDependency];
+    const currentDependencyVersion = jsonObj.dependencies[buildTsDependency];
+    const currentDevDependencyVersion = jsonObj.devDependencies[buildTsDependency];
+    if (
+      currentDevDependencyVersion &&
+      (!currentDependencyVersion || isNewerPackageVersion(currentDevDependencyVersion, currentDependencyVersion))
+    ) {
+      jsonObj.dependencies[buildTsDependency] = currentDevDependencyVersion;
+    }
     delete jsonObj.devDependencies[buildTsDependency];
   }
   const dependenciesToMove = shouldKeepBuildTsAsRuntimeDependency(jsonObj)
@@ -956,10 +963,12 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
 
 function isNewerManagedDependencyVersion(dependency: string, currentVersion: string): boolean {
   const latestVersion = getLatestDependencyVersion(dependency);
-  const validLatestVersion = semver.valid(latestVersion);
+  return isNewerPackageVersion(latestVersion, currentVersion);
+}
+
+function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {
+  const validLatestVersion = semver.valid(candidateVersion);
   const validCurrentVersion = semver.valid(currentVersion);
-  // The TypeScript beta dist-tag can lag behind newer concrete dev snapshots
-  // already pinned by Renovate. Keep the existing pin instead of downgrading.
   return !validLatestVersion || !validCurrentVersion || semver.gt(validLatestVersion, validCurrentVersion);
 }
 

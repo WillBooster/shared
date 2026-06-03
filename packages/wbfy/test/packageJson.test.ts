@@ -52,6 +52,9 @@ test('keeps build-ts as a runtime dependency when prisma seed uses it', async ()
       devDependencies: {
         'build-ts': '17.1.18',
       },
+      dependencies: {
+        'build-ts': '17.1.15',
+      },
       prisma: {
         seed: 'build-ts run prisma/seed.ts',
       },
