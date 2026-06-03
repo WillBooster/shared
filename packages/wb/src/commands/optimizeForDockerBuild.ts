@@ -12,10 +12,6 @@ import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
-// These tools are declared as devDependencies in source repos, but optimized Docker
-// package.json files still need them for in-image codegen/build steps.
-const runtimeDevDependencies = ['@willbooster/wb', 'build-ts'];
-
 const builder = {
   outside: {
     description: 'Whether the optimization is executed outside a docker container or not',
@@ -101,10 +97,9 @@ function findDockerShellScriptsDirPath(): string {
 }
 
 function optimizeDevDependencies(argv: InferredOptionTypes<typeof builder>, packageJson: PackageJson): void {
-  promoteRuntimeDevDependencies(packageJson);
   if (argv.outside) {
     // Outside optimization writes dist/package.json before Docker builds the app.
-    // Keep build-time packages for that later in-image build and remove only known non-build tooling.
+    // Keep dependency sections aligned with the source lockfile and remove only known non-build tooling.
     removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson);
     return;
   }
@@ -150,25 +145,6 @@ function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: Pack
     }
   }
   console.info('Removed devDependencies:', removedDeps.join(', ') || 'none');
-}
-
-function promoteRuntimeDevDependencies(packageJson: PackageJson): void {
-  const devDeps = packageJson.devDependencies ?? {};
-  const dependencies = packageJson.dependencies ?? {};
-  const promotedDeps: string[] = [];
-  for (const name of runtimeDevDependencies) {
-    const version = devDeps[name];
-    if (!version) continue;
-    if (!dependencies[name]) {
-      dependencies[name] = version;
-      promotedDeps.push(name);
-    }
-    delete devDeps[name];
-  }
-  if (promotedDeps.length > 0) {
-    packageJson.dependencies = dependencies;
-  }
-  console.info('Promoted runtime devDependencies:', promotedDeps.join(', ') || 'none');
 }
 
 function optimizeScripts(packageJson: PackageJson): void {
