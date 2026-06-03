@@ -50,7 +50,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     const prunedLockfileRequests: PrunedLockfileRequest[] = [];
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
-      const rewrittenDependencies = rewritePrivateGitHubDependencies(packageJson);
+      const rewrittenDependencies = rewritePrivateGitHubDependencies(project, packageJson);
       const prunedDependencies = optimizeDevDependencies(argv, packageJson);
 
       optimizeScripts(packageJson);
@@ -66,6 +66,8 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
         await writeDockerShellScripts(path.join(distDirPath, 'bash'));
         if (prunedDependencies.length > 0 || rewrittenDependencies.length > 0) {
           prunedLockfileRequests.push({ distDirPath, packageJson, project });
+        } else {
+          await copySourceLockfile(project, distDirPath);
         }
       }
     }
@@ -81,7 +83,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
   },
 };
 
-function rewritePrivateGitHubDependencies(packageJson: PackageJson): string[] {
+function rewritePrivateGitHubDependencies(project: Project, packageJson: PackageJson): string[] {
   const rewrittenDependencies: string[] = [];
   for (const key of dependencySectionKeys) {
     const deps = packageJson[key] ?? {};
@@ -89,13 +91,23 @@ function rewritePrivateGitHubDependencies(packageJson: PackageJson): string[] {
       if (value?.startsWith('git@github.com:')) {
         // Docker builds cannot access private SSH URLs unless credentials are forwarded.
         // The Dockerfile copies those workspace packages into the image instead.
-        deps[name] = `./${name}`;
+        deps[name] = getPrivatePackageDockerSpecifier(project, name);
         rewrittenDependencies.push(`${key}.${name}`);
       }
     }
   }
   console.info('Rewrote private GitHub dependencies:', rewrittenDependencies.join(', ') || 'none');
   return rewrittenDependencies;
+}
+
+function getPrivatePackageDockerSpecifier(project: Project, packageName: string): string {
+  const privatePackageDirPath = path.join(project.rootDirPath, '@willbooster', toUnscopedPackageName(packageName));
+  const relativePath = path.relative(project.dirPath, privatePackageDirPath);
+  return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
+}
+
+function toUnscopedPackageName(packageName: string): string {
+  return packageName.replace(/^@willbooster\//, '');
 }
 
 async function writeDockerShellScripts(dirPath: string): Promise<void> {
@@ -183,6 +195,17 @@ async function writePrunedLockfile(project: Project, packageJson: PackageJson, d
   await lockfileWriter(project, packageJson, distDirPath);
 }
 
+async function copySourceLockfile(project: Project, distDirPath: string): Promise<void> {
+  const sourceLockfilePath = project.usesBunPackageManager
+    ? findFirstExistingProjectFile(project, ['bun.lock', 'bun.lockb'])
+    : findFirstExistingProjectFile(project, ['yarn.lock']);
+  if (!sourceLockfilePath) return;
+
+  const targetLockfilePath = path.join(distDirPath, path.basename(sourceLockfilePath));
+  await fs.promises.copyFile(sourceLockfilePath, targetLockfilePath);
+  console.info(`Copied Docker lockfile: ${path.relative(process.cwd(), targetLockfilePath)}`);
+}
+
 async function writePrunedBunLockfile(project: Project, packageJson: PackageJson, distDirPath: string): Promise<void> {
   const sourceLockfilePath = findFirstExistingProjectFile(project, ['bun.lock', 'bun.lockb']);
   if (!sourceLockfilePath) {
@@ -241,25 +264,30 @@ async function prepareLockfileWorkspace(
   packageManagerFiles: string[]
 ): Promise<LockfileWorkspace> {
   const tempDirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-docker-lock-'));
-  const relativeProjectDirPath = path.relative(project.rootDirPath, project.dirPath);
-  const tempProjectDirPath = path.resolve(tempDirPath, relativeProjectDirPath);
+  try {
+    const relativeProjectDirPath = path.relative(project.rootDirPath, project.dirPath);
+    const tempProjectDirPath = path.resolve(tempDirPath, relativeProjectDirPath);
 
-  await copyRootPackageJson(project, tempDirPath);
-  await fs.promises.mkdir(tempProjectDirPath, { recursive: true });
-  await fs.promises.writeFile(path.join(tempProjectDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
+    await copyRootPackageJson(project, tempDirPath);
+    await fs.promises.mkdir(tempProjectDirPath, { recursive: true });
+    await fs.promises.writeFile(path.join(tempProjectDirPath, 'package.json'), JSON.stringify(packageJson), 'utf8');
 
-  for (const fileName of packageManagerFiles) {
-    const sourcePath = path.join(project.rootDirPath, fileName);
-    if (!fs.existsSync(sourcePath)) continue;
+    for (const fileName of packageManagerFiles) {
+      const sourcePath = path.join(project.rootDirPath, fileName);
+      if (!fs.existsSync(sourcePath)) continue;
 
-    const targetPath = path.join(tempDirPath, fileName);
-    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.promises.cp(sourcePath, targetPath, { recursive: true });
+      const targetPath = path.join(tempDirPath, fileName);
+      await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.promises.cp(sourcePath, targetPath, { recursive: true });
+    }
+
+    await copyLocalPackageReferences(project, packageJson, tempProjectDirPath, tempDirPath);
+    await copyWorkspacePackageReferences(project, packageJson, tempDirPath);
+    return { installDirPath: tempProjectDirPath, rootDirPath: tempDirPath };
+  } catch (error) {
+    await fs.promises.rm(tempDirPath, { recursive: true, force: true });
+    throw error;
   }
-
-  await copyLocalPackageReferences(project, packageJson, tempProjectDirPath, tempDirPath);
-  await copyWorkspacePackageReferences(project, packageJson, tempDirPath);
-  return { installDirPath: tempProjectDirPath, rootDirPath: tempDirPath };
 }
 
 async function copyRootPackageJson(project: Project, tempDirPath: string): Promise<void> {
