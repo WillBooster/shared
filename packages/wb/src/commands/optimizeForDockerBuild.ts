@@ -175,14 +175,18 @@ function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: Pack
   // Remove only tooling that is not needed for that build phase.
   const nameWordsToBeRemoved = [
     'artillery',
+    'biome',
     'concurrently',
     'conventional-changelog-conventionalcommits',
+    'eslint',
     'husky',
     'imagemin',
     'jest',
     'kill-port',
     'lint-staged',
     'open-cli',
+    'oxfmt',
+    'oxlint',
     'playwright',
     'prettier',
     'pinst',
