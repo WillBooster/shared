@@ -108,6 +108,31 @@ function runCommand(
       ...extraEnv,
     },
   });
-  expect(result.status, [command, ...args].join(' ')).toBe(0);
+  expect(result.status, describeCommandFailure(command, args, cwd, result)).toBe(0);
   return result;
+}
+
+function describeCommandFailure(
+  command: string,
+  args: string[],
+  cwd: string,
+  result: child_process.SpawnSyncReturns<string>
+): string {
+  return [
+    `command: ${[command, ...args].join(' ')}`,
+    `cwd: ${cwd}`,
+    `status: ${result.status ?? 'undefined'}`,
+    `signal: ${result.signal ?? 'undefined'}`,
+    `stdout:\n${result.stdout}`,
+    `stderr:\n${result.stderr}`,
+    describeGeneratedFile(cwd, 'package.json'),
+    describeGeneratedFile(cwd, '.yarnrc.yml'),
+    describeGeneratedFile(cwd, 'yarn.lock'),
+  ].join('\n\n');
+}
+
+function describeGeneratedFile(cwd: string, relativePath: string): string {
+  const filePath = path.join(cwd, relativePath);
+  if (!fs.existsSync(filePath)) return `${relativePath}: <missing>`;
+  return `${relativePath}:\n${fs.readFileSync(filePath, 'utf8')}`;
 }
