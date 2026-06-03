@@ -130,6 +130,7 @@ export abstract class BaseScripts {
     return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project), options);
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
+    project.env.PORT ||= '3000';
     await checkAndKillPortProcess(project.env.PORT, project);
     // Use empty NODE_ENV to avoid "production" mode in some frameworks like Blitz.js.
     return `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildShellCommand([
@@ -151,6 +152,7 @@ export abstract class BaseScripts {
     startCommand: string,
     { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
   ): Promise<string> {
+    project.env.PORT ||= '3000';
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs);

@@ -30,6 +30,7 @@ class HttpServerScripts extends BaseScripts {
       return super.testE2EProtected(project, argv, startCommand, options);
     }
 
+    project.env.PORT ||= '3000';
     const port = await checkAndKillPortProcess(project.env.PORT, project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const targets = argv.targets?.map(String);
