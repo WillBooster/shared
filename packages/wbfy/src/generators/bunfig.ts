@@ -20,8 +20,8 @@ interface BunfigToml {
 const minimumReleaseAgeExcludes = [
   // ---------- START: We believe our packages are safe ----------
   '@exercode/problem-utils',
-  '@willbooster/agent-skills',
   '@willbooster-private/agentic-workflows',
+  '@willbooster/agent-skills',
   '@willbooster/babel-configs',
   '@willbooster/monaco-loader',
   '@willbooster/monaco-react',
