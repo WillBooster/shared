@@ -7,7 +7,7 @@ import { expect, test } from 'vitest';
 import { generatePackageJson } from '../src/generators/packageJson.js';
 import { createConfig } from './testConfig.js';
 
-test('moves gen-i18n-ts execution from postinstall to wb gen-code', async () => {
+test('moves gen-i18n-ts execution from postinstall to gen-code', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
 
@@ -35,7 +35,7 @@ test('moves gen-i18n-ts execution from postinstall to wb gen-code', async () => 
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string | undefined>;
     };
-    expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
+    expect(packageJson.scripts['gen-code']).toBe('wb gen-code && yarn run gen-i18n-ts');
     expect(packageJson.scripts.postinstall).toBeUndefined();
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });

@@ -38,7 +38,7 @@ export const genCodeCommand: CommandModule = {
   },
 };
 
-export function getGenCodeScripts(project: Project): string[] {
+function getGenCodeScripts(project: Project): string[] {
   const scripts: string[] = [];
   if (project.hasOwnDependency('blitz')) {
     scripts.push('YARN blitz codegen');
@@ -57,9 +57,6 @@ export function getGenCodeScripts(project: Project): string[] {
   const drizzleConfigPath = scripts.length === 0 && project.hasDrizzle ? getDrizzleConfigPath(project) : undefined;
   if (drizzleConfigPath) {
     scripts.push(`YARN drizzle-kit check --config ${drizzleConfigPath} || true`);
-  }
-  if (project.hasOwnDependency('gen-i18n-ts') && project.packageJson.scripts?.['gen-i18n-ts']) {
-    scripts.push('YARN run gen-i18n-ts');
   }
   return scripts;
 }
