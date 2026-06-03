@@ -352,6 +352,10 @@ function doesReleaseScriptInstallSemanticRelease(script: unknown): boolean {
 }
 
 function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJson): void {
+  if (shouldKeepBuildTsAsRuntimeDependency(jsonObj)) {
+    jsonObj.dependencies[buildTsDependency] ??= jsonObj.devDependencies[buildTsDependency];
+    delete jsonObj.devDependencies[buildTsDependency];
+  }
   const dependenciesToMove = shouldKeepBuildTsAsRuntimeDependency(jsonObj)
     ? [wbDependency]
     : [wbDependency, buildTsDependency];

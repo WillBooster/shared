@@ -49,8 +49,8 @@ test('keeps build-ts as a runtime dependency when prisma seed uses it', async ()
   await fs.writeFile(
     packageJsonPath,
     JSON.stringify({
-      dependencies: {
-        'build-ts': '17.0.0',
+      devDependencies: {
+        'build-ts': '17.1.18',
       },
       prisma: {
         seed: 'build-ts run prisma/seed.ts',
@@ -70,7 +70,7 @@ test('keeps build-ts as a runtime dependency when prisma seed uses it', async ()
       dependencies: Record<string, string | undefined>;
       devDependencies: Record<string, string | undefined>;
     };
-    expect(packageJson.dependencies['build-ts']).toBeDefined();
+    expect(packageJson.dependencies['build-ts']).toBe('17.1.18');
     expect(packageJson.devDependencies['build-ts']).toBeUndefined();
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
