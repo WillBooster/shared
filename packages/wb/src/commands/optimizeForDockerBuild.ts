@@ -91,6 +91,14 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 };
 
 function rewritePrivateGitHubDependencies(project: Project, packageJson: PackageJson): string[] {
+  return rewritePrivateGitHubDependenciesForDir(project.rootDirPath, project.dirPath, packageJson);
+}
+
+function rewritePrivateGitHubDependenciesForDir(
+  rootDirPath: string,
+  packageDirPath: string,
+  packageJson: PackageJson
+): string[] {
   const rewrittenDependencies: string[] = [];
   for (const key of dependencySectionKeys) {
     const deps = packageJson[key] ?? {};
@@ -98,7 +106,7 @@ function rewritePrivateGitHubDependencies(project: Project, packageJson: Package
       if (value?.startsWith('git@github.com:')) {
         // Docker builds cannot access private SSH URLs unless credentials are forwarded.
         // The Dockerfile copies those workspace packages into the image instead.
-        deps[name] = getPrivatePackageDockerSpecifier(project, name);
+        deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, name);
         rewrittenDependencies.push(`${key}.${name}`);
       }
     }
@@ -107,9 +115,9 @@ function rewritePrivateGitHubDependencies(project: Project, packageJson: Package
   return rewrittenDependencies;
 }
 
-function getPrivatePackageDockerSpecifier(project: Project, packageName: string): string {
-  const privatePackageDirPath = path.join(project.rootDirPath, '@willbooster', toUnscopedPackageName(packageName));
-  const relativePath = path.relative(project.dirPath, privatePackageDirPath);
+function getPrivatePackageDockerSpecifier(rootDirPath: string, packageDirPath: string, packageName: string): string {
+  const privatePackageDirPath = path.join(rootDirPath, '@willbooster', toUnscopedPackageName(packageName));
+  const relativePath = path.relative(packageDirPath, privatePackageDirPath);
   return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
 }
 
@@ -298,10 +306,21 @@ async function prepareLockfileWorkspace(
 }
 
 async function copyRootPackageJson(project: Project, tempDirPath: string): Promise<void> {
-  const sourcePackageJsonPath = path.join(project.rootDirPath, 'package.json');
+  const optimizedPackageJsonPath = path.join(project.rootDirPath, 'dist', 'package.json');
+  const sourcePackageJsonPath = fs.existsSync(optimizedPackageJsonPath)
+    ? optimizedPackageJsonPath
+    : path.join(project.rootDirPath, 'package.json');
   if (!fs.existsSync(sourcePackageJsonPath)) return;
 
-  await fs.promises.copyFile(sourcePackageJsonPath, path.join(tempDirPath, 'package.json'));
+  if (sourcePackageJsonPath === optimizedPackageJsonPath) {
+    await fs.promises.copyFile(sourcePackageJsonPath, path.join(tempDirPath, 'package.json'));
+    return;
+  }
+
+  const rootPackageJson = JSON.parse(await fs.promises.readFile(sourcePackageJsonPath, 'utf8')) as PackageJson;
+  rewritePrivateGitHubDependenciesForDir(project.rootDirPath, project.rootDirPath, rootPackageJson);
+  removeUnnecessaryDevDependenciesForOutsideDockerBuild(rootPackageJson);
+  await fs.promises.writeFile(path.join(tempDirPath, 'package.json'), JSON.stringify(rootPackageJson), 'utf8');
 }
 
 async function copyLocalPackageReferences(
