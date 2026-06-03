@@ -241,14 +241,13 @@ async function writePrunedBunLockfile(project: Project, packageJson: PackageJson
     '.tool-versions',
   ]);
   try {
-    const result = child_process.spawnSync('bun', ['install', '--lockfile-only'], {
-      cwd: workspace.installDirPath,
-      stdio: 'inherit',
-    });
-    throwIfCommandFailed(result, 'bun install --lockfile-only');
+    runBunPrunedLockfileInstall(workspace.installDirPath, project.env);
+    // Bun can leave stale transitive resolutions after the first omit-mode install. A second pass stabilizes the
+    // generated lockfile so Docker can later run `bun install --omit=dev --frozen-lockfile` without rewriting it.
+    runBunPrunedLockfileInstall(workspace.installDirPath, project.env);
 
     const generatedLockfilePath = findFirstExistingFile(workspace.rootDirPath, ['bun.lock', 'bun.lockb']);
-    if (!generatedLockfilePath) throw new Error('bun install --lockfile-only did not generate a lockfile.');
+    if (!generatedLockfilePath) throw new Error('bun install --omit=dev --ignore-scripts did not generate a lockfile.');
 
     const targetLockfilePath = path.join(distDirPath, path.basename(generatedLockfilePath));
     await fs.promises.copyFile(generatedLockfilePath, targetLockfilePath);
@@ -256,6 +255,15 @@ async function writePrunedBunLockfile(project: Project, packageJson: PackageJson
   } finally {
     await fs.promises.rm(workspace.rootDirPath, { recursive: true, force: true });
   }
+}
+
+function runBunPrunedLockfileInstall(installDirPath: string, env: Record<string, string | undefined>): void {
+  const result = child_process.spawnSync('bun', ['install', '--omit=dev', '--ignore-scripts'], {
+    cwd: installDirPath,
+    env,
+    stdio: 'inherit',
+  });
+  throwIfCommandFailed(result, 'bun install --omit=dev --ignore-scripts');
 }
 
 async function writePrunedYarnLockfile(project: Project, packageJson: PackageJson, distDirPath: string): Promise<void> {
