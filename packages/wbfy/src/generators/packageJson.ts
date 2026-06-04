@@ -1040,8 +1040,9 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const hasJsOrTs = doesContainJsOrTs(config);
     const hasJava = doesContainJava(config);
     const oldTest = oldScripts.test;
+    const cleanupPrefix = shouldGenerateWbGenCodeScript(config, oldScripts['gen-code']) ? 'yarn gen-code && ' : '';
     let scripts: Record<string, string> = {
-      cleanup: 'yarn format && yarn lint-fix',
+      cleanup: `${cleanupPrefix}yarn format && yarn lint-fix`,
       format: generateFormatScript(hasJsOrTs, hasJava),
       lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
