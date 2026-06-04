@@ -193,7 +193,7 @@ function removeGenI18nTsPostinstallCommand(scripts: PackageJson.Scripts): void {
 
   const commands = postinstall
     .split(/\s*&&\s*/u)
-    .filter((command) => !/^(?:bun|yarn) run gen-i18n-ts > \/dev\/null$/u.test(command));
+    .filter((command) => !/^\s*(?:bun|yarn)(?:\s+run)?\s+gen-i18n-ts(?:\s+>\s*\/dev\/null)?\s*$/u.test(command));
   if (commands.length === 0) {
     delete scripts.postinstall;
   } else {
