@@ -36,7 +36,7 @@ test('removes gen-i18n-ts postinstall while keeping the script available', async
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string | undefined>;
     };
-    expect(packageJson.scripts.cleanup).toBe('yarn gen-code && yarn format && yarn lint-fix');
+    expect(packageJson.scripts.cleanup).toBe('yarn gen-i18n-ts && yarn format');
     expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
     expect(packageJson.scripts['gen-i18n-ts']).toBe('gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP');
     expect(packageJson.scripts.postinstall).toBeUndefined();
@@ -71,7 +71,7 @@ test('restores missing default gen-i18n-ts script without postinstall', async ()
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string | undefined>;
     };
-    expect(packageJson.scripts.cleanup).toBe('yarn gen-code && yarn format && yarn lint-fix');
+    expect(packageJson.scripts.cleanup).toBe('yarn gen-i18n-ts && yarn format');
     expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
     expect(packageJson.scripts['gen-i18n-ts']).toBe('gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP');
     expect(packageJson.scripts.postinstall).toBeUndefined();
@@ -110,6 +110,40 @@ test('keeps custom gen-i18n-ts scripts', async () => {
     };
     expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
     expect(packageJson.scripts['gen-i18n-ts']).toBe('gen-i18n-ts -i locales -o src/i18n.ts -d en-US');
+  } finally {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('removes only stale gen-i18n-ts postinstall commands', async () => {
+  const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
+  const packageJsonPath = path.join(dirPath, 'package.json');
+  await fs.mkdir(path.join(dirPath, 'i18n'));
+
+  await fs.writeFile(
+    packageJsonPath,
+    JSON.stringify({
+      scripts: {
+        postinstall: 'echo before && yarn run gen-i18n-ts > /dev/null && echo after',
+      },
+      dependencies: {
+        'gen-i18n-ts': '4.0.6',
+      },
+    })
+  );
+
+  try {
+    const config = createConfig({
+      dirPath,
+      isRoot: false,
+      depending: { ...createConfig().depending, genI18nTs: true },
+    });
+    await generatePackageJson(config, config, true);
+
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
+      scripts: Record<string, string | undefined>;
+    };
+    expect(packageJson.scripts.postinstall).toBe('echo before && echo after');
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }

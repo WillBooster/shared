@@ -162,6 +162,7 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
 
 async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
   removeLegacyInstallCommands(jsonObj.scripts);
+  removeGenI18nTsPostinstallCommand(jsonObj.scripts);
 
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
   delete jsonObj.scripts['start-test-server'];
@@ -183,6 +184,20 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
     if (!value.includes('git clone')) {
       scripts[key] = value.replaceAll(/yarn\s*(?:install\s*)?&&\s*/gu, '');
     }
+  }
+}
+
+function removeGenI18nTsPostinstallCommand(scripts: PackageJson.Scripts): void {
+  const postinstall = scripts.postinstall;
+  if (typeof postinstall !== 'string') return;
+
+  const commands = postinstall
+    .split(/\s*&&\s*/u)
+    .filter((command) => !/^(?:bun|yarn) run gen-i18n-ts > \/dev\/null$/u.test(command));
+  if (commands.length === 0) {
+    delete scripts.postinstall;
+  } else {
+    scripts.postinstall = commands.join(' && ');
   }
 }
 
@@ -1040,7 +1055,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const hasJsOrTs = doesContainJsOrTs(config);
     const hasJava = doesContainJava(config);
     const oldTest = oldScripts.test;
-    const cleanupPrefix = shouldGenerateWbGenCodeScript(config, oldScripts['gen-code']) ? 'yarn gen-code && ' : '';
+    const cleanupPrefix = shouldRunGenI18nTsBeforeCleanup(config) ? 'yarn gen-i18n-ts && ' : '';
     let scripts: Record<string, string> = {
       cleanup: `${cleanupPrefix}yarn format && yarn lint-fix`,
       format: generateFormatScript(hasJsOrTs, hasJava),
@@ -1097,6 +1112,10 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     return scripts;
   }
+}
+
+function shouldRunGenI18nTsBeforeCleanup(config: PackageConfig): boolean {
+  return config.depending.genI18nTs && fs.existsSync(path.join(config.dirPath, 'i18n'));
 }
 
 function applyDatabaseScripts(config: PackageConfig, scripts: Record<string, string>, wbDbCommand: string): void {
