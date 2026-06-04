@@ -33,6 +33,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       process.exit(1);
     }
 
+    const optimizedProjects: Project[] = [];
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
       rewritePrivateGitHubDependencies(project, packageJson);
@@ -50,12 +51,14 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       if (argv.outside) {
         await writeDockerShellScripts(path.join(distDirPath, 'bash'));
       }
+      optimizedProjects.push(project);
     }
     if (!argv.dryRun && !argv.outside) {
       child_process.spawnSync(packageManager, ['install'], {
         stdio: 'inherit',
       });
       console.info('Installed dependencies.');
+      await cleanupDockerBuildArtifacts(optimizedProjects);
     }
   },
 };
@@ -202,4 +205,47 @@ function optimizeRootProps(packageJson: PackageJson): void {
   delete packageJson.private;
   delete packageJson.publishConfig;
   delete packageJson.prettier;
+}
+
+async function cleanupDockerBuildArtifacts(projects: Project[]): Promise<void> {
+  for (const project of projects) {
+    await removeProjectCaches(project);
+    runDockerCleanupScript(project);
+  }
+}
+
+async function removeProjectCaches(project: Project): Promise<void> {
+  const relativePaths = [
+    '.next/cache',
+    '.turbo',
+    path.join('.yarn', 'cache'),
+    path.join('.yarn', 'install-state.gz'),
+    path.join('node_modules', '.cache'),
+    'playwright-report',
+    'test-results',
+  ];
+  const removedPaths: string[] = [];
+  for (const relativePath of relativePaths) {
+    const targetPath = path.join(project.dirPath, relativePath);
+    if (!fs.existsSync(targetPath)) continue;
+
+    await fs.promises.rm(targetPath, { force: true, recursive: true });
+    removedPaths.push(relativePath);
+  }
+  console.info('Removed Docker build caches:', removedPaths.join(', ') || 'none');
+}
+
+function runDockerCleanupScript(project: Project): void {
+  if (project.env.WB_DOCKER !== '1') return;
+
+  const scriptPath = path.join(project.dirPath, 'bash', 'cleanup.sh');
+  if (!fs.existsSync(scriptPath)) return;
+
+  const result = child_process.spawnSync('bash', [scriptPath, '--keep-scripts'], {
+    cwd: project.dirPath,
+    stdio: 'inherit',
+  });
+  if (result.status !== 0) {
+    throw new Error(`Failed to run ${path.relative(project.dirPath, scriptPath)}`);
+  }
 }
