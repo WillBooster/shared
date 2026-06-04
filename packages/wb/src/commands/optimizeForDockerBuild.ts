@@ -37,9 +37,11 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
       rewritePrivateGitHubDependencies(project, packageJson);
-      optimizeDevDependencies(argv, packageJson);
+      const removedDevDependencies = optimizeDevDependencies(argv, packageJson);
 
-      optimizeScripts(packageJson);
+      optimizeScripts(packageJson, {
+        removeWbPostinstall: !argv.outside && removedDevDependencies.includes('@willbooster/wb'),
+      });
 
       optimizeRootProps(packageJson);
 
@@ -182,13 +184,14 @@ function removeUnnecessaryDevDependenciesForOutsideDockerBuild(packageJson: Pack
   return removedDeps;
 }
 
-function optimizeScripts(packageJson: PackageJson): void {
+function optimizeScripts(packageJson: PackageJson, options: { removeWbPostinstall: boolean }): void {
   const nameWordsOfUnnecessaryScripts = ['check', 'deploy', 'format', 'lint', 'start', 'test'];
   const contentWordsOfUnnecessaryScripts = ['pinst ', 'husky '];
   const scripts = (packageJson.scripts ?? {}) as Record<string, string>;
   const removedScripts: string[] = [];
   for (const [name, content] of Object.entries(scripts)) {
     if (
+      (options.removeWbPostinstall && name === 'postinstall' && content.trim() === 'wb gen-code') ||
       nameWordsOfUnnecessaryScripts.some((word) => name.startsWith(word)) ||
       // Support "husky" since husky v9 requires `"postinstall": "husky"`
       contentWordsOfUnnecessaryScripts.some((word) => content.includes(word) || content.trim() === word.trim())

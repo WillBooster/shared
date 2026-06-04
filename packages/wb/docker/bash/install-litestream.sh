@@ -3,6 +3,7 @@
 set -e
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
+ARCH=${ARCH:-$(dpkg --print-architecture)}
 
 # Force to use 0.5.10 since the latest litestream is very unstable.
 apt-get -qq install -y --no-install-recommends ca-certificates curl \

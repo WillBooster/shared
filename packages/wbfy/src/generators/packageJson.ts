@@ -186,6 +186,14 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   }
 }
 
+function updatePostinstallScript(scripts: PackageJson.Scripts): void {
+  if (scripts['gen-code']) {
+    scripts.postinstall = 'wb gen-code';
+  } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
+    delete scripts.postinstall;
+  }
+}
+
 function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {
   // Deal with breaking changes in yarn berry 4.0.0-rc.49
   for (const [key, value] of Object.entries(scripts)) {
@@ -232,7 +240,6 @@ async function applyPackageJsonConventions(
 
   if (config.isRoot) {
     delete jsonObj.devDependencies.husky;
-    delete jsonObj.scripts.postinstall;
     delete jsonObj.scripts.postpublish;
     delete jsonObj.scripts.prepublishOnly;
     delete jsonObj.scripts.prepack;
@@ -487,6 +494,7 @@ async function normalizePackageMetadata(
     jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
   ensureGenI18nTsScripts(config, jsonObj);
+  updatePostinstallScript(jsonObj.scripts);
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
@@ -512,15 +520,10 @@ function appendFormatCodeCommand(formatScript: string | undefined, config: Packa
 }
 
 function ensureGenI18nTsScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  if (!config.depending.genI18nTs) return;
-  if (!fs.existsSync(path.join(config.dirPath, 'i18n'))) return;
+  if (!shouldManageGenI18nTs(config)) return;
 
+  // Keep i18n generation explicit so Docker dependency layers can install packages before source files are copied.
   jsonObj.scripts['gen-i18n-ts'] ??= 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
-
-  const command = `${config.isBun ? 'bun' : 'yarn'} run gen-i18n-ts > /dev/null`;
-  const postinstall = jsonObj.scripts.postinstall;
-  if (postinstall?.split(/\s*&&\s*/u).includes(command)) return;
-  jsonObj.scripts.postinstall = postinstall ? `${postinstall} && ${command}` : command;
 }
 
 async function normalizePublishedConfigPackageMetadata(
@@ -1044,8 +1047,9 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const hasJsOrTs = doesContainJsOrTs(config);
     const hasJava = doesContainJava(config);
     const oldTest = oldScripts.test;
+    const cleanupPrefix = shouldManageGenI18nTs(config) ? 'yarn gen-i18n-ts && ' : '';
     let scripts: Record<string, string> = {
-      cleanup: 'yarn format && yarn lint-fix',
+      cleanup: `${cleanupPrefix}yarn format && yarn lint-fix`,
       format: generateFormatScript(hasJsOrTs, hasJava),
       lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
@@ -1100,6 +1104,10 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     return scripts;
   }
+}
+
+function shouldManageGenI18nTs(config: PackageConfig): boolean {
+  return config.depending.genI18nTs && fs.existsSync(path.join(config.dirPath, 'i18n'));
 }
 
 function applyDatabaseScripts(config: PackageConfig, scripts: Record<string, string>, wbDbCommand: string): void {

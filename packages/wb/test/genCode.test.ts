@@ -14,6 +14,7 @@ describe('getGenCodeScripts', () => {
         'gen-i18n-ts': 'gen-i18n-ts -i locales -o src/i18n.ts -d en-US',
       },
     });
+    await fs.mkdir(path.join(dirPath, 'src'));
 
     try {
       expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('YARN run gen-i18n-ts');
@@ -29,6 +30,7 @@ describe('getGenCodeScripts', () => {
       },
     });
     await fs.mkdir(path.join(dirPath, 'i18n'));
+    await fs.mkdir(path.join(dirPath, 'src'));
 
     try {
       expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain(
@@ -50,6 +52,67 @@ describe('getGenCodeScripts', () => {
       expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(
         'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP'
       );
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not run the default gen-i18n-ts command without source code', async () => {
+    const dirPath = await createProject({
+      dependencies: {
+        'gen-i18n-ts': '4.0.6',
+      },
+    });
+    await fs.mkdir(path.join(dirPath, 'i18n'));
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(
+        'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP'
+      );
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not run the project gen-i18n-ts script without source code', async () => {
+    const dirPath = await createProject({
+      scripts: {
+        'gen-i18n-ts': 'gen-i18n-ts -i locales -o src/i18n.ts -d en-US',
+      },
+    });
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN run gen-i18n-ts');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('runs prisma generate when the schema exists', async () => {
+    const dirPath = await createProject({
+      dependencies: {
+        prisma: '6.0.0',
+      },
+    });
+    await fs.mkdir(path.join(dirPath, 'prisma'));
+    await fs.writeFile(path.join(dirPath, 'prisma', 'schema.prisma'), '');
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('PRISMA generate');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not run prisma generate without a schema', async () => {
+    const dirPath = await createProject({
+      dependencies: {
+        prisma: '6.0.0',
+      },
+    });
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('PRISMA generate');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
