@@ -162,7 +162,7 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
 
 async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
   removeLegacyInstallCommands(jsonObj.scripts);
-  removeGenI18nTsPostinstallCommand(jsonObj.scripts);
+  removePostinstallScript(jsonObj.scripts);
 
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
   delete jsonObj.scripts['start-test-server'];
@@ -187,21 +187,8 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   }
 }
 
-function removeGenI18nTsPostinstallCommand(scripts: PackageJson.Scripts): void {
-  const postinstall = scripts.postinstall;
-  if (typeof postinstall !== 'string') return;
-
-  const commands = postinstall
-    .split(/\s*&&\s*/u)
-    .map((command) => command.trim())
-    .filter(
-      (command) => command !== '' && !/^(?:bun|yarn)(?:\s+run)?\s+gen-i18n-ts(?:\s*>\s*\/dev\/null)?$/u.test(command)
-    );
-  if (commands.length === 0) {
-    delete scripts.postinstall;
-  } else {
-    scripts.postinstall = commands.join(' && ');
-  }
+function removePostinstallScript(scripts: PackageJson.Scripts): void {
+  delete scripts.postinstall;
 }
 
 function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {

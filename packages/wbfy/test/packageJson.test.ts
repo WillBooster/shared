@@ -115,7 +115,7 @@ test('keeps custom gen-i18n-ts scripts', async () => {
   }
 });
 
-test('removes only stale gen-i18n-ts postinstall commands', async () => {
+test('removes unrelated postinstall commands', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
   await fs.mkdir(path.join(dirPath, 'i18n'));
@@ -143,13 +143,13 @@ test('removes only stale gen-i18n-ts postinstall commands', async () => {
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string | undefined>;
     };
-    expect(packageJson.scripts.postinstall).toBe('echo before && echo after');
+    expect(packageJson.scripts.postinstall).toBeUndefined();
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
 });
 
-test('removes stale gen-i18n-ts postinstall command variants', async () => {
+test('removes empty postinstall command variants', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
   await fs.mkdir(path.join(dirPath, 'i18n'));
