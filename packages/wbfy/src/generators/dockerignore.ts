@@ -7,7 +7,9 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
-// Exercodeではnode_modulesをCOPYする必要があるため、node_modulesを除外してはいけない。
+// Exercode deploys Git-based private packages from node_modules, but the Docker context should stay narrow.
+const includedNodeModulesPatterns = ['@willbooster'];
+
 const commonContent = `
 **/.DS_Store
 **/.cache
@@ -44,6 +46,13 @@ const commonContent = `
 **/*.pyc
 **/*.tsbuildinfo
 **/coverage
+**/node_modules/**
+${includedNodeModulesPatterns
+  .map(
+    (pattern) => `!**/node_modules/${pattern}
+!**/node_modules/${pattern}/**`
+  )
+  .join('\n')}
 **/node_modules/.cache
 **/playwright-report
 **/storybook-static
