@@ -486,6 +486,8 @@ async function normalizePackageMetadata(
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
     jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
+  ensureGenI18nTsScripts(config, jsonObj);
+
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
     delete jsonObj.devDependencies['@types/prettier'];
@@ -507,6 +509,18 @@ function appendFormatCodeCommand(formatScript: string | undefined, config: Packa
   // must invoke local package scripts through the repository's package manager.
   const scriptRunner = config.isBun ? 'bun run' : 'yarn';
   return formatScript ? `${formatScript} && ${scriptRunner} format-code` : `${scriptRunner} format-code`;
+}
+
+function ensureGenI18nTsScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
+  if (!config.depending.genI18nTs) return;
+  if (!fs.existsSync(path.join(config.dirPath, 'i18n'))) return;
+
+  jsonObj.scripts['gen-i18n-ts'] ??= 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
+
+  const command = `${config.isBun ? 'bun' : 'yarn'} run gen-i18n-ts > /dev/null`;
+  const postinstall = jsonObj.scripts.postinstall;
+  if (postinstall?.split(/\s*&&\s*/u).includes(command)) return;
+  jsonObj.scripts.postinstall = postinstall ? `${postinstall} && ${command}` : command;
 }
 
 async function normalizePublishedConfigPackageMetadata(
