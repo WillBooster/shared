@@ -30,6 +30,7 @@ describe('getGenCodeScripts', () => {
       },
     });
     await fs.mkdir(path.join(dirPath, 'i18n'));
+    await fs.mkdir(path.join(dirPath, 'src'));
 
     try {
       expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain(
@@ -46,6 +47,23 @@ describe('getGenCodeScripts', () => {
         'gen-i18n-ts': '4.0.6',
       },
     });
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(
+        'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP'
+      );
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not run the default gen-i18n-ts command without source code', async () => {
+    const dirPath = await createProject({
+      dependencies: {
+        'gen-i18n-ts': '4.0.6',
+      },
+    });
+    await fs.mkdir(path.join(dirPath, 'i18n'));
 
     try {
       expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(

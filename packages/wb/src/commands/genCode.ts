@@ -71,7 +71,11 @@ function getGenI18nTsScript(project: Project): string | undefined {
     if (!project.hasSourceCode) return;
     return 'YARN run gen-i18n-ts';
   }
-  if (project.hasOwnDependency('gen-i18n-ts') && fs.existsSync(path.join(project.dirPath, 'i18n'))) {
+  if (
+    project.hasOwnDependency('gen-i18n-ts') &&
+    project.hasSourceCode &&
+    fs.existsSync(path.join(project.dirPath, 'i18n'))
+  ) {
     return 'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
   }
   return;
