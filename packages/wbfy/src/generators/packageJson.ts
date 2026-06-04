@@ -162,7 +162,6 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
 
 async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
   removeLegacyInstallCommands(jsonObj.scripts);
-  removePostinstallScript(jsonObj.scripts);
 
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
   delete jsonObj.scripts['start-test-server'];
@@ -187,8 +186,12 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   }
 }
 
-function removePostinstallScript(scripts: PackageJson.Scripts): void {
-  delete scripts.postinstall;
+function updatePostinstallScript(scripts: PackageJson.Scripts): void {
+  if (scripts['gen-code']) {
+    scripts.postinstall = 'wb gen-code';
+  } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
+    delete scripts.postinstall;
+  }
 }
 
 function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {
@@ -237,7 +240,6 @@ async function applyPackageJsonConventions(
 
   if (config.isRoot) {
     delete jsonObj.devDependencies.husky;
-    delete jsonObj.scripts.postinstall;
     delete jsonObj.scripts.postpublish;
     delete jsonObj.scripts.prepublishOnly;
     delete jsonObj.scripts.prepack;
@@ -492,6 +494,7 @@ async function normalizePackageMetadata(
     jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
   ensureGenI18nTsScripts(config, jsonObj);
+  updatePostinstallScript(jsonObj.scripts);
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.

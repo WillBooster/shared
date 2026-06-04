@@ -40,13 +40,14 @@ export const genCodeCommand: CommandModule = {
 
 export function getGenCodeScripts(project: Project): string[] {
   const scripts: string[] = [];
-  if (project.hasOwnDependency('blitz')) {
+  const prismaGenerateScript = getPrismaGenerateScript(project);
+  if (project.hasOwnDependency('blitz') && project.hasSourceCode) {
     scripts.push('YARN blitz codegen');
-    if (project.hasPrisma) {
-      scripts.push(prismaScripts.generate(project));
+    if (prismaGenerateScript) {
+      scripts.push(prismaGenerateScript);
     }
-  } else if (project.hasPrisma) {
-    scripts.push(prismaScripts.generate(project));
+  } else if (prismaGenerateScript) {
+    scripts.push(prismaGenerateScript);
   }
 
   const chakraTypegenScript = getChakraScript(project);
@@ -67,12 +68,19 @@ export function getGenCodeScripts(project: Project): string[] {
 
 function getGenI18nTsScript(project: Project): string | undefined {
   if (project.packageJson.scripts?.['gen-i18n-ts']) {
+    if (!project.hasSourceCode) return;
     return 'YARN run gen-i18n-ts';
   }
   if (project.hasOwnDependency('gen-i18n-ts') && fs.existsSync(path.join(project.dirPath, 'i18n'))) {
     return 'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
   }
   return;
+}
+
+function getPrismaGenerateScript(project: Project): string | undefined {
+  if (!project.hasPrisma) return;
+  if (!hasPrismaSchema(project)) return;
+  return prismaScripts.generate(project);
 }
 
 function getChakraScript(project: Project): string | undefined {
@@ -105,4 +113,10 @@ function getOwnDependencyMajor(project: Project, packageName: string): number | 
 
 function fileExists(project: Project, filePath: string): boolean {
   return fs.existsSync(path.join(project.dirPath, filePath));
+}
+
+function hasPrismaSchema(project: Project): boolean {
+  return ['prisma/schema.prisma', 'prisma/schema', 'db/schema.prisma'].some((filePath) =>
+    fileExists(project, filePath)
+  );
 }
