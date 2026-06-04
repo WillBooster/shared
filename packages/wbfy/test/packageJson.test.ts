@@ -158,7 +158,7 @@ test('removes stale gen-i18n-ts postinstall command variants', async () => {
     packageJsonPath,
     JSON.stringify({
       scripts: {
-        postinstall: 'yarn gen-i18n-ts && bun   run   gen-i18n-ts   >   /dev/null',
+        postinstall: ' && yarn gen-i18n-ts && bun   run   gen-i18n-ts   >   /dev/null && ',
       },
       dependencies: {
         'gen-i18n-ts': '4.0.6',
