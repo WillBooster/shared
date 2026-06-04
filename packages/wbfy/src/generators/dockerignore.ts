@@ -9,10 +9,20 @@ import { promisePool } from '../utils/promisePool.js';
 
 // Exercodeではnode_modulesをCOPYする必要があるため、node_modulesを除外してはいけない。
 const commonContent = `
+**/.DS_Store
+**/.git
+**/.github
 **/.idea
+**/.next/cache
+**/.turbo
+**/.yarn/cache
 **/*.sqlite3*
 **/.yarn/install-state.gz
 **/.venv
+**/coverage
+**/node_modules/.cache
+**/playwright-report
+**/test-results
 `;
 
 export async function generateDockerignore(config: PackageConfig): Promise<void> {
