@@ -515,12 +515,8 @@ function ensureGenI18nTsScripts(config: PackageConfig, jsonObj: WritablePackageJ
   if (!config.depending.genI18nTs) return;
   if (!fs.existsSync(path.join(config.dirPath, 'i18n'))) return;
 
+  // Keep i18n generation explicit so Docker dependency layers can install packages before source files are copied.
   jsonObj.scripts['gen-i18n-ts'] ??= 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
-
-  const command = `${config.isBun ? 'bun' : 'yarn'} run gen-i18n-ts > /dev/null`;
-  const postinstall = jsonObj.scripts.postinstall;
-  if (postinstall?.split(/\s*&&\s*/u).includes(command)) return;
-  jsonObj.scripts.postinstall = postinstall ? `${postinstall} && ${command}` : command;
 }
 
 async function normalizePublishedConfigPackageMetadata(

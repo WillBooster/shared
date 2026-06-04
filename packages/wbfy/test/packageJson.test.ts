@@ -7,7 +7,7 @@ import { expect, test } from 'vitest';
 import { generatePackageJson } from '../src/generators/packageJson.js';
 import { createConfig } from './testConfig.js';
 
-test('keeps default gen-i18n-ts execution available before gen-code', async () => {
+test('removes gen-i18n-ts postinstall while keeping the script available', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
   await fs.mkdir(path.join(dirPath, 'i18n'));
@@ -38,13 +38,13 @@ test('keeps default gen-i18n-ts execution available before gen-code', async () =
     };
     expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
     expect(packageJson.scripts['gen-i18n-ts']).toBe('gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP');
-    expect(packageJson.scripts.postinstall).toBe('yarn run gen-i18n-ts > /dev/null');
+    expect(packageJson.scripts.postinstall).toBeUndefined();
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
 });
 
-test('restores missing default gen-i18n-ts execution', async () => {
+test('restores missing default gen-i18n-ts script without postinstall', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
   await fs.mkdir(path.join(dirPath, 'i18n'));
@@ -72,7 +72,7 @@ test('restores missing default gen-i18n-ts execution', async () => {
     };
     expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
     expect(packageJson.scripts['gen-i18n-ts']).toBe('gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP');
-    expect(packageJson.scripts.postinstall).toBe('yarn run gen-i18n-ts > /dev/null');
+    expect(packageJson.scripts.postinstall).toBeUndefined();
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
