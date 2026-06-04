@@ -38,7 +38,7 @@ export const genCodeCommand: CommandModule = {
   },
 };
 
-function getGenCodeScripts(project: Project): string[] {
+export function getGenCodeScripts(project: Project): string[] {
   const scripts: string[] = [];
   if (project.hasOwnDependency('blitz')) {
     scripts.push('YARN blitz codegen');
@@ -58,7 +58,21 @@ function getGenCodeScripts(project: Project): string[] {
   if (drizzleConfigPath) {
     scripts.push(`YARN drizzle-kit check --config ${drizzleConfigPath} || true`);
   }
+  const genI18nTsScript = getGenI18nTsScript(project);
+  if (genI18nTsScript) {
+    scripts.push(genI18nTsScript);
+  }
   return scripts;
+}
+
+function getGenI18nTsScript(project: Project): string | undefined {
+  if (project.packageJson.scripts?.['gen-i18n-ts']) {
+    return 'YARN run gen-i18n-ts';
+  }
+  if (project.hasOwnDependency('gen-i18n-ts') && fs.existsSync(path.join(project.dirPath, 'i18n'))) {
+    return 'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
+  }
+  return;
 }
 
 function getChakraScript(project: Project): string | undefined {

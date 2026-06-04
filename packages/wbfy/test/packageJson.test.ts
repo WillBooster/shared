@@ -35,7 +35,7 @@ test('moves gen-i18n-ts execution from postinstall to gen-code', async () => {
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string | undefined>;
     };
-    expect(packageJson.scripts['gen-code']).toBe('wb gen-code && yarn run gen-i18n-ts');
+    expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
     expect(packageJson.scripts.postinstall).toBeUndefined();
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });

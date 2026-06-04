@@ -484,7 +484,7 @@ async function normalizePackageMetadata(
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    jsonObj.scripts['gen-code'] = generateWbGenCodeScript(config);
+    jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
   removeGenI18nTsPostinstallScript(jsonObj);
 
@@ -502,14 +502,6 @@ function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: 
     config.depending.prisma ||
     (config.depending.drizzle && !!oldGenCodeScript?.includes('drizzle-kit check'))
   );
-}
-
-function generateWbGenCodeScript(config: PackageConfig): string {
-  const wbGenCodeScript = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
-  if (!config.depending.genI18nTs) return wbGenCodeScript;
-
-  const runScriptCommand = config.isBun ? 'bun run' : 'yarn run';
-  return `${wbGenCodeScript} && ${runScriptCommand} gen-i18n-ts`;
 }
 
 function appendFormatCodeCommand(formatScript: string | undefined, config: PackageConfig): string {
