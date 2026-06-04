@@ -14,7 +14,6 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { getGenI18nTsCommand } from '../utils/genI18nTs.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
@@ -298,7 +297,11 @@ async function applyPackageJsonConventions(
     jsonObj.devDependencies[buildTsDependency] ||
     Object.values(jsonObj.scripts).some((script) => script?.includes(buildTsDependency))
   ) {
-    devDependencies.push(buildTsDependency);
+    if (shouldKeepBuildTsAsRuntimeDependency(jsonObj)) {
+      dependencies.push(buildTsDependency);
+    } else {
+      devDependencies.push(buildTsDependency);
+    }
   }
   if (doesContainJsOrTs(config)) {
     devDependencies.push(...oxlintDeps);
@@ -349,11 +352,30 @@ function doesReleaseScriptInstallSemanticRelease(script: unknown): boolean {
 }
 
 function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJson): void {
-  for (const dependency of [wbDependency, buildTsDependency]) {
+  if (shouldKeepBuildTsAsRuntimeDependency(jsonObj)) {
+    const currentDependencyVersion = jsonObj.dependencies[buildTsDependency];
+    const currentDevDependencyVersion = jsonObj.devDependencies[buildTsDependency];
+    if (
+      currentDevDependencyVersion &&
+      (!currentDependencyVersion || isNewerPackageVersion(currentDevDependencyVersion, currentDependencyVersion))
+    ) {
+      jsonObj.dependencies[buildTsDependency] = currentDevDependencyVersion;
+    }
+    delete jsonObj.devDependencies[buildTsDependency];
+  }
+  const dependenciesToMove = shouldKeepBuildTsAsRuntimeDependency(jsonObj)
+    ? [wbDependency]
+    : [wbDependency, buildTsDependency];
+  for (const dependency of dependenciesToMove) {
     if (!jsonObj.dependencies[dependency]) continue;
     jsonObj.devDependencies[dependency] ??= jsonObj.dependencies[dependency];
     delete jsonObj.dependencies[dependency];
   }
+}
+
+function shouldKeepBuildTsAsRuntimeDependency(jsonObj: PackageJson): boolean {
+  const prisma = jsonObj.prisma as { seed?: unknown } | undefined;
+  return typeof prisma?.seed === 'string' && prisma.seed.includes(buildTsDependency);
 }
 
 async function normalizePackageMetadata(
@@ -462,9 +484,9 @@ async function normalizePackageMetadata(
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
+    jsonObj.scripts['gen-code'] = generateWbGenCodeScript(config);
   }
-  addGenI18nTsPostinstallScript(config, jsonObj);
+  removeGenI18nTsPostinstallScript(jsonObj);
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
@@ -476,9 +498,18 @@ function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: 
   return (
     config.depending.blitz ||
     config.depending.chakra ||
+    config.depending.genI18nTs ||
     config.depending.prisma ||
     (config.depending.drizzle && !!oldGenCodeScript?.includes('drizzle-kit check'))
   );
+}
+
+function generateWbGenCodeScript(config: PackageConfig): string {
+  const wbGenCodeScript = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
+  if (!config.depending.genI18nTs) return wbGenCodeScript;
+
+  const runScriptCommand = config.isBun ? 'bun run' : 'yarn run';
+  return `${wbGenCodeScript} && ${runScriptCommand} gen-i18n-ts`;
 }
 
 function appendFormatCodeCommand(formatScript: string | undefined, config: PackageConfig): string {
@@ -488,15 +519,20 @@ function appendFormatCodeCommand(formatScript: string | undefined, config: Packa
   return formatScript ? `${formatScript} && ${scriptRunner} format-code` : `${scriptRunner} format-code`;
 }
 
-function addGenI18nTsPostinstallScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  const command = getGenI18nTsCommand(config, jsonObj.scripts);
-  if (!command) return;
-
+function removeGenI18nTsPostinstallScript(jsonObj: WritablePackageJson): void {
   const postinstall = jsonObj.scripts.postinstall;
-  if (!postinstall) {
-    jsonObj.scripts.postinstall = command;
-  } else if (!postinstall.includes(command)) {
-    jsonObj.scripts.postinstall = `${postinstall} && ${command}`;
+  if (!postinstall) return;
+
+  const commands = postinstall.split(/\s*&&\s*/u);
+  const remainingCommands = commands.filter(
+    (command) => !/^(?:bun|yarn) run gen-i18n-ts > \/dev\/null$/u.test(command)
+  );
+  if (remainingCommands.length === commands.length) return;
+
+  if (remainingCommands.length > 0) {
+    jsonObj.scripts.postinstall = remainingCommands.join(' && ');
+  } else {
+    delete jsonObj.scripts.postinstall;
   }
 }
 
@@ -927,10 +963,12 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
 
 function isNewerManagedDependencyVersion(dependency: string, currentVersion: string): boolean {
   const latestVersion = getLatestDependencyVersion(dependency);
-  const validLatestVersion = semver.valid(latestVersion);
+  return isNewerPackageVersion(latestVersion, currentVersion);
+}
+
+function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {
+  const validLatestVersion = semver.valid(candidateVersion);
   const validCurrentVersion = semver.valid(currentVersion);
-  // The TypeScript beta dist-tag can lag behind newer concrete dev snapshots
-  // already pinned by Renovate. Keep the existing pin instead of downgrading.
   return !validLatestVersion || !validCurrentVersion || semver.gt(validLatestVersion, validCurrentVersion);
 }
 
