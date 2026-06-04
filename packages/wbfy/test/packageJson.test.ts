@@ -7,9 +7,10 @@ import { expect, test } from 'vitest';
 import { generatePackageJson } from '../src/generators/packageJson.js';
 import { createConfig } from './testConfig.js';
 
-test('moves gen-i18n-ts execution from postinstall to gen-code', async () => {
+test('moves default gen-i18n-ts execution from postinstall to gen-code', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
+  await fs.mkdir(path.join(dirPath, 'i18n'));
 
   await fs.writeFile(
     packageJsonPath,
@@ -36,7 +37,43 @@ test('moves gen-i18n-ts execution from postinstall to gen-code', async () => {
       scripts: Record<string, string | undefined>;
     };
     expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
+    expect(packageJson.scripts['gen-i18n-ts']).toBeUndefined();
     expect(packageJson.scripts.postinstall).toBeUndefined();
+  } finally {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('keeps custom gen-i18n-ts scripts', async () => {
+  const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
+  const packageJsonPath = path.join(dirPath, 'package.json');
+  await fs.mkdir(path.join(dirPath, 'i18n'));
+
+  await fs.writeFile(
+    packageJsonPath,
+    JSON.stringify({
+      scripts: {
+        'gen-i18n-ts': 'gen-i18n-ts -i locales -o src/i18n.ts -d en-US',
+      },
+      dependencies: {
+        'gen-i18n-ts': '4.0.6',
+      },
+    })
+  );
+
+  try {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      depending: { ...createConfig().depending, genI18nTs: true },
+    });
+    await generatePackageJson(config, config, true);
+
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
+      scripts: Record<string, string | undefined>;
+    };
+    expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
+    expect(packageJson.scripts['gen-i18n-ts']).toBe('gen-i18n-ts -i locales -o src/i18n.ts -d en-US');
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }

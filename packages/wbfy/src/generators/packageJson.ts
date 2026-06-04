@@ -486,6 +486,7 @@ async function normalizePackageMetadata(
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
     jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
+  removeDefaultGenI18nTsScript(config, jsonObj);
   removeGenI18nTsPostinstallScript(jsonObj);
 
   if (!jsonObj.dependencies.prettier) {
@@ -509,6 +510,21 @@ function appendFormatCodeCommand(formatScript: string | undefined, config: Packa
   // must invoke local package scripts through the repository's package manager.
   const scriptRunner = config.isBun ? 'bun run' : 'yarn';
   return formatScript ? `${formatScript} && ${scriptRunner} format-code` : `${scriptRunner} format-code`;
+}
+
+function removeDefaultGenI18nTsScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
+  if (!config.depending.genI18nTs) return;
+  if (!fs.existsSync(path.join(config.dirPath, 'i18n'))) return;
+
+  const genI18nTsScript = jsonObj.scripts['gen-i18n-ts'];
+  if (typeof genI18nTsScript !== 'string') return;
+  if (!isDefaultGenI18nTsScript(genI18nTsScript)) return;
+
+  delete jsonObj.scripts['gen-i18n-ts'];
+}
+
+function isDefaultGenI18nTsScript(script: string): boolean {
+  return /^gen-i18n-ts\s+-i\s+i18n\s+-o\s+src\/__generated__\/i18n\.ts\s+-d\s+ja-JP$/u.test(script.trim());
 }
 
 function removeGenI18nTsPostinstallScript(jsonObj: WritablePackageJson): void {
