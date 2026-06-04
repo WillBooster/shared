@@ -10,18 +10,44 @@ import { promisePool } from '../utils/promisePool.js';
 // Exercodeではnode_modulesをCOPYする必要があるため、node_modulesを除外してはいけない。
 const commonContent = `
 **/.DS_Store
+**/.cache
+**/.claude
+**/.cursor
+**/.editorconfig
+**/.eslintcache
+**/.gemini
 **/.git
+**/.gitattributes
 **/.github
+**/.gitignore
 **/.idea
+**/.lefthook
+**/.mypy_cache
 **/.next/cache
+**/.npm
+**/.parcel-cache
+**/.pnpm-store
+**/.pytest_cache
+**/.railwayignore
+**/.releaserc.json
+**/.ruff_cache
+**/.tmp
 **/.turbo
+**/.tox
+**/.vscode
 **/.yarn/cache
 **/*.sqlite3*
 **/.yarn/install-state.gz
 **/.venv
+**/__pycache__
+**/*.log
+**/*.pyc
+**/*.tsbuildinfo
 **/coverage
 **/node_modules/.cache
 **/playwright-report
+**/storybook-static
+**/target
 **/test-results
 `;
 
