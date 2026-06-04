@@ -219,6 +219,7 @@ async function removeProjectCaches(project: Project): Promise<void> {
     '.next/cache',
     '.turbo',
     path.join('.yarn', 'cache'),
+    path.join('.yarn', 'install-state.gz'),
     path.join('node_modules', '.cache'),
     'playwright-report',
     'test-results',
