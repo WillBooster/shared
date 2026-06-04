@@ -527,8 +527,7 @@ function appendFormatCodeCommand(formatScript: string | undefined, config: Packa
 }
 
 function ensureGenI18nTsScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  if (!config.depending.genI18nTs) return;
-  if (!fs.existsSync(path.join(config.dirPath, 'i18n'))) return;
+  if (!shouldManageGenI18nTs(config)) return;
 
   // Keep i18n generation explicit so Docker dependency layers can install packages before source files are copied.
   jsonObj.scripts['gen-i18n-ts'] ??= 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
@@ -1055,7 +1054,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const hasJsOrTs = doesContainJsOrTs(config);
     const hasJava = doesContainJava(config);
     const oldTest = oldScripts.test;
-    const cleanupPrefix = shouldRunGenI18nTsBeforeCleanup(config) ? 'yarn gen-i18n-ts && ' : '';
+    const cleanupPrefix = shouldManageGenI18nTs(config) ? 'yarn gen-i18n-ts && ' : '';
     let scripts: Record<string, string> = {
       cleanup: `${cleanupPrefix}yarn format && yarn lint-fix`,
       format: generateFormatScript(hasJsOrTs, hasJava),
@@ -1114,7 +1113,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
   }
 }
 
-function shouldRunGenI18nTsBeforeCleanup(config: PackageConfig): boolean {
+function shouldManageGenI18nTs(config: PackageConfig): boolean {
   return config.depending.genI18nTs && fs.existsSync(path.join(config.dirPath, 'i18n'));
 }
 
