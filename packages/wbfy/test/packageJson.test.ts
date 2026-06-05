@@ -36,16 +36,16 @@ test('replaces gen-i18n-ts postinstall with wb gen-code', async () => {
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string | undefined>;
     };
-    expect(packageJson.scripts.cleanup).toBe('yarn gen-i18n-ts && yarn format');
+    expect(packageJson.scripts.cleanup).toBe('yarn format');
     expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
-    expect(packageJson.scripts['gen-i18n-ts']).toBe('gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP');
+    expect(packageJson.scripts['gen-i18n-ts']).toBeUndefined();
     expect(packageJson.scripts.postinstall).toBe('wb gen-code');
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
 });
 
-test('restores missing default gen-i18n-ts script with wb gen-code postinstall', async () => {
+test('does not restore missing default gen-i18n-ts script with wb gen-code postinstall', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
   await fs.mkdir(path.join(dirPath, 'i18n'));
@@ -71,9 +71,9 @@ test('restores missing default gen-i18n-ts script with wb gen-code postinstall',
     const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
       scripts: Record<string, string | undefined>;
     };
-    expect(packageJson.scripts.cleanup).toBe('yarn gen-i18n-ts && yarn format');
+    expect(packageJson.scripts.cleanup).toBe('yarn format');
     expect(packageJson.scripts['gen-code']).toBe('wb gen-code');
-    expect(packageJson.scripts['gen-i18n-ts']).toBe('gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP');
+    expect(packageJson.scripts['gen-i18n-ts']).toBeUndefined();
     expect(packageJson.scripts.postinstall).toBe('wb gen-code');
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
