@@ -127,6 +127,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
+  keepRuntimeManagedToolDependencies(jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
@@ -371,14 +372,37 @@ function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJs
     }
     delete jsonObj.devDependencies[buildTsDependency];
   }
-  const dependenciesToMove = shouldKeepBuildTsAsRuntimeDependency(jsonObj)
-    ? [wbDependency]
-    : [wbDependency, buildTsDependency];
+  const dependenciesToMove = [
+    ...(shouldKeepWbAsRuntimeDependency(jsonObj) ? [] : [wbDependency]),
+    ...(shouldKeepBuildTsAsRuntimeDependency(jsonObj) ? [] : [buildTsDependency]),
+  ];
   for (const dependency of dependenciesToMove) {
     if (!jsonObj.dependencies[dependency]) continue;
     jsonObj.devDependencies[dependency] ??= jsonObj.dependencies[dependency];
     delete jsonObj.dependencies[dependency];
   }
+}
+
+function keepRuntimeManagedToolDependencies(jsonObj: WritablePackageJson, dependencyUpdates: DependencyUpdates): void {
+  if (!shouldKeepWbAsRuntimeDependency(jsonObj)) return;
+
+  dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter(
+    (dependency) => dependency !== wbDependency
+  );
+  dependencyUpdates.dependencies.push(wbDependency);
+  const currentDevDependencyVersion = jsonObj.devDependencies[wbDependency];
+  if (currentDevDependencyVersion) {
+    const currentDependencyVersion = jsonObj.dependencies[wbDependency];
+    if (!currentDependencyVersion || isNewerPackageVersion(currentDevDependencyVersion, currentDependencyVersion)) {
+      jsonObj.dependencies[wbDependency] = currentDevDependencyVersion;
+    }
+    delete jsonObj.devDependencies[wbDependency];
+  }
+}
+
+function shouldKeepWbAsRuntimeDependency(jsonObj: PackageJson): boolean {
+  const postinstallScript = jsonObj.scripts?.postinstall;
+  return typeof postinstallScript === 'string' && /\bwb\b/u.test(postinstallScript);
 }
 
 function shouldKeepBuildTsAsRuntimeDependency(jsonObj: PackageJson): boolean {

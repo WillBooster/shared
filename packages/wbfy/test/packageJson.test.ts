@@ -220,3 +220,41 @@ test('keeps build-ts as a runtime dependency when prisma seed uses it', async ()
     await fs.rm(dirPath, { force: true, recursive: true });
   }
 });
+
+test('keeps wb as a runtime dependency when postinstall uses it', async () => {
+  const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
+  const packageJsonPath = path.join(dirPath, 'package.json');
+
+  await fs.writeFile(
+    packageJsonPath,
+    JSON.stringify({
+      devDependencies: {
+        '@willbooster/wb': '13.22.7',
+      },
+      dependencies: {
+        '@willbooster/wb': '13.22.0',
+      },
+      scripts: {
+        'gen-code': 'wb gen-code',
+        postinstall: 'wb gen-code',
+      },
+    })
+  );
+
+  try {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+    });
+    await generatePackageJson(config, config, true);
+
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
+      dependencies: Record<string, string | undefined>;
+      devDependencies: Record<string, string | undefined>;
+    };
+    expect(packageJson.dependencies['@willbooster/wb']).toBe('13.22.7');
+    expect(packageJson.devDependencies['@willbooster/wb']).toBeUndefined();
+  } finally {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  }
+});
