@@ -231,9 +231,6 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
       devDependencies: {
         '@willbooster/wb': '13.22.7',
       },
-      dependencies: {
-        '@willbooster/wb': '13.22.0',
-      },
       scripts: {
         'gen-code': 'wb gen-code',
         postinstall: 'wb gen-code',
