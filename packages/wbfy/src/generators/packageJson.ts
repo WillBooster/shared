@@ -362,15 +362,7 @@ function doesReleaseScriptInstallSemanticRelease(script: unknown): boolean {
 
 function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJson): void {
   if (shouldKeepBuildTsAsRuntimeDependency(jsonObj)) {
-    const currentDependencyVersion = jsonObj.dependencies[buildTsDependency];
-    const currentDevDependencyVersion = jsonObj.devDependencies[buildTsDependency];
-    if (
-      currentDevDependencyVersion &&
-      (!currentDependencyVersion || isNewerPackageVersion(currentDevDependencyVersion, currentDependencyVersion))
-    ) {
-      jsonObj.dependencies[buildTsDependency] = currentDevDependencyVersion;
-    }
-    delete jsonObj.devDependencies[buildTsDependency];
+    keepRuntimeDependencyVersion(jsonObj, buildTsDependency);
   }
   const dependenciesToMove = [
     ...(shouldKeepWbAsRuntimeDependency(jsonObj) ? [] : [wbDependency]),
@@ -390,13 +382,17 @@ function keepRuntimeManagedToolDependencies(jsonObj: WritablePackageJson, depend
     (dependency) => dependency !== wbDependency
   );
   dependencyUpdates.dependencies.push(wbDependency);
-  const currentDevDependencyVersion = jsonObj.devDependencies[wbDependency];
+  keepRuntimeDependencyVersion(jsonObj, wbDependency);
+}
+
+function keepRuntimeDependencyVersion(jsonObj: WritablePackageJson, dependency: string): void {
+  const currentDevDependencyVersion = jsonObj.devDependencies[dependency];
   if (currentDevDependencyVersion) {
-    const currentDependencyVersion = jsonObj.dependencies[wbDependency];
+    const currentDependencyVersion = jsonObj.dependencies[dependency];
     if (!currentDependencyVersion || isNewerPackageVersion(currentDevDependencyVersion, currentDependencyVersion)) {
-      jsonObj.dependencies[wbDependency] = currentDevDependencyVersion;
+      jsonObj.dependencies[dependency] = currentDevDependencyVersion;
     }
-    delete jsonObj.devDependencies[wbDependency];
+    delete jsonObj.devDependencies[dependency];
   }
 }
 
