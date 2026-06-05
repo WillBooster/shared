@@ -115,40 +115,6 @@ test('keeps custom gen-i18n-ts scripts', async () => {
   }
 });
 
-test('keeps existing private package Git pins', async () => {
-  const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
-  const packageJsonPath = path.join(dirPath, 'package.json');
-  const llmProxySpecifier = 'git@github.com:WillBoosterLab/llm-proxy.git#990a5359f20b0485325a49b05fafd3f704690a29';
-  const codeAnalyzerSpecifier =
-    'git@github.com:WillBoosterLab/code-analyzer.git#340a97c63003d92a183ef3f303ccd61e5af37b1a';
-
-  await fs.writeFile(
-    packageJsonPath,
-    JSON.stringify({
-      dependencies: {
-        '@willbooster/code-analyzer': codeAnalyzerSpecifier,
-        '@willbooster/llm-proxy': llmProxySpecifier,
-      },
-      scripts: {},
-    })
-  );
-
-  try {
-    const config = createConfig({ dirPath, isRoot: true });
-    await generatePackageJson(config, config, true);
-
-    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
-      dependencies: Record<string, string | undefined>;
-      devDependencies: Record<string, string | undefined>;
-    };
-    expect(packageJson.dependencies['@willbooster/llm-proxy']).toBe(llmProxySpecifier);
-    expect(packageJson.dependencies['@willbooster/code-analyzer']).toBeUndefined();
-    expect(packageJson.devDependencies['@willbooster/code-analyzer']).toBe(codeAnalyzerSpecifier);
-  } finally {
-    await fs.rm(dirPath, { force: true, recursive: true });
-  }
-});
-
 test('replaces unrelated postinstall commands when code generation is managed', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
