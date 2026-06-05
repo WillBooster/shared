@@ -9,7 +9,6 @@ import { sortPackageJson } from 'sort-package-json';
 import ts from 'typescript';
 import type { PackageJson, SetRequired } from 'type-fest';
 
-import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
@@ -128,7 +127,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
-  await updatePrivatePackages(jsonObj);
+  updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
   if (config.isBun) delete jsonObj.packageManager;
@@ -1209,35 +1208,31 @@ function removePrettierArtifacts(jsonObj: WritablePackageJson): void {
   }
 }
 
-async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {
+function updatePrivatePackages(jsonObj: WritablePackageJson): void {
   const packageNames = new Set([...Object.keys(jsonObj.dependencies), ...Object.keys(jsonObj.devDependencies)]);
   const privatePackages: {
     packageName: string;
-    repo: string;
     target: 'dependencies' | 'devDependencies';
   }[] = [
-    { packageName: '@willbooster/auth', repo: 'auth', target: 'dependencies' },
-    { packageName: '@discord-bot/shared', repo: 'discord-bot', target: 'dependencies' },
-    { packageName: '@willbooster/code-analyzer', repo: 'code-analyzer', target: 'devDependencies' },
-    { packageName: '@willbooster/judge', repo: 'judge', target: 'dependencies' },
-    { packageName: '@willbooster/llm-proxy', repo: 'llm-proxy', target: 'dependencies' },
+    { packageName: '@willbooster/auth', target: 'dependencies' },
+    { packageName: '@discord-bot/shared', target: 'dependencies' },
+    { packageName: '@willbooster/code-analyzer', target: 'devDependencies' },
+    { packageName: '@willbooster/judge', target: 'dependencies' },
+    { packageName: '@willbooster/llm-proxy', target: 'dependencies' },
   ];
 
-  await Promise.all(
-    privatePackages.map(async ({ packageName, repo, target }) => {
-      if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
+  for (const { packageName, target } of privatePackages) {
+    if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) continue;
 
-      const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
-      // The lint rule disallows `delete` with computed package names; Reflect has the same deletion semantics here.
-      Reflect.deleteProperty(jsonObj[otherTarget], packageName);
-      jsonObj[target][packageName] = await getLatestPrivatePackageSpecifier(repo);
-    })
-  );
-}
+    const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
+    const existingSpecifier = jsonObj[target][packageName] ?? jsonObj[otherTarget][packageName];
+    if (!existingSpecifier) continue;
 
-async function getLatestPrivatePackageSpecifier(repo: string): Promise<string> {
-  const commitHash = await getLatestCommitHash('WillBoosterLab', repo);
-  return `git@github.com:WillBoosterLab/${repo}.git#${commitHash}`;
+    // Keep explicit Git pins stable. Updating private repositories belongs in a dependency-update PR,
+    // while wbfy should only normalize which dependency section owns the package.
+    Reflect.deleteProperty(jsonObj[otherTarget], packageName);
+    jsonObj[target][packageName] = existingSpecifier;
+  }
 }
 
 function isWorkspacePackage(jsonObj: PackageJson, packageName: string): boolean {
