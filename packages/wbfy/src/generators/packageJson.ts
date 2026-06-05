@@ -127,7 +127,6 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
-  keepRuntimeManagedToolDependencies(jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
@@ -296,7 +295,11 @@ async function applyPackageJsonConventions(
   }
 
   if (!isWbPackage(jsonObj)) {
-    devDependencies.push(wbDependency);
+    if (shouldKeepWbAsRuntimeDependency(jsonObj)) {
+      dependencies.push(wbDependency);
+    } else {
+      devDependencies.push(wbDependency);
+    }
   }
   // build-ts owns TypeScript execution and declaration emit. wbfy must always
   // keep existing build-ts users current because older releases can emit .d.ts
@@ -361,38 +364,22 @@ function doesReleaseScriptInstallSemanticRelease(script: unknown): boolean {
 }
 
 function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJson): void {
-  if (shouldKeepBuildTsAsRuntimeDependency(jsonObj)) {
-    keepRuntimeDependencyVersion(jsonObj, buildTsDependency);
-  }
-  const dependenciesToMove = [
-    ...(shouldKeepWbAsRuntimeDependency(jsonObj) ? [] : [wbDependency]),
-    ...(shouldKeepBuildTsAsRuntimeDependency(jsonObj) ? [] : [buildTsDependency]),
-  ];
-  for (const dependency of dependenciesToMove) {
-    if (!jsonObj.dependencies[dependency]) continue;
-    jsonObj.devDependencies[dependency] ??= jsonObj.dependencies[dependency];
-    delete jsonObj.dependencies[dependency];
-  }
-}
-
-function keepRuntimeManagedToolDependencies(jsonObj: WritablePackageJson, dependencyUpdates: DependencyUpdates): void {
-  if (!shouldKeepWbAsRuntimeDependency(jsonObj)) return;
-
-  dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter(
-    (dependency) => dependency !== wbDependency
-  );
-  dependencyUpdates.dependencies.push(wbDependency);
-  keepRuntimeDependencyVersion(jsonObj, wbDependency);
-}
-
-function keepRuntimeDependencyVersion(jsonObj: WritablePackageJson, dependency: string): void {
-  const currentDevDependencyVersion = jsonObj.devDependencies[dependency];
-  if (currentDevDependencyVersion) {
-    const currentDependencyVersion = jsonObj.dependencies[dependency];
-    if (!currentDependencyVersion || isNewerPackageVersion(currentDevDependencyVersion, currentDependencyVersion)) {
-      jsonObj.dependencies[dependency] = currentDevDependencyVersion;
+  for (const [dependency, keepAsRuntime] of [
+    [wbDependency, shouldKeepWbAsRuntimeDependency(jsonObj)],
+    [buildTsDependency, shouldKeepBuildTsAsRuntimeDependency(jsonObj)],
+  ] as const) {
+    if (keepAsRuntime) {
+      const devVersion = jsonObj.devDependencies[dependency];
+      if (!devVersion) continue;
+      const runtimeVersion = jsonObj.dependencies[dependency];
+      if (!runtimeVersion || isNewerPackageVersion(devVersion, runtimeVersion)) {
+        jsonObj.dependencies[dependency] = devVersion;
+      }
+      delete jsonObj.devDependencies[dependency];
+    } else if (jsonObj.dependencies[dependency]) {
+      jsonObj.devDependencies[dependency] ??= jsonObj.dependencies[dependency];
+      delete jsonObj.dependencies[dependency];
     }
-    delete jsonObj.devDependencies[dependency];
   }
 }
 
