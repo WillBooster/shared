@@ -30,6 +30,7 @@ const typescriptDependency = 'typescript';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
+const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
 const wbfyPackageJson = readWbfyPackageJson();
 const managedDependencyVersions = {
   ...wbfyPackageJson.dependencies,
@@ -493,7 +494,7 @@ async function normalizePackageMetadata(
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
     jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
   }
-  ensureGenI18nTsScripts(config, jsonObj);
+  normalizeGenI18nTsScript(config, jsonObj);
   updatePostinstallScript(jsonObj.scripts);
 
   if (!jsonObj.dependencies.prettier) {
@@ -519,11 +520,12 @@ function appendFormatCodeCommand(formatScript: string | undefined, config: Packa
   return formatScript ? `${formatScript} && ${scriptRunner} format-code` : `${scriptRunner} format-code`;
 }
 
-function ensureGenI18nTsScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
+function normalizeGenI18nTsScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
   if (!shouldManageGenI18nTs(config)) return;
 
-  // Keep i18n generation explicit so Docker dependency layers can install packages before source files are copied.
-  jsonObj.scripts['gen-i18n-ts'] ??= 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
+  if (jsonObj.scripts['gen-i18n-ts'] === defaultGenI18nTsScript) {
+    delete jsonObj.scripts['gen-i18n-ts'];
+  }
 }
 
 async function normalizePublishedConfigPackageMetadata(
@@ -1047,9 +1049,8 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     const hasJsOrTs = doesContainJsOrTs(config);
     const hasJava = doesContainJava(config);
     const oldTest = oldScripts.test;
-    const cleanupPrefix = shouldManageGenI18nTs(config) ? 'yarn gen-i18n-ts && ' : '';
     let scripts: Record<string, string> = {
-      cleanup: `${cleanupPrefix}yarn format && yarn lint-fix`,
+      cleanup: 'yarn format && yarn lint-fix',
       format: generateFormatScript(hasJsOrTs, hasJava),
       lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
