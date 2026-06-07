@@ -348,7 +348,10 @@ function getEnvGeneratedSqliteFilePaths(project: Project): string[] {
 
   const filePaths = path.isAbsolute(dbPath)
     ? [dbPath]
-    : [path.resolve(project.dirPath, dbPath), path.resolve(project.dirPath, 'prisma', dbPath)];
+    : [
+        path.resolve(project.dirPath, dbPath),
+        ...generatedSqliteDirNames.map((dirName) => path.resolve(project.dirPath, dirName, dbPath)),
+      ];
   return [...new Set(filePaths)].filter((filePath) => isPathInsideProject(project, filePath));
 }
 
