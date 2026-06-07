@@ -281,6 +281,7 @@ function getGeneratedSqliteDirPaths(project: Project): string[] {
 
 function isPathInsideProject(project: Project, targetPath: string): boolean {
   const relativePath = path.relative(project.dirPath, targetPath);
+  // `startsWith('..')` would reject project-local names such as `..cache`.
   return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
 }
 
