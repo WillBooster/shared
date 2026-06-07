@@ -14,8 +14,8 @@ import { packageManager } from '../utils/runtime.js';
 import { prepareForRunningCommand } from './commandUtils.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
-const sqliteFilePattern = /(?:\.sqlite3?|\.(?:db)(?:$|[-.]))/i;
-const dockerBuildCachePatterns = [
+const sqliteFilePattern = /\.(?:sqlite3?|db)(?:[-.](?:journal|shm|wal))?$/i;
+const dockerBuildCachePaths = [
   '.cache',
   '.mypy_cache',
   '.next/cache',
@@ -34,10 +34,8 @@ const dockerBuildCachePatterns = [
   'storybook-static',
   'target',
   'test-results',
-  '*.log',
-  '*.pyc',
-  '*.tsbuildinfo',
 ];
+const dockerBuildCachePatterns = ['**/*.log', '**/*.pyc', '**/*.tsbuildinfo', '**/__pycache__'];
 const generatedSqliteDirNames = ['prisma', 'db', 'drizzle'] as const;
 
 const builder = {
@@ -245,21 +243,39 @@ async function cleanupDockerBuildArtifacts(projects: Project[]): Promise<void> {
 }
 
 async function removeProjectCaches(project: Project): Promise<void> {
-  const relativePaths = await globby(dockerBuildCachePatterns, {
-    cwd: project.dirPath,
-    dot: true,
-    followSymbolicLinks: false,
-    onlyFiles: false,
-  });
+  const relativePaths = [
+    ...(await removeDockerBuildCachePaths(project)),
+    ...(await removeDockerBuildCachePatterns(project)),
+  ];
+  console.info('Removed Docker build caches:', relativePaths.join(', ') || 'none');
+}
+
+async function removeDockerBuildCachePaths(project: Project): Promise<string[]> {
   const removedPaths: string[] = [];
-  for (const relativePath of relativePaths) {
+  for (const relativePath of dockerBuildCachePaths) {
     const targetPath = path.join(project.dirPath, relativePath);
     if (!fs.existsSync(targetPath)) continue;
 
     await fs.promises.rm(targetPath, { force: true, recursive: true });
     removedPaths.push(relativePath);
   }
-  console.info('Removed Docker build caches:', removedPaths.join(', ') || 'none');
+  return removedPaths;
+}
+
+async function removeDockerBuildCachePatterns(project: Project): Promise<string[]> {
+  const relativePaths = await globby(dockerBuildCachePatterns, {
+    cwd: project.dirPath,
+    dot: true,
+    followSymbolicLinks: false,
+    ignore: ['node_modules/**', '.yarn/**', '.git/**'],
+    onlyFiles: false,
+  });
+  await Promise.all(
+    relativePaths.map((relativePath) =>
+      fs.promises.rm(path.join(project.dirPath, relativePath), { force: true, recursive: true })
+    )
+  );
+  return relativePaths;
 }
 
 async function removeGeneratedLocalData(project: Project): Promise<void> {
