@@ -328,14 +328,9 @@ async function removeGeneratedSqliteFilesInDefaultDirs(project: Project): Promis
 }
 
 async function getGeneratedSqliteDirPaths(project: Project): Promise<string[]> {
-  const dirPaths: string[] = [];
-  for (const dirName of generatedSqliteDirNames) {
-    const dirPath = path.join(project.dirPath, dirName);
-    if (await isDirectory(dirPath)) {
-      dirPaths.push(dirPath);
-    }
-  }
-  return dirPaths;
+  const dirPaths = generatedSqliteDirNames.map((dirName) => path.join(project.dirPath, dirName));
+  const results = await Promise.all(dirPaths.map((dirPath) => isDirectory(dirPath)));
+  return dirPaths.filter((_, index) => results[index]);
 }
 
 async function removeEnvGeneratedSqliteFiles(project: Project): Promise<string[]> {
