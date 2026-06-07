@@ -213,6 +213,7 @@ function optimizeRootProps(packageJson: PackageJson): void {
 async function cleanupDockerBuildArtifacts(projects: Project[]): Promise<void> {
   for (const project of projects) {
     await removeProjectCaches(project);
+    await removeGeneratedLocalData(project);
     runDockerCleanupScript(project);
   }
 }
@@ -236,6 +237,35 @@ async function removeProjectCaches(project: Project): Promise<void> {
     removedPaths.push(relativePath);
   }
   console.info('Removed Docker build caches:', removedPaths.join(', ') || 'none');
+}
+
+async function removeGeneratedLocalData(project: Project): Promise<void> {
+  const removedPaths = [...(await removePrismaMount(project)), ...(await removeGeneratedSqliteFiles(project))];
+  console.info('Removed generated local data:', removedPaths.join(', ') || 'none');
+}
+
+async function removePrismaMount(project: Project): Promise<string[]> {
+  const relativePath = path.join('prisma', 'mount');
+  const targetPath = path.join(project.dirPath, relativePath);
+  if (!fs.existsSync(targetPath)) return [];
+
+  await fs.promises.rm(targetPath, { force: true, recursive: true });
+  return [relativePath];
+}
+
+async function removeGeneratedSqliteFiles(project: Project): Promise<string[]> {
+  const prismaDirPath = path.join(project.dirPath, 'prisma');
+  if (!fs.existsSync(prismaDirPath)) return [];
+
+  const removedPaths: string[] = [];
+  for (const dirent of await fs.promises.readdir(prismaDirPath, { withFileTypes: true })) {
+    if (!dirent.isFile() || !dirent.name.includes('.sqlite3')) continue;
+
+    const relativePath = path.join('prisma', dirent.name);
+    await fs.promises.rm(path.join(project.dirPath, relativePath), { force: true });
+    removedPaths.push(relativePath);
+  }
+  return removedPaths;
 }
 
 function runDockerCleanupScript(project: Project): void {
