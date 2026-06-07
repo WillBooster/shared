@@ -37,6 +37,7 @@ const dockerBuildCachePaths = [
 ];
 const dockerBuildCachePatterns = ['**/*.pyc', '**/*.tsbuildinfo', '**/__pycache__'];
 const generatedSqliteDirNames = ['prisma', 'db', 'drizzle'] as const;
+const dockerGeneratedDataDirPaths = ['/data'] as const;
 
 const builder = {
   outside: {
@@ -321,9 +322,9 @@ async function removeGeneratedSqliteFiles(project: Project): Promise<string[]> {
 }
 
 async function removeGeneratedSqliteFilesInDefaultDirs(project: Project): Promise<string[]> {
-  const dirPaths = [path.join(project.dirPath, 'prisma')].filter(
-    (dirPath) => fs.existsSync(dirPath) && isPathInsideProject(project, dirPath)
-  );
+  const dirPaths = generatedSqliteDirNames
+    .map((dirName) => path.join(project.dirPath, dirName))
+    .filter((dirPath) => fs.existsSync(dirPath) && isPathInsideProject(project, dirPath));
   const removedPaths = await Promise.all(dirPaths.map((dirPath) => removeGeneratedSqliteFilesInDir(project, dirPath)));
   return removedPaths.flat();
 }
@@ -352,7 +353,20 @@ function getEnvGeneratedSqliteFilePaths(project: Project): string[] {
         path.resolve(project.dirPath, dbPath),
         ...generatedSqliteDirNames.map((dirName) => path.resolve(project.dirPath, dirName, dbPath)),
       ];
-  return [...new Set(filePaths)].filter((filePath) => isPathInsideProject(project, filePath));
+  return [...new Set(filePaths)].filter((filePath) => isGeneratedSqliteFilePathSafe(project, filePath));
+}
+
+function isGeneratedSqliteFilePathSafe(project: Project, filePath: string): boolean {
+  return isPathInsideProject(project, filePath) || isDockerGeneratedDataFilePath(project, filePath);
+}
+
+function isDockerGeneratedDataFilePath(project: Project, filePath: string): boolean {
+  if (!isDockerEnabled(project)) return false;
+
+  return dockerGeneratedDataDirPaths.some((dirPath) => {
+    const relativePath = path.relative(dirPath, filePath);
+    return relativePath !== '' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
+  });
 }
 
 function getSqliteFileFamilyPaths(dbFilePath: string): string[] {
@@ -371,6 +385,10 @@ function isPathInsideProject(project: Project, targetPath: string): boolean {
   const relativePath = path.relative(project.dirPath, targetPath);
   // `startsWith('..')` would reject project-local names such as `..cache`.
   return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
+}
+
+function isDockerEnabled(project: Project): boolean {
+  return !!project.env.WB_DOCKER && project.env.WB_DOCKER !== '0' && project.env.WB_DOCKER !== 'false';
 }
 
 async function isFile(filePath: string): Promise<boolean> {
