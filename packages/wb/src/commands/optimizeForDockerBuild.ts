@@ -13,20 +13,7 @@ import { packageManager } from '../utils/runtime.js';
 import { prepareForRunningCommand } from './commandUtils.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
-const sqliteFileSuffixes = [
-  '.sqlite3',
-  '.sqlite',
-  '.db',
-  '.sqlite3-journal',
-  '.sqlite3-shm',
-  '.sqlite3-wal',
-  '.sqlite-journal',
-  '.sqlite-shm',
-  '.sqlite-wal',
-  '.db-journal',
-  '.db-shm',
-  '.db-wal',
-];
+const sqliteFilePattern = /\.(?:sqlite3?|db)(?:-(?:journal|shm|wal))?$/;
 
 const builder = {
   outside: {
@@ -274,7 +261,7 @@ async function removeGeneratedSqliteFiles(project: Project): Promise<string[]> {
 
   const dirents = await fs.promises.readdir(prismaDirPath, { withFileTypes: true });
   const sqliteFileNames = dirents
-    .filter((dirent) => dirent.isFile() && sqliteFileSuffixes.some((suffix) => dirent.name.endsWith(suffix)))
+    .filter((dirent) => dirent.isFile() && sqliteFilePattern.test(dirent.name))
     .map((dirent) => dirent.name);
   await Promise.all(
     sqliteFileNames.map((fileName) => fs.promises.rm(path.join(prismaDirPath, fileName), { force: true }))
