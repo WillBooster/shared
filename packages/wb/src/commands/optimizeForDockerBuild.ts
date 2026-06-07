@@ -267,21 +267,21 @@ function getGeneratedSqliteDirPaths(project: Project): string[] {
   const dirPaths = [path.join(project.dirPath, 'prisma')];
   const dbPath = project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
   if (dbPath) {
-    for (const baseDirPath of getDatabasePathBaseDirs(project, dbPath)) {
-      dirPaths.push(path.dirname(path.resolve(baseDirPath, dbPath)));
+    if (path.isAbsolute(dbPath)) {
+      dirPaths.push(path.dirname(dbPath));
+    } else {
+      dirPaths.push(
+        path.dirname(path.resolve(project.dirPath, dbPath)),
+        path.dirname(path.resolve(project.dirPath, 'prisma', dbPath))
+      );
     }
   }
   return [...new Set(dirPaths)].filter((dirPath) => fs.existsSync(dirPath) && isPathInsideProject(project, dirPath));
 }
 
-function getDatabasePathBaseDirs(project: Project, dbPath: string): string[] {
-  if (path.isAbsolute(dbPath)) return [path.parse(dbPath).root];
-  return [project.dirPath, path.join(project.dirPath, 'prisma')];
-}
-
 function isPathInsideProject(project: Project, targetPath: string): boolean {
   const relativePath = path.relative(project.dirPath, targetPath);
-  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
+  return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
 }
 
 async function removeGeneratedSqliteFilesInDir(project: Project, dirPath: string): Promise<string[]> {
@@ -291,7 +291,8 @@ async function removeGeneratedSqliteFilesInDir(project: Project, dirPath: string
     .map((dirent) => dirent.name);
   await Promise.all(sqliteFileNames.map((fileName) => fs.promises.rm(path.join(dirPath, fileName), { force: true })));
 
-  return sqliteFileNames.map((fileName) => path.relative(project.dirPath, path.join(dirPath, fileName)));
+  const relativeDirPath = path.relative(project.dirPath, dirPath);
+  return sqliteFileNames.map((fileName) => path.join(relativeDirPath, fileName));
 }
 
 function runDockerCleanupScript(project: Project): void {
