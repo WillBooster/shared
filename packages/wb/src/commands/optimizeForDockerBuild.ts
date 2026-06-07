@@ -35,7 +35,7 @@ const dockerBuildCachePaths = [
   'target',
   'test-results',
 ];
-const dockerBuildCachePatterns = ['**/*.log', '**/*.pyc', '**/*.tsbuildinfo', '**/__pycache__'];
+const dockerBuildCachePatterns = ['**/*.pyc', '**/*.tsbuildinfo', '**/__pycache__'];
 const generatedSqliteDirNames = ['prisma', 'db', 'drizzle'] as const;
 
 const builder = {
@@ -267,7 +267,7 @@ async function removeDockerBuildCachePatterns(project: Project): Promise<string[
     cwd: project.dirPath,
     dot: true,
     followSymbolicLinks: false,
-    ignore: ['node_modules/**', '.yarn/**', '.git/**'],
+    ignore: ['**/node_modules', '**/node_modules/**', '**/.yarn', '**/.yarn/**', '**/.git', '**/.git/**'],
     onlyFiles: false,
   });
   await Promise.all(
