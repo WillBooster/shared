@@ -425,7 +425,7 @@ async function removeGeneratedSqliteFilesInDir(project: Project, dirPath: string
 }
 
 function runDockerCleanupScript(project: Project): void {
-  if (project.env.WB_DOCKER !== '1') return;
+  if (!isDockerEnabled(project)) return;
 
   const scriptPath = path.join(project.dirPath, 'bash', 'cleanup.sh');
   if (!fs.existsSync(scriptPath)) return;
