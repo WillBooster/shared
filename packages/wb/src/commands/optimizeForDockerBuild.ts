@@ -322,11 +322,20 @@ async function removeGeneratedSqliteFiles(project: Project): Promise<string[]> {
 }
 
 async function removeGeneratedSqliteFilesInDefaultDirs(project: Project): Promise<string[]> {
-  const dirPaths = generatedSqliteDirNames
-    .map((dirName) => path.join(project.dirPath, dirName))
-    .filter((dirPath) => fs.existsSync(dirPath));
+  const dirPaths = await getGeneratedSqliteDirPaths(project);
   const removedPaths = await Promise.all(dirPaths.map((dirPath) => removeGeneratedSqliteFilesInDir(project, dirPath)));
   return removedPaths.flat();
+}
+
+async function getGeneratedSqliteDirPaths(project: Project): Promise<string[]> {
+  const dirPaths: string[] = [];
+  for (const dirName of generatedSqliteDirNames) {
+    const dirPath = path.join(project.dirPath, dirName);
+    if (await isDirectory(dirPath)) {
+      dirPaths.push(dirPath);
+    }
+  }
+  return dirPaths;
 }
 
 async function removeEnvGeneratedSqliteFiles(project: Project): Promise<string[]> {
@@ -395,6 +404,15 @@ async function isFile(filePath: string): Promise<boolean> {
   try {
     const stat = await fs.promises.stat(filePath);
     return stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+async function isDirectory(dirPath: string): Promise<boolean> {
+  try {
+    const stat = await fs.promises.stat(dirPath);
+    return stat.isDirectory();
   } catch {
     return false;
   }
