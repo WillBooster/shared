@@ -365,7 +365,7 @@ function isDockerGeneratedDataFilePath(project: Project, filePath: string): bool
 
   return dockerGeneratedDataDirPaths.some((dirPath) => {
     const relativePath = path.relative(dirPath, filePath);
-    return relativePath !== '' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
+    return relativePath !== '' && relativePath !== '..' && !relativePath.startsWith('../');
   });
 }
 
