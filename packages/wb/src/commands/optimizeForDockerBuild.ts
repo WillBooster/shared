@@ -7,12 +7,13 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findDescendantProjects, type Project } from '../project.js';
+import { findDescendantProjects, getFileDatabaseUrlPath, type Project } from '../project.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
+const sqliteFilePattern = /\.(?:sqlite3?|db)(?:-(?:journal|shm|wal))?$/i;
 
 const builder = {
   outside: {
@@ -213,6 +214,7 @@ function optimizeRootProps(packageJson: PackageJson): void {
 async function cleanupDockerBuildArtifacts(projects: Project[]): Promise<void> {
   for (const project of projects) {
     await removeProjectCaches(project);
+    await removeGeneratedLocalData(project);
     runDockerCleanupScript(project);
   }
 }
@@ -236,6 +238,62 @@ async function removeProjectCaches(project: Project): Promise<void> {
     removedPaths.push(relativePath);
   }
   console.info('Removed Docker build caches:', removedPaths.join(', ') || 'none');
+}
+
+async function removeGeneratedLocalData(project: Project): Promise<void> {
+  const removedPathGroups = await Promise.all([removePrismaMount(project), removeGeneratedSqliteFiles(project)]);
+  const removedPaths = removedPathGroups.flat();
+  console.info('Removed generated local data:', removedPaths.join(', ') || 'none');
+}
+
+async function removePrismaMount(project: Project): Promise<string[]> {
+  const relativePath = path.join('prisma', 'mount');
+  const targetPath = path.join(project.dirPath, relativePath);
+  if (!fs.existsSync(targetPath)) return [];
+
+  await fs.promises.rm(targetPath, { force: true, recursive: true });
+  return [relativePath];
+}
+
+async function removeGeneratedSqliteFiles(project: Project): Promise<string[]> {
+  const sqliteDirPaths = getGeneratedSqliteDirPaths(project);
+  const removedPaths = await Promise.all(
+    sqliteDirPaths.map((dirPath) => removeGeneratedSqliteFilesInDir(project, dirPath))
+  );
+  return removedPaths.flat();
+}
+
+function getGeneratedSqliteDirPaths(project: Project): string[] {
+  const dirPaths = [path.join(project.dirPath, 'prisma')];
+  const dbPath = project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
+  if (dbPath) {
+    if (path.isAbsolute(dbPath)) {
+      dirPaths.push(path.dirname(dbPath));
+    } else {
+      dirPaths.push(
+        path.dirname(path.resolve(project.dirPath, dbPath)),
+        path.dirname(path.resolve(project.dirPath, 'prisma', dbPath))
+      );
+    }
+  }
+  return [...new Set(dirPaths)].filter((dirPath) => fs.existsSync(dirPath) && isPathInsideProject(project, dirPath));
+}
+
+function isPathInsideProject(project: Project, targetPath: string): boolean {
+  const relativePath = path.relative(project.dirPath, targetPath);
+  // `startsWith('..')` would reject project-local names such as `..cache`.
+  return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
+}
+
+async function removeGeneratedSqliteFilesInDir(project: Project, dirPath: string): Promise<string[]> {
+  const dirents = await fs.promises.readdir(dirPath, { withFileTypes: true });
+  const sqliteFileNames = dirents
+    .filter((dirent) => dirent.isFile() && sqliteFilePattern.test(dirent.name))
+    .map((dirent) => dirent.name);
+  await Promise.all(sqliteFileNames.map((fileName) => fs.promises.rm(path.join(dirPath, fileName), { force: true })));
+
+  const relativeDirPath = path.relative(project.dirPath, dirPath);
+  return sqliteFileNames.map((fileName) => path.join(relativeDirPath, fileName));
 }
 
 function runDockerCleanupScript(project: Project): void {
