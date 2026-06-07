@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import chalk from 'chalk';
+import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -13,7 +14,31 @@ import { packageManager } from '../utils/runtime.js';
 import { prepareForRunningCommand } from './commandUtils.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
-const sqliteFilePattern = /\.(?:sqlite3?|db)(?:-(?:journal|shm|wal))?$/i;
+const sqliteFilePattern = /(?:\.sqlite3?|\.(?:db)(?:$|[-.]))/i;
+const dockerBuildCachePatterns = [
+  '.cache',
+  '.mypy_cache',
+  '.next/cache',
+  '.parcel-cache',
+  '.pytest_cache',
+  '.ruff_cache',
+  '.tox',
+  '.turbo',
+  '.venv',
+  '.yarn/cache',
+  '.yarn/install-state.gz',
+  '__pycache__',
+  'coverage',
+  'node_modules/.cache',
+  'playwright-report',
+  'storybook-static',
+  'target',
+  'test-results',
+  '*.log',
+  '*.pyc',
+  '*.tsbuildinfo',
+];
+const generatedSqliteDirNames = ['prisma', 'db', 'drizzle'] as const;
 
 const builder = {
   outside: {
@@ -220,15 +245,12 @@ async function cleanupDockerBuildArtifacts(projects: Project[]): Promise<void> {
 }
 
 async function removeProjectCaches(project: Project): Promise<void> {
-  const relativePaths = [
-    '.next/cache',
-    '.turbo',
-    path.join('.yarn', 'cache'),
-    path.join('.yarn', 'install-state.gz'),
-    path.join('node_modules', '.cache'),
-    'playwright-report',
-    'test-results',
-  ];
+  const relativePaths = await globby(dockerBuildCachePatterns, {
+    cwd: project.dirPath,
+    dot: true,
+    followSymbolicLinks: false,
+    onlyFiles: false,
+  });
   const removedPaths: string[] = [];
   for (const relativePath of relativePaths) {
     const targetPath = path.join(project.dirPath, relativePath);
@@ -241,18 +263,34 @@ async function removeProjectCaches(project: Project): Promise<void> {
 }
 
 async function removeGeneratedLocalData(project: Project): Promise<void> {
-  const removedPathGroups = await Promise.all([removePrismaMount(project), removeGeneratedSqliteFiles(project)]);
+  const removedPathGroups = await Promise.all([removeGeneratedMountDirs(project), removeGeneratedSqliteFiles(project)]);
   const removedPaths = removedPathGroups.flat();
   console.info('Removed generated local data:', removedPaths.join(', ') || 'none');
 }
 
-async function removePrismaMount(project: Project): Promise<string[]> {
-  const relativePath = path.join('prisma', 'mount');
-  const targetPath = path.join(project.dirPath, relativePath);
-  if (!fs.existsSync(targetPath)) return [];
+async function removeGeneratedMountDirs(project: Project): Promise<string[]> {
+  const relativePaths = getGeneratedMountDirPaths(project);
+  const removedPaths: string[] = [];
+  for (const relativePath of relativePaths) {
+    const targetPath = path.join(project.dirPath, relativePath);
+    if (!fs.existsSync(targetPath)) continue;
 
-  await fs.promises.rm(targetPath, { force: true, recursive: true });
-  return [relativePath];
+    await fs.promises.rm(targetPath, { force: true, recursive: true });
+    removedPaths.push(relativePath);
+  }
+  return removedPaths;
+}
+
+function getGeneratedMountDirPaths(project: Project): string[] {
+  const defaultPaths = generatedSqliteDirNames.map((dirName) => path.join(dirName, 'mount'));
+  const dbPath = project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
+  if (!dbPath) return defaultPaths;
+
+  const absoluteDirPath = path.dirname(path.isAbsolute(dbPath) ? dbPath : path.resolve(project.dirPath, dbPath));
+  if (path.basename(absoluteDirPath) !== 'mount' || !isPathInsideProject(project, absoluteDirPath)) {
+    return defaultPaths;
+  }
+  return [...new Set([...defaultPaths, path.relative(project.dirPath, absoluteDirPath)])];
 }
 
 async function removeGeneratedSqliteFiles(project: Project): Promise<string[]> {
@@ -264,7 +302,7 @@ async function removeGeneratedSqliteFiles(project: Project): Promise<string[]> {
 }
 
 function getGeneratedSqliteDirPaths(project: Project): string[] {
-  const dirPaths = [path.join(project.dirPath, 'prisma')];
+  const dirPaths = generatedSqliteDirNames.map((dirName) => path.join(project.dirPath, dirName));
   const dbPath = project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
   if (dbPath) {
     if (path.isAbsolute(dbPath)) {
