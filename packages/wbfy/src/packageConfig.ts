@@ -279,7 +279,7 @@ function workflowFilesUseRailway(dirPath: string): boolean {
   try {
     const fileNames = fs.readdirSync(workflowsPath);
     return fileNames
-      .filter((fileName) => /\.ya?ml$/u.test(fileName))
+      .filter((fileName) => /\.ya?ml$/iu.test(fileName))
       .some((fileName) => workflowFileUsesRailway(workflowsPath, fileName));
   } catch {
     return false;

@@ -49,7 +49,10 @@ function generateAgentInstruction(
   const packageManager = getPackageManagerCommand(rootConfig);
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway
-    ? '- If you need Railway project information, see the workflow settings in `.github/workflows`.'
+    ? '\n- If you need Railway project information, see the workflow settings in `.github/workflows`.'
+    : '';
+  const playwrightTestServerInstruction = hasPlaywrightTestServer(allConfigs)
+    ? `\n- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.`
     : '';
   const baseContent = `
 ## Project Information
@@ -79,9 +82,7 @@ function generateAgentInstruction(
   - If not specified, make sure to add a new line at the end of your commit message${rootConfig.isWillBoosterRepo ? ` with: \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`` : ''}.
   - Always create new commits. Avoid using \`--amend\`.
 - Always use heredoc syntax when passing multi-line content to any command.
-- Put temporary files in the \`.tmp\` or \`/tmp\` directory.
-${railwayInstruction}
-${hasPlaywrightTestServer(allConfigs) ? `- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.` : ''}
+- Put temporary files in the \`.tmp\` or \`/tmp\` directory.${railwayInstruction}${playwrightTestServerInstruction}
 
 ${generateAgentCodingStyle(allConfigs)}
 `
