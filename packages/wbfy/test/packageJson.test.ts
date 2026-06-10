@@ -134,6 +134,23 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
   expect(packageJson.devDependencies?.['@willbooster/wb']).toBeUndefined();
 });
 
+test('keeps custom database scripts for drizzle projects', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'db-migrate': 'bun scripts/runDrizzleMigrationsToAllClients.ts',
+      },
+    },
+    { depending: { ...createConfig().depending, drizzle: true } }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'db-create-migration': 'wb db migrate-dev',
+    'db-migrate': 'bun scripts/runDrizzleMigrationsToAllClients.ts',
+    'db-view': 'wb db studio',
+  });
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},

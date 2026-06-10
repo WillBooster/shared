@@ -1043,7 +1043,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       verify: 'bun --bun wb verify',
       'verify-full': 'bun --bun wb verify --full',
     };
-    applyDatabaseScripts(config, scripts, `bun --bun ${getWbDatabaseCommand(config)}`);
+    applyDatabaseScripts(config, scripts, oldScripts, `bun --bun ${getWbDatabaseCommand(config)}`);
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     if (!hasTypecheck) {
       delete scripts.typecheck;
@@ -1108,7 +1108,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       scripts.verify = 'wb verify';
       scripts['verify-full'] = 'wb verify --full';
     }
-    applyDatabaseScripts(config, scripts, getWbDatabaseCommand(config));
+    applyDatabaseScripts(config, scripts, oldScripts, getWbDatabaseCommand(config));
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     return scripts;
   }
@@ -1118,12 +1118,33 @@ function shouldManageGenI18nTs(config: PackageConfig): boolean {
   return config.depending.genI18nTs && fs.existsSync(path.join(config.dirPath, 'i18n'));
 }
 
-function applyDatabaseScripts(config: PackageConfig, scripts: Record<string, string>, wbDbCommand: string): void {
+function applyDatabaseScripts(
+  config: PackageConfig,
+  scripts: Record<string, string>,
+  oldScripts: PackageJson.Scripts,
+  wbDbCommand: string
+): void {
   if (!config.depending.prisma && !config.depending.drizzle) return;
 
-  scripts['db-create-migration'] = `${wbDbCommand} migrate-dev`;
-  scripts['db-migrate'] = `${wbDbCommand} migrate --check-idempotency`;
-  scripts['db-view'] = `${wbDbCommand} studio`;
+  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`);
+  applyDatabaseScript(scripts, oldScripts, 'db-migrate', `${wbDbCommand} migrate --check-idempotency`);
+  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`);
+}
+
+function applyDatabaseScript(
+  scripts: Record<string, string>,
+  oldScripts: PackageJson.Scripts,
+  name: string,
+  generatedScript: string
+): void {
+  const oldScript = oldScripts[name];
+  // Some repositories wrap migration commands to prepare SQLite directories,
+  // fan out over tenants, or perform cleanup that wb cannot infer generically.
+  scripts[name] = oldScript && !isGeneratedDatabaseScript(oldScript) ? oldScript : generatedScript;
+}
+
+function isGeneratedDatabaseScript(script: string): boolean {
+  return /\bwb\s+(?:db|prisma)\b/u.test(script);
 }
 
 function getWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' {
