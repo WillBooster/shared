@@ -288,7 +288,7 @@ function workflowFilesUseRailway(dirPath: string): boolean {
 
 function workflowFileUsesRailway(workflowsPath: string, fileName: string): boolean {
   try {
-    return fs.readFileSync(path.join(workflowsPath, fileName), 'utf8').toLowerCase().includes('railway');
+    return /railway/iu.test(fs.readFileSync(path.join(workflowsPath, fileName), 'utf8'));
   } catch {
     return false;
   }
