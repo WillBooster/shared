@@ -277,10 +277,9 @@ function detectRailway(dirPath: string, packageJson: PackageJson): boolean {
 function workflowFilesUseRailway(dirPath: string): boolean {
   const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
   try {
-    const fileNames = fs.readdirSync(workflowsPath);
-    return fileNames
-      .filter((fileName) => /\.ya?ml$/iu.test(fileName))
-      .some((fileName) => workflowFileUsesRailway(workflowsPath, fileName));
+    return fs
+      .readdirSync(workflowsPath)
+      .some((fileName) => /\.ya?ml$/iu.test(fileName) && workflowFileUsesRailway(workflowsPath, fileName));
   } catch {
     return false;
   }
