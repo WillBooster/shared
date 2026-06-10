@@ -280,9 +280,15 @@ function workflowFilesUseRailway(dirPath: string): boolean {
     const fileNames = fs.readdirSync(workflowsPath);
     return fileNames
       .filter((fileName) => /\.ya?ml$/u.test(fileName))
-      .some((fileName) =>
-        fs.readFileSync(path.join(workflowsPath, fileName), 'utf8').toLowerCase().includes('railway')
-      );
+      .some((fileName) => workflowFileUsesRailway(workflowsPath, fileName));
+  } catch {
+    return false;
+  }
+}
+
+function workflowFileUsesRailway(workflowsPath: string, fileName: string): boolean {
+  try {
+    return fs.readFileSync(path.join(workflowsPath, fileName), 'utf8').toLowerCase().includes('railway');
   } catch {
     return false;
   }
