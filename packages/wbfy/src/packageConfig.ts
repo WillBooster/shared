@@ -21,6 +21,7 @@ export interface PackageConfig {
   repoAuthor?: string;
   repoName?: string;
   isWillBoosterRepo: boolean;
+  isRailway: boolean;
   isBun: boolean;
   isEsmPackage: boolean;
   isWillBoosterConfigs: boolean;
@@ -179,6 +180,7 @@ export async function getPackageConfig(
       isWillBoosterRepo: Boolean(
         repository?.startsWith('github:WillBooster/') || repository?.startsWith('github:WillBoosterLab/')
       ),
+      isRailway: detectRailway(dirPath, packageJson),
       isBun: rootConfig?.isBun || fs.existsSync(path.join(dirPath, 'bun.lock')),
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
@@ -257,6 +259,33 @@ function hasVersionSettingsFile(dirPath: string): boolean {
     fs.existsSync(path.join(current, '.mise.toml')) ||
     fs.existsSync(path.join(current, '.tool-versions'))
   );
+}
+
+function detectRailway(dirPath: string, packageJson: PackageJson): boolean {
+  const scripts = packageJson.scripts;
+  if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('railway'))) {
+    return true;
+  }
+
+  if (fs.existsSync(path.resolve(dirPath, '.railwayignore')) || fs.existsSync(path.resolve(dirPath, 'railway.json'))) {
+    return true;
+  }
+
+  return workflowFilesUseRailway(dirPath);
+}
+
+function workflowFilesUseRailway(dirPath: string): boolean {
+  const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
+  try {
+    const fileNames = fs.readdirSync(workflowsPath);
+    return fileNames
+      .filter((fileName) => /\.ya?ml$/u.test(fileName))
+      .some((fileName) =>
+        fs.readFileSync(path.join(workflowsPath, fileName), 'utf8').toLowerCase().includes('railway')
+      );
+  } catch {
+    return false;
+  }
 }
 
 async function readMiseTasks(dirPath: string): Promise<Record<string, string>> {

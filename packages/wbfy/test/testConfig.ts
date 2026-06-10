@@ -9,6 +9,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     isReferredByOtherRepo: false,
     repository: 'github:WillBooster/example',
     isWillBoosterRepo: true,
+    isRailway: false,
     isBun: false,
     isEsmPackage: false,
     isWillBoosterConfigs: false,
