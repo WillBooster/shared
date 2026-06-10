@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { logger } from '../logger.js';
@@ -76,6 +77,7 @@ function generateAgentInstruction(
   - Always create new commits. Avoid using \`--amend\`.
 - Always use heredoc syntax when passing multi-line content to any command.
 - Put temporary files in the \`.tmp\` or \`/tmp\` directory.
+${usesRailway(rootConfig) ? '- If you need Railway project information, see the workflow settings in `.github/workflows`.' : ''}
 ${hasPlaywrightTestServer(allConfigs) ? `- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.` : ''}
 
 ${generateAgentCodingStyle(allConfigs)}
@@ -142,4 +144,34 @@ ${
 
 function hasPlaywrightTestServer(configs: PackageConfig[]): boolean {
   return configs.some((config) => config.depending.playwrightTest);
+}
+
+function usesRailway(config: PackageConfig): boolean {
+  const scripts = config.packageJson?.scripts;
+  if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('railway'))) {
+    return true;
+  }
+
+  if (
+    fs.existsSync(path.resolve(config.dirPath, '.railwayignore')) ||
+    fs.existsSync(path.resolve(config.dirPath, 'railway.json'))
+  ) {
+    return true;
+  }
+
+  return workflowFilesUseRailway(config.dirPath);
+}
+
+function workflowFilesUseRailway(dirPath: string): boolean {
+  const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
+  try {
+    const fileNames = fs.readdirSync(workflowsPath);
+    return fileNames
+      .filter((fileName) => /\.ya?ml$/u.test(fileName))
+      .some((fileName) =>
+        fs.readFileSync(path.join(workflowsPath, fileName), 'utf8').toLowerCase().includes('railway')
+      );
+  } catch {
+    return false;
+  }
 }
