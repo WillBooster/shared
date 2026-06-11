@@ -22,5 +22,6 @@ test('parseCommandLineArgs preserves quoted argument text', () => {
 
 test('parseCommandLineArgs ignores empty space-only arguments', () => {
   expect(parseCommandLineArgs(' arg1  arg2   arg3 ')).toEqual(['arg1', 'arg2', 'arg3']);
+  expect(parseCommandLineArgs('   ')).toEqual([]);
   expect(parseCommandLineArgs('')).toEqual([]);
 });
