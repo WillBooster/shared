@@ -17,6 +17,7 @@ const genI18nTsDepending = {
   ...createConfig().depending,
   genI18nTs: true,
 };
+const managedWbVersion = await readManagedDependencyVersion('@willbooster/wb');
 
 test('replaces default gen-i18n-ts postinstall with managed wb gen-code scripts', async () => {
   const packageJson = await generatePackageJsonFrom(
@@ -122,7 +123,7 @@ test('keeps build-ts as a runtime dependency when prisma seed uses it', async ()
 test('keeps wb as a runtime dependency when postinstall uses it', async () => {
   const packageJson = await generatePackageJsonFrom({
     devDependencies: {
-      '@willbooster/wb': '13.22.7',
+      '@willbooster/wb': '0.0.1',
     },
     scripts: {
       'gen-code': 'wb gen-code',
@@ -130,7 +131,7 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
     },
   });
 
-  expect(packageJson.dependencies?.['@willbooster/wb']).toBe('13.22.7');
+  expect(packageJson.dependencies?.['@willbooster/wb']).toBe(managedWbVersion);
   expect(packageJson.devDependencies?.['@willbooster/wb']).toBeUndefined();
 });
 
@@ -175,4 +176,15 @@ async function generatePackageJsonFrom(
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
+}
+
+async function readManagedDependencyVersion(packageName: string): Promise<string> {
+  const packageJsonPath = new URL('../package.json', import.meta.url);
+  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  const version = packageJson.dependencies?.[packageName] ?? packageJson.devDependencies?.[packageName];
+  if (!version) throw new Error(`${packageName} is not a managed dependency`);
+  return version;
 }
