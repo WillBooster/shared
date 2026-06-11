@@ -138,6 +138,12 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
   expect(packageJson.devDependencies?.['@willbooster/wb']).toBeUndefined();
 });
 
+test('uses stable age-gated versions for generated dependencies when skipping installs', async () => {
+  const packageJson = await generatePackageJsonFrom({}, { doesContainJava: true });
+
+  expect(packageJson.devDependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
+});
+
 test('keeps custom database scripts for drizzle projects', async () => {
   const packageJson = await generatePackageJsonFrom(
     {

@@ -867,13 +867,7 @@ function getDependencyVersionFromNpm(config: PackageConfig, dependency: string):
   // npm's latest dist-tag still tracks TS7 dev snapshots; wbfy should follow
   // the public beta channel until the stable TS7 package layout is finalized.
   if (!shouldApplyPackageAgeGate(config, dependency)) {
-    return (
-      spawnSyncAndReturnStdout(
-        'npm',
-        ['show', getDependencySpecifier(dependency), 'version', '--workspaces=false'],
-        process.cwd()
-      ) || '*'
-    );
+    return getRawDependencyVersionFromNpm(dependency);
   }
 
   return getLatestAgeGatedDependencyVersion(dependency, getPackageAgeGateMs(config));
@@ -881,14 +875,26 @@ function getDependencyVersionFromNpm(config: PackageConfig, dependency: string):
 
 function getLatestAgeGatedDependencyVersion(dependency: string, packageAgeGateMs: number): string {
   const times = getNpmPackageTimes(dependency);
+  const latestVersion = getRawDependencyVersionFromNpm(dependency);
+  if (latestVersion !== '*' && isPublishedBeforeAgeGate(times[latestVersion], packageAgeGateMs)) {
+    return latestVersion;
+  }
+
   const now = Date.now();
   const versions = Object.entries(times)
     .filter(([version]) => semver.valid(version))
+    .filter(([version]) => (semver.prerelease(version)?.length ?? 0) === 0)
     .filter(([, publishedAt]) => Number.isFinite(Date.parse(publishedAt)))
     .filter(([, publishedAt]) => now - Date.parse(publishedAt) >= packageAgeGateMs)
     .toSorted(([versionA], [versionB]) => semver.rcompare(versionA, versionB));
 
   return versions[0]?.[0] ?? '*';
+}
+
+function isPublishedBeforeAgeGate(publishedAt: string | undefined, packageAgeGateMs: number): boolean {
+  if (!publishedAt) return false;
+  const publishedTime = Date.parse(publishedAt);
+  return Number.isFinite(publishedTime) && Date.now() - publishedTime >= packageAgeGateMs;
 }
 
 function getNpmPackageTimes(dependency: string): Record<string, string> {
@@ -930,6 +936,16 @@ function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
 
   const escapedPattern = pattern.replaceAll(/[.+?^${}()|[\]\\]/gu, String.raw`\$&`).replaceAll('*', '.*');
   return new RegExp(`^${escapedPattern}$`, 'u').test(dependency);
+}
+
+function getRawDependencyVersionFromNpm(dependency: string): string {
+  return (
+    spawnSyncAndReturnStdout(
+      'npm',
+      ['show', getDependencySpecifier(dependency), 'version', '--workspaces=false'],
+      process.cwd()
+    ) || '*'
+  );
 }
 
 function getDependencySpecifier(dependency: string): string {
