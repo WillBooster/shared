@@ -28,6 +28,33 @@ interface Plugin {
   spec: string;
 }
 
+export const yarnNpmMinimalAgeGate = '5d';
+export const yarnNpmPreapprovedPackages = [
+  // ---------- START: We believe our packages are safe ----------
+  '@exercode/*',
+  '@willbooster/*',
+  'agent-runtime-kit',
+  'at-decorators',
+  'build-ts',
+  'gen-i18n-ts',
+  'one-way-git-sync',
+  // ---------- END: We believe our packages are safe ----------
+
+  // To deal with CVE like https://nextjs.org/blog/CVE-2025-66478
+  'next',
+  '@next/*',
+  '@types/*',
+  '@typescript/*',
+  '@oxfmt/*',
+  '@oxlint/*',
+  '@oxlint-tsgolint/*',
+  'oxfmt',
+  'oxlint',
+  'oxlint-tsgolint',
+  'react',
+  'react-dom',
+];
+
 export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateYarnrcYml', async () => {
     const yarnrcYmlPath = path.resolve(config.dirPath, '.yarnrc.yml');
@@ -72,7 +99,7 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
     settings.enableScripts = false;
     settings.nodeLinker = 'node-modules';
     settings.nmMode = 'hardlinks-global';
-    settings.npmMinimalAgeGate = '5d';
+    settings.npmMinimalAgeGate = yarnNpmMinimalAgeGate;
     settings.approvedGitRepositories = [
       // Yarn 4.14 blocks git dependencies unless the repository URL is explicitly allowed.
       'https://github.com/WillBooster/*.git',
@@ -80,31 +107,7 @@ export async function generateYarnrcYml(config: PackageConfig): Promise<void> {
       'https://github.com/WillBoosterLab/*.git',
       'ssh://git@github.com/WillBoosterLab/*.git',
     ];
-    settings.npmPreapprovedPackages = [
-      // ---------- START: We believe our packages are safe ----------
-      '@exercode/*',
-      '@willbooster/*',
-      'agent-runtime-kit',
-      'at-decorators',
-      'build-ts',
-      'gen-i18n-ts',
-      'one-way-git-sync',
-      // ---------- END: We believe our packages are safe ----------
-
-      // To deal with CVE like https://nextjs.org/blog/CVE-2025-66478
-      'next',
-      '@next/*',
-      '@types/*',
-      '@typescript/*',
-      '@oxfmt/*',
-      '@oxlint/*',
-      '@oxlint-tsgolint/*',
-      'oxfmt',
-      'oxlint',
-      'oxlint-tsgolint',
-      'react',
-      'react-dom',
-    ];
+    settings.npmPreapprovedPackages = yarnNpmPreapprovedPackages;
     delete settings.compressionLevel;
     if (settings.injectEnvironmentFiles?.length === 0) {
       delete settings.injectEnvironmentFiles;

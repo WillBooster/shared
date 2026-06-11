@@ -17,7 +17,8 @@ interface BunfigToml {
   };
 }
 
-const minimumReleaseAgeExcludes = [
+export const bunMinimumReleaseAgeSeconds = 432_000;
+export const bunMinimumReleaseAgeExcludes = [
   // ---------- START: We believe our packages are safe ----------
   '@exercode/problem-utils',
   '@willbooster-private/agentic-workflows',
@@ -145,9 +146,9 @@ ${generateRunSection(bunfigToml)}
 [install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 linker = "hoisted"
-minimumReleaseAge = 432000 # 5 days
+minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 5 days
 minimumReleaseAgeExcludes = [
-${minimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
+${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
 ]
 `;
 };

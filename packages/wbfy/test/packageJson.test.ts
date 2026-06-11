@@ -102,12 +102,13 @@ test.each([
 });
 
 test('keeps build-ts as a runtime dependency when prisma seed uses it', async () => {
+  const oldBuildTsVersion = '0.0.1';
   const packageJson = await generatePackageJsonFrom({
     devDependencies: {
-      'build-ts': '17.1.18',
+      'build-ts': oldBuildTsVersion,
     },
     dependencies: {
-      'build-ts': '17.1.15',
+      'build-ts': oldBuildTsVersion,
     },
     prisma: {
       seed: 'build-ts run prisma/seed.ts',
@@ -115,14 +116,16 @@ test('keeps build-ts as a runtime dependency when prisma seed uses it', async ()
     scripts: {},
   });
 
-  expect(packageJson.dependencies?.['build-ts']).toBe('17.1.18');
+  expect(packageJson.dependencies?.['build-ts']).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.dependencies?.['build-ts']).not.toBe(oldBuildTsVersion);
   expect(packageJson.devDependencies?.['build-ts']).toBeUndefined();
 });
 
 test('keeps wb as a runtime dependency when postinstall uses it', async () => {
+  const oldWbVersion = '0.0.1';
   const packageJson = await generatePackageJsonFrom({
     devDependencies: {
-      '@willbooster/wb': '13.22.7',
+      '@willbooster/wb': oldWbVersion,
     },
     scripts: {
       'gen-code': 'wb gen-code',
@@ -130,8 +133,15 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
     },
   });
 
-  expect(packageJson.dependencies?.['@willbooster/wb']).toBe('13.22.7');
+  expect(packageJson.dependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.dependencies?.['@willbooster/wb']).not.toBe(oldWbVersion);
   expect(packageJson.devDependencies?.['@willbooster/wb']).toBeUndefined();
+});
+
+test('uses stable age-gated versions for generated dependencies when skipping installs', async () => {
+  const packageJson = await generatePackageJsonFrom({}, { doesContainJava: true });
+
+  expect(packageJson.devDependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {
