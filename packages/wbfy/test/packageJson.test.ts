@@ -17,7 +17,6 @@ const genI18nTsDepending = {
   ...createConfig().depending,
   genI18nTs: true,
 };
-const managedWbVersion = await readManagedDependencyVersion('@willbooster/wb');
 
 test('replaces default gen-i18n-ts postinstall with managed wb gen-code scripts', async () => {
   const packageJson = await generatePackageJsonFrom(
@@ -103,12 +102,13 @@ test.each([
 });
 
 test('keeps build-ts as a runtime dependency when prisma seed uses it', async () => {
+  const oldBuildTsVersion = '0.0.1';
   const packageJson = await generatePackageJsonFrom({
     devDependencies: {
-      'build-ts': '17.1.18',
+      'build-ts': oldBuildTsVersion,
     },
     dependencies: {
-      'build-ts': '17.1.15',
+      'build-ts': oldBuildTsVersion,
     },
     prisma: {
       seed: 'build-ts run prisma/seed.ts',
@@ -116,14 +116,16 @@ test('keeps build-ts as a runtime dependency when prisma seed uses it', async ()
     scripts: {},
   });
 
-  expect(packageJson.dependencies?.['build-ts']).toBe('17.1.18');
+  expect(packageJson.dependencies?.['build-ts']).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.dependencies?.['build-ts']).not.toBe(oldBuildTsVersion);
   expect(packageJson.devDependencies?.['build-ts']).toBeUndefined();
 });
 
 test('keeps wb as a runtime dependency when postinstall uses it', async () => {
+  const oldWbVersion = '0.0.1';
   const packageJson = await generatePackageJsonFrom({
     devDependencies: {
-      '@willbooster/wb': '0.0.1',
+      '@willbooster/wb': oldWbVersion,
     },
     scripts: {
       'gen-code': 'wb gen-code',
@@ -131,7 +133,8 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
     },
   });
 
-  expect(packageJson.dependencies?.['@willbooster/wb']).toBe(managedWbVersion);
+  expect(packageJson.dependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.dependencies?.['@willbooster/wb']).not.toBe(oldWbVersion);
   expect(packageJson.devDependencies?.['@willbooster/wb']).toBeUndefined();
 });
 
@@ -176,15 +179,4 @@ async function generatePackageJsonFrom(
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
-}
-
-async function readManagedDependencyVersion(packageName: string): Promise<string> {
-  const packageJsonPath = new URL('../package.json', import.meta.url);
-  const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as {
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  };
-  const version = packageJson.dependencies?.[packageName] ?? packageJson.devDependencies?.[packageName];
-  if (!version) throw new Error(`${packageName} is not a managed dependency`);
-  return version;
 }

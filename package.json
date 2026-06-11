@@ -33,15 +33,15 @@
     "@types/node": "25.6.0",
     "@typescript/native-preview": "7.0.0-dev.20260504.1",
     "@willbooster/oxfmt-config": "1.2.2",
-    "@willbooster/oxlint-config": "1.4.6",
+    "@willbooster/oxlint-config": "1.4.8",
     "@willbooster/wb": "13.22.11",
     "conventional-changelog-conventionalcommits": "9.3.1",
-    "lefthook": "2.1.6",
-    "oxfmt": "0.50.0",
-    "oxlint": "1.65.0",
-    "oxlint-tsgolint": "0.22.1",
+    "lefthook": "2.1.9",
+    "oxfmt": "0.54.0",
+    "oxlint": "1.69.0",
+    "oxlint-tsgolint": "0.23.0",
     "semantic-release": "25.0.3",
-    "sort-package-json": "3.6.1"
+    "sort-package-json": "4.0.0"
   },
   "packageManager": "yarn@4.16.0",
   "engines": {

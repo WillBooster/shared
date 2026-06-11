@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import merge from 'deepmerge';
 import fg from 'fast-glob';
@@ -31,13 +30,7 @@ const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
-const wbfyPackageJson = readWbfyPackageJson();
-const managedDependencyVersions = {
-  ...wbfyPackageJson.dependencies,
-  ...wbfyPackageJson.devDependencies,
-  ...wbfyPackageJson.peerDependencies,
-};
-const baselineManagedDependencies = new Set([
+const managedDependencyNames = new Set([
   wbDependency,
   buildTsDependency,
   lefthookDependency,
@@ -127,14 +120,14 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
-  addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates);
+  addDependencyVersionsToPackageJson(jsonObj, dependencyUpdates, skipAddingDeps);
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
   if (config.isBun) delete jsonObj.packageManager;
   // Yarn reads package.json from disk before deciding whether `yarn add -D`
   // conflicts with an existing regular dependency, so this write must finish
-  // before installing the managed dependency updates below. Keep this baseline
+  // before installing the managed dependency updates below. Keep this generated
   // file sorted even when we later run the target repository's formatter so a
   // mid-run interruption never leaves package.json in a partially managed order.
   await fsUtil.generateFile(filePath, serializePackageJson(jsonObj));
@@ -559,15 +552,28 @@ async function normalizePublishedConfigPackageMetadata(
 const configDmtsContent = `export { default } from './config.js';
 `;
 
-function addDependencyVersionsToPackageJson(jsonObj: WritablePackageJson, dependencyUpdates: DependencyUpdates): void {
+function addDependencyVersionsToPackageJson(
+  jsonObj: WritablePackageJson,
+  dependencyUpdates: DependencyUpdates,
+  skipAddingDeps: boolean
+): void {
   const packageJsonDependencies = jsonObj.dependencies;
   const packageJsonDevDependencies = jsonObj.devDependencies;
-  dependencyUpdates.dependencies = addPackageJsonDependencies(packageJsonDependencies, dependencyUpdates.dependencies);
+  dependencyUpdates.dependencies = addPackageJsonDependencies(
+    packageJsonDependencies,
+    [...dependencyUpdates.dependencies, ...getExistingManagedDependencies(packageJsonDependencies)],
+    skipAddingDeps
+  );
   dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter((dep) => !packageJsonDependencies[dep]);
   dependencyUpdates.devDependencies = addPackageJsonDependencies(
     packageJsonDevDependencies,
-    dependencyUpdates.devDependencies
+    [...dependencyUpdates.devDependencies, ...getExistingManagedDependencies(packageJsonDevDependencies)],
+    skipAddingDeps
   );
+}
+
+function getExistingManagedDependencies(packageJsonDependencies: Partial<Record<string, string>>): string[] {
+  return Object.keys(packageJsonDependencies).filter((dependency) => managedDependencyNames.has(dependency));
 }
 
 function removeEmptyDependencySections(jsonObj: PackageJson): void {
@@ -586,10 +592,10 @@ function installDependencyUpdates(
   packageManager: 'bun' | 'yarn'
 ): void {
   const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-  installNpmDependencies(config, packageManager, jsonObj.dependencies ?? {}, dependencies, false);
+  installNpmDependencies(config, packageManager, dependencies, false);
 
   const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-  installNpmDependencies(config, packageManager, jsonObj.devDependencies ?? {}, devDependencies, true);
+  installNpmDependencies(config, packageManager, devDependencies, true);
 
   const pythonPackageManager = getPythonPackageManager(config);
   if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
@@ -615,17 +621,12 @@ function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
 function installNpmDependencies(
   config: PackageConfig,
   packageManager: 'bun' | 'yarn',
-  packageJsonDependencies: Partial<Record<string, string>>,
   dependencies: string[],
   dev: boolean
 ): void {
   if (dependencies.length === 0) return;
 
-  const dependencySpecifiers = [
-    ...new Set(
-      dependencies.map((dependency) => getInstallDependencySpecifier(dependency, packageJsonDependencies[dependency]))
-    ),
-  ];
+  const dependencySpecifiers = [...new Set(dependencies.map((dependency) => getDependencySpecifier(dependency)))];
   spawnSync(
     packageManager,
     ['add', ...(dev ? ['-D'] : []), ...(config.isBun ? ['--exact'] : []), ...dependencySpecifiers],
@@ -633,20 +634,10 @@ function installNpmDependencies(
   );
 }
 
-function getInstallDependencySpecifier(dependency: string, currentVersion: string | undefined): string {
-  // Package managers resolve a bare add target against live registry state.
-  // Passing the resolved version keeps generated installs aligned with the
-  // package.json baseline we just wrote.
-  if (currentVersion && !isWorkspaceProtocolRange(currentVersion)) {
-    return `${dependency}@${currentVersion}`;
-  }
-
-  return getDependencySpecifier(dependency);
-}
-
 function addPackageJsonDependencies(
   packageJsonDependencies: Partial<Record<string, string>>,
-  dependencies: string[]
+  dependencies: string[],
+  skipAddingDeps: boolean
 ): string[] {
   const dependenciesToInstall: string[] = [];
   for (const dependency of new Set(dependencies)) {
@@ -656,6 +647,7 @@ function addPackageJsonDependencies(
     );
     if (shouldUpdateExistingDependency) {
       dependenciesToInstall.push(dependency);
+      if (!skipAddingDeps) continue;
     }
     if (
       packageJsonDependencies[dependency] &&
@@ -849,39 +841,12 @@ function getDependencySections(jsonObj: PackageJson): Partial<Record<string, str
 }
 
 function getLatestDependencyVersion(dependency: string): string {
-  const managedVersion = getManagedDependencyVersion(dependency);
-  if (managedVersion) return managedVersion;
-
   const cachedVersion = latestDependencyVersionCache.get(dependency);
   if (cachedVersion) return cachedVersion;
 
   const version = getDependencyVersionFromNpm(dependency);
   latestDependencyVersionCache.set(dependency, version);
   return version;
-}
-
-function getManagedDependencyVersion(dependency: string): string | undefined {
-  if (!baselineManagedDependencies.has(dependency)) return undefined;
-
-  // These tools often ship native binaries. Use wbfy's tested dependency
-  // baseline instead of live npm latest so generated lockfiles do not pull
-  // unreviewed tool releases into every repository at runtime.
-  return managedDependencyVersions[dependency];
-}
-
-function readWbfyPackageJson(): PackageJson {
-  let dirPath = path.dirname(fileURLToPath(import.meta.url));
-  while (true) {
-    const packageJsonPath = path.join(dirPath, 'package.json');
-    if (fs.existsSync(packageJsonPath)) {
-      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson;
-      if (packageJson.name === '@willbooster/wbfy') return packageJson;
-    }
-
-    const parentDirPath = path.dirname(dirPath);
-    if (parentDirPath === dirPath) throw new Error('Could not find @willbooster/wbfy package.json');
-    dirPath = parentDirPath;
-  }
 }
 
 function getDependencyVersionFromNpm(dependency: string): string {
@@ -955,9 +920,9 @@ function shouldUpdateExistingManagedDependency(dependency: string, currentVersio
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
   if (dependency === typescriptGoDependency) return isNewerManagedDependencyVersion(dependency, currentVersion);
-  // wbfy owns these tool baselines, but applying wbfy should not downgrade a
+  // wbfy owns these tool dependencies, but applying wbfy should not downgrade a
   // repository that already pins a newer reviewed release.
-  return baselineManagedDependencies.has(dependency) && isNewerManagedDependencyVersion(dependency, currentVersion);
+  return managedDependencyNames.has(dependency) && isNewerManagedDependencyVersion(dependency, currentVersion);
 }
 
 function isNewerManagedDependencyVersion(dependency: string, currentVersion: string): boolean {
