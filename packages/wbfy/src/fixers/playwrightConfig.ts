@@ -93,10 +93,11 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const parsed = parseObjectLiteralExpression(extractedObjectLiteral.node, extractedObjectLiteral.source);
     if (!parsed) return;
 
-    // Keep filling missing defaults, but don't overwrite local adjustments on every regeneration.
     const shouldUseAppServerDefaults =
       (await doesDefineNextPublicBaseUrl(config.dirPath)) && shouldManageAppServerDefaults(config, parsed);
-    const merged = mergeParsedObjects(createDefaultConfig(config, shouldUseAppServerDefaults), parsed);
+    const defaultConfig = createDefaultConfig(config, shouldUseAppServerDefaults);
+    const merged = mergeParsedObjects(defaultConfig, parsed);
+    applyManagedUseDefaults(merged, defaultConfig);
     setWebServerCommand(merged, config);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
@@ -131,6 +132,19 @@ function mergeParsedValue(base: ParsedValue | undefined, override: ParsedValue):
     return { kind: 'object', value: mergeParsedObjects(base.value, override.value) };
   }
   return override;
+}
+
+function applyManagedUseDefaults(config: ParsedObject, defaultConfig: ParsedObject): void {
+  const use = config.properties.use;
+  const defaultUse = defaultConfig.properties.use;
+  if (use?.kind !== 'object' || defaultUse?.kind !== 'object') return;
+
+  for (const key of ['trace', 'screenshot', 'video']) {
+    const defaultValue = defaultUse.value.properties[key];
+    if (defaultValue) {
+      use.value.properties[key] = defaultValue;
+    }
+  }
 }
 
 function shouldManageAppServerDefaults(config: PackageConfig, parsed: ParsedObject): boolean {
