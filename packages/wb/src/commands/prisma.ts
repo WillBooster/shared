@@ -312,8 +312,10 @@ function createLitestreamConfig(project: Project, orm: DatabaseOrm): void {
     throw new Error(`Missing environment variables for Litestream: ${missingEnvVars.join(', ')}`);
   }
 
-  const retentionCheckInterval = project.env.WB_ENV === 'staging' ? '5m' : '1h';
-  const litestreamConfig = `dbs:
+  const litestreamConfig = `snapshot:
+  interval: 24h  # Create a backup per day
+  retention: 72h # Keep backups for 3 days
+dbs:
   - path: ${dbPath}
     busy-timeout: 5s
     checkpoint-interval: 1m
@@ -323,9 +325,6 @@ function createLitestreamConfig(project: Project, orm: DatabaseOrm): void {
       bucket: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
       access-key-id: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}
       secret-access-key: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}
-      snapshot-interval: 24h  # Create a backup per day
-      retention: 72h          # Keep backups for 3 days
-      retention-check-interval: ${retentionCheckInterval}
       sync-interval: 1m
 `;
 
