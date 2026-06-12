@@ -3,15 +3,17 @@
 set -e
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
-ARCH=${ARCH:-$(dpkg --print-architecture)}
-LITESTREAM_ARCH=${ARCH}
-if [[ "${LITESTREAM_ARCH}" == "amd64" ]]; then
-  LITESTREAM_ARCH=x86_64
+if [[ -z "${ARCH:-}" ]]; then
+  case "$(uname -m)" in
+    arm64 | aarch64) ARCH=arm64 ;;
+    x86_64) ARCH=x86_64 ;;
+    *) ARCH=$(uname -m) ;;
+  esac
 fi
 
 apt-get -qq install -y --no-install-recommends ca-certificates curl \
   && LITESTREAM_VERSION=${LITESTREAM_VERSION:-$(curl --silent "https://api.github.com/repos/benbjohnson/litestream/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | sed 's/^v//')} \
-  && DEB_FILE="litestream-${LITESTREAM_VERSION}-linux-${LITESTREAM_ARCH}.deb" \
+  && DEB_FILE="litestream-${LITESTREAM_VERSION}-linux-${ARCH}.deb" \
   && echo "Installing Litestream: ${DEB_FILE}" \
   && curl -fsSLO https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/${DEB_FILE} \
   && dpkg-reconfigure debconf -f noninteractive -p critical \
