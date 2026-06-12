@@ -54,7 +54,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260504.1",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "workspace:*",
+    "@willbooster/wb": "13.22.12",
     "build-ts": "17.1.22",
     "oxfmt": "0.54.0",
     "oxlint": "1.69.0",
