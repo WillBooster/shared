@@ -60,7 +60,7 @@
     "@willbooster/oxlint-config": "1.4.8",
     "@willbooster/wb": "workspace:*",
     "@yarnpkg/core": "4.7.0",
-    "build-ts": "17.1.22",
+    "build-ts": "17.1.24",
     "lefthook": "2.1.9",
     "oxfmt": "0.54.0",
     "oxlint": "1.69.0",
