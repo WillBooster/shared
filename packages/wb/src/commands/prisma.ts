@@ -57,10 +57,22 @@ const cleanUpLitestreamCommand: CommandModule<unknown, InferredOptionTypes<typeo
   },
 };
 
-const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+const createLitestreamConfigBuilder = {
+  ...builder,
+  output: {
+    description: 'Output path of the Litestream configuration file.',
+    type: 'string',
+    default: '/etc/litestream.yml',
+  },
+} as const;
+
+const createLitestreamConfigCommand: CommandModule<
+  unknown,
+  InferredOptionTypes<typeof createLitestreamConfigBuilder>
+> = {
   command: 'create-litestream-config',
   describe: 'Create Litestream configuration file',
-  builder,
+  builder: createLitestreamConfigBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
     if (allProjects.length > 1) {
@@ -69,7 +81,7 @@ const createLitestreamConfigCommand: CommandModule<unknown, InferredOptionTypes<
       );
     }
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db create-litestream-config', allProjects)) {
-      createLitestreamConfig(project, orm);
+      createLitestreamConfig(project, orm, argv.output);
     }
   },
 };
@@ -117,9 +129,9 @@ const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof buil
   describe: 'List Litestream backups',
   builder,
   async handler(argv) {
-    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
-    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma list-backups', allProjects)) {
-      await runWithSpawn(prismaScripts.listBackups(project), project, argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db list-backups', allProjects)) {
+      await runWithSpawn(getDatabaseOrmScripts(orm).listBackups(project), project, argv);
     }
   },
 };
@@ -204,7 +216,7 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
 const restoreBuilder = {
   ...builder,
   output: {
-    description: 'Output path of the restored database. Defaults to "<db|prisma>/restored.sqlite3".',
+    description: 'Output path of the restored database. Defaults to "<db|drizzle|prisma>/restored.sqlite3".',
     type: 'string',
   },
 } as const;
@@ -214,11 +226,10 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
   describe: "Restore DB from Litestream's backup",
   builder: restoreBuilder,
   async handler(argv) {
-    const allProjects = await findDatabaseOrmProjects(argv, 'prisma');
-    for (const { project } of prepareForRunningDatabaseOrmCommand('prisma restore', allProjects)) {
-      const output =
-        argv.output ?? (project.packageJson.dependencies?.blitz ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3');
-      await runWithSpawn(prismaScripts.restore(project, output), project, argv);
+    const allProjects = await findDatabaseOrmProjects(argv);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db restore', allProjects)) {
+      const output = argv.output ?? getDefaultRestoreOutput(project, orm);
+      await runWithSpawn(getDatabaseOrmScripts(orm).restore(project, output), project, argv);
     }
   },
 };
@@ -297,7 +308,7 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
   },
 };
 
-function createLitestreamConfig(project: Project, orm: DatabaseOrm): void {
+function createLitestreamConfig(project: Project, orm: DatabaseOrm, configPath: string): void {
   const dbPath = getLitestreamDbPath(project, orm);
   const requiredEnvVars = {
     CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID,
@@ -328,7 +339,6 @@ dbs:
       sync-interval: 1m
 `;
 
-  const configPath = '/etc/litestream.yml';
   try {
     fs.writeFileSync(configPath, litestreamConfig);
     console.info(`Generated ${configPath}`);
@@ -338,6 +348,12 @@ dbs:
       cause: error,
     });
   }
+}
+
+function getDefaultRestoreOutput(project: Project, orm: DatabaseOrm): string {
+  if (orm === 'prisma')
+    return project.packageJson.dependencies?.blitz ? 'db/restored.sqlite3' : 'prisma/restored.sqlite3';
+  return 'drizzle/restored.sqlite3';
 }
 
 function getLitestreamDbPath(project: Project, orm: DatabaseOrm): string {

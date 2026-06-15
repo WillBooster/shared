@@ -47,6 +47,16 @@ class DrizzleScripts {
       && litestream restore ${litestreamConfigOption} -o "${dbPath}" "${dbPath}" && ls -ahl "${dbPath}" && ALLOW_TO_SKIP_SEED=0 ${this.deploy(project)}`;
   }
 
+  listBackups(project: Project): string {
+    const dbPath = getAbsoluteSqliteDbPath(project, 'list-backups');
+    return `litestream ltx ${getLitestreamConfigOption(project)} "${dbPath}"`;
+  }
+
+  restore(project: Project, outputPath: string): string {
+    const dbPath = getAbsoluteSqliteDbPath(project, 'restore');
+    return `rm -Rf "${outputPath}"*; litestream restore ${getLitestreamConfigOption(project)} -o "${outputPath}" "${dbPath}"`;
+  }
+
   generate(_project: Project, additionalOptions = ''): string {
     return `YARN drizzle-kit generate ${additionalOptions}`;
   }
