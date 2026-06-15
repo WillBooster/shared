@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { getAbsoluteFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
+import { getFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
 
 const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
 const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
@@ -110,7 +110,10 @@ function getAbsoluteSqliteDbPath(project: Project, commandName: string): string 
 }
 
 function getSqliteDbPath(project: Project): string | undefined {
-  return getAbsoluteFileDatabaseUrlPath(project);
+  const dbPath = getFileDatabaseUrlPath(project);
+  if (!dbPath) return;
+
+  return path.isAbsolute(dbPath) ? dbPath : path.resolve(project.rootDirPath ?? project.dirPath, dbPath);
 }
 
 function getLitestreamConfigOption(project: Project): string {
