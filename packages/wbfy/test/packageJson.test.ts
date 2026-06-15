@@ -121,6 +121,22 @@ test('keeps build-ts as a runtime dependency when prisma seed uses it', async ()
   expect(packageJson.devDependencies?.['build-ts']).toBeUndefined();
 });
 
+test('keeps build-ts as a runtime dependency when seed script uses it', async () => {
+  const oldBuildTsVersion = '0.0.1';
+  const packageJson = await generatePackageJsonFrom({
+    devDependencies: {
+      'build-ts': oldBuildTsVersion,
+    },
+    scripts: {
+      seed: 'build-ts run db/seed.ts',
+    },
+  });
+
+  expect(packageJson.dependencies?.['build-ts']).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.dependencies?.['build-ts']).not.toBe(oldBuildTsVersion);
+  expect(packageJson.devDependencies?.['build-ts']).toBeUndefined();
+});
+
 test('keeps wb as a runtime dependency when postinstall uses it', async () => {
   const oldWbVersion = '0.0.1';
   const packageJson = await generatePackageJsonFrom({
