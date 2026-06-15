@@ -310,7 +310,7 @@ export function getAbsoluteFileDatabaseUrlPath(
   if (path.isAbsolute(dbPath)) return dbPath;
 
   const baseDirPath = project.rootDirPath ?? project.dirPath;
-  return baseDirPath ? path.resolve(baseDirPath, dbPath) : path.resolve(dbPath);
+  return baseDirPath ? path.resolve(baseDirPath, dbPath) : undefined;
 }
 
 export interface FoundProjects {
