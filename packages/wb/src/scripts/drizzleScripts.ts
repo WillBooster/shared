@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { getFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
+import { getAbsoluteFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
 
 const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
 const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
@@ -16,7 +16,7 @@ class DrizzleScripts {
   reset(project: Project, additionalOptions = ''): string {
     const removeCommand = buildRemoveSqliteDbCommand(project);
     if (!removeCommand) {
-      return "echo 'wb db reset supports Drizzle only when DATABASE_PATH or file: DATABASE_URL is set.' && exit 1";
+      return "echo 'wb db reset supports Drizzle only when file: DATABASE_URL is set.' && exit 1";
     }
 
     return `${removeCommand} && ${this.migrate(project, additionalOptions)}`;
@@ -89,7 +89,7 @@ function buildRemoveSqliteDbFamilyCommand(dbPath: string): string {
 function getSqliteDbPathOrError(project: Project, commandName: string): string {
   const dbPath = getSqliteDbPath(project);
   if (!dbPath) {
-    throw new Error(`wb db ${commandName} supports Drizzle only when DATABASE_PATH or file: DATABASE_URL is set.`);
+    throw new Error(`wb db ${commandName} supports Drizzle only when file: DATABASE_URL is set.`);
   }
   return dbPath;
 }
@@ -100,7 +100,7 @@ function getAbsoluteSqliteDbPath(project: Project, commandName: string): string 
 }
 
 function getSqliteDbPath(project: Project): string | undefined {
-  return project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
+  return getAbsoluteFileDatabaseUrlPath(project);
 }
 
 function getLitestreamConfigOption(project: Project): string {

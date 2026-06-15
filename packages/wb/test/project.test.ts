@@ -4,7 +4,7 @@ import childProcess from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
 
-import { findDescendantProjects, findSelfProject } from '../src/project.js';
+import { findDescendantProjects, findSelfProject, getAbsoluteFileDatabaseUrlPath } from '../src/project.js';
 
 import { initializeProjectDirectory, tempDir } from './shared.js';
 
@@ -68,6 +68,25 @@ describe('project', () => {
     );
 
     expect(findSelfProject({}, false, path.join(dirPath, 'packages', 'sub1'))?.preferredLinter).toBe('oxlint');
+  });
+
+  it('resolves relative file DATABASE_URL values from the project directory', () => {
+    const project = {
+      dirPath: '/app/packages/server',
+      env: { DATABASE_URL: 'file:../../drizzle/mount/prod.sqlite3' },
+      rootDirPath: '/app',
+    };
+
+    expect(getAbsoluteFileDatabaseUrlPath(project)).toBe('/drizzle/mount/prod.sqlite3');
+  });
+
+  it('resolves root-relative file DATABASE_URL values from the repository root', () => {
+    const project = {
+      env: { DATABASE_URL: 'file:./drizzle/mount/prod.sqlite3' },
+      rootDirPath: '/app',
+    };
+
+    expect(getAbsoluteFileDatabaseUrlPath(project)).toBe('/app/drizzle/mount/prod.sqlite3');
   });
 
   it.runIf(isMiseAvailable())(

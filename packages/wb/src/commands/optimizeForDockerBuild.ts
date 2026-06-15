@@ -8,7 +8,12 @@ import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findDescendantProjects, getFileDatabaseUrlPath, type Project } from '../project.js';
+import {
+  findDescendantProjects,
+  getAbsoluteFileDatabaseUrlPath,
+  getFileDatabaseUrlPath,
+  type Project,
+} from '../project.js';
 import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -300,10 +305,10 @@ async function removeGeneratedMountDirs(project: Project): Promise<string[]> {
 
 function getGeneratedMountDirPaths(project: Project): string[] {
   const defaultPaths = generatedSqliteDirNames.map((dirName) => path.join(dirName, 'mount'));
-  const dbPath = project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
+  const dbPath = getAbsoluteFileDatabaseUrlPath(project);
   if (!dbPath) return defaultPaths;
 
-  const absoluteDirPath = path.dirname(path.isAbsolute(dbPath) ? dbPath : path.resolve(project.dirPath, dbPath));
+  const absoluteDirPath = path.dirname(dbPath);
   if (path.basename(absoluteDirPath) !== 'mount' || !isPathInsideProject(project, absoluteDirPath)) {
     return defaultPaths;
   }
@@ -348,15 +353,13 @@ async function removeEnvGeneratedSqliteFiles(project: Project): Promise<string[]
 }
 
 function getEnvGeneratedSqliteFilePaths(project: Project): string[] {
-  const dbPath = project.env.DATABASE_PATH ?? getFileDatabaseUrlPath(project);
-  if (!dbPath) return [];
+  const dbPath = getFileDatabaseUrlPath(project);
+  const absoluteDbPath = getAbsoluteFileDatabaseUrlPath(project);
+  if (!dbPath || !absoluteDbPath) return [];
 
   const filePaths = path.isAbsolute(dbPath)
     ? [dbPath]
-    : [
-        path.resolve(project.dirPath, dbPath),
-        ...generatedSqliteDirNames.map((dirName) => path.resolve(project.dirPath, dirName, dbPath)),
-      ];
+    : [absoluteDbPath, ...generatedSqliteDirNames.map((dirName) => path.resolve(project.dirPath, dirName, dbPath))];
   return [...new Set(filePaths)].filter((filePath) => isGeneratedSqliteFilePathSafe(project, filePath));
 }
 

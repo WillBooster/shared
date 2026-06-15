@@ -301,6 +301,13 @@ export function getFileDatabaseUrlPath(project: Pick<Project, 'env'>): string | 
   return normalizedPath || undefined;
 }
 
+export function getAbsoluteFileDatabaseUrlPath(project: Pick<Project, 'env' | 'rootDirPath'>): string | undefined {
+  const dbPath = getFileDatabaseUrlPath(project);
+  if (!dbPath) return;
+
+  return path.isAbsolute(dbPath) ? dbPath : path.resolve(project.rootDirPath, dbPath);
+}
+
 export interface FoundProjects {
   root: Project;
   self: Project;
