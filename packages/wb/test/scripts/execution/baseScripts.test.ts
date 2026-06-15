@@ -272,6 +272,7 @@ describe('BaseScripts.testE2E', () => {
       hasDrizzle: true,
       hasPrisma: false,
       packageJson: { scripts: {} },
+      rootDirPath: '/tmp/app',
     } as unknown as Project;
 
     const command = await scripts.startTest(drizzleProject, {} as ScriptArgv);
