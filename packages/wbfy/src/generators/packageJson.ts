@@ -386,8 +386,7 @@ function shouldKeepWbAsRuntimeDependency(jsonObj: PackageJson): boolean {
 
 function shouldKeepBuildTsAsRuntimeDependency(jsonObj: PackageJson): boolean {
   const prisma = jsonObj.prisma as { seed?: unknown } | undefined;
-  if (doesSeedCommandUseBuildTs(prisma?.seed)) return true;
-  return doesSeedCommandUseBuildTs(jsonObj.scripts?.seed);
+  return doesSeedCommandUseBuildTs(prisma?.seed) || doesSeedCommandUseBuildTs(jsonObj.scripts?.seed);
 }
 
 function doesSeedCommandUseBuildTs(seedCommand: unknown): boolean {
