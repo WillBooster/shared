@@ -640,7 +640,9 @@ function installNpmDependencies(
 ): void {
   if (dependencies.length === 0) return;
 
-  const dependencySpecifiers = [...new Set(dependencies.map((dependency) => getDependencySpecifier(dependency)))];
+  const dependencySpecifiers = [
+    ...new Set(dependencies.map((dependency) => getInstallDependencySpecifier(config, dependency))),
+  ];
   spawnSync(
     packageManager,
     ['add', ...(dev ? ['-D'] : []), ...(config.isBun ? ['--exact'] : []), ...dependencySpecifiers],
@@ -952,6 +954,11 @@ function getRawDependencyVersionFromNpm(dependency: string): string {
       process.cwd()
     ) || '*'
   );
+}
+
+function getInstallDependencySpecifier(config: PackageConfig, dependency: string): string {
+  if (dependency === wbDependency) return `${dependency}@${getLatestDependencyVersion(config, dependency)}`;
+  return getDependencySpecifier(dependency);
 }
 
 function getDependencySpecifier(dependency: string): string {
