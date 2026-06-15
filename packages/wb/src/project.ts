@@ -301,11 +301,16 @@ export function getFileDatabaseUrlPath(project: Pick<Project, 'env'>): string | 
   return normalizedPath || undefined;
 }
 
-export function getAbsoluteFileDatabaseUrlPath(project: Pick<Project, 'env' | 'rootDirPath'>): string | undefined {
+export function getAbsoluteFileDatabaseUrlPath(
+  project: Pick<Project, 'env'> & Partial<Pick<Project, 'dirPath' | 'rootDirPath'>>
+): string | undefined {
   const dbPath = getFileDatabaseUrlPath(project);
   if (!dbPath) return;
 
-  return path.isAbsolute(dbPath) ? dbPath : path.resolve(project.rootDirPath, dbPath);
+  if (path.isAbsolute(dbPath)) return dbPath;
+
+  const baseDirPath = project.rootDirPath ?? project.dirPath;
+  return baseDirPath ? path.resolve(baseDirPath, dbPath) : path.resolve(dbPath);
 }
 
 export interface FoundProjects {
