@@ -45,9 +45,9 @@ class PrismaScripts {
       && litestream restore ${litestreamConfigOption} -o ${dirPath}/prod.sqlite3 ${dirPath}/prod.sqlite3 && ls -ahl ${dirPath}/prod.sqlite3 && ALLOW_TO_SKIP_SEED=0 PRISMA migrate deploy`;
   }
 
-  listBackups(project: Project): string {
+  listBackups(project: Project, configPath?: string): string {
     const dirPath = getDatabaseDirPath(project);
-    return `litestream ltx ${getLitestreamConfigOption(project)} ${dirPath}/prod.sqlite3`;
+    return `litestream ltx ${getLitestreamConfigOption(project, configPath)} ${dirPath}/prod.sqlite3`;
   }
 
   migrate(project: Project, additionalOptions = ''): string {
@@ -72,9 +72,9 @@ class PrismaScripts {
     return steps.filter(Boolean).join(' && ');
   }
 
-  restore(project: Project, outputPath: string): string {
+  restore(project: Project, outputPath: string, configPath?: string): string {
     const dirPath = getDatabaseDirPath(project);
-    return `rm -Rf ${outputPath}*; litestream restore ${getLitestreamConfigOption(project)} -o ${outputPath} ${dirPath}/prod.sqlite3`;
+    return `rm -Rf ${outputPath}*; litestream restore ${getLitestreamConfigOption(project, configPath)} -o ${outputPath} ${dirPath}/prod.sqlite3`;
   }
 
   seed(project: Project, scriptPath?: string): string {
@@ -115,7 +115,9 @@ function getPrismaBaseDir(project: Project): string | undefined {
     ?.dbPath;
 }
 
-function getLitestreamConfigOption(project: Project): string {
+function getLitestreamConfigOption(project: Project, configPath?: string): string {
+  if (configPath) return `-config "${configPath}"`;
+
   const localConfigPath = path.join(project.dirPath, LITESTREAM_CONFIG_FILE_NAME);
   if (fs.existsSync(localConfigPath)) return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
   if (fs.existsSync(DEFAULT_LITESTREAM_CONFIG_PATH)) return `-config ${DEFAULT_LITESTREAM_CONFIG_PATH}`;
