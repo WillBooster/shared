@@ -22,7 +22,7 @@ describe('drizzleScripts Litestream commands', () => {
     const command = drizzleScripts.restore(project, '/tmp/restored.sqlite3');
 
     expect(command).toBe(
-      `rm -Rf "/tmp/restored.sqlite3"*; litestream restore -config ./litestream.yml -o "/tmp/restored.sqlite3" "${path.join(project.rootDirPath, 'drizzle/mount/prod.sqlite3')}"`
+      `rm -f "/tmp/restored.sqlite3" "/tmp/restored.sqlite3-wal" "/tmp/restored.sqlite3-shm"; litestream restore -config ./litestream.yml -o "/tmp/restored.sqlite3" "${path.join(project.rootDirPath, 'drizzle/mount/prod.sqlite3')}"`
     );
   });
 
