@@ -137,6 +137,22 @@ test('keeps build-ts as a runtime dependency when seed script uses it', async ()
   expect(packageJson.devDependencies?.['build-ts']).toBeUndefined();
 });
 
+test('keeps build-ts as a dev dependency when seed script uses a different hyphenated command', async () => {
+  const oldBuildTsVersion = '0.0.1';
+  const packageJson = await generatePackageJsonFrom({
+    devDependencies: {
+      'build-ts': oldBuildTsVersion,
+    },
+    scripts: {
+      seed: 'build-ts-compiler run db/seed.ts && my-build-ts run db/seed.ts',
+    },
+  });
+
+  expect(packageJson.dependencies?.['build-ts']).toBeUndefined();
+  expect(packageJson.devDependencies?.['build-ts']).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.devDependencies?.['build-ts']).not.toBe(oldBuildTsVersion);
+});
+
 test('keeps wb as a runtime dependency when postinstall uses it', async () => {
   const oldWbVersion = '0.0.1';
   const packageJson = await generatePackageJsonFrom({

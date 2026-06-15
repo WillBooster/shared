@@ -392,7 +392,7 @@ function shouldKeepBuildTsAsRuntimeDependency(jsonObj: PackageJson): boolean {
 function doesSeedCommandUseBuildTs(seedCommand: unknown): boolean {
   // Production Docker images run seed scripts after devDependencies are pruned,
   // so TypeScript seed runners must remain available at runtime.
-  return typeof seedCommand === 'string' && /\bbuild-ts\b/u.test(seedCommand);
+  return typeof seedCommand === 'string' && /(?<![\w-])build-ts(?![\w-])/u.test(seedCommand);
 }
 
 async function normalizePackageMetadata(
