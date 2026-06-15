@@ -47,14 +47,14 @@ class DrizzleScripts {
       && litestream restore ${litestreamConfigOption} -o "${dbPath}" "${dbPath}" && ls -ahl "${dbPath}" && ALLOW_TO_SKIP_SEED=0 ${this.deploy(project)}`;
   }
 
-  listBackups(project: Project): string {
+  listBackups(project: Project, configPath?: string): string {
     const dbPath = getAbsoluteSqliteDbPath(project, 'list-backups');
-    return `litestream ltx ${getLitestreamConfigOption(project)} "${dbPath}"`;
+    return `litestream ltx ${getLitestreamConfigOption(project, configPath)} "${dbPath}"`;
   }
 
-  restore(project: Project, outputPath: string): string {
+  restore(project: Project, outputPath: string, configPath?: string): string {
     const dbPath = getAbsoluteSqliteDbPath(project, 'restore');
-    return `${buildRemoveSqliteDbCommandForPath(outputPath)}; litestream restore ${getLitestreamConfigOption(project)} -o "${outputPath}" "${dbPath}"`;
+    return `${buildRemoveSqliteDbCommandForPath(outputPath)}; litestream restore ${getLitestreamConfigOption(project, configPath)} -o "${outputPath}" "${dbPath}"`;
   }
 
   generate(_project: Project, additionalOptions = ''): string {
@@ -113,7 +113,9 @@ function getSqliteDbPath(project: Project): string | undefined {
   return getAbsoluteFileDatabaseUrlPath(project);
 }
 
-function getLitestreamConfigOption(project: Project): string {
+function getLitestreamConfigOption(project: Project, configPath?: string): string {
+  if (configPath) return `-config "${configPath}"`;
+
   const localConfigPath = path.join(project.dirPath, LITESTREAM_CONFIG_FILE_NAME);
   if (fs.existsSync(localConfigPath)) return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
   if (fs.existsSync(DEFAULT_LITESTREAM_CONFIG_PATH)) return `-config ${DEFAULT_LITESTREAM_CONFIG_PATH}`;

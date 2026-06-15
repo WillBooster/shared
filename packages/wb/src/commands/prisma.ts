@@ -124,14 +124,22 @@ const generateCommand: CommandModule<unknown, InferredOptionTypes<typeof builder
   },
 };
 
-const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
+const litestreamConfigBuilder = {
+  ...builder,
+  config: {
+    description: 'Path of the Litestream configuration file.',
+    type: 'string',
+  },
+} as const;
+
+const listBackupsCommand: CommandModule<unknown, InferredOptionTypes<typeof litestreamConfigBuilder>> = {
   command: 'list-backups',
   describe: 'List Litestream backups',
-  builder,
+  builder: litestreamConfigBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db list-backups', allProjects)) {
-      await runWithSpawn(getDatabaseOrmScripts(orm).listBackups(project), project, argv);
+      await runWithSpawn(getDatabaseOrmScripts(orm).listBackups(project, argv.config), project, argv);
     }
   },
 };
@@ -214,7 +222,7 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
 };
 
 const restoreBuilder = {
-  ...builder,
+  ...litestreamConfigBuilder,
   output: {
     description: 'Output path of the restored database. Defaults to "<db|drizzle|prisma>/restored.sqlite3".',
     type: 'string',
@@ -229,7 +237,7 @@ const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreB
     const allProjects = await findDatabaseOrmProjects(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db restore', allProjects)) {
       const output = argv.output ?? getDefaultRestoreOutput(project, orm);
-      await runWithSpawn(getDatabaseOrmScripts(orm).restore(project, output), project, argv);
+      await runWithSpawn(getDatabaseOrmScripts(orm).restore(project, output, argv.config), project, argv);
     }
   },
 };

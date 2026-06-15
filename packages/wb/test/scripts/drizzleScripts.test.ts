@@ -16,6 +16,16 @@ describe('drizzleScripts Litestream commands', () => {
     );
   });
 
+  it('lists backups with an explicit Litestream config path', () => {
+    const project = createDrizzleProject();
+
+    const command = drizzleScripts.listBackups(project, '/tmp/litestream.yml');
+
+    expect(command).toBe(
+      `litestream ltx -config "/tmp/litestream.yml" "${path.join(project.rootDirPath, 'drizzle/mount/prod.sqlite3')}"`
+    );
+  });
+
   it('restores backups to the requested output path', () => {
     const project = createDrizzleProject();
 
@@ -23,6 +33,16 @@ describe('drizzleScripts Litestream commands', () => {
 
     expect(command).toBe(
       `rm -f "/tmp/restored.sqlite3" "/tmp/restored.sqlite3-wal" "/tmp/restored.sqlite3-shm"; litestream restore -config ./litestream.yml -o "/tmp/restored.sqlite3" "${path.join(project.rootDirPath, 'drizzle/mount/prod.sqlite3')}"`
+    );
+  });
+
+  it('restores backups with an explicit Litestream config path', () => {
+    const project = createDrizzleProject();
+
+    const command = drizzleScripts.restore(project, '/tmp/restored.sqlite3', '/tmp/litestream.yml');
+
+    expect(command).toBe(
+      `rm -f "/tmp/restored.sqlite3" "/tmp/restored.sqlite3-wal" "/tmp/restored.sqlite3-shm"; litestream restore -config "/tmp/litestream.yml" -o "/tmp/restored.sqlite3" "${path.join(project.rootDirPath, 'drizzle/mount/prod.sqlite3')}"`
     );
   });
 
