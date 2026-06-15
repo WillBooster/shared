@@ -386,7 +386,13 @@ function shouldKeepWbAsRuntimeDependency(jsonObj: PackageJson): boolean {
 
 function shouldKeepBuildTsAsRuntimeDependency(jsonObj: PackageJson): boolean {
   const prisma = jsonObj.prisma as { seed?: unknown } | undefined;
-  return typeof prisma?.seed === 'string' && prisma.seed.includes(buildTsDependency);
+  return doesSeedCommandUseBuildTs(prisma?.seed) || doesSeedCommandUseBuildTs(jsonObj.scripts?.seed);
+}
+
+function doesSeedCommandUseBuildTs(seedCommand: unknown): boolean {
+  // Production Docker images run seed scripts after devDependencies are pruned,
+  // so TypeScript seed runners must remain available at runtime.
+  return typeof seedCommand === 'string' && /(?<![\w-])build-ts(?![\w-])/u.test(seedCommand);
 }
 
 async function normalizePackageMetadata(
