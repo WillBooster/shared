@@ -23,6 +23,7 @@ const commonContent = `
 .idea/copilot.*
 .idea/copilot/chatSessions/
 .playwright-cli/
+.playwright-mcp/
 .serena/
 .tmp/
 .wb/
