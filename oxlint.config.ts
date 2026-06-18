@@ -1,7 +1,9 @@
 // wbfy:start oxlint-base
 import oxlintBaseConfig from '@willbooster/oxlint-config';
 
-const oxlintResolvedConfig = oxlintBaseConfig;
+// Keep a package-local copy so repositories can add settings outside
+// managed blocks without mutating the shared imported config object.
+const oxlintResolvedConfig = { ...oxlintBaseConfig };
 // wbfy:end oxlint-base
 
 // wbfy:start oxlint-export
