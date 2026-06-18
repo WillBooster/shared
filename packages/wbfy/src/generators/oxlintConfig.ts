@@ -104,7 +104,9 @@ function getOxlintBaseConfigModule(config: PackageConfig): string {
 
 function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean): string {
   if (isRootConfig) {
-    return `const oxlintResolvedConfig = ${baseConfigName};`;
+    return `// Keep a package-local copy so repositories can add settings outside
+// managed blocks without mutating the shared imported config object.
+const oxlintResolvedConfig = { ...${baseConfigName} };`;
   }
 
   return `// Oxlint only supports type-aware options in the root config, while it
