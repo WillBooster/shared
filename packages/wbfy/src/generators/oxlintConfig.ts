@@ -105,8 +105,10 @@ function getOxlintBaseConfigModule(config: PackageConfig): string {
 function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean): string {
   if (isRootConfig) {
     return `// Keep a package-local copy so repositories can add settings outside
-// managed blocks without mutating the shared imported config object.
-const oxlintResolvedConfig = { ...${baseConfigName} };`;
+// managed blocks without mutating the shared imported config object. The plain
+// record annotation prevents TypeScript from exporting oxlint's internal helper
+// types through repository config files.
+const oxlintResolvedConfig: Record<string, unknown> = { ...${baseConfigName} };`;
   }
 
   return `// Oxlint only supports type-aware options in the root config, while it
