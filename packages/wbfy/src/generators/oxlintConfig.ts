@@ -108,13 +108,13 @@ function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean)
 // managed blocks without mutating the shared imported config object. The plain
 // record annotation prevents TypeScript from exporting oxlint's internal helper
 // types through repository config files.
-const oxlintResolvedConfig: Record<string, unknown> = { ...${baseConfigName} };`;
+const oxlintResolvedConfig: Record<string, unknown> = structuredClone(${baseConfigName});`;
   }
 
   return `// Oxlint only supports type-aware options in the root config, while it
 // still auto-discovers package-local config files in monorepos. Keep this as a
-// plain object copy so package typechecks do not export oxlint's private helper
+// structured clone so package typechecks do not export oxlint's private helper
 // types through the generated config variable.
-const oxlintResolvedConfig: Record<string, unknown> = { ...${baseConfigName} };
+const oxlintResolvedConfig: Record<string, unknown> = structuredClone(${baseConfigName});
 delete oxlintResolvedConfig.options;`;
 }
