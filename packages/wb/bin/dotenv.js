@@ -4,6 +4,8 @@ import path from 'node:path';
 import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
 
+const shutdownSignals = new Set(['SIGINT', 'SIGTERM', 'SIGQUIT']);
+
 export function runDotenvCommand(args) {
   const { command } = parseDotenvArgs(args);
   if (command.length === 0) {
@@ -24,7 +26,15 @@ export function runDotenvCommand(args) {
     console.error(error);
     process.exit(1);
   });
+  for (const signal of shutdownSignals) {
+    process.once(signal, () => {
+      child.kill(signal);
+    });
+  }
   child.on('exit', (code, signal) => {
+    if (signal && shutdownSignals.has(signal)) {
+      process.exit(0);
+    }
     if (signal) {
       process.kill(process.pid, signal);
       return;
