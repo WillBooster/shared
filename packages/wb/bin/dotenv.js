@@ -22,17 +22,25 @@ export function runDotenvCommand(args) {
     env: process.env,
     stdio: 'inherit',
   });
+  const signalHandlers = new Map();
+  let forwardedShutdownSignal;
   child.on('error', (error) => {
     console.error(error);
     process.exit(1);
   });
   for (const signal of shutdownSignals) {
-    process.once(signal, () => {
+    const signalHandler = () => {
+      forwardedShutdownSignal = signal;
       child.kill(signal);
-    });
+    };
+    signalHandlers.set(signal, signalHandler);
+    process.once(signal, signalHandler);
   }
   child.on('exit', (code, signal) => {
-    if (signal && shutdownSignals.has(signal)) {
+    for (const [shutdownSignal, signalHandler] of signalHandlers) {
+      process.off(shutdownSignal, signalHandler);
+    }
+    if (signal && signal === forwardedShutdownSignal) {
       process.exit(0);
     }
     if (signal) {
