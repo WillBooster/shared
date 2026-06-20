@@ -10,6 +10,8 @@ interface ParsedDotenvArgs {
   command: string[];
 }
 
+const shutdownSignals = new Set<NodeJS.Signals>(['SIGINT', 'SIGTERM', 'SIGQUIT']);
+
 export const dotenvCommand: CommandModule = {
   command: 'dotenv [args..]',
   describe: 'Load .env files and run a command.',
@@ -38,11 +40,27 @@ async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<vo
     env: process.env,
     stdio: 'inherit',
   });
+  const signalHandlers = new Map<NodeJS.Signals, () => void>();
+  let forwardedShutdownSignal: NodeJS.Signals | undefined;
   child.on('error', (error) => {
     console.error(error);
     process.exit(1);
   });
+  for (const signal of shutdownSignals) {
+    const signalHandler = (): void => {
+      forwardedShutdownSignal = signal;
+      child.kill(signal);
+    };
+    signalHandlers.set(signal, signalHandler);
+    process.once(signal, signalHandler);
+  }
   child.on('exit', (code, signal) => {
+    for (const [shutdownSignal, signalHandler] of signalHandlers) {
+      process.off(shutdownSignal, signalHandler);
+    }
+    if (signal && signal === forwardedShutdownSignal) {
+      process.exit(0);
+    }
     if (signal) {
       process.kill(process.pid, signal);
       return;
