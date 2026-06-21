@@ -40,18 +40,27 @@ function getConfigContent(config: PackageConfig): string {
     return `${managedConfigBlocks.getBlock(
       'base',
       `/// <reference types="node" />
+import type { OxfmtConfig } from 'oxfmt';
+
 // oxlint-disable unicorn/prefer-module -- Oxfmt config files are only auto-discovered as .ts, and CommonJS avoids ESM package loading issues.
 const oxfmtConfig = require('@willbooster/oxfmt-config');
 
-const oxfmtResolvedConfig = oxfmtConfig.default ?? oxfmtConfig;`
+const oxfmtResolvedConfig: OxfmtConfig = oxfmtConfig.default ?? oxfmtConfig;`
     )}
 
 ${managedConfigBlocks.getBlock('export', 'module.exports = oxfmtResolvedConfig;')}
 `;
   }
 
-  return `${managedConfigBlocks.getBlock('base', "import config from '@willbooster/oxfmt-config';")}
+  return `${managedConfigBlocks.getBlock(
+    'base',
+    `import type { OxfmtConfig } from 'oxfmt';
 
-${managedConfigBlocks.getBlock('export', 'export default config;')}
+import config from '@willbooster/oxfmt-config';
+
+const oxfmtResolvedConfig: OxfmtConfig = config;`
+  )}
+
+${managedConfigBlocks.getBlock('export', 'export default oxfmtResolvedConfig;')}
 `;
 }
