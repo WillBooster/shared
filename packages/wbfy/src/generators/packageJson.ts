@@ -268,8 +268,14 @@ async function applyPackageJsonConventions(
       }
       if (doesContainPlaywrightRuntimeImport(config.dirPath)) {
         // Runtime source imports need the browser automation package in production builds;
-        // @playwright/test only satisfies test/config imports.
-        if (!jsonObj.dependencies.playwright) dependencies.push('playwright');
+        // @playwright/test only satisfies test/config imports. Keep the versions aligned
+        // because Playwright rejects mixed test/runtime package copies during test collection.
+        const playwrightVersion = getAlignedPlaywrightVersion(jsonObj);
+        if (playwrightVersion) {
+          jsonObj.dependencies.playwright = playwrightVersion;
+        } else if (!jsonObj.dependencies.playwright) {
+          dependencies.push('playwright');
+        }
       } else {
         delete jsonObj.dependencies.playwright;
       }
@@ -1036,6 +1042,10 @@ function doesContainPlaywrightRuntimeImport(dirPath: string): boolean {
       return false;
     }
   });
+}
+
+function getAlignedPlaywrightVersion(jsonObj: WritablePackageJson): string | undefined {
+  return jsonObj.dependencies['@playwright/test'] ?? jsonObj.devDependencies['@playwright/test'];
 }
 
 function shouldUpdateExistingManagedDependency(
