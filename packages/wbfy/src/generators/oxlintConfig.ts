@@ -77,6 +77,8 @@ function getConfigContent(config: PackageConfig): string {
     return `${managedConfigBlocks.getBlock(
       'base',
       `/// <reference types="node" />
+import type { OxlintConfig } from 'oxlint';
+
 // oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
 const oxlintBaseConfig = require('@willbooster/oxlint-config');
 
@@ -89,7 +91,9 @@ ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;
 
   return `${managedConfigBlocks.getBlock(
     'base',
-    `import oxlintBaseConfig from '${oxlintBaseConfigModule}';
+    `import type { OxlintConfig } from 'oxlint';
+
+import oxlintBaseConfig from '${oxlintBaseConfigModule}';
 
 ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
   )}
@@ -105,16 +109,14 @@ function getOxlintBaseConfigModule(config: PackageConfig): string {
 function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean): string {
   if (isRootConfig) {
     return `// Keep a package-local copy so repositories can add settings outside
-// managed blocks without mutating the shared imported config object. The plain
-// record assertion prevents TypeScript from exporting oxlint's internal helper
-// types through repository config files.
-const oxlintResolvedConfig = structuredClone(${baseConfigName}) as Record<string, unknown>;`;
+// managed blocks without mutating the shared imported config object.
+const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});`;
   }
 
   return `// Oxlint only supports type-aware options in the root config, while it
 // still auto-discovers package-local config files in monorepos. Keep this as a
-// structured clone so package typechecks do not export oxlint's private helper
-// types through the generated config variable.
-const oxlintResolvedConfig = structuredClone(${baseConfigName}) as Record<string, unknown>;
+// structured clone so packages can delete root-only settings without mutating
+// the shared imported config object.
+const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
 delete oxlintResolvedConfig.options;`;
 }
