@@ -87,6 +87,8 @@ const obsoleteLintDependencies = [
 const micromatchPackageNames = new Set(['micromatch', '@types/micromatch']);
 const micromatchImportPattern =
   /\bfrom\s+['"]micromatch['"]|\brequire\(\s*['"]micromatch['"]\s*\)|\bimport\(\s*['"]micromatch['"]\s*\)/u;
+const playwrightImportPattern =
+  /\bfrom\s+['"]playwright['"]|\brequire\(\s*['"]playwright['"]\s*\)|\bimport\(\s*['"]playwright['"]\s*\)/u;
 
 const latestDependencyVersionCache = new Map<string, string>();
 const npmPackageTimesCache = new Map<string, Record<string, string>>();
@@ -264,7 +266,13 @@ async function applyPackageJsonConventions(
       if (!hasArtillery && !jsonObj.dependencies['@playwright/test']) {
         devDependencies.push('@playwright/test');
       }
-      delete jsonObj.dependencies.playwright;
+      if (doesContainPlaywrightRuntimeImport(config.dirPath)) {
+        // Runtime source imports need the browser automation package in production builds;
+        // @playwright/test only satisfies test/config imports.
+        if (!jsonObj.dependencies.playwright) dependencies.push('playwright');
+      } else {
+        delete jsonObj.dependencies.playwright;
+      }
       delete jsonObj.devDependencies.playwright;
     }
 
@@ -1009,6 +1017,21 @@ function doesProductCodeImportMicromatch(dirPath: string): boolean {
   return filePaths.some((filePath) => {
     try {
       return micromatchImportPattern.test(fs.readFileSync(path.resolve(dirPath, filePath), 'utf8'));
+    } catch {
+      return false;
+    }
+  });
+}
+
+function doesContainPlaywrightRuntimeImport(dirPath: string): boolean {
+  const filePaths = fg.globSync('{app,src}/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}', {
+    cwd: dirPath,
+    dot: true,
+    ignore: globIgnore,
+  });
+  return filePaths.some((filePath) => {
+    try {
+      return playwrightImportPattern.test(fs.readFileSync(path.resolve(dirPath, filePath), 'utf8'));
     } catch {
       return false;
     }
