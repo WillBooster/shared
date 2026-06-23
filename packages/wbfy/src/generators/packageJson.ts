@@ -264,8 +264,14 @@ async function applyPackageJsonConventions(
       if (!hasArtillery && !jsonObj.dependencies['@playwright/test']) {
         devDependencies.push('@playwright/test');
       }
-      delete jsonObj.dependencies.playwright;
-      delete jsonObj.devDependencies.playwright;
+      if (config.depending.playwrightRuntime) {
+        // Runtime imports need the standalone package after Docker pruning removes devDependencies.
+        jsonObj.dependencies.playwright ??= jsonObj.devDependencies.playwright;
+        delete jsonObj.devDependencies.playwright;
+      } else {
+        delete jsonObj.dependencies.playwright;
+        delete jsonObj.devDependencies.playwright;
+      }
     }
 
     if (config.doesContainSubPackageJsons) {
