@@ -40,6 +40,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       genI18nTs: false,
       litestream: false,
       next: false,
+      playwrightRuntime: false,
       playwrightTest: false,
       prisma: false,
       pyright: false,

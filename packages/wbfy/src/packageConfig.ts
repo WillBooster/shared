@@ -54,6 +54,7 @@ export interface PackageConfig {
     litestream: boolean;
     next: boolean;
     playwrightTest: boolean;
+    playwrightRuntime: boolean;
     prisma: boolean;
     pyright: boolean;
     react: boolean;
@@ -214,6 +215,7 @@ export async function getPackageConfig(
         next: !!dependencies.next,
         playwrightTest:
           !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'] || !!devDependencies.playwright,
+        playwrightRuntime: doesImportPlaywrightAtRuntime(dirPath),
         prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
         pyright: !!devDependencies.pyright,
         reactNative: !!dependencies['react-native'],
@@ -319,6 +321,20 @@ function readMiseTaskCommand(value: unknown): string {
 
 function containsAny(pattern: string, dirPath: string): boolean {
   return fg.globSync(pattern, { dot: true, cwd: dirPath, ignore: globIgnore }).length > 0;
+}
+
+function doesImportPlaywrightAtRuntime(dirPath: string): boolean {
+  const files = fg.globSync('{app,src}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}', {
+    dot: true,
+    cwd: dirPath,
+    ignore: [...globIgnore, '**/__tests__/**', '**/*.spec.*', '**/*.test.*', '**/playwright.config.*'],
+  });
+  return files.some((file) => {
+    const content = fs.readFileSync(path.resolve(dirPath, file), 'utf8');
+    return /\bfrom\s+['"]playwright['"]|\bimport\s*\(\s*['"]playwright['"]\s*\)|\brequire\s*\(\s*['"]playwright['"]\s*\)/u.test(
+      content
+    );
+  });
 }
 
 async function fetchRepoInfo(dirPath: string, packageJson: PackageJson): Promise<Record<string, unknown> | undefined> {
