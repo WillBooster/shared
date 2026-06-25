@@ -202,9 +202,11 @@ test('uses bun runner for generated Python scripts in bun projects', async () =>
 
   expect(packageJson.scripts).toMatchObject({
     'common/ci-setup': 'bun run setup-uv',
+    'lint-fix': 'bun --bun wb lint --fix',
     'setup-uv': 'uv sync --frozen',
   });
   expect(packageJson.scripts?.['common/ci-setup']).not.toContain('yarn');
+  expect(packageJson.scripts?.['lint-fix']).not.toContain('yarn');
 });
 
 async function generatePackageJsonFrom(
