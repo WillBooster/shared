@@ -193,10 +193,24 @@ test('keeps custom database scripts for drizzle projects', async () => {
   });
 });
 
+test('uses bun runner for generated Python scripts in bun projects', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: {} },
+    { doesContainUvLock: true, isBun: true },
+    { files: { 'src/example.py': '', 'test/unit/test_example.py': '' } }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'common/ci-setup': 'bun run setup-uv',
+    'setup-uv': 'uv sync --frozen',
+  });
+  expect(packageJson.scripts?.['common/ci-setup']).not.toContain('yarn');
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},
-  options: { createI18nDir?: boolean } = {}
+  options: { createI18nDir?: boolean; files?: Record<string, string> } = {}
 ): Promise<GeneratedPackageJson> {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
   const packageJsonPath = path.join(dirPath, 'package.json');
@@ -204,6 +218,11 @@ async function generatePackageJsonFrom(
   try {
     if (options.createI18nDir) {
       await fs.mkdir(path.join(dirPath, 'i18n'));
+    }
+    for (const [relativePath, content] of Object.entries(options.files ?? {})) {
+      const filePath = path.join(dirPath, relativePath);
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, content);
     }
     await fs.writeFile(packageJsonPath, JSON.stringify(initialPackageJson));
 

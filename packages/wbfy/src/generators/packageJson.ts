@@ -470,7 +470,8 @@ async function normalizePackageMetadata(
       if (jsonObj.scripts.postinstall === 'poetry install') {
         delete jsonObj.scripts.postinstall;
       }
-      jsonObj.scripts['common/ci-setup'] = `yarn setup-${pythonPackageManager}`;
+      const scriptRunner = config.isBun ? 'bun run' : 'yarn';
+      jsonObj.scripts['common/ci-setup'] = `${scriptRunner} setup-${pythonPackageManager}`;
       delete jsonObj.scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
       delete jsonObj.scripts['setup-poetry-asdf'];
       jsonObj.scripts[`setup-${pythonPackageManager}`] = getPythonSetupCommand(pythonPackageManager);
@@ -495,7 +496,7 @@ async function normalizePackageMetadata(
           jsonObj.scripts.lint = `${pythonRunner} flake8 ${dirNamesStr} && ${jsonObj.scripts.lint}`;
         } else {
           jsonObj.scripts.lint = `${pythonRunner} flake8 ${dirNamesStr}`;
-          jsonObj.scripts['lint-fix'] = 'yarn lint';
+          jsonObj.scripts['lint-fix'] = `${scriptRunner} lint`;
         }
         jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format, config);
         dependencyUpdates.pythonDevDependencies.push('black', 'isort', 'flake8');
