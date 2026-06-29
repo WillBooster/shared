@@ -60,7 +60,7 @@
     "@willbooster/oxlint-config": "1.4.8",
     "@willbooster/wb": "13.22.18",
     "babel-loader": "10.1.1",
-    "build-ts": "17.1.29",
+    "build-ts": "17.1.30",
     "oxfmt": "0.56.0",
     "oxlint": "1.71.0",
     "oxlint-tsgolint": "0.23.0",
