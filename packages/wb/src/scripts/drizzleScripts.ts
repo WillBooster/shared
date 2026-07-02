@@ -68,6 +68,10 @@ class DrizzleScripts {
   seed(project: Project, scriptPath?: string): string {
     if (scriptPath) return `BUN build-ts run ${scriptPath}`;
     if (project.packageJson.scripts?.seed) return 'YARN run seed';
+    const defaultSeedPath = path.join('db', 'seed.ts');
+    if (fs.existsSync(path.join(project.dirPath, defaultSeedPath))) {
+      return project.usesBunPackageManager ? `BUN ${defaultSeedPath}` : `BUN build-ts run ${defaultSeedPath}`;
+    }
     return 'true';
   }
 
