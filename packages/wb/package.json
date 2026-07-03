@@ -54,7 +54,7 @@
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
     "at-decorators": "7.1.0",
-    "build-ts": "17.1.30",
+    "build-ts": "17.1.31",
     "oxfmt": "0.57.0",
     "oxlint": "1.72.0",
     "oxlint-tsgolint": "0.24.0",
