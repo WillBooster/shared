@@ -50,6 +50,7 @@ export type LintCommandArgv = ArgumentsCamelCase<LintCommandOptions> & {
 const oxlintExtensions = new Set(['astro', 'cjs', 'cts', 'js', 'jsx', 'mjs', 'mts', 'svelte', 'ts', 'tsx', 'vue']);
 const pythonExtensions = new Set(['py']);
 const dartExtensions = new Set(['dart']);
+const rustExtensions = new Set(['rs']);
 const oxfmtExtensions = new Set([
   ...oxlintExtensions,
   'css',
@@ -128,6 +129,15 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   const oxfmtFilePathsByProject = new Map<Project, string[]>();
   const pythonFilePathsByProject = new Map<Project, string[]>();
   const dartFilePathsByProject = new Map<Project, string[]>();
+  // `cargo fmt --all` always formats the whole workspace, so we track target
+  // projects rather than individual file paths. Every project with its own
+  // `Cargo.toml` runs its own `cargo fmt --all`; we intentionally do not dedup
+  // by directory. A nested or sibling crate can be an independent Cargo
+  // workspace that a parent's `cargo fmt --all` never reaches, so skipping it
+  // would leave it unformatted, while any genuinely overlapping runs are
+  // harmless because rustfmt is deterministic and idempotent. Deduping by real
+  // workspace membership would require invoking `cargo locate-project`.
+  const cargoFormatProjects = new Set<Project>();
   const prettierFilePaths: string[] = [];
   const packageJsonFilePaths: string[] = [];
   let missingLintToolForExplicitFiles = false;
@@ -169,6 +179,10 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
           const dartFilePaths = dartFilePathsByProject.get(project) ?? [];
           dartFilePaths.push(lintPath);
           dartFilePathsByProject.set(project, dartFilePaths);
+          if (fileKind !== 'directory') continue;
+        }
+        if (project.hasCargoToml && (fileKind === 'directory' || rustExtensions.has(extension))) {
+          cargoFormatProjects.add(project);
           if (fileKind !== 'directory') continue;
         }
         if (fileKind === 'directory' || supportsLintingExtension(project, extension)) {
@@ -245,6 +259,9 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
       }
     }
     if (shouldRunFormatters) {
+      for (const project of cargoFormatProjects) {
+        formatterCommands.push({ command: buildCargoFormatCommand(), project });
+      }
       for (const [project, oxfmtFilePaths] of oxfmtFilePathsByProject) {
         formatterCommands.push({ command: buildOxfmtCommand(oxfmtFilePaths), project });
       }
@@ -263,6 +280,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
         if (project.hasOxfmt) formatterCommands.push({ command: buildOxfmtCommand(), project });
         if (project.hasPoetryLock) formatterCommands.push({ command: buildPoetryFormatCommand(), project });
         if (project.hasPubspecYaml) formatterCommands.push({ command: buildDartFormatCommand(), project });
+        if (project.hasCargoToml) formatterCommands.push({ command: buildCargoFormatCommand(), project });
       }
     }
   }
@@ -438,6 +456,13 @@ export function buildPoetryFormatCommand(files?: string[]): string {
 export function buildPoetryLintCommand(argv: Partial<Pick<LintCommandOptions, 'quiet'>>, files?: string[]): string {
   const targets = files && files.length > 0 ? files : ['.'];
   return buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...targets]);
+}
+
+export function buildCargoFormatCommand(): string {
+  // Formatting must go through cargo (not rustfmt on individual files) so each
+  // crate's edition and rustfmt configuration are respected; `--all` covers
+  // every workspace member and is a no-op suffix for single-crate projects.
+  return buildShellCommand(['cargo', 'fmt', '--all']);
 }
 
 export function buildDartFormatCommand(files?: string[]): string {

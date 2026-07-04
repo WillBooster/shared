@@ -183,6 +183,15 @@ export class Project {
   }
 
   @memoizeOne
+  get hasCargoToml(): boolean {
+    // Only the project's own directory is checked because `cargo fmt --all`
+    // covers the whole workspace; matching the root directory too would make
+    // every descendant project run the same workspace-wide command in
+    // parallel.
+    return fs.existsSync(path.join(this.dirPath, 'Cargo.toml'));
+  }
+
+  @memoizeOne
   get preferredLinter(): 'oxlint' | undefined {
     if (this.hasOxlint) return 'oxlint';
     return;
