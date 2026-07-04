@@ -129,8 +129,14 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   const oxfmtFilePathsByProject = new Map<Project, string[]>();
   const pythonFilePathsByProject = new Map<Project, string[]>();
   const dartFilePathsByProject = new Map<Project, string[]>();
-  // `cargo fmt --all` always formats the whole workspace, so only the target
-  // projects are tracked, not individual file paths.
+  // `cargo fmt --all` always formats the whole workspace, so we track target
+  // projects rather than individual file paths. Every project with its own
+  // `Cargo.toml` runs its own `cargo fmt --all`; we intentionally do not dedup
+  // by directory. A nested or sibling crate can be an independent Cargo
+  // workspace that a parent's `cargo fmt --all` never reaches, so skipping it
+  // would leave it unformatted, while any genuinely overlapping runs are
+  // harmless because rustfmt is deterministic and idempotent. Deduping by real
+  // workspace membership would require invoking `cargo locate-project`.
   const cargoFormatProjects = new Set<Project>();
   const prettierFilePaths: string[] = [];
   const packageJsonFilePaths: string[] = [];
