@@ -93,7 +93,11 @@ ${managedConfigBlocks.getBlock('export', 'module.exports = oxlintResolvedConfig;
     'base',
     `import type { OxlintConfig } from 'oxlint';
 
-import oxlintBaseConfig from '${oxlintBaseConfigModule}';
+// Import the module namespace so stale installs with older package export
+// metadata still expose the typed config through the actual default export.
+import * as oxlintBaseConfigModule from '${oxlintBaseConfigModule}';
+
+const oxlintBaseConfig = (oxlintBaseConfigModule as { default: OxlintConfig }).default;
 
 ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
   )}
