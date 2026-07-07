@@ -26,6 +26,7 @@ const commonContent = `
 .playwright-mcp/
 .serena/
 .tmp/
+.tokensave/
 .wb/
 __generated__/
 @willbooster/
