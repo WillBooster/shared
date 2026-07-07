@@ -17,6 +17,7 @@ test-fixtures/
 .playwright-mcp/
 .serena/
 .tmp/
+.tokensave/
 .wb/
 __generated__/
 @willbooster/
