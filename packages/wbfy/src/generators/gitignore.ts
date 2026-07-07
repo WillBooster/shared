@@ -13,14 +13,14 @@ import { promisePool } from '../utils/promisePool.js';
 const defaultNames = ['windows', 'macos', 'linux', 'jetbrains', 'visualstudiocode', 'emacs', 'vim', 'yarn'];
 
 const commonContent = `
+__generated__/
 !.keep
-.antigravitycli/
 .aider*
+.antigravitycli/
+.claude/*.local.*
 .claude/scheduled_tasks.lock
-.claude/settings.local.json
-.env.production
-*/mount/*.hash
 .devcontainer/
+.env.production
 .idea/AugmentWebviewStateStore.xml
 .idea/copilot.*
 .idea/copilot/chatSessions/
@@ -30,8 +30,9 @@ const commonContent = `
 .tmp/
 .tokensave/
 .wb/
-__generated__/
 @willbooster/
+*/mount/*.hash
+CLAUDE.local.md
 dist/
 drizzle/mount/
 temp/
