@@ -16,6 +16,8 @@ const commonContent = `
 !.keep
 .antigravitycli/
 .aider*
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
 .env.production
 */mount/*.hash
 .devcontainer/
