@@ -29,7 +29,9 @@ __generated__/
 .serena/
 .tmp/
 .tokensave/
+.vinext/
 .wb/
+.wrangler/
 @willbooster/
 */mount/*.hash
 CLAUDE.local.md
