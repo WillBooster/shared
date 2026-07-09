@@ -3,6 +3,7 @@ import type { Project } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
+import { wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
@@ -110,7 +111,7 @@ export abstract class BaseScripts {
   protected buildProductionCommand(project: Project, argv: ScriptArgv, commands: string[]): string {
     const migrationCommands = [
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
-      ...(project.hasDrizzle ? [drizzleScripts.migrateForStart(project)] : []),
+      ...(project.hasDrizzle ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))] : []),
     ];
     return [...migrationCommands.flatMap((cmd) => cmd.split('&&')), ...commands]
       .filter(Boolean)

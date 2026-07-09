@@ -9,6 +9,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     isReferredByOtherRepo: false,
     repository: 'github:WillBooster/example',
     isWillBoosterRepo: true,
+    isCloudflare: false,
     isRailway: false,
     isBun: false,
     isEsmPackage: false,
@@ -48,6 +49,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       reactNative: false,
       semanticRelease: false,
       storybook: false,
+      vinext: false,
       wb: false,
     },
     release: {

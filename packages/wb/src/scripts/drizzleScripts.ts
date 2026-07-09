@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { getAbsoluteFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
+import { buildMaterializeLocalD1Command, getD1DatabaseName, LOCAL_WRANGLER_STATE_DIR } from '../utils/wrangler.js';
 
 const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
 const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
@@ -14,6 +15,13 @@ class DrizzleScripts {
   }
 
   reset(project: Project, additionalOptions = ''): string {
+    const d1DatabaseName = getD1DatabaseName(project);
+    if (d1DatabaseName) {
+      // Remove the whole local wrangler state, then re-materialize the D1 SQLite file. Its path is
+      // deterministic, so a DATABASE_URL exported before the removal stays valid.
+      return `rm -Rf "${LOCAL_WRANGLER_STATE_DIR}" && ${buildMaterializeLocalD1Command(d1DatabaseName)} && ${this.migrate(project, additionalOptions)}`;
+    }
+
     const removeCommand = buildRemoveSqliteDbCommand(project);
     if (!removeCommand) {
       return "echo 'wb db reset supports Drizzle only when file: DATABASE_URL is set.' && exit 1";
@@ -29,7 +37,7 @@ class DrizzleScripts {
   }
 
   migrateForStart(project: Project, additionalOptions = ''): string {
-    if (isProjectEnvironment(project, 'test') && buildRemoveSqliteDbCommand(project)) {
+    if (isProjectEnvironment(project, 'test') && (buildRemoveSqliteDbCommand(project) || getD1DatabaseName(project))) {
       return this.reset(project, additionalOptions);
     }
     return this.migrate(project, additionalOptions);

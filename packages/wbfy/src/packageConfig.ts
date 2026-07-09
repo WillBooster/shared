@@ -21,6 +21,7 @@ export interface PackageConfig {
   repoAuthor?: string;
   repoName?: string;
   isWillBoosterRepo: boolean;
+  isCloudflare: boolean;
   isRailway: boolean;
   isBun: boolean;
   isEsmPackage: boolean;
@@ -61,6 +62,7 @@ export interface PackageConfig {
     reactNative: boolean;
     semanticRelease: boolean;
     storybook: boolean;
+    vinext: boolean;
     wb: boolean;
     chakra: boolean;
     drizzle: boolean;
@@ -181,6 +183,7 @@ export async function getPackageConfig(
       isWillBoosterRepo: Boolean(
         repository?.startsWith('github:WillBooster/') || repository?.startsWith('github:WillBoosterLab/')
       ),
+      isCloudflare: detectCloudflare(dirPath, packageJson),
       isRailway: detectRailway(dirPath, packageJson),
       isBun: rootConfig?.isBun || fs.existsSync(path.join(dirPath, 'bun.lock')),
       isEsmPackage: esmPackage,
@@ -225,6 +228,7 @@ export async function getPackageConfig(
           releasePlugins.length > 0
         ),
         storybook: !!devDependencies['@storybook/react'],
+        vinext: !!dependencies.vinext || !!devDependencies.vinext,
         wb: !!dependencies['@willbooster/wb'] || !!devDependencies['@willbooster/wb'],
       },
       release: {
@@ -263,6 +267,23 @@ function hasVersionSettingsFile(dirPath: string): boolean {
   );
 }
 
+function detectCloudflare(dirPath: string, packageJson: PackageJson): boolean {
+  const scripts = packageJson.scripts;
+  if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('wrangler'))) {
+    return true;
+  }
+
+  if (
+    ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
+      fs.existsSync(path.resolve(dirPath, fileName))
+    )
+  ) {
+    return true;
+  }
+
+  return workflowFilesMatch(dirPath, /cloudflare|wrangler/iu);
+}
+
 function detectRailway(dirPath: string, packageJson: PackageJson): boolean {
   const scripts = packageJson.scripts;
   if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('railway'))) {
@@ -273,23 +294,23 @@ function detectRailway(dirPath: string, packageJson: PackageJson): boolean {
     return true;
   }
 
-  return workflowFilesUseRailway(dirPath);
+  return workflowFilesMatch(dirPath, /railway/iu);
 }
 
-function workflowFilesUseRailway(dirPath: string): boolean {
+function workflowFilesMatch(dirPath: string, regex: RegExp): boolean {
   const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
   try {
     return fs
       .readdirSync(workflowsPath)
-      .some((fileName) => /\.ya?ml$/iu.test(fileName) && workflowFileUsesRailway(workflowsPath, fileName));
+      .some((fileName) => /\.ya?ml$/iu.test(fileName) && workflowFileMatches(workflowsPath, fileName, regex));
   } catch {
     return false;
   }
 }
 
-function workflowFileUsesRailway(workflowsPath: string, fileName: string): boolean {
+function workflowFileMatches(workflowsPath: string, fileName: string, regex: RegExp): boolean {
   try {
-    return /railway/iu.test(fs.readFileSync(path.join(workflowsPath, fileName), 'utf8'));
+    return regex.test(fs.readFileSync(path.join(workflowsPath, fileName), 'utf8'));
   } catch {
     return false;
   }

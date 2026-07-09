@@ -13,6 +13,7 @@ import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
+import { vinextScripts } from '../scripts/execution/vinextScripts.js';
 import { viteScripts } from '../scripts/execution/viteScripts.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
@@ -56,6 +57,9 @@ export async function testOnCi(
     let scripts: BaseScripts;
     if (deps.blitz) {
       scripts = blitzScripts;
+    } else if (deps.vinext || devDeps.vinext) {
+      // vinext apps also depend on next, so this check must come first.
+      scripts = vinextScripts;
     } else if (deps.next) {
       scripts = nextScripts;
     } else if (devDeps['@remix-run/dev']) {

@@ -11,6 +11,7 @@ import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { buildShellCommand } from '../utils/shell.js';
+import { wrapWithLocalD1DatabaseUrl } from '../utils/wrangler.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -94,7 +95,7 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
     const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db deploy', allProjects)) {
-      await runWithSpawn(getDatabaseOrmScripts(orm).deploy(project, unknownOptions), project, argv);
+      await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).deploy(project, unknownOptions)), project, argv);
     }
   },
 };
@@ -161,12 +162,12 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
     const unknownOptions = extractUnknownOptions(argv, ['check-idempotency']);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db migrate', allProjects)) {
       const ormScripts = getDatabaseOrmScripts(orm);
-      await runWithSpawn(ormScripts.migrate(project, unknownOptions), project, argv);
+      await runWithSpawn(withLocalD1IfNeeded(orm, project, ormScripts.migrate(project, unknownOptions)), project, argv);
       if (shouldCheckIdempotency(project, argv.checkIdempotency)) {
         if (isProductionEnvironment(project)) {
           console.info(chalk.yellow(`Skipping idempotency check for ${project.name} in production environment.`));
         } else {
-          await runWithSpawn(ormScripts.deploy(project, unknownOptions), project, argv);
+          await runWithSpawn(withLocalD1IfNeeded(orm, project, ormScripts.deploy(project, unknownOptions)), project, argv);
         }
       }
     }
@@ -206,7 +207,7 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
     const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db reset', allProjects)) {
-      await runWithSpawn(getDatabaseOrmScripts(orm).reset(project, unknownOptions), project, argv);
+      await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).reset(project, unknownOptions)), project, argv);
     }
     // Force to reset test database
     if (process.env.WB_ENV !== 'test') {
@@ -215,7 +216,7 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
         'WB_ENV=test db reset',
         await findDatabaseOrmProjects(argv)
       )) {
-        await runWithSpawn(getDatabaseOrmScripts(orm).reset(project, unknownOptions), project, argv);
+        await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).reset(project, unknownOptions)), project, argv);
       }
     }
   },
@@ -258,7 +259,7 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db seed', allProjects)) {
-      await runWithSpawn(getDatabaseOrmScripts(orm).seed(project, argv.file), project, argv);
+      await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).seed(project, argv.file)), project, argv);
     }
   },
 };
@@ -292,7 +293,7 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
           ? 'db/restored.sqlite3'
           : 'prisma/restored.sqlite3'
         : argv.dbUrlOrPath?.toString();
-      await runWithSpawn(getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions), project, argv);
+      await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions)), project, argv);
     }
   },
 };
@@ -311,10 +312,18 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
     const fullCommand = [script, unknownOptions].filter(Boolean).join(' ');
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand(`db ${fullCommand}`, allProjects)) {
       const command = orm === 'prisma' ? `PRISMA ${fullCommand}` : `YARN drizzle-kit ${fullCommand}`;
-      await runWithSpawn(command, project, argv);
+      await runWithSpawn(withLocalD1IfNeeded(orm, project, command), project, argv);
     }
   },
 };
+
+/**
+ * Make Drizzle commands work on Cloudflare D1 projects by pointing DATABASE_URL
+ * at the local miniflare D1 SQLite file.
+ */
+function withLocalD1IfNeeded(orm: DatabaseOrm, project: Project, script: string): string {
+  return orm === 'drizzle' ? wrapWithLocalD1DatabaseUrl(project, script) : script;
+}
 
 function createLitestreamConfig(project: Project, orm: DatabaseOrm, configPath: string): void {
   const dbPath = getLitestreamDbPath(project, orm);
