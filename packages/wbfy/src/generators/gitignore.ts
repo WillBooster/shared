@@ -29,9 +29,7 @@ __generated__/
 .serena/
 .tmp/
 .tokensave/
-.vinext/
 .wb/
-.wrangler/
 @willbooster/
 */mount/*.hash
 CLAUDE.local.md
@@ -116,6 +114,14 @@ android/app/src/main/assets/
     }
     if (config.depending.litestream) {
       headUserContent += `gcp-sa-key.json
+`;
+    }
+    if (config.isCloudflare || rootConfig.isCloudflare) {
+      headUserContent += `.wrangler/
+`;
+    }
+    if (rootConfig.depending.vinext || config.depending.vinext) {
+      headUserContent += `.vinext/
 `;
     }
 
