@@ -95,7 +95,11 @@ const deployCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>>
     const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db deploy', allProjects)) {
-      await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).deploy(project, unknownOptions)), project, argv);
+      await runWithSpawn(
+        withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).deploy(project, unknownOptions)),
+        project,
+        argv
+      );
     }
   },
 };
@@ -167,7 +171,11 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
         if (isProductionEnvironment(project)) {
           console.info(chalk.yellow(`Skipping idempotency check for ${project.name} in production environment.`));
         } else {
-          await runWithSpawn(withLocalD1IfNeeded(orm, project, ormScripts.deploy(project, unknownOptions)), project, argv);
+          await runWithSpawn(
+            withLocalD1IfNeeded(orm, project, ormScripts.deploy(project, unknownOptions)),
+            project,
+            argv
+          );
         }
       }
     }
@@ -207,7 +215,11 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
     const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db reset', allProjects)) {
-      await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).reset(project, unknownOptions)), project, argv);
+      await runWithSpawn(
+        withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).reset(project, unknownOptions)),
+        project,
+        argv
+      );
     }
     // Force to reset test database
     if (process.env.WB_ENV !== 'test') {
@@ -216,7 +228,11 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
         'WB_ENV=test db reset',
         await findDatabaseOrmProjects(argv)
       )) {
-        await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).reset(project, unknownOptions)), project, argv);
+        await runWithSpawn(
+          withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).reset(project, unknownOptions)),
+          project,
+          argv
+        );
       }
     }
   },
@@ -259,7 +275,11 @@ const seedCommand: CommandModule<unknown, InferredOptionTypes<typeof seedBuilder
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db seed', allProjects)) {
-      await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).seed(project, argv.file)), project, argv);
+      await runWithSpawn(
+        withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).seed(project, argv.file)),
+        project,
+        argv
+      );
     }
   },
 };
@@ -293,7 +313,11 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
           ? 'db/restored.sqlite3'
           : 'prisma/restored.sqlite3'
         : argv.dbUrlOrPath?.toString();
-      await runWithSpawn(withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions)), project, argv);
+      await runWithSpawn(
+        withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions)),
+        project,
+        argv
+      );
     }
   },
 };
