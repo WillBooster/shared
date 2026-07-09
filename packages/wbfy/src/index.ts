@@ -48,6 +48,7 @@ import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
+import { disposeTypeScriptApi } from './utils/typescriptApi.js';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -85,7 +86,21 @@ async function main(): Promise<void> {
   options.doesUploadEnvVars = argv.env;
 
   let hasInvalidPackageConfig = false;
-  for (const rootDirPath of argv.paths as string[]) {
+  try {
+    hasInvalidPackageConfig = await willboosterifyPaths(argv.paths as string[], argv.skipDeps);
+  } finally {
+    // The TypeScript compiler server spawned for AST parsing keeps an open IPC
+    // channel that would otherwise prevent the Node.js process from exiting.
+    disposeTypeScriptApi();
+  }
+  if (hasInvalidPackageConfig) {
+    process.exitCode = 1;
+  }
+}
+
+async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<boolean> {
+  let hasInvalidPackageConfig = false;
+  for (const rootDirPath of paths) {
     const packagesDirPath = path.join(rootDirPath, 'packages');
     const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
     const subDirPaths = dirents.filter((d) => d.isDirectory()).map((d) => path.join(packagesDirPath, d.name));
@@ -167,7 +182,7 @@ async function main(): Promise<void> {
         continue;
       }
       await generatePrettierignore(config);
-      await generatePackageJson(config, rootConfig, argv.skipDeps);
+      await generatePackageJson(config, rootConfig, skipDeps);
 
       promises.push(generateLintstagedrc(config));
       if (config.doesContainVscodeSettingsJson && config.doesContainPackageJson) {
@@ -207,9 +222,7 @@ async function main(): Promise<void> {
 
     await installAgentSkills(rootConfig);
   }
-  if (hasInvalidPackageConfig) {
-    process.exitCode = 1;
-  }
+  return hasInvalidPackageConfig;
 }
 
 function refreshBunLock(rootDirPath: string): void {

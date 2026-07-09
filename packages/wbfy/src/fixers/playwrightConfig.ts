@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import ts from 'typescript';
+import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getPackageManagerCommand } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
+import { parseSourceFile } from '../utils/typescriptApi.js';
 
 type ParsedValue =
   | { kind: 'array'; value: ParsedValue[] }
@@ -20,8 +21,8 @@ interface ParsedObject {
   properties: Record<string, ParsedValue>;
 }
 interface ExtractedObjectLiteral {
-  source: ts.SourceFile;
-  node: ts.ObjectLiteralExpression;
+  source: ast.SourceFile;
+  node: ast.ObjectLiteralExpression;
 }
 
 const literal = (value: string): ParsedValue => ({ kind: 'literal', value });
@@ -86,8 +87,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
   if (!fs.existsSync(filePath)) return;
 
   return logger.functionIgnoringException('fixPlaywrightConfig', async () => {
-    const oldContent = await fs.promises.readFile(filePath, 'utf8');
-    const extractedObjectLiteral = extractDefineConfigObjectLiteral(oldContent);
+    const extractedObjectLiteral = extractDefineConfigObjectLiteral(filePath);
     if (!extractedObjectLiteral) return;
 
     const parsed = parseObjectLiteralExpression(extractedObjectLiteral.node, extractedObjectLiteral.source);
@@ -101,6 +101,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     setWebServerCommand(merged, config);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
+    const oldContent = extractedObjectLiteral.source.text;
     const start = extractedObjectLiteral.node.getStart(extractedObjectLiteral.source);
     const end = extractedObjectLiteral.node.getEnd();
     const newContent = `${oldContent.slice(0, start)}${newObjectLiteral}${oldContent.slice(end)}`;
@@ -218,34 +219,35 @@ function getWbStartTestCommand(config: PackageConfig): string {
   return `'${getPackageManagerCommand(config)} wb start --mode test'`;
 }
 
-function extractDefineConfigObjectLiteral(content: string): ExtractedObjectLiteral | undefined {
-  const source = ts.createSourceFile('playwright.config.ts', content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+function extractDefineConfigObjectLiteral(filePath: string): ExtractedObjectLiteral | undefined {
+  const source = parseSourceFile(filePath);
+  if (!source) return undefined;
 
   // TypeScript already understands nested object literals and template strings, so use
   // its AST ranges instead of a regex that can stop at the first inner closing brace.
-  let found: ts.ObjectLiteralExpression | undefined;
-  const visit = (node: ts.Node): void => {
+  let found: ast.ObjectLiteralExpression | undefined;
+  const visit = (node: ast.Node): void => {
     if (found) return;
-    if (ts.isCallExpression(node) && node.expression.getText(source) === 'defineConfig') {
+    if (ast.isCallExpression(node) && node.expression.getText(source) === 'defineConfig') {
       const firstArgument = node.arguments[0];
-      if (firstArgument && ts.isObjectLiteralExpression(firstArgument)) {
+      if (firstArgument && ast.isObjectLiteralExpression(firstArgument)) {
         found = firstArgument;
         return;
       }
     }
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   };
-  visit(source);
+  source.forEachChild(visit);
 
   return found ? { source, node: found } : undefined;
 }
 
-function parseExpression(expression: ts.Expression, source: ts.SourceFile): ParsedValue | undefined {
-  if (ts.isObjectLiteralExpression(expression)) {
+function parseExpression(expression: ast.Expression, source: ast.SourceFile): ParsedValue | undefined {
+  if (ast.isObjectLiteralExpression(expression)) {
     const parsedObject = parseObjectLiteralExpression(expression, source);
     return parsedObject ? { kind: 'object', value: parsedObject } : literal(expression.getText(source));
   }
-  if (ts.isArrayLiteralExpression(expression)) {
+  if (ast.isArrayLiteralExpression(expression)) {
     const elements = expression.elements.map((element) => parseExpression(element, source));
     if (elements.some((element): element is undefined => element === undefined)) {
       return literal(expression.getText(source));
@@ -256,18 +258,21 @@ function parseExpression(expression: ts.Expression, source: ts.SourceFile): Pars
 }
 
 function parseObjectLiteralExpression(
-  objectLiteral: ts.ObjectLiteralExpression,
-  source: ts.SourceFile
+  objectLiteral: ast.ObjectLiteralExpression,
+  source: ast.SourceFile
 ): ParsedObject | undefined {
   const parsed: ParsedObject = { extraMembers: [], memberOrder: [], properties: {} };
   for (const property of objectLiteral.properties) {
-    if (ts.isShorthandPropertyAssignment(property)) {
+    if (ast.isShorthandPropertyAssignment(property)) {
       const key = property.name.getText(source);
       parsed.properties[key] = literal(key);
       parsed.memberOrder.push({ kind: 'property', key });
       continue;
     }
-    if (!ts.isPropertyAssignment(property) || (!ts.isIdentifier(property.name) && !ts.isStringLiteral(property.name))) {
+    if (
+      !ast.isPropertyAssignment(property) ||
+      (!ast.isIdentifier(property.name) && !ast.isStringLiteral(property.name))
+    ) {
       const index = parsed.extraMembers.push(property.getText(source)) - 1;
       parsed.memberOrder.push({ kind: 'extra', index });
       continue;

@@ -5,7 +5,7 @@ import merge from 'deepmerge';
 import fg from 'fast-glob';
 import semver from 'semver';
 import { sortPackageJson } from 'sort-package-json';
-import ts from 'typescript';
+import * as ast from 'typescript/unstable/ast';
 import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
@@ -21,6 +21,7 @@ import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
+import { parseSourceFile } from '../utils/typescriptApi.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
 import { yarnNpmMinimalAgeGate, yarnNpmPreapprovedPackages } from './yarnrc.js';
@@ -831,43 +832,53 @@ async function getExistingTsconfigBaseDependencies(config: PackageConfig): Promi
 
   for (const filePath of filePaths) {
     const absoluteFilePath = path.resolve(config.dirPath, filePath);
-    try {
-      const parsed = ts.parseConfigFileTextToJson(
-        absoluteFilePath,
-        await fs.promises.readFile(absoluteFilePath, 'utf8')
-      );
-      if (parsed.error) {
-        console.warn(
-          `Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be parsed: ${formatTsDiagnostic(parsed.error)}`
-        );
-        return new Set(managedTsconfigBaseDependencies);
-      }
-      for (const value of normalizeTsconfigExtends((parsed.config as { extends?: unknown } | undefined)?.extends)) {
-        for (const dependency of managedTsconfigBaseDependencies) {
-          if (value === dependency || value.startsWith(`${dependency}/`)) {
-            existingTsconfigBaseDependencies.add(dependency);
-          }
+    // TypeScript 7's native compiler dropped the in-process `parseConfigFileTextToJson`
+    // helper, so parse the tsconfig into an AST and read its top-level `extends` directly.
+    const source = parseSourceFile(absoluteFilePath);
+    if (!source) {
+      console.warn(`Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be parsed.`);
+      return new Set(managedTsconfigBaseDependencies);
+    }
+    for (const value of readTsconfigExtends(source)) {
+      for (const dependency of managedTsconfigBaseDependencies) {
+        if (value === dependency || value.startsWith(`${dependency}/`)) {
+          existingTsconfigBaseDependencies.add(dependency);
         }
       }
-    } catch (error) {
-      console.warn(
-        `Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be read: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return new Set(managedTsconfigBaseDependencies);
     }
   }
 
   return existingTsconfigBaseDependencies;
 }
 
-function formatTsDiagnostic(diagnostic: ts.Diagnostic): string {
-  return ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+/** Reads the top-level `extends` entries (a string or array of strings) from a parsed tsconfig. */
+function readTsconfigExtends(source: ast.SourceFile): string[] {
+  const values: string[] = [];
+  for (const property of getTsconfigRootProperties(source)) {
+    if (ast.isPropertyAssignment(property) && ast.isStringLiteral(property.name) && property.name.text === 'extends') {
+      collectStringLiteralValues(property.initializer, values);
+    }
+  }
+  return values;
 }
 
-function normalizeTsconfigExtends(value: unknown): string[] {
-  if (typeof value === 'string') return [value];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === 'string');
+function getTsconfigRootProperties(source: ast.SourceFile): readonly ast.ObjectLiteralElementLike[] {
+  for (const statement of source.statements) {
+    if (ast.isExpressionStatement(statement) && ast.isObjectLiteralExpression(statement.expression)) {
+      return statement.expression.properties;
+    }
+  }
+  return [];
+}
+
+function collectStringLiteralValues(node: ast.Expression, values: string[]): void {
+  if (ast.isStringLiteral(node)) {
+    values.push(node.text);
+  } else if (ast.isArrayLiteralExpression(node)) {
+    for (const element of node.elements) {
+      collectStringLiteralValues(element, values);
+    }
+  }
 }
 
 function getDependencySections(jsonObj: PackageJson): Partial<Record<string, string>>[] {
