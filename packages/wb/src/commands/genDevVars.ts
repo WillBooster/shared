@@ -41,10 +41,14 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       envVars[key] ||= project.env[key] || '';
     }
 
+    // Emit values single-quoted: dotenv (which wrangler uses for .dev.vars) preserves
+    // single-quoted values literally, round-tripping newlines, quotes, backslashes, and
+    // literal \n sequences (verified against wrangler's bundled dotenv 16); double-quoted
+    // emission would corrupt values containing literal \n (e.g. PEM keys).
     const lines = Object.entries(envVars)
       .filter(([, value]) => value !== '')
       .toSorted(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}="${escapeDotenvValue(value)}"`);
+      .map(([key, value]) => `${key}='${value}'`);
     const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
     if (argv.dryRun) {
       console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} environment variables.`));
@@ -56,9 +60,3 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     console.info(chalk.green(`Generated ${outputPath} with ${lines.length} environment variables.`));
   },
 };
-
-function escapeDotenvValue(value: string): string {
-  // Dotenv's double-quoted syntax only unescapes \n and \r; escaping backslashes or quotes
-  // would inject literal backslashes into the parsed value (verified with dotenv 17).
-  return value.replaceAll('\n', String.raw`\n`);
-}
