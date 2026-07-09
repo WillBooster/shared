@@ -8,18 +8,16 @@ import {
 } from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
 
-import { BaseScripts } from './baseScripts.js';
+import { HttpServerScripts } from './httpServerScripts.js';
 
 /**
  * A collection of scripts for executing plain Cloudflare Workers apps (detected via a wrangler
  * config file when no other framework matches; vinext apps have their own scripts).
+ * Extends HttpServerScripts so that e2e tests run via the unit-test runner against the running
+ * worker when the project has no Playwright config.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class WorkersScripts extends BaseScripts {
-  constructor() {
-    super(false);
-  }
-
+class WorkersScripts extends HttpServerScripts {
   protected override startDevProtected(project: Project, argv: ScriptArgv): string {
     return this.buildWranglerDevCommands(project, argv).join(' && ');
   }
