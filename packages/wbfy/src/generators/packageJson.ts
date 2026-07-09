@@ -26,8 +26,10 @@ import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bun
 import { yarnNpmMinimalAgeGate, yarnNpmPreapprovedPackages } from './yarnrc.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
-const typescriptGoDependency = '@typescript/native-preview';
 const typescriptDependency = 'typescript';
+// TypeScript 7 ships the native compiler as the `typescript` package, replacing
+// the `@typescript/native-preview` (tsgo) preview wbfy relied on before the release.
+const deprecatedTypescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
@@ -36,6 +38,7 @@ const managedDependencyNames = new Set([
   wbDependency,
   buildTsDependency,
   lefthookDependency,
+  typescriptDependency,
   'sort-package-json',
   ...oxlintDeps,
 ]);
@@ -330,12 +333,9 @@ async function applyPackageJsonConventions(
   devDependencies.push(...tsconfigBaseDependencies);
 
   if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
-    devDependencies.push(typescriptGoDependency);
-    if (config.depending.next) {
-      // Next.js still uses the `typescript` package during dev/build startup for
-      // TypeScript apps even when repositories delegate explicit typechecking to tsgo.
-      devDependencies.push(typescriptDependency);
-    }
+    // TypeScript 7 ships the native compiler as the `typescript` package, so it is
+    // now the managed compiler for every TypeScript repo (typechecking runs `tsc`).
+    devDependencies.push(typescriptDependency);
     if (config.isBun) {
       devDependencies.push('@types/bun');
     } else if (!config.depending.reactNative) {
@@ -731,9 +731,12 @@ async function removeDeprecatedStuff(
   delete jsonObj.dependencies.tslib;
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
-  // Next.js still requires the `typescript` package at build/dev time for
-  // TypeScript projects even when repos use tsgo for explicit typechecking.
-  if (!config.depending.next) {
+  // TypeScript 7 replaced the `@typescript/native-preview` (tsgo) preview with the
+  // native `typescript` package, so drop the deprecated preview from existing repos.
+  delete jsonObj.dependencies[deprecatedTypescriptGoDependency];
+  delete jsonObj.devDependencies[deprecatedTypescriptGoDependency];
+  // Non-TypeScript repos should not keep a stray `typescript` package.
+  if (!config.doesContainTypeScript && !config.doesContainTypeScriptInPackages) {
     delete jsonObj.devDependencies[typescriptDependency];
   }
   delete jsonObj.devDependencies.lerna;
@@ -883,8 +886,8 @@ function getLatestDependencyVersion(config: PackageConfig, dependency: string): 
 }
 
 function getDependencyVersionFromNpm(config: PackageConfig, dependency: string): string {
-  // npm's latest dist-tag still tracks TS7 dev snapshots; wbfy should follow
-  // the public beta channel until the stable TS7 package layout is finalized.
+  // wbfy-managed tooling (preapproved packages) adopts the latest release immediately,
+  // bypassing the minimum-release-age gate applied to unreviewed dependencies.
   if (!shouldApplyPackageAgeGate(config, dependency)) {
     return getRawDependencyVersionFromNpm(dependency);
   }
@@ -917,7 +920,7 @@ function isPublishedBeforeAgeGate(publishedAt: string | undefined, packageAgeGat
 }
 
 function getNpmPackageTimes(dependency: string): Record<string, string> {
-  const packageName = getDependencySpecifier(dependency).replace(/@[^@/]+$/u, '');
+  const packageName = dependency.replace(/@[^@/]+$/u, '');
   const cachedTimes = npmPackageTimesCache.get(packageName);
   if (cachedTimes) return cachedTimes;
 
@@ -958,22 +961,12 @@ function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
 }
 
 function getRawDependencyVersionFromNpm(dependency: string): string {
-  return (
-    spawnSyncAndReturnStdout(
-      'npm',
-      ['show', getDependencySpecifier(dependency), 'version', '--workspaces=false'],
-      process.cwd()
-    ) || '*'
-  );
+  return spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
 }
 
 function getInstallDependencySpecifier(config: PackageConfig, dependency: string): string {
   if (dependency === wbDependency) return `${dependency}@${getLatestDependencyVersion(config, dependency)}`;
-  return getDependencySpecifier(dependency);
-}
-
-function getDependencySpecifier(dependency: string): string {
-  return dependency === typescriptGoDependency ? `${dependency}@beta` : dependency;
+  return dependency;
 }
 
 function removeObsoleteLintDependencies(
@@ -1034,7 +1027,6 @@ function shouldUpdateExistingManagedDependency(
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
-  if (dependency === typescriptGoDependency) return isNewerManagedDependencyVersion(config, dependency, currentVersion);
   // wbfy owns these tool dependencies, but applying wbfy should not downgrade a
   // repository that already pins a newer reviewed release.
   return managedDependencyNames.has(dependency) && isNewerManagedDependencyVersion(config, dependency, currentVersion);
@@ -1142,7 +1134,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       lint: `oxlint --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'`,
-      typecheck: 'tsgo --noEmit',
+      typecheck: 'tsc --noEmit',
     };
     if (hasJava) {
       scripts.prettify = `prettier --cache --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`;

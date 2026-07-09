@@ -45,14 +45,14 @@ export const bunMinimumReleaseAgeExcludes = [
 
   // wbfy pins these tooling packages and may apply them immediately after a
   // release, before the global minimum-release-age window has elapsed.
-  '@typescript/native-preview',
-  '@typescript/native-preview-darwin-arm64',
-  '@typescript/native-preview-darwin-x64',
-  '@typescript/native-preview-linux-arm',
-  '@typescript/native-preview-linux-arm64',
-  '@typescript/native-preview-linux-x64',
-  '@typescript/native-preview-win32-arm64',
-  '@typescript/native-preview-win32-x64',
+  'typescript',
+  '@typescript/typescript-darwin-arm64',
+  '@typescript/typescript-darwin-x64',
+  '@typescript/typescript-linux-arm',
+  '@typescript/typescript-linux-arm64',
+  '@typescript/typescript-linux-x64',
+  '@typescript/typescript-win32-arm64',
+  '@typescript/typescript-win32-x64',
   // Bun itself releases its first-party type packages in lockstep with the
   // runtime, so generated Bun repos must be able to install them immediately.
   '@types/bun',
