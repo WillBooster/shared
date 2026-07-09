@@ -26,7 +26,7 @@ export function buildWranglerDevCommand(project: Project, args: string): string 
   const wranglerJsPath = project.usesBunPackageManager ? findWranglerJsPath(project) : undefined;
   if (!wranglerJsPath) return `env -u CLOUDFLARE_ENV YARN wrangler ${args}`.trim();
 
-  return `env -u CLOUDFLARE_ENV "$(which -a node | grep -vi bun | head -1)" "${wranglerJsPath}" ${args}`.trim();
+  return `env -u CLOUDFLARE_ENV "${findRealNodePath()}" "${wranglerJsPath}" ${args}`.trim();
 }
 
 function findWranglerJsPath(project: Pick<Project, 'dirPath'>): string | undefined {
@@ -39,6 +39,22 @@ function findWranglerJsPath(project: Pick<Project, 'dirPath'>): string | undefin
     if (parentPath === currentPath) return;
     currentPath = parentPath;
   }
+}
+
+function findRealNodePath(): string {
+  for (const dirPath of (process.env.PATH ?? '').split(path.delimiter)) {
+    if (!dirPath) continue;
+
+    try {
+      // `bun --bun` shims `node` in PATH via a symlink to the Bun binary; follow symlinks to skip it.
+      const realPath = fs.realpathSync(path.join(dirPath, 'node'));
+      if (path.basename(realPath).includes('bun')) continue;
+      return realPath;
+    } catch {
+      // No node binary in this directory.
+    }
+  }
+  return 'node';
 }
 
 /**

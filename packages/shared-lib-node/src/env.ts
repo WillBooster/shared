@@ -112,7 +112,7 @@ export function readEnvironmentVariables(
       console.info(`Read ${keys.length} environment variables from ${envPath}`);
     }
   }
-  const [miseEnvVars, miseEnvVarNames] = readMiseEnvironmentVariables(cwd, cascade, envVars);
+  const [miseEnvVars, miseEnvVarNames] = readMiseEnvironmentVariables(cwd, cascade, envVars, options);
   Object.assign(envVars, miseEnvVars);
   if (miseEnvVarNames.length > 0) {
     envPathAndLoadedEnvVarNames.push([miseEnvironmentSourceName(cascade), miseEnvVarNames]);
@@ -139,7 +139,8 @@ export function readEnvironmentVariables(
 function readMiseEnvironmentVariables(
   cwd: string,
   cascade: string | undefined,
-  currentEnvVars: Record<string, string>
+  currentEnvVars: Record<string, string>,
+  options?: { ignoreProcessEnv?: boolean }
 ): [Record<string, string>, string[]] {
   if (!hasProjectMiseConfig(cwd)) return [{}, []];
 
@@ -164,8 +165,14 @@ function readMiseEnvironmentVariables(
   const envVars: Record<string, string> = {};
   const keys: string[] = [];
   for (const [key, value] of Object.entries(parsed)) {
-    if (typeof value !== 'string') continue;
-    if (key in currentEnvVars || process.env[key] === value) continue;
+    if (typeof value !== 'string' || key in currentEnvVars) continue;
+    if (options?.ignoreProcessEnv) {
+      // `mise env` always emits PATH due to tool shims; consumers of file-defined variables
+      // (e.g. `wb gen-dev-vars`) must not propagate it.
+      if (key === 'PATH') continue;
+    } else if (process.env[key] === value) {
+      continue;
+    }
     envVars[key] = value;
     keys.push(key);
   }
