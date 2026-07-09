@@ -11,7 +11,7 @@ import { BaseScripts, type TestE2EOptions } from './baseScripts.js';
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
  * Note that `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
-class HttpServerScripts extends BaseScripts {
+export class HttpServerScripts extends BaseScripts {
   constructor() {
     super(false);
   }
