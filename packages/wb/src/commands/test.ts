@@ -298,8 +298,7 @@ export function warnIfPlaywrightSpecsAreUndiscoverable(
 
   console.warn(
     chalk.yellow(
-      `Skipping e2e tests for ${project.name}: a Playwright config exists but the test/e2e directory is missing. ` +
-        'wb only discovers Playwright specs under test/e2e/, so move them there to run e2e tests.'
+      `Skipping e2e tests for ${project.name}: a Playwright config exists but the test/e2e directory is missing. wb only discovers Playwright specs under test/e2e/, so move them there to run e2e tests.`
     )
   );
 }
