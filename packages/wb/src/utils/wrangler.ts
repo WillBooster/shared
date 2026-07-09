@@ -49,6 +49,7 @@ export function wrapWithLocalD1DatabaseUrl(project: Pick<Project, 'dirPath'>, sc
   const databaseName = getD1DatabaseName(project);
   if (!databaseName) return script;
 
-  const exportCommand = `export DATABASE_URL="file:$(ls "${LOCAL_WRANGLER_STATE_DIR}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | head -1)"`;
+  // Exclude miniflare's metadata.sqlite, which lives next to the hash-named database file.
+  const exportCommand = `export DATABASE_URL="file:$(ls "${LOCAL_WRANGLER_STATE_DIR}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata | head -1)"`;
   return `${buildMaterializeLocalD1Command(databaseName)} && ${exportCommand} && ${script}`;
 }
