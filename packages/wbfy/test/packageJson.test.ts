@@ -209,6 +209,43 @@ test('uses bun runner for generated Python scripts in bun projects', async () =>
   expect(packageJson.scripts?.['lint-fix']).not.toContain('yarn');
 });
 
+test('preserves a leading MISE_ENV prefix on a mise bridge script', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        test: 'MISE_ENV=test mise run test',
+      },
+    },
+    { isBun: true, miseTasks: { test: 'bun run playwright test' } }
+  );
+
+  expect(packageJson.scripts?.test).toBe('MISE_ENV=test mise run test');
+});
+
+test('regenerates a plain mise bridge script without inventing an env prefix', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        test: 'mise run test',
+      },
+    },
+    { isBun: true, miseTasks: { test: 'bun run playwright test' } }
+  );
+
+  expect(packageJson.scripts?.test).toBe('mise run test');
+});
+
+test('drops --bun from verify-full for Playwright projects but keeps it otherwise', async () => {
+  const withPlaywright = await generatePackageJsonFrom(
+    { scripts: {} },
+    { isBun: true, depending: { ...createConfig().depending, playwrightTest: true } }
+  );
+  const withoutPlaywright = await generatePackageJsonFrom({ scripts: {} }, { isBun: true });
+
+  expect(withPlaywright.scripts?.['verify-full']).toBe('bun wb verify --full');
+  expect(withoutPlaywright.scripts?.['verify-full']).toBe('bun --bun wb verify --full');
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},
