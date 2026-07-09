@@ -40,11 +40,9 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
 
     const oldContent = source.text;
     const insertionPoint = objectLiteral.getEnd() - 1;
-    const lastProperty = objectLiteral.properties.at(-1);
-    const hasTrailingComma = lastProperty
-      ? oldContent.slice(lastProperty.getEnd(), insertionPoint).includes(',')
-      : false;
-    const prefix = objectLiteral.properties.length > 0 && !hasTrailingComma ? ', ' : '';
+    // Read the trailing comma from the AST rather than scanning the source text, which would be
+    // fooled by a comma inside a trailing comment (e.g. `foo: 1 // a, b`) and drop the separator.
+    const prefix = objectLiteral.properties.length > 0 && !objectLiteral.properties.hasTrailingComma ? ', ' : '';
     const newContent = `${oldContent.slice(0, insertionPoint)}${prefix}${propertyTexts.join(', ')}${oldContent.slice(
       insertionPoint
     )}`;
@@ -86,11 +84,13 @@ function getNextConfigObjectLiteral(
       const objectLiteral = unwrapObjectLiteral(node.initializer);
       if (objectLiteral && ast.isIdentifier(node.name)) {
         variableObjectLiterals.set(node.name.getText(source), objectLiteral);
-        // A `: NextConfig` annotation (or `satisfies`/`as NextConfig`) marks the canonical config object.
+        // A `: NextConfig` annotation or a `satisfies`/`as NextConfig` assertion marks the canonical
+        // config object (accepting qualified names such as `import('next').NextConfig`).
+        const annotationType = node.type?.getText(source);
+        const assertedType = getAssertedType(node.initializer)?.getText(source);
         const isTypedAsNextConfig =
-          node.type?.getText(source) === 'NextConfig' ||
-          ((ast.isSatisfiesExpression(node.initializer) || ast.isAsExpression(node.initializer)) &&
-            node.initializer.type.getText(source) === 'NextConfig');
+          (annotationType !== undefined && isNextConfigType(annotationType)) ||
+          (assertedType !== undefined && isNextConfigType(assertedType));
         if (isTypedAsNextConfig) typedConfigObjectLiterals.push(objectLiteral);
       }
     }
@@ -106,11 +106,37 @@ function getNextConfigObjectLiteral(
   return objectLiteral ? { source, objectLiteral } : undefined;
 }
 
-// Unwrap `{ ... } as NextConfig` / `{ ... } satisfies NextConfig` down to the object literal.
+// Unwrap `({ ... })` / `{ ... } as NextConfig` / `{ ... } satisfies NextConfig` to the object literal.
 function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
-  let current: ast.Node = node;
+  const current = unwrapExpression(node);
+  return ast.isObjectLiteralExpression(current) ? current : undefined;
+}
+
+// Return the asserted type of a `satisfies`/`as` expression, if any (ignoring wrapping parentheses).
+function getAssertedType(node: ast.Expression): ast.TypeNode | undefined {
+  const current = unwrapParentheses(node);
+  return ast.isAsExpression(current) || ast.isSatisfiesExpression(current) ? current.type : undefined;
+}
+
+// Peel parentheses and `as`/`satisfies` assertions off an expression.
+function unwrapExpression(node: ast.Expression): ast.Node {
+  let current: ast.Node = unwrapParentheses(node);
   while (ast.isAsExpression(current) || ast.isSatisfiesExpression(current)) {
+    current = unwrapParentheses(current.expression);
+  }
+  return current;
+}
+
+// Peel wrapping parentheses off an expression.
+function unwrapParentheses(node: ast.Expression): ast.Expression {
+  let current = node;
+  while (ast.isParenthesizedExpression(current)) {
     current = current.expression;
   }
-  return ast.isObjectLiteralExpression(current) ? current : undefined;
+  return current;
+}
+
+// Match both the bare `NextConfig` and qualified forms like `import('next').NextConfig`.
+function isNextConfigType(typeText: string): boolean {
+  return typeText === 'NextConfig' || typeText.endsWith('.NextConfig');
 }
