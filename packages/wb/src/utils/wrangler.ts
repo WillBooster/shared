@@ -35,7 +35,7 @@ export function getD1DatabaseName(project: Pick<Project, 'dirPath'>): string | u
   for (const line of fs.readFileSync(configPath, 'utf8').split('\n')) {
     if (/^\s*(?:#|\/\/)/u.test(line)) continue;
 
-    const match = /["']?database_name["']?\s*[:=]\s*["']([^"']+)["']/u.exec(line);
+    const match = /^\s*["']?database_name["']?\s*[:=]\s*["']([^"']+)["']/u.exec(line);
     if (match) return match[1];
   }
   return;
