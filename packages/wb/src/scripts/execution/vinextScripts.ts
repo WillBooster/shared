@@ -1,5 +1,5 @@
 import type { Project } from '../../project.js';
-import { getLocalWranglerStateDir } from '../../utils/wrangler.js';
+import { buildGenDevVarsCommand, buildWranglerDevCommand, getLocalWranglerStateDir } from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
 
 import { BaseScripts } from './baseScripts.js';
@@ -22,12 +22,17 @@ class VinextScripts extends BaseScripts {
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
     project.env.PORT ||= '3000';
     const port = project.env.PORT;
-    // `vinext build` emits a worker bundle and its wrangler config under dist/server.
+    // `vinext build` emits a worker bundle and its wrangler config under dist/server, so the
+    // .dev.vars file exposing wb-managed environment variables must be generated after building.
     // `--local-upstream` keeps request URLs on the local host; otherwise, wrangler dev simulates
     // the production custom domain declared in the wrangler config routes.
     return [
       project.buildCommand,
-      `YARN wrangler dev --config dist/server/wrangler.json --ip 127.0.0.1 --port ${port} --persist-to "${getLocalWranglerStateDir(project)}" --local-upstream localhost:${port} ${argv.normalizedArgsText ?? ''}`.trim(),
+      buildGenDevVarsCommand(argv, 'dist/server/.dev.vars'),
+      buildWranglerDevCommand(
+        project,
+        `dev --config dist/server/wrangler.json --ip 127.0.0.1 --port ${port} --persist-to "${getLocalWranglerStateDir(project)}" --local-upstream localhost:${port} ${argv.normalizedArgsText ?? ''}`.trim()
+      ),
     ];
   }
 }

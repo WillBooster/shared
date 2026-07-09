@@ -1,9 +1,10 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
+import { isProjectEnvironment } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
-import { wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
+import { findWranglerConfigPath, getLocalWranglerStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
@@ -109,7 +110,14 @@ export abstract class BaseScripts {
   }
 
   protected buildProductionCommand(project: Project, argv: ScriptArgv, commands: string[]): string {
+    // Test-environment wrangler state is disposable; wipe it entirely (not just D1) before
+    // migrating, since stale KV cache entries or Durable Object storage can break e2e tests.
+    const wranglerStateWipeCommands =
+      isProjectEnvironment(project, 'test') && findWranglerConfigPath(project)
+        ? [`rm -Rf "${getLocalWranglerStateDir(project)}"`]
+        : [];
     const migrationCommands = [
+      ...wranglerStateWipeCommands,
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
       ...(project.hasDrizzle ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))] : []),
     ];

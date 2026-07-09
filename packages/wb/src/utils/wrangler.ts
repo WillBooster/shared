@@ -2,8 +2,60 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { Project } from '../project.js';
+import { buildEnvReaderOptionArgs } from '../sharedOptionsBuilder.js';
+import type { ScriptArgv } from '../scripts/builder.js';
+import { buildShellCommand } from './shell.js';
 
 const wranglerConfigFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'];
+
+/**
+ * Build a command generating a .dev.vars file (via `wb gen-dev-vars`) so that
+ * `wrangler dev` can see the wb-managed environment variables.
+ */
+export function buildGenDevVarsCommand(argv: ScriptArgv, outputPath: string): string {
+  return buildShellCommand(['YARN', 'wb', 'gen-dev-vars', ...buildEnvReaderOptionArgs(argv), outputPath]);
+}
+
+/**
+ * Build a `wrangler dev`-style command. `env -u CLOUDFLARE_ENV` makes wrangler serve the top-level
+ * (non-deploy) config. On Bun projects, wrangler must run with the real Node.js runtime:
+ * wrangler dev does not support Bun, and `bun --bun` shims `node` in PATH to Bun,
+ * so a non-Bun node binary is resolved explicitly.
+ */
+export function buildWranglerDevCommand(project: Project, args: string): string {
+  const wranglerJsPath = project.usesBunPackageManager ? findWranglerJsPath(project) : undefined;
+  if (!wranglerJsPath) return `env -u CLOUDFLARE_ENV YARN wrangler ${args}`.trim();
+
+  return `env -u CLOUDFLARE_ENV "${findRealNodePath()}" "${wranglerJsPath}" ${args}`.trim();
+}
+
+function findWranglerJsPath(project: Pick<Project, 'dirPath'>): string | undefined {
+  let currentPath = project.dirPath;
+  for (;;) {
+    const wranglerJsPath = path.join(currentPath, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+    if (fs.existsSync(wranglerJsPath)) return wranglerJsPath;
+
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) return;
+    currentPath = parentPath;
+  }
+}
+
+function findRealNodePath(): string {
+  for (const dirPath of (process.env.PATH ?? '').split(path.delimiter)) {
+    if (!dirPath) continue;
+
+    try {
+      // `bun --bun` shims `node` in PATH via a symlink to the Bun binary; follow symlinks to skip it.
+      const realPath = fs.realpathSync(path.join(dirPath, 'node'));
+      if (path.basename(realPath).includes('bun')) continue;
+      return realPath;
+    } catch {
+      // No node binary in this directory.
+    }
+  }
+  return 'node';
+}
 
 /**
  * Prefix the given script with commands exporting DATABASE_URL pointing to the local miniflare D1 SQLite file,
@@ -44,11 +96,36 @@ export function getD1DatabaseName(project: Pick<Project, 'dirPath'>): string | u
 }
 
 export function findWranglerConfigPath(project: Pick<Project, 'dirPath'>): string | undefined {
+  // Tests may pass partial Project objects without dirPath.
+  if (!project.dirPath) return;
+
   for (const fileName of wranglerConfigFileNames) {
     const filePath = path.join(project.dirPath, fileName);
     if (fs.existsSync(filePath)) return filePath;
   }
   return;
+}
+
+/**
+ * Get the path of the wrangler-native D1 migrations directory (`migrations_dir` in the wrangler
+ * config, defaulting to `migrations`) if it exists on disk.
+ */
+export function findD1MigrationsDirPath(project: Pick<Project, 'dirPath'>): string | undefined {
+  const configPath = findWranglerConfigPath(project);
+  if (!configPath) return;
+
+  let migrationsDir = 'migrations';
+  for (const line of fs.readFileSync(configPath, 'utf8').split('\n')) {
+    if (/^\s*(?:#|\/\/)/u.test(line)) continue;
+
+    const match = /(?:^|[,{])\s*["']?migrations_dir["']?\s*[:=]\s*["']([^"']+)["']/u.exec(line);
+    if (match) {
+      migrationsDir = match[1] as string;
+      break;
+    }
+  }
+  const migrationsDirPath = path.join(project.dirPath, migrationsDir);
+  return fs.existsSync(migrationsDirPath) ? migrationsDirPath : undefined;
 }
 
 /**
@@ -68,6 +145,11 @@ export function buildMaterializeLocalD1Command(project: Pick<Project, 'env'>, da
  * without destroying development state.
  */
 export function getLocalWranglerStateDir(project: Pick<Project, 'env'>): string {
-  const wbEnv = project.env.WB_ENV;
+  // Destructive test resets are gated on isProjectEnvironment(project, 'test'), which accepts
+  // either WB_ENV or MISE_ENV; resolve to the test directory whenever either says 'test' so
+  // that such resets can never target the development state.
+  const wbEnv = [project.env.WB_ENV, project.env.MISE_ENV].includes('test')
+    ? 'test'
+    : project.env.WB_ENV || project.env.MISE_ENV;
   return !wbEnv || wbEnv === 'development' ? '.wrangler/state' : `.wrangler/state-${wbEnv}`;
 }
