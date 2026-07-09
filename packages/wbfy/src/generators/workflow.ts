@@ -92,22 +92,6 @@ const publicRepoAutofixWorkflow: Workflow = {
   },
 };
 
-const privateRepoAutofixWorkflow: Workflow = {
-  name: 'Fix code automatically',
-  on: {
-    pull_request: null,
-  },
-  concurrency: {
-    group: '${{ github.workflow }}-${{ github.ref }}',
-    'cancel-in-progress': true,
-  },
-  jobs: {
-    autofix: {
-      uses: 'WillBooster/reusable-workflows/.github/workflows/autofix.yml@main',
-    },
-  },
-};
-
 const workflows = {
   test: {
     name: 'Test',
@@ -230,6 +214,12 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     ]);
     if (rootConfig.depending.semanticRelease) {
       fileNameSet.add('release.yml');
+    }
+    if (!rootConfig.isPublicRepo) {
+      // The reusable test workflow already fixes and pushes code on private repos,
+      // so a separate autofix workflow only duplicates the same process.
+      fileNameSet.delete('autofix.yml');
+      await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, 'autofix.yml'), { force: true }));
     }
 
     for (const fileName of fileNameSet) {
@@ -426,10 +416,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
 }
 
 function generateAutofixWorkflow(config: PackageConfig): Workflow {
-  if (!config.isPublicRepo) {
-    return structuredClone(privateRepoAutofixWorkflow);
-  }
-
   const packageManager = config.isBun ? 'bun' : 'yarn';
   const steps: Step[] = [
     { uses: 'actions/checkout@v6' },
