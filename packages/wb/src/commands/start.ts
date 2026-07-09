@@ -11,7 +11,9 @@ import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
 import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { vinextScripts } from '../scripts/execution/vinextScripts.js';
 import { viteScripts } from '../scripts/execution/viteScripts.js';
+import { workersScripts } from '../scripts/execution/workersScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
+import { findWranglerConfigPath } from '../utils/wrangler.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
@@ -57,6 +59,9 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
         scripts = remixScripts;
       } else if (devDeps.vite) {
         scripts = viteScripts;
+      } else if (findWranglerConfigPath(project)) {
+        // Plain Cloudflare Workers app; vinext apps are detected above.
+        scripts = workersScripts;
       } else if (
         (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) ||
         (project.hasDockerfile && /EXPOSE\s+8080/.test(project.dockerfile))

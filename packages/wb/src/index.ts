@@ -9,6 +9,7 @@ import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
 import { concurrentlyCommand } from './commands/concurrently.js';
 import { dotenvCommand } from './commands/dotenv.js';
 import { genCodeCommand } from './commands/genCode.js';
+import { genDevVarsCommand } from './commands/genDevVars.js';
 import { killPortIfNonCiCommand } from './commands/killPortIfNonCi.js';
 import { lintCommand } from './commands/lint.js';
 import { maintenanceCommand } from './commands/maintenance.js';
@@ -42,6 +43,7 @@ await yargs(hideBin(process.argv))
   .command(concurrentlyCommand)
   .command(dotenvCommand)
   .command(genCodeCommand)
+  .command(genDevVarsCommand)
   .command(killPortIfNonCiCommand)
   .command(lintCommand)
   .command(maintenanceCommand)
