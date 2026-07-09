@@ -5,6 +5,7 @@ import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
+import type { Project } from '../project.js';
 import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -37,6 +38,12 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     // process.env because the parent wb process injects the .env values into it, which would
     // otherwise suppress loading them here.
     const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
+    // Supplement with process environment values for the keys named in .env.example: CI often
+    // provides them as workflow env instead of .env files (still an allowlist, so unrelated
+    // process environment variables cannot leak).
+    for (const key of readEnvExampleKeys(project)) {
+      envVars[key] ||= project.env[key] || '';
+    }
     for (const key of ['WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
       envVars[key] ||= project.env[key] || '';
     }
@@ -56,6 +63,17 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     console.info(chalk.green(`Generated ${outputPath} with ${lines.length} environment variables.`));
   },
 };
+
+function readEnvExampleKeys(project: Project): string[] {
+  try {
+    const envExamplePath = project.findFile('.env.example');
+    return [...fs.readFileSync(envExamplePath, 'utf8').matchAll(/^([A-Z_0-9]+)=/gmu)].map(
+      (match) => match[1] as string
+    );
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Quote a value for dotenv (which wrangler uses for .dev.vars). Single-quoted values are
