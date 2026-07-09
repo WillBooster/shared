@@ -44,6 +44,8 @@ export const yarnNpmPreapprovedPackages = [
   'next',
   '@next/*',
   '@types/*',
+  // TypeScript 7 ships the native compiler as `typescript`; `@typescript/*` covers its platform binaries.
+  'typescript',
   '@typescript/*',
   '@oxfmt/*',
   '@oxlint/*',
