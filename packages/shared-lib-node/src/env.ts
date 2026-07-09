@@ -56,7 +56,15 @@ export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<ty
  * */
 export function readEnvironmentVariables(
   argv: EnvReaderOptions,
-  cwd: string
+  cwd: string,
+  options?: {
+    /**
+     * Load variables even if they already exist in process.env.
+     * Useful when a parent process has already injected the .env values into the environment
+     * and the file-defined variables themselves are needed (e.g. `wb gen-dev-vars`).
+     */
+    ignoreProcessEnv?: boolean;
+  }
 ): [Record<string, string>, [string, string[]][]] {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
   const cascade =
@@ -94,7 +102,7 @@ export function readEnvironmentVariables(
   for (const envPath of envPaths) {
     const keys: string[] = [];
     for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
-      if (!(key in envVars) && !(key in process.env)) {
+      if (!(key in envVars) && (options?.ignoreProcessEnv || !(key in process.env))) {
         envVars[key] = value;
         keys.push(key);
       }
