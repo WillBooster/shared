@@ -286,9 +286,15 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
  * without running any tests.
  */
 export function warnIfPlaywrightSpecsAreUndiscoverable(
-  project: Pick<Project, 'dirPath' | 'hasPlaywrightConfig' | 'name'>
+  project: Pick<Project, 'dirPath' | 'name' | 'packageJson'>
 ): void {
-  if (!project.hasPlaywrightConfig || fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) return;
+  // Only a project's OWN Playwright config counts here. `hasPlaywrightConfig` walks up to the
+  // monorepo root, so reusing it would false-positive on library packages and the root itself,
+  // which legitimately share a root-level playwright.config.ts but keep e2e specs in a single app
+  // package. A workspace root delegates e2e to its packages, so it never warns either.
+  const hasLocalPlaywrightConfig = fs.existsSync(path.join(project.dirPath, 'playwright.config.ts'));
+  const isWorkspaceRoot = !!project.packageJson.workspaces;
+  if (!hasLocalPlaywrightConfig || isWorkspaceRoot || fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) return;
 
   console.warn(
     chalk.yellow(
