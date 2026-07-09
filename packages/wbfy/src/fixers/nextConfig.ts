@@ -52,15 +52,6 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
   });
 }
 
-// Unwrap `{ ... } as NextConfig` / `{ ... } satisfies NextConfig` down to the object literal.
-function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
-  let current: ast.Node = node;
-  while (ast.isAsExpression(current) || ast.isSatisfiesExpression(current)) {
-    current = current.expression;
-  }
-  return ast.isObjectLiteralExpression(current) ? current : undefined;
-}
-
 function getNextConfigObjectLiteral(
   filePath: string
 ): { source: ast.SourceFile; objectLiteral: ast.ObjectLiteralExpression } | undefined {
@@ -95,10 +86,11 @@ function getNextConfigObjectLiteral(
       const objectLiteral = unwrapObjectLiteral(node.initializer);
       if (objectLiteral && ast.isIdentifier(node.name)) {
         variableObjectLiterals.set(node.name.getText(source), objectLiteral);
-        // A `: NextConfig` annotation (or `satisfies NextConfig`) marks the canonical config object.
+        // A `: NextConfig` annotation (or `satisfies`/`as NextConfig`) marks the canonical config object.
         const isTypedAsNextConfig =
           node.type?.getText(source) === 'NextConfig' ||
-          (ast.isSatisfiesExpression(node.initializer) && node.initializer.type.getText(source) === 'NextConfig');
+          ((ast.isSatisfiesExpression(node.initializer) || ast.isAsExpression(node.initializer)) &&
+            node.initializer.type.getText(source) === 'NextConfig');
         if (isTypedAsNextConfig) typedConfigObjectLiterals.push(objectLiteral);
       }
     }
@@ -112,4 +104,13 @@ function getNextConfigObjectLiteral(
     (exportedIdentifier ? variableObjectLiterals.get(exportedIdentifier) : undefined) ??
     variableObjectLiterals.get('nextConfig');
   return objectLiteral ? { source, objectLiteral } : undefined;
+}
+
+// Unwrap `{ ... } as NextConfig` / `{ ... } satisfies NextConfig` down to the object literal.
+function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
+  let current: ast.Node = node;
+  while (ast.isAsExpression(current) || ast.isSatisfiesExpression(current)) {
+    current = current.expression;
+  }
+  return ast.isObjectLiteralExpression(current) ? current : undefined;
 }
