@@ -304,6 +304,13 @@ async function applyPackageJsonConventions(
     }
   }
 
+  // fixers/nextConfig.ts enables `reactCompiler: true` for every Next.js project, and Next.js
+  // resolves `babel-plugin-react-compiler` at build time when React Compiler is on. Add it here so
+  // the managed next.config never breaks `next build` with an unresolved-package error.
+  if (config.depending.next) {
+    devDependencies.push('babel-plugin-react-compiler');
+  }
+
   if (!isWbPackage(jsonObj)) {
     if (shouldKeepWbAsRuntimeDependency(jsonObj)) {
       dependencies.push(wbDependency);
