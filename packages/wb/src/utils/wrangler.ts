@@ -145,6 +145,8 @@ export function buildMaterializeLocalD1Command(project: Pick<Project, 'env'>, da
  * without destroying development state.
  */
 export function getLocalWranglerStateDir(project: Pick<Project, 'env'>): string {
-  const wbEnv = project.env.WB_ENV;
+  // Mirror isProjectEnvironment, which also accepts MISE_ENV, so that e.g. MISE_ENV=test
+  // resolves to the test state directory instead of wiping the development one.
+  const wbEnv = project.env.WB_ENV || project.env.MISE_ENV;
   return !wbEnv || wbEnv === 'development' ? '.wrangler/state' : `.wrangler/state-${wbEnv}`;
 }
