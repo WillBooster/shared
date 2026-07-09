@@ -9,9 +9,18 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 
+// Settings every WillBooster Next.js project should carry. `name` is the top-level
+// property key used to detect whether the setting already exists; `text` is inserted
+// verbatim (a whole `key: value` pair) when the key is missing.
+const managedProperties: readonly { name: string; text: string }[] = [
+  { name: 'reactCompiler', text: 'reactCompiler: true' },
+  { name: 'reactStrictMode', text: 'reactStrictMode: true' },
+  { name: 'typescript', text: 'typescript: { ignoreBuildErrors: true }' },
+];
+
 export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixNextConfigJson', async () => {
-    const filePath = ['js', 'mjs', 'cjs']
+    const filePath = ['ts', 'mts', 'cts', 'js', 'mjs', 'cjs']
       .map((ext) => path.resolve(config.dirPath, `next.config.${ext}`))
       .find((p) => fs.existsSync(p));
     if (!filePath) return;
@@ -24,10 +33,9 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
     const existingProperties = new Set(
       objectLiteral.properties.map((property) => ('name' in property ? property.name?.getText(source) : undefined))
     );
-    const propertyTexts: string[] = [];
-    if (!existingProperties.has('typescript')) {
-      propertyTexts.push('typescript: { ignoreBuildErrors: true }');
-    }
+    const propertyTexts = managedProperties
+      .filter((property) => !existingProperties.has(property.name))
+      .map((property) => property.text);
     if (propertyTexts.length === 0) return;
 
     const oldContent = source.text;
@@ -44,30 +52,64 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
   });
 }
 
+// Unwrap `{ ... } as NextConfig` / `{ ... } satisfies NextConfig` down to the object literal.
+function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
+  let current: ast.Node = node;
+  while (ast.isAsExpression(current) || ast.isSatisfiesExpression(current)) {
+    current = current.expression;
+  }
+  return ast.isObjectLiteralExpression(current) ? current : undefined;
+}
+
 function getNextConfigObjectLiteral(
   filePath: string
 ): { source: ast.SourceFile; objectLiteral: ast.ObjectLiteralExpression } | undefined {
   const source = parseSourceFile(filePath);
   if (!source) return undefined;
 
-  let objectLiteral: ast.ObjectLiteralExpression | undefined;
+  // The WillBooster standard declares the config as `const nextConfig: NextConfig = { ... }` and
+  // exports it (possibly wrapped, e.g. `withSentryConfig(...)`), so the object literal is rarely
+  // the direct operand of `export default`/`module.exports`. Collect every candidate and pick the
+  // most authoritative one below.
+  let directObjectLiteral: ast.ObjectLiteralExpression | undefined;
+  let exportedIdentifier: string | undefined;
+  const variableObjectLiterals = new Map<string, ast.ObjectLiteralExpression>();
+  const typedConfigObjectLiterals: ast.ObjectLiteralExpression[] = [];
+
   const visit = (node: ast.Node): void => {
-    if (objectLiteral) return;
-    if (ast.isExportAssignment(node) && ast.isObjectLiteralExpression(node.expression)) {
-      objectLiteral = node.expression;
-      return;
-    }
-    if (
+    if (ast.isExportAssignment(node)) {
+      const objectLiteral = unwrapObjectLiteral(node.expression);
+      if (objectLiteral) {
+        directObjectLiteral ??= objectLiteral;
+      } else if (ast.isIdentifier(node.expression)) {
+        exportedIdentifier ??= node.expression.getText(source);
+      }
+    } else if (
       ast.isBinaryExpression(node) &&
       node.operatorToken.kind === ast.SyntaxKind.EqualsToken &&
-      node.left.getText(source) === 'module.exports' &&
-      ast.isObjectLiteralExpression(node.right)
+      node.left.getText(source) === 'module.exports'
     ) {
-      objectLiteral = node.right;
-      return;
+      const objectLiteral = unwrapObjectLiteral(node.right);
+      if (objectLiteral) directObjectLiteral ??= objectLiteral;
+    } else if (ast.isVariableDeclaration(node) && node.initializer) {
+      const objectLiteral = unwrapObjectLiteral(node.initializer);
+      if (objectLiteral && ast.isIdentifier(node.name)) {
+        variableObjectLiterals.set(node.name.getText(source), objectLiteral);
+        // A `: NextConfig` annotation (or `satisfies NextConfig`) marks the canonical config object.
+        const isTypedAsNextConfig =
+          node.type?.getText(source) === 'NextConfig' ||
+          (ast.isSatisfiesExpression(node.initializer) && node.initializer.type.getText(source) === 'NextConfig');
+        if (isTypedAsNextConfig) typedConfigObjectLiterals.push(objectLiteral);
+      }
     }
     node.forEachChild(visit);
   };
   source.forEachChild(visit);
+
+  const objectLiteral =
+    typedConfigObjectLiterals[0] ??
+    directObjectLiteral ??
+    (exportedIdentifier ? variableObjectLiterals.get(exportedIdentifier) : undefined) ??
+    variableObjectLiterals.get('nextConfig');
   return objectLiteral ? { source, objectLiteral } : undefined;
 }
