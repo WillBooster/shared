@@ -118,14 +118,6 @@ android/app/src/main/assets/
       headUserContent += `gcp-sa-key.json
 `;
     }
-    if (config.isCloudflare || rootConfig.isCloudflare) {
-      headUserContent += `.wrangler/
-`;
-    }
-    if (config.depending.vinext) {
-      headUserContent += `.vinext/
-`;
-    }
 
     let generated = '';
     for (const name of names) {
