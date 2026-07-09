@@ -86,7 +86,11 @@ function getNextConfigObjectLiteral(
       node.left.getText(source) === 'module.exports'
     ) {
       const objectLiteral = unwrapObjectLiteral(node.right);
-      if (objectLiteral) directObjectLiteral ??= objectLiteral;
+      if (objectLiteral) {
+        directObjectLiteral ??= objectLiteral;
+      } else if (ast.isIdentifier(node.right)) {
+        exportedIdentifier ??= node.right.getText(source);
+      }
     } else if (ast.isVariableDeclaration(node) && node.initializer) {
       const objectLiteral = unwrapObjectLiteral(node.initializer);
       if (objectLiteral && ast.isIdentifier(node.name)) {
