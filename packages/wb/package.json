@@ -26,7 +26,7 @@
     "start": "build-ts run src/index.ts --",
     "start-prod": "yarn build && yarn wb",
     "test": "WB_ENV=test vitest run test",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "verify": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify",
     "verify-full": "yarn verify --full"
   },
@@ -50,7 +50,6 @@
     "@types/kill-port": "2.0.3",
     "@types/node": "25.6.0",
     "@types/yargs": "17.0.35",
-    "@typescript/native-preview": "7.0.0-dev.20260504.1",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
     "at-decorators": "7.1.0",
@@ -61,6 +60,7 @@
     "rolldown": "1.0.0-rc.18",
     "sort-package-json": "4.0.0",
     "type-fest": "5.6.0",
+    "typescript": "7.0.2",
     "vitest": "4.1.5"
   },
   "engines": {

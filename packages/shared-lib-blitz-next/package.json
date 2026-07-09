@@ -46,16 +46,16 @@
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/node-ts": "23.6.4",
     "@types/node": "25.6.0",
-    "@typescript/native-preview": "7.0.0-dev.20260504.1",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "13.23.1",
+    "@willbooster/wb": "13.25.2",
     "blitz": "3.0.2",
     "build-ts": "17.1.31",
     "oxfmt": "0.58.0",
     "oxlint": "1.73.0",
     "oxlint-tsgolint": "0.24.0",
     "sort-package-json": "4.0.0",
+    "typescript": "7.0.2",
     "vitest": "4.1.5"
   },
   "publishConfig": {
