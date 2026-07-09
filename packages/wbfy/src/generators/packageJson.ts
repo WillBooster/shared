@@ -1277,7 +1277,11 @@ function applyMiseTaskScripts(
  */
 function extractMiseBridgeEnvPrefix(script: unknown, name: string): string | undefined {
   if (typeof script !== 'string') return undefined;
-  const match = new RegExp(String.raw`^((?:\w+=\S+\s+)*)mise run ${escapeRegExp(name)}$`, 'u').exec(script.trim());
+  // Each assignment value may be double-quoted, single-quoted, or an unquoted run of non-whitespace,
+  // so prefixes like `MISE_ENV="a b"` (whose value contains spaces) are matched instead of dropped.
+  const match = new RegExp(String.raw`^((?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)*)mise run ${escapeRegExp(name)}$`, 'u').exec(
+    script.trim()
+  );
   return match?.[1];
 }
 

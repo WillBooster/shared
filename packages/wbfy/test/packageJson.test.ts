@@ -222,6 +222,19 @@ test('preserves a leading MISE_ENV prefix on a mise bridge script', async () => 
   expect(packageJson.scripts?.test).toBe('MISE_ENV=test mise run test');
 });
 
+test('preserves a quoted MISE_ENV value containing spaces on a mise bridge script', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        test: 'MISE_ENV="test development" mise run test',
+      },
+    },
+    { isBun: true, miseTasks: { test: 'bun run playwright test' } }
+  );
+
+  expect(packageJson.scripts?.test).toBe('MISE_ENV="test development" mise run test');
+});
+
 test('regenerates a plain mise bridge script without inventing an env prefix', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
