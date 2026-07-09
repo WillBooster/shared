@@ -17,9 +17,9 @@ class DrizzleScripts {
   reset(project: Project, additionalOptions = ''): string {
     const d1DatabaseName = getD1DatabaseName(project);
     if (d1DatabaseName) {
-      // Remove the whole local wrangler state, then re-materialize the D1 SQLite file. Its path is
-      // deterministic, so a DATABASE_URL exported before the removal stays valid.
-      // Remove only the D1 subtree so that other locally-persisted bindings (KV, R2, Durable Objects) survive.
+      // Remove only the D1 subtree so that other locally-persisted bindings (KV, R2, Durable Objects) survive,
+      // then re-materialize the D1 SQLite file. Its path is deterministic, so a DATABASE_URL exported
+      // before the removal stays valid.
       return `rm -Rf "${getLocalWranglerStateDir(project)}/v3/d1" && ${buildMaterializeLocalD1Command(project, d1DatabaseName)} && ${this.migrate(project, additionalOptions)}`;
     }
 
