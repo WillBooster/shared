@@ -30,12 +30,14 @@ export function getD1DatabaseName(project: Pick<Project, 'dirPath'>): string | u
   const configPath = findWranglerConfigPath(project);
   if (!configPath) return;
 
-  // Cover both JSON(C) (`"database_name": "..."`) and TOML (`database_name = "..."`) without full parsers,
-  // skipping commented-out lines so that they cannot shadow the active database name.
+  // Cover JSON(C) (`"database_name": "..."`) and TOML, including its inline-table form
+  // (`d1_databases = [{ ..., database_name = "..." }]`), without full parsers.
+  // Commented-out lines are skipped so that they cannot shadow the active database name,
+  // and the key must follow a line start, `{` or `,` so that prose mentioning it cannot match.
   for (const line of fs.readFileSync(configPath, 'utf8').split('\n')) {
     if (/^\s*(?:#|\/\/)/u.test(line)) continue;
 
-    const match = /^\s*["']?database_name["']?\s*[:=]\s*["']([^"']+)["']/u.exec(line);
+    const match = /(?:^|[,{])\s*["']?database_name["']?\s*[:=]\s*["']([^"']+)["']/u.exec(line);
     if (match) return match[1];
   }
   return;
