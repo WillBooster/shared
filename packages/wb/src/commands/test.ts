@@ -153,6 +153,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     }
     // Skip e2e tests if not needed or no e2e directory exists
     if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
+      if (shouldRunE2e) warnIfPlaywrightSpecsAreUndiscoverable(project);
       continue;
     }
 
@@ -276,6 +277,31 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     }
   }
   return 0;
+}
+
+/**
+ * Warn when a project has a Playwright config but no test/e2e directory.
+ * wb discovers e2e tests only under test/e2e/, so such projects would otherwise have their
+ * Playwright specs silently skipped and `wb test` / `wb verify --full` would report success
+ * without running any tests.
+ */
+export function warnIfPlaywrightSpecsAreUndiscoverable(
+  project: Pick<Project, 'dirPath' | 'name' | 'packageJson'>
+): void {
+  // Callers invoke this only after establishing that test/e2e is missing, so it is not re-checked
+  // here. A workspace root delegates e2e to its packages, so it never warns (checked first to skip
+  // the filesystem lookup below). Only a project's OWN Playwright config counts: `hasPlaywrightConfig`
+  // walks up to the monorepo root, so reusing it would false-positive on library packages and the
+  // root itself, which legitimately share a root-level playwright.config.ts but keep e2e specs in a
+  // single app package.
+  if (project.packageJson.workspaces) return;
+  if (!fs.existsSync(path.join(project.dirPath, 'playwright.config.ts'))) return;
+
+  console.warn(
+    chalk.yellow(
+      `Skipping e2e tests for ${project.name}: a Playwright config exists but the test/e2e directory is missing. wb only discovers Playwright specs under test/e2e/, so move them there to run e2e tests.`
+    )
+  );
 }
 
 export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {
