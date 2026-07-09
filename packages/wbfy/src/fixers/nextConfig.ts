@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import ts from 'typescript';
+import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { parseSourceFile } from '../utils/typescriptApi.js';
 
 export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixNextConfigJson', async () => {
@@ -15,17 +16,21 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
       .find((p) => fs.existsSync(p));
     if (!filePath) return;
 
-    const oldContent = await fs.promises.readFile(filePath, 'utf8');
-    const objectLiteral = getNextConfigObjectLiteral(oldContent);
-    if (!objectLiteral) return;
+    const extracted = getNextConfigObjectLiteral(filePath);
+    if (!extracted) return;
+    const { source, objectLiteral } = extracted;
 
-    const existingProperties = new Set(objectLiteral.properties.map((property) => property.name?.getText()));
+    // `properties` includes spread assignments (`...rest`) that carry no name, so guard before reading it.
+    const existingProperties = new Set(
+      objectLiteral.properties.map((property) => ('name' in property ? property.name?.getText(source) : undefined))
+    );
     const propertyTexts: string[] = [];
     if (!existingProperties.has('typescript')) {
       propertyTexts.push('typescript: { ignoreBuildErrors: true }');
     }
     if (propertyTexts.length === 0) return;
 
+    const oldContent = source.text;
     const insertionPoint = objectLiteral.getEnd() - 1;
     const lastProperty = objectLiteral.properties.at(-1);
     const hasTrailingComma = lastProperty
@@ -39,26 +44,30 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
   });
 }
 
-function getNextConfigObjectLiteral(content: string): ts.ObjectLiteralExpression | undefined {
-  const source = ts.createSourceFile('next.config.js', content, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
-  let objectLiteral: ts.ObjectLiteralExpression | undefined;
-  const visit = (node: ts.Node): void => {
+function getNextConfigObjectLiteral(
+  filePath: string
+): { source: ast.SourceFile; objectLiteral: ast.ObjectLiteralExpression } | undefined {
+  const source = parseSourceFile(filePath);
+  if (!source) return undefined;
+
+  let objectLiteral: ast.ObjectLiteralExpression | undefined;
+  const visit = (node: ast.Node): void => {
     if (objectLiteral) return;
-    if (ts.isExportAssignment(node) && ts.isObjectLiteralExpression(node.expression)) {
+    if (ast.isExportAssignment(node) && ast.isObjectLiteralExpression(node.expression)) {
       objectLiteral = node.expression;
       return;
     }
     if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ast.isBinaryExpression(node) &&
+      node.operatorToken.kind === ast.SyntaxKind.EqualsToken &&
       node.left.getText(source) === 'module.exports' &&
-      ts.isObjectLiteralExpression(node.right)
+      ast.isObjectLiteralExpression(node.right)
     ) {
       objectLiteral = node.right;
       return;
     }
-    ts.forEachChild(node, visit);
+    node.forEachChild(visit);
   };
-  visit(source);
-  return objectLiteral;
+  source.forEachChild(visit);
+  return objectLiteral ? { source, objectLiteral } : undefined;
 }
