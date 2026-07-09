@@ -737,6 +737,7 @@ async function removeDeprecatedStuff(
   delete jsonObj.devDependencies[deprecatedTypescriptGoDependency];
   // Non-TypeScript repos should not keep a stray `typescript` package.
   if (!config.doesContainTypeScript && !config.doesContainTypeScriptInPackages) {
+    delete jsonObj.dependencies[typescriptDependency];
     delete jsonObj.devDependencies[typescriptDependency];
   }
   delete jsonObj.devDependencies.lerna;

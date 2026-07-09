@@ -51,8 +51,6 @@ export const bunMinimumReleaseAgeExcludes = [
   '@typescript/typescript-linux-arm',
   '@typescript/typescript-linux-arm64',
   '@typescript/typescript-linux-x64',
-  '@typescript/typescript-win32-arm64',
-  '@typescript/typescript-win32-x64',
   // Bun itself releases its first-party type packages in lockstep with the
   // runtime, so generated Bun repos must be able to install them immediately.
   '@types/bun',
