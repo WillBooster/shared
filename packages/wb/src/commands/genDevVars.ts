@@ -58,8 +58,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
 };
 
 function escapeDotenvValue(value: string): string {
-  return value
-    .replaceAll('\\', String.raw`\\`)
-    .replaceAll('"', String.raw`\"`)
-    .replaceAll('\n', String.raw`\n`);
+  // Dotenv's double-quoted syntax only unescapes \n and \r; escaping backslashes or quotes
+  // would inject literal backslashes into the parsed value (verified with dotenv 17).
+  return value.replaceAll('\n', String.raw`\n`);
 }
