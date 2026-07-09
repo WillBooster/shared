@@ -153,6 +153,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     }
     // Skip e2e tests if not needed or no e2e directory exists
     if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
+      if (shouldRunE2e) warnIfPlaywrightSpecsAreUndiscoverable(project);
       continue;
     }
 
@@ -276,6 +277,25 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     }
   }
   return 0;
+}
+
+/**
+ * Warn when a project has a Playwright config but no test/e2e directory.
+ * wb discovers e2e tests only under test/e2e/, so such projects would otherwise have their
+ * Playwright specs silently skipped and `wb test` / `wb verify --full` would report success
+ * without running any tests.
+ */
+export function warnIfPlaywrightSpecsAreUndiscoverable(
+  project: Pick<Project, 'dirPath' | 'hasPlaywrightConfig' | 'name'>
+): void {
+  if (!project.hasPlaywrightConfig || fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) return;
+
+  console.warn(
+    chalk.yellow(
+      `Skipping e2e tests for ${project.name}: a Playwright config exists but the test/e2e directory is missing. ` +
+        'wb only discovers Playwright specs under test/e2e/, so move them there to run e2e tests.'
+    )
+  );
 }
 
 export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {

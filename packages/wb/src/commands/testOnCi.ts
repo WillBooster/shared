@@ -22,6 +22,7 @@ import { findWranglerConfigPath } from '../utils/wrangler.js';
 import { promisePool } from '../utils/promisePool.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
+import { warnIfPlaywrightSpecsAreUndiscoverable } from './test.js';
 
 const testOnCiBuilder = {
   silent: {
@@ -110,6 +111,8 @@ export async function testOnCi(
       if (hasDockerfile) {
         await runWithSpawn(dockerScripts.stop(project), project, argv);
       }
+    } else {
+      warnIfPlaywrightSpecsAreUndiscoverable(project);
     }
   }
 }
