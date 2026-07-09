@@ -6,18 +6,6 @@ import type { Project } from '../project.js';
 const wranglerConfigFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'];
 
 /**
- * Get the local wrangler/miniflare state directory.
- * Development follows wrangler's default directory so that plain `wrangler dev` / `vinext dev`
- * (without a persist-path override) shares the same database as wb-managed db commands.
- * Other environments (e.g. test) get their own directory so that they can be reset
- * without destroying development state.
- */
-export function getLocalWranglerStateDir(project: Pick<Project, 'env'>): string {
-  const wbEnv = project.env.WB_ENV;
-  return !wbEnv || wbEnv === 'development' ? '.wrangler/state' : `.wrangler/state-${wbEnv}`;
-}
-
-/**
  * Prefix the given script with commands exporting DATABASE_URL pointing to the local miniflare D1 SQLite file,
  * so that drizzle-kit and seed scripts can operate on the same database as the app.
  * Do nothing if the project has no D1 database in its wrangler config.
@@ -29,6 +17,8 @@ export function wrapWithLocalD1DatabaseUrl(project: Pick<Project, 'dirPath' | 'e
   // Excluding miniflare's metadata.sqlite, which lives next to the hash-named database file.
   // An unmatched glob cannot happen here: the script runs under /bin/sh (via Node's `shell: true`),
   // and the preceding materialization command guarantees the SQLite file exists.
+  // Projects with multiple D1 databases are not supported: the hash-named files cannot be
+  // distinguished cheaply (materialization does not even update the target file's mtime).
   const exportCommand = `export DATABASE_URL="file:$(ls "${getLocalWranglerStateDir(project)}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata | head -1)"`;
   return `${buildMaterializeLocalD1Command(project, databaseName)} && ${exportCommand} && ${script}`;
 }
@@ -66,4 +56,16 @@ export function findWranglerConfigPath(project: Pick<Project, 'dirPath'>): strin
  */
 export function buildMaterializeLocalD1Command(project: Pick<Project, 'env'>, databaseName: string): string {
   return `YARN wrangler d1 execute ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}" --command "SELECT 1" > /dev/null`;
+}
+
+/**
+ * Get the local wrangler/miniflare state directory.
+ * Development follows wrangler's default directory so that plain `wrangler dev` / `vinext dev`
+ * (without a persist-path override) shares the same database as wb-managed db commands.
+ * Other environments (e.g. test) get their own directory so that they can be reset
+ * without destroying development state.
+ */
+export function getLocalWranglerStateDir(project: Pick<Project, 'env'>): string {
+  const wbEnv = project.env.WB_ENV;
+  return !wbEnv || wbEnv === 'development' ? '.wrangler/state' : `.wrangler/state-${wbEnv}`;
 }
