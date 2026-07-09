@@ -6,26 +6,31 @@ import type { Project } from '../project.js';
 const wranglerConfigFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'];
 
 /**
- * Local wrangler/miniflare state directory separated per WB_ENV (expanded by the shell at run time),
- * so that e.g. test runs can reset their own D1 database without destroying development state.
+ * Get the local wrangler/miniflare state directory.
+ * Development follows wrangler's default directory so that plain `wrangler dev` / `vinext dev`
+ * (without a persist-path override) shares the same database as wb-managed db commands.
+ * Other environments (e.g. test) get their own directory so that they can be reset
+ * without destroying development state.
  */
-// oxlint-disable-next-line no-template-curly-in-string -- expanded by the shell, not by JavaScript
-export const LOCAL_WRANGLER_STATE_DIR = '.wrangler/state-${WB_ENV:-development}';
+export function getLocalWranglerStateDir(project: Pick<Project, 'env'>): string {
+  const wbEnv = project.env.WB_ENV;
+  return !wbEnv || wbEnv === 'development' ? '.wrangler/state' : `.wrangler/state-${wbEnv}`;
+}
 
 /**
  * Prefix the given script with commands exporting DATABASE_URL pointing to the local miniflare D1 SQLite file,
  * so that drizzle-kit and seed scripts can operate on the same database as the app.
  * Do nothing if the project has no D1 database in its wrangler config.
  */
-export function wrapWithLocalD1DatabaseUrl(project: Pick<Project, 'dirPath'>, script: string): string {
+export function wrapWithLocalD1DatabaseUrl(project: Pick<Project, 'dirPath' | 'env'>, script: string): string {
   const databaseName = getD1DatabaseName(project);
   if (!databaseName) return script;
 
   // Excluding miniflare's metadata.sqlite, which lives next to the hash-named database file.
   // An unmatched glob cannot happen here: the script runs under /bin/sh (via Node's `shell: true`),
   // and the preceding materialization command guarantees the SQLite file exists.
-  const exportCommand = `export DATABASE_URL="file:$(ls "${LOCAL_WRANGLER_STATE_DIR}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata | head -1)"`;
-  return `${buildMaterializeLocalD1Command(databaseName)} && ${exportCommand} && ${script}`;
+  const exportCommand = `export DATABASE_URL="file:$(ls "${getLocalWranglerStateDir(project)}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata | head -1)"`;
+  return `${buildMaterializeLocalD1Command(project, databaseName)} && ${exportCommand} && ${script}`;
 }
 
 /**
@@ -59,6 +64,6 @@ export function findWranglerConfigPath(project: Pick<Project, 'dirPath'>): strin
  * A no-op query forces miniflare to create the SQLite file if it doesn't exist yet.
  * Only stdout is suppressed; wrangler reports errors on stderr, which must stay visible.
  */
-export function buildMaterializeLocalD1Command(databaseName: string): string {
-  return `YARN wrangler d1 execute ${databaseName} --local --persist-to "${LOCAL_WRANGLER_STATE_DIR}" --command "SELECT 1" > /dev/null`;
+export function buildMaterializeLocalD1Command(project: Pick<Project, 'env'>, databaseName: string): string {
+  return `YARN wrangler d1 execute ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}" --command "SELECT 1" > /dev/null`;
 }

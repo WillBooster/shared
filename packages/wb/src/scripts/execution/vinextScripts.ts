@@ -1,5 +1,5 @@
 import type { Project } from '../../project.js';
-import { LOCAL_WRANGLER_STATE_DIR } from '../../utils/wrangler.js';
+import { getLocalWranglerStateDir } from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
 
 import { BaseScripts } from './baseScripts.js';
@@ -27,7 +27,7 @@ class VinextScripts extends BaseScripts {
     // the production custom domain declared in the wrangler config routes.
     return [
       project.buildCommand,
-      `YARN wrangler dev --config dist/server/wrangler.json --ip 127.0.0.1 --port ${port} --persist-to "${LOCAL_WRANGLER_STATE_DIR}" --local-upstream localhost:${port} ${argv.normalizedArgsText ?? ''}`.trim(),
+      `YARN wrangler dev --config dist/server/wrangler.json --ip 127.0.0.1 --port ${port} --persist-to "${getLocalWranglerStateDir(project)}" --local-upstream localhost:${port} ${argv.normalizedArgsText ?? ''}`.trim(),
     ];
   }
 }

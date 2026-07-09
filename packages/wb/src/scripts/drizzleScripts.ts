@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { getAbsoluteFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
-import { buildMaterializeLocalD1Command, getD1DatabaseName, LOCAL_WRANGLER_STATE_DIR } from '../utils/wrangler.js';
+import { buildMaterializeLocalD1Command, getD1DatabaseName, getLocalWranglerStateDir } from '../utils/wrangler.js';
 
 const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
 const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
@@ -19,7 +19,7 @@ class DrizzleScripts {
     if (d1DatabaseName) {
       // Remove the whole local wrangler state, then re-materialize the D1 SQLite file. Its path is
       // deterministic, so a DATABASE_URL exported before the removal stays valid.
-      return `rm -Rf "${LOCAL_WRANGLER_STATE_DIR}" && ${buildMaterializeLocalD1Command(d1DatabaseName)} && ${this.migrate(project, additionalOptions)}`;
+      return `rm -Rf "${getLocalWranglerStateDir(project)}" && ${buildMaterializeLocalD1Command(project, d1DatabaseName)} && ${this.migrate(project, additionalOptions)}`;
     }
 
     const removeCommand = buildRemoveSqliteDbCommand(project);
