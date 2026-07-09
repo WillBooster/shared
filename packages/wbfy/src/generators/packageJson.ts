@@ -1132,7 +1132,11 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
       test: 'bun wb test',
       typecheck: 'bun --bun wb typecheck',
       verify: 'bun --bun wb verify',
-      'verify-full': 'bun --bun wb verify --full',
+      // `verify --full` runs Playwright, and Bun's `--bun` flag installs a node->bun PATH shim that
+      // propagates into Playwright's child processes, crashing test loading with an opaque
+      // "ResolveMessage {}". Omit `--bun` for Playwright projects so `wb verify --full` (and thus
+      // Playwright) runs under Node.js; wb still uses Bun for its own inner commands.
+      'verify-full': config.depending.playwrightTest ? 'bun wb verify --full' : 'bun --bun wb verify --full',
     };
     applyDatabaseScripts(config, scripts, oldScripts, `bun --bun ${getWbDatabaseCommand(config)}`);
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
@@ -1256,9 +1260,29 @@ function applyMiseTaskScripts(
   for (const name of names) {
     if (!hasMiseTask(config, name)) continue;
     if (doesMiseTaskCallPackageScript(config, name)) continue;
-    if (oldScripts[name] && !isWbfyManagedMiseBridge(oldScripts[name], name) && !(name in scripts)) continue;
-    scripts[name] = `mise run ${name}`;
+    // Preserve a leading `KEY=VALUE ` env prefix (e.g. `MISE_ENV=test`) on an existing mise bridge.
+    // Such a prefix is required for mise config environments (mise.<MISE_ENV>.toml), which are
+    // selected from MISE_ENV *before* mise starts and cannot be switched from inside a task; dropping
+    // it would silently run the task in the default environment.
+    const envPrefix = extractMiseBridgeEnvPrefix(oldScripts[name], name);
+    if (envPrefix === undefined && oldScripts[name] && !(name in scripts)) continue;
+    scripts[name] = `${envPrefix ?? ''}mise run ${name}`;
   }
+}
+
+/**
+ * Returns the leading `KEY=VALUE ` env-var prefix of an existing `mise run <name>` bridge script
+ * (possibly an empty string when the bridge has no prefix), or `undefined` when the script is not a
+ * mise bridge for the given task.
+ */
+function extractMiseBridgeEnvPrefix(script: unknown, name: string): string | undefined {
+  if (typeof script !== 'string') return undefined;
+  // Each assignment value may be double-quoted, single-quoted, or an unquoted run of non-whitespace,
+  // so prefixes like `MISE_ENV="a b"` (whose value contains spaces) are matched instead of dropped.
+  const match = new RegExp(String.raw`^((?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)*)mise run ${escapeRegExp(name)}$`, 'u').exec(
+    script.trim()
+  );
+  return match?.[1];
 }
 
 function hasMiseTask(config: PackageConfig, name: string): boolean {
@@ -1272,10 +1296,6 @@ function doesMiseTaskCallPackageScript(config: PackageConfig, name: string): boo
   return packageManagers.some((packageManager) =>
     new RegExp(String.raw`\b${packageManager}\s+(?:run\s+)?${escapeRegExp(name)}(?![a-zA-Z0-9_\-:.])`, 'u').test(task)
   );
-}
-
-function isWbfyManagedMiseBridge(script: unknown, name: string): boolean {
-  return script === `mise run ${name}`;
 }
 
 function escapeRegExp(value: string): string {
