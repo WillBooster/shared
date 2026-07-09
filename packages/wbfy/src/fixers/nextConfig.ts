@@ -31,7 +31,9 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
 
     // `properties` includes spread assignments (`...rest`) that carry no name, so guard before reading it.
     const existingProperties = new Set(
-      objectLiteral.properties.map((property) => ('name' in property ? property.name?.getText(source) : undefined))
+      objectLiteral.properties.map((property) =>
+        'name' in property && property.name ? getPropertyKey(property.name, source) : undefined
+      )
     );
     const propertyTexts = managedProperties
       .filter((property) => !existingProperties.has(property.name))
@@ -40,9 +42,14 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
 
     const oldContent = source.text;
     const insertionPoint = objectLiteral.getEnd() - 1;
-    // Read the trailing comma from the AST rather than scanning the source text, which would be
-    // fooled by a comma inside a trailing comment (e.g. `foo: 1 // a, b`) and drop the separator.
-    const prefix = objectLiteral.properties.length > 0 && !objectLiteral.properties.hasTrailingComma ? ', ' : '';
+    // The native TS AST does not reliably expose `properties.hasTrailingComma`, so scan the source
+    // between the last property and the closing brace. Strip comments first so a comma inside a
+    // trailing comment (e.g. `foo: 1 // a, b`) is not mistaken for a real trailing comma.
+    const lastProperty = objectLiteral.properties.at(-1);
+    const hasTrailingComma = lastProperty
+      ? stripComments(oldContent.slice(lastProperty.getEnd(), insertionPoint)).includes(',')
+      : false;
+    const prefix = objectLiteral.properties.length > 0 && !hasTrailingComma ? ', ' : '';
     const newContent = `${oldContent.slice(0, insertionPoint)}${prefix}${propertyTexts.join(', ')}${oldContent.slice(
       insertionPoint
     )}`;
@@ -139,4 +146,15 @@ function unwrapParentheses(node: ast.Expression): ast.Expression {
 // Match both the bare `NextConfig` and qualified forms like `import('next').NextConfig`.
 function isNextConfigType(typeText: string): boolean {
   return typeText === 'NextConfig' || typeText.endsWith('.NextConfig');
+}
+
+// Return a property key without surrounding quotes, so `'reactCompiler'` matches `reactCompiler`.
+// Identifier, string-literal and numeric-literal names all expose the unquoted value via `.text`.
+function getPropertyKey(name: ast.PropertyName, source: ast.SourceFile): string {
+  return 'text' in name && typeof name.text === 'string' ? name.text : name.getText(source);
+}
+
+// Remove line and block comments from a source snippet.
+function stripComments(text: string): string {
+  return text.replaceAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '');
 }
