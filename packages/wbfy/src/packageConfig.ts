@@ -185,7 +185,12 @@ export async function getPackageConfig(
       ),
       isCloudflare: detectCloudflare(dirPath, packageJson),
       isRailway: detectRailway(dirPath, packageJson),
-      isBun: rootConfig?.isBun || fs.existsSync(path.join(dirPath, 'bun.lock')),
+      isBun:
+        rootConfig?.isBun ||
+        fs.existsSync(path.join(dirPath, 'bun.lock')) ||
+        // Some repos gitignore bun.lock, so it may be missing on fresh clones.
+        // bunfig.toml is committed and generated only for Bun projects, making it a reliable signal.
+        fs.existsSync(path.join(dirPath, 'bunfig.toml')),
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
       doesContainSubPackageJsons: containsAny('packages/**/package.json', dirPath),
