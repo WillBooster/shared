@@ -187,6 +187,7 @@ export async function getPackageConfig(
       isRailway: detectRailway(dirPath, packageJson),
       isBun:
         rootConfig?.isBun ||
+        fs.existsSync(path.join(dirPath, 'bun.lockb')) ||
         fs.existsSync(path.join(dirPath, 'bun.lock')) ||
         // Some repos gitignore bun.lock, so it may be missing on fresh clones.
         // bunfig.toml is committed and generated only for Bun projects, making it a reliable signal.
