@@ -68,7 +68,7 @@ function generateAgentInstruction(
 
 - If on \`main\`, create a new branch; otherwise work on the current branch.
 - Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.
-- Write tests when explicitly requested, or when the change has behavior worth verifying; without a request, cover only the essential behavior.
+- Write tests when explicitly requested, or when you judge the change worth testing; without a request, cover only the essential behavior.
 - When writing tests, follow these rules:
   - Continue modifying tests and/or code until all tests pass.
   - Ensure tests are idempotent and independent (e.g., reset persistent data) so they can run repeatedly or in parallel.
