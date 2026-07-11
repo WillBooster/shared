@@ -56,7 +56,7 @@ function generateAgentInstruction(
     ? `\n- Use \`${packageManager} wb start --mode test\` to launch a web server for debugging or testing.`
     : '';
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
-    ? `\n  - End your commit message with: \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`.`
+    ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`.`
     : '';
   const baseContent = `
 ## Project Information
@@ -79,7 +79,7 @@ function generateAgentInstruction(
 - Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.
-- Use heredoc for multi-line command arguments (e.g., \`git commit -m\`, \`gh pr create --body\`).
+- Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${railwayInstruction}${playwrightTestServerInstruction}
 
 ${generateAgentCodingStyle(allConfigs)}
