@@ -23,7 +23,10 @@ export const typeCheckCommand: CommandModule<unknown, TypeCheckCommandOptions> =
   },
 };
 
-export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
+export async function typeCheck(
+  argv: TypeCheckCommandArgv,
+  options: { skipTypeScript?: boolean } = {}
+): Promise<number> {
   const projects = await findDescendantProjects(argv, false);
   if (!projects) {
     console.error(chalk.red('No project found.'));
@@ -33,7 +36,7 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
   let removedNextDir = false as boolean;
   const promises = projects.descendants.map(async (project) => {
     const commands: string[] = [];
-    if (!project.packageJson.workspaces || project.hasSourceCode) {
+    if (!options.skipTypeScript && (!project.packageJson.workspaces || project.hasSourceCode)) {
       commands.push(...buildTypeScriptTypeCheckCommands(project));
     }
     if (!project.packageJson.workspaces && project.hasOwnDependency('pyright')) {
