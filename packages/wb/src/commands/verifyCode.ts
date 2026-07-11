@@ -13,6 +13,7 @@ import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
+import { typeCheck, type TypeCheckCommandArgv } from './typecheck.js';
 
 const builder = {
   full: {
@@ -72,6 +73,13 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
       } as unknown as LintCommandArgv),
     { silent: true }
   );
+  // Lint type-checks via oxlint's type-aware flags; fall back to the typecheck command when that
+  // is unavailable (e.g., the project lacks oxlint or oxlint-tsgolint).
+  if (!project.hasTypeAwareOxlint) {
+    await runInProcessCommand('typecheck', () =>
+      typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv)
+    );
+  }
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {

@@ -48,10 +48,6 @@ function generateAgentInstruction(
 ): string {
   const packageManager = getPackageManagerCommand(rootConfig);
   const description = rootConfig.packageJson?.description;
-  // `verify` lints per package cwd, where package oxlint configs drop the root-only type-aware
-  // options, so type errors in workspace packages are caught only by the `typecheck` script.
-  const hasTypecheck = allConfigs.some((c) => c.doesContainTypeScript || c.doesContainTypeScriptInPackages);
-  const typecheckInstruction = hasTypecheck ? `\`${packageManager} typecheck\` and ` : '';
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway
     ? '\n- Railway project information is in the deploy workflows under `.github/workflows`.'
@@ -79,7 +75,7 @@ function generateAgentInstruction(
   - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
   - Avoid fixed waits in E2E tests; wait for conditions instead.
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
-- After making changes, run ${typecheckInstruction}\`${packageManager} verify\` (linting; takes up to 10 minutes), or \`${packageManager} verify-full\` (all tests; takes up to 1 hour) instead of \`verify\` if you changed runtime behavior or tests. Fix errors and re-run until they pass.
+- After making changes, run \`${packageManager} verify\` (type checking and linting; takes up to 10 minutes), or \`${packageManager} verify-full\` (all tests; takes up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
 - Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.
