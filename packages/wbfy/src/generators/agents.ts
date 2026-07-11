@@ -75,7 +75,7 @@ function generateAgentInstruction(
   - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
   - Avoid fixed waits in E2E tests; wait for conditions instead.
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
-- After making changes, run \`${packageManager} verify\` (type checking and linting; takes up to 10 minutes), or \`${packageManager} verify-full\` (all tests; takes up to 1 hour) if you changed runtime behavior (not only types, docs, or config). Fix errors and re-run until it passes.
+- After making changes, run \`${packageManager} verify\` (type checking and linting; takes up to 10 minutes), or \`${packageManager} verify-full\` (all tests; takes up to 1 hour) if you changed runtime behavior or tests (not only types, docs, or config). Fix errors and re-run until it passes.
 - Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.
