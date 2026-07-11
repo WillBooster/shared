@@ -422,6 +422,8 @@ export function buildLintCommand(
   files?: string[]
 ): string | undefined {
   if (project.preferredLinter === 'oxlint') {
+    // This also performs TypeScript type checking: @willbooster/oxlint-config enables
+    // oxlint's type-aware mode (oxlint-tsgolint), which reports type-check diagnostics.
     return buildShellCommand([
       'YARN',
       'oxlint',
