@@ -7324,7 +7324,7 @@ __metadata:
     "@willbooster/oxlint-config": "npm:1.4.8"
     "@willbooster/wb": "npm:13.26.1"
     blitz: "npm:3.0.2"
-    build-ts: "npm:17.1.33"
+    build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.73.0"
     oxlint-tsgolint: "npm:0.24.0"
@@ -7344,7 +7344,7 @@ __metadata:
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
     "@willbooster/wb": "npm:13.26.1"
-    build-ts: "npm:17.1.33"
+    build-ts: "npm:17.1.34"
     next: "npm:16.2.6"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.73.0"
@@ -7378,7 +7378,7 @@ __metadata:
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
     "@willbooster/wb": "npm:13.26.1"
-    build-ts: "npm:17.1.33"
+    build-ts: "npm:17.1.34"
     dotenv: "npm:17.4.2"
     dotenv-expand: "npm:13.0.0"
     oxfmt: "npm:0.58.0"
@@ -7413,7 +7413,7 @@ __metadata:
     "@willbooster/oxlint-config": "npm:1.4.8"
     "@willbooster/wb": "npm:13.26.1"
     babel-loader: "npm:10.1.1"
-    build-ts: "npm:17.1.33"
+    build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.73.0"
     oxlint-tsgolint: "npm:0.24.0"
@@ -7438,7 +7438,7 @@ __metadata:
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
     "@willbooster/wb": "npm:13.26.1"
-    build-ts: "npm:17.1.33"
+    build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.73.0"
     oxlint-tsgolint: "npm:0.24.0"
@@ -7482,7 +7482,7 @@ __metadata:
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
     at-decorators: "npm:7.1.0"
-    build-ts: "npm:17.1.33"
+    build-ts: "npm:17.1.34"
     chalk: "npm:5.6.2"
     dotenv: "npm:17.4.2"
     dotenv-expand: "npm:13.0.0"
@@ -7520,7 +7520,7 @@ __metadata:
     "@willbooster/oxlint-config": "npm:1.4.8"
     "@willbooster/wb": "npm:13.26.1"
     "@yarnpkg/core": "npm:4.7.0"
-    build-ts: "npm:17.1.33"
+    build-ts: "npm:17.1.34"
     deepmerge: "npm:4.3.1"
     dotenv: "npm:17.4.2"
     fast-glob: "npm:3.3.3"
@@ -8868,9 +8868,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"build-ts@npm:17.1.33":
-  version: 17.1.33
-  resolution: "build-ts@npm:17.1.33"
+"build-ts@npm:17.1.34":
+  version: 17.1.34
+  resolution: "build-ts@npm:17.1.34"
   dependencies:
     "@babel/core": "npm:8.0.1"
     "@babel/plugin-proposal-decorators": "npm:8.0.2"
@@ -8887,10 +8887,11 @@ __metadata:
     rolldown: "npm:1.1.4"
     signal-exit: "npm:4.1.0"
     tsx: "npm:4.23.0"
+    typescript: "npm:7.0.2"
     yargs: "npm:18.0.0"
   bin:
     build-ts: bin/index.js
-  checksum: 10c0/3cdf3642249cc8e2ef88fb8688f27115bcffb783dfff63658b311eb0741fdebf02e14ed68a9ad405bc4874b6dda3afd680f3198387efd037f593f17cf43b3cc9
+  checksum: 10c0/034963dd341234596bc952a0ccdbe85518c9bd9b89658889fa5a42e3a6797b6bd9d62dd99951c303290e15ff7387d19be24ef58db161854d392229f81c1d0a44
   languageName: node
   linkType: hard
 
