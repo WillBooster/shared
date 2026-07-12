@@ -82,9 +82,9 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
 }
 
 function buildTypeScriptTypeCheckCommands(project: Project): string[] {
-  if (project.hasOwnDependency('@typescript/native-preview')) {
-    return ['BUN tsgo --noEmit'];
-  }
+  // TypeScript 7 ships the native compiler as `typescript` (`tsc`); wbfy removes the
+  // deprecated `@typescript/native-preview` (tsgo) preview from all repos, so repos
+  // still on the preview should run wbfy instead of relying on a tsgo fallback here.
   if (project.hasOwnDependency('typescript')) {
     return ['BUN tsc --noEmit'];
   }
