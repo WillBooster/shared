@@ -21,6 +21,8 @@ export const bunMinimumReleaseAgeSeconds = 432_000;
 
 // Platform sets must match each package's optionalDependencies on npm because
 // Bun checks all platform binaries in the lockfile, not just the current one.
+// Keep win32 entries even though we drop Windows support: omitting any
+// platform makes `bun add` fail until the minimum-release-age window elapses.
 const typescriptPlatforms = [
   'aix-ppc64',
   'darwin-arm64',
