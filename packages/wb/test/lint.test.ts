@@ -22,15 +22,23 @@ import {
 
 describe('lint', () => {
   it('builds an oxlint command for oxlint projects', () => {
-    expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: true, format: false }, ['/tmp/example.ts'])).toBe(
-      'YARN oxlint --no-error-on-unmatched-pattern --fix /tmp/example.ts'
-    );
+    expect(
+      buildLintCommand({ preferredLinter: 'oxlint', hasTypeAwareOxlint: false }, { fix: true, format: false }, [
+        '/tmp/example.ts',
+      ])
+    ).toBe('YARN oxlint --no-error-on-unmatched-pattern --fix /tmp/example.ts');
   });
 
   it('uses the current directory when oxlint runs without explicit files', () => {
-    expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: false, format: false })).toBe(
-      'YARN oxlint --no-error-on-unmatched-pattern .'
-    );
+    expect(
+      buildLintCommand({ preferredLinter: 'oxlint', hasTypeAwareOxlint: false }, { fix: false, format: false })
+    ).toBe('YARN oxlint --no-error-on-unmatched-pattern .');
+  });
+
+  it('passes type-aware flags when oxlint-tsgolint is available', () => {
+    expect(
+      buildLintCommand({ preferredLinter: 'oxlint', hasTypeAwareOxlint: true }, { fix: false, format: false })
+    ).toBe('YARN oxlint --no-error-on-unmatched-pattern --type-aware --type-check .');
   });
 
   it('builds poetry commands for explicit python files', () => {
@@ -52,9 +60,11 @@ describe('lint', () => {
   });
 
   it('escapes shell-sensitive file paths', () => {
-    expect(buildLintCommand({ preferredLinter: 'oxlint' }, { fix: false, format: false }, ['/tmp/evil"file.ts'])).toBe(
-      `YARN oxlint --no-error-on-unmatched-pattern '/tmp/evil"file.ts'`
-    );
+    expect(
+      buildLintCommand({ preferredLinter: 'oxlint', hasTypeAwareOxlint: false }, { fix: false, format: false }, [
+        '/tmp/evil"file.ts',
+      ])
+    ).toBe(`YARN oxlint --no-error-on-unmatched-pattern '/tmp/evil"file.ts'`);
   });
 
   it('keeps prettier args to prettier-only formats for oxlint projects', () => {

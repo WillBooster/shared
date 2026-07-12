@@ -110,13 +110,15 @@ function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean)
   if (isRootConfig) {
     return `// Keep a package-local copy so repositories can add settings outside
 // managed blocks without mutating the shared imported config object.
-const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});`;
+const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
+// The type-aware options make lint perform type checking. Always force them on here,
+// inside the managed block, so no customization can silently disable type checking.
+oxlintResolvedConfig.options = { ...oxlintResolvedConfig.options, typeAware: true, typeCheck: true };`;
   }
 
-  return `// Oxlint only supports type-aware options in the root config, while it
-// still auto-discovers package-local config files in monorepos. Keep this as a
-// structured clone so packages can delete root-only settings without mutating
-// the shared imported config object.
+  return `// Oxlint rejects the root-only type-aware options outside the root config, so delete them
+// here. This does NOT disable type checking: the lint commands pass the --type-aware and
+// --type-check flags explicitly.
 const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
 delete oxlintResolvedConfig.options;`;
 }

@@ -158,6 +158,12 @@ export class Project {
   }
 
   @memoizeOne
+  get hasTypeAwareOxlint(): boolean {
+    // Oxlint's type-aware mode requires the oxlint-tsgolint binary.
+    return this.hasOxlint && this.hasDependency('oxlint-tsgolint');
+  }
+
+  @memoizeOne
   get hasOxfmt(): boolean {
     return this.hasDependency('oxfmt');
   }

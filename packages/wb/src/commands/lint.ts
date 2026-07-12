@@ -417,7 +417,7 @@ function shouldSuppressSuccessfulVerifyOutput(command: string): boolean {
 }
 
 export function buildLintCommand(
-  project: Pick<Project, 'preferredLinter'>,
+  project: Pick<Project, 'preferredLinter' | 'hasTypeAwareOxlint'>,
   argv: Pick<LintCommandOptions, 'fix' | 'format'> & Partial<Pick<LintCommandOptions, 'quiet'>>,
   files?: string[]
 ): string | undefined {
@@ -426,6 +426,10 @@ export function buildLintCommand(
       'YARN',
       'oxlint',
       '--no-error-on-unmatched-pattern',
+      // Type-aware mode makes oxlint report type-check diagnostics. Pass the flags explicitly
+      // because oxlint rejects the equivalent options in non-root configs, so per-package runs
+      // in monorepos would otherwise miss type errors.
+      ...(project.hasTypeAwareOxlint ? ['--type-aware', '--type-check'] : []),
       ...(argv.quiet ? ['--quiet'] : []),
       ...(argv.fix ? ['--fix'] : []),
       ...(files ?? ['.']),

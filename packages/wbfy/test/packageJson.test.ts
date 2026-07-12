@@ -259,6 +259,14 @@ test('drops --bun from verify-full for Playwright projects but keeps it otherwis
   expect(withoutPlaywright.scripts?.['verify-full']).toBe('bun --bun wb verify --full');
 });
 
+test('type-checks in the lint script of TypeScript projects', { timeout: 60 * 1000 }, async () => {
+  const withTypeScript = await generatePackageJsonFrom({ scripts: {} }, { doesContainTypeScript: true });
+  const withoutTypeScript = await generatePackageJsonFrom({ scripts: {} }, { doesContainJavaScript: true });
+
+  expect(withTypeScript.scripts?.lint).toBe('oxlint --type-aware --type-check --no-error-on-unmatched-pattern .');
+  expect(withoutTypeScript.scripts?.lint).toBe('oxlint --no-error-on-unmatched-pattern .');
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},
