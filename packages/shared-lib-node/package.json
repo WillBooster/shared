@@ -35,7 +35,7 @@
     "cleanup": "yarn format && yarn lint-fix",
     "format": "sort-package-json && yarn format-code",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
-    "lint": "oxlint --no-error-on-unmatched-pattern .",
+    "lint": "oxlint --type-aware --type-check --no-error-on-unmatched-pattern .",
     "lint-fix": "yarn lint --fix",
     "test": "vitest test/",
     "typecheck": "wb typecheck",

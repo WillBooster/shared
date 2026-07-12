@@ -117,7 +117,7 @@ oxlintResolvedConfig.options = { ...oxlintResolvedConfig.options, typeAware: tru
   }
 
   return `// Oxlint rejects the root-only type-aware options outside the root config, so delete them
-// here. This does NOT disable type checking: wb lint always passes the --type-aware and
+// here. This does NOT disable type checking: the lint commands pass the --type-aware and
 // --type-check flags explicitly.
 const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
 delete oxlintResolvedConfig.options;`;

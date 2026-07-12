@@ -1154,7 +1154,9 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     let scripts: Record<string, string> = {
       cleanup: 'yarn format && yarn lint-fix',
       format: generateFormatScript(hasJsOrTs, hasJava),
-      lint: `oxlint --no-error-on-unmatched-pattern .`,
+      // Package-local configs must delete the root-only type-aware options, so pass the flags
+      // explicitly. Otherwise this script would silently skip type checking in workspace packages.
+      lint: `oxlint${hasTypecheck ? ' --type-aware --type-check' : ''} --no-error-on-unmatched-pattern .`,
       'lint-fix': 'yarn lint --fix',
       'format-code': `oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'`,
       typecheck: 'tsc --noEmit',

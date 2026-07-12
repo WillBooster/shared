@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
+import { findRootAndSelfProjects, findSelfProject } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { packageManager } from '../utils/runtime.js';
@@ -73,21 +73,11 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
       } as unknown as LintCommandArgv),
     { silent: true }
   );
-  // Lint already covers TypeScript diagnostics via oxlint's type-aware flags, so run the
-  // typecheck command only for what lint cannot check: TypeScript when type-aware oxlint is
-  // unavailable, and Pyright for Python projects.
-  const skipTypeScript = project.hasTypeAwareOxlint;
-  if (!skipTypeScript || (await hasPyrightProject(argv))) {
-    await runInProcessCommand('typecheck', () =>
-      typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv, { skipTypeScript })
-    );
-  }
-}
-
-async function hasPyrightProject(argv: VerifyCodeCommandArgv): Promise<boolean> {
-  const projects = await findDescendantProjects(argv, false);
-  return !!projects?.descendants.some(
-    (project) => !project.packageJson.workspaces && project.hasOwnDependency('pyright')
+  // Type-aware lint reports TypeScript diagnostics only for the files oxlint actually lints, and
+  // the shared config ignores directories tsc still compiles (e.g. `__generated__`, `@types`,
+  // `dist`). Keep the typecheck command so `verify` stays equivalent to "the repository compiles".
+  await runInProcessCommand('typecheck', () =>
+    typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv)
   );
 }
 
