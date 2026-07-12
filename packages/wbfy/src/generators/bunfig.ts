@@ -67,7 +67,20 @@ const oxcBindingPlatforms = [
   'win32-x64-msvc',
 ];
 const tsgolintPlatforms = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-arm64', 'win32-x64'];
-const nextRspackPlatforms = ['linux-arm64-gnu', 'linux-arm64-musl', 'linux-x64-gnu', 'linux-x64-musl'];
+const nextRspackPlatforms = [
+  'android-arm-eabi',
+  'android-arm64',
+  'darwin-arm64',
+  'darwin-x64',
+  'linux-arm-gnueabihf',
+  'linux-arm64-gnu',
+  'linux-arm64-musl',
+  'linux-x64-gnu',
+  'linux-x64-musl',
+  'win32-arm64-msvc',
+  'win32-ia32-msvc',
+  'win32-x64-msvc',
+];
 const nextSwcPlatforms = [
   'android-arm-eabi',
   'android-arm64',
@@ -81,6 +94,9 @@ const nextSwcPlatforms = [
   'linux-x64-musl',
   'wasm-nodejs',
   'wasm-web',
+  'win32-arm64-msvc',
+  'win32-ia32-msvc',
+  'win32-x64-msvc',
 ];
 
 export const bunMinimumReleaseAgeExcludes = [
@@ -124,6 +140,7 @@ export const bunMinimumReleaseAgeExcludes = [
   ...tsgolintPlatforms.map((platform) => `@oxlint-tsgolint/${platform}`),
   '@next/env',
   '@next/font',
+  '@next/rspack-binding',
   ...nextRspackPlatforms.map((platform) => `@next/rspack-binding-${platform}`),
   ...nextSwcPlatforms.map((platform) => `@next/swc-${platform}`),
   '@next/third-parties',
