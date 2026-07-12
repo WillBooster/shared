@@ -76,6 +76,8 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promis
   // Type-aware lint reports TypeScript diagnostics only for the files oxlint actually lints, and
   // the shared config ignores directories tsc still compiles (e.g. `__generated__`, `@types`,
   // `dist`). Keep the typecheck command so `verify` stays equivalent to "the repository compiles".
+  // The overlap with lint is deliberate: `--type-aware` also powers type-aware lint rules, and
+  // dropping only `--type-check` from lint saves ~0.1s, far less than the coverage it would cost.
   await runInProcessCommand(
     'typecheck',
     () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv),
