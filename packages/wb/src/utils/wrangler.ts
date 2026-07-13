@@ -71,7 +71,9 @@ export function wrapWithLocalD1DatabaseUrl(project: Pick<Project, 'dirPath' | 'e
   // and the preceding materialization command guarantees the SQLite file exists.
   // Projects with multiple D1 databases are not supported: the hash-named files cannot be
   // distinguished cheaply (materialization does not even update the target file's mtime).
-  const exportCommand = `export DATABASE_URL="file:$(ls "${getLocalWranglerStateDir(project)}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata | head -1)"`;
+  // The state directory must be absolute because the wrapped script may `cd` to the monorepo root.
+  const stateDirPath = path.resolve(project.dirPath, getLocalWranglerStateDir(project));
+  const exportCommand = `export DATABASE_URL="file:$(ls "${stateDirPath}"/v3/d1/miniflare-D1DatabaseObject/*.sqlite | grep -v metadata | head -1)"`;
   return `${buildMaterializeLocalD1Command(project, databaseName)} && ${exportCommand} && ${script}`;
 }
 
