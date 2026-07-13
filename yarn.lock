@@ -7322,7 +7322,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.1"
+    "@willbooster/wb": "npm:13.26.2"
     blitz: "npm:3.0.2"
     build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
@@ -7343,7 +7343,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.1"
+    "@willbooster/wb": "npm:13.26.2"
     build-ts: "npm:17.1.34"
     next: "npm:16.2.6"
     oxfmt: "npm:0.58.0"
@@ -7377,7 +7377,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.1"
+    "@willbooster/wb": "npm:13.26.2"
     build-ts: "npm:17.1.34"
     dotenv: "npm:17.4.2"
     dotenv-expand: "npm:13.0.0"
@@ -7411,7 +7411,7 @@ __metadata:
     "@types/react-dom": "npm:19.2.3"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.1"
+    "@willbooster/wb": "npm:13.26.2"
     babel-loader: "npm:10.1.1"
     build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
@@ -7437,7 +7437,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.1"
+    "@willbooster/wb": "npm:13.26.2"
     build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.73.0"
@@ -7448,9 +7448,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/wb@npm:13.26.1":
-  version: 13.26.1
-  resolution: "@willbooster/wb@npm:13.26.1"
+"@willbooster/wb@npm:13.26.2":
+  version: 13.26.2
+  resolution: "@willbooster/wb@npm:13.26.2"
   dependencies:
     chalk: "npm:5.6.2"
     dotenv: "npm:17.4.2"
@@ -7462,7 +7462,7 @@ __metadata:
     yargs: "npm:18.0.0"
   bin:
     wb: bin/index.js
-  checksum: 10c0/4027a8f0dc8478c0d804d464a0bfe4ef36ec1416383535192b19c0c0d02dafff1225d525bdcf15a5124f75c06e6ced880763b8402fb16b30d82ccc70b87a8336
+  checksum: 10c0/c86fd9df9e607f520b8c345679213729521408d343dc4b8c559d527c3c1bb278899c9dab2fff4346c16878577d85988fc10299adcf870f7b91f98513cbccce2c
   languageName: node
   linkType: hard
 
@@ -7518,7 +7518,7 @@ __metadata:
     "@types/yargs": "npm:17.0.35"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.1"
+    "@willbooster/wb": "npm:13.26.2"
     "@yarnpkg/core": "npm:4.7.0"
     build-ts: "npm:17.1.34"
     deepmerge: "npm:4.3.1"
@@ -7526,7 +7526,7 @@ __metadata:
     fast-glob: "npm:3.3.3"
     fastest-levenshtein: "npm:1.0.16"
     js-yaml: "npm:4.1.1"
-    lefthook: "npm:2.1.9"
+    lefthook: "npm:2.1.10"
     libsodium: "npm:0.8.4"
     libsodium-wrappers: "npm:0.8.4"
     minimal-promise-pool: "npm:6.0.2"
@@ -14115,90 +14115,90 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lefthook-darwin-arm64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-darwin-arm64@npm:2.1.9"
+"lefthook-darwin-arm64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-darwin-arm64@npm:2.1.10"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"lefthook-darwin-x64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-darwin-x64@npm:2.1.9"
+"lefthook-darwin-x64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-darwin-x64@npm:2.1.10"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"lefthook-freebsd-arm64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-freebsd-arm64@npm:2.1.9"
+"lefthook-freebsd-arm64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-freebsd-arm64@npm:2.1.10"
   conditions: os=freebsd & cpu=arm64
   languageName: node
   linkType: hard
 
-"lefthook-freebsd-x64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-freebsd-x64@npm:2.1.9"
+"lefthook-freebsd-x64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-freebsd-x64@npm:2.1.10"
   conditions: os=freebsd & cpu=x64
   languageName: node
   linkType: hard
 
-"lefthook-linux-arm64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-linux-arm64@npm:2.1.9"
+"lefthook-linux-arm64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-linux-arm64@npm:2.1.10"
   conditions: os=linux & cpu=arm64
   languageName: node
   linkType: hard
 
-"lefthook-linux-x64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-linux-x64@npm:2.1.9"
+"lefthook-linux-x64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-linux-x64@npm:2.1.10"
   conditions: os=linux & cpu=x64
   languageName: node
   linkType: hard
 
-"lefthook-openbsd-arm64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-openbsd-arm64@npm:2.1.9"
+"lefthook-openbsd-arm64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-openbsd-arm64@npm:2.1.10"
   conditions: os=openbsd & cpu=arm64
   languageName: node
   linkType: hard
 
-"lefthook-openbsd-x64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-openbsd-x64@npm:2.1.9"
+"lefthook-openbsd-x64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-openbsd-x64@npm:2.1.10"
   conditions: os=openbsd & cpu=x64
   languageName: node
   linkType: hard
 
-"lefthook-windows-arm64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-windows-arm64@npm:2.1.9"
+"lefthook-windows-arm64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-windows-arm64@npm:2.1.10"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"lefthook-windows-x64@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook-windows-x64@npm:2.1.9"
+"lefthook-windows-x64@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook-windows-x64@npm:2.1.10"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"lefthook@npm:2.1.9":
-  version: 2.1.9
-  resolution: "lefthook@npm:2.1.9"
+"lefthook@npm:2.1.10":
+  version: 2.1.10
+  resolution: "lefthook@npm:2.1.10"
   dependencies:
-    lefthook-darwin-arm64: "npm:2.1.9"
-    lefthook-darwin-x64: "npm:2.1.9"
-    lefthook-freebsd-arm64: "npm:2.1.9"
-    lefthook-freebsd-x64: "npm:2.1.9"
-    lefthook-linux-arm64: "npm:2.1.9"
-    lefthook-linux-x64: "npm:2.1.9"
-    lefthook-openbsd-arm64: "npm:2.1.9"
-    lefthook-openbsd-x64: "npm:2.1.9"
-    lefthook-windows-arm64: "npm:2.1.9"
-    lefthook-windows-x64: "npm:2.1.9"
+    lefthook-darwin-arm64: "npm:2.1.10"
+    lefthook-darwin-x64: "npm:2.1.10"
+    lefthook-freebsd-arm64: "npm:2.1.10"
+    lefthook-freebsd-x64: "npm:2.1.10"
+    lefthook-linux-arm64: "npm:2.1.10"
+    lefthook-linux-x64: "npm:2.1.10"
+    lefthook-openbsd-arm64: "npm:2.1.10"
+    lefthook-openbsd-x64: "npm:2.1.10"
+    lefthook-windows-arm64: "npm:2.1.10"
+    lefthook-windows-x64: "npm:2.1.10"
   dependenciesMeta:
     lefthook-darwin-arm64:
       optional: true
@@ -14222,7 +14222,7 @@ __metadata:
       optional: true
   bin:
     lefthook: bin/index.js
-  checksum: 10c0/676d9798942439d1cd5373bb0b2c9907f6a8097b29c05cc028d87d897d2a2cfe15a8f7e4f40b02fa93cd1ae0f02528f24053a10fb5c5967210a9c23f3c7b5059
+  checksum: 10c0/be812e1517a967977750a41f15a2070cea63e1774137737426f636e1bd379f4dfc73482fa7f07df6b9a1413ee50c6e2d790936d7986bdcafd46255d871c17b76
   languageName: node
   linkType: hard
 
@@ -21484,9 +21484,9 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.1"
+    "@willbooster/wb": "npm:13.26.2"
     conventional-changelog-conventionalcommits: "npm:9.3.1"
-    lefthook: "npm:2.1.9"
+    lefthook: "npm:2.1.10"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.73.0"
     oxlint-tsgolint: "npm:0.24.0"
