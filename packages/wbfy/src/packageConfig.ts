@@ -37,6 +37,7 @@ export interface PackageConfig {
   doesContainPomXml: boolean;
   doesContainPubspecYaml: boolean;
   doesContainTauriConfig: boolean;
+  doesContainTauriConfigInPackages: boolean;
   doesContainTemplateYaml: boolean;
   doesContainVscodeSettingsJson: boolean;
   // source code files
@@ -211,6 +212,10 @@ export async function getPackageConfig(
       doesContainPomXml: fs.existsSync(path.resolve(dirPath, 'pom.xml')),
       doesContainPubspecYaml: fs.existsSync(path.resolve(dirPath, 'pubspec.yaml')),
       doesContainTauriConfig,
+      doesContainTauriConfigInPackages: containsAny(
+        'packages/**/src-tauri/{tauri.conf.json,tauri.conf.json5,Tauri.toml}',
+        dirPath
+      ),
       doesContainTemplateYaml: fs.existsSync(path.resolve(dirPath, 'template.yaml')),
       doesContainVscodeSettingsJson: fs.existsSync(path.resolve(dirPath, '.vscode', 'settings.json')),
       doesContainJavaScript: containsAny('{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}', dirPath),

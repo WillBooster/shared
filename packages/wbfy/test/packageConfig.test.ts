@@ -33,6 +33,23 @@ test('accepts Cargo-only Tauri projects without a package.json', async () => {
   }
 });
 
+test('detects a nested Tauri application from a parent package', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const srcTauriDirPath = path.join(tempDirPath, 'packages', 'root', 'packages', 'app', 'src-tauri');
+    fs.mkdirSync(srcTauriDirPath, { recursive: true });
+    // The packages/root layout keeps getPackageConfig from looking up a GitHub repository.
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(tempDirPath, 'packages', 'root', 'package.json'), '{}');
+    fs.writeFileSync(path.join(srcTauriDirPath, 'tauri.conf.json'), '{}');
+    const config = await getPackageConfig(path.join(tempDirPath, 'packages', 'root'));
+    expect(config?.doesContainTauriConfig).toBe(false);
+    expect(config?.doesContainTauriConfigInPackages).toBe(true);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 async function detectTauri(setup: { packageJson?: object; srcTauriFileName?: string }): Promise<boolean> {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {

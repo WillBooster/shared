@@ -116,7 +116,10 @@ android/app/src/main/assets/
       names.push('rust');
     }
     if (config.doesContainTauriConfig) {
-      headUserContent += `src-tauri/gen/schemas/
+      // !Cargo.lock overrides any pre-existing unanchored Cargo.lock rule from a
+      // parent .gitignore, so the application lockfile stays committable.
+      headUserContent += `!Cargo.lock
+src-tauri/gen/schemas/
 `;
     }
     if (config.depending.litestream) {
@@ -178,11 +181,13 @@ android/app/src/main/assets/
       // directories such as src/debug/; cargo output is already covered by target/.
       generated = generated.replaceAll(/^debug\/$/gm, '# debug/');
     }
-    if (config.doesContainTauriConfig) {
+    if (config.doesContainTauriConfig || config.doesContainTauriConfigInPackages) {
       // The rust template ignores Cargo.lock, but a src-tauri configuration marks an
-      // application, whose Cargo.lock must be committed for reproducible builds.
-      // Tauri plugin libraries (detected only via @tauri-apps/* dependencies) keep
-      // the template's library policy of ignoring Cargo.lock.
+      // application, whose Cargo.lock must be committed for reproducible builds. The
+      // rule is also disabled when a sub package contains a Tauri application, because
+      // an unanchored Cargo.lock rule in a parent .gitignore would hide the nested
+      // application's lockfile. Tauri plugin libraries (detected only via
+      // @tauri-apps/* dependencies) keep the template's policy of ignoring Cargo.lock.
       generated = generated.replaceAll(/^Cargo\.lock$/gm, '# Cargo.lock');
     }
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
