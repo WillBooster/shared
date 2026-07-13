@@ -6,7 +6,7 @@ import type { CommandModule } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
-import { buildDrizzleKitCommand, findDrizzleConfig } from '../scripts/drizzleScripts.js';
+import { findDrizzleConfig, wrapWithDrizzleConfigDir } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 
@@ -104,7 +104,8 @@ function getDrizzleCheckScript(project: Project): string | undefined {
   if (!project.hasDrizzle) return;
   const config = findDrizzleConfig(project);
   if (!config) return;
-  return `${buildDrizzleKitCommand(project, `check --config ${config.fileName}`)} || true`;
+  // Keep the explicit --config because drizzle-kit's default lookup misses some extensions (e.g. .mts).
+  return `${wrapWithDrizzleConfigDir(project, `YARN drizzle-kit check --config ${config.fileName}`)} || true`;
 }
 
 function getOwnDependencyMajor(project: Project, packageName: string): number | undefined {

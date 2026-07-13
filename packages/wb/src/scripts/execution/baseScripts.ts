@@ -97,7 +97,9 @@ export abstract class BaseScripts {
       const scriptRootDirPath = path.dirname(path.dirname(customStartScriptPath));
       return this.buildProductionCommand(project, argv, [
         project.buildCommand,
-        scriptRootDirPath === project.dirPath ? startCommand : `(cd "${scriptRootDirPath}" && ${startCommand})`,
+        scriptRootDirPath === project.dirPath
+          ? startCommand
+          : `(${buildShellCommand(['cd', scriptRootDirPath])} && ${startCommand})`,
       ]);
     }
 
@@ -128,6 +130,8 @@ export abstract class BaseScripts {
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
       ...(project.hasDrizzle ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))] : []),
     ];
+    // Splitting may cut through a `(cd … && …)` subshell, but rejoining with ' && ' and per-piece
+    // redirects keeps the script valid, and wb-generated paths never contain '&&'.
     return [...migrationCommands.flatMap((cmd) => cmd.split('&&')), ...commands]
       .filter(Boolean)
       .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())

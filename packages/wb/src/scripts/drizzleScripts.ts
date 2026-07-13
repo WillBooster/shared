@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { getAbsoluteFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
+import { buildShellCommand } from '../utils/shell.js';
 import { buildMaterializeLocalD1Command, getD1DatabaseName, getLocalWranglerStateDir } from '../utils/wrangler.js';
 
 const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
@@ -52,8 +53,11 @@ class DrizzleScripts {
     const dbPath = getAbsoluteSqliteDbPath(project, 'deploy-force');
     const removeDbCommand = buildRemoveSqliteDbFamilyCommand(dbPath);
     const litestreamConfigOption = getLitestreamConfigOption(project);
+    // The environment assignment must go through buildDrizzleKitCommand: prefixing its
+    // possibly-parenthesized result with `ALLOW_TO_SKIP_SEED=0` would be a shell syntax error.
+    const migrateWithSeedCommand = buildDrizzleKitCommand(project, 'migrate', 'ALLOW_TO_SKIP_SEED=0');
     return `${removeDbCommand}; ${this.deploy(project)} && ${removeDbCommand}
-      && litestream restore ${litestreamConfigOption} -o "${dbPath}" "${dbPath}" && ls -ahl "${dbPath}" && ALLOW_TO_SKIP_SEED=0 ${this.deploy(project)}`;
+      && litestream restore ${litestreamConfigOption} -o "${dbPath}" "${dbPath}" && ls -ahl "${dbPath}" && ${migrateWithSeedCommand}`;
   }
 
   listBackups(project: Project, configPath?: string): string {
@@ -93,13 +97,19 @@ class DrizzleScripts {
   }
 }
 
-export function buildDrizzleKitCommand(project: Project, args: string): string {
+export function buildDrizzleKitCommand(project: Project, args: string, environmentAssignment = ''): string {
+  const command = `${environmentAssignment && `${environmentAssignment} `}YARN drizzle-kit ${args}`;
+  // A caller-supplied --config resolves against the project directory, so the cwd must stay there.
+  return args.includes('--config') ? command : wrapWithDrizzleConfigDir(project, command);
+}
+
+export function wrapWithDrizzleConfigDir(project: Project, command: string): string {
   const config = findDrizzleConfig(project);
   // drizzle-kit resolves relative paths in its config against the cwd, so the command must run
   // in the directory containing drizzle.config.* even when monorepo packages share it at the root.
   return config && config.dirPath !== project.dirPath
-    ? `(cd "${config.dirPath}" && YARN drizzle-kit ${args})`
-    : `YARN drizzle-kit ${args}`;
+    ? `(${buildShellCommand(['cd', config.dirPath])} && ${command})`
+    : command;
 }
 
 export function findDrizzleConfig(project: Project): { dirPath: string; fileName: string } | undefined {
