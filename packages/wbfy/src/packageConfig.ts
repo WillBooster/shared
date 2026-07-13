@@ -27,6 +27,8 @@ export interface PackageConfig {
   isEsmPackage: boolean;
   isWillBoosterConfigs: boolean;
   // dependency information
+  /** Directories containing Cargo.toml (relative to dirPath, root-most first). Empty if the repo has no Rust code. */
+  cargoTomlDirPaths: string[];
   doesContainSubPackageJsons: boolean;
   doesContainDockerfile: boolean;
   doesContainGemfile: boolean;
@@ -202,6 +204,7 @@ export async function getPackageConfig(
         fs.existsSync(path.join(dirPath, 'bunfig.toml')),
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
+      cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
       doesContainSubPackageJsons: containsAny('packages/**/package.json', dirPath),
       doesContainDockerfile: !!dockerfile || fs.existsSync(path.resolve(dirPath, 'docker-compose.yml')),
       doesContainGemfile: fs.existsSync(path.resolve(dirPath, 'Gemfile')),
@@ -369,6 +372,13 @@ function readMiseTaskCommand(value: unknown): string {
 
 function containsAny(pattern: string, dirPath: string): boolean {
   return fg.globSync(pattern, { dot: true, cwd: dirPath, ignore: globIgnore }).length > 0;
+}
+
+function findCargoTomlDirPaths(dirPath: string): string[] {
+  return fg
+    .globSync('**/Cargo.toml', { dot: true, cwd: dirPath, ignore: globIgnore })
+    .map((filePath) => path.dirname(filePath))
+    .toSorted((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
 }
 
 function doesImportPlaywrightAtRuntime(dirPath: string): boolean {

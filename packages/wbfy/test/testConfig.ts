@@ -14,6 +14,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     isBun: false,
     isEsmPackage: false,
     isWillBoosterConfigs: false,
+    cargoTomlDirPaths: [],
     doesContainSubPackageJsons: false,
     doesContainDockerfile: false,
     doesContainGemfile: false,
