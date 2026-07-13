@@ -23,6 +23,8 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     doesContainUvLock: false,
     doesContainPomXml: false,
     doesContainPubspecYaml: false,
+    doesContainTauriConfig: false,
+    doesContainTauriConfigInPackages: false,
     doesContainTemplateYaml: false,
     doesContainVscodeSettingsJson: false,
     doesContainJavaScript: false,
@@ -49,7 +51,9 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       reactNative: false,
       semanticRelease: false,
       storybook: false,
+      tauri: false,
       vinext: false,
+      vite: false,
       wb: false,
     },
     release: {

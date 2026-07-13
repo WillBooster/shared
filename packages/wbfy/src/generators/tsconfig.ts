@@ -139,7 +139,7 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
   const filePath = path.resolve(config.dirPath, 'tsconfig.json');
   try {
     const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as TsConfigJson;
-    normalizeNextTsconfigModuleSettings(settings.compilerOptions);
+    normalizeNextTsconfigModuleSettings(settings);
     normalizeNextTsconfigPathAliases(settings.compilerOptions);
     addScriptsIncludeForFrameworkProject(settings);
     await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
@@ -159,17 +159,20 @@ function addScriptsIncludeForFrameworkProject(settings: TsConfigJson): void {
   settings.include.sort();
 }
 
-function normalizeNextTsconfigModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
+function normalizeNextTsconfigModuleSettings(settings: TsConfigJson): void {
+  const compilerOptions = settings.compilerOptions;
   if (!compilerOptions) return;
-  if (
-    compilerOptions.moduleResolution === 'node' ||
-    compilerOptions.moduleResolution === 'Node' ||
-    compilerOptions.moduleResolution === 'node10' ||
-    compilerOptions.moduleResolution === undefined
-  ) {
-    // Next.js writes "node" during build when this option is missing, but
-    // tsgolint treats that spelling as the removed node10 resolver.
-    compilerOptions.moduleResolution = 'bundler';
+  const moduleResolution = lowerCaseSetting(compilerOptions.moduleResolution);
+  if (moduleResolution === 'node' || moduleResolution === 'node10' || moduleResolution === undefined) {
+    if (settings.extends) {
+      // An extended config may already supply a valid module/resolver pair, so only
+      // remove the removed-in-TS6 node10 spellings instead of forcing bundler on it.
+      delete compilerOptions.moduleResolution;
+    } else {
+      // Next.js writes "node" during build when this option is missing, but
+      // tsgolint treats that spelling as the removed node10 resolver.
+      compilerOptions.moduleResolution = 'bundler';
+    }
   }
 }
 
@@ -264,20 +267,49 @@ function deleteLegacyModuleSettings(
 ): void {
   if (!compilerOptions) return;
 
+  // TypeScript treats option values case-insensitively, so normalize before comparison.
+  const moduleResolution = lowerCaseSetting(compilerOptions.moduleResolution);
   // TypeScript 6 removed the old node10 resolver spelling, so inherited base configs
   // should choose the resolver unless a project already opted into a modern one.
-  if (
-    compilerOptions.moduleResolution === 'node' ||
-    compilerOptions.moduleResolution === 'Node' ||
-    compilerOptions.moduleResolution === 'node10'
-  ) {
+  if (moduleResolution === 'node' || moduleResolution === 'node10') {
     delete compilerOptions.moduleResolution;
   }
-  if (config.isBun || config.depending.reactNative || compilerOptions.module !== 'ESNext') return;
+  if (config.isBun || config.depending.reactNative) return;
 
-  // Node base configs now pair their resolver with a matching module kind. Keeping
-  // older ESNext overrides creates invalid generated configs for TS 6.
-  delete compilerOptions.module;
+  if (config.depending.vite || config.depending.tauri) {
+    // Vite owns module semantics for these packages and their sources rely on
+    // bundler-mode resolution (e.g. extensionless imports), so pin the bundler pair
+    // even when a legacy config used the node resolver, instead of falling back to
+    // the node base configs' NodeNext.
+    if (moduleResolution !== 'bundler') {
+      compilerOptions.moduleResolution = 'bundler';
+    }
+    const moduleKind = lowerCaseSetting(compilerOptions.module);
+    // TypeScript pairs the bundler resolver with Preserve or ES-module kinds. Keep an
+    // existing valid kind (e.g. Preserve, which handles import and require syntax
+    // separately) and fill in ESNext only when the pair would otherwise be invalid.
+    if (moduleKind === undefined || (moduleKind !== 'preserve' && !moduleKind.startsWith('es'))) {
+      compilerOptions.module = 'ESNext';
+    }
+    return;
+  }
+
+  if (moduleResolution === 'bundler') {
+    // The node base configs provide a consistent module/resolver pair, and every
+    // module kind they may choose is invalid with a leftover bundler resolver.
+    delete compilerOptions.moduleResolution;
+  }
+
+  const moduleKind = lowerCaseSetting(compilerOptions.module);
+  if (moduleKind === 'preserve' || moduleKind?.startsWith('es')) {
+    // Node base configs pair their resolver with a matching module kind; leftover
+    // ES/Preserve overrides are invalid with every pair they may choose.
+    delete compilerOptions.module;
+  }
+}
+
+function lowerCaseSetting(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.toLowerCase() : undefined;
 }
 
 function normalizeCommonJsTsconfigSettings(

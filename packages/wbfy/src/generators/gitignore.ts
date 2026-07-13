@@ -112,12 +112,25 @@ android/app/src/main/assets/
     if (config.depending.storybook) {
       names.push('storybookjs');
     }
+    if (config.depending.tauri) {
+      names.push('rust');
+    }
+    if (config.doesContainTauriConfig) {
+      // !Cargo.lock overrides any pre-existing unanchored Cargo.lock rule from a
+      // parent .gitignore, so the application lockfile stays committable.
+      headUserContent += `!Cargo.lock
+src-tauri/gen/schemas/
+`;
+    }
     if (config.depending.litestream) {
       headUserContent += `gcp-sa-key.json
 `;
     }
     if (config.isCloudflare || rootConfig.isCloudflare) {
-      headUserContent += `.wrangler/
+      // .dev.vars* hold local secrets for wrangler dev and must never be committed,
+      // unlike the committed .env/.env.staging files of the WillBooster convention.
+      headUserContent += `.dev.vars*
+.wrangler/
 `;
     }
     if (rootConfig.depending.vinext || config.depending.vinext) {
@@ -163,6 +176,20 @@ android/app/src/main/assets/
       }
     }
     generated = generated.replaceAll(/^.idea\/?$/gm, '# .idea');
+    if (config.depending.tauri) {
+      // The rust template's unanchored debug/ would also hide frontend source
+      // directories such as src/debug/; cargo output is already covered by target/.
+      generated = generated.replaceAll(/^debug\/$/gm, '# debug/');
+    }
+    if (config.doesContainTauriConfig || config.doesContainTauriConfigInPackages) {
+      // The rust template ignores Cargo.lock, but a src-tauri configuration marks an
+      // application, whose Cargo.lock must be committed for reproducible builds. The
+      // rule is also disabled when a sub package contains a Tauri application, because
+      // an unanchored Cargo.lock rule in a parent .gitignore would hide the nested
+      // application's lockfile. Tauri plugin libraries (detected only via
+      // @tauri-apps/* dependencies) keep the template's policy of ignoring Cargo.lock.
+      generated = generated.replaceAll(/^Cargo\.lock$/gm, '# Cargo.lock');
+    }
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
     }
