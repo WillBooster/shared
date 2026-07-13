@@ -175,6 +175,9 @@ android/app/src/main/assets/
       // The rust template ignores Cargo.lock, but Tauri projects are applications,
       // so their Cargo.lock must be committed for reproducible builds.
       generated = generated.replaceAll(/^Cargo\.lock$/gm, '# Cargo.lock');
+      // The rust template's unanchored debug/ would also hide frontend source
+      // directories such as src/debug/; cargo output is already covered by target/.
+      generated = generated.replaceAll(/^debug\/$/gm, '# debug/');
     }
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');

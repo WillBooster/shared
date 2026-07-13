@@ -275,26 +275,26 @@ function deleteLegacyModuleSettings(
     // Vite owns bundling for these packages and their sources rely on bundler-mode
     // resolution (e.g. extensionless imports), so keep an explicitly valid pair that
     // overrides the node base configs instead of falling back to NodeNext.
-    compilerOptions.module = 'ESNext';
+    const moduleKind = lowerCaseSetting(compilerOptions.module);
+    // TypeScript pairs the bundler resolver with Preserve or ES-module kinds. Keep an
+    // existing valid kind (e.g. Preserve, which handles import and require syntax
+    // separately) and fill in ESNext only when the pair would otherwise be invalid.
+    if (moduleKind === undefined || (moduleKind !== 'preserve' && !moduleKind.startsWith('es'))) {
+      compilerOptions.module = 'ESNext';
+    }
     return;
+  }
+
+  if (moduleResolution === 'bundler') {
+    // The node base configs provide a consistent module/resolver pair, and every
+    // module kind they may choose is invalid with a leftover bundler resolver.
+    delete compilerOptions.moduleResolution;
   }
 
   if (lowerCaseSetting(compilerOptions.module) === 'esnext') {
     // Node base configs now pair their resolver with a matching module kind. Keeping
     // older ESNext overrides creates invalid generated configs for TS 6.
     delete compilerOptions.module;
-  }
-
-  const moduleKind = lowerCaseSetting(compilerOptions.module);
-  if (
-    moduleResolution === 'bundler' &&
-    (compilerOptions.module === undefined || moduleKind === 'node16' || moduleKind === 'nodenext')
-  ) {
-    // The node base configs pair module=NodeNext with moduleResolution=NodeNext, and
-    // TypeScript rejects a bundler resolver with node module kinds. Such a resolver is
-    // usually left over from pre-wbfy bundler-oriented configs, so drop it and let the
-    // base configs choose a consistent pair.
-    delete compilerOptions.moduleResolution;
   }
 }
 

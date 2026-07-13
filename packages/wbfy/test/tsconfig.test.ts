@@ -36,6 +36,22 @@ test('drops a leftover bundler resolution and esnext module regardless of casing
   expect(compilerOptions.moduleResolution).toBeUndefined();
 });
 
+test('keeps an existing Preserve module kind for Vite-dependent packages', async () => {
+  const compilerOptions = await generateCompilerOptionsFrom(
+    { compilerOptions: { module: 'Preserve', moduleResolution: 'bundler' } },
+    { vite: true }
+  );
+  expect(compilerOptions.module).toBe('Preserve');
+  expect(compilerOptions.moduleResolution).toBe('bundler');
+});
+
+test('drops a leftover bundler resolution paired with CommonJS in non-bundler packages', async () => {
+  const compilerOptions = await generateCompilerOptionsFrom({
+    compilerOptions: { module: 'CommonJS', moduleResolution: 'bundler' },
+  });
+  expect(compilerOptions.moduleResolution).toBeUndefined();
+});
+
 test('drops removed node10 resolver spellings regardless of casing', async () => {
   const compilerOptions = await generateCompilerOptionsFrom({ compilerOptions: { moduleResolution: 'Node10' } });
   expect(compilerOptions.moduleResolution).toBeUndefined();
