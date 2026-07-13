@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
@@ -88,9 +90,14 @@ export abstract class BaseScripts {
   protected startProductionProtected(project: Project, argv: ScriptArgv): string {
     const customStartScriptPath = findCustomProductionStartScriptPath(project);
     if (customStartScriptPath) {
+      const startCommand =
+        `${buildShellCommand(['bash', customStartScriptPath])} ${argv.normalizedArgsText ?? ''}`.trim();
+      // A start script found at the monorepo root (cf. Project.findFile) is written to run from
+      // the root, like Docker's WORKDIR, so its cwd must be the directory containing scripts/.
+      const scriptRootDirPath = path.dirname(path.dirname(customStartScriptPath));
       return this.buildProductionCommand(project, argv, [
         project.buildCommand,
-        `${buildShellCommand(['bash', customStartScriptPath])} ${argv.normalizedArgsText ?? ''}`.trim(),
+        scriptRootDirPath === project.dirPath ? startCommand : `(cd "${scriptRootDirPath}" && ${startCommand})`,
       ]);
     }
 

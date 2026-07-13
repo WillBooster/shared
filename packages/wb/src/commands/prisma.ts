@@ -6,7 +6,7 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { DatabaseOrm, Project } from '../project.js';
 import { findDescendantProjects, getAbsoluteFileDatabaseUrlPath, isProjectEnvironment } from '../project.js';
-import { drizzleScripts } from '../scripts/drizzleScripts.js';
+import { buildDrizzleKitCommand, drizzleScripts } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
@@ -335,7 +335,7 @@ const defaultCommand: CommandModule<unknown, InferredOptionTypes<typeof defaultC
     const unknownOptions = extractUnknownOptions(argv, ['args']);
     const fullCommand = [script, unknownOptions].filter(Boolean).join(' ');
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand(`db ${fullCommand}`, allProjects)) {
-      const command = orm === 'prisma' ? `PRISMA ${fullCommand}` : `YARN drizzle-kit ${fullCommand}`;
+      const command = orm === 'prisma' ? `PRISMA ${fullCommand}` : buildDrizzleKitCommand(project, fullCommand);
       await runWithSpawn(withLocalD1IfNeeded(orm, project, command), project, argv);
     }
   },

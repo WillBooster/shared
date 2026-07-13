@@ -6,6 +6,7 @@ import type { CommandModule } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
+import { buildDrizzleKitCommand, findDrizzleConfig } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 
@@ -55,9 +56,9 @@ export function getGenCodeScripts(project: Project): string[] {
     scripts.push(chakraTypegenScript);
   }
 
-  const drizzleConfigPath = scripts.length === 0 && project.hasDrizzle ? getDrizzleConfigPath(project) : undefined;
-  if (drizzleConfigPath) {
-    scripts.push(`YARN drizzle-kit check --config ${drizzleConfigPath} || true`);
+  const drizzleCheckScript = scripts.length === 0 ? getDrizzleCheckScript(project) : undefined;
+  if (drizzleCheckScript) {
+    scripts.push(drizzleCheckScript);
   }
   const genI18nTsScript = getGenI18nTsScript(project);
   if (genI18nTsScript) {
@@ -99,9 +100,11 @@ function getChakraScript(project: Project): string | undefined {
   return;
 }
 
-function getDrizzleConfigPath(project: Project): string | undefined {
-  const candidates = ['drizzle.config.ts', 'drizzle.config.mts', 'drizzle.config.js', 'drizzle.config.mjs'];
-  return candidates.find((filePath) => fileExists(project, filePath));
+function getDrizzleCheckScript(project: Project): string | undefined {
+  if (!project.hasDrizzle) return;
+  const config = findDrizzleConfig(project);
+  if (!config) return;
+  return `${buildDrizzleKitCommand(project, `check --config ${config.fileName}`)} || true`;
 }
 
 function getOwnDependencyMajor(project: Project, packageName: string): number | undefined {

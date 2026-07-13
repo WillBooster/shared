@@ -44,8 +44,8 @@ class DrizzleScripts {
     return this.migrate(project, additionalOptions);
   }
 
-  deploy(_project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit migrate ${additionalOptions}`;
+  deploy(project: Project, additionalOptions = ''): string {
+    return buildDrizzleKitCommand(project, `migrate ${additionalOptions}`.trim());
   }
 
   deployForce(project: Project): string {
@@ -66,12 +66,12 @@ class DrizzleScripts {
     return `${buildRemoveSqliteDbCommandForPath(outputPath)}; litestream restore ${getLitestreamConfigOption(project, configPath)} -o "${outputPath}" "${dbPath}"`;
   }
 
-  generate(_project: Project, additionalOptions = ''): string {
-    return `YARN drizzle-kit generate ${additionalOptions}`;
+  generate(project: Project, additionalOptions = ''): string {
+    return buildDrizzleKitCommand(project, `generate ${additionalOptions}`.trim());
   }
 
-  migrateDev(_project: Project, additionalOptions = ''): string {
-    return this.generate(_project, additionalOptions);
+  migrateDev(project: Project, additionalOptions = ''): string {
+    return this.generate(project, additionalOptions);
   }
 
   seed(project: Project, scriptPath?: string): string {
@@ -84,13 +84,31 @@ class DrizzleScripts {
     return 'true';
   }
 
-  studio(_project: Project, dbUrlOrPath?: string, additionalOptions = ''): string {
+  studio(project: Project, dbUrlOrPath?: string, additionalOptions = ''): string {
     if (dbUrlOrPath) {
       return "echo 'wb db studio for Drizzle does not support db-url-or-path.' && exit 1";
     }
 
-    return `YARN drizzle-kit studio ${additionalOptions}`;
+    return buildDrizzleKitCommand(project, `studio ${additionalOptions}`.trim());
   }
+}
+
+export function buildDrizzleKitCommand(project: Project, args: string): string {
+  const config = findDrizzleConfig(project);
+  // drizzle-kit resolves relative paths in its config against the cwd, so the command must run
+  // in the directory containing drizzle.config.* even when monorepo packages share it at the root.
+  return config && config.dirPath !== project.dirPath
+    ? `(cd "${config.dirPath}" && YARN drizzle-kit ${args})`
+    : `YARN drizzle-kit ${args}`;
+}
+
+export function findDrizzleConfig(project: Project): { dirPath: string; fileName: string } | undefined {
+  const candidates = ['drizzle.config.ts', 'drizzle.config.mts', 'drizzle.config.js', 'drizzle.config.mjs'];
+  for (const dirPath of [project.dirPath, project.rootDirPath]) {
+    const fileName = candidates.find((fileName) => fs.existsSync(path.join(dirPath, fileName)));
+    if (fileName) return { dirPath, fileName };
+  }
+  return;
 }
 
 function buildRemoveSqliteDbCommand(project: Project): string | undefined {
