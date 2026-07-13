@@ -118,6 +118,24 @@ const workflows = {
       },
     },
   },
+  'test-rust': {
+    name: 'Test Rust',
+    on: {
+      pull_request: null,
+      push: {
+        branches: ['main', 'wbfy'],
+      },
+    },
+    concurrency: {
+      group: '${{ github.workflow }}-${{ github.ref }}',
+      'cancel-in-progress': true,
+    },
+    jobs: {
+      'test-rust': {
+        uses: 'WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main',
+      },
+    },
+  },
   release: {
     name: 'Release',
     on: {
@@ -215,6 +233,9 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     if (rootConfig.depending.semanticRelease) {
       fileNameSet.add('release.yml');
     }
+    if (rootConfig.cargoTomlDirPaths.length > 0) {
+      fileNameSet.add('test-rust.yml');
+    }
     if (!rootConfig.isPublicRepo) {
       // The reusable test workflow already fixes and pushes code on private repos,
       // so a separate autofix workflow only duplicates the same process.
@@ -247,6 +268,9 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
     return;
   }
 
+  // A test-rust.yml in a repo without Rust code is a custom workflow that merely shares the name; leave it alone.
+  if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) return;
+
   let newSettings = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
 
   try {
@@ -259,6 +283,16 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
 
   // Skip a broken workflow
   if (!('jobs' in newSettings)) return;
+
+  if (kind === 'test-rust') {
+    // Migrate hand-written Rust workflows (e.g. an inline cargo-check job) to the reusable workflow.
+    for (const [jobName, job] of Object.entries(newSettings.jobs)) {
+      if (!job.uses?.includes('/reusable-workflows/')) {
+        delete newSettings.jobs[jobName];
+      }
+    }
+    moveToBottom(newSettings, 'jobs');
+  }
 
   if (kind.startsWith('deploy')) {
     newSettings = {
@@ -313,7 +347,8 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
       }
       break;
     }
-    case 'test': {
+    case 'test':
+    case 'test-rust': {
       // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
       // The reusable test workflow no longer needs Actions write access.
       delete newSettings.permissions?.actions;
@@ -373,6 +408,15 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     }
   }
 
+  if (kind === 'test-rust') {
+    const [rustDirPath] = config.cargoTomlDirPaths;
+    if (rustDirPath && rustDirPath !== '.') {
+      job.with.working_directory = rustDirPath;
+    } else {
+      delete job.with.working_directory;
+    }
+  }
+
   if (config.repository?.startsWith('github:WillBooster/')) {
     job.uses = job.uses?.replace('WillBoosterLab/', 'WillBooster/');
   } else if (config.repository?.startsWith('github:WillBoosterLab/')) {
@@ -392,7 +436,7 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     job.with.ci_label = 'large';
   }
   // Because github.event.repository.private is always true if job is scheduled
-  if (kind === 'release' || kind === 'test' || kind.startsWith('deploy')) {
+  if (kind === 'release' || kind.startsWith('test') || kind.startsWith('deploy')) {
     if (config.isPublicRepo) {
       job.with.github_hosted_runner = true;
     }

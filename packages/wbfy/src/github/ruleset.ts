@@ -60,6 +60,8 @@ const GITHUB_API_VERSION_HEADER = {
   'X-GitHub-Api-Version': '2022-11-28',
 } as const;
 
+const GITHUB_ACTIONS_INTEGRATION_ID = 15_368;
+
 const PROTECT_MAIN_RULESET: RepositoryRulesetPayload = {
   name: 'Protect main',
   target: 'branch',
@@ -82,11 +84,11 @@ const PROTECT_MAIN_RULESET: RepositoryRulesetPayload = {
         required_status_checks: [
           {
             context: 'test / test',
-            integration_id: 15_368,
+            integration_id: GITHUB_ACTIONS_INTEGRATION_ID,
           },
           {
             context: 'semantic-pr / semantic-pr',
-            integration_id: 15_368,
+            integration_id: GITHUB_ACTIONS_INTEGRATION_ID,
           },
         ],
       },
@@ -126,7 +128,7 @@ export async function setupRepositoryRulesets(config: PackageConfig): Promise<vo
     const octokit = getOctokit(owner);
 
     try {
-      await upsertProtectMainRuleset(octokit, owner, repo);
+      await upsertProtectMainRuleset(octokit, owner, repo, buildProtectMainRuleset(config));
     } catch (error) {
       if (!isGitHubPermissionOrVisibilityError(error)) throw error;
 
@@ -137,8 +139,28 @@ export async function setupRepositoryRulesets(config: PackageConfig): Promise<vo
   });
 }
 
-async function upsertProtectMainRuleset(octokit: Octokit, owner: string, repo: string): Promise<void> {
-  const existingRuleset = await findRepositoryRuleset(octokit, owner, repo, PROTECT_MAIN_RULESET.name);
+function buildProtectMainRuleset(config: PackageConfig): RepositoryRulesetPayload {
+  const ruleset = structuredClone(PROTECT_MAIN_RULESET);
+  if (config.cargoTomlDirPaths.length > 0) {
+    for (const rule of ruleset.rules) {
+      if (rule.type !== 'required_status_checks') continue;
+      // The context is `<caller job id> / <reusable job id>` of the wbfy-generated test-rust.yml.
+      rule.parameters.required_status_checks.push({
+        context: 'test-rust / test-rust',
+        integration_id: GITHUB_ACTIONS_INTEGRATION_ID,
+      });
+    }
+  }
+  return ruleset;
+}
+
+async function upsertProtectMainRuleset(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  ruleset: RepositoryRulesetPayload
+): Promise<void> {
+  const existingRuleset = await findRepositoryRuleset(octokit, owner, repo, ruleset.name);
   const existingRulesetId = existingRuleset?.id;
 
   await withRetry(
@@ -148,7 +170,7 @@ async function upsertProtectMainRuleset(octokit: Octokit, owner: string, repo: s
           owner,
           repo,
           ruleset_id: existingRulesetId,
-          ...PROTECT_MAIN_RULESET,
+          ...ruleset,
           headers: GITHUB_API_VERSION_HEADER,
         });
         return;
@@ -157,7 +179,7 @@ async function upsertProtectMainRuleset(octokit: Octokit, owner: string, repo: s
       await octokit.request('POST /repos/{owner}/{repo}/rulesets', {
         owner,
         repo,
-        ...PROTECT_MAIN_RULESET,
+        ...ruleset,
         headers: GITHUB_API_VERSION_HEADER,
       });
     },
