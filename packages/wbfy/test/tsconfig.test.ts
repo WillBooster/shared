@@ -52,6 +52,40 @@ test('drops a leftover bundler resolution paired with CommonJS in non-bundler pa
   expect(compilerOptions.moduleResolution).toBeUndefined();
 });
 
+test('migrates a legacy node resolver to the bundler pair for Vite-dependent packages', async () => {
+  const compilerOptions = await generateCompilerOptionsFrom(
+    { compilerOptions: { module: 'ESNext', moduleResolution: 'node' } },
+    { vite: true }
+  );
+  expect(compilerOptions.moduleResolution).toBe('bundler');
+  expect(compilerOptions.module).toBe('ESNext');
+});
+
+test('drops leftover ES-module and Preserve kinds when falling back to the node bases', async () => {
+  const es2022Options = await generateCompilerOptionsFrom({
+    compilerOptions: { module: 'ES2022', moduleResolution: 'bundler' },
+  });
+  expect(es2022Options.module).toBeUndefined();
+  expect(es2022Options.moduleResolution).toBeUndefined();
+
+  const preserveOptions = await generateCompilerOptionsFrom({
+    compilerOptions: { module: 'Preserve', moduleResolution: 'bundler' },
+  });
+  expect(preserveOptions.module).toBeUndefined();
+  expect(preserveOptions.moduleResolution).toBeUndefined();
+});
+
+test('does not force a bundler resolver on Next configs that extend a base config', async () => {
+  const extendedOptions = await generateCompilerOptionsFrom(
+    { extends: '@tsconfig/node-lts/tsconfig.json', compilerOptions: {} },
+    { next: true }
+  );
+  expect(extendedOptions.moduleResolution).toBeUndefined();
+
+  const standaloneOptions = await generateCompilerOptionsFrom({ compilerOptions: {} }, { next: true });
+  expect(standaloneOptions.moduleResolution).toBe('bundler');
+});
+
 test('drops removed node10 resolver spellings regardless of casing', async () => {
   const compilerOptions = await generateCompilerOptionsFrom({ compilerOptions: { moduleResolution: 'Node10' } });
   expect(compilerOptions.moduleResolution).toBeUndefined();
