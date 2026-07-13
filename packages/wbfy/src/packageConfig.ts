@@ -64,6 +64,7 @@ export interface PackageConfig {
     storybook: boolean;
     tauri: boolean;
     vinext: boolean;
+    vite: boolean;
     wb: boolean;
     chakra: boolean;
     drizzle: boolean;
@@ -237,9 +238,15 @@ export async function getPackageConfig(
         storybook: !!devDependencies['@storybook/react'],
         tauri:
           !!dependencies['@tauri-apps/api'] ||
+          !!devDependencies['@tauri-apps/api'] ||
+          !!dependencies['@tauri-apps/cli'] ||
           !!devDependencies['@tauri-apps/cli'] ||
-          fs.existsSync(path.resolve(dirPath, 'src-tauri', 'tauri.conf.json')),
+          // Tauri officially supports JSON, JSON5, and TOML configuration formats.
+          ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
+            fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
+          ),
         vinext: !!dependencies.vinext || !!devDependencies.vinext,
+        vite: !!dependencies.vite || !!devDependencies.vite,
         wb: !!dependencies['@willbooster/wb'] || !!devDependencies['@willbooster/wb'],
       },
       release: {

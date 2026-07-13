@@ -51,6 +51,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       storybook: false,
       tauri: false,
       vinext: false,
+      vite: false,
       wb: false,
     },
     release: {

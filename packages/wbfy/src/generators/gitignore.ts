@@ -122,7 +122,10 @@ android/app/src/main/assets/
 `;
     }
     if (config.isCloudflare || rootConfig.isCloudflare) {
-      headUserContent += `.wrangler/
+      // .dev.vars* hold local secrets for wrangler dev and must never be committed,
+      // unlike the committed .env/.env.staging files of the WillBooster convention.
+      headUserContent += `.dev.vars*
+.wrangler/
 `;
     }
     if (rootConfig.depending.vinext || config.depending.vinext) {

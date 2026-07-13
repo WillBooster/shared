@@ -161,12 +161,10 @@ function addScriptsIncludeForFrameworkProject(settings: TsConfigJson): void {
 
 function normalizeNextTsconfigModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
   if (!compilerOptions) return;
-  if (
-    compilerOptions.moduleResolution === 'node' ||
-    compilerOptions.moduleResolution === 'Node' ||
-    compilerOptions.moduleResolution === 'node10' ||
-    compilerOptions.moduleResolution === undefined
-  ) {
+  // TypeScript treats option values case-insensitively, so normalize before comparison.
+  const moduleResolution =
+    typeof compilerOptions.moduleResolution === 'string' ? compilerOptions.moduleResolution.toLowerCase() : undefined;
+  if (moduleResolution === 'node' || moduleResolution === 'node10' || moduleResolution === undefined) {
     // Next.js writes "node" during build when this option is missing, but
     // tsgolint treats that spelling as the removed node10 resolver.
     compilerOptions.moduleResolution = 'bundler';
@@ -264,35 +262,44 @@ function deleteLegacyModuleSettings(
 ): void {
   if (!compilerOptions) return;
 
+  // TypeScript treats option values case-insensitively, so normalize before comparison.
+  const moduleResolution = lowerCaseSetting(compilerOptions.moduleResolution);
   // TypeScript 6 removed the old node10 resolver spelling, so inherited base configs
   // should choose the resolver unless a project already opted into a modern one.
-  if (
-    compilerOptions.moduleResolution === 'node' ||
-    compilerOptions.moduleResolution === 'Node' ||
-    compilerOptions.moduleResolution === 'node10'
-  ) {
+  if (moduleResolution === 'node' || moduleResolution === 'node10') {
     delete compilerOptions.moduleResolution;
   }
   if (config.isBun || config.depending.reactNative) return;
 
-  if (compilerOptions.module === 'ESNext') {
+  if (moduleResolution === 'bundler' && (config.depending.vite || config.depending.tauri)) {
+    // Vite owns bundling for these packages and their sources rely on bundler-mode
+    // resolution (e.g. extensionless imports), so keep an explicitly valid pair that
+    // overrides the node base configs instead of falling back to NodeNext.
+    compilerOptions.module = 'ESNext';
+    return;
+  }
+
+  if (lowerCaseSetting(compilerOptions.module) === 'esnext') {
     // Node base configs now pair their resolver with a matching module kind. Keeping
     // older ESNext overrides creates invalid generated configs for TS 6.
     delete compilerOptions.module;
   }
 
-  const moduleKind = typeof compilerOptions.module === 'string' ? compilerOptions.module.toLowerCase() : undefined;
+  const moduleKind = lowerCaseSetting(compilerOptions.module);
   if (
-    typeof compilerOptions.moduleResolution === 'string' &&
-    compilerOptions.moduleResolution.toLowerCase() === 'bundler' &&
-    (moduleKind === undefined || moduleKind === 'node16' || moduleKind === 'nodenext')
+    moduleResolution === 'bundler' &&
+    (compilerOptions.module === undefined || moduleKind === 'node16' || moduleKind === 'nodenext')
   ) {
     // The node base configs pair module=NodeNext with moduleResolution=NodeNext, and
     // TypeScript rejects a bundler resolver with node module kinds. Such a resolver is
-    // usually left over from pre-wbfy bundler-oriented configs (e.g. Vite/Tauri
-    // frontends), so drop it and let the base configs choose a consistent pair.
+    // usually left over from pre-wbfy bundler-oriented configs, so drop it and let the
+    // base configs choose a consistent pair.
     delete compilerOptions.moduleResolution;
   }
+}
+
+function lowerCaseSetting(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.toLowerCase() : undefined;
 }
 
 function normalizeCommonJsTsconfigSettings(
