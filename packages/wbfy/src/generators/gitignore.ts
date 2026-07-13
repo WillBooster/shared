@@ -114,6 +114,8 @@ android/app/src/main/assets/
     }
     if (config.depending.tauri) {
       names.push('rust');
+    }
+    if (config.doesContainTauriConfig) {
       headUserContent += `src-tauri/gen/schemas/
 `;
     }
@@ -172,12 +174,16 @@ android/app/src/main/assets/
     }
     generated = generated.replaceAll(/^.idea\/?$/gm, '# .idea');
     if (config.depending.tauri) {
-      // The rust template ignores Cargo.lock, but Tauri projects are applications,
-      // so their Cargo.lock must be committed for reproducible builds.
-      generated = generated.replaceAll(/^Cargo\.lock$/gm, '# Cargo.lock');
       // The rust template's unanchored debug/ would also hide frontend source
       // directories such as src/debug/; cargo output is already covered by target/.
       generated = generated.replaceAll(/^debug\/$/gm, '# debug/');
+    }
+    if (config.doesContainTauriConfig) {
+      // The rust template ignores Cargo.lock, but a src-tauri configuration marks an
+      // application, whose Cargo.lock must be committed for reproducible builds.
+      // Tauri plugin libraries (detected only via @tauri-apps/* dependencies) keep
+      // the template's library policy of ignoring Cargo.lock.
+      generated = generated.replaceAll(/^Cargo\.lock$/gm, '# Cargo.lock');
     }
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');

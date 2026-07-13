@@ -17,6 +17,22 @@ test('detects Tauri packages from every supported signal', async () => {
   expect(await detectTauri({})).toBe(false);
 });
 
+test('accepts Cargo-only Tauri projects without a package.json', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const srcTauriDirPath = path.join(tempDirPath, 'packages', 'app', 'src-tauri');
+    fs.mkdirSync(srcTauriDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(srcTauriDirPath, 'tauri.conf.json'), '{}');
+    const config = await getPackageConfig(path.join(tempDirPath, 'packages', 'app'));
+    expect(config).toBeDefined();
+    expect(config?.doesContainTauriConfig).toBe(true);
+    expect(config?.depending.tauri).toBe(true);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 async function detectTauri(setup: { packageJson?: object; srcTauriFileName?: string }): Promise<boolean> {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {

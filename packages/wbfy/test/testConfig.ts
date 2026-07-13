@@ -23,6 +23,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     doesContainUvLock: false,
     doesContainPomXml: false,
     doesContainPubspecYaml: false,
+    doesContainTauriConfig: false,
     doesContainTemplateYaml: false,
     doesContainVscodeSettingsJson: false,
     doesContainJavaScript: false,

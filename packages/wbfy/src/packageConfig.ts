@@ -36,6 +36,7 @@ export interface PackageConfig {
   doesContainUvLock: boolean;
   doesContainPomXml: boolean;
   doesContainPubspecYaml: boolean;
+  doesContainTauriConfig: boolean;
   doesContainTemplateYaml: boolean;
   doesContainVscodeSettingsJson: boolean;
   // source code files
@@ -173,6 +174,10 @@ export async function getPackageConfig(
       }
     }
     const repository = repoFullName ? `github:${repoFullName}` : undefined;
+    // Tauri officially supports JSON, JSON5, and TOML configuration formats.
+    const doesContainTauriConfig = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
+      fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
+    );
     const config: PackageConfig = {
       dirPath,
       dockerfile,
@@ -205,6 +210,7 @@ export async function getPackageConfig(
       doesContainUvLock: fs.existsSync(path.resolve(dirPath, 'uv.lock')),
       doesContainPomXml: fs.existsSync(path.resolve(dirPath, 'pom.xml')),
       doesContainPubspecYaml: fs.existsSync(path.resolve(dirPath, 'pubspec.yaml')),
+      doesContainTauriConfig,
       doesContainTemplateYaml: fs.existsSync(path.resolve(dirPath, 'template.yaml')),
       doesContainVscodeSettingsJson: fs.existsSync(path.resolve(dirPath, '.vscode', 'settings.json')),
       doesContainJavaScript: containsAny('{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}', dirPath),
@@ -241,10 +247,7 @@ export async function getPackageConfig(
           !!devDependencies['@tauri-apps/api'] ||
           !!dependencies['@tauri-apps/cli'] ||
           !!devDependencies['@tauri-apps/cli'] ||
-          // Tauri officially supports JSON, JSON5, and TOML configuration formats.
-          ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
-            fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
-          ),
+          doesContainTauriConfig,
         vinext: !!dependencies.vinext || !!devDependencies.vinext,
         vite: !!dependencies.vite || !!devDependencies.vite,
         wb: !!dependencies['@willbooster/wb'] || !!devDependencies['@willbooster/wb'],
@@ -267,6 +270,7 @@ export async function getPackageConfig(
       config.doesContainUvLock ||
       config.doesContainPomXml ||
       config.doesContainPubspecYaml ||
+      config.doesContainTauriConfig ||
       config.doesContainTemplateYaml
     ) {
       return config;
