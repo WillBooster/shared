@@ -62,6 +62,7 @@ export interface PackageConfig {
     reactNative: boolean;
     semanticRelease: boolean;
     storybook: boolean;
+    tauri: boolean;
     vinext: boolean;
     wb: boolean;
     chakra: boolean;
@@ -234,6 +235,10 @@ export async function getPackageConfig(
           releasePlugins.length > 0
         ),
         storybook: !!devDependencies['@storybook/react'],
+        tauri:
+          !!dependencies['@tauri-apps/api'] ||
+          !!devDependencies['@tauri-apps/cli'] ||
+          fs.existsSync(path.resolve(dirPath, 'src-tauri', 'tauri.conf.json')),
         vinext: !!dependencies.vinext || !!devDependencies.vinext,
         wb: !!dependencies['@willbooster/wb'] || !!devDependencies['@willbooster/wb'],
       },

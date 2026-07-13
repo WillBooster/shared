@@ -49,6 +49,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       reactNative: false,
       semanticRelease: false,
       storybook: false,
+      tauri: false,
       vinext: false,
       wb: false,
     },

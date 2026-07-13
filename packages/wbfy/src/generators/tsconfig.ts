@@ -273,11 +273,26 @@ function deleteLegacyModuleSettings(
   ) {
     delete compilerOptions.moduleResolution;
   }
-  if (config.isBun || config.depending.reactNative || compilerOptions.module !== 'ESNext') return;
+  if (config.isBun || config.depending.reactNative) return;
 
-  // Node base configs now pair their resolver with a matching module kind. Keeping
-  // older ESNext overrides creates invalid generated configs for TS 6.
-  delete compilerOptions.module;
+  if (compilerOptions.module === 'ESNext') {
+    // Node base configs now pair their resolver with a matching module kind. Keeping
+    // older ESNext overrides creates invalid generated configs for TS 6.
+    delete compilerOptions.module;
+  }
+
+  const moduleKind = typeof compilerOptions.module === 'string' ? compilerOptions.module.toLowerCase() : undefined;
+  if (
+    typeof compilerOptions.moduleResolution === 'string' &&
+    compilerOptions.moduleResolution.toLowerCase() === 'bundler' &&
+    (moduleKind === undefined || moduleKind === 'node16' || moduleKind === 'nodenext')
+  ) {
+    // The node base configs pair module=NodeNext with moduleResolution=NodeNext, and
+    // TypeScript rejects a bundler resolver with node module kinds. Such a resolver is
+    // usually left over from pre-wbfy bundler-oriented configs (e.g. Vite/Tauri
+    // frontends), so drop it and let the base configs choose a consistent pair.
+    delete compilerOptions.moduleResolution;
+  }
 }
 
 function normalizeCommonJsTsconfigSettings(

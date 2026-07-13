@@ -112,6 +112,11 @@ android/app/src/main/assets/
     if (config.depending.storybook) {
       names.push('storybookjs');
     }
+    if (config.depending.tauri) {
+      names.push('rust');
+      headUserContent += `src-tauri/gen/schemas/
+`;
+    }
     if (config.depending.litestream) {
       headUserContent += `gcp-sa-key.json
 `;
@@ -163,6 +168,11 @@ android/app/src/main/assets/
       }
     }
     generated = generated.replaceAll(/^.idea\/?$/gm, '# .idea');
+    if (config.depending.tauri) {
+      // The rust template ignores Cargo.lock, but Tauri projects are applications,
+      // so their Cargo.lock must be committed for reproducible builds.
+      generated = generated.replaceAll(/^Cargo\.lock$/gm, '# Cargo.lock');
+    }
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
     }
