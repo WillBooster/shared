@@ -24,9 +24,12 @@ export interface WranglerD1Database {
  * silently apply zero migrations, so it must fall through to the drizzle-kit mechanism.
  */
 export function usesWranglerNativeMigrations(project: Pick<Project, 'dirPath'>, database: WranglerD1Database): boolean {
+  // An explicit pattern opts into the wrangler-native mechanism even before the directory
+  // exists; wrangler then fails safely with "No migrations folder found" instead of wb
+  // silently switching to a different migration engine.
+  if (database.migrations_pattern) return true;
   const migrationsDirPath = path.resolve(project.dirPath, database.migrations_dir ?? 'migrations');
   if (!fs.existsSync(migrationsDirPath)) return false;
-  if (database.migrations_pattern) return true;
   return fs.readdirSync(migrationsDirPath).some((fileName) => fileName.endsWith('.sql'));
 }
 
@@ -90,8 +93,17 @@ interface RawWranglerConfig {
   d1_databases?: WranglerD1Database[];
   assets?: unknown;
   logfwdr?: unknown;
+  wasm_modules?: unknown;
+  text_blobs?: unknown;
+  data_blobs?: unknown;
+  site?: unknown;
   secrets?: { required?: string[] };
   env?: Record<string, RawWranglerConfig>;
+}
+
+// Workers Sites implicitly binds its KV namespace as __STATIC_CONTENT.
+function siteBindingNames(config: RawWranglerConfig, envConfig?: RawWranglerConfig): string[] {
+  return (envConfig?.site ?? config.site) ? ['__STATIC_CONTENT'] : [];
 }
 
 /**
@@ -136,12 +148,21 @@ export function resolveWranglerConfigForEnv(
         // top level entirely, so only the effective value's names count.
         bindingNames: [
           ...collectBindingNames(
-            { assets: envConfig.assets ?? config.assets, logfwdr: envConfig.logfwdr ?? config.logfwdr },
+            {
+              assets: envConfig.assets ?? config.assets,
+              logfwdr: envConfig.logfwdr ?? config.logfwdr,
+              wasm_modules: envConfig.wasm_modules ?? config.wasm_modules,
+              text_blobs: envConfig.text_blobs ?? config.text_blobs,
+              data_blobs: envConfig.data_blobs ?? config.data_blobs,
+            },
             collectBindingNames(envConfig)
           ),
+          ...siteBindingNames(config, envConfig),
         ],
         d1Databases: envConfig.d1_databases ?? [],
-        requiredSecretNames: envConfig.secrets?.required ?? config.secrets?.required ?? [],
+        // `secrets` is non-inheritable: a top-level requirement must not force (or upload)
+        // a secret into a named environment.
+        requiredSecretNames: envConfig.secrets?.required ?? [],
         usesEnvSection: true,
       }
     : {
@@ -149,7 +170,7 @@ export function resolveWranglerConfigForEnv(
         accountId: config.account_id,
         varKeys: Object.keys(config.vars ?? {}),
         vars: config.vars ?? {},
-        bindingNames: [...collectBindingNames(config)],
+        bindingNames: [...collectBindingNames(config), ...siteBindingNames(config)],
         d1Databases: config.d1_databases ?? [],
         requiredSecretNames: config.secrets?.required ?? [],
         usesEnvSection: false,

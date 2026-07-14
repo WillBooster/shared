@@ -104,6 +104,24 @@ describe('resolveWranglerConfigForEnv', () => {
     expect(staging?.bindingNames.toSorted()).toEqual(['STATIC']);
   });
 
+  it('keeps top-level record bindings for named environments and does not inherit secrets.required', async () => {
+    await fs.writeFile(
+      path.join(dirPath, 'wrangler.jsonc'),
+      `{
+        "name": "my-app",
+        "text_blobs": { "MESSAGE": "message.txt" },
+        "secrets": { "required": ["TOP_SECRET"] },
+        "env": { "staging": {} },
+      }`
+    );
+
+    const staging = resolveWranglerConfigForEnv({ dirPath }, 'staging');
+    expect(staging?.bindingNames.toSorted()).toEqual(['MESSAGE']);
+    // secrets is non-inheritable: a top-level requirement must not force (or upload) a
+    // secret into a named environment.
+    expect(staging?.requiredSecretNames).toEqual([]);
+  });
+
   it('prefers a named env.production section over the top level', async () => {
     await fs.writeFile(
       path.join(dirPath, 'wrangler.jsonc'),
@@ -159,6 +177,8 @@ describe('usesWranglerNativeMigrations', () => {
 
   it('requires flat *.sql files or an explicit migrations_pattern', async () => {
     expect(usesWranglerNativeMigrations({ dirPath }, {})).toBe(false);
+    // An explicit pattern opts in even before the directory exists.
+    expect(usesWranglerNativeMigrations({ dirPath }, { migrations_pattern: 'migrations/*/migration.sql' })).toBe(true);
 
     // drizzle-kit's nested layout without a migrations_pattern matches nothing for wrangler,
     // so it must fall through to the drizzle-kit mechanism.

@@ -198,7 +198,11 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       );
     }
     if (missingKeys.length > 0) {
-      console.error(chalk.red(`Missing required environment variables (from .env.example): ${missingKeys.join(', ')}`));
+      console.error(
+        chalk.red(
+          `Missing required environment variables (from .env.example or wrangler secrets.required): ${missingKeys.join(', ')}`
+        )
+      );
       process.exit(1);
     }
     const secretKeys = Object.keys(secrets).toSorted();
