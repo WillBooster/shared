@@ -191,6 +191,12 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       [...resolvedConfig.varKeys, ...resolvedConfig.bindingNames],
       requiredKeys
     );
+    // `--var WB_VERSION:...` takes precedence over configuration values on deploy, so a
+    // resource binding of that name would silently become a string variable.
+    if (project.env.WB_VERSION && resolvedConfig.bindingNames.includes('WB_VERSION')) {
+      console.error(chalk.red('WB_VERSION collides with a Worker binding name; rename the binding.'));
+      process.exit(1);
+    }
     const bindingCollisions = Object.keys(envVars).filter((key) => resolvedConfig.bindingNames.includes(key));
     if (bindingCollisions.length > 0) {
       // Uploading a secret named like a binding would replace the binding with a plain string.
