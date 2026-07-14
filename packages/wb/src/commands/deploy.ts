@@ -190,6 +190,12 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     for (const key of requiredKeys) {
       envVars[key] ??= project.env[key] ?? '';
     }
+    // Names declared via wrangler `secrets.required` may likewise be supplied purely as
+    // exported environment variables (e.g. CI workflow env) instead of dotenv values.
+    for (const key of resolvedConfig.requiredSecretNames) {
+      const exportedValue = project.env[key];
+      if (envVars[key] === undefined && exportedValue !== undefined) envVars[key] = exportedValue;
+    }
     // Explicitly exported environment variables must win over dotenv values (project.env already
     // applies that precedence), or `AUTH_SECRET=... wb deploy` would push the stale file value.
     for (const key of Object.keys(envVars)) {
