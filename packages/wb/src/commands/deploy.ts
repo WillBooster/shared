@@ -80,7 +80,8 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       const parsed = config({ path: cloudflareEnvPath, processEnv: {}, quiet: true }).parsed ?? {};
       for (const [key, value] of Object.entries(parsed)) {
         if (key === 'CLOUDFLARE_ENV') continue;
-        project.env[key] ||= value;
+        // ??= so that an explicitly exported empty value still wins over the file.
+        project.env[key] ??= value;
       }
     }
 
@@ -102,6 +103,18 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     const wranglerNativeD1Databases = resolvedConfig.d1Databases.filter((database) =>
       usesWranglerNativeMigrations(project, database)
     );
+    if (
+      project.hasDrizzle &&
+      wranglerNativeD1Databases.length > 0 &&
+      wranglerNativeD1Databases.length < resolvedConfig.d1Databases.length
+    ) {
+      // Migrating only the wrangler-native subset would silently deploy code against the
+      // other, unmigrated databases.
+      console.error(
+        chalk.red('wb deploy does not support mixing wrangler-native and non-native D1 migration layouts.')
+      );
+      process.exit(1);
+    }
     const drizzleD1Database =
       wranglerNativeD1Databases.length === 0 && project.hasDrizzle ? resolvedConfig.d1Databases[0] : undefined;
     if (wranglerNativeD1Databases.length === 0 && project.hasDrizzle && resolvedConfig.d1Databases.length > 1) {
@@ -231,24 +244,24 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       '/dev/stdin',
     ];
     console.info(chalk.cyan(`Running: wrangler ${deployArgs.join(' ')}`));
-    if (argv.dryRun) return;
-
-    // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
-    // so the direct (non-shell) wrangler spawn below resolves the local binary.
-    if (!project.binExists) {
-      console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
-    }
-    const deployEnv = { ...project.env };
-    delete deployEnv.CLOUDFLARE_ENV;
-    const result = spawnSync('wrangler', deployArgs, {
-      cwd: project.dirPath,
-      env: deployEnv as NodeJS.ProcessEnv,
-      input: JSON.stringify(secrets),
-      stdio: ['pipe', 'inherit', 'inherit'],
-    });
-    if (result.status !== 0) {
-      console.error(chalk.red(`wrangler deploy failed with exit code ${result.status ?? 'unknown'}.`));
-      process.exit(result.status ?? 1);
+    if (!argv.dryRun) {
+      // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
+      // so the direct (non-shell) wrangler spawn below resolves the local binary.
+      if (!project.binExists) {
+        console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
+      }
+      const deployEnv = { ...project.env };
+      delete deployEnv.CLOUDFLARE_ENV;
+      const result = spawnSync('wrangler', deployArgs, {
+        cwd: project.dirPath,
+        env: deployEnv as NodeJS.ProcessEnv,
+        input: JSON.stringify(secrets),
+        stdio: ['pipe', 'inherit', 'inherit'],
+      });
+      if (result.status !== 0) {
+        console.error(chalk.red(`wrangler deploy failed with exit code ${result.status ?? 'unknown'}.`));
+        process.exit(result.status ?? 1);
+      }
     }
 
     // 5. Optional post-deploy hook (e.g. seeding the remote D1 via drizzle's d1-http driver).
@@ -256,6 +269,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     //    must not redirect the hook to another database.
     if (project.packageJson.scripts?.['deploy/post']) {
       const hookD1Database: WranglerD1Database | undefined = drizzleD1Database ?? resolvedConfig.d1Databases[0];
+      // Clear first: when the selected environment has no D1 binding, a stale inherited id
+      // must not redirect the hook to another database.
+      delete project.env.CLOUDFLARE_D1_DATABASE_ID;
       if (hookD1Database?.database_id) project.env.CLOUDFLARE_D1_DATABASE_ID = hookD1Database.database_id;
       if (accountId) project.env.CLOUDFLARE_ACCOUNT_ID = accountId;
       await runWithSpawn('YARN run deploy/post', project, argv);
