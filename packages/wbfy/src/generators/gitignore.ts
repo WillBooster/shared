@@ -134,9 +134,10 @@ src-tauri/gen/schemas/
 `;
     }
     // Ignored only where postinstall regenerates it, so wbfy never ignores a file that nothing recreates. This keeps
-    // its thousands of lines out of every wrangler bump's diff.
+    // its thousands of lines out of every wrangler bump's diff. Anchored with a leading slash because `wrangler types`
+    // and the untracking below only ever touch this package's own file, not a nested one at any depth.
     if (generatesWorkerTypes(config)) {
-      headUserContent += `worker-configuration.d.ts
+      headUserContent += `/worker-configuration.d.ts
 `;
     }
     if (rootConfig.depending.vinext || config.depending.vinext) {

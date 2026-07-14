@@ -178,10 +178,12 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
         promises.push(fixNextConfigJson(config));
       }
       await generateGitignore(config, rootConfig);
+      await promisePool.promiseAll();
+      // Only after the barrier above, which is where the pooled .gitignore write actually completes: untracking a file
+      // that did not get ignored (e.g. the gitignore.io fetch failed) would leave it untracked and dirty in the repo.
       if (generatesWorkerTypes(config)) {
         await untrackWorkerTypes(config);
       }
-      await promisePool.promiseAll();
       if (!config.isRoot && !config.doesContainPackageJson) {
         continue;
       }

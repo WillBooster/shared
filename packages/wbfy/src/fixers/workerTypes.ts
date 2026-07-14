@@ -14,6 +14,17 @@ export async function untrackWorkerTypes(config: PackageConfig): Promise<void> {
     const tracked = spawnSyncAndReturnStdout('git', ['ls-files', '--', workerTypesFileName], config.dirPath);
     if (!tracked) return;
 
+    // Untracking a file the generated .gitignore does not actually cover (e.g. the gitignore.io fetch failed, so the
+    // file was never written) would leave it untracked and dirty in the repository, so confirm the rule applies first.
+    // --no-index makes git report the rule that would apply, instead of reporting nothing because the file is tracked.
+    const isIgnored =
+      spawnSyncAndReturnStatus(
+        'git',
+        ['check-ignore', '--quiet', '--no-index', '--', workerTypesFileName],
+        config.dirPath
+      ) === 0;
+    if (!isIgnored) return;
+
     // --cached keeps the file on disk because type checking needs it before the next install regenerates it.
     spawnSyncAndReturnStatus('git', ['rm', '--cached', '--quiet', '--', workerTypesFileName], config.dirPath);
   });

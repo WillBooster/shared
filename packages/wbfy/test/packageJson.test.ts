@@ -196,10 +196,16 @@ test('appends wrangler types to gen-code and postinstall for Cloudflare projects
   });
 });
 
-test('preserves a project-specific wrangler types invocation with flags', async () => {
+// --strict-vars=false widens `vars` to string, while the default emits literal union types, so resetting a project's
+// flags would silently change the generated declarations. Both managed scripts must run the very same command, or the
+// file would depend on whether install or `run gen-code` happened to run last.
+test.each([
+  ['postinstall', { postinstall: 'wb gen-code && wrangler types --strict-vars=false' }],
+  ['a script of its own', { 'gen-types': 'wrangler types --strict-vars=false' }],
+])('preserves a project-specific wrangler types invocation kept in %s', async (_description, scripts) => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
   const packageJson = await generatePackageJsonFrom(
-    { scripts: { postinstall: 'wb gen-code && wrangler types --strict-vars=false' }, ...wranglerPackageJson },
+    { scripts, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
       isBun: true,
@@ -210,7 +216,10 @@ test('preserves a project-specific wrangler types invocation with flags', async 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false');
+  expect(packageJson.scripts).toMatchObject({
+    'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
+    postinstall: 'wb gen-code && wrangler types --strict-vars=false',
+  });
 });
 
 // wbfy gitignores and untracks worker-configuration.d.ts only where postinstall regenerates it, so a package that
