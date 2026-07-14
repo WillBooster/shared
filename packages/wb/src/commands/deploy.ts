@@ -192,17 +192,38 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       process.exit(1);
     }
     const secretKeys = Object.keys(secrets).toSorted();
-    // Cloudflare limits a bulk upload to 100 secrets and each value to 5 KB; failing here keeps
-    // an oversized payload from aborting the deploy after migrations already ran.
+    // Cloudflare limits a bulk upload to 100 secrets, each variable/secret value to 5 KB, and
+    // the combined variable+secret count to 128 (64 on the Free plan, which cannot be detected
+    // here — hence a warning). Failing before any build or migration keeps an oversized payload
+    // from aborting the deploy after remote migrations already ran.
     if (secretKeys.length > 100) {
       console.error(
         chalk.red(`Cloudflare accepts at most 100 secrets per deploy, but ${secretKeys.length} were selected.`)
       );
       process.exit(1);
     }
-    const oversizedKeys = secretKeys.filter((key) => Buffer.byteLength(secrets[key] ?? '', 'utf8') > 5 * 1024);
+    const varEntries = Object.entries(resolvedConfig.vars);
+    if (project.env.WB_VERSION) varEntries.push(['WB_VERSION', project.env.WB_VERSION]);
+    const combinedCount = new Set([...secretKeys, ...varEntries.map(([key]) => key)]).size;
+    if (combinedCount > 128) {
+      console.error(
+        chalk.red(`Cloudflare allows at most 128 variables and secrets combined, but ${combinedCount} were selected.`)
+      );
+      process.exit(1);
+    }
+    if (combinedCount > 64) {
+      console.warn(chalk.yellow(`${combinedCount} variables and secrets exceed the Free plan's limit of 64.`));
+    }
+    const oversizedKeys = [
+      ...secretKeys.filter((key) => Buffer.byteLength(secrets[key] ?? '', 'utf8') > 5 * 1024),
+      ...varEntries
+        .filter(
+          ([, value]) => Buffer.byteLength(typeof value === 'string' ? value : JSON.stringify(value), 'utf8') > 5 * 1024
+        )
+        .map(([key]) => key),
+    ];
     if (oversizedKeys.length > 0) {
-      console.error(chalk.red(`Secret values exceed Cloudflare's 5 KB limit: ${oversizedKeys.join(', ')}`));
+      console.error(chalk.red(`Variable or secret values exceed Cloudflare's 5 KB limit: ${oversizedKeys.join(', ')}`));
       process.exit(1);
     }
     console.info(

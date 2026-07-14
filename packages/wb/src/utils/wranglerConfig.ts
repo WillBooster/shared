@@ -68,6 +68,8 @@ export interface ResolvedWranglerConfig {
   workerName?: string;
   accountId?: string;
   varKeys: string[];
+  /** The environment's `vars` values (needed for Cloudflare's combined count/size limits). */
+  vars: Record<string, unknown>;
   /** Names of all non-var bindings (D1, KV, R2, Durable Objects, send_email, services, ...). */
   bindingNames: string[];
   d1Databases: WranglerD1Database[];
@@ -124,6 +126,7 @@ export function resolveWranglerConfigForEnv(
         workerName: envConfig.name ?? (config.name ? `${config.name}-${envName}` : undefined),
         accountId: envConfig.account_id ?? config.account_id,
         varKeys: Object.keys(envConfig.vars ?? {}),
+        vars: envConfig.vars ?? {},
         // Most bindings are non-inheritable and must be redeclared per environment, so only the
         // environment's own names count — plus the genuinely inherited/top-level-only shapes
         // (assets, logfwdr), whose top-level names would still shadow a same-named secret.
@@ -137,6 +140,7 @@ export function resolveWranglerConfigForEnv(
         workerName: config.name,
         accountId: config.account_id,
         varKeys: Object.keys(config.vars ?? {}),
+        vars: config.vars ?? {},
         bindingNames: [...collectBindingNames(config)],
         d1Databases: config.d1_databases ?? [],
         usesEnvSection: false,

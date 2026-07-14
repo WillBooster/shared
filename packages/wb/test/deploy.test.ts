@@ -48,6 +48,7 @@ describe('resolveWranglerConfigForEnv', () => {
       workerName: 'my-app',
       accountId: 'acc-1',
       varKeys: ['WB_ENV', 'NEXT_PUBLIC_BASE_URL'],
+      vars: { WB_ENV: 'production', NEXT_PUBLIC_BASE_URL: 'https://example.com' },
       bindingNames: ['DB'],
       d1Databases: [{ binding: 'DB', database_name: 'my-app-production', database_id: 'prod-id' }],
       usesEnvSection: false,
@@ -59,6 +60,7 @@ describe('resolveWranglerConfigForEnv', () => {
       workerName: 'my-app-staging',
       accountId: 'acc-1',
       varKeys: ['WB_ENV'],
+      vars: { WB_ENV: 'staging' },
       bindingNames: ['DB'],
       d1Databases: [
         { binding: 'DB', database_name: 'my-app-staging', database_id: 'stg-id', migrations_dir: 'drizzle' },
@@ -104,6 +106,7 @@ describe('resolveWranglerConfigForEnv', () => {
       workerName: 'my-app-production',
       accountId: undefined,
       varKeys: [],
+      vars: {},
       bindingNames: ['DB'],
       d1Databases: [{ binding: 'DB', database_id: 'prod-id' }],
       usesEnvSection: true,
