@@ -179,16 +179,18 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       }
       await generateGitignore(config, rootConfig);
       await promisePool.promiseAll();
-      // Only after the barrier above, which is where the pooled .gitignore write actually completes: untracking a file
-      // that did not get ignored (e.g. the gitignore.io fetch failed) would leave it untracked and dirty in the repo.
-      if (generatesWorkerTypes(config)) {
-        await untrackWorkerTypes(config);
-      }
       if (!config.isRoot && !config.doesContainPackageJson) {
         continue;
       }
       await generatePrettierignore(config);
       await generatePackageJson(config, rootConfig, skipDeps);
+      // Only after both the barrier above — where the pooled .gitignore write actually completes — and the
+      // package.json generation: untracking a file that did not get ignored (e.g. the gitignore.io fetch failed) or
+      // whose postinstall does not actually regenerate it (generatePackageJson swallows its own exceptions, so a
+      // partial run is possible) would delete the declaration with nothing recreating it on fresh checkouts.
+      if (generatesWorkerTypes(config)) {
+        await untrackWorkerTypes(config);
+      }
 
       promises.push(generateLintstagedrc(config));
       if (config.doesContainVscodeSettingsJson && config.doesContainPackageJson) {

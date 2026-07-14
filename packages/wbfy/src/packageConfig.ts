@@ -3,6 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import fg from 'fast-glob';
+import semver from 'semver';
 import { simpleGit } from 'simple-git';
 import { parse as parseToml } from 'smol-toml';
 import type { PackageJson } from 'type-fest';
@@ -312,22 +313,46 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
   return (
     config.doesContainWranglerConfig &&
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
-    hasReproducibleWorkerTypesInference(config.dirPath)
+    hasReproducibleWorkerTypesInference(config)
   );
 }
 
 /**
  * `wrangler types` infers `Env` members from the .dev.vars (falling back to .env) beside the wrangler config unless
  * the config declares `secrets.required`. Untracking worker-configuration.d.ts is safe only when that inference
- * input is present on every checkout — with a gitignored .dev.vars, CI would regenerate an `Env` without the secret
- * members that type-check locally.
+ * input is identical on every checkout — with a gitignored or locally modified .dev.vars, CI would regenerate an
+ * `Env` without the secret members that type-check locally.
  */
-function hasReproducibleWorkerTypesInference(dirPath: string): boolean {
-  if (wranglerConfigDeclaresRequiredSecrets(dirPath)) return true;
+function hasReproducibleWorkerTypesInference(config: PackageConfig): boolean {
+  if (declaresSupportedRequiredSecrets(config)) return true;
+  const dirPath = config.dirPath;
   const inferenceSourceName = ['.dev.vars', '.env'].find((fileName) => fs.existsSync(path.resolve(dirPath, fileName)));
   if (!inferenceSourceName) return true;
-  // `git ls-files` prints nothing for an untracked file and fails printing nothing outside a repository.
-  return spawnSyncAndReturnStdout('git', ['ls-files', '--', inferenceSourceName], dirPath) !== '';
+  // Tracked AND unmodified: `git ls-files` prints nothing for an untracked file (and fails printing nothing
+  // outside a repository), while `git status --porcelain` prints nothing for a clean file — wrangler reads the
+  // working tree, but CI reads the committed contents, so local edits break reproducibility too. (An ignored
+  // file also produces empty status output, which the tracked check catches.)
+  return (
+    spawnSyncAndReturnStdout('git', ['ls-files', '--', inferenceSourceName], dirPath) !== '' &&
+    spawnSyncAndReturnStdout('git', ['status', '--porcelain', '--', inferenceSourceName], dirPath) === ''
+  );
+}
+
+// `wrangler types` generates from `secrets.required` only since wrangler 4.77.0 (announced 2026-03-24, the 4.77.0
+// release date); older wranglers warn about the unexpected field and keep inferring from .dev.vars.
+const minimumWranglerVersionForRequiredSecrets = '4.77.0';
+
+function declaresSupportedRequiredSecrets(config: PackageConfig): boolean {
+  const wranglerVersionRange =
+    config.packageJson?.dependencies?.['wrangler'] ?? config.packageJson?.devDependencies?.['wrangler'];
+  if (!wranglerVersionRange) return false;
+  try {
+    const minimumVersion = semver.minVersion(wranglerVersionRange);
+    if (!minimumVersion || semver.lt(minimumVersion, minimumWranglerVersionForRequiredSecrets)) return false;
+  } catch {
+    return false;
+  }
+  return wranglerConfigDeclaresRequiredSecrets(config.dirPath);
 }
 
 function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
@@ -359,8 +384,9 @@ function stripJsoncSyntax(text: string): string {
   for (let i = 0; i < text.length; i++) {
     const character = text[i];
     if (character === '"') {
-      withoutComments += copyJsonString(text, i);
-      i += copyJsonString(text, i).length - 1;
+      const stringLiteral = copyJsonString(text, i);
+      withoutComments += stringLiteral;
+      i += stringLiteral.length - 1;
     } else if (character === '/' && text[i + 1] === '/') {
       while (i < text.length && text[i] !== '\n') i++;
       withoutComments += '\n';
@@ -377,8 +403,9 @@ function stripJsoncSyntax(text: string): string {
   for (let i = 0; i < withoutComments.length; i++) {
     const character = withoutComments[i];
     if (character === '"') {
-      result += copyJsonString(withoutComments, i);
-      i += copyJsonString(withoutComments, i).length - 1;
+      const stringLiteral = copyJsonString(withoutComments, i);
+      result += stringLiteral;
+      i += stringLiteral.length - 1;
     } else if (character === ',') {
       let next = i + 1;
       while (next < withoutComments.length && /\s/u.test(withoutComments[next] as string)) next++;

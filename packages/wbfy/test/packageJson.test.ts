@@ -337,7 +337,8 @@ test('omits wrangler types when an uncommitted .dev.vars drives the Env inferenc
 });
 
 test('keeps wrangler types when secrets.required makes the Env inference reproducible', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  // 4.77.0 is the first wrangler that generates types from secrets.required instead of .dev.vars.
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.77.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
@@ -361,6 +362,151 @@ test('keeps wrangler types when secrets.required makes the Env inference reprodu
   );
 
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+});
+
+// Wranglers older than 4.77.0 warn about the unexpected top-level `secrets` field and keep inferring from
+// .dev.vars, so the declaration must not count as a reproducible inference source for them.
+test('ignores secrets.required when the wrangler dependency predates its support', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: {}, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    {
+      createI18nDir: true,
+      files: {
+        '.dev.vars': 'AUTH_SECRET=local-secret\n',
+        'wrangler.jsonc': `{ "secrets": { "required": ["AUTH_SECRET"] } }`,
+      },
+    }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// Running the documented code-generation entry point must produce the same declarations as postinstall,
+// even when wbfy would not create the gen-code script from scratch.
+test('appends wrangler types to a project-specific gen-code script', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-code': 'tsx scripts/genRoutes.ts' }, ...wranglerPackageJson },
+    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'gen-code': 'tsx scripts/genRoutes.ts && bunx wrangler types',
+    postinstall: 'wb gen-code && bunx wrangler types',
+  });
+});
+
+// Only a command-position invocation counts: shell text that merely mentions the words must not be
+// selected as the shared generator.
+test('does not treat shell text mentioning wrangler types as the generator command', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { help: 'echo wrangler types --strict-vars=false' }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+});
+
+// --cwd/--config/--env change the config, output directory, or .dev.vars inference inputs away from the ones the
+// management gate validated, and --check=true generates nothing, so none can serve as the shared generator.
+test('ignores context-changing wrangler types invocations when resolving the command', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'check-types': 'wrangler types --check=true',
+        'gen-staging': 'wrangler types --env staging --strict-vars=false',
+        'gen-other': 'wrangler types --config config/worker.jsonc --strict-vars=false',
+      },
+      ...wranglerPackageJson,
+    },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+});
+
+// Wrangler's documented default output path is exactly ./worker-configuration.d.ts, so naming it explicitly
+// must not discard the project's flags.
+test('reuses a wrangler types invocation that names the default output path explicitly', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: { 'gen-types': 'wrangler types ./worker-configuration.d.ts --strict-vars=false' },
+      ...wranglerPackageJson,
+    },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(
+    'wb gen-code && wrangler types ./worker-configuration.d.ts --strict-vars=false'
+  );
+});
+
+// `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
+test('prepends the generator to a check-only postinstall', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { postinstall: 'wrangler types --check' }, ...wranglerPackageJson },
+    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('bunx wrangler types && wrangler types --check');
+});
+
+// A custom --config layout is not managed by wbfy, but the project's own generation — even behind a wrapper
+// script — must survive the postinstall rewrite.
+test('preserves a wrapper script invoking wrangler types with a custom config when overwriting postinstall', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'gen-types': 'wrangler types --config config/worker.jsonc',
+        postinstall: 'yarn gen-types',
+      },
+      ...wranglerPackageJson,
+    },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: false,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-types');
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {
