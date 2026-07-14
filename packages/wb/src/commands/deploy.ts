@@ -174,9 +174,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     for (const key of Object.keys(envVars)) {
       if (!dotenvKeys.has(key)) delete envVars[key];
     }
-    // Wrangler validates `secrets.required` only during the real upload — after migrations —
-    // so wb requires those keys upfront too (the wb flow keeps all secrets in dotenv values).
-    const requiredKeys = [...new Set([...readEnvExampleKeys(project), ...resolvedConfig.requiredSecretNames])];
+    const requiredKeys = readEnvExampleKeys(project);
     for (const key of requiredKeys) {
       envVars[key] ??= project.env[key] ?? '';
     }
@@ -208,6 +206,21 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       console.error(
         chalk.red(
           `Missing required environment variables (from .env.example or wrangler secrets.required): ${missingKeys.join(', ')}`
+        )
+      );
+      process.exit(1);
+    }
+    // Wrangler validates `secrets.required` only during the real upload — after migrations —
+    // so wb checks upfront: each required name must be a key in the outgoing payload (presence,
+    // not truthiness — an explicit empty clears a stale value) or an effective var/binding.
+    const unsatisfiedRequiredSecretNames = resolvedConfig.requiredSecretNames.filter(
+      (name) =>
+        !(name in secrets) && !resolvedConfig.varKeys.includes(name) && !resolvedConfig.bindingNames.includes(name)
+    );
+    if (unsatisfiedRequiredSecretNames.length > 0) {
+      console.error(
+        chalk.red(
+          `Secrets required by the wrangler config are not provided: ${unsatisfiedRequiredSecretNames.join(', ')}`
         )
       );
       process.exit(1);

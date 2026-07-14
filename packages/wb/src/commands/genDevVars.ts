@@ -90,23 +90,19 @@ export function readEnvExampleKeys(project: Project): string[] {
 }
 
 /**
- * Quote a value for dotenv (which wrangler uses for .dev.vars), choosing a representation that
- * round-trips under wrangler's bundled dotenv 16 parser or throwing:
- * - Values without an apostrophe use single quotes (the quoted span preserves newlines, `#`,
- *   double quotes, backticks, backslashes, and literal \n sequences).
- * - An apostrophe inside a single-quoted span closes it early (a trailing `#…` is then even
- *   parsed as a comment), so such values use backticks — equally literal in dotenv 16.
- * - Real carriage returns survive ONLY as double-quoted \r escapes (the parser normalizes
- *   CRLF/CR to LF before parsing), so CR values always use double quotes.
- * - The double-quoted branch round-trips embedded double quotes and escaped newlines/CRs, but
- *   not literal \n/\r sequences (dotenv unescapes those, which would corrupt the literals).
+ * Quote a value for dotenv (which wrangler uses for .dev.vars). Every candidate representation
+ * is verified by actually parsing it back (our dotenv parser matches wrangler's bundled dotenv
+ * 16 for these constructs), so a value is either serialized losslessly or rejected — never
+ * silently corrupted. Candidates: single quotes (literal span; closed early by an apostrophe),
+ * backticks (equally literal), then double quotes with escaped newlines/CRs (dotenv does not
+ * unescape inner \" — a `#` after an embedded quote starts a comment, which the round-trip
+ * check catches and rejects).
  */
 export function quoteDotenvValue(key: string, value: string): string {
-  const hasCarriageReturn = value.includes('\r');
-  if (!hasCarriageReturn && !value.includes("'")) return `'${value}'`;
-  if (!hasCarriageReturn && !value.includes('`')) return `\`${value}\``;
-  if (!value.includes(String.raw`\n`) && !value.includes(String.raw`\r`)) {
-    return `"${value.replaceAll('\n', String.raw`\n`).replaceAll('\r', String.raw`\r`)}"`;
+  const doubleQuotedBody = value.replaceAll('\n', String.raw`\n`).replaceAll('\r', String.raw`\r`);
+  const candidates = [`'${value}'`, `\`${value}\``, `"${doubleQuotedBody}"`];
+  for (const candidate of candidates) {
+    if (parseDotenv(`${key}=${candidate}`)[key] === value) return candidate;
   }
   throw new Error(`The value of ${key} cannot be losslessly serialized into .dev.vars; simplify its quoting.`);
 }
