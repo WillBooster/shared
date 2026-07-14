@@ -167,7 +167,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     //    plaintext temp file and a post-deploy secret push that could leave the new version
     //    running without (or with stale) secrets.
     const deployConfigPath = isVinext ? path.join('dist', 'server', 'wrangler.json') : wranglerConfigPath;
-    if (isVinext && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
+    if (isVinext && !argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
       console.error(chalk.red(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`));
       process.exit(1);
     }
