@@ -42,6 +42,11 @@ async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<vo
   // node_modules/.bin directories to keep bare binary names resolvable. Plug'n'Play installs
   // create no node_modules at all; the temporary bin folder is then the sole source of
   // dependency executables, so restore it instead.
+  // The temporary folder is deliberately NOT restored when .bin directories exist: it also
+  // contains node/yarn shims, and a leaked node shim would violate wb's real-Node guarantee
+  // for tools like wrangler/vinext. Child `yarn` invocations stay resolvable through the
+  // launcher on the base PATH (mise/corepack), which every supported environment has —
+  // nothing could have started `yarn run`/`wb dotenv` without it.
   if (!prependNodeModulesBinToPath(cwd, process.env) && berryBinFolderPath) {
     process.env.PATH = process.env.PATH ? `${berryBinFolderPath}:${process.env.PATH}` : berryBinFolderPath;
   }
