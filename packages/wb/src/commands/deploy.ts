@@ -425,11 +425,11 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
         signalHandlers.set(signal, signalHandler);
         process.on(signal, signalHandler);
       }
-      let deployStatus: number | null;
+      let deployStatus: number | undefined;
       try {
         const secretsFilePath = path.join(secretsDirPath, 'secrets.json');
         fs.writeFileSync(secretsFilePath, JSON.stringify(secrets), { mode: 0o600 });
-        deployStatus = await new Promise<number | null>((resolve) => {
+        deployStatus = await new Promise<number | undefined>((resolve) => {
           wranglerProcess = spawn('wrangler', [...deployArgs, secretsFilePath], {
             cwd: project.dirPath,
             env: deployEnv as NodeJS.ProcessEnv,
@@ -440,7 +440,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
             resolve(1);
           });
           wranglerProcess.on('exit', (code, signal) => {
-            resolve(signal ? 1 : code);
+            resolve(signal ? 1 : (code ?? undefined));
           });
         });
       } finally {
