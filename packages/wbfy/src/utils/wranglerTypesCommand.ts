@@ -131,7 +131,7 @@ export function reachesWranglerTypes(
  */
 export function contextFreeCommandSegments(script: string): string[] {
   const segments: string[] = [];
-  for (const segment of script.split('&&').map((part) => part.trim())) {
+  for (const segment of splitCommandSegments(script)) {
     if (isDirectoryChange(segment)) {
       if (isNoOpDirectoryChange(segment)) continue;
       break;
@@ -143,9 +143,43 @@ export function contextFreeCommandSegments(script: string): string[] {
 
 /** Whether the script leaves the package directory at some point (an appended command would then run elsewhere). */
 export function scriptChangesWorkingDirectory(script: string): boolean {
-  return script
-    .split('&&')
-    .some((segment) => isDirectoryChange(segment.trim()) && !isNoOpDirectoryChange(segment.trim()));
+  return splitCommandSegments(script).some((segment) => isDirectoryChange(segment) && !isNoOpDirectoryChange(segment));
+}
+
+/**
+ * Split a shell command line on `&&` outside quotes: a quoted `&&` (e.g. `echo "setup && wrangler types ..."`)
+ * is argument text, and splitting inside it would fabricate a command that was never run.
+ */
+function splitCommandSegments(script: string): string[] {
+  const segments: string[] = [];
+  let current = '';
+  let quote: string | undefined;
+  for (let index = 0; index < script.length; index++) {
+    const character = script[index] ?? '';
+    if (quote) {
+      if (character === '\\' && quote === '"') {
+        current += character + (script[++index] ?? '');
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      current += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (character === '&' && script[index + 1] === '&') {
+      segments.push(current.trim());
+      current = '';
+      index++;
+      continue;
+    }
+    current += character;
+  }
+  segments.push(current.trim());
+  return segments;
 }
 
 function isDirectoryChange(segment: string): boolean {

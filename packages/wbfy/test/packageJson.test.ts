@@ -720,6 +720,44 @@ test('recognizes a conflicting invocation behind a no-op cd', async () => {
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
+// A quoted `&&` is argument text; splitting inside it would fabricate a generator command that was never run
+// (and whose trailing quote breaks the shell).
+test('does not select a wrangler types invocation quoted inside another command', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { greet: 'echo "run setup && wrangler types --strict-vars=false"' }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+});
+
+// Wrangler also layers .env.local (and environment-specific variants) into the Env inference, so an uncommitted
+// one makes the generated file irreproducible even when .dev.vars and .env are absent.
+test('omits wrangler types when an uncommitted .env.local drives the Env inference', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: {}, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true, files: { '.env.local': 'LOCAL_ONLY_SECRET=local-value\n', 'wrangler.jsonc': '{}' } }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
 test('prepends the generator to a check-only postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };

@@ -324,23 +324,28 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
 }
 
 /**
- * `wrangler types` infers `Env` members from the .dev.vars (falling back to .env) beside the wrangler config unless
- * the config declares `secrets.required`. Untracking worker-configuration.d.ts is safe only when that inference
- * input is identical on every checkout — with a gitignored or locally modified .dev.vars, CI would regenerate an
- * `Env` without the secret members that type-check locally.
+ * `wrangler types` infers `Env` members from the .dev.vars/.env files beside the wrangler config — including the
+ * layered variants wrangler resolves, such as .env.local and environment-specific files — unless the config
+ * declares `secrets.required`. Untracking worker-configuration.d.ts is safe only when every such input is
+ * identical on every checkout: with a gitignored or locally modified file, CI would regenerate an `Env` without
+ * the secret members that type-check locally.
  */
 function hasReproducibleWorkerTypesInference(config: PackageConfig): boolean {
   if (declaresSupportedRequiredSecrets(config)) return true;
   const dirPath = config.dirPath;
-  const inferenceSourceName = ['.dev.vars', '.env'].find((fileName) => fs.existsSync(path.resolve(dirPath, fileName)));
-  if (!inferenceSourceName) return true;
-  // Tracked AND unmodified: `git ls-files` prints nothing for an untracked file (and fails printing nothing
+  const inferenceSourceNames = fs
+    .readdirSync(dirPath)
+    .filter((fileName) => /^\.(?:dev\.vars|env)(?:\..+)?$/u.test(fileName));
+  if (inferenceSourceNames.length === 0) return true;
+  // All tracked AND unmodified: `git ls-files` prints nothing for an untracked file (and fails printing nothing
   // outside a repository), while `git status --porcelain` prints nothing for a clean file — wrangler reads the
   // working tree, but CI reads the committed contents, so local edits break reproducibility too. (An ignored
   // file also produces empty status output, which the tracked check catches.)
+  const trackedOutput = spawnSyncAndReturnStdout('git', ['ls-files', '--', ...inferenceSourceNames], dirPath);
+  const trackedCount = trackedOutput === '' ? 0 : trackedOutput.split('\n').length;
   return (
-    spawnSyncAndReturnStdout('git', ['ls-files', '--', inferenceSourceName], dirPath) !== '' &&
-    spawnSyncAndReturnStdout('git', ['status', '--porcelain', '--', inferenceSourceName], dirPath) === ''
+    trackedCount === inferenceSourceNames.length &&
+    spawnSyncAndReturnStdout('git', ['status', '--porcelain', '--', ...inferenceSourceNames], dirPath) === ''
   );
 }
 
