@@ -15,6 +15,7 @@ import {
   classifyWranglerTypesInvocation,
   contextFreeCommandSegments,
   isManagedGenCodeSegment,
+  mentionsWranglerTypes,
   postinstallGeneratesWorkerTypes,
   reachesWranglerTypes,
   scriptChangesWorkingDirectory,
@@ -209,7 +210,11 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
     // config/worker.jsonc`, which wbfy does not manage, possibly behind a wrapper script) would drop the
     // generation entirely.
     const preservedSegments =
-      scripts.postinstall && reachesWranglerTypes(scripts.postinstall, scripts, () => true)
+      scripts.postinstall &&
+      (reachesWranglerTypes(scripts.postinstall, scripts, () => true) ||
+        // Shell forms the parser cannot model (e.g. `node scripts/prepare.js; wrangler types --config ...`)
+        // still generate on install and must survive the rewrite verbatim.
+        mentionsWranglerTypes(scripts.postinstall))
         ? contextFreeCommandSegments(scripts.postinstall).filter(
             (segment) => segment !== '' && !isManagedGenCodeSegment(segment, scripts)
           )
