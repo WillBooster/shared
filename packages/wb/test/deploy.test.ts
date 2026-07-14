@@ -291,10 +291,11 @@ describe('quoteDotenvValue', () => {
     ]) {
       expect(roundTripDotenvValue(value)).toBe(value);
     }
+    // The parse-verified candidates even cover apostrophe + backtick + literal \n via
+    // dotenv's unquoted-line fallback.
+    expect(roundTripDotenvValue("a'b`" + String.raw`\n`)).toBe("a'b`" + String.raw`\n`);
     // A # after an embedded double quote starts a comment and dotenv does not unescape
     // inner \", so this combination is genuinely unrepresentable.
     expect(() => quoteDotenvValue('K', 'a\r"#b')).toThrow('losslessly');
-    // Unrepresentable: literal \n/\r sequences in the double-quoted branch would be unescaped.
-    expect(() => quoteDotenvValue('K', "a'b`" + String.raw`\n`)).toThrow('losslessly');
   });
 });
