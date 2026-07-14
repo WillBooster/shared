@@ -1,6 +1,7 @@
 import type { Octokit } from '@octokit/core';
 import { withRetry } from '@willbooster/shared-lib/src';
 
+import { isReusableWorkflowsRepo } from '../generators/workflow.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { getOctokit, gitHubUtil, hasGitHubToken } from '../utils/githubUtil.js';
@@ -123,6 +124,9 @@ export async function setupRepositoryRulesets(config: PackageConfig): Promise<vo
     const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
     if (!owner || !repo) return;
     if (owner !== 'WillBooster') return;
+    // The reusable-workflows repo hosts workflow_call definitions, so the
+    // Protect main ruleset would require test/semantic-pr checks that never run there.
+    if (isReusableWorkflowsRepo(config.repository)) return;
     if (!hasGitHubToken(owner)) return;
 
     const octokit = getOctokit(owner);
