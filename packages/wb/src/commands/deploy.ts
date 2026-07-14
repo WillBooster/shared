@@ -318,10 +318,15 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     //    Assign the resolved ids unconditionally: a stale exported CLOUDFLARE_D1_DATABASE_ID
     //    must not redirect the hook to another database.
     if (project.packageJson.scripts?.['deploy/post']) {
-      const hookD1Database: WranglerD1Database | undefined = drizzleD1Database ?? resolvedConfig.d1Databases[0];
-      // Clear first: when the selected environment has no D1 binding, a stale inherited id
-      // must not redirect the hook to another database.
+      // The id is unambiguous only with a single D1 binding; with multiple, the hook must
+      // resolve its target itself. Clear first either way: a stale inherited id must not
+      // redirect the hook to another database.
+      const hookD1Database: WranglerD1Database | undefined =
+        resolvedConfig.d1Databases.length === 1 ? resolvedConfig.d1Databases[0] : undefined;
       delete project.env.CLOUDFLARE_D1_DATABASE_ID;
+      if (resolvedConfig.d1Databases.length > 1) {
+        console.warn(chalk.yellow('Multiple D1 bindings exist; CLOUDFLARE_D1_DATABASE_ID is not set for deploy/post.'));
+      }
       if (hookD1Database?.database_id) project.env.CLOUDFLARE_D1_DATABASE_ID = hookD1Database.database_id;
       if (accountId) project.env.CLOUDFLARE_ACCOUNT_ID = accountId;
       await runWithSpawn('YARN run deploy/post', project, argv);
