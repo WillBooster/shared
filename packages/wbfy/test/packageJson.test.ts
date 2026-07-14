@@ -176,6 +176,19 @@ test('uses stable age-gated versions for generated dependencies when skipping in
   expect(packageJson.devDependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
 });
 
+test('appends wrangler types to gen-code and postinstall for Cloudflare projects', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: {} },
+    { depending: genI18nTsDepending, isBun: true, isCloudflare: true },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'gen-code': 'bun wb gen-code && bunx wrangler types',
+    postinstall: 'wb gen-code && bunx wrangler types',
+  });
+});
+
 test('keeps custom database scripts for drizzle projects', async () => {
   const packageJson = await generatePackageJsonFrom(
     {

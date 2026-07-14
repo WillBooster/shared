@@ -192,12 +192,22 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   }
 }
 
-function updatePostinstallScript(scripts: PackageJson.Scripts): void {
+function updatePostinstallScript(scripts: PackageJson.Scripts, config: PackageConfig): void {
   if (scripts['gen-code']) {
-    scripts.postinstall = 'wb gen-code';
+    scripts.postinstall = appendWranglerTypes('wb gen-code', config);
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
   }
+}
+
+/**
+ * Cloudflare Workers projects rely on `wrangler types` to (re)generate the gitignored
+ * worker-configuration.d.ts. Because `wb gen-code` does not produce it, append the command to
+ * code-generation scripts; otherwise a fresh checkout (e.g. CI) would fail type checking.
+ */
+function appendWranglerTypes(script: string, config: PackageConfig): string {
+  if (!config.isCloudflare) return script;
+  return `${script} && ${config.isBun ? 'bunx ' : ''}wrangler types`;
 }
 
 function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {
@@ -531,10 +541,10 @@ async function normalizePackageMetadata(
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun ' : ''}wb gen-code`;
+    jsonObj.scripts['gen-code'] = appendWranglerTypes(`${config.isBun ? 'bun ' : ''}wb gen-code`, config);
   }
   normalizeGenI18nTsScript(config, jsonObj);
-  updatePostinstallScript(jsonObj.scripts);
+  updatePostinstallScript(jsonObj.scripts, config);
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
