@@ -98,7 +98,8 @@ function collectReusableGeneratorSegments(
     scripts,
     (invocationArgs, segment) => {
       if (invocationArgs.length > 0 && classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator') {
-        segments.push(segment);
+        // Without the trailing comment: a reused `... # note` would swallow anything composed after it.
+        segments.push(stripTrailingComment(segment));
       }
       return false; // keep collecting instead of stopping at the first match
     },
@@ -227,8 +228,14 @@ function isDirectoryChange(segment: string): boolean {
 
 function isNoOpDirectoryChange(segment: string): boolean {
   const tokens = tokenizeCommandSegment(segment);
-  const target = (tokens[skipEnvironmentAssignments(tokens) + 1] ?? '').replaceAll(/^["']|["']$/gu, '');
-  return target === '.' || target === './';
+  let targetIndex = skipEnvironmentAssignments(tokens) + 1;
+  if (tokens[targetIndex] === '--') targetIndex++;
+  // Normalize static spellings of the current directory (`.`, `./`, `./.`, `././`, ...); anything else
+  // (including a bare `cd`, which goes to $HOME) counts as a real directory change.
+  let target = unquoteShellToken(tokens[targetIndex] ?? '');
+  while (target.startsWith('./')) target = target.slice(2);
+  if (target.endsWith('/')) target = target.slice(0, -1);
+  return target === '.' && targetIndex + 1 === tokens.length;
 }
 
 /** Whether the segment just runs the managed code generation (`wb gen-code`, or a runner wrapper of gen-code). */
@@ -293,6 +300,8 @@ export function isUnmodeledWranglerTypesSegment(
   if (parseWranglerTypesInvocation(segment)) return false;
   if (mentionsWranglerTypes(segment)) return true;
   if (/["']wrangler["']\s+types\b|\bwrangler\s+["']types["']/u.test(segment)) return true;
+  // Double quotes do not suppress command substitution: `echo "$(wrangler types ...)"` executes wrangler.
+  if (/\$\(|`/u.test(stripSingleQuotedSpans(segment)) && /\bwrangler\s+types\b/u.test(segment)) return true;
   const tokens = tokenizeCommandSegment(segment);
   let index = skipEnvironmentAssignments(tokens);
   if (!scriptWrapperRunnerCommands.has(tokens[index] ?? '')) return false;
@@ -303,16 +312,18 @@ export function isUnmodeledWranglerTypesSegment(
   }
   const invokedScriptName = tokens[runnerFlags.index];
   const forwardsArguments = tokens.length > runnerFlags.index + 1;
-  if (runnerFlags.leavesPackage || !invokedScriptName || !forwardsArguments) return false;
+  if (runnerFlags.leavesPackage || !invokedScriptName) return false;
   if (visitedScriptNames.has(invokedScriptName)) return false;
   visitedScriptNames.add(invokedScriptName);
   const invokedScript = scripts[invokedScriptName];
+  if (typeof invokedScript !== 'string') return false;
+  // A plain wrapper of an unmodeled target is itself unmodeled; a wrapper forwarding arguments additionally
+  // changes any modeled target's effective invocation, so reaching one taints it too.
   return (
-    typeof invokedScript === 'string' &&
-    (reachesWranglerTypes(invokedScript, scripts, () => true, new Set(visitedScriptNames)) ||
-      splitCommandSegments(invokedScript).some((invokedSegment) =>
-        isUnmodeledWranglerTypesSegment(invokedSegment, scripts, visitedScriptNames)
-      ))
+    splitCommandSegments(invokedScript).some((invokedSegment) =>
+      isUnmodeledWranglerTypesSegment(invokedSegment, scripts, visitedScriptNames)
+    ) ||
+    (forwardsArguments && reachesWranglerTypes(invokedScript, scripts, () => true, new Set(visitedScriptNames)))
   );
 }
 
@@ -368,6 +379,69 @@ function stripQuotedSpans(script: string): string {
   return result;
 }
 
+/** Remove only single-quoted spans: double quotes do not suppress command substitution (`$()`, backticks). */
+function stripSingleQuotedSpans(script: string): string {
+  let result = '';
+  let inSingleQuote = false;
+  for (const character of script) {
+    if (inSingleQuote) {
+      if (character === "'") inSingleQuote = false;
+      continue;
+    }
+    if (character === "'") {
+      inSingleQuote = true;
+      continue;
+    }
+    result += character;
+  }
+  return result;
+}
+
+/** Remove shell quote delimiters, keeping their content: `'--config'` has the argument value --config. */
+function unquoteShellToken(token: string): string {
+  let result = '';
+  let quote: string | undefined;
+  for (let index = 0; index < token.length; index++) {
+    const character = token[index] ?? '';
+    if (quote) {
+      if (character === '\\' && quote === '"') {
+        result += token[++index] ?? '';
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      else result += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    result += character;
+  }
+  return result;
+}
+
+/** Cut a trailing unquoted shell comment so composing further commands after the segment stays executable. */
+function stripTrailingComment(segment: string): string {
+  let quote: string | undefined;
+  for (let index = 0; index < segment.length; index++) {
+    const character = segment[index] ?? '';
+    if (quote) {
+      if (character === '\\' && quote === '"') index++;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    if (character === '#' && (index === 0 || /\s/u.test(segment[index - 1] ?? ''))) {
+      return segment.slice(0, index).trim();
+    }
+  }
+  return segment;
+}
+
 /**
  * Parse a command segment as a `wrangler types` invocation and return its arguments (with shell redirections
  * stripped), or undefined when the segment runs something else. Requiring command position (after environment
@@ -416,11 +490,15 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
   let writesElsewhere = false;
   let changesInputs = false;
   for (let index = 0; index < invocationArgs.length; index++) {
-    const arg = invocationArgs[index] ?? '';
-    // Unquoted shell metacharacters (pipes, subshells, command substitution, `;`, a backgrounding `&`) are
-    // not modeled by the parser, so the invocation cannot be classified; conservatively treat it as
-    // conflicting.
-    if (/[();|`&]|\$\(/u.test(stripQuotedSpans(arg))) return 'defaultOutputConflict';
+    const rawArg = invocationArgs[index] ?? '';
+    // Unquoted shell metacharacters (pipes, subshells, `;`, a backgrounding `&`) are not modeled by the
+    // parser, and command substitution executes even inside double quotes; conservatively treat such
+    // invocations as conflicting.
+    if (/[();|`&]|\$\(/u.test(stripQuotedSpans(rawArg)) || /\$\(|`/u.test(stripSingleQuotedSpans(rawArg))) {
+      return 'defaultOutputConflict';
+    }
+    // Shell quoting does not change an argument's value: `'--config'` is still --config.
+    const arg = unquoteShellToken(rawArg);
     // Non-generating modes write no file at all, whatever other flags say. `--check` is a boolean option:
     // only its enabled forms suppress generation, while `--check=false` (or `--check false`) still writes.
     if (/^(?:--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return 'harmless';
@@ -432,7 +510,9 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
     }
     if (/^--cwd(?:=.*)?$/u.test(arg)) {
       // `--cwd .` still runs in this package's directory, so it stays an ordinary local invocation.
-      const cwdValue = arg.includes('=') ? arg.slice('--cwd='.length) : (invocationArgs[++index] ?? '');
+      const cwdValue = arg.includes('=')
+        ? arg.slice('--cwd='.length)
+        : unquoteShellToken(invocationArgs[++index] ?? '');
       if (cwdValue !== '.' && cwdValue !== './') writesElsewhere = true;
       continue;
     }
@@ -446,7 +526,7 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
       if (invocationArgs[index + 1] === 'true' || invocationArgs[index + 1] === 'false') index++;
       continue;
     }
-    let outputPath = arg.replaceAll(/^["']|["']$/gu, '');
+    let outputPath = arg;
     while (outputPath.startsWith('./')) outputPath = outputPath.slice(2);
     if (outputPath !== 'worker-configuration.d.ts') writesElsewhere = true;
   }

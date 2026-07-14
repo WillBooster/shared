@@ -1192,7 +1192,8 @@ test('treats a quoted command word invocation as unmodeled', async () => {
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
-// A trailing shell comment is not a positional output path; the flags before it must be reused.
+// A trailing shell comment is not a positional output path; the flags before it must be reused — without the
+// comment, which would swallow anything composed after the reused command.
 test('reuses a wrangler types invocation followed by a shell comment', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
   const packageJson = await generatePackageJsonFrom(
@@ -1207,7 +1208,86 @@ test('reuses a wrangler types invocation followed by a shell comment', async () 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false # keep loose vars');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false');
+});
+
+// Shell quoting does not change an argument's value: `'--config'` still selects another config.
+test('classifies a quoted option name like its unquoted form', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-types': "wrangler types '--config' config/worker.jsonc" },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// Double quotes do not suppress command substitution, so `echo "$(wrangler types ...)"` still generates and
+// must survive the rewrite verbatim while the package stays unmanaged.
+test('preserves a command-substitution invocation inside double quotes', async () => {
+  const postinstall = 'echo "$(wrangler types --config config/worker.jsonc)"';
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' }, scripts: { postinstall } };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+});
+
+// A plain wrapper of an unmodeled target must also be preserved, or the only install-time generation is lost.
+test('preserves a plain wrapper whose target uses unsupported shell syntax', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: {
+      'gen-code': 'node scripts/prepare.js; wrangler types --config config/worker.jsonc',
+      postinstall: 'yarn gen-code',
+    },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-code');
+});
+
+// `cd ./.` never leaves the package directory, so a conflicting invocation behind it must still be seen.
+test('recognizes a conflicting invocation behind a normalized no-op cd', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-types': 'cd ./. && wrangler types --config config/worker.jsonc' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
