@@ -3,7 +3,6 @@ import { isProjectEnvironment } from '../../project.js';
 import {
   buildD1MigrationsApplyCommand,
   buildGenDevVarsCommand,
-  buildVinextCommand,
   buildWranglerDevCommand,
   getLocalWranglerStateDir,
 } from '../../utils/wrangler.js';
@@ -23,7 +22,7 @@ class VinextScripts extends BaseScripts {
   protected override startDevProtected(project: Project, argv: ScriptArgv): string {
     project.env.PORT ||= '3000';
     // Unlike `next dev`, Vite-based vinext does not read the PORT environment variable.
-    const devCommand = buildVinextCommand(project, `dev --port ${project.env.PORT} ${argv.normalizedArgsText ?? ''}`);
+    const devCommand = `YARN vinext dev --port ${project.env.PORT} ${argv.normalizedArgsText ?? ''}`.trim();
     // `vinext dev` (miniflare) starts with an empty local D1 and applies no migrations itself;
     // the test environment wipes its state directory, so every page would 500 without this.
     const migrationCommand = isProjectEnvironment(project, 'test') ? buildD1MigrationsApplyCommand(project) : undefined;
@@ -46,7 +45,6 @@ class VinextScripts extends BaseScripts {
       buildGenDevVarsCommand(argv, 'dist/server/.dev.vars'),
       ...(d1MigrationsCommand ? [d1MigrationsCommand] : []),
       buildWranglerDevCommand(
-        project,
         `dev --config dist/server/wrangler.json --ip 127.0.0.1 --port ${port} --persist-to "${getLocalWranglerStateDir(project)}" --local-upstream localhost:${port} ${argv.normalizedArgsText ?? ''}`.trim()
       ),
     ];

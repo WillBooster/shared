@@ -40,7 +40,6 @@ class WorkersScripts extends HttpServerScripts {
     }
     commands.push(
       buildWranglerDevCommand(
-        project,
         `dev --ip 127.0.0.1 --port ${project.env.PORT} --persist-to "${stateDir}" ${argv.normalizedArgsText ?? ''}`.trim()
       )
     );

@@ -24,7 +24,6 @@ import { testOnCiCommand } from './commands/testOnCi.js';
 import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { verifyCodeCommand } from './commands/verifyCode.js';
-import { vinextCommand } from './commands/vinext.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
 await yargs(hideBin(process.argv))
@@ -35,6 +34,15 @@ await yargs(hideBin(process.argv))
     if (workingDir) {
       const dirPath = path.resolve(workingDir);
       process.chdir(dirPath);
+    }
+
+    if (process.env.PATH?.includes('/bun-node-')) {
+      // Not fixed up here: tools requiring real Node.js (Playwright, wrangler, vinext) may hang or
+      // crash under the shim, and some (wrangler dev) fail silently, so surface the cause upfront.
+      console.warn(
+        "Warning: PATH contains a bun-node shim (from `bun --bun` or bunfig's `run.bun`); " +
+          'run wb without `--bun` and remove `[run] bun` from bunfig.toml.'
+      );
     }
 
     removeNpmAndYarnEnvironmentVariables(process.env);
@@ -59,7 +67,6 @@ await yargs(hideBin(process.argv))
   .command(treeKillCommand)
   .command(typeCheckCommand)
   .command(tcCommand)
-  .command(vinextCommand)
   .demandCommand()
   .strict()
   .version(getVersion())

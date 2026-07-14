@@ -18,31 +18,11 @@ export function buildGenDevVarsCommand(argv: ScriptArgv, outputPath: string): st
 
 /**
  * Build a `wrangler dev`-style command. `env -u CLOUDFLARE_ENV` makes wrangler serve the top-level
- * (non-deploy) config. On Bun projects, wrangler must run with the real Node.js runtime:
- * wrangler dev does not support Bun, and `bun --bun` shims `node` in PATH to Bun,
- * so a non-Bun node binary is resolved explicitly.
+ * (non-deploy) config. wrangler (like vinext) requires real Node.js — `bun run` respects the bin's
+ * node shebang, and wb never composes `--bun` (whose node->bun PATH shim breaks both tools).
  */
-export function buildWranglerDevCommand(project: Project, args: string): string {
-  const wranglerJsPath = project.usesBunPackageManager
-    ? findNodeModulesJsPath(project, path.join('wrangler', 'bin', 'wrangler.js'))
-    : undefined;
-  if (!wranglerJsPath) return `env -u CLOUDFLARE_ENV YARN wrangler ${args}`.trim();
-
-  return `env -u CLOUDFLARE_ENV "${findRealNodePath()}" "${wranglerJsPath}" ${args}`.trim();
-}
-
-/**
- * Build a vinext CLI command. On Bun projects, vinext must run with the real Node.js runtime:
- * vite 8 requires `module.registerHooks`, which Bun lacks, and `bun --bun` (or bunfig's `run.bun`)
- * shims `node` in PATH to Bun, so a non-Bun node binary is resolved explicitly.
- */
-export function buildVinextCommand(project: Project, args: string): string {
-  const vinextCliJsPath = project.usesBunPackageManager
-    ? findNodeModulesJsPath(project, path.join('vinext', 'dist', 'cli.js'))
-    : undefined;
-  if (!vinextCliJsPath) return `YARN vinext ${args}`.trim();
-
-  return `"${findRealNodePath()}" "${vinextCliJsPath}" ${args}`.trim();
+export function buildWranglerDevCommand(args: string): string {
+  return `env -u CLOUDFLARE_ENV YARN wrangler ${args}`.trim();
 }
 
 /**
@@ -55,34 +35,6 @@ export function buildD1MigrationsApplyCommand(project: Pick<Project, 'dirPath' |
   if (!databaseName || !findD1MigrationsDirPath(project)) return;
 
   return `CI=true YARN wrangler d1 migrations apply ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}"`;
-}
-
-function findNodeModulesJsPath(project: Pick<Project, 'dirPath'>, relativeJsPath: string): string | undefined {
-  let currentPath = project.dirPath;
-  for (;;) {
-    const jsPath = path.join(currentPath, 'node_modules', relativeJsPath);
-    if (fs.existsSync(jsPath)) return jsPath;
-
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) return;
-    currentPath = parentPath;
-  }
-}
-
-function findRealNodePath(): string {
-  for (const dirPath of (process.env.PATH ?? '').split(path.delimiter)) {
-    if (!dirPath) continue;
-
-    try {
-      // `bun --bun` shims `node` in PATH via a symlink to the Bun binary; follow symlinks to skip it.
-      const realPath = fs.realpathSync(path.join(dirPath, 'node'));
-      if (path.basename(realPath).includes('bun')) continue;
-      return realPath;
-    } catch {
-      // No node binary in this directory.
-    }
-  }
-  return 'node';
 }
 
 /**
