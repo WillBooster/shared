@@ -195,11 +195,16 @@ describe('collectBindingNames', () => {
 
 describe('quoteDotenvValue', () => {
   it('round-trips via single quotes, backticks, or double quotes, and rejects unrepresentable values', () => {
-    expect(quoteDotenvValue('K', String.raw`plain\n 'quoted' "double"`)).toBe(
-      `'${String.raw`plain\n 'quoted' "double"`}'`
+    // No apostrophe: single quotes preserve #, newlines, double quotes, and literal \n.
+    expect(quoteDotenvValue('K', String.raw`plain\n #hash "double"` + '\nline2')).toBe(
+      `'${String.raw`plain\n #hash "double"` + '\nline2'}'`
     );
-    expect(quoteDotenvValue('K', "line1'\nline2")).toBe("`line1'\nline2`");
+    // Apostrophe (which closes a single-quoted span early, e.g. before a # comment): backticks.
+    expect(quoteDotenvValue('K', "a'b#c")).toBe("`a'b#c`");
+    // Apostrophe + backtick: double quotes with escaped newlines.
     expect(quoteDotenvValue('K', "tick`'\nline2")).toBe(String.raw`"tick` + '`' + String.raw`'\nline2"`);
+    // Unrepresentable: apostrophe + backtick + double quote, or any carriage return.
     expect(() => quoteDotenvValue('K', 'tick`\'"\nline2')).toThrow('losslessly');
+    expect(() => quoteDotenvValue('K', 'a\r\nb')).toThrow('carriage return');
   });
 });

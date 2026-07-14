@@ -39,6 +39,13 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     // process.env because the parent wb process injects the .env values into it, which would
     // otherwise suppress loading them here.
     const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
+    // Explicitly exported environment variables must win over dotenv values for file-defined
+    // keys (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve
+    // the stale file value.
+    for (const key of Object.keys(envVars)) {
+      const effectiveValue = project.env[key];
+      if (effectiveValue !== undefined) envVars[key] = effectiveValue;
+    }
     // Supplement with process environment values for the keys named in .env.example: CI often
     // provides them as workflow env instead of .env files (still an allowlist, so unrelated
     // process environment variables cannot leak).
@@ -78,16 +85,21 @@ export function readEnvExampleKeys(project: Project): string[] {
 }
 
 /**
- * Quote a value for dotenv (which wrangler uses for .dev.vars). Single-quoted values are
- * preserved literally — round-tripping newlines, quotes, backslashes, and literal \n sequences
- * (verified against wrangler's bundled dotenv 16) — except that a single quote right before a
- * newline closes the quoted span early; such values fall back to backticks (also literal in
- * dotenv 16), then to double quotes with escaped newlines (which dotenv unescapes, so values
- * that also contain a double quote or a literal \n sequence cannot round-trip and are
- * rejected instead of being silently corrupted).
+ * Quote a value for dotenv (which wrangler uses for .dev.vars), choosing a representation that
+ * round-trips under wrangler's bundled dotenv 16 parser or throwing:
+ * - Values without an apostrophe use single quotes (the quoted span preserves newlines, `#`,
+ *   double quotes, backticks, backslashes, and literal \n sequences).
+ * - An apostrophe inside a single-quoted span closes it early (a trailing `#…` is then even
+ *   parsed as a comment), so such values use backticks — equally literal in dotenv 16.
+ * - With both an apostrophe and a backtick, double quotes work when the value contains no
+ *   double quote and no literal \n sequence (dotenv unescapes \n in double-quoted values).
+ * - Carriage returns never round-trip (the parser normalizes CRLF/CR to LF before parsing).
  */
 export function quoteDotenvValue(key: string, value: string): string {
-  if (!(value.includes("'") && value.includes('\n'))) return `'${value}'`;
+  if (value.includes('\r')) {
+    throw new Error(`The value of ${key} contains a carriage return, which .dev.vars cannot represent.`);
+  }
+  if (!value.includes("'")) return `'${value}'`;
   if (!value.includes('`')) return `\`${value}\``;
   if (!value.includes('"') && !value.includes(String.raw`\n`)) {
     return `"${value.replaceAll('\n', String.raw`\n`)}"`;
