@@ -36,6 +36,15 @@ await yargs(hideBin(process.argv))
       process.chdir(dirPath);
     }
 
+    if (process.env.PATH?.includes('/bun-node-')) {
+      // Not fixed up here: tools requiring real Node.js (Playwright, wrangler, vinext) may hang or
+      // crash under the shim, and some (wrangler dev) fail silently, so surface the cause upfront.
+      console.warn(
+        "Warning: PATH contains a bun-node shim (from `bun --bun` or bunfig's `run.bun`); " +
+          'run wb without `--bun` and remove `[run] bun` from bunfig.toml.'
+      );
+    }
+
     removeNpmAndYarnEnvironmentVariables(process.env);
   })
   .command(verifyCodeCommand)

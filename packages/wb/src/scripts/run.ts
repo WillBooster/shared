@@ -178,7 +178,9 @@ export function runWithSpawnInParallelBuffered(
  * Replace capitalized commands (e.g., YARN, PRISMA, BUN) with suitable commands.
  */
 export function normalizeScript(script: string, project: Project): { printable: string; runnable: string } {
-  const projectPackageManagerWithRun = project.usesBunPackageManager ? 'bun --bun run' : 'yarn';
+  // No `--bun`: its node->bun PATH shim leaks into every child process and breaks tools requiring
+  // real Node.js (Playwright, wrangler, vinext).
+  const projectPackageManagerWithRun = project.usesBunPackageManager ? 'bun run' : 'yarn';
   let newScript = script
     .replaceAll('\n', '')
     .replaceAll(/\s\s+/g, ' ')
@@ -189,26 +191,21 @@ export function normalizeScript(script: string, project: Project): { printable: 
     .replaceAll('PRISMA ', project.packageJson.dependencies?.blitz ? 'YARN blitz prisma ' : 'YARN prisma ')
     .replaceAll('BUN run ', project.usesBunPackageManager ? `${projectPackageManagerWithRun} ` : 'YARN run ')
     .replaceAll('BUN ', project.usesBunPackageManager ? `${projectPackageManagerWithRun} ` : 'YARN ')
-    // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun --bun) run`.
+    // Avoid replacing `YARN run` with `run` by replacing `YARN` with `(yarn|bun) run`.
     .replaceAll('YARN run ', project.usesBunPackageManager ? `${projectPackageManagerWithRun} ` : 'yarn run ');
   if (project.usesBunPackageManager) {
     newScript = newScript
-      .replaceAll('YARN build-ts run', 'bun --bun run')
-      .replaceAll('bun --bun run bun --bun run', 'bun --bun run')
+      .replaceAll('YARN build-ts run', 'bun run')
+      .replaceAll('bun run bun run', 'bun run')
       // Because bun can run src/index.ts directly.
       .replaceAll('dist/index.js', 'src/index.ts');
   }
   newScript = newScript.trim();
-  const printableScript = fixBunCommand(newScript.replaceAll('YARN ', `${projectPackageManagerWithRun} `));
-  const runnableScript = fixBunCommand(
-    newScript
-      // Keep Playwright as a package-manager command instead of resolving it through node_modules/.bin.
-      .replaceAll('YARN playwright ', `${projectPackageManagerWithRun} playwright `)
-      .replaceAll(
-        'YARN ',
-        !project.usesBunPackageManager && project.binExists ? '' : `${projectPackageManagerWithRun} `
-      )
-  );
+  const printableScript = newScript.replaceAll('YARN ', `${projectPackageManagerWithRun} `);
+  const runnableScript = newScript
+    // Keep Playwright as a package-manager command instead of resolving it through node_modules/.bin.
+    .replaceAll('YARN playwright ', `${projectPackageManagerWithRun} playwright `)
+    .replaceAll('YARN ', !project.usesBunPackageManager && project.binExists ? '' : `${projectPackageManagerWithRun} `);
   return {
     printable: `${projectPackageManagerWithRun} dotenv -- ${printableScript}`,
     runnable: runnableScript,
@@ -265,16 +262,4 @@ export function configureColorEnv(env: Record<string, string | undefined>, prese
   } else if (preserveColor && process.stdout.isTTY) {
     env.FORCE_COLOR ||= '3';
   }
-}
-
-function fixBunCommand(command: string): string {
-  // cf. https://github.com/oven-sh/bun/issues/14359
-  return command.includes('next dev') ||
-    // cf. https://github.com/oven-sh/bun/issues/8222
-    command.includes('playwright') ||
-    // "bun --bun prisma generate" doesn't work
-    command.includes('prisma') ||
-    command.includes('test/e2e-additional')
-    ? command.replaceAll('bun --bun', 'bun')
-    : command;
 }

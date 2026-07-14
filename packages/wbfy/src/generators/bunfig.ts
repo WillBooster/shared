@@ -12,9 +12,6 @@ interface BunfigToml {
   install?: {
     exact?: boolean;
   };
-  run?: {
-    bun?: boolean;
-  };
 }
 
 export const bunMinimumReleaseAgeSeconds = 432_000;
@@ -160,10 +157,11 @@ export async function generateBunfigToml(config: PackageConfig): Promise<void> {
 
 const newContent = (existingContent: string | undefined): string => {
   const bunfigToml = parseBunfigToml(existingContent);
+  // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
+  // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
 telemetry = false
 
-${generateRunSection(bunfigToml)}
 [install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 linker = "hoisted"
@@ -183,8 +181,4 @@ function parseBunfigToml(content: string | undefined): BunfigToml | undefined {
   } catch {
     return undefined;
   }
-}
-
-function generateRunSection(bunfigToml: BunfigToml | undefined): string {
-  return typeof bunfigToml?.run?.bun === 'boolean' ? `[run]\nbun = ${bunfigToml.run.bun}\n` : '';
 }

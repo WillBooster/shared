@@ -1,5 +1,11 @@
 import type { Project } from '../../project.js';
-import { buildGenDevVarsCommand, buildWranglerDevCommand, getLocalWranglerStateDir } from '../../utils/wrangler.js';
+import { isProjectEnvironment } from '../../project.js';
+import {
+  buildD1MigrationsApplyCommand,
+  buildGenDevVarsCommand,
+  buildWranglerDevCommand,
+  getLocalWranglerStateDir,
+} from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
 
 import { BaseScripts } from './baseScripts.js';
@@ -16,12 +22,20 @@ class VinextScripts extends BaseScripts {
   protected override startDevProtected(project: Project, argv: ScriptArgv): string {
     project.env.PORT ||= '3000';
     // Unlike `next dev`, Vite-based vinext does not read the PORT environment variable.
-    return `YARN vinext dev --port ${project.env.PORT} ${argv.normalizedArgsText ?? ''}`.trim();
+    const devCommand = `YARN vinext dev --port ${project.env.PORT} ${argv.normalizedArgsText ?? ''}`.trim();
+    // `vinext dev` (miniflare) starts with an empty local D1 and applies no migrations itself;
+    // the test environment wipes its state directory, so every page would 500 without this.
+    const migrationCommand = isProjectEnvironment(project, 'test') ? buildD1MigrationsApplyCommand(project) : undefined;
+    return migrationCommand ? `${migrationCommand} && ${devCommand}` : devCommand;
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
     project.env.PORT ||= '3000';
     const port = project.env.PORT;
+    // Serving the built worker starts from an empty (or wiped) local D1, so wrangler-native
+    // migrations (if any) must be applied first; drizzle/prisma migrations are handled by
+    // buildProductionCommand.
+    const d1MigrationsCommand = buildD1MigrationsApplyCommand(project);
     // `vinext build` emits a worker bundle and its wrangler config under dist/server, so the
     // .dev.vars file exposing wb-managed environment variables must be generated after building.
     // `--local-upstream` keeps request URLs on the local host; otherwise, wrangler dev simulates
@@ -29,8 +43,8 @@ class VinextScripts extends BaseScripts {
     return [
       project.buildCommand,
       buildGenDevVarsCommand(argv, 'dist/server/.dev.vars'),
+      ...(d1MigrationsCommand ? [d1MigrationsCommand] : []),
       buildWranglerDevCommand(
-        project,
         `dev --config dist/server/wrangler.json --ip 127.0.0.1 --port ${port} --persist-to "${getLocalWranglerStateDir(project)}" --local-upstream localhost:${port} ${argv.normalizedArgsText ?? ''}`.trim()
       ),
     ];

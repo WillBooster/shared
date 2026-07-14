@@ -18,43 +18,23 @@ export function buildGenDevVarsCommand(argv: ScriptArgv, outputPath: string): st
 
 /**
  * Build a `wrangler dev`-style command. `env -u CLOUDFLARE_ENV` makes wrangler serve the top-level
- * (non-deploy) config. On Bun projects, wrangler must run with the real Node.js runtime:
- * wrangler dev does not support Bun, and `bun --bun` shims `node` in PATH to Bun,
- * so a non-Bun node binary is resolved explicitly.
+ * (non-deploy) config. wrangler (like vinext) requires real Node.js — `bun run` respects the bin's
+ * node shebang, and wb never composes `--bun` (whose node->bun PATH shim breaks both tools).
  */
-export function buildWranglerDevCommand(project: Project, args: string): string {
-  const wranglerJsPath = project.usesBunPackageManager ? findWranglerJsPath(project) : undefined;
-  if (!wranglerJsPath) return `env -u CLOUDFLARE_ENV YARN wrangler ${args}`.trim();
-
-  return `env -u CLOUDFLARE_ENV "${findRealNodePath()}" "${wranglerJsPath}" ${args}`.trim();
+export function buildWranglerDevCommand(args: string): string {
+  return `env -u CLOUDFLARE_ENV YARN wrangler ${args}`.trim();
 }
 
-function findWranglerJsPath(project: Pick<Project, 'dirPath'>): string | undefined {
-  let currentPath = project.dirPath;
-  for (;;) {
-    const wranglerJsPath = path.join(currentPath, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
-    if (fs.existsSync(wranglerJsPath)) return wranglerJsPath;
+/**
+ * Build a command applying wrangler-native D1 migrations to the local database, or undefined
+ * if the project has no D1 database or no wrangler-native migrations directory.
+ * CI=true suppresses wrangler's interactive confirmation prompt.
+ */
+export function buildD1MigrationsApplyCommand(project: Pick<Project, 'dirPath' | 'env'>): string | undefined {
+  const databaseName = getD1DatabaseName(project);
+  if (!databaseName || !findD1MigrationsDirPath(project)) return;
 
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) return;
-    currentPath = parentPath;
-  }
-}
-
-function findRealNodePath(): string {
-  for (const dirPath of (process.env.PATH ?? '').split(path.delimiter)) {
-    if (!dirPath) continue;
-
-    try {
-      // `bun --bun` shims `node` in PATH via a symlink to the Bun binary; follow symlinks to skip it.
-      const realPath = fs.realpathSync(path.join(dirPath, 'node'));
-      if (path.basename(realPath).includes('bun')) continue;
-      return realPath;
-    } catch {
-      // No node binary in this directory.
-    }
-  }
-  return 'node';
+  return `CI=true YARN wrangler d1 migrations apply ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}"`;
 }
 
 /**

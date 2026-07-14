@@ -1,9 +1,8 @@
 import type { Project } from '../../project.js';
 import {
+  buildD1MigrationsApplyCommand,
   buildGenDevVarsCommand,
   buildWranglerDevCommand,
-  findD1MigrationsDirPath,
-  getD1DatabaseName,
   getLocalWranglerStateDir,
 } from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
@@ -35,14 +34,12 @@ class WorkersScripts extends HttpServerScripts {
     // itself is only selected when such a config file exists in the project directory.
     const commands = [buildGenDevVarsCommand(argv, '.dev.vars')];
     // Apply wrangler-native D1 migrations (if any) so the local database matches the deployed one.
-    // CI=true suppresses wrangler's interactive confirmation prompt.
-    const d1DatabaseName = getD1DatabaseName(project);
-    if (d1DatabaseName && findD1MigrationsDirPath(project)) {
-      commands.push(`CI=true YARN wrangler d1 migrations apply ${d1DatabaseName} --local --persist-to "${stateDir}"`);
+    const d1MigrationsCommand = buildD1MigrationsApplyCommand(project);
+    if (d1MigrationsCommand) {
+      commands.push(d1MigrationsCommand);
     }
     commands.push(
       buildWranglerDevCommand(
-        project,
         `dev --ip 127.0.0.1 --port ${project.env.PORT} --persist-to "${stateDir}" ${argv.normalizedArgsText ?? ''}`.trim()
       )
     );
