@@ -83,8 +83,9 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
 
 function buildTypeScriptTypeCheckCommands(project: Project): string[] {
   // TypeScript 7 ships the native compiler as `typescript` (`tsc`); wbfy removes the
-  // deprecated `@typescript/native-preview` (tsgo) preview from all repos, so repos
-  // still on the preview should run wbfy instead of relying on a tsgo fallback here.
+  // `@typescript/native-preview` (tsgo) preview from non-Next.js repos (Next.js-family
+  // repos keep it for `next build`), so repos still on the preview should run wbfy
+  // instead of relying on a tsgo fallback here.
   if (project.hasOwnDependency('typescript')) {
     return ['BUN tsc --noEmit'];
   }
