@@ -16,12 +16,17 @@ export function runDotenvCommand(args) {
 
   const cwd = path.resolve(process.cwd());
   readAndApplyEnvironmentVariables(cwd);
+  const berryBinFolderPath = process.env.BERRY_BIN_FOLDER;
   removeNpmAndYarnEnvironmentVariables(process.env);
   // Stripping yarn's environment also removes its temporary bin folder — the ONLY place
   // yarn Berry exposes dependency executables — so restore the project's own
   // node_modules/.bin directories (nearest first) to keep bare binary names resolvable.
-  // Mirrors src/utils/binPath.ts for this startup fast path.
-  prependNodeModulesBinToPath(cwd, process.env);
+  // Plug'n'Play installs create no node_modules at all; the temporary bin folder is then the
+  // sole source of dependency executables, so restore it instead. Mirrors
+  // src/commands/dotenv.ts + src/utils/binPath.ts for this startup fast path.
+  if (!prependNodeModulesBinToPath(cwd, process.env) && berryBinFolderPath) {
+    process.env.PATH = process.env.PATH ? `${berryBinFolderPath}:${process.env.PATH}` : berryBinFolderPath;
+  }
 
   const child = childProcess.spawn(command[0], command.slice(1), {
     cwd,

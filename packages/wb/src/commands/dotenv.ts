@@ -35,11 +35,16 @@ async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<vo
 
   const cwd = path.resolve(process.cwd());
   readAndApplyEnvironmentVariables(cwd);
+  const berryBinFolderPath = process.env.BERRY_BIN_FOLDER;
   removeNpmAndYarnEnvironmentVariables(process.env);
   // Stripping yarn's environment also removes its temporary bin folder — the ONLY place
   // yarn Berry exposes dependency executables — so restore the project's own
-  // node_modules/.bin directories to keep bare binary names resolvable.
-  prependNodeModulesBinToPath(cwd, process.env);
+  // node_modules/.bin directories to keep bare binary names resolvable. Plug'n'Play installs
+  // create no node_modules at all; the temporary bin folder is then the sole source of
+  // dependency executables, so restore it instead.
+  if (!prependNodeModulesBinToPath(cwd, process.env) && berryBinFolderPath) {
+    process.env.PATH = process.env.PATH ? `${berryBinFolderPath}:${process.env.PATH}` : berryBinFolderPath;
+  }
 
   const child = spawn(command[0]!, command.slice(1), {
     cwd,
