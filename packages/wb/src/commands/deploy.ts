@@ -110,10 +110,10 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
 
     // CI provides the Cloudflare API token via a .env.cloudflare file (e.g. the reusable deploy
     // workflow's FILE_CONTENT_1); already-exported environment variables win over its values.
-    // The values go into process.env, not project.env: `project.env` recomposes itself from
-    // process.env plus the dotenv files on every read, so an in-place mutation of it would be
-    // dropped before the spawned wrangler/drizzle-kit commands inherit their environment —
-    // wrangler then aborted with "it's necessary to set a CLOUDFLARE_API_TOKEN".
+    // The values go into both process.env (inherited by everything wb spawns) and project.env
+    // (the environment wb itself reads and passes explicitly); the latter is a cached snapshot
+    // taken before this point, so writing only to process.env would leave wb's own preflight —
+    // and any command spawned with project.env — without the token.
     const cloudflareEnvPath = path.join(project.dirPath, '.env.cloudflare');
     if (fs.existsSync(cloudflareEnvPath)) {
       const parsed = config({ path: cloudflareEnvPath, processEnv: {}, quiet: true }).parsed ?? {};
@@ -121,6 +121,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
         if (key === 'CLOUDFLARE_ENV') continue;
         // ??= so that an explicitly exported empty value still wins over the file.
         process.env[key] ??= value;
+        project.env[key] ??= value;
       }
     }
 
