@@ -10,6 +10,7 @@ import { z } from 'zod';
 
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
+import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -302,15 +303,101 @@ function hasVersionSettingsFile(dirPath: string): boolean {
 /**
  * Tells whether wbfy manages worker-configuration.d.ts for the package. The file is gitignored and untracked on the
  * assumption that `wrangler types` regenerates it on install, so all three steps must agree: the package has to own a
- * wrangler config (`wrangler types` exits non-zero without one) and to depend on wrangler (a package deploying via a
- * CI action cannot resolve the command). Otherwise wbfy would ignore and delete a file that nothing recreates.
+ * wrangler config (`wrangler types` exits non-zero without one), to depend on wrangler (a package deploying via a
+ * CI action cannot resolve the command), and to regenerate the same file on every checkout. Otherwise wbfy would
+ * ignore and delete a file that nothing recreates identically.
  */
 export function generatesWorkerTypes(config: PackageConfig): boolean {
   const packageJson = config.packageJson;
   return (
     config.doesContainWranglerConfig &&
-    Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler'])
+    Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
+    hasReproducibleWorkerTypesInference(config.dirPath)
   );
+}
+
+/**
+ * `wrangler types` infers `Env` members from the .dev.vars (falling back to .env) beside the wrangler config unless
+ * the config declares `secrets.required`. Untracking worker-configuration.d.ts is safe only when that inference
+ * input is present on every checkout — with a gitignored .dev.vars, CI would regenerate an `Env` without the secret
+ * members that type-check locally.
+ */
+function hasReproducibleWorkerTypesInference(dirPath: string): boolean {
+  if (wranglerConfigDeclaresRequiredSecrets(dirPath)) return true;
+  const inferenceSourceName = ['.dev.vars', '.env'].find((fileName) => fs.existsSync(path.resolve(dirPath, fileName)));
+  if (!inferenceSourceName) return true;
+  // `git ls-files` prints nothing for an untracked file and fails printing nothing outside a repository.
+  return spawnSyncAndReturnStdout('git', ['ls-files', '--', inferenceSourceName], dirPath) !== '';
+}
+
+function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
+  // Only a top-level declaration counts: plain `wrangler types` resolves the top level, so an env-only declaration
+  // leaves the default generation inferring from .dev.vars.
+  try {
+    for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
+      const filePath = path.resolve(dirPath, fileName);
+      if (!fs.existsSync(filePath)) continue;
+      const config = JSON.parse(stripJsoncSyntax(fs.readFileSync(filePath, 'utf8'))) as {
+        secrets?: { required?: string[] };
+      };
+      return (config.secrets?.required?.length ?? 0) > 0;
+    }
+    const tomlPath = path.resolve(dirPath, 'wrangler.toml');
+    if (fs.existsSync(tomlPath)) {
+      const config = parseToml(fs.readFileSync(tomlPath, 'utf8')) as { secrets?: { required?: string[] } };
+      return (config.secrets?.required?.length ?? 0) > 0;
+    }
+  } catch {
+    // A config that does not parse cannot prove a declaration.
+  }
+  return false;
+}
+
+/** Remove the comments and trailing commas of JSONC (string-aware), enough for wrangler config files. */
+function stripJsoncSyntax(text: string): string {
+  let withoutComments = '';
+  for (let i = 0; i < text.length; i++) {
+    const character = text[i];
+    if (character === '"') {
+      withoutComments += copyJsonString(text, i);
+      i += copyJsonString(text, i).length - 1;
+    } else if (character === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      withoutComments += '\n';
+    } else if (character === '/' && text[i + 1] === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++;
+      i++;
+    } else {
+      withoutComments += character;
+    }
+  }
+  // A second pass so a comma stays detected as trailing across a now-removed comment (e.g. `, // note\n}`).
+  let result = '';
+  for (let i = 0; i < withoutComments.length; i++) {
+    const character = withoutComments[i];
+    if (character === '"') {
+      result += copyJsonString(withoutComments, i);
+      i += copyJsonString(withoutComments, i).length - 1;
+    } else if (character === ',') {
+      let next = i + 1;
+      while (next < withoutComments.length && /\s/u.test(withoutComments[next] as string)) next++;
+      if (withoutComments[next] !== '}' && withoutComments[next] !== ']') result += character;
+    } else {
+      result += character;
+    }
+  }
+  return result;
+}
+
+/** Copy the JSON string literal starting at the opening double quote, honoring backslash escapes. */
+function copyJsonString(text: string, start: number): string {
+  let end = start;
+  while (++end < text.length) {
+    if (text[end] === '\\') end++;
+    else if (text[end] === '"') break;
+  }
+  return text.slice(start, Math.min(end + 1, text.length));
 }
 
 /**

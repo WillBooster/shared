@@ -193,15 +193,52 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
 }
 
 function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: string | undefined): void {
+  // Preserve a project-managed invocation wbfy cannot resolve itself (e.g. `wrangler types --config
+  // config/worker.jsonc`, whose custom config path detectWranglerConfig does not see): overwriting postinstall
+  // below would otherwise leave fresh checkouts without worker types.
+  const preservedWranglerTypes =
+    wranglerTypes ??
+    scripts.postinstall
+      ?.split('&&')
+      .map((segment) => segment.trim())
+      .find((segment) => /(?:^|\s)wrangler types(?:\s|$)/u.test(segment));
   if (scripts['gen-code']) {
-    scripts.postinstall = appendWranglerTypes('wb gen-code', wranglerTypes);
+    scripts.postinstall = appendWranglerTypes('wb gen-code', preservedWranglerTypes);
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
   }
   // A Worker package without a gen-code script still needs worker-configuration.d.ts before type checking.
-  if (!wranglerTypes || scripts.postinstall?.includes('wrangler types')) return;
+  // Wrapper invocations (e.g. `"postinstall": "yarn gen:types"`) already generate it, so appending the resolved
+  // command would generate the ~15k-line file twice per install.
+  if (!wranglerTypes || runsWranglerTypes(scripts.postinstall, scripts)) return;
 
   scripts.postinstall = appendWranglerTypes(scripts.postinstall ?? '', wranglerTypes).replace(/^ && /u, '');
+}
+
+/** Whether the script already runs `wrangler types`, directly or through a package script it invokes. */
+function runsWranglerTypes(
+  script: string | undefined,
+  scripts: PackageJson.Scripts,
+  visitedScriptNames = new Set<string>()
+): boolean {
+  if (!script) return false;
+  if (script.includes('wrangler types')) return true;
+  for (const segment of script.split('&&')) {
+    const tokens = segment.trim().split(/\s+/u);
+    const invokedScriptName =
+      tokens[0] === 'yarn' || tokens[0] === 'bun' || tokens[0] === 'npm' || tokens[0] === 'pnpm'
+        ? tokens[1] === 'run'
+          ? tokens[2]
+          : tokens[1]
+        : undefined;
+    if (!invokedScriptName || visitedScriptNames.has(invokedScriptName)) continue;
+    visitedScriptNames.add(invokedScriptName);
+    const invokedScript = scripts[invokedScriptName];
+    if (typeof invokedScript === 'string' && runsWranglerTypes(invokedScript, scripts, visitedScriptNames)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -221,7 +258,15 @@ function resolveWranglerTypesCommand(config: PackageConfig, scripts: PackageJson
     .filter((script) => typeof script === 'string')
     .flatMap((script) => script.split('&&').map((segment) => segment.trim()))
     // Only an invocation passing flags is worth preserving; a bare one is normalized to the managed command.
-    .find((segment) => /(?:^|\s)wrangler types\s+\S/u.test(segment));
+    // `--check` validates freshness and generates nothing, and a positional output path (wrangler requires it to
+    // end in .d.ts) generates a different file than the worker-configuration.d.ts wbfy ignores and untracks, so
+    // neither can serve as the shared generator command.
+    .find(
+      (segment) =>
+        /(?:^|\s)wrangler types\s+\S/u.test(segment) &&
+        !/\s--check(?:\s|$)/u.test(segment) &&
+        !/\s["']?[^-\s"']\S*\.d\.ts["']?(?:\s|$)/u.test(segment)
+    );
   return customCommand ?? `${config.isBun ? 'bunx ' : ''}wrangler types`;
 }
 
