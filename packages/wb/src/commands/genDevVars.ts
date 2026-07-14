@@ -98,14 +98,14 @@ export function readEnvExampleKeys(project: Project): string[] {
  *   parsed as a comment), so such values use backticks — equally literal in dotenv 16.
  * - Real carriage returns survive ONLY as double-quoted \r escapes (the parser normalizes
  *   CRLF/CR to LF before parsing), so CR values always use double quotes.
- * - Double quotes require no double-quote character and no literal \n/\r sequences (dotenv
- *   unescapes those in double-quoted values, which would corrupt the literals).
+ * - The double-quoted branch round-trips embedded double quotes and escaped newlines/CRs, but
+ *   not literal \n/\r sequences (dotenv unescapes those, which would corrupt the literals).
  */
 export function quoteDotenvValue(key: string, value: string): string {
   const hasCarriageReturn = value.includes('\r');
   if (!hasCarriageReturn && !value.includes("'")) return `'${value}'`;
   if (!hasCarriageReturn && !value.includes('`')) return `\`${value}\``;
-  if (!value.includes('"') && !value.includes(String.raw`\n`) && !value.includes(String.raw`\r`)) {
+  if (!value.includes(String.raw`\n`) && !value.includes(String.raw`\r`)) {
     return `"${value.replaceAll('\n', String.raw`\n`).replaceAll('\r', String.raw`\r`)}"`;
   }
   throw new Error(`The value of ${key} cannot be losslessly serialized into .dev.vars; simplify its quoting.`);

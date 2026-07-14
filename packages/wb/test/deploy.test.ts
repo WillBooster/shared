@@ -5,6 +5,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { selectWorkerSecrets } from '../src/commands/deploy.js';
+import { parse as parseDotenv } from 'dotenv';
+
 import { quoteDotenvValue } from '../src/commands/genDevVars.js';
 import {
   collectBindingNames,
@@ -273,22 +275,23 @@ describe('collectBindingNames', () => {
   });
 });
 
+function roundTripDotenvValue(value: string): string | undefined {
+  return parseDotenv(`K=${quoteDotenvValue('K', value)}`).K;
+}
+
 describe('quoteDotenvValue', () => {
-  it('round-trips via single quotes, backticks, or double quotes, and rejects unrepresentable values', () => {
+  it('produces representations that round-trip under the dotenv parser', () => {
     // No apostrophe: single quotes preserve #, newlines, double quotes, and literal \n.
-    expect(quoteDotenvValue('K', String.raw`plain\n #hash "double"` + '\nline2')).toBe(
-      `'${String.raw`plain\n #hash "double"` + '\nline2'}'`
-    );
-    // Apostrophe (which closes a single-quoted span early, e.g. before a # comment): backticks.
-    expect(quoteDotenvValue('K', "a'b#c")).toBe("`a'b#c`");
-    // Apostrophe + backtick: double quotes with escaped newlines.
-    expect(quoteDotenvValue('K', "tick`'\nline2")).toBe(String.raw`"tick` + '`' + String.raw`'\nline2"`);
-    // Real carriage returns survive only as double-quoted escapes (the parser normalizes
-    // raw CRLF/CR to LF before parsing).
-    expect(quoteDotenvValue('K', 'a\r\nb')).toBe(String.raw`"a\r\nb"`);
-    // Unrepresentable: a double quote (or literal \n/\r) combined with the double-quote-only
-    // conditions (apostrophe + backtick, or a carriage return).
-    expect(() => quoteDotenvValue('K', 'tick`\'"\nline2')).toThrow('losslessly');
-    expect(() => quoteDotenvValue('K', 'a\rb"')).toThrow('losslessly');
+    for (const value of [
+      String.raw`plain\n #hash "double"` + '\nline2',
+      "a'b#c", // apostrophe closes a single-quoted span early -> backticks
+      "tick`'\nline2", // apostrophe + backtick -> double quotes with escaped newlines
+      'tick`\'"\nline2', // embedded double quote in the double-quoted branch
+      'a\r\nb', // CR survives only as a double-quoted escape
+    ]) {
+      expect(roundTripDotenvValue(value)).toBe(value);
+    }
+    // Unrepresentable: literal \n/\r sequences in the double-quoted branch would be unescaped.
+    expect(() => quoteDotenvValue('K', "a'b`" + String.raw`\n`)).toThrow('losslessly');
   });
 });
