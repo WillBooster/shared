@@ -241,7 +241,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // not truthiness — an explicit empty clears a stale value) or an effective var/binding.
     const unsatisfiedRequiredSecretNames = resolvedConfig.requiredSecretNames.filter(
       (name) =>
-        !(name in secrets) && !resolvedConfig.varKeys.includes(name) && !resolvedConfig.bindingNames.includes(name)
+        !Object.hasOwn(secrets, name) &&
+        !resolvedConfig.varKeys.includes(name) &&
+        !resolvedConfig.bindingNames.includes(name)
     );
     if (unsatisfiedRequiredSecretNames.length > 0) {
       console.error(
@@ -334,7 +336,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
         await runWithSpawn('YARN run gen-code', project, argv);
       }
       await runWithSpawn(`${cloudflareEnvAssignment}YARN vinext build`, project, argv);
-      if (!argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
+      if (!fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
         console.error(chalk.red(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`));
         process.exit(1);
       }
@@ -566,23 +568,35 @@ async function listRemoteWorkerSecretNames(
     ...(resolvedConfig.usesEnvSection ? ['--env', envName] : []),
   ];
   console.info(chalk.cyan(`Running: wrangler ${listArgs.join(' ')}`));
-  const ret = await spawnAsync('wrangler', listArgs, {
-    cwd: project.dirPath,
-    env: project.env as NodeJS.ProcessEnv,
-    stdio: 'pipe',
-    killOnExit: true,
-    verbose: argv.verbose,
-  });
+  let ret;
+  try {
+    ret = await spawnAsync('wrangler', listArgs, {
+      cwd: project.dirPath,
+      env: project.env as NodeJS.ProcessEnv,
+      stdio: 'pipe',
+      killOnExit: true,
+      verbose: argv.verbose,
+    });
+  } catch (error) {
+    console.warn(
+      chalk.yellow(
+        `Failed to run wrangler to list remote secrets; checking only the local payload against Cloudflare's limits.\n${error instanceof Error ? error.message : String(error)}`
+      )
+    );
+    return undefined;
+  }
   if (ret.status === 0) {
     // Cut the JSON array out of the surrounding output: wrangler may print its banner and
     // "Multiple environments" warnings around the payload.
     const jsonStart = ret.stdout.indexOf('[');
     const jsonEnd = ret.stdout.lastIndexOf(']');
-    try {
-      const parsed = JSON.parse(ret.stdout.slice(jsonStart, jsonEnd + 1)) as { name?: unknown }[];
-      return parsed.map(({ name }) => name).filter((name): name is string => typeof name === 'string');
-    } catch {
-      // Fall through to the warning below.
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonStart < jsonEnd) {
+      try {
+        const parsed = JSON.parse(ret.stdout.slice(jsonStart, jsonEnd + 1)) as { name?: unknown }[];
+        return parsed.map(({ name }) => name).filter((name): name is string => typeof name === 'string');
+      } catch {
+        // Fall through to the warning below.
+      }
     }
   } else if (/\[code: 100(07|90)\]/.test(ret.stdout + ret.stderr)) {
     // Cloudflare API errors 10007 (workers.api.error.service_not_found) and 10090
@@ -611,5 +625,5 @@ export function selectInheritedRemoteSecretNames(
   bindingNames: readonly string[]
 ): string[] {
   const replacedNames = new Set([...effectiveVarKeys, ...bindingNames]);
-  return remoteSecretNames.filter((name) => !(name in outgoingSecrets) && !replacedNames.has(name));
+  return remoteSecretNames.filter((name) => !Object.hasOwn(outgoingSecrets, name) && !replacedNames.has(name));
 }

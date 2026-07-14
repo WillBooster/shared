@@ -263,6 +263,12 @@ describe('selectInheritedRemoteSecretNames', () => {
       )
     ).toEqual(['DASHBOARD_ONLY_TOKEN']);
   });
+
+  it('correctly handles prototype properties of Object (e.g. toString)', () => {
+    expect(
+      selectInheritedRemoteSecretNames(['toString', 'constructor', 'hasOwnProperty', 'valueOf'], {}, [], [])
+    ).toEqual(['toString', 'constructor', 'hasOwnProperty', 'valueOf']);
+  });
 });
 
 describe('collectBindingNames', () => {
