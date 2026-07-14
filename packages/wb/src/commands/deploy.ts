@@ -535,6 +535,9 @@ export function selectWorkerSecrets(
 ): { missingKeys: string[]; secrets: Record<string, string> } {
   const configKeys = new Set(configVarKeys);
   const secrets: Record<string, string> = {};
+  // No runtime undefined check on `value`: envVars is built exclusively from dotenv-parsed
+  // strings, and every caller-side merge either coalesces with `?? ''` or guards against
+  // undefined before assigning, so the Record<string, string> type holds at runtime too.
   for (const [key, value] of Object.entries(envVars)) {
     if (configKeys.has(key) || isNonSecretKey(key)) continue;
     if (key === 'DATABASE_URL' && value.startsWith('file:')) continue;
