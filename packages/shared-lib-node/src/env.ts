@@ -133,7 +133,18 @@ export function readEnvironmentVariables(
       throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
     }
   }
-  return [expand({ parsed: envVars, processEnv: {} }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
+  // Expand references against the live environment for keys NOT loaded from files, so that a
+  // reference to an exported key (excluded from envVars by process-env precedence) resolves to
+  // the effective value instead of an empty string. Loaded keys are deliberately absent from
+  // the reference set: dotenv-expand would otherwise replace their parsed values with the
+  // process values, breaking callers that need the file-defined values themselves.
+  const referenceEnv: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    // Escape dollar signs so dotenv-expand substitutes exported values literally instead of
+    // recursively re-expanding them (an exported `pa$word` must stay `pa$word`).
+    if (value !== undefined && !(key in envVars)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+  }
+  return [expand({ parsed: envVars, processEnv: referenceEnv }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
 }
 
 function readMiseEnvironmentVariables(

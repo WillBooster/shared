@@ -23,10 +23,14 @@ class VinextScripts extends BaseScripts {
     project.env.PORT ||= '3000';
     // Unlike `next dev`, Vite-based vinext does not read the PORT environment variable.
     const devCommand = `YARN vinext dev --port ${project.env.PORT} ${argv.normalizedArgsText ?? ''}`.trim();
+    // The Cloudflare vite plugin (miniflare) reads runtime vars only from a .dev.vars file,
+    // so it must be regenerated from the wb-managed .env files before serving.
+    const commands = [buildGenDevVarsCommand(argv, '.dev.vars')];
     // `vinext dev` (miniflare) starts with an empty local D1 and applies no migrations itself;
     // the test environment wipes its state directory, so every page would 500 without this.
     const migrationCommand = isProjectEnvironment(project, 'test') ? buildD1MigrationsApplyCommand(project) : undefined;
-    return migrationCommand ? `${migrationCommand} && ${devCommand}` : devCommand;
+    if (migrationCommand) commands.push(migrationCommand);
+    return [...commands, devCommand].join(' && ');
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {

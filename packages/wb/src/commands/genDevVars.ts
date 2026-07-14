@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import { parse as parseDotenv } from 'dotenv';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -38,20 +39,32 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     // process.env because the parent wb process injects the .env values into it, which would
     // otherwise suppress loading them here.
     const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
+    // Explicitly exported environment variables must win over dotenv values for file-defined
+    // keys (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve
+    // the stale file value. An export that empties a non-empty file value is deliberate and
+    // must survive the empty-value filter below (unlike `KEY=` placeholders in .env files,
+    // which stay omitted so they cannot override wrangler `vars` with empty strings).
+    const explicitlyEmptiedKeys = new Set<string>();
+    for (const key of Object.keys(envVars)) {
+      const effectiveValue = project.env[key];
+      if (effectiveValue === undefined) continue;
+      if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
+      envVars[key] = effectiveValue;
+    }
     // Supplement with process environment values for the keys named in .env.example: CI often
     // provides them as workflow env instead of .env files (still an allowlist, so unrelated
     // process environment variables cannot leak).
-    for (const key of readEnvExampleKeys(project)) {
-      envVars[key] ||= project.env[key] || '';
-    }
-    for (const key of ['WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
-      envVars[key] ||= project.env[key] || '';
+    for (const key of [...readEnvExampleKeys(project), 'WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
+      const effectiveValue = project.env[key];
+      if (envVars[key] || effectiveValue === undefined) continue;
+      if (envVars[key] === undefined && effectiveValue === '') explicitlyEmptiedKeys.add(key);
+      envVars[key] = effectiveValue;
     }
 
     const lines = Object.entries(envVars)
-      .filter(([, value]) => value !== '')
+      .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))
       .toSorted(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}=${quoteDotenvValue(value)}`);
+      .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
     const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
     if (argv.dryRun) {
       console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} environment variables.`));
@@ -64,28 +77,32 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
   },
 };
 
-function readEnvExampleKeys(project: Project): string[] {
+export function readEnvExampleKeys(project: Project): string[] {
+  let envExamplePath: string;
   try {
-    const envExamplePath = project.findFile('.env.example');
-    return [...fs.readFileSync(envExamplePath, 'utf8').matchAll(/^([A-Z_0-9]+)=/gmu)].map(
-      (match) => match[1] as string
-    );
+    envExamplePath = project.findFile('.env.example');
   } catch {
     return [];
   }
+  // dotenv's own parser covers `export KEY=` prefixes and whitespace around `=`,
+  // which a line regex would silently miss.
+  return Object.keys(parseDotenv(fs.readFileSync(envExamplePath, 'utf8')));
 }
 
 /**
- * Quote a value for dotenv (which wrangler uses for .dev.vars). Single-quoted values are
- * preserved literally — round-tripping newlines, quotes, backslashes, and literal \n sequences
- * (verified against wrangler's bundled dotenv 16) — except that a single quote right before a
- * newline closes the quoted span early; such values use double quotes with escaped newlines,
- * which dotenv unescapes (only corrupting the vanishingly rare value that also contains a
- * literal \n sequence).
+ * Quote a value for dotenv (which wrangler uses for .dev.vars). Every candidate representation
+ * is verified by actually parsing it back (our dotenv parser matches wrangler's bundled dotenv
+ * 16 for these constructs), so a value is either serialized losslessly or rejected — never
+ * silently corrupted. Candidates: single quotes (literal span; closed early by an apostrophe),
+ * backticks (equally literal), then double quotes with escaped newlines/CRs (dotenv does not
+ * unescape inner \" — a `#` after an embedded quote starts a comment, which the round-trip
+ * check catches and rejects).
  */
-function quoteDotenvValue(value: string): string {
-  if (value.includes("'") && value.includes('\n')) {
-    return `"${value.replaceAll('\n', String.raw`\n`)}"`;
+export function quoteDotenvValue(key: string, value: string): string {
+  const doubleQuotedBody = value.replaceAll('\n', String.raw`\n`).replaceAll('\r', String.raw`\r`);
+  const candidates = [`'${value}'`, `\`${value}\``, `"${doubleQuotedBody}"`];
+  for (const candidate of candidates) {
+    if (parseDotenv(`${key}=${candidate}`)[key] === value) return candidate;
   }
-  return `'${value}'`;
+  throw new Error(`The value of ${key} cannot be losslessly serialized into .dev.vars; simplify its quoting.`);
 }

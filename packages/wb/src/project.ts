@@ -7,6 +7,7 @@ import { memoizeOne } from 'at-decorators';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 
+import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
 
 export type DatabaseOrm = 'prisma' | 'drizzle';
@@ -238,25 +239,7 @@ export class Project {
 
   @memoizeOne
   get binExists(): boolean {
-    let binFound = false;
-    let currentPath = this.dirPath;
-    for (;;) {
-      const binPath = path.join(currentPath, 'node_modules', '.bin');
-      if (fs.existsSync(binPath)) {
-        this.env.PATH = `${binPath}:${this.env.PATH}`;
-        binFound = true;
-      }
-
-      if (fs.existsSync(path.join(currentPath, '.git'))) {
-        break;
-      }
-      const parentPath = path.dirname(currentPath);
-      if (currentPath === parentPath) {
-        break;
-      }
-      currentPath = parentPath;
-    }
-    return binFound;
+    return prependNodeModulesBinToPath(this.dirPath, this.env);
   }
 
   findFile(fileName: string): string {

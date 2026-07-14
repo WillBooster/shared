@@ -7,6 +7,7 @@ import { hideBin } from 'yargs/helpers';
 
 import { buildIfNeededCommand } from './commands/buildIfNeeded.js';
 import { concurrentlyCommand } from './commands/concurrently.js';
+import { deployCommand } from './commands/deploy.js';
 import { dotenvCommand } from './commands/dotenv.js';
 import { genCodeCommand } from './commands/genCode.js';
 import { genDevVarsCommand } from './commands/genDevVars.js';
@@ -50,6 +51,7 @@ await yargs(hideBin(process.argv))
   .command(verifyCodeCommand)
   .command(buildIfNeededCommand)
   .command(concurrentlyCommand)
+  .command(deployCommand)
   .command(dotenvCommand)
   .command(genCodeCommand)
   .command(genDevVarsCommand)
