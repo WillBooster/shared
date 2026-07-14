@@ -394,30 +394,38 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       // files the CI workflow already writes next to it. wrangler runs through an async spawn
       // (spawnSync would block the event loop, so a shutdown signal would kill the process
       // before any cleanup) and the directory is removed in a finally, so an interrupted
-      // deploy cannot leave the plaintext secrets behind. The shutdown handlers — including
-      // SIGHUP, on which Node also terminates by default — are installed BEFORE the file is
-      // written: a signal arriving before wrangler exists removes the directory and re-raises;
-      // afterwards it is forwarded to wrangler, whose exit resolves the await so the finally
-      // runs before the signal is re-raised below.
+      // deploy cannot leave the plaintext secrets behind. Shutdown handling details:
+      // - Handlers (including SIGHUP, on which Node also terminates by default) are installed
+      //   BEFORE the file is written and use process.on, not once, so a repeated signal cannot
+      //   fall back to default termination and bypass the finally cleanup.
+      // - SIGHUP/SIGQUIT are forwarded to wrangler as SIGTERM: wrangler's launcher relays only
+      //   SIGINT/SIGTERM to its inner Node process, and anything else would orphan a deployment
+      //   that keeps mutating the remote Worker after wb exits.
+      // - The re-raise below uses the signal wb itself received: wrangler catches SIGINT and
+      //   exits numerically (e.g. 143), which must not masquerade as an ordinary failure.
       const secretsDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-deploy-'));
       const shutdownSignals = ['SIGHUP', 'SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
       const signalHandlers = new Map<NodeJS.Signals, () => void>();
       let wranglerProcess: ReturnType<typeof spawn> | undefined;
+      let receivedShutdownSignal: NodeJS.Signals | undefined;
       for (const signal of shutdownSignals) {
         const signalHandler = (): void => {
+          receivedShutdownSignal ??= signal;
           if (wranglerProcess) {
-            wranglerProcess.kill(signal);
+            wranglerProcess.kill(signal === 'SIGINT' || signal === 'SIGTERM' ? signal : 'SIGTERM');
           } else {
+            for (const [shutdownSignal, handler] of signalHandlers) {
+              process.off(shutdownSignal, handler);
+            }
             fs.rmSync(secretsDirPath, { force: true, recursive: true });
-            // The once-handler is already removed, so re-raising triggers the default behavior.
+            // With the handlers removed, re-raising triggers the default behavior.
             process.kill(process.pid, signal);
           }
         };
         signalHandlers.set(signal, signalHandler);
-        process.once(signal, signalHandler);
+        process.on(signal, signalHandler);
       }
       let deployStatus: number | null;
-      let deploySignal: NodeJS.Signals | undefined;
       try {
         const secretsFilePath = path.join(secretsDirPath, 'secrets.json');
         fs.writeFileSync(secretsFilePath, JSON.stringify(secrets), { mode: 0o600 });
@@ -427,16 +435,12 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
             env: deployEnv as NodeJS.ProcessEnv,
             stdio: ['ignore', 'inherit', 'inherit'],
           });
-          const finish = (status: number | null, signal: NodeJS.Signals | null | undefined): void => {
-            deploySignal = signal ?? undefined;
-            resolve(status);
-          };
           wranglerProcess.on('error', (error) => {
             console.error(error);
-            finish(1, undefined);
+            resolve(1);
           });
           wranglerProcess.on('exit', (code, signal) => {
-            finish(code, signal);
+            resolve(signal ? 1 : code);
           });
         });
       } finally {
@@ -446,9 +450,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
         }
         fs.rmSync(secretsDirPath, { force: true, recursive: true });
       }
-      if (deploySignal) {
+      if (receivedShutdownSignal) {
         // Re-raise so the caller observes the same signal-derived exit status.
-        process.kill(process.pid, deploySignal);
+        process.kill(process.pid, receivedShutdownSignal);
         return;
       }
       if (deployStatus !== 0) {
