@@ -7322,7 +7322,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.2"
+    "@willbooster/wb": "npm:13.27.0"
     blitz: "npm:3.0.2"
     build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
@@ -7343,7 +7343,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.2"
+    "@willbooster/wb": "npm:13.27.0"
     build-ts: "npm:17.1.34"
     next: "npm:16.2.6"
     oxfmt: "npm:0.58.0"
@@ -7377,7 +7377,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.2"
+    "@willbooster/wb": "npm:13.27.0"
     build-ts: "npm:17.1.34"
     dotenv: "npm:17.4.2"
     dotenv-expand: "npm:13.0.0"
@@ -7411,7 +7411,7 @@ __metadata:
     "@types/react-dom": "npm:19.2.3"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.2"
+    "@willbooster/wb": "npm:13.27.0"
     babel-loader: "npm:10.1.1"
     build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
@@ -7437,7 +7437,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.2"
+    "@willbooster/wb": "npm:13.27.0"
     build-ts: "npm:17.1.34"
     oxfmt: "npm:0.58.0"
     oxlint: "npm:1.73.0"
@@ -7448,9 +7448,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@willbooster/wb@npm:13.26.2":
-  version: 13.26.2
-  resolution: "@willbooster/wb@npm:13.26.2"
+"@willbooster/wb@npm:13.27.0":
+  version: 13.27.0
+  resolution: "@willbooster/wb@npm:13.27.0"
   dependencies:
     chalk: "npm:5.6.2"
     dotenv: "npm:17.4.2"
@@ -7462,7 +7462,7 @@ __metadata:
     yargs: "npm:18.0.0"
   bin:
     wb: bin/index.js
-  checksum: 10c0/c86fd9df9e607f520b8c345679213729521408d343dc4b8c559d527c3c1bb278899c9dab2fff4346c16878577d85988fc10299adcf870f7b91f98513cbccce2c
+  checksum: 10c0/1c38cc7bcaf08aafa71aa7a37dd42b92fa4621bf24a725c972dd039f375a1faf9aee85d307ea60a236b7c01050eb9d4da6342343dacc28516aff65c16a189b9b
   languageName: node
   linkType: hard
 
@@ -7518,7 +7518,7 @@ __metadata:
     "@types/yargs": "npm:17.0.35"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.2"
+    "@willbooster/wb": "npm:13.27.0"
     "@yarnpkg/core": "npm:4.7.0"
     build-ts: "npm:17.1.34"
     deepmerge: "npm:4.3.1"
@@ -21484,7 +21484,7 @@ __metadata:
     "@types/node": "npm:25.6.0"
     "@willbooster/oxfmt-config": "npm:1.2.2"
     "@willbooster/oxlint-config": "npm:1.4.8"
-    "@willbooster/wb": "npm:13.26.2"
+    "@willbooster/wb": "npm:13.27.0"
     conventional-changelog-conventionalcommits: "npm:9.3.1"
     lefthook: "npm:2.1.10"
     oxfmt: "npm:0.58.0"
