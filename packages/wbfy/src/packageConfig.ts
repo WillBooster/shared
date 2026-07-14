@@ -3,6 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import fg from 'fast-glob';
+import semver from 'semver';
 import { simpleGit } from 'simple-git';
 import { parse as parseToml } from 'smol-toml';
 import type { PackageJson } from 'type-fest';
@@ -10,6 +11,8 @@ import { z } from 'zod';
 
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
+import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
+import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -22,6 +25,7 @@ export interface PackageConfig {
   repoName?: string;
   isWillBoosterRepo: boolean;
   isCloudflare: boolean;
+  doesContainWranglerConfig: boolean;
   isRailway: boolean;
   isBun: boolean;
   isEsmPackage: boolean;
@@ -194,6 +198,7 @@ export async function getPackageConfig(
         repository?.startsWith('github:WillBooster/') || repository?.startsWith('github:WillBoosterLab/')
       ),
       isCloudflare: detectCloudflare(dirPath, packageJson),
+      doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
       isBun:
         rootConfig?.isBun ||
@@ -297,17 +302,181 @@ function hasVersionSettingsFile(dirPath: string): boolean {
   );
 }
 
+/**
+ * Tells whether wbfy manages worker-configuration.d.ts for the package. The file is gitignored and untracked on the
+ * assumption that `wrangler types` regenerates it on install, so all three steps must agree: the package has to own a
+ * wrangler config (`wrangler types` exits non-zero without one), to depend on wrangler (a package deploying via a
+ * CI action cannot resolve the command), and to regenerate the same file on every checkout. Otherwise wbfy would
+ * ignore and delete a file that nothing recreates identically.
+ */
+export function generatesWorkerTypes(config: PackageConfig): boolean {
+  const packageJson = config.packageJson;
+  return (
+    config.doesContainWranglerConfig &&
+    Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
+    // A project invocation that writes the managed default file from inputs wbfy cannot validate (e.g.
+    // `wrangler types -c wrangler.jsonc -c ../bound-worker/wrangler.jsonc` for RPC types) would fight a managed
+    // fallback generator over the same file, and several distinct flagged generators leave no deterministic
+    // choice, so such packages stay unmanaged.
+    !selectProjectWranglerTypesGenerator(packageJson?.scripts ?? {}).conflicting &&
+    hasReproducibleWorkerTypesInference(config)
+  );
+}
+
+/**
+ * `wrangler types` infers `Env` members from the .dev.vars/.env files beside the wrangler config — including the
+ * layered variants wrangler resolves, such as .env.local and environment-specific files — unless the config
+ * declares `secrets.required`. Untracking worker-configuration.d.ts is safe only when every such input is
+ * identical on every checkout: with a gitignored or locally modified file, CI would regenerate an `Env` without
+ * the secret members that type-check locally.
+ */
+function hasReproducibleWorkerTypesInference(config: PackageConfig): boolean {
+  const dirPath = config.dirPath;
+  if (declaresSupportedRequiredSecrets(config)) return true;
+  // The wrangler config itself drives the generation, so an untracked, modified, or symlinked config makes the
+  // generated file irreproducible whatever the dotenv inputs say.
+  const configFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].filter((fileName) =>
+    fs.existsSync(path.resolve(dirPath, fileName))
+  );
+  if (!areTrackedCleanRegularFiles(dirPath, configFileNames)) return false;
+  const inferenceSourceNames = fs
+    .readdirSync(dirPath)
+    .filter((fileName) => /^\.(?:dev\.vars|env)(?:\..+)?$/u.test(fileName));
+  return areTrackedCleanRegularFiles(dirPath, inferenceSourceNames);
+}
+
+/**
+ * Whether every listed file is a regular file (a tracked symlink's git state says nothing about its target's
+ * content), tracked, AND unmodified: `git ls-files` prints nothing for an untracked file (and fails printing
+ * nothing outside a repository), while `git status --porcelain` prints nothing for a clean file — wrangler reads
+ * the working tree, but CI reads the committed contents, so local edits break reproducibility too. (An ignored
+ * file also produces empty status output, which the tracked check catches.)
+ */
+function areTrackedCleanRegularFiles(dirPath: string, fileNames: string[]): boolean {
+  if (fileNames.length === 0) return true;
+  if (fileNames.some((fileName) => fs.lstatSync(path.resolve(dirPath, fileName)).isSymbolicLink())) return false;
+  const trackedOutput = spawnSyncAndReturnStdout('git', ['ls-files', '--', ...fileNames], dirPath);
+  const trackedCount = trackedOutput === '' ? 0 : trackedOutput.split('\n').length;
+  return (
+    trackedCount === fileNames.length &&
+    spawnSyncAndReturnStdout('git', ['status', '--porcelain', '--', ...fileNames], dirPath) === ''
+  );
+}
+
+// `wrangler types` generates from `secrets.required` only since wrangler 4.77.0 (announced 2026-03-24, the 4.77.0
+// release date); older wranglers warn about the unexpected field and keep inferring from .dev.vars.
+const minimumWranglerVersionForRequiredSecrets = '4.77.0';
+
+function declaresSupportedRequiredSecrets(config: PackageConfig): boolean {
+  const wranglerVersionRange =
+    config.packageJson?.dependencies?.['wrangler'] ?? config.packageJson?.devDependencies?.['wrangler'];
+  if (!wranglerVersionRange) return false;
+  try {
+    const minimumVersion = semver.minVersion(wranglerVersionRange);
+    if (!minimumVersion || semver.lt(minimumVersion, minimumWranglerVersionForRequiredSecrets)) return false;
+  } catch {
+    return false;
+  }
+  return wranglerConfigDeclaresRequiredSecrets(config.dirPath);
+}
+
+interface WranglerConfigSecretsSubtree {
+  secrets?: { required?: string[] };
+  env?: Record<string, { secrets?: { required?: string[] } } | undefined>;
+}
+
+function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
+  try {
+    for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
+      const filePath = path.resolve(dirPath, fileName);
+      if (!fs.existsSync(filePath)) continue;
+      const config = JSON.parse(stripJsoncSyntax(fs.readFileSync(filePath, 'utf8'))) as WranglerConfigSecretsSubtree;
+      return declaresRequiredSecretsAnywhere(config);
+    }
+    const tomlPath = path.resolve(dirPath, 'wrangler.toml');
+    if (fs.existsSync(tomlPath)) {
+      const config = parseToml(fs.readFileSync(tomlPath, 'utf8')) as WranglerConfigSecretsSubtree;
+      return declaresRequiredSecretsAnywhere(config);
+    }
+  } catch {
+    // A config that does not parse cannot prove a declaration.
+  }
+  return false;
+}
+
+// A declaration at any config level replaces the .dev.vars/.env inference: `wrangler types` aggregates
+// per-environment secrets into the generated type (Cloudflare changelog 2026-03-24).
+function declaresRequiredSecretsAnywhere(config: WranglerConfigSecretsSubtree): boolean {
+  if ((config.secrets?.required?.length ?? 0) > 0) return true;
+  return Object.values(config.env ?? {}).some((envConfig) => (envConfig?.secrets?.required?.length ?? 0) > 0);
+}
+
+/** Remove the comments and trailing commas of JSONC (string-aware), enough for wrangler config files. */
+function stripJsoncSyntax(text: string): string {
+  let withoutComments = '';
+  for (let i = 0; i < text.length; i++) {
+    const character = text[i];
+    if (character === '"') {
+      const stringLiteral = copyJsonString(text, i);
+      withoutComments += stringLiteral;
+      i += stringLiteral.length - 1;
+    } else if (character === '/' && text[i + 1] === '/') {
+      while (i < text.length && text[i] !== '\n') i++;
+      withoutComments += '\n';
+    } else if (character === '/' && text[i + 1] === '*') {
+      i += 2;
+      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++;
+      i++;
+    } else {
+      withoutComments += character;
+    }
+  }
+  // A second pass so a comma stays detected as trailing across a now-removed comment (e.g. `, // note\n}`).
+  let result = '';
+  for (let i = 0; i < withoutComments.length; i++) {
+    const character = withoutComments[i];
+    if (character === '"') {
+      const stringLiteral = copyJsonString(withoutComments, i);
+      result += stringLiteral;
+      i += stringLiteral.length - 1;
+    } else if (character === ',') {
+      let next = i + 1;
+      while (next < withoutComments.length && /\s/u.test(withoutComments[next] as string)) next++;
+      if (withoutComments[next] !== '}' && withoutComments[next] !== ']') result += character;
+    } else {
+      result += character;
+    }
+  }
+  return result;
+}
+
+/** Copy the JSON string literal starting at the opening double quote, honoring backslash escapes. */
+function copyJsonString(text: string, start: number): string {
+  let end = start;
+  while (++end < text.length) {
+    if (text[end] === '\\') end++;
+    else if (text[end] === '"') break;
+  }
+  return text.slice(start, Math.min(end + 1, text.length));
+}
+
+/**
+ * Tells whether the directory owns a Worker, unlike the isCloudflare heuristic, which also matches a package that
+ * merely mentions wrangler in a script or workflow (e.g. the root of a monorepo whose Worker lives in a sub-package).
+ */
+export function detectWranglerConfig(dirPath: string): boolean {
+  return ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
+    fs.existsSync(path.resolve(dirPath, fileName))
+  );
+}
+
 function detectCloudflare(dirPath: string, packageJson: PackageJson): boolean {
   const scripts = packageJson.scripts;
   if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('wrangler'))) {
     return true;
   }
 
-  if (
-    ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
-      fs.existsSync(path.resolve(dirPath, fileName))
-    )
-  ) {
+  if (detectWranglerConfig(dirPath)) {
     return true;
   }
 

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import { options } from '../options.js';
-import type { PackageConfig } from '../packageConfig.js';
+import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -131,6 +131,13 @@ src-tauri/gen/schemas/
       // unlike the committed .env/.env.staging files of the WillBooster convention.
       headUserContent += `.dev.vars*
 .wrangler/
+`;
+    }
+    // Ignored only where postinstall regenerates it, so wbfy never ignores a file that nothing recreates. This keeps
+    // its thousands of lines out of every wrangler bump's diff. Anchored with a leading slash because `wrangler types`
+    // and the untracking below only ever touch this package's own file, not a nested one at any depth.
+    if (generatesWorkerTypes(config)) {
+      headUserContent += `/worker-configuration.d.ts
 `;
     }
     if (rootConfig.depending.vinext || config.depending.vinext) {

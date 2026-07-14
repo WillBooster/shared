@@ -11,6 +11,7 @@ import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
 import { fixWbDbCommand } from './fixers/wbDbCommand.js';
+import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import { generateBunfigToml } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
@@ -43,7 +44,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { logger } from './logger.js';
 import { options } from './options.js';
-import { getPackageConfig } from './packageConfig.js';
+import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
@@ -183,6 +184,13 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       }
       await generatePrettierignore(config);
       await generatePackageJson(config, rootConfig, skipDeps);
+      // Only after both the barrier above — where the pooled .gitignore write actually completes — and the
+      // package.json generation: untracking a file that did not get ignored (e.g. the gitignore.io fetch failed) or
+      // whose postinstall does not actually regenerate it (generatePackageJson swallows its own exceptions, so a
+      // partial run is possible) would delete the declaration with nothing recreating it on fresh checkouts.
+      if (generatesWorkerTypes(config)) {
+        await untrackWorkerTypes(config);
+      }
 
       promises.push(generateLintstagedrc(config));
       if (config.doesContainVscodeSettingsJson && config.doesContainPackageJson) {

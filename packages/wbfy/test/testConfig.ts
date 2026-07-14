@@ -10,6 +10,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     repository: 'github:WillBooster/example',
     isWillBoosterRepo: true,
     isCloudflare: false,
+    doesContainWranglerConfig: false,
     isRailway: false,
     isBun: false,
     isEsmPackage: false,
