@@ -32,11 +32,16 @@ export function selectProjectWranglerTypesGenerator(scripts: PackageJson.Scripts
   command: string | undefined;
 } {
   const scriptValues = Object.values(scripts).filter((script): script is string => typeof script === 'string');
-  const conflicting = scriptValues.some((script) =>
-    contextFreeCommandSegments(script).some((segment) => {
-      const invocationArgs = parseWranglerTypesInvocation(segment);
-      return !!invocationArgs && classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
-    })
+  const conflicting = scriptValues.some(
+    (script) =>
+      // Subshells, pipes, command substitution, and `;` separators are not modeled by the segment parser, so a
+      // `wrangler types` inside such a construct cannot be classified — splitting it apart would fabricate
+      // malformed commands (e.g. from `(cd ../other && wrangler types ...)`), so the package stays unmanaged.
+      (script.includes('wrangler types') && /[();|`]|\$\(/u.test(stripQuotedSpans(script))) ||
+      contextFreeCommandSegments(script).some((segment) => {
+        const invocationArgs = parseWranglerTypesInvocation(segment);
+        return !!invocationArgs && classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
+      })
   );
   const preferredCandidates = [
     collectReusableGeneratorSegments(scripts.postinstall, scripts),
@@ -99,7 +104,7 @@ export function reachesWranglerTypes(
   for (const segment of contextFreeCommandSegments(script)) {
     const invocationArgs = parseWranglerTypesInvocation(segment);
     if (invocationArgs && predicate(invocationArgs, segment)) return true;
-    const tokens = segment.split(/\s+/u);
+    const tokens = tokenizeCommandSegment(segment);
     let index = skipEnvironmentAssignments(tokens);
     let invokedScriptName: string | undefined;
     if (scriptWrapperRunnerCommands.has(tokens[index] ?? '')) {
@@ -183,14 +188,81 @@ function splitCommandSegments(script: string): string[] {
 }
 
 function isDirectoryChange(segment: string): boolean {
-  const tokens = segment.split(/\s+/u);
+  const tokens = tokenizeCommandSegment(segment);
   return tokens[skipEnvironmentAssignments(tokens)] === 'cd';
 }
 
 function isNoOpDirectoryChange(segment: string): boolean {
-  const tokens = segment.split(/\s+/u);
+  const tokens = tokenizeCommandSegment(segment);
   const target = (tokens[skipEnvironmentAssignments(tokens) + 1] ?? '').replaceAll(/^["']|["']$/gu, '');
   return target === '.' || target === './';
+}
+
+/** Whether the segment just runs the managed code generation (`wb gen-code`, or a runner wrapper of gen-code). */
+export function isManagedGenCodeSegment(segment: string): boolean {
+  const tokens = tokenizeCommandSegment(segment);
+  let index = skipEnvironmentAssignments(tokens);
+  if (scriptRunnerCommands.has(tokens[index] ?? '')) {
+    index++;
+    index = skipRunnerFlags(tokens, index);
+    if (['run', 'run-script'].includes(tokens[index] ?? '')) {
+      index++;
+      index = skipRunnerFlags(tokens, index);
+    }
+  }
+  return (tokens[index] === 'wb' && tokens[index + 1] === 'gen-code') || tokens[index] === 'gen-code';
+}
+
+/** Tokenize a command segment on whitespace outside quotes, so quoted values (e.g. `X="a b"`) stay one token. */
+function tokenizeCommandSegment(segment: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: string | undefined;
+  for (let index = 0; index < segment.length; index++) {
+    const character = segment[index] ?? '';
+    if (quote) {
+      if (character === '\\' && quote === '"') {
+        current += character + (segment[++index] ?? '');
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      current += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (/\s/u.test(character)) {
+      if (current) tokens.push(current);
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+/** Remove quoted spans so shell metacharacters inside argument text are not mistaken for syntax. */
+function stripQuotedSpans(script: string): string {
+  let result = '';
+  let quote: string | undefined;
+  for (let index = 0; index < script.length; index++) {
+    const character = script[index] ?? '';
+    if (quote) {
+      if (character === '\\' && quote === '"') index++;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+    result += character;
+  }
+  return result;
 }
 
 /**
@@ -200,7 +272,7 @@ function isNoOpDirectoryChange(segment: string): boolean {
  * words (e.g. `echo wrangler types`) from being treated as a generator.
  */
 export function parseWranglerTypesInvocation(segment: string): string[] | undefined {
-  const tokens = segment.trim().split(/\s+/u);
+  const tokens = tokenizeCommandSegment(segment);
   let index = skipEnvironmentAssignments(tokens);
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
@@ -243,8 +315,9 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
       continue;
     }
     if (/^--cwd(?:=.*)?$/u.test(arg)) {
-      writesElsewhere = true;
-      if (!arg.includes('=')) index++;
+      // `--cwd .` still runs in this package's directory, so it stays an ordinary local invocation.
+      const cwdValue = arg.includes('=') ? arg.slice('--cwd='.length) : (invocationArgs[++index] ?? '');
+      if (cwdValue !== '.' && cwdValue !== './') writesElsewhere = true;
       continue;
     }
     if (wranglerTypesValueFlags.has(arg)) {

@@ -14,6 +14,7 @@ import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import {
   classifyWranglerTypesInvocation,
   contextFreeCommandSegments,
+  isManagedGenCodeSegment,
   postinstallGeneratesWorkerTypes,
   reachesWranglerTypes,
   scriptChangesWorkingDirectory,
@@ -201,18 +202,19 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
 }
 
 function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: string | undefined): void {
-  // Preserve a project-managed invocation wbfy cannot resolve itself (e.g. `wrangler types --config
-  // config/worker.jsonc`, whose custom config path detectWranglerConfig does not see, possibly behind a wrapper
-  // script): overwriting postinstall below would otherwise leave fresh checkouts without worker types.
-  const preservedWranglerTypes =
-    wranglerTypes ??
-    (scripts.postinstall === undefined
-      ? undefined
-      : contextFreeCommandSegments(scripts.postinstall).find((segment) =>
-          reachesWranglerTypes(segment, scripts, () => true)
-        ));
   if (scripts['gen-code']) {
-    scripts.postinstall = appendWranglerTypes('wb gen-code', preservedWranglerTypes);
+    // Keep the project's own worker-types pipeline (prerequisites included — e.g. `node scripts/prepareTypes.js
+    // && wrangler types ...`) when rewriting postinstall: dropping a prerequisite would leave fresh checkouts
+    // unable to regenerate the file, and dropping the invocation itself (e.g. `wrangler types --config
+    // config/worker.jsonc`, which wbfy does not manage, possibly behind a wrapper script) would drop the
+    // generation entirely.
+    const preservedSegments =
+      scripts.postinstall && reachesWranglerTypes(scripts.postinstall, scripts, () => true)
+        ? contextFreeCommandSegments(scripts.postinstall).filter(
+            (segment) => segment !== '' && !isManagedGenCodeSegment(segment)
+          )
+        : [];
+    scripts.postinstall = ['wb gen-code', ...preservedSegments].join(' && ');
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
   }

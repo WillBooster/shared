@@ -758,6 +758,91 @@ test('omits wrangler types when an uncommitted .env.local drives the Env inferen
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
+// Subshells and pipes are not modeled by the segment parser: splitting them apart would fabricate malformed
+// commands, so such packages stay unmanaged.
+test('skips worker-types management when a wrangler types command sits in a subshell', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-other': '(cd ../other && wrangler types --strict-vars=false)' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.['gen-other']).toBe('(cd ../other && wrangler types --strict-vars=false)');
+});
+
+// Prerequisites of the project's generation pipeline must survive the postinstall rewrite, or fresh checkouts
+// cannot reproduce the file the rewrite regenerates.
+test('keeps generation prerequisites when rewriting postinstall', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { postinstall: 'node scripts/prepareTypes.js && wrangler types --strict-vars=false' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(
+    'wb gen-code && node scripts/prepareTypes.js && wrangler types --strict-vars=false'
+  );
+});
+
+// `--cwd .` still runs in this package's directory, so the invocation is an ordinary local generator.
+test('reuses a wrangler types invocation with a no-op --cwd', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-types': 'wrangler types --cwd . --strict-vars=false' }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --cwd . --strict-vars=false');
+});
+
+// Quoted environment values contain spaces; whitespace-only tokenization would push the assignment into the
+// command position and miss the generator.
+test('recognizes a generator prefixed by a quoted environment assignment', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const genTypes = 'NODE_OPTIONS="--conditions=workerd --no-warnings" wrangler types --strict-vars=false';
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-types': genTypes }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${genTypes}`);
+});
+
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
 test('prepends the generator to a check-only postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
