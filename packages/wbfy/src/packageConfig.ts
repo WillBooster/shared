@@ -337,6 +337,10 @@ function hasReproducibleWorkerTypesInference(config: PackageConfig): boolean {
     .readdirSync(dirPath)
     .filter((fileName) => /^\.(?:dev\.vars|env)(?:\..+)?$/u.test(fileName));
   if (inferenceSourceNames.length === 0) return true;
+  // A tracked symlink's git state says nothing about its target's content, which wrangler actually reads.
+  if (inferenceSourceNames.some((fileName) => fs.lstatSync(path.resolve(dirPath, fileName)).isSymbolicLink())) {
+    return false;
+  }
   // All tracked AND unmodified: `git ls-files` prints nothing for an untracked file (and fails printing nothing
   // outside a repository), while `git status --porcelain` prints nothing for a clean file — wrangler reads the
   // working tree, but CI reads the committed contents, so local edits break reproducibility too. (An ignored

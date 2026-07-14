@@ -1011,6 +1011,127 @@ test('recognizes an exec-form wb gen-code segment when rewriting postinstall', a
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false');
 });
 
+// Forwarded wrapper arguments (`npm run gen-types -- --check`) change the effective invocation, so the wrapper
+// cannot stand for the plain script; the package stays unmanaged and the wrapper survives verbatim.
+test('treats a wrapper forwarding arguments as unmodeled', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-types': 'wrangler types', postinstall: 'npm run gen-types -- --check' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && npm run gen-types -- --check');
+});
+
+// `npm --workspaces exec ...` runs in every workspace, not (only) this package.
+test('treats an all-workspaces invocation as non-local', async () => {
+  const postinstall = 'npm --workspaces exec wrangler types --strict-vars=false';
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' }, scripts: { postinstall } };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+});
+
+// A generator behind a real `cd` cannot be classified, but it still generates on install and must survive the
+// rewrite verbatim while the package stays unmanaged.
+test('preserves a directory-changing generating postinstall verbatim', async () => {
+  const postinstall = 'cd config && wrangler types --config worker.jsonc';
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' }, scripts: { postinstall } };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+});
+
+// `wb gen-code ; wrangler types --config ...` is a compound command, not the plain managed invocation, and must
+// not be discarded as one.
+test('does not discard a compound segment starting with wb gen-code', async () => {
+  const postinstall = 'wb gen-code ; wrangler types --config config/worker.jsonc';
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' }, scripts: { postinstall } };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+});
+
+// A syntactically quoted command word (`"wrangler" types`) executes wrangler but evades tokenization, so the
+// package stays unmanaged instead of getting a second, differently flagged generator.
+test('treats a quoted command word invocation as unmodeled', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-types': '"wrangler" types --strict-vars=false' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// A trailing shell comment is not a positional output path; the flags before it must be reused.
+test('reuses a wrangler types invocation followed by a shell comment', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-types': 'wrangler types --strict-vars=false # keep loose vars' }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false # keep loose vars');
+});
+
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
 test('prepends the generator to a check-only postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };

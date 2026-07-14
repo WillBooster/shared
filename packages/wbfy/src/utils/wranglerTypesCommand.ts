@@ -37,10 +37,7 @@ export function selectProjectWranglerTypesGenerator(scripts: PackageJson.Scripts
       splitCommandSegments(script).some((segment) => {
         const invocationArgs = parseWranglerTypesInvocation(segment);
         if (invocationArgs) return classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
-        // An unquoted `wrangler types` mention the parser cannot model (a subshell like `(wrangler types ...)`,
-        // a non-local runner directory, arbitrary whitespace) cannot be classified — splitting such constructs
-        // apart would fabricate malformed commands, so the package stays unmanaged.
-        return mentionsWranglerTypes(segment);
+        return isUnmodeledWranglerTypesSegment(segment, scripts);
       }) || hasNonTransplantableGeneratorPipeline(script, scripts)
   );
   const preferredCandidates = [
@@ -145,8 +142,10 @@ export function reachesWranglerTypes(
         runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
       }
       // A runner directed at another directory (e.g. `yarn --cwd ../other gen-types`) runs that package's
-      // script, not one of these.
-      invokedScriptName = runnerFlags.leavesPackage ? undefined : tokens[runnerFlags.index];
+      // script, not one of these; forwarded arguments (`npm run gen-types -- --check`) change the effective
+      // invocation, so the wrapper cannot stand for the plain script either.
+      invokedScriptName =
+        runnerFlags.leavesPackage || tokens.length > runnerFlags.index + 1 ? undefined : tokens[runnerFlags.index];
     }
     if (!invokedScriptName || visitedScriptNames.has(invokedScriptName)) continue;
     visitedScriptNames.add(invokedScriptName);
@@ -187,7 +186,7 @@ export function scriptChangesWorkingDirectory(script: string): boolean {
  * Split a shell command line on `&&` outside quotes: a quoted `&&` (e.g. `echo "setup && wrangler types ..."`)
  * is argument text, and splitting inside it would fabricate a command that was never run.
  */
-function splitCommandSegments(script: string): string[] {
+export function splitCommandSegments(script: string): string[] {
   const segments: string[] = [];
   let current = '';
   let quote: string | undefined;
@@ -243,8 +242,10 @@ export function isManagedGenCodeSegment(segment: string, scripts: PackageJson.Sc
     if (runnerFlags.leavesPackage) return false;
     index = runnerFlags.index;
   }
-  if (tokens[index] === 'wb' && tokens[index + 1] === 'gen-code') return true;
-  if (tokens[index] !== 'gen-code') return false;
+  // Exact match only: `wb gen-code ; wrangler types --config ...` or `wb gen-code --flag` is not the plain
+  // managed invocation and must not be discarded as one.
+  if (tokens[index] === 'wb' && tokens[index + 1] === 'gen-code') return index + 2 === tokens.length;
+  if (tokens[index] !== 'gen-code' || index + 1 !== tokens.length) return false;
   // A gen-code wrapper is interchangeable with `wb gen-code` only when the gen-code script itself is the
   // managed pipeline (`wb gen-code` plus reusable managed generation); a custom pipeline behind it (e.g.
   // `node scripts/prepareTypes.js && wrangler types ...` or a custom-config invocation) must be preserved
@@ -267,6 +268,45 @@ export function isManagedGenCodeSegment(segment: string, scripts: PackageJson.Sc
 /** Whether the script textually mentions `wrangler types` outside quotes, whatever its shell form. */
 export function mentionsWranglerTypes(script: string): boolean {
   return /\bwrangler\s+types\b/u.test(stripQuotedSpans(script));
+}
+
+/**
+ * Whether the segment involves `wrangler types` in a shell form the parser cannot faithfully model: an unquoted
+ * mention that does not parse as an invocation (a subshell, a non-local runner, arbitrary shell syntax), a
+ * syntactically quoted command word (`"wrangler" types` executes wrangler but evades tokenization), or a wrapper
+ * forwarding extra arguments (`npm run gen-types -- --check`) whose target involves `wrangler types` — the
+ * forwarded arguments change the effective invocation. Such segments make the package unmanageable and must be
+ * preserved verbatim wherever wbfy rewrites scripts.
+ */
+export function isUnmodeledWranglerTypesSegment(
+  segment: string,
+  scripts: PackageJson.Scripts,
+  visitedScriptNames = new Set<string>()
+): boolean {
+  if (parseWranglerTypesInvocation(segment)) return false;
+  if (mentionsWranglerTypes(segment)) return true;
+  if (/["']wrangler["']\s+types\b|\bwrangler\s+["']types["']/u.test(segment)) return true;
+  const tokens = tokenizeCommandSegment(segment);
+  let index = skipEnvironmentAssignments(tokens);
+  if (!scriptWrapperRunnerCommands.has(tokens[index] ?? '')) return false;
+  index++;
+  let runnerFlags = consumeRunnerFlags(tokens, index);
+  if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) {
+    runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
+  }
+  const invokedScriptName = tokens[runnerFlags.index];
+  const forwardsArguments = tokens.length > runnerFlags.index + 1;
+  if (runnerFlags.leavesPackage || !invokedScriptName || !forwardsArguments) return false;
+  if (visitedScriptNames.has(invokedScriptName)) return false;
+  visitedScriptNames.add(invokedScriptName);
+  const invokedScript = scripts[invokedScriptName];
+  return (
+    typeof invokedScript === 'string' &&
+    (reachesWranglerTypes(invokedScript, scripts, () => true, new Set(visitedScriptNames)) ||
+      splitCommandSegments(invokedScript).some((invokedSegment) =>
+        isUnmodeledWranglerTypesSegment(invokedSegment, scripts, visitedScriptNames)
+      ))
+  );
 }
 
 /** Tokenize a command segment on whitespace outside quotes, so quoted values (e.g. `X="a b"`) stay one token. */
@@ -345,6 +385,8 @@ export function parseWranglerTypesInvocation(segment: string): string[] | undefi
   const invocationArgs: string[] = [];
   for (let argIndex = index + 2; argIndex < tokens.length; argIndex++) {
     const token = tokens[argIndex] ?? '';
+    // A token-initial unquoted `#` starts a shell comment: everything after it is not an argument.
+    if (token.startsWith('#')) break;
     // Shell redirections (`> /dev/null`, `2>&1`, `>>log`) are not wrangler arguments; a bare operator also
     // consumes the following token as its target.
     const redirectionOperator = /^(?:\d+|&)?(?:>>?|<)/u.exec(token)?.[0];
@@ -411,6 +453,8 @@ function skipEnvironmentAssignments(tokens: string[]): number {
 // may (npm runs `--workspace=other` commands inside that workspace).
 const runnerDirectoryValueFlags = new Set(['--cwd', '-C', '--prefix', '--dir']);
 const runnerWorkspaceValueFlags = new Set(['-w', '--workspace', '-F', '--filter']);
+// Bare selectors that run the command in every workspace instead of (only) this package.
+const runnerAllWorkspacesFlags = new Set(['--workspaces', '-ws', '--recursive', '-r']);
 
 function consumeRunnerFlags(
   tokens: string[],
@@ -429,7 +473,7 @@ function consumeRunnerFlags(
     } else if (runnerWorkspaceValueFlags.has(flag)) {
       index++;
       leavesPackage = true;
-    } else if (/^(?:-w|--workspace|-F|--filter)=/u.test(flag)) {
+    } else if (/^(?:-w|--workspace|-F|--filter)=/u.test(flag) || runnerAllWorkspacesFlags.has(flag)) {
       leavesPackage = true;
     }
     if (directoryValue !== undefined && directoryValue !== '.' && directoryValue !== './') leavesPackage = true;

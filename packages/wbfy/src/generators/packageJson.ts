@@ -13,13 +13,14 @@ import { logger } from '../logger.js';
 import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import {
   classifyWranglerTypesInvocation,
-  contextFreeCommandSegments,
   isManagedGenCodeSegment,
-  mentionsWranglerTypes,
+  isUnmodeledWranglerTypesSegment,
+  parseWranglerTypesInvocation,
   postinstallGeneratesWorkerTypes,
   reachesWranglerTypes,
   scriptChangesWorkingDirectory,
   selectProjectWranglerTypesGenerator,
+  splitCommandSegments,
 } from '../utils/wranglerTypesCommand.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -209,16 +210,19 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
     // unable to regenerate the file, and dropping the invocation itself (e.g. `wrangler types --config
     // config/worker.jsonc`, which wbfy does not manage, possibly behind a wrapper script) would drop the
     // generation entirely.
-    const preservedSegments =
-      scripts.postinstall &&
-      (reachesWranglerTypes(scripts.postinstall, scripts, () => true) ||
-        // Shell forms the parser cannot model (e.g. `node scripts/prepare.js; wrangler types --config ...`)
-        // still generate on install and must survive the rewrite verbatim.
-        mentionsWranglerTypes(scripts.postinstall))
-        ? contextFreeCommandSegments(scripts.postinstall).filter(
-            (segment) => segment !== '' && !isManagedGenCodeSegment(segment, scripts)
-          )
-        : [];
+    const postinstallSegments = scripts.postinstall ? splitCommandSegments(scripts.postinstall) : [];
+    const involvesWranglerTypes =
+      reachesWranglerTypes(scripts.postinstall, scripts, () => true) ||
+      // Shell forms the parser cannot model (e.g. `node scripts/prepare.js; wrangler types --config ...`,
+      // a wrapper forwarding arguments) still generate on install and must survive the rewrite verbatim —
+      // hence splitCommandSegments, which never truncates at a `cd`. A generator behind a real `cd` parses
+      // in isolation but runs elsewhere, so it counts as involved too.
+      postinstallSegments.some((segment) => isUnmodeledWranglerTypesSegment(segment, scripts)) ||
+      (scriptChangesWorkingDirectory(scripts.postinstall ?? '') &&
+        postinstallSegments.some((segment) => !!parseWranglerTypesInvocation(segment)));
+    const preservedSegments = involvesWranglerTypes
+      ? postinstallSegments.filter((segment) => segment !== '' && !isManagedGenCodeSegment(segment, scripts))
+      : [];
     scripts.postinstall = ['wb gen-code', ...preservedSegments].join(' && ');
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
