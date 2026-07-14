@@ -14,9 +14,10 @@ import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import {
   classifyWranglerTypesInvocation,
   contextFreeCommandSegments,
-  parseWranglerTypesInvocation,
   postinstallGeneratesWorkerTypes,
   reachesWranglerTypes,
+  scriptChangesWorkingDirectory,
+  selectProjectWranglerTypesGenerator,
 } from '../utils/wranglerTypesCommand.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -223,11 +224,15 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
   if (postinstallGeneratesWorkerTypes(scripts)) return;
 
   // A reachable non-generating invocation (e.g. `wrangler types --check`, which fails while the gitignored file
-  // is still absent) must see the generated file, so the generator runs first; otherwise append to keep the
-  // project's own order.
-  scripts.postinstall = reachesWranglerTypes(scripts.postinstall, scripts, () => true)
-    ? `${wranglerTypes} && ${scripts.postinstall}`
-    : appendWranglerTypes(scripts.postinstall ?? '', wranglerTypes).replace(/^ && /u, '');
+  // is still absent) must see the generated file, and a directory-changing postinstall (`cd ../tools && ...`)
+  // would run an appended generator somewhere else — both need the generator first; otherwise append to keep
+  // the project's own order.
+  const oldPostinstall = scripts.postinstall;
+  scripts.postinstall =
+    oldPostinstall &&
+    (reachesWranglerTypes(oldPostinstall, scripts, () => true) || scriptChangesWorkingDirectory(oldPostinstall))
+      ? `${wranglerTypes} && ${oldPostinstall}`
+      : appendWranglerTypes(oldPostinstall ?? '', wranglerTypes).replace(/^ && /u, '');
 }
 
 /**
@@ -244,19 +249,9 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
 function resolveWranglerTypesCommand(config: PackageConfig, scripts: PackageJson.Scripts): string | undefined {
   if (!generatesWorkerTypes(config)) return;
 
-  const customCommand = Object.values(scripts)
-    .filter((script) => typeof script === 'string')
-    .flatMap((script) => contextFreeCommandSegments(script))
-    // Only an invocation passing flags is worth preserving; a bare one is normalized to the managed command.
-    .find((segment) => {
-      const invocationArgs = parseWranglerTypesInvocation(segment);
-      return (
-        !!invocationArgs &&
-        invocationArgs.length > 0 &&
-        classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
-      );
-    });
-  return customCommand ?? `${config.isBun ? 'bunx ' : ''}wrangler types`;
+  // Only an invocation passing flags is worth preserving; a bare one is normalized to the managed command.
+  const { command } = selectProjectWranglerTypesGenerator(scripts);
+  return command ?? `${config.isBun ? 'bunx ' : ''}wrangler types`;
 }
 
 /**

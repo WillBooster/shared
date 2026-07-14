@@ -615,6 +615,111 @@ test('detects generation through an env-prefixed wrapper postinstall', async () 
   expect(packageJson.scripts?.postinstall).toBe('NODE_ENV=production yarn run --silent gen:types');
 });
 
+// An appended generator after a directory-changing postinstall would run in the other directory, so it must
+// run first instead.
+test('prepends the generator to a directory-changing postinstall', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { postinstall: 'cd ../tools && yarn build' }, ...wranglerPackageJson },
+    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('bunx wrangler types && cd ../tools && yarn build');
+});
+
+// `--check` is a boolean option: only its enabled forms suppress generation, so `--check=false` is an ordinary
+// generating invocation whose flags must be preserved.
+test('reuses a wrangler types invocation with --check=false', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-types': 'wrangler types --check=false --strict-vars=false' }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --check=false --strict-vars=false');
+});
+
+// postinstall shapes the file after every install, so its generator wins over other scripts' flagged
+// invocations regardless of package.json key order.
+test('prefers the generator postinstall already runs over other scripts', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: {
+      'gen-loose': 'wrangler types --strict-vars=false',
+      postinstall: 'wb gen-code && wrangler types --env-interface AppEnv',
+    },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'gen-code': 'bun wb gen-code && wrangler types --env-interface AppEnv',
+    postinstall: 'wb gen-code && wrangler types --env-interface AppEnv',
+  });
+});
+
+// With several distinct flagged generators and no postinstall/gen-code tiebreaker, any choice would change the
+// generated declarations arbitrarily, so the package stays unmanaged.
+test('skips worker-types management when distinct flagged generators leave no deterministic choice', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: {
+      'gen-loose': 'wrangler types --strict-vars=false',
+      'gen-app': 'wrangler types --env-interface AppEnv',
+    },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// `cd .` never leaves the package directory, so a conflicting invocation behind it must still be seen.
+test('recognizes a conflicting invocation behind a no-op cd', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-types': 'cd . && wrangler types --env staging --strict-vars=false' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
 test('prepends the generator to a check-only postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };

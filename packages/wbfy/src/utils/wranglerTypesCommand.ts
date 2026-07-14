@@ -19,19 +19,57 @@ const scriptWrapperRunnerCommands = new Set(['yarn', 'bun', 'npm', 'pnpm']);
 const wranglerTypesValueFlags = new Set(['--env-interface']);
 
 /**
- * Whether any script runs a `wrangler types` invocation that writes the managed default file from inputs the
- * management gate cannot validate (e.g. `wrangler types -c wrangler.jsonc -c ../bound-worker/wrangler.jsonc` for
- * RPC types). A managed fallback generator would overwrite that richer output, so such packages stay unmanaged.
+ * Whether wbfy can manage worker-configuration.d.ts for these scripts, and with which project-specific generator
+ * command. `conflicting` is true when a script writes the managed default file from inputs the management gate
+ * cannot validate (e.g. `wrangler types -c wrangler.jsonc -c ../bound-worker/wrangler.jsonc` for RPC types — a
+ * managed fallback generator would overwrite that richer output), or when several distinct flagged generators
+ * exist in the preferred script with no way to choose one deterministically. `command` is the single flagged
+ * generator to reuse, preferring what postinstall already runs (that is what shapes the file after every
+ * install), then gen-code, then any other script; undefined means the managed default command applies.
  */
-export function hasConflictingWranglerTypesInvocation(scripts: PackageJson.Scripts): boolean {
-  return Object.values(scripts)
-    .filter((script) => typeof script === 'string')
-    .some((script) =>
-      contextFreeCommandSegments(script).some((segment) => {
-        const invocationArgs = parseWranglerTypesInvocation(segment);
-        return !!invocationArgs && classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
-      })
-    );
+export function selectProjectWranglerTypesGenerator(scripts: PackageJson.Scripts): {
+  conflicting: boolean;
+  command: string | undefined;
+} {
+  const scriptValues = Object.values(scripts).filter((script): script is string => typeof script === 'string');
+  const conflicting = scriptValues.some((script) =>
+    contextFreeCommandSegments(script).some((segment) => {
+      const invocationArgs = parseWranglerTypesInvocation(segment);
+      return !!invocationArgs && classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
+    })
+  );
+  const preferredCandidates = [
+    collectReusableGeneratorSegments(scripts.postinstall, scripts),
+    collectReusableGeneratorSegments(scripts['gen-code'], scripts),
+    scriptValues.flatMap((script) => collectReusableGeneratorSegments(script, scripts)),
+  ].find((candidates) => candidates.length > 0);
+  const distinctCommands = [...new Set((preferredCandidates ?? []).map((segment) => segment.replaceAll(/\s+/gu, ' ')))];
+  return {
+    conflicting: conflicting || distinctCommands.length > 1,
+    command: distinctCommands.length === 1 ? distinctCommands[0] : undefined,
+  };
+}
+
+/** The flagged reusable-generator segments the script reaches, directly or through wrapper scripts. */
+function collectReusableGeneratorSegments(
+  script: string | undefined,
+  scripts: PackageJson.Scripts,
+  visitedScriptNames = new Set<string>()
+): string[] {
+  const segments: string[] = [];
+  if (!script) return segments;
+  reachesWranglerTypes(
+    script,
+    scripts,
+    (invocationArgs, segment) => {
+      if (invocationArgs.length > 0 && classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator') {
+        segments.push(segment);
+      }
+      return false; // keep collecting instead of stopping at the first match
+    },
+    visitedScriptNames
+  );
+  return segments;
 }
 
 /**
@@ -54,13 +92,13 @@ export function postinstallGeneratesWorkerTypes(scripts: PackageJson.Scripts): b
 export function reachesWranglerTypes(
   script: string | undefined,
   scripts: PackageJson.Scripts,
-  predicate: (invocationArgs: string[]) => boolean,
+  predicate: (invocationArgs: string[], segment: string) => boolean,
   visitedScriptNames = new Set<string>()
 ): boolean {
   if (!script) return false;
   for (const segment of contextFreeCommandSegments(script)) {
     const invocationArgs = parseWranglerTypesInvocation(segment);
-    if (invocationArgs && predicate(invocationArgs)) return true;
+    if (invocationArgs && predicate(invocationArgs, segment)) return true;
     const tokens = segment.split(/\s+/u);
     let index = skipEnvironmentAssignments(tokens);
     let invokedScriptName: string | undefined;
@@ -87,18 +125,38 @@ export function reachesWranglerTypes(
 }
 
 /**
- * The command segments of a script that run in the package directory: segments after a `cd` execute somewhere
- * else, so a `wrangler types` there generates another package's file, not this one's, and must be invisible to
- * every decision about the managed file.
+ * The command segments of a script that run in the package directory: segments after a `cd` (except literal
+ * no-ops like `cd .`) execute somewhere else, so a `wrangler types` there generates another package's file, not
+ * this one's, and must be invisible to every decision about the managed file.
  */
 export function contextFreeCommandSegments(script: string): string[] {
   const segments: string[] = [];
   for (const segment of script.split('&&').map((part) => part.trim())) {
-    const tokens = segment.split(/\s+/u);
-    if (tokens[skipEnvironmentAssignments(tokens)] === 'cd') break;
+    if (isDirectoryChange(segment)) {
+      if (isNoOpDirectoryChange(segment)) continue;
+      break;
+    }
     segments.push(segment);
   }
   return segments;
+}
+
+/** Whether the script leaves the package directory at some point (an appended command would then run elsewhere). */
+export function scriptChangesWorkingDirectory(script: string): boolean {
+  return script
+    .split('&&')
+    .some((segment) => isDirectoryChange(segment.trim()) && !isNoOpDirectoryChange(segment.trim()));
+}
+
+function isDirectoryChange(segment: string): boolean {
+  const tokens = segment.split(/\s+/u);
+  return tokens[skipEnvironmentAssignments(tokens)] === 'cd';
+}
+
+function isNoOpDirectoryChange(segment: string): boolean {
+  const tokens = segment.split(/\s+/u);
+  const target = (tokens[skipEnvironmentAssignments(tokens) + 1] ?? '').replaceAll(/^["']|["']$/gu, '');
+  return target === '.' || target === './';
 }
 
 /**
@@ -141,8 +199,10 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
   let changesInputs = false;
   for (let index = 0; index < invocationArgs.length; index++) {
     const arg = invocationArgs[index] ?? '';
-    // Non-generating modes write no file at all, whatever other flags say.
-    if (/^(?:--check|--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return 'harmless';
+    // Non-generating modes write no file at all, whatever other flags say. `--check` is a boolean option:
+    // only its enabled forms suppress generation, while `--check=false` (or `--check false`) still writes.
+    if (/^(?:--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return 'harmless';
+    if (/^--check(?:=true)?$/u.test(arg) && invocationArgs[index + 1] !== 'false') return 'harmless';
     if (/^(?:--config|-c|--env|-e|--env-file)(?:=.*)?$/u.test(arg)) {
       changesInputs = true;
       if (!arg.includes('=')) index++;

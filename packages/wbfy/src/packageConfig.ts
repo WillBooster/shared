@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
-import { hasConflictingWranglerTypesInvocation } from './utils/wranglerTypesCommand.js';
+import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -316,8 +316,9 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
     // A project invocation that writes the managed default file from inputs wbfy cannot validate (e.g.
     // `wrangler types -c wrangler.jsonc -c ../bound-worker/wrangler.jsonc` for RPC types) would fight a managed
-    // fallback generator over the same file, so such packages stay unmanaged.
-    !hasConflictingWranglerTypesInvocation(packageJson?.scripts ?? {}) &&
+    // fallback generator over the same file, and several distinct flagged generators leave no deterministic
+    // choice, so such packages stay unmanaged.
+    !selectProjectWranglerTypesGenerator(packageJson?.scripts ?? {}).conflicting &&
     hasReproducibleWorkerTypesInference(config)
   );
 }
