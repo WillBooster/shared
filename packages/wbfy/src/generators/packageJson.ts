@@ -520,7 +520,7 @@ async function normalizePackageMetadata(
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun --bun ' : ''}wb gen-code`;
+    jsonObj.scripts['gen-code'] = `${config.isBun ? 'bun ' : ''}wb gen-code`;
   }
   normalizeGenI18nTsScript(config, jsonObj);
   updatePostinstallScript(jsonObj.scripts);
@@ -1125,20 +1125,18 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
   if (config.isBun) {
     const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
     const scripts: Record<string, string> = {
-      cleanup: 'bun --bun wb lint --fix --format',
-      format: `bun --bun wb lint --format`,
-      lint: `bun --bun wb lint`,
-      'lint-fix': 'bun --bun wb lint --fix',
+      // No `--bun`: its node->bun PATH shim leaks into every child process and breaks tools
+      // requiring real Node.js (Playwright, wrangler, vinext).
+      cleanup: 'bun wb lint --fix --format',
+      format: `bun wb lint --format`,
+      lint: `bun wb lint`,
+      'lint-fix': 'bun wb lint --fix',
       test: 'bun wb test',
-      typecheck: 'bun --bun wb typecheck',
-      verify: 'bun --bun wb verify',
-      // `verify --full` runs Playwright, and Bun's `--bun` flag installs a node->bun PATH shim that
-      // propagates into Playwright's child processes, crashing test loading with an opaque
-      // "ResolveMessage {}". Omit `--bun` for Playwright projects so `wb verify --full` (and thus
-      // Playwright) runs under Node.js; wb still uses Bun for its own inner commands.
-      'verify-full': config.depending.playwrightTest ? 'bun wb verify --full' : 'bun --bun wb verify --full',
+      typecheck: 'bun wb typecheck',
+      verify: 'bun wb verify',
+      'verify-full': 'bun wb verify --full',
     };
-    applyDatabaseScripts(config, scripts, oldScripts, `bun --bun ${getWbDatabaseCommand(config)}`);
+    applyDatabaseScripts(config, scripts, oldScripts, `bun ${getWbDatabaseCommand(config)}`);
     applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
     if (!hasTypecheck) {
       delete scripts.typecheck;

@@ -157,7 +157,7 @@ function getPrePushScript(config: PackageConfig): string {
   if (config.isBun) {
     // Bun repos receive wb as part of wbfy's managed toolchain, so generate the
     // final hook command on the first run instead of changing it on the second.
-    lintCommand = 'bun --bun wb lint';
+    lintCommand = 'bun wb lint';
   } else {
     lintCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
   }
@@ -223,7 +223,7 @@ yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-tople
   if ((config.isBun || config.depending.wb) && canUseWbForStagedFiles) {
     return `
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
-${config.isBun ? 'bun --bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}
+${config.isBun ? 'bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}
 `.trim();
   }
 

@@ -202,7 +202,7 @@ test('uses bun runner for generated Python scripts in bun projects', async () =>
 
   expect(packageJson.scripts).toMatchObject({
     'common/ci-setup': 'bun run setup-uv',
-    'lint-fix': 'bun --bun wb lint --fix',
+    'lint-fix': 'bun wb lint --fix',
     'setup-uv': 'uv sync --frozen',
   });
   expect(packageJson.scripts?.['common/ci-setup']).not.toContain('yarn');
@@ -248,7 +248,7 @@ test('regenerates a plain mise bridge script without inventing an env prefix', a
   expect(packageJson.scripts?.test).toBe('mise run test');
 });
 
-test('drops --bun from verify-full for Playwright projects but keeps it otherwise', async () => {
+test('never generates --bun scripts', async () => {
   const withPlaywright = await generatePackageJsonFrom(
     { scripts: {} },
     { isBun: true, depending: { ...createConfig().depending, playwrightTest: true } }
@@ -256,7 +256,12 @@ test('drops --bun from verify-full for Playwright projects but keeps it otherwis
   const withoutPlaywright = await generatePackageJsonFrom({ scripts: {} }, { isBun: true });
 
   expect(withPlaywright.scripts?.['verify-full']).toBe('bun wb verify --full');
-  expect(withoutPlaywright.scripts?.['verify-full']).toBe('bun --bun wb verify --full');
+  expect(withoutPlaywright.scripts?.['verify-full']).toBe('bun wb verify --full');
+  for (const scripts of [withPlaywright.scripts, withoutPlaywright.scripts]) {
+    for (const command of Object.values(scripts ?? {})) {
+      expect(command).not.toContain('--bun');
+    }
+  }
 });
 
 test('type-checks in the lint script of TypeScript projects', { timeout: 60 * 1000 }, async () => {
