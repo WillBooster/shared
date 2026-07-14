@@ -68,11 +68,18 @@ export function selectProjectWranglerTypesGenerator(scripts: PackageJson.Scripts
 function hasNonTransplantableGeneratorPipeline(script: string, scripts: PackageJson.Scripts): boolean {
   const segments = contextFreeCommandSegments(script);
   // Bare generators and wrapper-reached generators form pipelines too: a preparation step that creates
-  // .dev.vars before `wrangler types` must not be bypassed either.
-  const hasReusableGenerator = reachesWranglerTypes(
-    script,
-    scripts,
-    (invocationArgs) => classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
+  // .dev.vars before `wrangler types` must not be bypassed either. A generator reached only through a
+  // managed gen-code segment does not count: its pipeline is exactly what the managed scripts run, so a
+  // composition like `yarn run gen-code && vite build` bypasses nothing — treating it as a pipeline would
+  // (idempotency-breakingly) disable management right after wbfy itself appended the generator to gen-code.
+  const hasReusableGenerator = segments.some(
+    (segment) =>
+      !isManagedGenCodeSegment(segment, scripts) &&
+      reachesWranglerTypes(
+        segment,
+        scripts,
+        (invocationArgs) => classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
+      )
   );
   if (!hasReusableGenerator) return false;
   return segments.some(
