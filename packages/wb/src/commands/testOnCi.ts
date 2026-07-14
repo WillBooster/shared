@@ -45,6 +45,11 @@ export const testOnCiCommand: CommandModule<
 export async function testOnCi(
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof testOnCiBuilder & typeof sharedOptionsBuilder>>
 ): Promise<void> {
+  // Spawned commands re-derive their dotenv cascade from the exported WB_ENV, so an unexported
+  // WB_ENV would let a committed `.env` (e.g. WB_ENV=development) select the development
+  // environment — running the destructive e2e suite against the developer's own database.
+  process.env.WB_ENV ||= 'test';
+
   const projects = await findDescendantProjects(argv);
   if (!projects) {
     console.error(chalk.red('No project found.'));
@@ -53,7 +58,8 @@ export async function testOnCi(
 
   for (const project of projects.descendants) {
     project.env.CI ||= '1';
-    project.env.WB_ENV ||= 'test';
+    // Overwrite, not ||=: project.env already carries the dotenv-derived value.
+    project.env.WB_ENV = process.env.WB_ENV;
 
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
