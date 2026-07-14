@@ -1052,8 +1052,8 @@ test('treats an all-workspaces invocation as non-local', async () => {
   expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
 });
 
-// A generator behind a real `cd` cannot be classified, but it still generates on install and must survive the
-// rewrite verbatim while the package stays unmanaged.
+// A generator behind a real `cd` belongs to another directory: the package stays managed (the local generator
+// is prepended so it runs before the directory change) and the project's pipeline survives verbatim.
 test('preserves a directory-changing generating postinstall verbatim', async () => {
   const postinstall = 'cd config && wrangler types --config worker.jsonc';
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' }, scripts: { postinstall } };
@@ -1069,7 +1069,85 @@ test('preserves a directory-changing generating postinstall verbatim', async () 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(`bunx wrangler types && wb gen-code && ${postinstall}`);
+});
+
+// `npm run wrangler types` invokes the package script called `wrangler` with `types` as an argument, never the
+// wrangler binary, so it must not count as generating (untracking would delete a file nothing recreates).
+test('does not treat npm run with a wrangler-named script as a generator', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { wrangler: 'node noOp.js', postinstall: 'npm run wrangler types' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && npm run wrangler types');
+});
+
+// A backgrounding `&` changes shell grammar in ways the parser does not model, so such invocations disable
+// management instead of counting as (or coexisting with) a generator.
+test('treats a backgrounded invocation as unmodeled', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-bg': 'wrangler types --config config/other.jsonc & echo finished' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// A check-only custom gen-code fails while the gitignored file is absent, so the generator must run first,
+// mirroring the postinstall ordering rule.
+test('prepends the generator to a check-only custom gen-code script', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-code': 'wrangler types --check' }, ...wranglerPackageJson },
+    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.['gen-code']).toBe('bunx wrangler types && wrangler types --check');
+});
+
+// A custom-config invocation behind a real `cd` writes another directory's file and must not disable
+// management of this package.
+test('keeps management when a custom-config invocation follows a cd', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-other': 'cd ../other && wrangler types --config wrangler.jsonc' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
 });
 
 // `wb gen-code ; wrangler types --config ...` is a compound command, not the plain managed invocation, and must

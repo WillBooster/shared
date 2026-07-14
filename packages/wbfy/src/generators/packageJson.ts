@@ -619,8 +619,13 @@ async function normalizePackageMetadata(
     )
   ) {
     // A project-specific gen-code must produce the same declarations as postinstall, or running the documented
-    // code-generation entry point would leave the generated worker types stale.
-    jsonObj.scripts['gen-code'] = appendWranglerTypes(genCodeScript, wranglerTypes);
+    // code-generation entry point would leave the generated worker types stale. Like the postinstall rewrite,
+    // a reachable non-generating invocation (e.g. `wrangler types --check`) or a directory change needs the
+    // generator first.
+    jsonObj.scripts['gen-code'] =
+      reachesWranglerTypes(genCodeScript, jsonObj.scripts, () => true) || scriptChangesWorkingDirectory(genCodeScript)
+        ? `${wranglerTypes} && ${genCodeScript}`
+        : appendWranglerTypes(genCodeScript, wranglerTypes);
   }
   normalizeGenI18nTsScript(config, jsonObj);
   updatePostinstallScript(jsonObj.scripts, wranglerTypes);

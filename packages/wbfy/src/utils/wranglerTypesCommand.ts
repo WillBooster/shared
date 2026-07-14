@@ -32,9 +32,11 @@ export function selectProjectWranglerTypesGenerator(scripts: PackageJson.Scripts
   command: string | undefined;
 } {
   const scriptValues = Object.values(scripts).filter((script): script is string => typeof script === 'string');
+  // Scanned over the context-free segments: an invocation after a real `cd` writes another directory's file
+  // and must not disable management of this package.
   const conflicting = scriptValues.some(
     (script) =>
-      splitCommandSegments(script).some((segment) => {
+      contextFreeCommandSegments(script).some((segment) => {
         const invocationArgs = parseWranglerTypesInvocation(segment);
         if (invocationArgs) return classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
         return isUnmodeledWranglerTypesSegment(segment, scripts);
@@ -233,18 +235,23 @@ function isNoOpDirectoryChange(segment: string): boolean {
 export function isManagedGenCodeSegment(segment: string, scripts: PackageJson.Scripts): boolean {
   const tokens = tokenizeCommandSegment(segment);
   let index = skipEnvironmentAssignments(tokens);
+  let isRunSubcommand = false;
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
     let runnerFlags = consumeRunnerFlags(tokens, index);
     if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[runnerFlags.index] ?? '')) {
+      isRunSubcommand = ['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '');
       runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
     }
     if (runnerFlags.leavesPackage) return false;
     index = runnerFlags.index;
   }
   // Exact match only: `wb gen-code ; wrangler types --config ...` or `wb gen-code --flag` is not the plain
-  // managed invocation and must not be discarded as one.
-  if (tokens[index] === 'wb' && tokens[index + 1] === 'gen-code') return index + 2 === tokens.length;
+  // managed invocation and must not be discarded as one. After `run`/`run-script` only a package-script name
+  // follows, so `npm run wb gen-code` invokes the script called `wb`, not the wb binary.
+  if (!isRunSubcommand && tokens[index] === 'wb' && tokens[index + 1] === 'gen-code') {
+    return index + 2 === tokens.length;
+  }
   if (tokens[index] !== 'gen-code' || index + 1 !== tokens.length) return false;
   // A gen-code wrapper is interchangeable with `wb gen-code` only when the gen-code script itself is the
   // managed pipeline (`wb gen-code` plus reusable managed generation); a custom pipeline behind it (e.g.
@@ -368,12 +375,17 @@ function stripQuotedSpans(script: string): string {
  * words (e.g. `echo wrangler types`) from being treated as a generator.
  */
 export function parseWranglerTypesInvocation(segment: string): string[] | undefined {
+  // An unquoted newline separates commands the segment splitter does not model.
+  if (stripQuotedSpans(segment).includes('\n')) return;
   const tokens = tokenizeCommandSegment(segment);
   let index = skipEnvironmentAssignments(tokens);
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
     let runnerFlags = consumeRunnerFlags(tokens, index);
-    if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[runnerFlags.index] ?? '')) {
+    // `run`/`run-script` name a package script, never a binary: `npm run wrangler types` invokes the script
+    // called `wrangler` with `types` as an argument, so it must go through wrapper resolution instead.
+    if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) return;
+    if (['exec', 'dlx', 'x'].includes(tokens[runnerFlags.index] ?? '')) {
       runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
     }
     // A runner directed at another directory runs that package's wrangler, not this one's.
@@ -405,9 +417,10 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
   let changesInputs = false;
   for (let index = 0; index < invocationArgs.length; index++) {
     const arg = invocationArgs[index] ?? '';
-    // Unquoted shell metacharacters (pipes, subshells, command substitution, `;`) are not modeled by the
-    // parser, so the invocation cannot be classified; conservatively treat it as conflicting.
-    if (/[();|`]|\$\(/u.test(stripQuotedSpans(arg))) return 'defaultOutputConflict';
+    // Unquoted shell metacharacters (pipes, subshells, command substitution, `;`, a backgrounding `&`) are
+    // not modeled by the parser, so the invocation cannot be classified; conservatively treat it as
+    // conflicting.
+    if (/[();|`&]|\$\(/u.test(stripQuotedSpans(arg))) return 'defaultOutputConflict';
     // Non-generating modes write no file at all, whatever other flags say. `--check` is a boolean option:
     // only its enabled forms suppress generation, while `--check=false` (or `--check false`) still writes.
     if (/^(?:--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return 'harmless';
