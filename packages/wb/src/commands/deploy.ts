@@ -426,11 +426,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     ];
     console.info(chalk.cyan(`Running: wrangler ${deployArgs.join(' ')} <temporary secrets file>`));
     if (!argv.dryRun) {
-      // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
-      // so the direct (non-shell) wrangler spawn below resolves the local binary.
-      if (!project.binExists) {
-        console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
-      }
+      prepareLocalBinPath(project);
       const deployEnv = { ...project.env };
       delete deployEnv.CLOUDFLARE_ENV;
       // 0o700 directory + 0o600 file: readable only by the deploying user, like the dotenv
@@ -540,12 +536,22 @@ export function selectWorkerSecrets(
   const configKeys = new Set(configVarKeys);
   const secrets: Record<string, string> = {};
   for (const [key, value] of Object.entries(envVars)) {
-    if (value === undefined || configKeys.has(key) || isNonSecretKey(key)) continue;
+    if (configKeys.has(key) || isNonSecretKey(key)) continue;
     if (key === 'DATABASE_URL' && value.startsWith('file:')) continue;
     secrets[key] = value;
   }
   const missingKeys = requiredKeys.filter((key) => !configKeys.has(key) && !isNonSecretKey(key) && !envVars[key]);
   return { missingKeys, secrets };
+}
+
+/**
+ * Reading binExists prepends node_modules/.bin directories to project.env.PATH,
+ * so the direct (non-shell) wrangler spawns resolve the local binary.
+ */
+function prepareLocalBinPath(project: Project): void {
+  if (!project.binExists) {
+    console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
+  }
 }
 
 /**
@@ -565,11 +571,7 @@ async function listRemoteWorkerSecretNames(
   resolvedConfig: ResolvedWranglerConfig,
   envName: string
 ): Promise<string[] | undefined> {
-  // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
-  // so the direct (non-shell) wrangler spawn below resolves the local binary.
-  if (!project.binExists) {
-    console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
-  }
+  prepareLocalBinPath(project);
   const listArgs = [
     'secret',
     'list',

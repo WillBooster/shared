@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
-import { parse as parseDotenv } from 'dotenv';
 import chalk from 'chalk';
+import { parse as parseDotenv } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';

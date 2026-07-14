@@ -2,11 +2,10 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { parse as parseDotenv } from 'dotenv';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { selectInheritedRemoteSecretNames, selectWorkerSecrets } from '../src/commands/deploy.js';
-import { parse as parseDotenv } from 'dotenv';
-
 import { quoteDotenvValue } from '../src/commands/genDevVars.js';
 import {
   collectBindingNames,

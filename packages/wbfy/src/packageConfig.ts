@@ -3,6 +3,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import fg from 'fast-glob';
+import type { ParseError } from 'jsonc-parser';
+import { parse as parseJsonc } from 'jsonc-parser';
 import semver from 'semver';
 import { simpleGit } from 'simple-git';
 import { parse as parseToml } from 'smol-toml';
@@ -390,8 +392,13 @@ function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
     for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
       const filePath = path.resolve(dirPath, fileName);
       if (!fs.existsSync(filePath)) continue;
-      const config = JSON.parse(stripJsoncSyntax(fs.readFileSync(filePath, 'utf8'))) as WranglerConfigSecretsSubtree;
-      return declaresRequiredSecretsAnywhere(config);
+      // jsonc-parser is fault tolerant and would return a partial object for malformed input,
+      // which cannot prove a declaration; reject any parse error.
+      const parseErrors: ParseError[] = [];
+      const config = parseJsonc(fs.readFileSync(filePath, 'utf8'), parseErrors, { allowTrailingComma: true }) as
+        | WranglerConfigSecretsSubtree
+        | undefined;
+      return parseErrors.length === 0 && !!config && declaresRequiredSecretsAnywhere(config);
     }
     const tomlPath = path.resolve(dirPath, 'wrangler.toml');
     if (fs.existsSync(tomlPath)) {
@@ -409,55 +416,6 @@ function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
 function declaresRequiredSecretsAnywhere(config: WranglerConfigSecretsSubtree): boolean {
   if ((config.secrets?.required?.length ?? 0) > 0) return true;
   return Object.values(config.env ?? {}).some((envConfig) => (envConfig?.secrets?.required?.length ?? 0) > 0);
-}
-
-/** Remove the comments and trailing commas of JSONC (string-aware), enough for wrangler config files. */
-function stripJsoncSyntax(text: string): string {
-  let withoutComments = '';
-  for (let i = 0; i < text.length; i++) {
-    const character = text[i];
-    if (character === '"') {
-      const stringLiteral = copyJsonString(text, i);
-      withoutComments += stringLiteral;
-      i += stringLiteral.length - 1;
-    } else if (character === '/' && text[i + 1] === '/') {
-      while (i < text.length && text[i] !== '\n') i++;
-      withoutComments += '\n';
-    } else if (character === '/' && text[i + 1] === '*') {
-      i += 2;
-      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++;
-      i++;
-    } else {
-      withoutComments += character;
-    }
-  }
-  // A second pass so a comma stays detected as trailing across a now-removed comment (e.g. `, // note\n}`).
-  let result = '';
-  for (let i = 0; i < withoutComments.length; i++) {
-    const character = withoutComments[i];
-    if (character === '"') {
-      const stringLiteral = copyJsonString(withoutComments, i);
-      result += stringLiteral;
-      i += stringLiteral.length - 1;
-    } else if (character === ',') {
-      let next = i + 1;
-      while (next < withoutComments.length && /\s/u.test(withoutComments[next] as string)) next++;
-      if (withoutComments[next] !== '}' && withoutComments[next] !== ']') result += character;
-    } else {
-      result += character;
-    }
-  }
-  return result;
-}
-
-/** Copy the JSON string literal starting at the opening double quote, honoring backslash escapes. */
-function copyJsonString(text: string, start: number): string {
-  let end = start;
-  while (++end < text.length) {
-    if (text[end] === '\\') end++;
-    else if (text[end] === '"') break;
-  }
-  return text.slice(start, Math.min(end + 1, text.length));
 }
 
 /**
