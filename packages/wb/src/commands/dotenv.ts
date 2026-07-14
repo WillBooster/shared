@@ -2,11 +2,11 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 
 import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
-
-import { prependNodeModulesBinToPath } from '../utils/binPath.js';
 import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
+
+import { prependNodeModulesBinToPath } from '../utils/binPath.js';
 
 interface ParsedDotenvArgs {
   command: string[];

@@ -426,11 +426,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     ];
     console.info(chalk.cyan(`Running: wrangler ${deployArgs.join(' ')} <temporary secrets file>`));
     if (!argv.dryRun) {
-      // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
-      // so the direct (non-shell) wrangler spawn below resolves the local binary.
-      if (!project.binExists) {
-        console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
-      }
+      prepareLocalBinPath(project);
       const deployEnv = { ...project.env };
       delete deployEnv.CLOUDFLARE_ENV;
       // 0o700 directory + 0o600 file: readable only by the deploying user, like the dotenv
@@ -539,8 +535,11 @@ export function selectWorkerSecrets(
 ): { missingKeys: string[]; secrets: Record<string, string> } {
   const configKeys = new Set(configVarKeys);
   const secrets: Record<string, string> = {};
+  // No runtime undefined check on `value`: envVars is built exclusively from dotenv-parsed
+  // strings, and every caller-side merge either coalesces with `?? ''` or guards against
+  // undefined before assigning, so the Record<string, string> type holds at runtime too.
   for (const [key, value] of Object.entries(envVars)) {
-    if (value === undefined || configKeys.has(key) || isNonSecretKey(key)) continue;
+    if (configKeys.has(key) || isNonSecretKey(key)) continue;
     if (key === 'DATABASE_URL' && value.startsWith('file:')) continue;
     secrets[key] = value;
   }
@@ -565,11 +564,7 @@ async function listRemoteWorkerSecretNames(
   resolvedConfig: ResolvedWranglerConfig,
   envName: string
 ): Promise<string[] | undefined> {
-  // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
-  // so the direct (non-shell) wrangler spawn below resolves the local binary.
-  if (!project.binExists) {
-    console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
-  }
+  prepareLocalBinPath(project);
   const listArgs = [
     'secret',
     'list',
@@ -640,4 +635,14 @@ export function selectInheritedRemoteSecretNames(
 ): string[] {
   const replacedNames = new Set([...effectiveVarKeys, ...bindingNames]);
   return remoteSecretNames.filter((name) => !Object.hasOwn(outgoingSecrets, name) && !replacedNames.has(name));
+}
+
+/**
+ * Reading binExists prepends node_modules/.bin directories to project.env.PATH,
+ * so the direct (non-shell) wrangler spawns resolve the local binary.
+ */
+function prepareLocalBinPath(project: Project): void {
+  if (!project.binExists) {
+    console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
+  }
 }
