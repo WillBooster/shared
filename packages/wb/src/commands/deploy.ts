@@ -24,9 +24,19 @@ import { readEnvExampleKeys } from './genDevVars.js';
  */
 const NON_SECRET_KEYS = new Set([
   'CI',
+  // Wrangler system/authentication variables (https://developers.cloudflare.com/workers/wrangler/system-environment-variables/),
+  // including legacy aliases; app-specific names such as CLOUDFLARE_R2_ACCESS_KEY_ID stay eligible.
+  'CF_API_EMAIL',
+  'CF_API_KEY',
+  'CF_API_TOKEN',
+  'CLOUDFLARE_ACCESS_CLIENT_ID',
+  'CLOUDFLARE_ACCESS_CLIENT_SECRET',
   'CLOUDFLARE_ACCOUNT_ID',
+  'CLOUDFLARE_API_BASE_URL',
+  'CLOUDFLARE_API_KEY',
   'CLOUDFLARE_API_TOKEN',
   'CLOUDFLARE_D1_DATABASE_ID',
+  'CLOUDFLARE_EMAIL',
   'CLOUDFLARE_ENV',
   'MISE_ENV',
   'NEXT_PUBLIC_WB_ENV',
@@ -36,6 +46,12 @@ const NON_SECRET_KEYS = new Set([
   'WB_ENV',
   'WB_VERSION',
 ]);
+
+const NON_SECRET_KEY_PREFIXES = ['WRANGLER_', 'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_'];
+
+function isNonSecretKey(key: string): boolean {
+  return NON_SECRET_KEYS.has(key) || NON_SECRET_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
 
 const builder = {} as const;
 
@@ -326,13 +342,13 @@ export function selectWorkerSecrets(
   configVarKeys: string[],
   requiredKeys: string[]
 ): { missingKeys: string[]; secrets: Record<string, string> } {
-  const excludedKeys = new Set([...NON_SECRET_KEYS, ...configVarKeys]);
+  const configKeys = new Set(configVarKeys);
   const secrets: Record<string, string> = {};
   for (const [key, value] of Object.entries(envVars)) {
-    if (value === undefined || excludedKeys.has(key)) continue;
+    if (value === undefined || configKeys.has(key) || isNonSecretKey(key)) continue;
     if (key === 'DATABASE_URL' && value.startsWith('file:')) continue;
     secrets[key] = value;
   }
-  const missingKeys = requiredKeys.filter((key) => !excludedKeys.has(key) && !envVars[key]);
+  const missingKeys = requiredKeys.filter((key) => !configKeys.has(key) && !isNonSecretKey(key) && !envVars[key]);
   return { missingKeys, secrets };
 }

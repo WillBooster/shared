@@ -83,6 +83,8 @@ interface RawWranglerConfig {
   account_id?: string;
   vars?: Record<string, unknown>;
   d1_databases?: WranglerD1Database[];
+  assets?: unknown;
+  logfwdr?: unknown;
   env?: Record<string, RawWranglerConfig>;
 }
 
@@ -121,9 +123,12 @@ export function resolveWranglerConfigForEnv(
         workerName: envConfig.name ?? (config.name ? `${config.name}-${envName}` : undefined),
         accountId: envConfig.account_id ?? config.account_id,
         varKeys: Object.keys(envConfig.vars ?? {}),
-        // Union with the top level: some binding types (e.g. assets) are inherited by named
-        // environments; over-excluding a same-named secret is safer than shadowing a binding.
-        bindingNames: [...collectBindingNames(config, collectBindingNames(envConfig))],
+        // Most bindings are non-inheritable and must be redeclared per environment, so only the
+        // environment's own names count — plus the genuinely inherited/top-level-only shapes
+        // (assets, logfwdr), whose top-level names would still shadow a same-named secret.
+        bindingNames: [
+          ...collectBindingNames({ assets: config.assets, logfwdr: config.logfwdr }, collectBindingNames(envConfig)),
+        ],
         d1Databases: envConfig.d1_databases ?? [],
         usesEnvSection: true,
       }

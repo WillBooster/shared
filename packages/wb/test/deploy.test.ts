@@ -67,6 +67,23 @@ describe('resolveWranglerConfigForEnv', () => {
     });
   });
 
+  it('counts only inherited top-level binding shapes for named environments', async () => {
+    await fs.writeFile(
+      path.join(dirPath, 'wrangler.jsonc'),
+      `{
+        "name": "my-app",
+        "assets": { "directory": "dist/client", "binding": "ASSETS" },
+        "d1_databases": [{ "binding": "API_TOKEN", "database_id": "prod-id" }],
+        "env": { "staging": {} },
+      }`
+    );
+
+    // D1/KV/... are non-inheritable, so a top-level binding name must not suppress a
+    // same-named staging secret; assets IS top-level-only and applies to every environment.
+    const staging = resolveWranglerConfigForEnv({ dirPath }, 'staging');
+    expect(staging?.bindingNames.toSorted()).toEqual(['ASSETS']);
+  });
+
   it('prefers a named env.production section over the top level', async () => {
     await fs.writeFile(
       path.join(dirPath, 'wrangler.jsonc'),
@@ -152,6 +169,19 @@ describe('selectWorkerSecrets', () => {
       []
     );
     expect(secrets).toEqual({ AUTH_SECRET: 'auth', OPTIONAL_FEATURE_TOKEN: '' });
+    // Wrangler system/authentication variables never become Worker secrets.
+    expect(
+      selectWorkerSecrets(
+        {
+          CLOUDFLARE_API_KEY: 'k',
+          CLOUDFLARE_ACCESS_CLIENT_SECRET: 's',
+          WRANGLER_R2_SQL_AUTH_TOKEN: 't',
+          CLOUDFLARE_R2_ACCESS_KEY_ID: 'app-key',
+        },
+        [],
+        []
+      ).secrets
+    ).toEqual({ CLOUDFLARE_R2_ACCESS_KEY_ID: 'app-key' });
     expect(missingKeys).toEqual([]);
   });
 
