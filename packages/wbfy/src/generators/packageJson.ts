@@ -10,7 +10,7 @@ import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
-import type { PackageConfig } from '../packageConfig.js';
+import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
@@ -193,21 +193,43 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
 }
 
 function updatePostinstallScript(scripts: PackageJson.Scripts, config: PackageConfig): void {
+  // Read before the managed script overwrites it, so a project-specific invocation (e.g. `wrangler types
+  // --strict-vars=false`, whose flag changes the generated declarations) survives instead of being reset to the default.
+  const customWranglerTypes = findCustomWranglerTypesCommand(scripts.postinstall);
   if (scripts['gen-code']) {
-    scripts.postinstall = appendWranglerTypes('wb gen-code', config);
+    scripts.postinstall = 'wb gen-code';
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
   }
+  if (!generatesWorkerTypes(config) || scripts.postinstall?.includes('wrangler types')) return;
+
+  const command = customWranglerTypes ?? wranglerTypesCommand(config);
+  scripts.postinstall = scripts.postinstall ? `${scripts.postinstall} && ${command}` : command;
+}
+
+/** Returns the project's own `wrangler types` invocation, but only when it passes flags worth preserving. */
+function findCustomWranglerTypesCommand(postinstall: string | undefined): string | undefined {
+  return postinstall
+    ?.split('&&')
+    .map((segment) => segment.trim())
+    .find((segment) => /wrangler types\s+\S/u.test(segment));
 }
 
 /**
  * Cloudflare Workers projects rely on `wrangler types` to (re)generate the gitignored
  * worker-configuration.d.ts. Because `wb gen-code` does not produce it, append the command to
  * code-generation scripts; otherwise a fresh checkout (e.g. CI) would fail type checking.
+ *
+ * Gated on generatesWorkerTypes, the same predicate that gitignores and untracks the file, so that wbfy never ignores
+ * a worker-configuration.d.ts it does not also regenerate.
  */
 function appendWranglerTypes(script: string, config: PackageConfig): string {
-  if (!config.isCloudflare) return script;
-  return `${script} && ${config.isBun ? 'bunx ' : ''}wrangler types`;
+  if (!generatesWorkerTypes(config)) return script;
+  return `${script} && ${wranglerTypesCommand(config)}`;
+}
+
+function wranglerTypesCommand(config: PackageConfig): string {
+  return `${config.isBun ? 'bunx ' : ''}wrangler types`;
 }
 
 function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {

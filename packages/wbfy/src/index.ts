@@ -11,6 +11,7 @@ import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
 import { fixWbDbCommand } from './fixers/wbDbCommand.js';
+import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import { generateBunfigToml } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
@@ -43,7 +44,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { logger } from './logger.js';
 import { options } from './options.js';
-import { getPackageConfig } from './packageConfig.js';
+import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
@@ -177,6 +178,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
         promises.push(fixNextConfigJson(config));
       }
       await generateGitignore(config, rootConfig);
+      if (generatesWorkerTypes(config)) {
+        await untrackWorkerTypes(config);
+      }
       await promisePool.promiseAll();
       if (!config.isRoot && !config.doesContainPackageJson) {
         continue;

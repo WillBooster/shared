@@ -22,6 +22,7 @@ export interface PackageConfig {
   repoName?: string;
   isWillBoosterRepo: boolean;
   isCloudflare: boolean;
+  doesContainWranglerConfig: boolean;
   isRailway: boolean;
   isBun: boolean;
   isEsmPackage: boolean;
@@ -194,6 +195,7 @@ export async function getPackageConfig(
         repository?.startsWith('github:WillBooster/') || repository?.startsWith('github:WillBoosterLab/')
       ),
       isCloudflare: detectCloudflare(dirPath, packageJson),
+      doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
       isBun:
         rootConfig?.isBun ||
@@ -297,17 +299,37 @@ function hasVersionSettingsFile(dirPath: string): boolean {
   );
 }
 
+/**
+ * Tells whether wbfy manages worker-configuration.d.ts for the package. The file is gitignored and untracked on the
+ * assumption that `wrangler types` regenerates it on install, so all three steps must agree: the package has to own a
+ * wrangler config (`wrangler types` exits non-zero without one) and to depend on wrangler (a package deploying via a
+ * CI action cannot resolve the command). Otherwise wbfy would ignore and delete a file that nothing recreates.
+ */
+export function generatesWorkerTypes(config: PackageConfig): boolean {
+  const packageJson = config.packageJson;
+  return (
+    config.doesContainWranglerConfig &&
+    Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler'])
+  );
+}
+
+/**
+ * Tells whether the directory owns a Worker, unlike the isCloudflare heuristic, which also matches a package that
+ * merely mentions wrangler in a script or workflow (e.g. the root of a monorepo whose Worker lives in a sub-package).
+ */
+export function detectWranglerConfig(dirPath: string): boolean {
+  return ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
+    fs.existsSync(path.resolve(dirPath, fileName))
+  );
+}
+
 function detectCloudflare(dirPath: string, packageJson: PackageJson): boolean {
   const scripts = packageJson.scripts;
   if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('wrangler'))) {
     return true;
   }
 
-  if (
-    ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
-      fs.existsSync(path.resolve(dirPath, fileName))
-    )
-  ) {
+  if (detectWranglerConfig(dirPath)) {
     return true;
   }
 

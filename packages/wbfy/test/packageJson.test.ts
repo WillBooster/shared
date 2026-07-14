@@ -177,9 +177,16 @@ test('uses stable age-gated versions for generated dependencies when skipping in
 });
 
 test('appends wrangler types to gen-code and postinstall for Cloudflare projects', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
   const packageJson = await generatePackageJsonFrom(
-    { scripts: {} },
-    { depending: genI18nTsDepending, isBun: true, isCloudflare: true },
+    { scripts: {}, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
     { createI18nDir: true }
   );
 
@@ -187,6 +194,48 @@ test('appends wrangler types to gen-code and postinstall for Cloudflare projects
     'gen-code': 'bun wb gen-code && bunx wrangler types',
     postinstall: 'wb gen-code && bunx wrangler types',
   });
+});
+
+test('preserves a project-specific wrangler types invocation with flags', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { postinstall: 'wb gen-code && wrangler types --strict-vars=false' }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false');
+});
+
+// wbfy gitignores and untracks worker-configuration.d.ts only where postinstall regenerates it, so a package that
+// cannot run wrangler must not gain the command either.
+test('omits wrangler types when the package does not depend on wrangler', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: {} },
+    { depending: genI18nTsDepending, isBun: true, isCloudflare: true, doesContainWranglerConfig: true },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// `wrangler types` exits non-zero without a wrangler config, which would break `install` for the whole repository.
+test('omits wrangler types when the package owns no wrangler config', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    // A monorepo root merely referring to the Worker of a sub-package makes isCloudflare true.
+    { scripts: { 'db-reset': 'rm -rf packages/web/.wrangler/state' } },
+    { depending: genI18nTsDepending, isBun: true, isCloudflare: true, doesContainWranglerConfig: false },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {
