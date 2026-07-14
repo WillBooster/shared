@@ -70,6 +70,8 @@ export interface ResolvedWranglerConfig {
   varKeys: string[];
   /** The environment's `vars` values (needed for Cloudflare's combined count/size limits). */
   vars: Record<string, unknown>;
+  /** Secrets declared as required via wrangler's `secrets.required` (validated at deploy time). */
+  requiredSecretNames: string[];
   /** Names of all non-var bindings (D1, KV, R2, Durable Objects, send_email, services, ...). */
   bindingNames: string[];
   d1Databases: WranglerD1Database[];
@@ -88,6 +90,7 @@ interface RawWranglerConfig {
   d1_databases?: WranglerD1Database[];
   assets?: unknown;
   logfwdr?: unknown;
+  secrets?: { required?: string[] };
   env?: Record<string, RawWranglerConfig>;
 }
 
@@ -138,6 +141,7 @@ export function resolveWranglerConfigForEnv(
           ),
         ],
         d1Databases: envConfig.d1_databases ?? [],
+        requiredSecretNames: envConfig.secrets?.required ?? config.secrets?.required ?? [],
         usesEnvSection: true,
       }
     : {
@@ -147,6 +151,7 @@ export function resolveWranglerConfigForEnv(
         vars: config.vars ?? {},
         bindingNames: [...collectBindingNames(config)],
         d1Databases: config.d1_databases ?? [],
+        requiredSecretNames: config.secrets?.required ?? [],
         usesEnvSection: false,
       };
 }

@@ -173,7 +173,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     for (const key of Object.keys(envVars)) {
       if (!dotenvKeys.has(key)) delete envVars[key];
     }
-    const requiredKeys = readEnvExampleKeys(project);
+    // Wrangler validates `secrets.required` only during the real upload — after migrations —
+    // so wb requires those keys upfront too (the wb flow keeps all secrets in dotenv values).
+    const requiredKeys = [...new Set([...readEnvExampleKeys(project), ...resolvedConfig.requiredSecretNames])];
     for (const key of requiredKeys) {
       envVars[key] ??= project.env[key] ?? '';
     }
