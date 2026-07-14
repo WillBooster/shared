@@ -545,16 +545,6 @@ export function selectWorkerSecrets(
 }
 
 /**
- * Reading binExists prepends node_modules/.bin directories to project.env.PATH,
- * so the direct (non-shell) wrangler spawns resolve the local binary.
- */
-function prepareLocalBinPath(project: Project): void {
-  if (!project.binExists) {
-    console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
-  }
-}
-
-/**
  * List the secret names currently attached to the deploy target Worker. Returns undefined when
  * the listing fails for any reason other than the Worker not existing yet (first deploy), so
  * the caller can degrade to the local-only limit checks instead of blocking a deploy that
@@ -642,4 +632,14 @@ export function selectInheritedRemoteSecretNames(
 ): string[] {
   const replacedNames = new Set([...effectiveVarKeys, ...bindingNames]);
   return remoteSecretNames.filter((name) => !Object.hasOwn(outgoingSecrets, name) && !replacedNames.has(name));
+}
+
+/**
+ * Reading binExists prepends node_modules/.bin directories to project.env.PATH,
+ * so the direct (non-shell) wrangler spawns resolve the local binary.
+ */
+function prepareLocalBinPath(project: Project): void {
+  if (!project.binExists) {
+    console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
+  }
 }
