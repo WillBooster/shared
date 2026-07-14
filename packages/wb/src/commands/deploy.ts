@@ -149,11 +149,23 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       );
       process.exit(1);
     }
-    if (!project.env.CLOUDFLARE_API_TOKEN && (isCI(project.env.CI) || drizzleD1Database)) {
-      // drizzle-kit's d1-http driver requires an API token even for local runs; a local
-      // wrangler OAuth login covers only the wrangler-native path.
-      console.error(chalk.red('CLOUDFLARE_API_TOKEN is required to deploy.'));
-      process.exit(1);
+    // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
+    if (!argv.dryRun) {
+      if (drizzleD1Database && !project.env.CLOUDFLARE_API_TOKEN) {
+        // drizzle-kit's d1-http driver requires this specific token even for local runs; a
+        // local wrangler OAuth login covers only the wrangler-native path.
+        console.error(chalk.red('CLOUDFLARE_API_TOKEN is required for remote drizzle-kit migrations.'));
+        process.exit(1);
+      }
+      const hasWranglerAuthentication =
+        !!project.env.CLOUDFLARE_API_TOKEN ||
+        !!project.env.CF_API_TOKEN ||
+        !!(project.env.CLOUDFLARE_API_KEY && project.env.CLOUDFLARE_EMAIL) ||
+        !!(project.env.CF_API_KEY && project.env.CF_EMAIL);
+      if (isCI(project.env.CI) && !hasWranglerAuthentication) {
+        console.error(chalk.red('Wrangler authentication (e.g. CLOUDFLARE_API_TOKEN) is required to deploy on CI.'));
+        process.exit(1);
+      }
     }
 
     // App-specific validation hook (e.g. secret pairs that must be both-set-or-both-empty).
