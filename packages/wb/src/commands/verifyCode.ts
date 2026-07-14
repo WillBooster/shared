@@ -220,8 +220,8 @@ function startVerifyFullReporter(project: Project): {
   let succeeded = false;
   let finished = false;
 
-  process.stdout.write = teeWrite(process.stdout.fd, logFile) as typeof process.stdout.write;
-  process.stderr.write = teeWrite(process.stderr.fd, logFile) as typeof process.stderr.write;
+  process.stdout.write = teeWrite(originalStdoutWrite, logFile) as typeof process.stdout.write;
+  process.stderr.write = teeWrite(originalStderrWrite, logFile) as typeof process.stderr.write;
   console.info(chalk.cyan(chalk.bold('Full log:'), logFilePath));
 
   const finish = (): void => {
@@ -259,7 +259,7 @@ function startVerifyFullReporter(project: Project): {
   };
 }
 
-function teeWrite(outputFile: number, logFile: number): typeof process.stdout.write {
+function teeWrite(originalWrite: typeof process.stdout.write, logFile: number): typeof process.stdout.write {
   return ((
     chunk: Uint8Array | string,
     encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
@@ -270,12 +270,10 @@ function teeWrite(outputFile: number, logFile: number): typeof process.stdout.wr
         ? Buffer.from(chunk, typeof encodingOrCallback === 'string' ? encodingOrCallback : 'utf8')
         : chunk;
     fs.writeSync(logFile, buffer);
-    fs.writeSync(outputFile, buffer);
-    if (typeof encodingOrCallback === 'function') {
-      encodingOrCallback();
-    }
-    callback?.();
-    return true;
+    // Write to the terminal via the original stream method: a synchronous fs.writeSync on the
+    // stdout/stderr fd throws EAGAIN on CI's non-blocking pipes when large output flushes at once,
+    // while the stream method buffers internally and handles backpressure.
+    return originalWrite(buffer, typeof encodingOrCallback === 'function' ? encodingOrCallback : callback);
   }) as typeof process.stdout.write;
 }
 

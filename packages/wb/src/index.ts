@@ -24,6 +24,7 @@ import { testOnCiCommand } from './commands/testOnCi.js';
 import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { verifyCodeCommand } from './commands/verifyCode.js';
+import { vinextCommand } from './commands/vinext.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
 await yargs(hideBin(process.argv))
@@ -58,6 +59,7 @@ await yargs(hideBin(process.argv))
   .command(treeKillCommand)
   .command(typeCheckCommand)
   .command(tcCommand)
+  .command(vinextCommand)
   .demandCommand()
   .strict()
   .version(getVersion())

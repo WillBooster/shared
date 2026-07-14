@@ -23,17 +23,45 @@ export function buildGenDevVarsCommand(argv: ScriptArgv, outputPath: string): st
  * so a non-Bun node binary is resolved explicitly.
  */
 export function buildWranglerDevCommand(project: Project, args: string): string {
-  const wranglerJsPath = project.usesBunPackageManager ? findWranglerJsPath(project) : undefined;
+  const wranglerJsPath = project.usesBunPackageManager
+    ? findNodeModulesJsPath(project, path.join('wrangler', 'bin', 'wrangler.js'))
+    : undefined;
   if (!wranglerJsPath) return `env -u CLOUDFLARE_ENV YARN wrangler ${args}`.trim();
 
   return `env -u CLOUDFLARE_ENV "${findRealNodePath()}" "${wranglerJsPath}" ${args}`.trim();
 }
 
-function findWranglerJsPath(project: Pick<Project, 'dirPath'>): string | undefined {
+/**
+ * Build a vinext CLI command. On Bun projects, vinext must run with the real Node.js runtime:
+ * vite 8 requires `module.registerHooks`, which Bun lacks, and `bun --bun` (or bunfig's `run.bun`)
+ * shims `node` in PATH to Bun, so a non-Bun node binary is resolved explicitly.
+ */
+export function buildVinextCommand(project: Project, args: string): string {
+  const vinextCliJsPath = project.usesBunPackageManager
+    ? findNodeModulesJsPath(project, path.join('vinext', 'dist', 'cli.js'))
+    : undefined;
+  if (!vinextCliJsPath) return `YARN vinext ${args}`.trim();
+
+  return `"${findRealNodePath()}" "${vinextCliJsPath}" ${args}`.trim();
+}
+
+/**
+ * Build a command applying wrangler-native D1 migrations to the local database, or undefined
+ * if the project has no D1 database or no wrangler-native migrations directory.
+ * CI=true suppresses wrangler's interactive confirmation prompt.
+ */
+export function buildD1MigrationsApplyCommand(project: Pick<Project, 'dirPath' | 'env'>): string | undefined {
+  const databaseName = getD1DatabaseName(project);
+  if (!databaseName || !findD1MigrationsDirPath(project)) return;
+
+  return `CI=true YARN wrangler d1 migrations apply ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}"`;
+}
+
+function findNodeModulesJsPath(project: Pick<Project, 'dirPath'>, relativeJsPath: string): string | undefined {
   let currentPath = project.dirPath;
   for (;;) {
-    const wranglerJsPath = path.join(currentPath, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
-    if (fs.existsSync(wranglerJsPath)) return wranglerJsPath;
+    const jsPath = path.join(currentPath, 'node_modules', relativeJsPath);
+    if (fs.existsSync(jsPath)) return jsPath;
 
     const parentPath = path.dirname(currentPath);
     if (parentPath === currentPath) return;
