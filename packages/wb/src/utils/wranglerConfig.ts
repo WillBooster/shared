@@ -128,10 +128,14 @@ export function resolveWranglerConfigForEnv(
         varKeys: Object.keys(envConfig.vars ?? {}),
         vars: envConfig.vars ?? {},
         // Most bindings are non-inheritable and must be redeclared per environment, so only the
-        // environment's own names count — plus the genuinely inherited/top-level-only shapes
-        // (assets, logfwdr), whose top-level names would still shadow a same-named secret.
+        // environment's own names count — plus the genuinely inherited shapes (assets, logfwdr),
+        // which wrangler resolves as whole fields: the environment's own field overrides the
+        // top level entirely, so only the effective value's names count.
         bindingNames: [
-          ...collectBindingNames({ assets: config.assets, logfwdr: config.logfwdr }, collectBindingNames(envConfig)),
+          ...collectBindingNames(
+            { assets: envConfig.assets ?? config.assets, logfwdr: envConfig.logfwdr ?? config.logfwdr },
+            collectBindingNames(envConfig)
+          ),
         ],
         d1Databases: envConfig.d1_databases ?? [],
         usesEnvSection: true,

@@ -55,7 +55,10 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     // provides them as workflow env instead of .env files (still an allowlist, so unrelated
     // process environment variables cannot leak).
     for (const key of [...readEnvExampleKeys(project), 'WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
-      if (!envVars[key] && project.env[key]) envVars[key] = project.env[key];
+      const effectiveValue = project.env[key];
+      if (envVars[key] || effectiveValue === undefined) continue;
+      if (envVars[key] === undefined && effectiveValue === '') explicitlyEmptiedKeys.add(key);
+      envVars[key] = effectiveValue;
     }
 
     const lines = Object.entries(envVars)

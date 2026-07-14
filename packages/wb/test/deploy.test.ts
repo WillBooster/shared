@@ -81,9 +81,25 @@ describe('resolveWranglerConfigForEnv', () => {
     );
 
     // D1/KV/... are non-inheritable, so a top-level binding name must not suppress a
-    // same-named staging secret; assets IS top-level-only and applies to every environment.
+    // same-named staging secret; assets IS inherited and applies to every environment.
     const staging = resolveWranglerConfigForEnv({ dirPath }, 'staging');
     expect(staging?.bindingNames.toSorted()).toEqual(['ASSETS']);
+  });
+
+  it('uses the environment-overridden assets binding instead of the top-level one', async () => {
+    await fs.writeFile(
+      path.join(dirPath, 'wrangler.jsonc'),
+      `{
+        "name": "my-app",
+        "assets": { "directory": "dist/client", "binding": "ASSETS" },
+        "env": { "staging": { "assets": { "directory": "dist/client", "binding": "STATIC" } } },
+      }`
+    );
+
+    // Inheritable fields are overridden as whole fields, so a staging override removes the
+    // top-level name from the effective binding set.
+    const staging = resolveWranglerConfigForEnv({ dirPath }, 'staging');
+    expect(staging?.bindingNames.toSorted()).toEqual(['STATIC']);
   });
 
   it('prefers a named env.production section over the top level', async () => {
