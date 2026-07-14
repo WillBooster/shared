@@ -162,7 +162,7 @@ const newContent = (existingContent: string | undefined): string => {
   return `env = false
 telemetry = false
 
-[install]
+${extractRawTestSections(existingContent)}[install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 linker = "hoisted"
 minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 5 days
@@ -171,6 +171,27 @@ ${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).joi
 ]
 `;
 };
+
+/**
+ * Preserve the project's `[test]` sections (e.g. preload scripts swapping a Cloudflare D1 client
+ * for a local SQLite one) verbatim, comments included; wbfy manages only the other sections.
+ */
+export function extractRawTestSections(content: string | undefined): string {
+  if (!content) return '';
+
+  const preservedLines: string[] = [];
+  let inTestSection = false;
+  for (const line of content.split('\n')) {
+    const sectionMatch = /^\s*\[([^\]]+)\]/.exec(line);
+    if (sectionMatch) {
+      inTestSection = sectionMatch[1] === 'test' || (sectionMatch[1] as string).startsWith('test.');
+    }
+    if (inTestSection && line.trim()) {
+      preservedLines.push(line);
+    }
+  }
+  return preservedLines.length > 0 ? `${preservedLines.join('\n')}\n\n` : '';
+}
 
 function parseBunfigToml(content: string | undefined): BunfigToml | undefined {
   if (!content) {
