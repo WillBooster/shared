@@ -176,8 +176,13 @@ describe('selectWorkerSecrets', () => {
     expect(
       selectWorkerSecrets(
         {
+          CF_ACCOUNT_ID: 'a',
           CLOUDFLARE_API_KEY: 'k',
           CLOUDFLARE_ACCESS_CLIENT_SECRET: 's',
+          CLOUDFLARE_AUTH_USE_KEYRING: 'true',
+          CLOUDFLARE_CF_FETCH_CA: 'ca',
+          DOCKER_HOST: 'unix:///var/run/docker.sock',
+          MINIFLARE_CACHE_DIR: '/tmp/mf',
           WRANGLER_R2_SQL_AUTH_TOKEN: 't',
           CLOUDFLARE_R2_ACCESS_KEY_ID: 'app-key',
         },

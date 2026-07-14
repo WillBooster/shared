@@ -26,19 +26,27 @@ const NON_SECRET_KEYS = new Set([
   'CI',
   // Wrangler system/authentication variables (https://developers.cloudflare.com/workers/wrangler/system-environment-variables/),
   // including legacy aliases; app-specific names such as CLOUDFLARE_R2_ACCESS_KEY_ID stay eligible.
+  'CF_ACCOUNT_ID',
+  'CF_API_BASE_URL',
   'CF_API_EMAIL',
   'CF_API_KEY',
   'CF_API_TOKEN',
+  'CF_EMAIL',
   'CLOUDFLARE_ACCESS_CLIENT_ID',
   'CLOUDFLARE_ACCESS_CLIENT_SECRET',
   'CLOUDFLARE_ACCOUNT_ID',
   'CLOUDFLARE_API_BASE_URL',
   'CLOUDFLARE_API_KEY',
   'CLOUDFLARE_API_TOKEN',
+  'CLOUDFLARE_AUTH_USE_KEYRING',
   'CLOUDFLARE_D1_DATABASE_ID',
   'CLOUDFLARE_EMAIL',
   'CLOUDFLARE_ENV',
+  'DOCKER_HOST',
+  'FORCE_COLOR',
+  'MINIFLARE_CACHE_DIR',
   'MISE_ENV',
+  'NO_COLOR',
   'NEXT_PUBLIC_WB_ENV',
   'NEXT_PUBLIC_WB_VERSION',
   'NODE_ENV',
@@ -47,7 +55,7 @@ const NON_SECRET_KEYS = new Set([
   'WB_VERSION',
 ]);
 
-const NON_SECRET_KEY_PREFIXES = ['WRANGLER_', 'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_'];
+const NON_SECRET_KEY_PREFIXES = ['WRANGLER_', 'CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_', 'CLOUDFLARE_CF_FETCH_'];
 
 function isNonSecretKey(key: string): boolean {
   return NON_SECRET_KEYS.has(key) || NON_SECRET_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
@@ -202,8 +210,11 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       );
       process.exit(1);
     }
-    const varEntries = Object.entries(resolvedConfig.vars);
-    if (project.env.WB_VERSION) varEntries.push(['WB_VERSION', project.env.WB_VERSION]);
+    // The CLI-provided WB_VERSION overlays a configured var of the same name on deploy,
+    // so only the effective value participates in the limit checks.
+    const effectiveVars = new Map(Object.entries<unknown>(resolvedConfig.vars));
+    if (project.env.WB_VERSION) effectiveVars.set('WB_VERSION', project.env.WB_VERSION);
+    const varEntries = [...effectiveVars];
     const combinedCount = new Set([...secretKeys, ...varEntries.map(([key]) => key)]).size;
     if (combinedCount > 128) {
       console.error(
