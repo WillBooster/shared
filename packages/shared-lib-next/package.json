@@ -48,7 +48,7 @@
     "@types/node": "25.6.0",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "13.26.2",
+    "@willbooster/wb": "13.27.0",
     "build-ts": "17.1.34",
     "next": "16.2.6",
     "oxfmt": "0.58.0",
