@@ -209,8 +209,9 @@ describe('collectBindingNames', () => {
       send_email: [{ name: 'EMAIL' }],
       ratelimits: [{ name: 'LIMITER', namespace_id: '1', simple: { limit: 1, period: 60 } }],
       text_blobs: { MESSAGE: 'message.txt' },
-      // JSON-valued vars are data, not bindings; a nested "binding" field must not count.
+      // JSON-valued vars and unsafe metadata are data, not bindings.
       vars: { SETTINGS: { binding: 'AUTH_SECRET' } },
+      unsafe: { metadata: { custom: { binding: 'OTHER_SECRET' } } },
       env: { staging: { kv_namespaces: [{ binding: 'STAGING_ONLY' }] } },
     });
     expect([...names].toSorted()).toEqual([

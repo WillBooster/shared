@@ -53,9 +53,10 @@ export function collectBindingNames(value: unknown, names = new Set<string>(), p
       names.add(child);
     } else if (RECORD_KEYED_BINDING_KEYS.has(key) && child && typeof child === 'object' && !Array.isArray(child)) {
       for (const bindingName of Object.keys(child)) names.add(bindingName);
-    } else if (key !== 'env' && key !== 'vars') {
-      // Nested `env` subtrees belong to other environments, and `vars` values may be arbitrary
-      // JSON whose properties (e.g. a "binding" field) are data, not Worker bindings.
+    } else if (key !== 'env' && key !== 'vars' && key !== 'metadata' && key !== 'options') {
+      // Nested `env` subtrees belong to other environments; `vars` values, `unsafe.metadata`,
+      // and `unsafe.bindings[].dev.options` are arbitrary JSON whose properties (e.g. a
+      // "binding" field) are data, not Worker bindings.
       collectBindingNames(child, names, key);
     }
   }

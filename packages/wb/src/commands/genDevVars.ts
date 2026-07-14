@@ -41,23 +41,25 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
     // Explicitly exported environment variables must win over dotenv values for file-defined
     // keys (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve
-    // the stale file value.
+    // the stale file value. An export that empties a non-empty file value is deliberate and
+    // must survive the empty-value filter below (unlike `KEY=` placeholders in .env files,
+    // which stay omitted so they cannot override wrangler `vars` with empty strings).
+    const explicitlyEmptiedKeys = new Set<string>();
     for (const key of Object.keys(envVars)) {
       const effectiveValue = project.env[key];
-      if (effectiveValue !== undefined) envVars[key] = effectiveValue;
+      if (effectiveValue === undefined) continue;
+      if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
+      envVars[key] = effectiveValue;
     }
     // Supplement with process environment values for the keys named in .env.example: CI often
     // provides them as workflow env instead of .env files (still an allowlist, so unrelated
     // process environment variables cannot leak).
-    for (const key of readEnvExampleKeys(project)) {
-      envVars[key] ||= project.env[key] || '';
-    }
-    for (const key of ['WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
-      envVars[key] ||= project.env[key] || '';
+    for (const key of [...readEnvExampleKeys(project), 'WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
+      if (!envVars[key] && project.env[key]) envVars[key] = project.env[key];
     }
 
     const lines = Object.entries(envVars)
-      .filter(([, value]) => value !== '')
+      .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))
       .toSorted(([a], [b]) => a.localeCompare(b))
       .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
     const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
