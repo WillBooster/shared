@@ -1,0 +1,184 @@
+import type { PackageJson } from 'type-fest';
+
+/**
+ * How a `wrangler types` invocation relates to the default ./worker-configuration.d.ts that wbfy manages:
+ * - `reusableGenerator`: regenerates the managed file from the inputs the management gate validated, so it can serve
+ *   as the shared generator command.
+ * - `defaultOutputConflict`: writes the managed file from inputs the gate cannot validate (`--config`, `--env`,
+ *   `--env-file`), so a managed fallback generator would fight it over the same file — wbfy must not manage the
+ *   package at all.
+ * - `harmless`: generates nothing (`--check`, `--help`, `--version`) or writes another file (`--cwd`, a custom
+ *   positional output path), so it can coexist with the managed generator.
+ */
+export type WranglerTypesInvocationKind = 'reusableGenerator' | 'defaultOutputConflict' | 'harmless';
+
+const scriptRunnerCommands = new Set(['yarn', 'bun', 'npm', 'pnpm', 'bunx', 'npx']);
+const scriptWrapperRunnerCommands = new Set(['yarn', 'bun', 'npm', 'pnpm']);
+// Flags of `wrangler types` that consume the following token as their value; unknown separate-value flags make
+// their value look positional, which safely disqualifies the invocation instead of misreading its output path.
+const wranglerTypesValueFlags = new Set(['--env-interface']);
+
+/**
+ * Whether any script runs a `wrangler types` invocation that writes the managed default file from inputs the
+ * management gate cannot validate (e.g. `wrangler types -c wrangler.jsonc -c ../bound-worker/wrangler.jsonc` for
+ * RPC types). A managed fallback generator would overwrite that richer output, so such packages stay unmanaged.
+ */
+export function hasConflictingWranglerTypesInvocation(scripts: PackageJson.Scripts): boolean {
+  return Object.values(scripts)
+    .filter((script) => typeof script === 'string')
+    .some((script) =>
+      contextFreeCommandSegments(script).some((segment) => {
+        const invocationArgs = parseWranglerTypesInvocation(segment);
+        return !!invocationArgs && classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
+      })
+    );
+}
+
+/**
+ * Whether the package's install pipeline regenerates the managed worker-configuration.d.ts, directly or through
+ * wrapper scripts. Untracking the file is safe only when this holds for the final generated scripts.
+ */
+export function postinstallGeneratesWorkerTypes(scripts: PackageJson.Scripts): boolean {
+  return reachesWranglerTypes(
+    scripts.postinstall,
+    scripts,
+    (invocationArgs) => classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
+  );
+}
+
+/**
+ * Whether the script reaches a `wrangler types` invocation satisfying the predicate, directly or through the
+ * package scripts it invokes (e.g. `"postinstall": "yarn gen:types"`, with runner flags and environment
+ * assignments allowed around the script name).
+ */
+export function reachesWranglerTypes(
+  script: string | undefined,
+  scripts: PackageJson.Scripts,
+  predicate: (invocationArgs: string[]) => boolean,
+  visitedScriptNames = new Set<string>()
+): boolean {
+  if (!script) return false;
+  for (const segment of contextFreeCommandSegments(script)) {
+    const invocationArgs = parseWranglerTypesInvocation(segment);
+    if (invocationArgs && predicate(invocationArgs)) return true;
+    const tokens = segment.split(/\s+/u);
+    let index = skipEnvironmentAssignments(tokens);
+    let invokedScriptName: string | undefined;
+    if (scriptWrapperRunnerCommands.has(tokens[index] ?? '')) {
+      index++;
+      index = skipRunnerFlags(tokens, index);
+      if (['run', 'run-script'].includes(tokens[index] ?? '')) {
+        index++;
+        index = skipRunnerFlags(tokens, index);
+      }
+      invokedScriptName = tokens[index];
+    }
+    if (!invokedScriptName || visitedScriptNames.has(invokedScriptName)) continue;
+    visitedScriptNames.add(invokedScriptName);
+    const invokedScript = scripts[invokedScriptName];
+    if (
+      typeof invokedScript === 'string' &&
+      reachesWranglerTypes(invokedScript, scripts, predicate, visitedScriptNames)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The command segments of a script that run in the package directory: segments after a `cd` execute somewhere
+ * else, so a `wrangler types` there generates another package's file, not this one's, and must be invisible to
+ * every decision about the managed file.
+ */
+export function contextFreeCommandSegments(script: string): string[] {
+  const segments: string[] = [];
+  for (const segment of script.split('&&').map((part) => part.trim())) {
+    const tokens = segment.split(/\s+/u);
+    if (tokens[skipEnvironmentAssignments(tokens)] === 'cd') break;
+    segments.push(segment);
+  }
+  return segments;
+}
+
+/**
+ * Parse a command segment as a `wrangler types` invocation and return its arguments (with shell redirections
+ * stripped), or undefined when the segment runs something else. Requiring command position (after environment
+ * assignments and a runner prefix with its flags, e.g. `npx --yes`) keeps shell text that merely mentions the
+ * words (e.g. `echo wrangler types`) from being treated as a generator.
+ */
+export function parseWranglerTypesInvocation(segment: string): string[] | undefined {
+  const tokens = segment.trim().split(/\s+/u);
+  let index = skipEnvironmentAssignments(tokens);
+  if (scriptRunnerCommands.has(tokens[index] ?? '')) {
+    index++;
+    index = skipRunnerFlags(tokens, index);
+    if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[index] ?? '')) {
+      index++;
+      index = skipRunnerFlags(tokens, index);
+    }
+  }
+  if (tokens[index] !== 'wrangler' || tokens[index + 1] !== 'types') return;
+
+  const invocationArgs: string[] = [];
+  for (let argIndex = index + 2; argIndex < tokens.length; argIndex++) {
+    const token = tokens[argIndex] ?? '';
+    // Shell redirections (`> /dev/null`, `2>&1`, `>>log`) are not wrangler arguments; a bare operator also
+    // consumes the following token as its target.
+    const redirectionOperator = /^(?:\d+|&)?(?:>>?|<)/u.exec(token)?.[0];
+    if (redirectionOperator) {
+      if (redirectionOperator === token) argIndex++;
+      continue;
+    }
+    invocationArgs.push(token);
+  }
+  return invocationArgs;
+}
+
+/** Classify what the invocation writes; see WranglerTypesInvocationKind. */
+export function classifyWranglerTypesInvocation(invocationArgs: string[]): WranglerTypesInvocationKind {
+  let writesElsewhere = false;
+  let changesInputs = false;
+  for (let index = 0; index < invocationArgs.length; index++) {
+    const arg = invocationArgs[index] ?? '';
+    // Non-generating modes write no file at all, whatever other flags say.
+    if (/^(?:--check|--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return 'harmless';
+    if (/^(?:--config|-c|--env|-e|--env-file)(?:=.*)?$/u.test(arg)) {
+      changesInputs = true;
+      if (!arg.includes('=')) index++;
+      continue;
+    }
+    if (/^--cwd(?:=.*)?$/u.test(arg)) {
+      writesElsewhere = true;
+      if (!arg.includes('=')) index++;
+      continue;
+    }
+    if (wranglerTypesValueFlags.has(arg)) {
+      index++;
+      continue;
+    }
+    if (arg.startsWith('-')) {
+      // Boolean options accept a space-separated literal (e.g. `--strict-vars false`), which must not be
+      // misread as a positional output path.
+      if (invocationArgs[index + 1] === 'true' || invocationArgs[index + 1] === 'false') index++;
+      continue;
+    }
+    let outputPath = arg.replaceAll(/^["']|["']$/gu, '');
+    while (outputPath.startsWith('./')) outputPath = outputPath.slice(2);
+    if (outputPath !== 'worker-configuration.d.ts') writesElsewhere = true;
+  }
+  if (writesElsewhere) return 'harmless';
+  if (changesInputs) return 'defaultOutputConflict';
+  return 'reusableGenerator';
+}
+
+function skipEnvironmentAssignments(tokens: string[]): number {
+  let index = 0;
+  while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
+  return index;
+}
+
+function skipRunnerFlags(tokens: string[], index: number): number {
+  while ((tokens[index] ?? '').startsWith('-')) index++;
+  return index;
+}

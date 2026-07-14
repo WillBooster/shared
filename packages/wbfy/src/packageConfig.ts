@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
+import { hasConflictingWranglerTypesInvocation } from './utils/wranglerTypesCommand.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -313,6 +314,10 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
   return (
     config.doesContainWranglerConfig &&
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
+    // A project invocation that writes the managed default file from inputs wbfy cannot validate (e.g.
+    // `wrangler types -c wrangler.jsonc -c ../bound-worker/wrangler.jsonc` for RPC types) would fight a managed
+    // fallback generator over the same file, so such packages stay unmanaged.
+    !hasConflictingWranglerTypesInvocation(packageJson?.scripts ?? {}) &&
     hasReproducibleWorkerTypesInference(config)
   );
 }
@@ -355,27 +360,35 @@ function declaresSupportedRequiredSecrets(config: PackageConfig): boolean {
   return wranglerConfigDeclaresRequiredSecrets(config.dirPath);
 }
 
+interface WranglerConfigSecretsSubtree {
+  secrets?: { required?: string[] };
+  env?: Record<string, { secrets?: { required?: string[] } } | undefined>;
+}
+
 function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
-  // Only a top-level declaration counts: plain `wrangler types` resolves the top level, so an env-only declaration
-  // leaves the default generation inferring from .dev.vars.
   try {
     for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
       const filePath = path.resolve(dirPath, fileName);
       if (!fs.existsSync(filePath)) continue;
-      const config = JSON.parse(stripJsoncSyntax(fs.readFileSync(filePath, 'utf8'))) as {
-        secrets?: { required?: string[] };
-      };
-      return (config.secrets?.required?.length ?? 0) > 0;
+      const config = JSON.parse(stripJsoncSyntax(fs.readFileSync(filePath, 'utf8'))) as WranglerConfigSecretsSubtree;
+      return declaresRequiredSecretsAnywhere(config);
     }
     const tomlPath = path.resolve(dirPath, 'wrangler.toml');
     if (fs.existsSync(tomlPath)) {
-      const config = parseToml(fs.readFileSync(tomlPath, 'utf8')) as { secrets?: { required?: string[] } };
-      return (config.secrets?.required?.length ?? 0) > 0;
+      const config = parseToml(fs.readFileSync(tomlPath, 'utf8')) as WranglerConfigSecretsSubtree;
+      return declaresRequiredSecretsAnywhere(config);
     }
   } catch {
     // A config that does not parse cannot prove a declaration.
   }
   return false;
+}
+
+// A declaration at any config level replaces the .dev.vars/.env inference: `wrangler types` aggregates
+// per-environment secrets into the generated type (Cloudflare changelog 2026-03-24).
+function declaresRequiredSecretsAnywhere(config: WranglerConfigSecretsSubtree): boolean {
+  if ((config.secrets?.required?.length ?? 0) > 0) return true;
+  return Object.values(config.env ?? {}).some((envConfig) => (envConfig?.secrets?.required?.length ?? 0) > 0);
 }
 
 /** Remove the comments and trailing commas of JSONC (string-aware), enough for wrangler config files. */

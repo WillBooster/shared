@@ -11,6 +11,13 @@ import type { PackageJson, SetRequired } from 'type-fest';
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
 import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
+import {
+  classifyWranglerTypesInvocation,
+  contextFreeCommandSegments,
+  parseWranglerTypesInvocation,
+  postinstallGeneratesWorkerTypes,
+  reachesWranglerTypes,
+} from '../utils/wranglerTypesCommand.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
@@ -198,10 +205,11 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
   // script): overwriting postinstall below would otherwise leave fresh checkouts without worker types.
   const preservedWranglerTypes =
     wranglerTypes ??
-    scripts.postinstall
-      ?.split('&&')
-      .map((segment) => segment.trim())
-      .find((segment) => reachesWranglerTypes(segment, scripts, () => true));
+    (scripts.postinstall === undefined
+      ? undefined
+      : contextFreeCommandSegments(scripts.postinstall).find((segment) =>
+          reachesWranglerTypes(segment, scripts, () => true)
+        ));
   if (scripts['gen-code']) {
     scripts.postinstall = appendWranglerTypes('wb gen-code', preservedWranglerTypes);
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
@@ -212,7 +220,7 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
   // Wrapper invocations (e.g. `"postinstall": "yarn gen:types"`) already generate it, so adding the resolved
   // command would generate the ~15k-line file twice per install. Only a generating default-output invocation
   // counts: `wrangler types --check` or a custom output path leaves the managed file absent on a fresh clone.
-  if (reachesWranglerTypes(scripts.postinstall, scripts, isGeneratingDefaultOutputWranglerTypes)) return;
+  if (postinstallGeneratesWorkerTypes(scripts)) return;
 
   // A reachable non-generating invocation (e.g. `wrangler types --check`, which fails while the gitignored file
   // is still absent) must see the generated file, so the generator runs first; otherwise append to keep the
@@ -220,119 +228,6 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
   scripts.postinstall = reachesWranglerTypes(scripts.postinstall, scripts, () => true)
     ? `${wranglerTypes} && ${scripts.postinstall}`
     : appendWranglerTypes(scripts.postinstall ?? '', wranglerTypes).replace(/^ && /u, '');
-}
-
-/**
- * Whether the script reaches a `wrangler types` invocation satisfying the predicate, directly or through the
- * package scripts it invokes (e.g. `"postinstall": "yarn gen:types"`).
- */
-function reachesWranglerTypes(
-  script: string | undefined,
-  scripts: PackageJson.Scripts,
-  predicate: (invocationArgs: string[]) => boolean,
-  visitedScriptNames = new Set<string>()
-): boolean {
-  if (!script) return false;
-  for (const segment of script.split('&&')) {
-    const invocationArgs = parseWranglerTypesInvocation(segment);
-    if (invocationArgs && predicate(invocationArgs)) return true;
-    const tokens = segment.trim().split(/\s+/u);
-    let index = skipEnvironmentAssignments(tokens);
-    let invokedScriptName: string | undefined;
-    if (['yarn', 'bun', 'npm', 'pnpm'].includes(tokens[index] ?? '')) {
-      index++;
-      index = skipRunnerFlags(tokens, index);
-      if (['run', 'run-script'].includes(tokens[index] ?? '')) {
-        index++;
-        index = skipRunnerFlags(tokens, index);
-      }
-      invokedScriptName = tokens[index];
-    }
-    if (!invokedScriptName || visitedScriptNames.has(invokedScriptName)) continue;
-    visitedScriptNames.add(invokedScriptName);
-    const invokedScript = scripts[invokedScriptName];
-    if (
-      typeof invokedScript === 'string' &&
-      reachesWranglerTypes(invokedScript, scripts, predicate, visitedScriptNames)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-const scriptRunnerCommands = new Set(['yarn', 'bun', 'npm', 'pnpm', 'bunx', 'npx']);
-
-function skipEnvironmentAssignments(tokens: string[]): number {
-  let index = 0;
-  while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
-  return index;
-}
-
-function skipRunnerFlags(tokens: string[], index: number): number {
-  while ((tokens[index] ?? '').startsWith('-')) index++;
-  return index;
-}
-
-/**
- * Parse a command segment as a `wrangler types` invocation and return its arguments, or undefined when the segment
- * runs something else. Requiring command position (after environment assignments and a runner prefix with its
- * flags, e.g. `npx --yes`) keeps shell text that merely mentions the words (e.g. `echo wrangler types`) from being
- * treated as a generator.
- */
-function parseWranglerTypesInvocation(segment: string): string[] | undefined {
-  const tokens = segment.trim().split(/\s+/u);
-  let index = skipEnvironmentAssignments(tokens);
-  if (scriptRunnerCommands.has(tokens[index] ?? '')) {
-    index++;
-    index = skipRunnerFlags(tokens, index);
-    if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[index] ?? '')) {
-      index++;
-      index = skipRunnerFlags(tokens, index);
-    }
-  }
-  if (tokens[index] !== 'wrangler' || tokens[index + 1] !== 'types') return;
-  return tokens.slice(index + 2);
-}
-
-// Flags of `wrangler types` that consume the following token as their value; unknown separate-value flags make
-// their value look positional, which safely disqualifies the invocation instead of misreading its output path.
-const wranglerTypesValueFlags = new Set(['--env-interface']);
-
-/**
- * Whether the invocation (re)generates the default ./worker-configuration.d.ts that wbfy ignores and untracks:
- * `--check` validates freshness and writes nothing (as do the global `--help`/`--version` flags); `--cwd`,
- * `--config`, `--env`, and `--env-file` move the config, the output directory, or the .dev.vars/.env inference
- * inputs away from the ones generatesWorkerTypes validated; a positional output path selects another file unless
- * it resolves to the managed default.
- */
-function isGeneratingDefaultOutputWranglerTypes(invocationArgs: string[]): boolean {
-  for (let index = 0; index < invocationArgs.length; index++) {
-    const arg = invocationArgs[index] ?? '';
-    if (/^(?:--check|--cwd|--config|-c|--env|-e|--env-file|--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return false;
-    if (wranglerTypesValueFlags.has(arg)) {
-      index++;
-      continue;
-    }
-    if (arg.startsWith('-')) {
-      // Boolean options accept a space-separated literal (e.g. `--strict-vars false`), which must not be
-      // misread as a positional output path.
-      if (invocationArgs[index + 1] === 'true' || invocationArgs[index + 1] === 'false') index++;
-      continue;
-    }
-    let outputPath = arg.replaceAll(/^["']|["']$/gu, '');
-    while (outputPath.startsWith('./')) outputPath = outputPath.slice(2);
-    if (outputPath !== 'worker-configuration.d.ts') return false;
-  }
-  return true;
-}
-
-/**
- * Whether the package's install pipeline regenerates the managed worker-configuration.d.ts, directly or through
- * wrapper scripts. Untracking the file is safe only when this holds for the final generated scripts.
- */
-export function postinstallGeneratesWorkerTypes(scripts: PackageJson.Scripts): boolean {
-  return reachesWranglerTypes(scripts.postinstall, scripts, isGeneratingDefaultOutputWranglerTypes);
 }
 
 /**
@@ -344,18 +239,22 @@ export function postinstallGeneratesWorkerTypes(scripts: PackageJson.Scripts): b
  * regenerates identical to the ones the project intended: --strict-vars=false widens `vars` to string, whereas the
  * default emits literal union types. Both managed scripts get the same command so the file cannot depend on which of
  * them ran last. Only a generating default-output invocation qualifies (see
- * isGeneratingDefaultOutputWranglerTypes); anything else falls back to the managed default command.
+ * classifyWranglerTypesInvocation); anything else falls back to the managed default command.
  */
 function resolveWranglerTypesCommand(config: PackageConfig, scripts: PackageJson.Scripts): string | undefined {
   if (!generatesWorkerTypes(config)) return;
 
   const customCommand = Object.values(scripts)
     .filter((script) => typeof script === 'string')
-    .flatMap((script) => script.split('&&').map((segment) => segment.trim()))
+    .flatMap((script) => contextFreeCommandSegments(script))
     // Only an invocation passing flags is worth preserving; a bare one is normalized to the managed command.
     .find((segment) => {
       const invocationArgs = parseWranglerTypesInvocation(segment);
-      return !!invocationArgs && invocationArgs.length > 0 && isGeneratingDefaultOutputWranglerTypes(invocationArgs);
+      return (
+        !!invocationArgs &&
+        invocationArgs.length > 0 &&
+        classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
+      );
     });
   return customCommand ?? `${config.isBun ? 'bunx ' : ''}wrangler types`;
 }
@@ -707,7 +606,11 @@ async function normalizePackageMetadata(
   } else if (
     genCodeScript &&
     wranglerTypes &&
-    !reachesWranglerTypes(genCodeScript, jsonObj.scripts, isGeneratingDefaultOutputWranglerTypes)
+    !reachesWranglerTypes(
+      genCodeScript,
+      jsonObj.scripts,
+      (invocationArgs) => classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
+    )
   ) {
     // A project-specific gen-code must produce the same declarations as postinstall, or running the documented
     // code-generation entry point would leave the generated worker types stale.

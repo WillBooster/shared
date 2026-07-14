@@ -3,10 +3,10 @@ import path from 'node:path';
 
 import type { PackageJson } from 'type-fest';
 
-import { postinstallGeneratesWorkerTypes } from '../generators/packageJson.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
+import { postinstallGeneratesWorkerTypes } from '../utils/wranglerTypesCommand.js';
 
 const workerTypesFileName = 'worker-configuration.d.ts';
 
@@ -30,6 +30,16 @@ export async function untrackWorkerTypes(config: PackageConfig): Promise<void> {
 
     // Untracking a file the generated .gitignore does not actually cover (e.g. the gitignore.io fetch failed, so the
     // file was never written) would leave it untracked and dirty in the repository, so confirm the rule applies first.
+    // `git check-ignore` also honors .git/info/exclude and global excludes, which a fresh clone lacks, so the
+    // committed package .gitignore must carry the managed rule itself.
+    const gitignorePath = path.resolve(config.dirPath, '.gitignore');
+    const hasManagedRule =
+      fs.existsSync(gitignorePath) &&
+      fs
+        .readFileSync(gitignorePath, 'utf8')
+        .split('\n')
+        .some((line) => line.trim() === `/${workerTypesFileName}`);
+    if (!hasManagedRule) return;
     // --no-index makes git report the rule that would apply, instead of reporting nothing because the file is tracked.
     const isIgnored =
       spawnSyncAndReturnStatus(
