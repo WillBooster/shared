@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -391,20 +391,54 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       const deployEnv = { ...project.env };
       delete deployEnv.CLOUDFLARE_ENV;
       // 0o700 directory + 0o600 file: readable only by the deploying user, like the dotenv
-      // files the CI workflow already writes next to it.
+      // files the CI workflow already writes next to it. wrangler runs through an async spawn
+      // with forwarded shutdown signals (spawnSync would block the event loop, so a Ctrl-C
+      // would kill the process before any cleanup) and the directory is removed in a finally,
+      // so an interrupted deploy cannot leave the plaintext secrets behind.
       const secretsDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-deploy-'));
       let deployStatus: number | null;
+      let deploySignal: NodeJS.Signals | undefined;
       try {
         const secretsFilePath = path.join(secretsDirPath, 'secrets.json');
         fs.writeFileSync(secretsFilePath, JSON.stringify(secrets), { mode: 0o600 });
-        deployStatus = spawnSync('wrangler', [...deployArgs, secretsFilePath], {
-          cwd: project.dirPath,
-          env: deployEnv as NodeJS.ProcessEnv,
-          stdio: ['ignore', 'inherit', 'inherit'],
-        }).status;
+        deployStatus = await new Promise<number | null>((resolve) => {
+          const child = spawn('wrangler', [...deployArgs, secretsFilePath], {
+            cwd: project.dirPath,
+            env: deployEnv as NodeJS.ProcessEnv,
+            stdio: ['ignore', 'inherit', 'inherit'],
+          });
+          const shutdownSignals = ['SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
+          const signalHandlers = new Map<NodeJS.Signals, () => void>();
+          for (const signal of shutdownSignals) {
+            const signalHandler = (): void => {
+              child.kill(signal);
+            };
+            signalHandlers.set(signal, signalHandler);
+            process.once(signal, signalHandler);
+          }
+          const finish = (status: number | null, signal: NodeJS.Signals | null | undefined): void => {
+            for (const [shutdownSignal, signalHandler] of signalHandlers) {
+              process.off(shutdownSignal, signalHandler);
+            }
+            deploySignal = signal ?? undefined;
+            resolve(status);
+          };
+          child.on('error', (error) => {
+            console.error(error);
+            finish(1, undefined);
+          });
+          child.on('exit', (code, signal) => {
+            finish(code, signal);
+          });
+        });
       } finally {
         // process.exit skips finally blocks, so the exit-on-failure below stays outside.
         fs.rmSync(secretsDirPath, { force: true, recursive: true });
+      }
+      if (deploySignal) {
+        // Re-raise so the caller observes the same signal-derived exit status.
+        process.kill(process.pid, deploySignal);
+        return;
       }
       if (deployStatus !== 0) {
         console.error(chalk.red(`wrangler deploy failed with exit code ${deployStatus ?? 'unknown'}.`));
