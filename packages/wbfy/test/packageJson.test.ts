@@ -272,6 +272,32 @@ test('type-checks in the lint script of TypeScript projects', { timeout: 60 * 10
   expect(withoutTypeScript.scripts?.lint).toBe('oxlint --no-error-on-unmatched-pattern .');
 });
 
+test('installs @typescript/native-preview alongside typescript for Next.js repos', { timeout: 60 * 1000 }, async () => {
+  const nextRepo = await generatePackageJsonFrom(
+    { scripts: {} },
+    { doesContainTypeScript: true, depending: { ...createConfig().depending, next: true } }
+  );
+  const nonNextRepo = await generatePackageJsonFrom({ scripts: {} }, { doesContainTypeScript: true });
+
+  expect(nextRepo.devDependencies?.typescript).toBeDefined();
+  // Next.js's `next build` needs the tsgo binary via `@typescript/native-preview`.
+  expect(nextRepo.devDependencies?.['@typescript/native-preview']).toBeDefined();
+  expect(nonNextRepo.devDependencies?.typescript).toBeDefined();
+  expect(nonNextRepo.devDependencies?.['@typescript/native-preview']).toBeUndefined();
+});
+
+test('drops @typescript/native-preview from non-Next.js TypeScript repos', { timeout: 60 * 1000 }, async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {},
+      devDependencies: { '@typescript/native-preview': '7.0.0-dev.20260101.1' },
+    },
+    { doesContainTypeScript: true }
+  );
+
+  expect(packageJson.devDependencies?.['@typescript/native-preview']).toBeUndefined();
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},

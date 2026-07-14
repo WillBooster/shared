@@ -28,9 +28,13 @@ import { yarnNpmMinimalAgeGate, yarnNpmPreapprovedPackages } from './yarnrc.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptDependency = 'typescript';
-// TypeScript 7 ships the native compiler as the `typescript` package, replacing
-// the `@typescript/native-preview` (tsgo) preview wbfy relied on before the release.
-const deprecatedTypescriptGoDependency = '@typescript/native-preview';
+// TypeScript 7's `typescript` package is the tsgo native compiler and exposes no
+// programmatic API. Next.js's build-time `verifyTypeScriptSetup` needs that API, so
+// `next build` fails ("trying to use TypeScript but do not have the required package(s)")
+// with only `typescript` v7 installed. Next.js resolves the tsgo binary through the
+// separate `@typescript/native-preview` package, so Next.js-family repos must install
+// both; other repos only need `typescript` for `tsc` typechecks.
+const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
@@ -40,6 +44,7 @@ const managedDependencyNames = new Set([
   buildTsDependency,
   lefthookDependency,
   typescriptDependency,
+  typescriptGoDependency,
   'sort-package-json',
   ...oxlintDeps,
 ]);
@@ -344,6 +349,12 @@ async function applyPackageJsonConventions(
     // TypeScript 7 ships the native compiler as the `typescript` package, so it is
     // now the managed compiler for every TypeScript repo (typechecking runs `tsc`).
     devDependencies.push(typescriptDependency);
+    // Next.js's `next build` inspects `@typescript/native-preview` (tsgo) to run its type
+    // check; the `typescript` v7 package alone lacks the API next needs, so keep both
+    // installed for Next.js-family repos. See the typescriptGoDependency comment above.
+    if (config.depending.next || config.depending.blitz || config.depending.vinext) {
+      devDependencies.push(typescriptGoDependency);
+    }
     if (config.isBun) {
       devDependencies.push('@types/bun');
     } else if (!config.depending.reactNative) {
@@ -739,10 +750,11 @@ async function removeDeprecatedStuff(
   delete jsonObj.dependencies.tslib;
   delete jsonObj.devDependencies['@willbooster/renovate-config'];
   delete jsonObj.devDependencies['@willbooster/tsconfig'];
-  // TypeScript 7 replaced the `@typescript/native-preview` (tsgo) preview with the
-  // native `typescript` package, so drop the deprecated preview from existing repos.
-  delete jsonObj.dependencies[deprecatedTypescriptGoDependency];
-  delete jsonObj.devDependencies[deprecatedTypescriptGoDependency];
+  // Drop `@typescript/native-preview` (tsgo) here so non-Next.js repos never carry it;
+  // this runs before applyPackageJsonConventions, which re-adds it for Next.js-family
+  // repos that need it alongside the `typescript` v7 package for `next build`.
+  delete jsonObj.dependencies[typescriptGoDependency];
+  delete jsonObj.devDependencies[typescriptGoDependency];
   // Non-TypeScript repos should not keep a stray `typescript` package.
   if (!config.doesContainTypeScript && !config.doesContainTypeScriptInPackages) {
     delete jsonObj.dependencies[typescriptDependency];
