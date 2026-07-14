@@ -1,4 +1,5 @@
 import childProcess from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { config } from 'dotenv';
@@ -15,7 +16,22 @@ export function runDotenvCommand(args) {
 
   const cwd = path.resolve(process.cwd());
   readAndApplyEnvironmentVariables(cwd);
+  const berryBinFolderPath = process.env.BERRY_BIN_FOLDER;
   removeNpmAndYarnEnvironmentVariables(process.env);
+  // Stripping yarn's environment also removes its temporary bin folder — the ONLY place
+  // yarn Berry exposes dependency executables — so restore the project's own
+  // node_modules/.bin directories (nearest first) to keep bare binary names resolvable.
+  // Plug'n'Play installs create no node_modules at all; the temporary bin folder is then the
+  // sole source of dependency executables, so restore it instead. Mirrors
+  // src/commands/dotenv.ts + src/utils/binPath.ts for this startup fast path.
+  // The temporary folder is deliberately NOT restored when .bin directories exist: it also
+  // contains node/yarn shims, and a leaked node shim would violate wb's real-Node guarantee
+  // for tools like wrangler/vinext. Child `yarn` invocations stay resolvable through the
+  // launcher on the base PATH (mise/corepack), which every supported environment has —
+  // nothing could have started `yarn run`/`wb dotenv` without it.
+  if (!prependNodeModulesBinToPath(cwd, process.env) && berryBinFolderPath) {
+    process.env.PATH = process.env.PATH ? `${berryBinFolderPath}:${process.env.PATH}` : berryBinFolderPath;
+  }
 
   const child = childProcess.spawn(command[0], command.slice(1), {
     cwd,
@@ -87,6 +103,29 @@ function removeNpmAndYarnEnvironmentVariables(envVars) {
       delete envVars[key];
     }
   }
+}
+
+function prependNodeModulesBinToPath(dirPath, env) {
+  const binPaths = [];
+  let currentPath = path.resolve(dirPath);
+  for (;;) {
+    const binPath = path.join(currentPath, 'node_modules', '.bin');
+    if (fs.existsSync(binPath)) {
+      binPaths.push(binPath);
+    }
+
+    if (fs.existsSync(path.join(currentPath, '.git'))) {
+      break;
+    }
+    const parentPath = path.dirname(currentPath);
+    if (currentPath === parentPath) {
+      break;
+    }
+    currentPath = parentPath;
+  }
+  if (binPaths.length === 0) return false;
+  env.PATH = env.PATH ? `${binPaths.join(':')}:${env.PATH}` : binPaths.join(':');
+  return true;
 }
 
 function parseDotenvArgs(args) {
