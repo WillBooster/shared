@@ -1,5 +1,6 @@
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
@@ -357,10 +358,14 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       );
     }
 
-    // 4. Deploy code and secrets atomically: piping the secrets JSON via stdin avoids both a
-    //    plaintext temp file and a post-deploy secret push that could leave the new version
-    //    running without (or with stale) secrets. Explicitly empty values stay in the payload:
-    //    --secrets-file is additive, so pushing '' is the only way to clear a stale secret.
+    // 4. Deploy code and secrets atomically (no post-deploy secret push that could leave the
+    //    new version running without — or with stale — secrets). The secrets JSON goes through
+    //    a mode-0600 file in a private temporary directory deleted right after the deploy:
+    //    /dev/stdin is NOT reliable here because wrangler reads the secrets file only after
+    //    uploading assets, by which point the piped stdin may already have been consumed —
+    //    observed as a flaky `Could not read file: /dev/stdin` on CI. Explicitly empty values
+    //    stay in the payload: --secrets-file is additive, so pushing '' is the only way to
+    //    clear a stale secret.
     const deployConfigPath = isVinext ? path.join('dist', 'server', 'wrangler.json') : wranglerConfigPath;
     if (isVinext && !argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
       console.error(chalk.red(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`));
@@ -375,9 +380,8 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       ...(!isVinext && resolvedConfig.usesEnvSection ? ['--env', envName] : []),
       ...(project.env.WB_VERSION ? ['--var', `WB_VERSION:${project.env.WB_VERSION}`] : []),
       '--secrets-file',
-      '/dev/stdin',
     ];
-    console.info(chalk.cyan(`Running: wrangler ${deployArgs.join(' ')}`));
+    console.info(chalk.cyan(`Running: wrangler ${deployArgs.join(' ')} <temporary secrets file>`));
     if (!argv.dryRun) {
       // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
       // so the direct (non-shell) wrangler spawn below resolves the local binary.
@@ -386,15 +390,74 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       }
       const deployEnv = { ...project.env };
       delete deployEnv.CLOUDFLARE_ENV;
-      const result = spawnSync('wrangler', deployArgs, {
-        cwd: project.dirPath,
-        env: deployEnv as NodeJS.ProcessEnv,
-        input: JSON.stringify(secrets),
-        stdio: ['pipe', 'inherit', 'inherit'],
-      });
-      if (result.status !== 0) {
-        console.error(chalk.red(`wrangler deploy failed with exit code ${result.status ?? 'unknown'}.`));
-        process.exit(result.status ?? 1);
+      // 0o700 directory + 0o600 file: readable only by the deploying user, like the dotenv
+      // files the CI workflow already writes next to it. wrangler runs through an async spawn
+      // (spawnSync would block the event loop, so a shutdown signal would kill the process
+      // before any cleanup) and the directory is removed in a finally, so an interrupted
+      // deploy cannot leave the plaintext secrets behind. Shutdown handling details:
+      // - Handlers (including SIGHUP, on which Node also terminates by default) are installed
+      //   BEFORE the file is written and use process.on, not once, so a repeated signal cannot
+      //   fall back to default termination and bypass the finally cleanup.
+      // - SIGHUP/SIGQUIT are forwarded to wrangler as SIGTERM: wrangler's launcher relays only
+      //   SIGINT/SIGTERM to its inner Node process, and anything else would orphan a deployment
+      //   that keeps mutating the remote Worker after wb exits.
+      // - The re-raise below uses the signal wb itself received: wrangler catches SIGINT and
+      //   exits numerically (e.g. 143), which must not masquerade as an ordinary failure.
+      const secretsDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-deploy-'));
+      const shutdownSignals = ['SIGHUP', 'SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
+      const signalHandlers = new Map<NodeJS.Signals, () => void>();
+      let wranglerProcess: ReturnType<typeof spawn> | undefined;
+      let receivedShutdownSignal: NodeJS.Signals | undefined;
+      for (const signal of shutdownSignals) {
+        const signalHandler = (): void => {
+          receivedShutdownSignal ??= signal;
+          if (wranglerProcess) {
+            wranglerProcess.kill(signal === 'SIGINT' || signal === 'SIGTERM' ? signal : 'SIGTERM');
+          } else {
+            for (const [shutdownSignal, handler] of signalHandlers) {
+              process.off(shutdownSignal, handler);
+            }
+            fs.rmSync(secretsDirPath, { force: true, recursive: true });
+            // With the handlers removed, re-raising triggers the default behavior.
+            process.kill(process.pid, signal);
+          }
+        };
+        signalHandlers.set(signal, signalHandler);
+        process.on(signal, signalHandler);
+      }
+      let deployStatus: number | undefined;
+      try {
+        const secretsFilePath = path.join(secretsDirPath, 'secrets.json');
+        fs.writeFileSync(secretsFilePath, JSON.stringify(secrets), { mode: 0o600 });
+        deployStatus = await new Promise<number | undefined>((resolve) => {
+          wranglerProcess = spawn('wrangler', [...deployArgs, secretsFilePath], {
+            cwd: project.dirPath,
+            env: deployEnv as NodeJS.ProcessEnv,
+            stdio: ['ignore', 'inherit', 'inherit'],
+          });
+          wranglerProcess.on('error', (error) => {
+            console.error(error);
+            resolve(1);
+          });
+          wranglerProcess.on('exit', (code, signal) => {
+            resolve(signal ? 1 : (code ?? undefined));
+          });
+        });
+      } finally {
+        // process.exit skips finally blocks, so the exit-on-failure below stays outside.
+        for (const [shutdownSignal, signalHandler] of signalHandlers) {
+          process.off(shutdownSignal, signalHandler);
+        }
+        fs.rmSync(secretsDirPath, { force: true, recursive: true });
+      }
+      if (receivedShutdownSignal) {
+        // Re-raise so the caller observes the same signal-derived exit status.
+        process.kill(process.pid, receivedShutdownSignal);
+        return;
+      }
+      if (deployStatus !== 0) {
+        console.error(chalk.red(`wrangler deploy failed with exit code ${deployStatus ?? 'unknown'}.`));
+        process.exit(deployStatus ?? 1);
       }
     }
 
