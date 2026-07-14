@@ -1,4 +1,5 @@
 import childProcess from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { config } from 'dotenv';
@@ -16,6 +17,11 @@ export function runDotenvCommand(args) {
   const cwd = path.resolve(process.cwd());
   readAndApplyEnvironmentVariables(cwd);
   removeNpmAndYarnEnvironmentVariables(process.env);
+  // Stripping yarn's environment also removes its temporary bin folder — the ONLY place
+  // yarn Berry exposes dependency executables — so restore the project's own
+  // node_modules/.bin directories (nearest first) to keep bare binary names resolvable.
+  // Mirrors src/utils/binPath.ts for this startup fast path.
+  prependNodeModulesBinToPath(cwd, process.env);
 
   const child = childProcess.spawn(command[0], command.slice(1), {
     cwd,
@@ -87,6 +93,29 @@ function removeNpmAndYarnEnvironmentVariables(envVars) {
       delete envVars[key];
     }
   }
+}
+
+function prependNodeModulesBinToPath(dirPath, env) {
+  const binPaths = [];
+  let currentPath = path.resolve(dirPath);
+  for (;;) {
+    const binPath = path.join(currentPath, 'node_modules', '.bin');
+    if (fs.existsSync(binPath)) {
+      binPaths.push(binPath);
+    }
+
+    if (fs.existsSync(path.join(currentPath, '.git'))) {
+      break;
+    }
+    const parentPath = path.dirname(currentPath);
+    if (currentPath === parentPath) {
+      break;
+    }
+    currentPath = parentPath;
+  }
+  if (binPaths.length === 0) return false;
+  env.PATH = env.PATH ? `${binPaths.join(':')}:${env.PATH}` : binPaths.join(':');
+  return true;
 }
 
 function parseDotenvArgs(args) {

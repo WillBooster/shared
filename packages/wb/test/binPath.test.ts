@@ -26,8 +26,9 @@ describe('prependNodeModulesBinToPath', () => {
 
     const env: Record<string, string | undefined> = { PATH: '/usr/bin' };
     expect(prependNodeModulesBinToPath(appDirPath, env)).toBe(true);
+    // Nearest first: a workspace-local dependency must win over a repository-root one.
     expect(env.PATH).toBe(
-      [path.join(rootDirPath, 'node_modules', '.bin'), path.join(appDirPath, 'node_modules', '.bin'), '/usr/bin'].join(
+      [path.join(appDirPath, 'node_modules', '.bin'), path.join(rootDirPath, 'node_modules', '.bin'), '/usr/bin'].join(
         ':'
       )
     );
