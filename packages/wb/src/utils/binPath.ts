@@ -14,7 +14,7 @@ export function prependNodeModulesBinToPath(dirPath: string, env: Record<string,
   for (;;) {
     const binPath = path.join(currentPath, 'node_modules', '.bin');
     if (fs.existsSync(binPath)) {
-      env.PATH = `${binPath}:${env.PATH}`;
+      env.PATH = env.PATH ? `${binPath}:${env.PATH}` : binPath;
       binFound = true;
     }
 

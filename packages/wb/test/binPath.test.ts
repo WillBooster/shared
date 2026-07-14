@@ -44,4 +44,17 @@ describe('prependNodeModulesBinToPath', () => {
     expect(prependNodeModulesBinToPath(rootDirPath, env)).toBe(false);
     expect(env.PATH).toBe('/usr/bin');
   });
+
+  it('handles undefined or missing PATH in env correctly', async () => {
+    await fs.mkdir(path.join(rootDirPath, '.git'), { recursive: true });
+    await fs.mkdir(path.join(rootDirPath, 'node_modules', '.bin'), { recursive: true });
+
+    const env: Record<string, string | undefined> = { PATH: undefined };
+    expect(prependNodeModulesBinToPath(rootDirPath, env)).toBe(true);
+    expect(env.PATH).toBe(path.join(rootDirPath, 'node_modules', '.bin'));
+
+    const env2: Record<string, string | undefined> = {};
+    expect(prependNodeModulesBinToPath(rootDirPath, env2)).toBe(true);
+    expect(env2.PATH).toBe(path.join(rootDirPath, 'node_modules', '.bin'));
+  });
 });
