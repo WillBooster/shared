@@ -331,25 +331,35 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
  * the secret members that type-check locally.
  */
 function hasReproducibleWorkerTypesInference(config: PackageConfig): boolean {
-  if (declaresSupportedRequiredSecrets(config)) return true;
   const dirPath = config.dirPath;
+  if (declaresSupportedRequiredSecrets(config)) return true;
+  // The wrangler config itself drives the generation, so an untracked, modified, or symlinked config makes the
+  // generated file irreproducible whatever the dotenv inputs say.
+  const configFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].filter((fileName) =>
+    fs.existsSync(path.resolve(dirPath, fileName))
+  );
+  if (!areTrackedCleanRegularFiles(dirPath, configFileNames)) return false;
   const inferenceSourceNames = fs
     .readdirSync(dirPath)
     .filter((fileName) => /^\.(?:dev\.vars|env)(?:\..+)?$/u.test(fileName));
-  if (inferenceSourceNames.length === 0) return true;
-  // A tracked symlink's git state says nothing about its target's content, which wrangler actually reads.
-  if (inferenceSourceNames.some((fileName) => fs.lstatSync(path.resolve(dirPath, fileName)).isSymbolicLink())) {
-    return false;
-  }
-  // All tracked AND unmodified: `git ls-files` prints nothing for an untracked file (and fails printing nothing
-  // outside a repository), while `git status --porcelain` prints nothing for a clean file — wrangler reads the
-  // working tree, but CI reads the committed contents, so local edits break reproducibility too. (An ignored
-  // file also produces empty status output, which the tracked check catches.)
-  const trackedOutput = spawnSyncAndReturnStdout('git', ['ls-files', '--', ...inferenceSourceNames], dirPath);
+  return areTrackedCleanRegularFiles(dirPath, inferenceSourceNames);
+}
+
+/**
+ * Whether every listed file is a regular file (a tracked symlink's git state says nothing about its target's
+ * content), tracked, AND unmodified: `git ls-files` prints nothing for an untracked file (and fails printing
+ * nothing outside a repository), while `git status --porcelain` prints nothing for a clean file — wrangler reads
+ * the working tree, but CI reads the committed contents, so local edits break reproducibility too. (An ignored
+ * file also produces empty status output, which the tracked check catches.)
+ */
+function areTrackedCleanRegularFiles(dirPath: string, fileNames: string[]): boolean {
+  if (fileNames.length === 0) return true;
+  if (fileNames.some((fileName) => fs.lstatSync(path.resolve(dirPath, fileName)).isSymbolicLink())) return false;
+  const trackedOutput = spawnSyncAndReturnStdout('git', ['ls-files', '--', ...fileNames], dirPath);
   const trackedCount = trackedOutput === '' ? 0 : trackedOutput.split('\n').length;
   return (
-    trackedCount === inferenceSourceNames.length &&
-    spawnSyncAndReturnStdout('git', ['status', '--porcelain', '--', ...inferenceSourceNames], dirPath) === ''
+    trackedCount === fileNames.length &&
+    spawnSyncAndReturnStdout('git', ['status', '--porcelain', '--', ...fileNames], dirPath) === ''
   );
 }
 

@@ -67,14 +67,13 @@ export function selectProjectWranglerTypesGenerator(scripts: PackageJson.Scripts
  */
 function hasNonTransplantableGeneratorPipeline(script: string, scripts: PackageJson.Scripts): boolean {
   const segments = contextFreeCommandSegments(script);
-  const hasReusableGenerator = segments.some((segment) => {
-    const invocationArgs = parseWranglerTypesInvocation(segment);
-    return (
-      !!invocationArgs &&
-      invocationArgs.length > 0 &&
-      classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
-    );
-  });
+  // Bare generators and wrapper-reached generators form pipelines too: a preparation step that creates
+  // .dev.vars before `wrangler types` must not be bypassed either.
+  const hasReusableGenerator = reachesWranglerTypes(
+    script,
+    scripts,
+    (invocationArgs) => classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
+  );
   if (!hasReusableGenerator) return false;
   return segments.some(
     (segment) =>
@@ -302,6 +301,10 @@ export function isUnmodeledWranglerTypesSegment(
   if (/["']wrangler["']\s+types\b|\bwrangler\s+["']types["']/u.test(segment)) return true;
   // Double quotes do not suppress command substitution: `echo "$(wrangler types ...)"` executes wrangler.
   if (/\$\(|`/u.test(stripSingleQuotedSpans(segment)) && /\bwrangler\s+types\b/u.test(segment)) return true;
+  // Global options may precede the subcommand (`wrangler --config alternate.jsonc types`); any unparsed
+  // segment carrying both words cannot be classified.
+  const unquotedTokens = new Set(tokenizeCommandSegment(segment).map((token) => unquoteShellToken(token)));
+  if (unquotedTokens.has('wrangler') && unquotedTokens.has('types')) return true;
   const tokens = tokenizeCommandSegment(segment);
   let index = skipEnvironmentAssignments(tokens);
   if (!scriptWrapperRunnerCommands.has(tokens[index] ?? '')) return false;
@@ -499,10 +502,11 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
     }
     // Shell quoting does not change an argument's value: `'--config'` is still --config.
     const arg = unquoteShellToken(rawArg);
-    // Non-generating modes write no file at all, whatever other flags say. `--check` is a boolean option:
-    // only its enabled forms suppress generation, while `--check=false` (or `--check false`) still writes.
-    if (/^(?:--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return 'harmless';
-    if (/^--check(?:=true)?$/u.test(arg) && invocationArgs[index + 1] !== 'false') return 'harmless';
+    const nextArg = unquoteShellToken(invocationArgs[index + 1] ?? '');
+    // Non-generating modes write no file at all, whatever other flags say. They are boolean options: only
+    // their enabled forms suppress generation, while `--check=false` (or `--check 'false'`) still writes.
+    if (/^(?:--help|-h|--version|-v)(?:=true)?$/u.test(arg) && nextArg !== 'false') return 'harmless';
+    if (/^--check(?:=true)?$/u.test(arg) && nextArg !== 'false') return 'harmless';
     if (/^(?:--config|-c|--env|-e|--env-file)(?:=.*)?$/u.test(arg)) {
       changesInputs = true;
       if (!arg.includes('=')) index++;
@@ -523,7 +527,7 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
     if (arg.startsWith('-')) {
       // Boolean options accept a space-separated literal (e.g. `--strict-vars false`), which must not be
       // misread as a positional output path.
-      if (invocationArgs[index + 1] === 'true' || invocationArgs[index + 1] === 'false') index++;
+      if (nextArg === 'true' || nextArg === 'false') index++;
       continue;
     }
     let outputPath = arg;

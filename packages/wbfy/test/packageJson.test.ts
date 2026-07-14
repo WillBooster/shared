@@ -1290,6 +1290,86 @@ test('recognizes a conflicting invocation behind a normalized no-op cd', async (
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
+// The wrangler config itself drives the generation, so an uncommitted config makes the file irreproducible.
+test('omits wrangler types when the wrangler config is uncommitted', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: {}, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    // The temp directory is not a git repository, so the config counts as uncommitted.
+    { createI18nDir: true, files: { 'wrangler.jsonc': '{ "name": "app" }' } }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// Global wrangler options may precede the subcommand; such forms cannot be modeled and must survive verbatim.
+test('preserves a wrapper around a global-option wrangler invocation', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-types': 'wrangler --config alternate.jsonc types', postinstall: 'yarn gen-types' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-types');
+});
+
+// A bare generator behind a prerequisite is a pipeline too; bypassing the preparation step could emit an Env
+// missing members, so the package stays unmanaged.
+test('skips worker-types management for a prerequisite pipeline with a bare generator', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: { 'gen-types': 'node scripts/prepare.js && wrangler types' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// Quoting does not enable the check: `--check 'false'` still generates and its flags must be preserved.
+test('reuses a wrangler types invocation with a quoted false check literal', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-types': "wrangler types --strict-vars=false --check 'false'" }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe("wb gen-code && wrangler types --strict-vars=false --check 'false'");
+});
+
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
 test('prepends the generator to a check-only postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
