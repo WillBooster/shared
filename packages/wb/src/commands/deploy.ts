@@ -336,7 +336,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
         await runWithSpawn('YARN run gen-code', project, argv);
       }
       await runWithSpawn(`${cloudflareEnvAssignment}YARN vinext build`, project, argv);
-      if (!fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
+      // On dry runs the vinext build above is a printed no-op, so the built config is
+      // legitimately absent and must not abort the run.
+      if (!argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
         console.error(chalk.red(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`));
         process.exit(1);
       }
