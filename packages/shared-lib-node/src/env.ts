@@ -140,7 +140,9 @@ export function readEnvironmentVariables(
   // process values, breaking callers that need the file-defined values themselves.
   const referenceEnv: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (value !== undefined && !(key in envVars)) referenceEnv[key] = value;
+    // Escape dollar signs so dotenv-expand substitutes exported values literally instead of
+    // recursively re-expanding them (an exported `pa$word` must stay `pa$word`).
+    if (value !== undefined && !(key in envVars)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
   }
   return [expand({ parsed: envVars, processEnv: referenceEnv }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
 }

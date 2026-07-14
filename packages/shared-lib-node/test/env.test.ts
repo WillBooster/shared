@@ -106,6 +106,15 @@ describe('readEnvironmentVariables()', () => {
     expect(process.env.PORT).toBe('9999');
     expect(process.env.NAME).toBe('override');
   });
+
+  it('should expand references to exported variables literally', () => {
+    // Values referencing exported keys must resolve to the effective value without the
+    // exported content being recursively re-expanded (pa$word must stay pa$word).
+    process.env.EXPORTED_SECRET = 'pa$word';
+    process.env.API_HOST = 'prod.example';
+    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-expand');
+    expect(envVars).toEqual({ WORKER_SECRET: 'pa$word', CALLBACK_URL: 'https://prod.example/cb' });
+  });
 });
 
 function isMiseAvailable(): boolean {
