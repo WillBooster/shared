@@ -30,7 +30,9 @@ describe('resolveWranglerConfigForEnv', () => {
         "env": {
           "staging": {
             "vars": { "WB_ENV": "staging" },
-            "d1_databases": [{ "binding": "DB", "database_name": "my-app-staging", "database_id": "stg-id" }],
+            "d1_databases": [
+              { "binding": "DB", "database_name": "my-app-staging", "database_id": "stg-id", "migrations_dir": "drizzle" },
+            ],
           },
         },
       }`
@@ -42,6 +44,7 @@ describe('resolveWranglerConfigForEnv', () => {
       accountId: 'acc-1',
       varKeys: ['WB_ENV', 'NEXT_PUBLIC_BASE_URL'],
       d1Databases: [{ binding: 'DB', database_name: 'my-app-production', database_id: 'prod-id' }],
+      usesEnvSection: false,
     });
 
     // account_id is inherited by named environments; vars and d1_databases are not.
@@ -50,13 +53,45 @@ describe('resolveWranglerConfigForEnv', () => {
       workerName: 'my-app-staging',
       accountId: 'acc-1',
       varKeys: ['WB_ENV'],
-      d1Databases: [{ binding: 'DB', database_name: 'my-app-staging', database_id: 'stg-id' }],
+      d1Databases: [
+        { binding: 'DB', database_name: 'my-app-staging', database_id: 'stg-id', migrations_dir: 'drizzle' },
+      ],
+      usesEnvSection: true,
     });
   });
 
-  it('throws for a missing env section and for TOML configs', async () => {
+  it('prefers a named env.production section over the top level', async () => {
+    await fs.writeFile(
+      path.join(dirPath, 'wrangler.jsonc'),
+      `{
+        "name": "my-app",
+        "d1_databases": [{ "binding": "DB", "database_id": "staging-id" }],
+        "env": {
+          "production": {
+            "name": "my-app-production",
+            "d1_databases": [{ "binding": "DB", "database_id": "prod-id" }],
+          },
+        },
+      }`
+    );
+
+    const production = resolveWranglerConfigForEnv({ dirPath }, 'production');
+    expect(production).toEqual({
+      workerName: 'my-app-production',
+      accountId: undefined,
+      varKeys: [],
+      d1Databases: [{ binding: 'DB', database_id: 'prod-id' }],
+      usesEnvSection: true,
+    });
+  });
+
+  it('throws for a missing env section, malformed JSONC, and TOML configs', async () => {
     await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{ "name": "my-app" }');
     expect(() => resolveWranglerConfigForEnv({ dirPath }, 'staging')).toThrow('no "env"');
+
+    // jsonc-parser is fault tolerant, but a partial config must never drive a deploy.
+    await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{ "name": "my-app", BROKEN }');
+    expect(() => resolveWranglerConfigForEnv({ dirPath }, 'production')).toThrow('syntax error');
 
     await fs.rm(path.join(dirPath, 'wrangler.jsonc'));
     await fs.writeFile(path.join(dirPath, 'wrangler.toml'), 'name = "my-app"');
@@ -65,7 +100,7 @@ describe('resolveWranglerConfigForEnv', () => {
 });
 
 describe('selectWorkerSecrets', () => {
-  it('excludes wrangler vars, deploy-control keys, empty values, and file: DATABASE_URL', () => {
+  it('excludes wrangler vars, deploy-control keys, and file: DATABASE_URL, but keeps empty values', () => {
     const { missingKeys, secrets } = selectWorkerSecrets(
       {
         AUTH_SECRET: 'auth',
@@ -73,24 +108,27 @@ describe('selectWorkerSecrets', () => {
         WB_ENV: 'production',
         CLOUDFLARE_API_TOKEN: 'token',
         DATABASE_URL: 'file:./db/dev.sqlite3',
-        EMPTY_VALUE: '',
+        // Explicitly empty values are pushed as '' to clear stale remote secrets, because
+        // wrangler's --secrets-file is additive and omitted keys keep their old values.
+        OPTIONAL_FEATURE_TOKEN: '',
         PORT: '8080',
       },
       ['NEXT_PUBLIC_BASE_URL'],
       []
     );
-    expect(secrets).toEqual({ AUTH_SECRET: 'auth' });
+    expect(secrets).toEqual({ AUTH_SECRET: 'auth', OPTIONAL_FEATURE_TOKEN: '' });
     expect(missingKeys).toEqual([]);
   });
 
   it('keeps a non-file DATABASE_URL and reports missing required keys', () => {
     const { missingKeys, secrets } = selectWorkerSecrets(
-      { DATABASE_URL: 'postgres://db.example.com/app' },
+      { DATABASE_URL: 'postgres://db.example.com/app', AUTH_SECRET: '' },
       [],
       ['DATABASE_URL', 'AUTH_SECRET', 'PORT']
     );
-    expect(secrets).toEqual({ DATABASE_URL: 'postgres://db.example.com/app' });
-    // PORT is a local-only key, so it is not required even when .env.example lists it.
+    expect(secrets).toEqual({ DATABASE_URL: 'postgres://db.example.com/app', AUTH_SECRET: '' });
+    // PORT is a local-only key, so it is not required even when .env.example lists it;
+    // a required key that resolves to empty is reported as missing.
     expect(missingKeys).toEqual(['AUTH_SECRET']);
   });
 });

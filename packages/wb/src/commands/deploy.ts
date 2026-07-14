@@ -12,7 +12,8 @@ import { buildDrizzleKitCommand } from '../scripts/drizzleScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
-import { findD1MigrationsDirPath, findWranglerConfigPath, getD1DatabaseName } from '../utils/wrangler.js';
+import { findWranglerConfigPath } from '../utils/wrangler.js';
+import type { ResolvedWranglerConfig, WranglerD1Database } from '../utils/wranglerConfig.js';
 import { resolveWranglerConfigForEnv } from '../utils/wranglerConfig.js';
 
 import { readEnvExampleKeys } from './genDevVars.js';
@@ -60,6 +61,8 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       console.error(chalk.red('wb deploy currently supports only Cloudflare Workers apps (no wrangler config found).'));
       process.exit(1);
     }
+    // project.env is memoized (a single object per Project instance), so in-place
+    // mutations like the following persist for every later read and spawned command.
     delete project.env.CLOUDFLARE_ENV;
 
     const envName = project.env.WB_ENV;
@@ -81,19 +84,43 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       }
     }
 
-    const resolvedConfig = resolveWranglerConfigForEnv(project, envName);
+    let resolvedConfig: ResolvedWranglerConfig | undefined;
+    try {
+      resolvedConfig = resolveWranglerConfigForEnv(project, envName);
+    } catch (error) {
+      console.error(chalk.red(String(error instanceof Error ? error.message : error)));
+      process.exit(1);
+    }
     if (!resolvedConfig) {
       console.error(chalk.red(`Failed to parse ${wranglerConfigPath}.`));
       process.exit(1);
     }
-    const d1DatabaseId = resolvedConfig.d1Databases[0]?.database_id;
     const accountId = resolvedConfig.accountId ?? project.env.CLOUDFLARE_ACCOUNT_ID;
-    const usesDrizzleMigrations = project.hasDrizzle && !!d1DatabaseId;
-    if (!project.env.CLOUDFLARE_API_TOKEN && (isCI(project.env.CI) || usesDrizzleMigrations)) {
+    // Prefer wrangler-native migrations whenever the resolved environment's D1 bindings have an
+    // existing migrations directory: a drizzle-orm dependency alone does not imply the project
+    // migrates D1 with drizzle-kit's d1-http driver (some drizzle apps use wrangler-native).
+    const wranglerNativeD1Databases = resolvedConfig.d1Databases.filter((database) =>
+      fs.existsSync(path.resolve(project.dirPath, database.migrations_dir ?? 'migrations'))
+    );
+    const drizzleD1Database =
+      wranglerNativeD1Databases.length === 0 && project.hasDrizzle ? resolvedConfig.d1Databases[0] : undefined;
+    if (wranglerNativeD1Databases.length === 0 && project.hasDrizzle && resolvedConfig.d1Databases.length > 1) {
+      console.error(
+        chalk.red('wb deploy supports drizzle-kit migrations only for a single D1 binding; found multiple.')
+      );
+      process.exit(1);
+    }
+    if (!project.env.CLOUDFLARE_API_TOKEN && (isCI(project.env.CI) || drizzleD1Database)) {
       // drizzle-kit's d1-http driver requires an API token even for local runs; a local
       // wrangler OAuth login covers only the wrangler-native path.
       console.error(chalk.red('CLOUDFLARE_API_TOKEN is required to deploy.'));
       process.exit(1);
+    }
+
+    // App-specific validation hook (e.g. secret pairs that must be both-set-or-both-empty).
+    // The reusable deploy.yml already runs it on CI; run it here for local deploys.
+    if (!isCI(project.env.CI) && project.packageJson.scripts?.['deploy/ci-setup']) {
+      await runWithSpawn('YARN run deploy/ci-setup', project, argv);
     }
 
     // 1. Resolve and validate all secrets before any build or remote mutation, so a missing
@@ -101,7 +128,13 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
     const requiredKeys = readEnvExampleKeys(project);
     for (const key of requiredKeys) {
-      envVars[key] ||= project.env[key] || '';
+      envVars[key] ??= project.env[key] ?? '';
+    }
+    // Explicitly exported environment variables must win over dotenv values (project.env already
+    // applies that precedence), or `AUTH_SECRET=... wb deploy` would push the stale file value.
+    for (const key of Object.keys(envVars)) {
+      const effectiveValue = project.env[key];
+      if (effectiveValue !== undefined) envVars[key] = effectiveValue;
     }
     const { missingKeys, secrets } = selectWorkerSecrets(envVars, resolvedConfig.varKeys, requiredKeys);
     if (missingKeys.length > 0) {
@@ -119,7 +152,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     //    Building before migrating keeps a build failure from leaving a migrated schema behind
     //    the old Worker. Plain Workers have no build step; wrangler bundles the entry itself.
     const isVinext = !!(project.packageJson.dependencies?.vinext ?? project.packageJson.devDependencies?.vinext);
-    const cloudflareEnvAssignment = envName === 'production' ? '' : `CLOUDFLARE_ENV=${envName} `;
+    const cloudflareEnvAssignment = resolvedConfig.usesEnvSection ? `CLOUDFLARE_ENV=${envName} ` : '';
     if (isVinext) {
       if (project.env.WB_VERSION) {
         project.env.NEXT_PUBLIC_WB_VERSION ||= project.env.WB_VERSION;
@@ -131,10 +164,24 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
 
     // 3. Apply D1 migrations to the remote database with the project's single migration
-    //    mechanism (drizzle-kit for drizzle-orm apps, wrangler-native otherwise). Migrations
-    //    must be backward compatible: the old Worker serves traffic until the deploy below.
-    const envOption = envName === 'production' ? '' : ` --env ${envName}`;
-    if (usesDrizzleMigrations) {
+    //    mechanism (wrangler-native when a migrations directory exists, else drizzle-kit for
+    //    drizzle-orm apps). Migrations must be backward compatible: the old Worker serves
+    //    traffic until the deploy below.
+    const envOption = resolvedConfig.usesEnvSection ? ` --env ${envName}` : '';
+    for (const database of wranglerNativeD1Databases) {
+      const databaseName = database.database_name ?? database.binding;
+      if (!databaseName) continue;
+      await runWithSpawn(
+        `CI=true YARN wrangler d1 migrations apply ${databaseName} --remote --config "${wranglerConfigPath}"${envOption}`,
+        project,
+        argv
+      );
+    }
+    if (drizzleD1Database) {
+      if (!drizzleD1Database.database_id) {
+        console.error(chalk.red(`The ${envName} D1 binding has no database_id in the wrangler config.`));
+        process.exit(1);
+      }
       if (!accountId) {
         console.error(
           chalk.red(
@@ -147,25 +194,17 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
         buildDrizzleKitCommand(
           project,
           'migrate',
-          `CLOUDFLARE_D1_DATABASE_ID=${d1DatabaseId} CLOUDFLARE_ACCOUNT_ID=${accountId}`
+          `CLOUDFLARE_D1_DATABASE_ID=${drizzleD1Database.database_id} CLOUDFLARE_ACCOUNT_ID=${accountId}`
         ),
         project,
         argv
       );
-    } else if (findD1MigrationsDirPath(project)) {
-      const databaseName = getD1DatabaseName(project);
-      if (databaseName) {
-        await runWithSpawn(
-          `CI=true YARN wrangler d1 migrations apply ${databaseName} --remote --config "${wranglerConfigPath}"${envOption}`,
-          project,
-          argv
-        );
-      }
     }
 
     // 4. Deploy code and secrets atomically: piping the secrets JSON via stdin avoids both a
     //    plaintext temp file and a post-deploy secret push that could leave the new version
-    //    running without (or with stale) secrets.
+    //    running without (or with stale) secrets. Explicitly empty values stay in the payload:
+    //    --secrets-file is additive, so pushing '' is the only way to clear a stale secret.
     const deployConfigPath = isVinext ? path.join('dist', 'server', 'wrangler.json') : wranglerConfigPath;
     if (isVinext && !argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
       console.error(chalk.red(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`));
@@ -177,7 +216,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       deployConfigPath,
       // vinext's built config already has the environment applied; passing --env there would
       // apply the environment suffix twice.
-      ...(isVinext || envName === 'production' ? [] : ['--env', envName]),
+      ...(!isVinext && resolvedConfig.usesEnvSection ? ['--env', envName] : []),
       ...(project.env.WB_VERSION ? ['--var', `WB_VERSION:${project.env.WB_VERSION}`] : []),
       '--secrets-file',
       '/dev/stdin',
@@ -204,9 +243,12 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
 
     // 5. Optional post-deploy hook (e.g. seeding the remote D1 via drizzle's d1-http driver).
+    //    Assign the resolved ids unconditionally: a stale exported CLOUDFLARE_D1_DATABASE_ID
+    //    must not redirect the hook to another database.
     if (project.packageJson.scripts?.['deploy/post']) {
-      if (d1DatabaseId) project.env.CLOUDFLARE_D1_DATABASE_ID ||= d1DatabaseId;
-      if (accountId) project.env.CLOUDFLARE_ACCOUNT_ID ||= accountId;
+      const hookD1Database: WranglerD1Database | undefined = drizzleD1Database ?? resolvedConfig.d1Databases[0];
+      if (hookD1Database?.database_id) project.env.CLOUDFLARE_D1_DATABASE_ID = hookD1Database.database_id;
+      if (accountId) project.env.CLOUDFLARE_ACCOUNT_ID = accountId;
       await runWithSpawn('YARN run deploy/post', project, argv);
     }
   },
@@ -214,9 +256,11 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
 
 /**
  * Select the secrets to push to the Worker from the dotenv-loaded environment variables:
- * every non-empty value except wrangler `vars` (a secret may not share a name with a var),
- * deploy-control keys, and local `file:` DATABASE_URLs. Returns the required keys (from
- * .env.example) that are still empty so the deploy can abort before any remote mutation.
+ * every explicitly set value — including empty strings, which clear stale remote secrets
+ * since `wrangler deploy --secrets-file` is additive — except wrangler `vars` (a secret may
+ * not share a name with a var), deploy-control keys, and local `file:` DATABASE_URLs.
+ * Returns the required keys (from .env.example) that are still empty so the deploy can
+ * abort before any remote mutation.
  */
 export function selectWorkerSecrets(
   envVars: Record<string, string>,
@@ -226,7 +270,7 @@ export function selectWorkerSecrets(
   const excludedKeys = new Set([...NON_SECRET_KEYS, ...configVarKeys]);
   const secrets: Record<string, string> = {};
   for (const [key, value] of Object.entries(envVars)) {
-    if (!value || excludedKeys.has(key)) continue;
+    if (value === undefined || excludedKeys.has(key)) continue;
     if (key === 'DATABASE_URL' && value.startsWith('file:')) continue;
     secrets[key] = value;
   }
