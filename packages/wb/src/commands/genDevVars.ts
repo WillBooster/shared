@@ -96,18 +96,17 @@ export function readEnvExampleKeys(project: Project): string[] {
  *   double quotes, backticks, backslashes, and literal \n sequences).
  * - An apostrophe inside a single-quoted span closes it early (a trailing `#…` is then even
  *   parsed as a comment), so such values use backticks — equally literal in dotenv 16.
- * - With both an apostrophe and a backtick, double quotes work when the value contains no
- *   double quote and no literal \n sequence (dotenv unescapes \n in double-quoted values).
- * - Carriage returns never round-trip (the parser normalizes CRLF/CR to LF before parsing).
+ * - Real carriage returns survive ONLY as double-quoted \r escapes (the parser normalizes
+ *   CRLF/CR to LF before parsing), so CR values always use double quotes.
+ * - Double quotes require no double-quote character and no literal \n/\r sequences (dotenv
+ *   unescapes those in double-quoted values, which would corrupt the literals).
  */
 export function quoteDotenvValue(key: string, value: string): string {
-  if (value.includes('\r')) {
-    throw new Error(`The value of ${key} contains a carriage return, which .dev.vars cannot represent.`);
-  }
-  if (!value.includes("'")) return `'${value}'`;
-  if (!value.includes('`')) return `\`${value}\``;
-  if (!value.includes('"') && !value.includes(String.raw`\n`)) {
-    return `"${value.replaceAll('\n', String.raw`\n`)}"`;
+  const hasCarriageReturn = value.includes('\r');
+  if (!hasCarriageReturn && !value.includes("'")) return `'${value}'`;
+  if (!hasCarriageReturn && !value.includes('`')) return `\`${value}\``;
+  if (!value.includes('"') && !value.includes(String.raw`\n`) && !value.includes(String.raw`\r`)) {
+    return `"${value.replaceAll('\n', String.raw`\n`).replaceAll('\r', String.raw`\r`)}"`;
   }
   throw new Error(`The value of ${key} cannot be losslessly serialized into .dev.vars; simplify its quoting.`);
 }

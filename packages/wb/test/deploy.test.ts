@@ -283,8 +283,12 @@ describe('quoteDotenvValue', () => {
     expect(quoteDotenvValue('K', "a'b#c")).toBe("`a'b#c`");
     // Apostrophe + backtick: double quotes with escaped newlines.
     expect(quoteDotenvValue('K', "tick`'\nline2")).toBe(String.raw`"tick` + '`' + String.raw`'\nline2"`);
-    // Unrepresentable: apostrophe + backtick + double quote, or any carriage return.
+    // Real carriage returns survive only as double-quoted escapes (the parser normalizes
+    // raw CRLF/CR to LF before parsing).
+    expect(quoteDotenvValue('K', 'a\r\nb')).toBe(String.raw`"a\r\nb"`);
+    // Unrepresentable: a double quote (or literal \n/\r) combined with the double-quote-only
+    // conditions (apostrophe + backtick, or a carriage return).
     expect(() => quoteDotenvValue('K', 'tick`\'"\nline2')).toThrow('losslessly');
-    expect(() => quoteDotenvValue('K', 'a\r\nb')).toThrow('carriage return');
+    expect(() => quoteDotenvValue('K', 'a\rb"')).toThrow('losslessly');
   });
 });

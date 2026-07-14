@@ -12,6 +12,7 @@ import { buildDrizzleKitCommand } from '../scripts/drizzleScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
+import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../utils/shell.js';
 import { findWranglerConfigPath } from '../utils/wrangler.js';
 import type { ResolvedWranglerConfig, WranglerD1Database } from '../utils/wranglerConfig.js';
 import { resolveWranglerConfigForEnv, usesWranglerNativeMigrations } from '../utils/wranglerConfig.js';
@@ -253,7 +254,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     //    Building before migrating keeps a build failure from leaving a migrated schema behind
     //    the old Worker. Plain Workers have no build step; wrangler bundles the entry itself.
     const isVinext = !!(project.packageJson.dependencies?.vinext ?? project.packageJson.devDependencies?.vinext);
-    const cloudflareEnvAssignment = resolvedConfig.usesEnvSection ? `CLOUDFLARE_ENV=${envName} ` : '';
+    const cloudflareEnvAssignment = resolvedConfig.usesEnvSection
+      ? `${buildShellEnvironmentAssignment('CLOUDFLARE_ENV', envName)} `
+      : '';
     if (isVinext) {
       if (project.env.WB_VERSION) {
         project.env.NEXT_PUBLIC_WB_VERSION ||= project.env.WB_VERSION;
@@ -267,7 +270,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       // surfaces compile errors (e.g. a missing entry point) BEFORE the remote migrations
       // below mutate the database.
       await runWithSpawn(
-        `YARN wrangler deploy --dry-run --config "${wranglerConfigPath}"${resolvedConfig.usesEnvSection ? ` --env ${envName}` : ''}`,
+        `YARN wrangler deploy --dry-run --config ${shellEscapeArgument(wranglerConfigPath)}${resolvedConfig.usesEnvSection ? ` --env ${shellEscapeArgument(envName)}` : ''}`,
         project,
         argv
       );
@@ -277,12 +280,12 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     //    mechanism (wrangler-native when a migrations directory exists, else drizzle-kit for
     //    drizzle-orm apps). Migrations must be backward compatible: the old Worker serves
     //    traffic until the deploy below.
-    const envOption = resolvedConfig.usesEnvSection ? ` --env ${envName}` : '';
+    const envOption = resolvedConfig.usesEnvSection ? ` --env ${shellEscapeArgument(envName)}` : '';
     for (const database of wranglerNativeD1Databases) {
       const databaseName = database.database_name ?? database.binding;
       if (!databaseName) continue;
       await runWithSpawn(
-        `CI=true YARN wrangler d1 migrations apply ${databaseName} --remote --config "${wranglerConfigPath}"${envOption}`,
+        `CI=true YARN wrangler d1 migrations apply ${shellEscapeArgument(databaseName)} --remote --config ${shellEscapeArgument(wranglerConfigPath)}${envOption}`,
         project,
         argv
       );
