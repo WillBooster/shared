@@ -64,7 +64,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
   },
 };
 
-function readEnvExampleKeys(project: Project): string[] {
+export function readEnvExampleKeys(project: Project): string[] {
   try {
     const envExamplePath = project.findFile('.env.example');
     return [...fs.readFileSync(envExamplePath, 'utf8').matchAll(/^([A-Z_0-9]+)=/gmu)].map(
