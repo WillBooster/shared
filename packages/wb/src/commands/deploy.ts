@@ -544,7 +544,11 @@ export function selectWorkerSecrets(
  * List the secret names currently attached to the deploy target Worker. Returns undefined when
  * the listing fails for any reason other than the Worker not existing yet (first deploy), so
  * the caller can degrade to the local-only limit checks instead of blocking a deploy that
- * wrangler itself might accept.
+ * wrangler itself might accept. Failing closed instead would turn every transient listing
+ * failure (network, a token without secret-read permission) into a deploy blocker, and — since
+ * wrangler 4.x reports a missing Worker only via an error-message hint — any unrecognized
+ * not-found shape would then block first deploys entirely; this preflight must only ever add
+ * failures that wrangler itself would raise after the migrations.
  */
 async function listRemoteWorkerSecretNames(
   project: Project,
@@ -598,10 +602,12 @@ async function listRemoteWorkerSecretNames(
         // Fall through to the warning below.
       }
     }
-  } else if (/\[code: 100(07|90)\]/.test(ret.stdout + ret.stderr)) {
-    // Cloudflare API errors 10007 (workers.api.error.service_not_found) and 10090
-    // (workers.api.error.script_not_found): the Worker does not exist yet, so a first
-    // deploy inherits nothing.
+  } else if (/\[code: 100(07|90)\]|If this is a new Worker/.test(ret.stdout + ret.stderr)) {
+    // The Worker does not exist yet, so a first deploy inherits nothing. Wrangler 4.x catches
+    // the Cloudflare API errors 10007 (workers.api.error.service_not_found) and 10090
+    // (workers.api.error.script_not_found) and rethrows them as a UserError containing the
+    // 'If this is a new Worker, run `wrangler deploy` first' hint without the numeric code,
+    // so match both shapes.
     return [];
   }
   console.warn(
