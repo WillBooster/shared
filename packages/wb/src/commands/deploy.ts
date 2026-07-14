@@ -149,7 +149,18 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       const effectiveValue = project.env[key];
       if (effectiveValue !== undefined) envVars[key] = effectiveValue;
     }
-    const { missingKeys, secrets } = selectWorkerSecrets(envVars, resolvedConfig.varKeys, requiredKeys);
+    const { missingKeys, secrets } = selectWorkerSecrets(
+      envVars,
+      [...resolvedConfig.varKeys, ...resolvedConfig.bindingNames],
+      requiredKeys
+    );
+    const bindingCollisions = Object.keys(envVars).filter((key) => resolvedConfig.bindingNames.includes(key));
+    if (bindingCollisions.length > 0) {
+      // Uploading a secret named like a binding would replace the binding with a plain string.
+      console.warn(
+        chalk.yellow(`Skipping env keys that collide with Worker binding names: ${bindingCollisions.join(', ')}`)
+      );
+    }
     if (missingKeys.length > 0) {
       console.error(chalk.red(`Missing required environment variables (from .env.example): ${missingKeys.join(', ')}`));
       process.exit(1);

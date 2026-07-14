@@ -5,7 +5,12 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { selectWorkerSecrets } from '../src/commands/deploy.js';
-import { resolveWranglerConfigForEnv, usesWranglerNativeMigrations } from '../src/utils/wranglerConfig.js';
+import { quoteDotenvValue } from '../src/commands/genDevVars.js';
+import {
+  collectBindingNames,
+  resolveWranglerConfigForEnv,
+  usesWranglerNativeMigrations,
+} from '../src/utils/wranglerConfig.js';
 
 describe('resolveWranglerConfigForEnv', () => {
   let dirPath: string;
@@ -43,6 +48,7 @@ describe('resolveWranglerConfigForEnv', () => {
       workerName: 'my-app',
       accountId: 'acc-1',
       varKeys: ['WB_ENV', 'NEXT_PUBLIC_BASE_URL'],
+      bindingNames: ['DB'],
       d1Databases: [{ binding: 'DB', database_name: 'my-app-production', database_id: 'prod-id' }],
       usesEnvSection: false,
     });
@@ -53,6 +59,7 @@ describe('resolveWranglerConfigForEnv', () => {
       workerName: 'my-app-staging',
       accountId: 'acc-1',
       varKeys: ['WB_ENV'],
+      bindingNames: ['DB'],
       d1Databases: [
         { binding: 'DB', database_name: 'my-app-staging', database_id: 'stg-id', migrations_dir: 'drizzle' },
       ],
@@ -80,6 +87,7 @@ describe('resolveWranglerConfigForEnv', () => {
       workerName: 'my-app-production',
       accountId: undefined,
       varKeys: [],
+      bindingNames: ['DB'],
       d1Databases: [{ binding: 'DB', database_id: 'prod-id' }],
       usesEnvSection: true,
     });
@@ -157,5 +165,31 @@ describe('selectWorkerSecrets', () => {
     // PORT is a local-only key, so it is not required even when .env.example lists it;
     // a required key that resolves to empty is reported as missing.
     expect(missingKeys).toEqual(['AUTH_SECRET']);
+  });
+});
+
+describe('collectBindingNames', () => {
+  it('collects binding properties and name-keyed bindings, skipping env subtrees', () => {
+    const names = collectBindingNames({
+      name: 'my-app',
+      assets: { directory: 'dist/client', binding: 'ASSETS' },
+      kv_namespaces: [{ binding: 'VINEXT_KV_CACHE', id: 'kv-id' }],
+      d1_databases: [{ binding: 'DB', database_name: 'db' }],
+      durable_objects: { bindings: [{ name: 'BOARD_GAME_ROOM', class_name: 'BoardGameRoom' }] },
+      send_email: [{ name: 'EMAIL' }],
+      env: { staging: { kv_namespaces: [{ binding: 'STAGING_ONLY' }] } },
+    });
+    expect([...names].toSorted()).toEqual(['ASSETS', 'BOARD_GAME_ROOM', 'DB', 'EMAIL', 'VINEXT_KV_CACHE']);
+  });
+});
+
+describe('quoteDotenvValue', () => {
+  it('round-trips via single quotes, backticks, or double quotes, and rejects unrepresentable values', () => {
+    expect(quoteDotenvValue('K', String.raw`plain\n 'quoted' "double"`)).toBe(
+      `'${String.raw`plain\n 'quoted' "double"`}'`
+    );
+    expect(quoteDotenvValue('K', "line1'\nline2")).toBe("`line1'\nline2`");
+    expect(quoteDotenvValue('K', "tick`'\nline2")).toBe(String.raw`"tick` + '`' + String.raw`'\nline2"`);
+    expect(() => quoteDotenvValue('K', 'tick`\'"\nline2')).toThrow('losslessly');
   });
 });

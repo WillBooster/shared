@@ -51,7 +51,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     const lines = Object.entries(envVars)
       .filter(([, value]) => value !== '')
       .toSorted(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}=${quoteDotenvValue(value)}`);
+      .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
     const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
     if (argv.dryRun) {
       console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} environment variables.`));
@@ -79,13 +79,16 @@ export function readEnvExampleKeys(project: Project): string[] {
  * Quote a value for dotenv (which wrangler uses for .dev.vars). Single-quoted values are
  * preserved literally — round-tripping newlines, quotes, backslashes, and literal \n sequences
  * (verified against wrangler's bundled dotenv 16) — except that a single quote right before a
- * newline closes the quoted span early; such values use double quotes with escaped newlines,
- * which dotenv unescapes (only corrupting the vanishingly rare value that also contains a
- * literal \n sequence).
+ * newline closes the quoted span early; such values fall back to backticks (also literal in
+ * dotenv 16), then to double quotes with escaped newlines (which dotenv unescapes, so values
+ * that also contain a double quote or a literal \n sequence cannot round-trip and are
+ * rejected instead of being silently corrupted).
  */
-function quoteDotenvValue(value: string): string {
-  if (value.includes("'") && value.includes('\n')) {
+export function quoteDotenvValue(key: string, value: string): string {
+  if (!(value.includes("'") && value.includes('\n'))) return `'${value}'`;
+  if (!value.includes('`')) return `\`${value}\``;
+  if (!value.includes('"') && !value.includes(String.raw`\n`)) {
     return `"${value.replaceAll('\n', String.raw`\n`)}"`;
   }
-  return `'${value}'`;
+  throw new Error(`The value of ${key} cannot be losslessly serialized into .dev.vars; simplify its quoting.`);
 }

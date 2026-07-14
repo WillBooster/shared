@@ -30,11 +30,43 @@ export function usesWranglerNativeMigrations(project: Pick<Project, 'dirPath'>, 
   return fs.readdirSync(migrationsDirPath).some((fileName) => fileName.endsWith('.sql'));
 }
 
+/**
+ * Collect every binding name declared in the (environment-resolved) config subtree: `binding`
+ * properties anywhere (D1, KV, R2, services, queues, etc.) plus the `name`-keyed bindings
+ * (`durable_objects.bindings`, `send_email`). A secret sharing a binding's name would silently
+ * replace that binding with a plain string on deploy.
+ */
+export function collectBindingNames(value: unknown, names = new Set<string>(), parentKey = ''): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) collectBindingNames(item, names, parentKey);
+    return names;
+  }
+  if (!value || typeof value !== 'object') return names;
+  for (const [key, child] of Object.entries(value)) {
+    if (key === 'binding' && typeof child === 'string') {
+      names.add(child);
+    } else if (
+      key === 'name' &&
+      typeof child === 'string' &&
+      (parentKey === 'bindings' || parentKey === 'send_email')
+    ) {
+      names.add(child);
+    } else if (key !== 'env') {
+      // The caller passes an already-environment-resolved section; nested `env` subtrees
+      // belong to other environments.
+      collectBindingNames(child, names, key);
+    }
+  }
+  return names;
+}
+
 export interface ResolvedWranglerConfig {
   /** The Worker name for the deploy environment (wrangler appends `-<env>` when the env section has no own name). */
   workerName?: string;
   accountId?: string;
   varKeys: string[];
+  /** Names of all non-var bindings (D1, KV, R2, Durable Objects, send_email, services, ...). */
+  bindingNames: string[];
   d1Databases: WranglerD1Database[];
   /**
    * Whether the environment comes from an `env.<name>` section (then wrangler commands need
@@ -87,6 +119,7 @@ export function resolveWranglerConfigForEnv(
         workerName: envConfig.name ?? (config.name ? `${config.name}-${envName}` : undefined),
         accountId: envConfig.account_id ?? config.account_id,
         varKeys: Object.keys(envConfig.vars ?? {}),
+        bindingNames: [...collectBindingNames(envConfig)],
         d1Databases: envConfig.d1_databases ?? [],
         usesEnvSection: true,
       }
@@ -94,6 +127,7 @@ export function resolveWranglerConfigForEnv(
         workerName: config.name,
         accountId: config.account_id,
         varKeys: Object.keys(config.vars ?? {}),
+        bindingNames: [...collectBindingNames(config)],
         d1Databases: config.d1_databases ?? [],
         usesEnvSection: false,
       };
