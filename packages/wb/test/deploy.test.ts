@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { selectWorkerSecrets } from '../src/commands/deploy.js';
+import { selectInheritedRemoteSecretNames, selectWorkerSecrets } from '../src/commands/deploy.js';
 import { parse as parseDotenv } from 'dotenv';
 
 import { quoteDotenvValue } from '../src/commands/genDevVars.js';
@@ -247,6 +247,27 @@ describe('selectWorkerSecrets', () => {
     // PORT is a local-only key, so it is not required even when .env.example lists it;
     // a required key that resolves to empty is reported as missing.
     expect(missingKeys).toEqual(['AUTH_SECRET']);
+  });
+});
+
+describe('selectInheritedRemoteSecretNames', () => {
+  it('keeps only remote secrets the deploy neither overwrites nor replaces', () => {
+    expect(
+      selectInheritedRemoteSecretNames(
+        ['DASHBOARD_ONLY_TOKEN', 'AUTH_SECRET', 'NOW_A_VAR', 'NOW_A_BINDING', 'CLEARED_SECRET'],
+        // An explicitly empty value still overwrites the remote secret (with ''), so it is
+        // counted by the payload, not as inherited.
+        { AUTH_SECRET: 'auth', CLEARED_SECRET: '' },
+        ['NOW_A_VAR'],
+        ['NOW_A_BINDING']
+      )
+    ).toEqual(['DASHBOARD_ONLY_TOKEN']);
+  });
+
+  it('correctly handles prototype properties of Object (e.g. toString)', () => {
+    expect(
+      selectInheritedRemoteSecretNames(['toString', 'constructor', 'hasOwnProperty', 'valueOf'], {}, [], [])
+    ).toEqual(['toString', 'constructor', 'hasOwnProperty', 'valueOf']);
   });
 });
 

@@ -3,11 +3,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import { readEnvironmentVariables, spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { config } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
+import type { Project } from '../project.js';
 import { findSelfProject } from '../project.js';
 import { buildDrizzleKitCommand } from '../scripts/drizzleScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -240,7 +241,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // not truthiness — an explicit empty clears a stale value) or an effective var/binding.
     const unsatisfiedRequiredSecretNames = resolvedConfig.requiredSecretNames.filter(
       (name) =>
-        !(name in secrets) && !resolvedConfig.varKeys.includes(name) && !resolvedConfig.bindingNames.includes(name)
+        !Object.hasOwn(secrets, name) &&
+        !resolvedConfig.varKeys.includes(name) &&
+        !resolvedConfig.bindingNames.includes(name)
     );
     if (unsatisfiedRequiredSecretNames.length > 0) {
       console.error(
@@ -266,16 +269,6 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     const effectiveVars = new Map(Object.entries<unknown>(resolvedConfig.vars));
     if (project.env.WB_VERSION) effectiveVars.set('WB_VERSION', project.env.WB_VERSION);
     const varEntries = [...effectiveVars];
-    const combinedCount = new Set([...secretKeys, ...varEntries.map(([key]) => key)]).size;
-    if (combinedCount > 128) {
-      console.error(
-        chalk.red(`Cloudflare allows at most 128 variables and secrets combined, but ${combinedCount} were selected.`)
-      );
-      process.exit(1);
-    }
-    if (combinedCount > 64) {
-      console.warn(chalk.yellow(`${combinedCount} variables and secrets exceed the Free plan's limit of 64.`));
-    }
     const oversizedKeys = [
       ...secretKeys.filter((key) => Buffer.byteLength(secrets[key] ?? '', 'utf8') > 5 * 1024),
       ...varEntries
@@ -288,6 +281,39 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       console.error(chalk.red(`Variable or secret values exceed Cloudflare's 5 KB limit: ${oversizedKeys.join(', ')}`));
       process.exit(1);
     }
+    // `--secrets-file` is additive: remote secrets absent from the payload stay attached to the
+    // new version, so they count against the combined limit too. Listing them needs an
+    // authenticated remote round-trip, which dry runs skip; when the listing fails for any
+    // reason other than a not-yet-created Worker, degrade to the local-only count instead of
+    // blocking a deploy that wrangler itself might accept.
+    const remoteSecretNames = argv.dryRun
+      ? []
+      : await listRemoteWorkerSecretNames(project, argv, wranglerConfigPath, resolvedConfig, envName);
+    const inheritedSecretNames = selectInheritedRemoteSecretNames(
+      remoteSecretNames ?? [],
+      secrets,
+      varEntries.map(([key]) => key),
+      resolvedConfig.bindingNames
+    );
+    const combinedCount =
+      new Set([...secretKeys, ...varEntries.map(([key]) => key)]).size + inheritedSecretNames.length;
+    const inheritedNote =
+      inheritedSecretNames.length > 0
+        ? ` (including ${inheritedSecretNames.length} remote secrets kept from the previous version: ${inheritedSecretNames.join(', ')})`
+        : '';
+    if (combinedCount > 128) {
+      console.error(
+        chalk.red(
+          `Cloudflare allows at most 128 variables and secrets combined, but ${combinedCount} were selected${inheritedNote}.`
+        )
+      );
+      process.exit(1);
+    }
+    if (combinedCount > 64) {
+      console.warn(
+        chalk.yellow(`${combinedCount} variables and secrets${inheritedNote} exceed the Free plan's limit of 64.`)
+      );
+    }
     console.info(
       chalk.cyan(
         `Deploying ${resolvedConfig.workerName ?? project.name} (${envName}) with ${secretKeys.length} secrets: ${secretKeys.join(', ')}`
@@ -298,6 +324,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     //    Building before migrating keeps a build failure from leaving a migrated schema behind
     //    the old Worker. Plain Workers have no build step; wrangler bundles the entry itself.
     const isVinext = !!(project.packageJson.dependencies?.vinext ?? project.packageJson.devDependencies?.vinext);
+    const deployConfigPath = isVinext ? path.join('dist', 'server', 'wrangler.json') : wranglerConfigPath;
     const cloudflareEnvAssignment = resolvedConfig.usesEnvSection
       ? `${buildShellEnvironmentAssignment('CLOUDFLARE_ENV', envName)} `
       : '';
@@ -309,6 +336,21 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
         await runWithSpawn('YARN run gen-code', project, argv);
       }
       await runWithSpawn(`${cloudflareEnvAssignment}YARN vinext build`, project, argv);
+      // On dry runs the vinext build above is a printed no-op, so the built config is
+      // legitimately absent and must not abort the run.
+      if (!argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
+        console.error(chalk.red(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`));
+        process.exit(1);
+      }
+      // Wrangler validates its config schema only when it runs, so a dry run of the built
+      // config surfaces config and bundle errors BEFORE the remote migrations below mutate
+      // the database, mirroring the plain-Worker dry run. No --env: the built config already
+      // has the environment applied.
+      await runWithSpawn(
+        `YARN wrangler deploy --dry-run --config ${shellEscapeArgument(deployConfigPath)}`,
+        project,
+        argv
+      );
     } else {
       // Plain Workers are first compiled by wrangler during the deploy itself; a dry run
       // surfaces compile errors (e.g. a missing entry point) BEFORE the remote migrations
@@ -366,11 +408,6 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     //    observed as a flaky `Could not read file: /dev/stdin` on CI. Explicitly empty values
     //    stay in the payload: --secrets-file is additive, so pushing '' is the only way to
     //    clear a stale secret.
-    const deployConfigPath = isVinext ? path.join('dist', 'server', 'wrangler.json') : wranglerConfigPath;
-    if (isVinext && !argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
-      console.error(chalk.red(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`));
-      process.exit(1);
-    }
     const deployArgs = [
       'deploy',
       '--config',
@@ -503,4 +540,98 @@ export function selectWorkerSecrets(
   }
   const missingKeys = requiredKeys.filter((key) => !configKeys.has(key) && !isNonSecretKey(key) && !envVars[key]);
   return { missingKeys, secrets };
+}
+
+/**
+ * List the secret names currently attached to the deploy target Worker. Returns undefined when
+ * the listing fails for any reason other than the Worker not existing yet (first deploy), so
+ * the caller can degrade to the local-only limit checks instead of blocking a deploy that
+ * wrangler itself might accept. Failing closed instead would turn every transient listing
+ * failure (network, a token without secret-read permission) into a deploy blocker, and — since
+ * wrangler 4.x reports a missing Worker only via an error-message hint — any unrecognized
+ * not-found shape would then block first deploys entirely; this preflight must only ever add
+ * failures that wrangler itself would raise after the migrations.
+ */
+async function listRemoteWorkerSecretNames(
+  project: Project,
+  argv: DeployCommandArgv,
+  wranglerConfigPath: string,
+  resolvedConfig: ResolvedWranglerConfig,
+  envName: string
+): Promise<string[] | undefined> {
+  // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
+  // so the direct (non-shell) wrangler spawn below resolves the local binary.
+  if (!project.binExists) {
+    console.warn(chalk.yellow('node_modules/.bin not found; relying on PATH to resolve wrangler.'));
+  }
+  const listArgs = [
+    'secret',
+    'list',
+    '--format',
+    'json',
+    '--config',
+    wranglerConfigPath,
+    ...(resolvedConfig.usesEnvSection ? ['--env', envName] : []),
+  ];
+  console.info(chalk.cyan(`Running: wrangler ${listArgs.join(' ')}`));
+  let ret;
+  try {
+    ret = await spawnAsync('wrangler', listArgs, {
+      cwd: project.dirPath,
+      env: project.env as NodeJS.ProcessEnv,
+      stdio: 'pipe',
+      killOnExit: true,
+      verbose: argv.verbose,
+    });
+  } catch (error) {
+    console.warn(
+      chalk.yellow(
+        `Failed to run wrangler to list remote secrets; checking only the local payload against Cloudflare's limits.\n${error instanceof Error ? error.message : String(error)}`
+      )
+    );
+    return undefined;
+  }
+  if (ret.status === 0) {
+    // Cut the JSON array out of the surrounding output: wrangler may print its banner and
+    // "Multiple environments" warnings around the payload.
+    const jsonStart = ret.stdout.indexOf('[');
+    const jsonEnd = ret.stdout.lastIndexOf(']');
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonStart < jsonEnd) {
+      try {
+        const parsed = JSON.parse(ret.stdout.slice(jsonStart, jsonEnd + 1)) as { name?: unknown }[];
+        return parsed.map(({ name }) => name).filter((name): name is string => typeof name === 'string');
+      } catch {
+        // Fall through to the warning below.
+      }
+    }
+  } else if (/\[code: 100(07|90)\]|If this is a new Worker/.test(ret.stdout + ret.stderr)) {
+    // The Worker does not exist yet, so a first deploy inherits nothing. Wrangler 4.x catches
+    // the Cloudflare API errors 10007 (workers.api.error.service_not_found) and 10090
+    // (workers.api.error.script_not_found) and rethrows them as a UserError containing the
+    // 'If this is a new Worker, run `wrangler deploy` first' hint without the numeric code,
+    // so match both shapes.
+    return [];
+  }
+  console.warn(
+    chalk.yellow(
+      `Failed to list the remote Worker secrets; checking only the local payload against Cloudflare's limits.\n${(ret.stderr || ret.stdout).trim()}`
+    )
+  );
+  return undefined;
+}
+
+/**
+ * Remote secrets that stay attached to the new version: `wrangler deploy --secrets-file` is
+ * additive, so every remote secret the outgoing payload does not overwrite keeps counting
+ * against Cloudflare's combined variable+secret limit — except names that an effective var or
+ * binding replaces.
+ */
+export function selectInheritedRemoteSecretNames(
+  remoteSecretNames: string[],
+  outgoingSecrets: Record<string, string>,
+  effectiveVarKeys: readonly string[],
+  bindingNames: readonly string[]
+): string[] {
+  const replacedNames = new Set([...effectiveVarKeys, ...bindingNames]);
+  return remoteSecretNames.filter((name) => !Object.hasOwn(outgoingSecrets, name) && !replacedNames.has(name));
 }
