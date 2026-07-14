@@ -237,12 +237,17 @@ function reachesWranglerTypes(
     const invocationArgs = parseWranglerTypesInvocation(segment);
     if (invocationArgs && predicate(invocationArgs)) return true;
     const tokens = segment.trim().split(/\s+/u);
-    const invokedScriptName =
-      tokens[0] === 'yarn' || tokens[0] === 'bun' || tokens[0] === 'npm' || tokens[0] === 'pnpm'
-        ? tokens[1] === 'run'
-          ? tokens[2]
-          : tokens[1]
-        : undefined;
+    let index = skipEnvironmentAssignments(tokens);
+    let invokedScriptName: string | undefined;
+    if (['yarn', 'bun', 'npm', 'pnpm'].includes(tokens[index] ?? '')) {
+      index++;
+      index = skipRunnerFlags(tokens, index);
+      if (['run', 'run-script'].includes(tokens[index] ?? '')) {
+        index++;
+        index = skipRunnerFlags(tokens, index);
+      }
+      invokedScriptName = tokens[index];
+    }
     if (!invokedScriptName || visitedScriptNames.has(invokedScriptName)) continue;
     visitedScriptNames.add(invokedScriptName);
     const invokedScript = scripts[invokedScriptName];
@@ -258,18 +263,33 @@ function reachesWranglerTypes(
 
 const scriptRunnerCommands = new Set(['yarn', 'bun', 'npm', 'pnpm', 'bunx', 'npx']);
 
+function skipEnvironmentAssignments(tokens: string[]): number {
+  let index = 0;
+  while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
+  return index;
+}
+
+function skipRunnerFlags(tokens: string[], index: number): number {
+  while ((tokens[index] ?? '').startsWith('-')) index++;
+  return index;
+}
+
 /**
  * Parse a command segment as a `wrangler types` invocation and return its arguments, or undefined when the segment
- * runs something else. Requiring command position (after environment assignments and a runner prefix) keeps shell
- * text that merely mentions the words (e.g. `echo wrangler types`) from being treated as a generator.
+ * runs something else. Requiring command position (after environment assignments and a runner prefix with its
+ * flags, e.g. `npx --yes`) keeps shell text that merely mentions the words (e.g. `echo wrangler types`) from being
+ * treated as a generator.
  */
 function parseWranglerTypesInvocation(segment: string): string[] | undefined {
   const tokens = segment.trim().split(/\s+/u);
-  let index = 0;
-  while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
+  let index = skipEnvironmentAssignments(tokens);
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
-    if (['run', 'exec', 'dlx', 'x'].includes(tokens[index] ?? '')) index++;
+    index = skipRunnerFlags(tokens, index);
+    if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[index] ?? '')) {
+      index++;
+      index = skipRunnerFlags(tokens, index);
+    }
   }
   if (tokens[index] !== 'wrangler' || tokens[index + 1] !== 'types') return;
   return tokens.slice(index + 2);
@@ -277,23 +297,29 @@ function parseWranglerTypesInvocation(segment: string): string[] | undefined {
 
 // Flags of `wrangler types` that consume the following token as their value; unknown separate-value flags make
 // their value look positional, which safely disqualifies the invocation instead of misreading its output path.
-const wranglerTypesValueFlags = new Set(['--env-interface', '--env-file']);
+const wranglerTypesValueFlags = new Set(['--env-interface']);
 
 /**
  * Whether the invocation (re)generates the default ./worker-configuration.d.ts that wbfy ignores and untracks:
- * `--check` validates freshness and writes nothing; `--cwd`, `--config`, and `--env` move the config, the output
- * directory, or the .dev.vars/.env inference inputs away from the ones generatesWorkerTypes validated; a positional
- * output path selects another file unless it resolves to the managed default.
+ * `--check` validates freshness and writes nothing (as do the global `--help`/`--version` flags); `--cwd`,
+ * `--config`, `--env`, and `--env-file` move the config, the output directory, or the .dev.vars/.env inference
+ * inputs away from the ones generatesWorkerTypes validated; a positional output path selects another file unless
+ * it resolves to the managed default.
  */
 function isGeneratingDefaultOutputWranglerTypes(invocationArgs: string[]): boolean {
   for (let index = 0; index < invocationArgs.length; index++) {
     const arg = invocationArgs[index] ?? '';
-    if (/^(?:--check|--cwd|--config|-c|--env|-e)(?:=.*)?$/u.test(arg)) return false;
+    if (/^(?:--check|--cwd|--config|-c|--env|-e|--env-file|--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return false;
     if (wranglerTypesValueFlags.has(arg)) {
       index++;
       continue;
     }
-    if (arg.startsWith('-')) continue;
+    if (arg.startsWith('-')) {
+      // Boolean options accept a space-separated literal (e.g. `--strict-vars false`), which must not be
+      // misread as a positional output path.
+      if (invocationArgs[index + 1] === 'true' || invocationArgs[index + 1] === 'false') index++;
+      continue;
+    }
     let outputPath = arg.replaceAll(/^["']|["']$/gu, '');
     while (outputPath.startsWith('./')) outputPath = outputPath.slice(2);
     if (outputPath !== 'worker-configuration.d.ts') return false;

@@ -473,6 +473,66 @@ test('reuses a wrangler types invocation that names the default output path expl
   );
 });
 
+// --help/--version generate nothing, and --env-file loads inference inputs the reproducibility gate never
+// checked, so neither can be selected as the shared generator.
+test('ignores help and env-file wrangler types invocations when resolving the command', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'types-help': 'wrangler types --help',
+        'gen-local': 'wrangler types --env-file local.env --strict-vars=false',
+      },
+      ...wranglerPackageJson,
+    },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+});
+
+// Boolean options accept a space-separated literal, which must not be misread as a positional output path.
+test('reuses a wrangler types invocation with a space-separated boolean option', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-types': 'wrangler types --strict-vars false' }, ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars false');
+});
+
+// Wrapper detection must survive environment assignments and runner flags around the script name.
+test('detects generation through an env-prefixed wrapper postinstall', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'gen:types': 'wrangler types --strict-vars=false',
+        postinstall: 'NODE_ENV=production yarn run --silent gen:types',
+      },
+      ...wranglerPackageJson,
+    },
+    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('NODE_ENV=production yarn run --silent gen:types');
+});
+
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
 test('prepends the generator to a check-only postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
