@@ -14,7 +14,7 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
 import { findWranglerConfigPath } from '../utils/wrangler.js';
 import type { ResolvedWranglerConfig, WranglerD1Database } from '../utils/wranglerConfig.js';
-import { resolveWranglerConfigForEnv } from '../utils/wranglerConfig.js';
+import { resolveWranglerConfigForEnv, usesWranglerNativeMigrations } from '../utils/wranglerConfig.js';
 
 import { readEnvExampleKeys } from './genDevVars.js';
 
@@ -100,7 +100,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // existing migrations directory: a drizzle-orm dependency alone does not imply the project
     // migrates D1 with drizzle-kit's d1-http driver (some drizzle apps use wrangler-native).
     const wranglerNativeD1Databases = resolvedConfig.d1Databases.filter((database) =>
-      fs.existsSync(path.resolve(project.dirPath, database.migrations_dir ?? 'migrations'))
+      usesWranglerNativeMigrations(project, database)
     );
     const drizzleD1Database =
       wranglerNativeD1Databases.length === 0 && project.hasDrizzle ? resolvedConfig.d1Databases[0] : undefined;
@@ -161,6 +161,15 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
         await runWithSpawn('YARN run gen-code', project, argv);
       }
       await runWithSpawn(`${cloudflareEnvAssignment}YARN vinext build`, project, argv);
+    } else {
+      // Plain Workers are first compiled by wrangler during the deploy itself; a dry run
+      // surfaces compile errors (e.g. a missing entry point) BEFORE the remote migrations
+      // below mutate the database.
+      await runWithSpawn(
+        `YARN wrangler deploy --dry-run --config "${wranglerConfigPath}"${resolvedConfig.usesEnvSection ? ` --env ${envName}` : ''}`,
+        project,
+        argv
+      );
     }
 
     // 3. Apply D1 migrations to the remote database with the project's single migration

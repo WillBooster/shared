@@ -13,6 +13,21 @@ export interface WranglerD1Database {
   database_name?: string;
   database_id?: string;
   migrations_dir?: string;
+  migrations_pattern?: string;
+}
+
+/**
+ * Whether the D1 binding uses wrangler-native migrations that `wrangler d1 migrations apply`
+ * would actually discover: an explicit `migrations_pattern` opts in, otherwise the migrations
+ * directory must contain flat `*.sql` files (wrangler's default pattern). A drizzle-kit `out`
+ * directory with nested `<name>/migration.sql` files and no pattern would match nothing and
+ * silently apply zero migrations, so it must fall through to the drizzle-kit mechanism.
+ */
+export function usesWranglerNativeMigrations(project: Pick<Project, 'dirPath'>, database: WranglerD1Database): boolean {
+  const migrationsDirPath = path.resolve(project.dirPath, database.migrations_dir ?? 'migrations');
+  if (!fs.existsSync(migrationsDirPath)) return false;
+  if (database.migrations_pattern) return true;
+  return fs.readdirSync(migrationsDirPath).some((fileName) => fileName.endsWith('.sql'));
 }
 
 export interface ResolvedWranglerConfig {

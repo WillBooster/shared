@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { selectWorkerSecrets } from '../src/commands/deploy.js';
-import { resolveWranglerConfigForEnv } from '../src/utils/wranglerConfig.js';
+import { resolveWranglerConfigForEnv, usesWranglerNativeMigrations } from '../src/utils/wranglerConfig.js';
 
 describe('resolveWranglerConfigForEnv', () => {
   let dirPath: string;
@@ -96,6 +96,33 @@ describe('resolveWranglerConfigForEnv', () => {
     await fs.rm(path.join(dirPath, 'wrangler.jsonc'));
     await fs.writeFile(path.join(dirPath, 'wrangler.toml'), 'name = "my-app"');
     expect(() => resolveWranglerConfigForEnv({ dirPath }, 'production')).toThrow('wrangler.toml');
+  });
+});
+
+describe('usesWranglerNativeMigrations', () => {
+  let dirPath: string;
+
+  beforeEach(async () => {
+    dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-deploy-test-'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  });
+
+  it('requires flat *.sql files or an explicit migrations_pattern', async () => {
+    expect(usesWranglerNativeMigrations({ dirPath }, {})).toBe(false);
+
+    // drizzle-kit's nested layout without a migrations_pattern matches nothing for wrangler,
+    // so it must fall through to the drizzle-kit mechanism.
+    await fs.mkdir(path.join(dirPath, 'migrations', '0001_init'), { recursive: true });
+    await fs.writeFile(path.join(dirPath, 'migrations', '0001_init', 'migration.sql'), 'CREATE TABLE t (id);');
+    expect(usesWranglerNativeMigrations({ dirPath }, {})).toBe(false);
+    expect(usesWranglerNativeMigrations({ dirPath }, { migrations_pattern: 'migrations/*/migration.sql' })).toBe(true);
+
+    await fs.writeFile(path.join(dirPath, 'migrations', '0001_init.sql'), 'CREATE TABLE t (id);');
+    expect(usesWranglerNativeMigrations({ dirPath }, {})).toBe(true);
+    expect(usesWranglerNativeMigrations({ dirPath }, { migrations_dir: 'drizzle' })).toBe(false);
   });
 });
 
