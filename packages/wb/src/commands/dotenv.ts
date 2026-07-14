@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 
 import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+
+import { prependNodeModulesBinToPath } from '../utils/binPath.js';
 import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
@@ -34,6 +36,10 @@ async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<vo
   const cwd = path.resolve(process.cwd());
   readAndApplyEnvironmentVariables(cwd);
   removeNpmAndYarnEnvironmentVariables(process.env);
+  // Stripping yarn's environment also removes its temporary bin folder — the ONLY place
+  // yarn Berry exposes dependency executables — so restore the project's own
+  // node_modules/.bin directories to keep bare binary names resolvable.
+  prependNodeModulesBinToPath(cwd, process.env);
 
   const child = spawn(command[0]!, command.slice(1), {
     cwd,
