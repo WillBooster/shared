@@ -843,6 +843,71 @@ test('recognizes a generator prefixed by a quoted environment assignment', async
   expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${genTypes}`);
 });
 
+// Pipes are not modeled by the parser, so a piped conflicting invocation must disable management (and survive
+// the postinstall rewrite verbatim) regardless of whitespace between `wrangler` and `types`.
+test('skips worker-types management for a piped custom-config invocation', async () => {
+  const postinstall = 'wrangler   types --config config/worker.jsonc | tee types.log';
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' }, scripts: { postinstall } };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+});
+
+// `yarn --cwd . gen-types` runs this package's script; the option value must not be mistaken for the script name.
+test('preserves a wrapper invoked through a runner option with a value', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: {
+      'gen-types': 'wrangler types --config config/worker.jsonc',
+      postinstall: 'yarn --cwd . gen-types',
+    },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn --cwd . gen-types');
+});
+
+// A gen-code wrapper is interchangeable with `wb gen-code` only when the gen-code script is the managed
+// pipeline; a custom pipeline behind it must keep running on install.
+test('preserves a gen-code wrapper whose script is a custom pipeline', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: {
+      'gen-code': 'node scripts/prepareTypes.js && wrangler types --strict-vars=false',
+      postinstall: 'yarn gen-code',
+    },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'gen-code': 'node scripts/prepareTypes.js && wrangler types --strict-vars=false',
+    postinstall: 'wb gen-code && yarn gen-code',
+  });
+});
+
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
 test('prepends the generator to a check-only postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };

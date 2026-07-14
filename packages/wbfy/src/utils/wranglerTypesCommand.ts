@@ -32,26 +32,31 @@ export function selectProjectWranglerTypesGenerator(scripts: PackageJson.Scripts
   command: string | undefined;
 } {
   const scriptValues = Object.values(scripts).filter((script): script is string => typeof script === 'string');
-  const conflicting = scriptValues.some(
-    (script) =>
-      // Subshells, pipes, command substitution, and `;` separators are not modeled by the segment parser, so a
-      // `wrangler types` inside such a construct cannot be classified — splitting it apart would fabricate
-      // malformed commands (e.g. from `(cd ../other && wrangler types ...)`), so the package stays unmanaged.
-      (script.includes('wrangler types') && /[();|`]|\$\(/u.test(stripQuotedSpans(script))) ||
-      contextFreeCommandSegments(script).some((segment) => {
-        const invocationArgs = parseWranglerTypesInvocation(segment);
-        return !!invocationArgs && classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
-      })
+  const conflicting = scriptValues.some((script) =>
+    splitCommandSegments(script).some((segment) => {
+      const invocationArgs = parseWranglerTypesInvocation(segment);
+      if (invocationArgs) return classifyWranglerTypesInvocation(invocationArgs) === 'defaultOutputConflict';
+      // An unquoted `wrangler types` mention the parser cannot model (a subshell like `(wrangler types ...)`,
+      // a non-local runner directory, arbitrary whitespace) cannot be classified — splitting such constructs
+      // apart would fabricate malformed commands, so the package stays unmanaged.
+      return /\bwrangler\s+types\b/u.test(stripQuotedSpans(segment));
+    })
   );
   const preferredCandidates = [
     collectReusableGeneratorSegments(scripts.postinstall, scripts),
     collectReusableGeneratorSegments(scripts['gen-code'], scripts),
     scriptValues.flatMap((script) => collectReusableGeneratorSegments(script, scripts)),
   ].find((candidates) => candidates.length > 0);
-  const distinctCommands = [...new Set((preferredCandidates ?? []).map((segment) => segment.replaceAll(/\s+/gu, ' ')))];
+  // Normalized only as the deduplication key: rewriting whitespace in the command itself would change quoted
+  // values (e.g. a redirection target with doubled spaces).
+  const distinctCommands = new Map<string, string>();
+  for (const segment of preferredCandidates ?? []) {
+    const key = tokenizeCommandSegment(segment).join(' ');
+    if (!distinctCommands.has(key)) distinctCommands.set(key, segment);
+  }
   return {
-    conflicting: conflicting || distinctCommands.length > 1,
-    command: distinctCommands.length === 1 ? distinctCommands[0] : undefined,
+    conflicting: conflicting || distinctCommands.size > 1,
+    command: distinctCommands.size === 1 ? [...distinctCommands.values()][0] : undefined,
   };
 }
 
@@ -109,12 +114,13 @@ export function reachesWranglerTypes(
     let invokedScriptName: string | undefined;
     if (scriptWrapperRunnerCommands.has(tokens[index] ?? '')) {
       index++;
-      index = skipRunnerFlags(tokens, index);
-      if (['run', 'run-script'].includes(tokens[index] ?? '')) {
-        index++;
-        index = skipRunnerFlags(tokens, index);
+      let runnerFlags = consumeRunnerFlags(tokens, index);
+      if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) {
+        runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
       }
-      invokedScriptName = tokens[index];
+      // A runner directed at another directory (e.g. `yarn --cwd ../other gen-types`) runs that package's
+      // script, not one of these.
+      invokedScriptName = runnerFlags.leavesPackage ? undefined : tokens[runnerFlags.index];
     }
     if (!invokedScriptName || visitedScriptNames.has(invokedScriptName)) continue;
     visitedScriptNames.add(invokedScriptName);
@@ -199,18 +205,35 @@ function isNoOpDirectoryChange(segment: string): boolean {
 }
 
 /** Whether the segment just runs the managed code generation (`wb gen-code`, or a runner wrapper of gen-code). */
-export function isManagedGenCodeSegment(segment: string): boolean {
+export function isManagedGenCodeSegment(segment: string, scripts: PackageJson.Scripts): boolean {
   const tokens = tokenizeCommandSegment(segment);
   let index = skipEnvironmentAssignments(tokens);
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
-    index = skipRunnerFlags(tokens, index);
-    if (['run', 'run-script'].includes(tokens[index] ?? '')) {
-      index++;
-      index = skipRunnerFlags(tokens, index);
+    let runnerFlags = consumeRunnerFlags(tokens, index);
+    if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) {
+      runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
     }
+    if (runnerFlags.leavesPackage) return false;
+    index = runnerFlags.index;
   }
-  return (tokens[index] === 'wb' && tokens[index + 1] === 'gen-code') || tokens[index] === 'gen-code';
+  if (tokens[index] === 'wb' && tokens[index + 1] === 'gen-code') return true;
+  if (tokens[index] !== 'gen-code') return false;
+  // A gen-code wrapper is interchangeable with `wb gen-code` only when the gen-code script itself is the
+  // managed pipeline; a custom pipeline behind it (e.g. `node scripts/prepareTypes.js && wrangler types ...`)
+  // must be preserved instead of being replaced by the bare wb command.
+  const genCodeScript = scripts['gen-code'];
+  return (
+    typeof genCodeScript === 'string' &&
+    contextFreeCommandSegments(genCodeScript).every((genCodeSegment) => {
+      if (genCodeSegment === '') return true;
+      const genCodeTokens = tokenizeCommandSegment(genCodeSegment);
+      let genCodeIndex = skipEnvironmentAssignments(genCodeTokens);
+      if (scriptRunnerCommands.has(genCodeTokens[genCodeIndex] ?? '')) genCodeIndex++;
+      if (genCodeTokens[genCodeIndex] === 'wb' && genCodeTokens[genCodeIndex + 1] === 'gen-code') return true;
+      return !!parseWranglerTypesInvocation(genCodeSegment);
+    })
+  );
 }
 
 /** Tokenize a command segment on whitespace outside quotes, so quoted values (e.g. `X="a b"`) stay one token. */
@@ -276,11 +299,13 @@ export function parseWranglerTypesInvocation(segment: string): string[] | undefi
   let index = skipEnvironmentAssignments(tokens);
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
-    index = skipRunnerFlags(tokens, index);
-    if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[index] ?? '')) {
-      index++;
-      index = skipRunnerFlags(tokens, index);
+    let runnerFlags = consumeRunnerFlags(tokens, index);
+    if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[runnerFlags.index] ?? '')) {
+      runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
     }
+    // A runner directed at another directory runs that package's wrangler, not this one's.
+    if (runnerFlags.leavesPackage) return;
+    index = runnerFlags.index;
   }
   if (tokens[index] !== 'wrangler' || tokens[index + 1] !== 'types') return;
 
@@ -305,6 +330,9 @@ export function classifyWranglerTypesInvocation(invocationArgs: string[]): Wrang
   let changesInputs = false;
   for (let index = 0; index < invocationArgs.length; index++) {
     const arg = invocationArgs[index] ?? '';
+    // Unquoted shell metacharacters (pipes, subshells, command substitution, `;`) are not modeled by the
+    // parser, so the invocation cannot be classified; conservatively treat it as conflicting.
+    if (/[();|`]|\$\(/u.test(stripQuotedSpans(arg))) return 'defaultOutputConflict';
     // Non-generating modes write no file at all, whatever other flags say. `--check` is a boolean option:
     // only its enabled forms suppress generation, while `--check=false` (or `--check false`) still writes.
     if (/^(?:--help|-h|--version|-v)(?:=.*)?$/u.test(arg)) return 'harmless';
@@ -345,7 +373,26 @@ function skipEnvironmentAssignments(tokens: string[]): number {
   return index;
 }
 
-function skipRunnerFlags(tokens: string[], index: number): number {
-  while ((tokens[index] ?? '').startsWith('-')) index++;
-  return index;
+// Runner options that consume the following token as their value; the directory-changing ones make the runner
+// operate on another package when the value is not the package itself.
+const runnerValueFlags = new Set(['--cwd', '-C', '--prefix', '--dir']);
+
+function consumeRunnerFlags(
+  tokens: string[],
+  index: number,
+  leavesPackage = false
+): { index: number; leavesPackage: boolean } {
+  while ((tokens[index] ?? '').startsWith('-')) {
+    const flag = tokens[index] ?? '';
+    index++;
+    let directoryValue: string | undefined;
+    if (runnerValueFlags.has(flag)) {
+      directoryValue = tokens[index];
+      index++;
+    } else if (/^(?:--cwd|--prefix|--dir)=/u.test(flag)) {
+      directoryValue = flag.slice(flag.indexOf('=') + 1);
+    }
+    if (directoryValue !== undefined && directoryValue !== '.' && directoryValue !== './') leavesPackage = true;
+  }
+  return { index, leavesPackage };
 }

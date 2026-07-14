@@ -211,7 +211,7 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
     const preservedSegments =
       scripts.postinstall && reachesWranglerTypes(scripts.postinstall, scripts, () => true)
         ? contextFreeCommandSegments(scripts.postinstall).filter(
-            (segment) => segment !== '' && !isManagedGenCodeSegment(segment)
+            (segment) => segment !== '' && !isManagedGenCodeSegment(segment, scripts)
           )
         : [];
     scripts.postinstall = ['wb gen-code', ...preservedSegments].join(' && ');
