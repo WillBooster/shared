@@ -392,47 +392,58 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       delete deployEnv.CLOUDFLARE_ENV;
       // 0o700 directory + 0o600 file: readable only by the deploying user, like the dotenv
       // files the CI workflow already writes next to it. wrangler runs through an async spawn
-      // with forwarded shutdown signals (spawnSync would block the event loop, so a Ctrl-C
-      // would kill the process before any cleanup) and the directory is removed in a finally,
-      // so an interrupted deploy cannot leave the plaintext secrets behind.
+      // (spawnSync would block the event loop, so a shutdown signal would kill the process
+      // before any cleanup) and the directory is removed in a finally, so an interrupted
+      // deploy cannot leave the plaintext secrets behind. The shutdown handlers — including
+      // SIGHUP, on which Node also terminates by default — are installed BEFORE the file is
+      // written: a signal arriving before wrangler exists removes the directory and re-raises;
+      // afterwards it is forwarded to wrangler, whose exit resolves the await so the finally
+      // runs before the signal is re-raised below.
       const secretsDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-deploy-'));
+      const shutdownSignals = ['SIGHUP', 'SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
+      const signalHandlers = new Map<NodeJS.Signals, () => void>();
+      let wranglerProcess: ReturnType<typeof spawn> | undefined;
+      for (const signal of shutdownSignals) {
+        const signalHandler = (): void => {
+          if (wranglerProcess) {
+            wranglerProcess.kill(signal);
+          } else {
+            fs.rmSync(secretsDirPath, { force: true, recursive: true });
+            // The once-handler is already removed, so re-raising triggers the default behavior.
+            process.kill(process.pid, signal);
+          }
+        };
+        signalHandlers.set(signal, signalHandler);
+        process.once(signal, signalHandler);
+      }
       let deployStatus: number | null;
       let deploySignal: NodeJS.Signals | undefined;
       try {
         const secretsFilePath = path.join(secretsDirPath, 'secrets.json');
         fs.writeFileSync(secretsFilePath, JSON.stringify(secrets), { mode: 0o600 });
         deployStatus = await new Promise<number | null>((resolve) => {
-          const child = spawn('wrangler', [...deployArgs, secretsFilePath], {
+          wranglerProcess = spawn('wrangler', [...deployArgs, secretsFilePath], {
             cwd: project.dirPath,
             env: deployEnv as NodeJS.ProcessEnv,
             stdio: ['ignore', 'inherit', 'inherit'],
           });
-          const shutdownSignals = ['SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
-          const signalHandlers = new Map<NodeJS.Signals, () => void>();
-          for (const signal of shutdownSignals) {
-            const signalHandler = (): void => {
-              child.kill(signal);
-            };
-            signalHandlers.set(signal, signalHandler);
-            process.once(signal, signalHandler);
-          }
           const finish = (status: number | null, signal: NodeJS.Signals | null | undefined): void => {
-            for (const [shutdownSignal, signalHandler] of signalHandlers) {
-              process.off(shutdownSignal, signalHandler);
-            }
             deploySignal = signal ?? undefined;
             resolve(status);
           };
-          child.on('error', (error) => {
+          wranglerProcess.on('error', (error) => {
             console.error(error);
             finish(1, undefined);
           });
-          child.on('exit', (code, signal) => {
+          wranglerProcess.on('exit', (code, signal) => {
             finish(code, signal);
           });
         });
       } finally {
         // process.exit skips finally blocks, so the exit-on-failure below stays outside.
+        for (const [shutdownSignal, signalHandler] of signalHandlers) {
+          process.off(shutdownSignal, signalHandler);
+        }
         fs.rmSync(secretsDirPath, { force: true, recursive: true });
       }
       if (deploySignal) {
