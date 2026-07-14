@@ -176,6 +176,19 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       process.exit(1);
     }
     const secretKeys = Object.keys(secrets).toSorted();
+    // Cloudflare limits a bulk upload to 100 secrets and each value to 5 KB; failing here keeps
+    // an oversized payload from aborting the deploy after migrations already ran.
+    if (secretKeys.length > 100) {
+      console.error(
+        chalk.red(`Cloudflare accepts at most 100 secrets per deploy, but ${secretKeys.length} were selected.`)
+      );
+      process.exit(1);
+    }
+    const oversizedKeys = secretKeys.filter((key) => Buffer.byteLength(secrets[key] ?? '', 'utf8') > 5 * 1024);
+    if (oversizedKeys.length > 0) {
+      console.error(chalk.red(`Secret values exceed Cloudflare's 5 KB limit: ${oversizedKeys.join(', ')}`));
+      process.exit(1);
+    }
     console.info(
       chalk.cyan(
         `Deploying ${resolvedConfig.workerName ?? project.name} (${envName}) with ${secretKeys.length} secrets: ${secretKeys.join(', ')}`
