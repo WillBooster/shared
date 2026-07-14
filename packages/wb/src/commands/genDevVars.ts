@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import { parse as parseDotenv } from 'dotenv';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
@@ -65,14 +66,15 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
 };
 
 export function readEnvExampleKeys(project: Project): string[] {
+  let envExamplePath: string;
   try {
-    const envExamplePath = project.findFile('.env.example');
-    return [...fs.readFileSync(envExamplePath, 'utf8').matchAll(/^([A-Z_0-9]+)=/gmu)].map(
-      (match) => match[1] as string
-    );
+    envExamplePath = project.findFile('.env.example');
   } catch {
     return [];
   }
+  // dotenv's own parser covers `export KEY=` prefixes and whitespace around `=`,
+  // which a line regex would silently miss.
+  return Object.keys(parseDotenv(fs.readFileSync(envExamplePath, 'utf8')));
 }
 
 /**

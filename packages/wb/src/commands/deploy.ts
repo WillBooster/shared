@@ -28,6 +28,7 @@ const NON_SECRET_KEYS = new Set([
   'CLOUDFLARE_API_TOKEN',
   'CLOUDFLARE_D1_DATABASE_ID',
   'CLOUDFLARE_ENV',
+  'MISE_ENV',
   'NEXT_PUBLIC_WB_ENV',
   'NEXT_PUBLIC_WB_VERSION',
   'NODE_ENV',
@@ -138,7 +139,16 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
 
     // 1. Resolve and validate all secrets before any build or remote mutation, so a missing
     //    secret aborts the deploy instead of leaving a migrated database behind an old Worker.
-    const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
+    const [envVars, envSources] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
+    // Restrict the secrets domain to keys defined in the project's .env files: `mise env`
+    // output (reported as a pseudo-source) mixes in host/tool variables such as CARGO_HOME,
+    // which must never be uploaded as Worker secrets.
+    const dotenvKeys = new Set(
+      envSources.filter(([source]) => !source.startsWith('mise env')).flatMap(([, keys]) => keys)
+    );
+    for (const key of Object.keys(envVars)) {
+      if (!dotenvKeys.has(key)) delete envVars[key];
+    }
     const requiredKeys = readEnvExampleKeys(project);
     for (const key of requiredKeys) {
       envVars[key] ??= project.env[key] ?? '';

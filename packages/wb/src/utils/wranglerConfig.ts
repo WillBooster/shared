@@ -30,11 +30,15 @@ export function usesWranglerNativeMigrations(project: Pick<Project, 'dirPath'>, 
   return fs.readdirSync(migrationsDirPath).some((fileName) => fileName.endsWith('.sql'));
 }
 
+const NAME_KEYED_BINDING_PARENTS = new Set(['bindings', 'send_email', 'ratelimits']);
+const RECORD_KEYED_BINDING_KEYS = new Set(['wasm_modules', 'text_blobs', 'data_blobs']);
+
 /**
  * Collect every binding name declared in the (environment-resolved) config subtree: `binding`
- * properties anywhere (D1, KV, R2, services, queues, etc.) plus the `name`-keyed bindings
- * (`durable_objects.bindings`, `send_email`). A secret sharing a binding's name would silently
- * replace that binding with a plain string on deploy.
+ * properties anywhere (D1, KV, R2, services, assets, queues, etc.), the `name`-keyed bindings
+ * (`durable_objects.bindings`, `logfwdr.bindings`, `send_email`, `ratelimits`), and the
+ * record-keyed legacy module bindings (`wasm_modules`, `text_blobs`, `data_blobs`). A secret
+ * sharing a binding's name would silently replace that binding with a plain string on deploy.
  */
 export function collectBindingNames(value: unknown, names = new Set<string>(), parentKey = ''): Set<string> {
   if (Array.isArray(value)) {
@@ -45,12 +49,10 @@ export function collectBindingNames(value: unknown, names = new Set<string>(), p
   for (const [key, child] of Object.entries(value)) {
     if (key === 'binding' && typeof child === 'string') {
       names.add(child);
-    } else if (
-      key === 'name' &&
-      typeof child === 'string' &&
-      (parentKey === 'bindings' || parentKey === 'send_email')
-    ) {
+    } else if (key === 'name' && typeof child === 'string' && NAME_KEYED_BINDING_PARENTS.has(parentKey)) {
       names.add(child);
+    } else if (RECORD_KEYED_BINDING_KEYS.has(key) && child && typeof child === 'object' && !Array.isArray(child)) {
+      for (const bindingName of Object.keys(child)) names.add(bindingName);
     } else if (key !== 'env') {
       // The caller passes an already-environment-resolved section; nested `env` subtrees
       // belong to other environments.
@@ -119,7 +121,9 @@ export function resolveWranglerConfigForEnv(
         workerName: envConfig.name ?? (config.name ? `${config.name}-${envName}` : undefined),
         accountId: envConfig.account_id ?? config.account_id,
         varKeys: Object.keys(envConfig.vars ?? {}),
-        bindingNames: [...collectBindingNames(envConfig)],
+        // Union with the top level: some binding types (e.g. assets) are inherited by named
+        // environments; over-excluding a same-named secret is safer than shadowing a binding.
+        bindingNames: [...collectBindingNames(config, collectBindingNames(envConfig))],
         d1Databases: envConfig.d1_databases ?? [],
         usesEnvSection: true,
       }

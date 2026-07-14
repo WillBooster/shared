@@ -177,9 +177,19 @@ describe('collectBindingNames', () => {
       d1_databases: [{ binding: 'DB', database_name: 'db' }],
       durable_objects: { bindings: [{ name: 'BOARD_GAME_ROOM', class_name: 'BoardGameRoom' }] },
       send_email: [{ name: 'EMAIL' }],
+      ratelimits: [{ name: 'LIMITER', namespace_id: '1', simple: { limit: 1, period: 60 } }],
+      text_blobs: { MESSAGE: 'message.txt' },
       env: { staging: { kv_namespaces: [{ binding: 'STAGING_ONLY' }] } },
     });
-    expect([...names].toSorted()).toEqual(['ASSETS', 'BOARD_GAME_ROOM', 'DB', 'EMAIL', 'VINEXT_KV_CACHE']);
+    expect([...names].toSorted()).toEqual([
+      'ASSETS',
+      'BOARD_GAME_ROOM',
+      'DB',
+      'EMAIL',
+      'LIMITER',
+      'MESSAGE',
+      'VINEXT_KV_CACHE',
+    ]);
   });
 });
 
