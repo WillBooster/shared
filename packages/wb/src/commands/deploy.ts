@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
@@ -357,10 +358,14 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       );
     }
 
-    // 4. Deploy code and secrets atomically: piping the secrets JSON via stdin avoids both a
-    //    plaintext temp file and a post-deploy secret push that could leave the new version
-    //    running without (or with stale) secrets. Explicitly empty values stay in the payload:
-    //    --secrets-file is additive, so pushing '' is the only way to clear a stale secret.
+    // 4. Deploy code and secrets atomically (no post-deploy secret push that could leave the
+    //    new version running without — or with stale — secrets). The secrets JSON goes through
+    //    a mode-0600 file in a private temporary directory deleted right after the deploy:
+    //    /dev/stdin is NOT reliable here because wrangler reads the secrets file only after
+    //    uploading assets, by which point the piped stdin may already have been consumed —
+    //    observed as a flaky `Could not read file: /dev/stdin` on CI. Explicitly empty values
+    //    stay in the payload: --secrets-file is additive, so pushing '' is the only way to
+    //    clear a stale secret.
     const deployConfigPath = isVinext ? path.join('dist', 'server', 'wrangler.json') : wranglerConfigPath;
     if (isVinext && !argv.dryRun && !fs.existsSync(path.resolve(project.dirPath, deployConfigPath))) {
       console.error(chalk.red(`${deployConfigPath} not found; the vinext build did not produce a deploy config.`));
@@ -375,9 +380,8 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       ...(!isVinext && resolvedConfig.usesEnvSection ? ['--env', envName] : []),
       ...(project.env.WB_VERSION ? ['--var', `WB_VERSION:${project.env.WB_VERSION}`] : []),
       '--secrets-file',
-      '/dev/stdin',
     ];
-    console.info(chalk.cyan(`Running: wrangler ${deployArgs.join(' ')}`));
+    console.info(chalk.cyan(`Running: wrangler ${deployArgs.join(' ')} <temporary secrets file>`));
     if (!argv.dryRun) {
       // Reading binExists prepends node_modules/.bin directories to project.env.PATH,
       // so the direct (non-shell) wrangler spawn below resolves the local binary.
@@ -386,15 +390,25 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       }
       const deployEnv = { ...project.env };
       delete deployEnv.CLOUDFLARE_ENV;
-      const result = spawnSync('wrangler', deployArgs, {
-        cwd: project.dirPath,
-        env: deployEnv as NodeJS.ProcessEnv,
-        input: JSON.stringify(secrets),
-        stdio: ['pipe', 'inherit', 'inherit'],
-      });
-      if (result.status !== 0) {
-        console.error(chalk.red(`wrangler deploy failed with exit code ${result.status ?? 'unknown'}.`));
-        process.exit(result.status ?? 1);
+      // 0o700 directory + 0o600 file: readable only by the deploying user, like the dotenv
+      // files the CI workflow already writes next to it.
+      const secretsDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-deploy-'));
+      let deployStatus: number | null;
+      try {
+        const secretsFilePath = path.join(secretsDirPath, 'secrets.json');
+        fs.writeFileSync(secretsFilePath, JSON.stringify(secrets), { mode: 0o600 });
+        deployStatus = spawnSync('wrangler', [...deployArgs, secretsFilePath], {
+          cwd: project.dirPath,
+          env: deployEnv as NodeJS.ProcessEnv,
+          stdio: ['ignore', 'inherit', 'inherit'],
+        }).status;
+      } finally {
+        // process.exit skips finally blocks, so the exit-on-failure below stays outside.
+        fs.rmSync(secretsDirPath, { force: true, recursive: true });
+      }
+      if (deployStatus !== 0) {
+        console.error(chalk.red(`wrangler deploy failed with exit code ${deployStatus ?? 'unknown'}.`));
+        process.exit(deployStatus ?? 1);
       }
     }
 
