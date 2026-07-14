@@ -95,9 +95,10 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       console.error(chalk.red('wb deploy currently supports only Cloudflare Workers apps (no wrangler config found).'));
       process.exit(1);
     }
-    // project.env is memoized (a single object per Project instance), so in-place
-    // mutations like the following persist for every later read and spawned command.
-    delete project.env.CLOUDFLARE_ENV;
+    // Only process.env is worth mutating: `project.env` recomposes itself from process.env plus
+    // the dotenv files on every read, so an in-place mutation of it never reaches a later read
+    // or a spawned command. CLOUDFLARE_ENV is already deleted from process.env above; a dotenv
+    // file defining it would still surface, which the explicit `--env` flags below override.
 
     const envName = project.env.WB_ENV;
     if (!envName || envName === 'development' || envName === 'test') {
@@ -109,12 +110,17 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
 
     // CI provides the Cloudflare API token via a .env.cloudflare file (e.g. the reusable deploy
     // workflow's FILE_CONTENT_1); already-exported environment variables win over its values.
+    // The values go into both process.env (inherited by everything wb spawns) and project.env
+    // (the environment wb itself reads and passes explicitly); the latter is a cached snapshot
+    // taken before this point, so writing only to process.env would leave wb's own preflight —
+    // and any command spawned with project.env — without the token.
     const cloudflareEnvPath = path.join(project.dirPath, '.env.cloudflare');
     if (fs.existsSync(cloudflareEnvPath)) {
       const parsed = config({ path: cloudflareEnvPath, processEnv: {}, quiet: true }).parsed ?? {};
       for (const [key, value] of Object.entries(parsed)) {
         if (key === 'CLOUDFLARE_ENV') continue;
         // ??= so that an explicitly exported empty value still wins over the file.
+        process.env[key] ??= value;
         project.env[key] ??= value;
       }
     }

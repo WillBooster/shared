@@ -108,9 +108,18 @@ export class Project {
     return name.replaceAll('@', '').replaceAll('/', '-');
   }
 
-  @memoizeOne
+  // Cached in a plain field rather than with @memoizeOne: that decorator keys its cache on a hash
+  // of the instance, which changes as other memoized getters populate the instance, so `env` could
+  // silently be recomputed — dropping in-place mutations (e.g. `project.env.PORT ||= …`, or the
+  // secrets `wb deploy` merges from .env.cloudflare) that callers rely on for spawned commands.
+  private envCache: Record<string, string | undefined> | undefined;
+
   get env(): Record<string, string | undefined> {
-    if (!this.loadEnv) return process.env;
+    if (this.envCache) return this.envCache;
+    if (!this.loadEnv) {
+      this.envCache = process.env;
+      return this.envCache;
+    }
 
     const [envVars, envPathAndLoadedEnvVarCountPairs] = readEnvironmentVariables(this.argv, this.dirPath);
     if (!shouldSuppressEnvironmentOutput(this.argv)) {
@@ -118,7 +127,8 @@ export class Project {
         console.info(`Loaded ${count} environment variables from ${envPath}`);
       }
     }
-    return { ...process.env, ...envVars };
+    this.envCache = { ...process.env, ...envVars };
+    return this.envCache;
   }
 
   @memoizeOne
