@@ -6,7 +6,12 @@ import { isProjectEnvironment } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
-import { findWranglerConfigPath, getLocalWranglerStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
+import {
+  findD1MigrationsDirPath,
+  findWranglerConfigPath,
+  getLocalWranglerStateDir,
+  wrapWithLocalD1DatabaseUrl,
+} from '../../utils/wrangler.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
@@ -125,10 +130,17 @@ export abstract class BaseScripts {
       isProjectEnvironment(project, 'test') && findWranglerConfigPath(project)
         ? [`rm -Rf "${getLocalWranglerStateDir(project)}"`]
         : [];
+    // A project whose D1 bindings carry wrangler-native migrations applies them with wrangler
+    // (see WorkersScripts / buildD1MigrationsApplyCommand). Running drizzle-kit migrate against
+    // the same local D1 would apply the same SQL twice — drizzle's generated statements are not
+    // idempotent (`CREATE INDEX` without IF NOT EXISTS) — so drizzle stays ORM-only there.
+    const migratesD1WithWrangler = !!findD1MigrationsDirPath(project);
     const migrationCommands = [
       ...wranglerStateWipeCommands,
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
-      ...(project.hasDrizzle ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))] : []),
+      ...(project.hasDrizzle && !migratesD1WithWrangler
+        ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))]
+        : []),
     ];
     // Splitting may cut through a `(cd … && …)` subshell, but rejoining with ' && ' and per-piece
     // redirects keeps the script valid, and wb-generated paths never contain '&&'.
