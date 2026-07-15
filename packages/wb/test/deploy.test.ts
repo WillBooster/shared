@@ -232,6 +232,16 @@ describe('readCloudflareEnvFiles', () => {
     await fs.writeFile(path.join(rootDirPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=token\n');
     expect(readCloudflareEnvFiles(rootDirPath, rootDirPath)).toEqual({ CLOUDFLARE_API_TOKEN: 'token' });
   });
+
+  it('ignores the root file when the caller opts out of root env files', async () => {
+    // `wb deploy --include-root-env=false` passes rootDirPath as undefined: a caller that
+    // isolates the workspace from root env files must not authenticate with the root's token.
+    await fs.writeFile(path.join(rootDirPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=root-token\n');
+    expect(readCloudflareEnvFiles(dirPath, undefined)).toEqual({});
+
+    await fs.writeFile(path.join(dirPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=own-token\n');
+    expect(readCloudflareEnvFiles(dirPath, undefined)).toEqual({ CLOUDFLARE_API_TOKEN: 'own-token' });
+  });
 });
 
 describe('selectWorkerSecrets', () => {
