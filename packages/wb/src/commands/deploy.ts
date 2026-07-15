@@ -109,6 +109,10 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // (the environment wb itself reads and passes explicitly); the latter is a cached snapshot
     // taken before this point, so writing only to process.env would leave wb's own preflight —
     // and any command spawned with project.env — without the token.
+    // Only --include-root-env gates the root lookup, not an explicit --env: --env replaces the
+    // dotenv VARIABLE sources, while .env.cloudflare is a credential sidecar read outside that
+    // cascade (the project's own copy is read regardless of --env, as it always has been).
+    // Gating on --env would make `wb deploy --env <file>` silently stop finding the repo's token.
     const cloudflareEnvVars = readCloudflareEnvFiles(
       project.dirPath,
       argv.includeRootEnv ? project.rootDirPath : undefined
