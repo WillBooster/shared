@@ -129,7 +129,10 @@ src-tauri/gen/schemas/
     if (config.isCloudflare || rootConfig.isCloudflare) {
       // .dev.vars* hold local secrets for wrangler dev and must never be committed,
       // unlike the committed .env/.env.staging files of the WillBooster convention.
+      // .env.cloudflare carries CLOUDFLARE_API_TOKEN: CI writes it from a secret, and a local
+      // `wb deploy` needs a real token in it, so committing it would leak account credentials.
       headUserContent += `.dev.vars*
+.env.cloudflare
 .wrangler/
 `;
     }
