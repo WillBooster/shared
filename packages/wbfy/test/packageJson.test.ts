@@ -222,6 +222,37 @@ test.each([
   });
 });
 
+// A build script composing gen-code with a build step reaches the generator only through the managed gen-code
+// pipeline, so nothing would be bypassed by reusing the generator. Flagging it as a prerequisite pipeline would
+// disable management on the run right after wbfy itself appended the generator to gen-code (idempotency).
+test('keeps management for a script composing gen-code with a build step', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.42.0' },
+    scripts: {
+      'build/core': 'yarn run gen-code && vite build',
+      'gen-code': 'wb gen-code && wrangler types --strict-vars=false',
+      postinstall: 'wb gen-code && wrangler types --strict-vars=false',
+    },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: wranglerPackageJson.scripts, devDependencies: wranglerPackageJson.devDependencies },
+    {
+      depending: genI18nTsDepending,
+      isBun: true,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'build/core': 'yarn run gen-code && vite build',
+    'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
+    postinstall: 'wb gen-code && wrangler types --strict-vars=false',
+  });
+});
+
 // wbfy gitignores and untracks worker-configuration.d.ts only where postinstall regenerates it, so a package that
 // cannot run wrangler must not gain the command either.
 test('omits wrangler types when the package does not depend on wrangler', async () => {
