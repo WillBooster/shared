@@ -108,21 +108,14 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       process.exit(1);
     }
 
-    // CI provides the Cloudflare API token via a .env.cloudflare file (e.g. the reusable deploy
-    // workflow's FILE_CONTENT_1); already-exported environment variables win over its values.
     // The values go into both process.env (inherited by everything wb spawns) and project.env
     // (the environment wb itself reads and passes explicitly); the latter is a cached snapshot
     // taken before this point, so writing only to process.env would leave wb's own preflight —
     // and any command spawned with project.env — without the token.
-    const cloudflareEnvPath = path.join(project.dirPath, '.env.cloudflare');
-    if (fs.existsSync(cloudflareEnvPath)) {
-      const parsed = config({ path: cloudflareEnvPath, processEnv: {}, quiet: true }).parsed ?? {};
-      for (const [key, value] of Object.entries(parsed)) {
-        if (key === 'CLOUDFLARE_ENV') continue;
-        // ??= so that an explicitly exported empty value still wins over the file.
-        process.env[key] ??= value;
-        project.env[key] ??= value;
-      }
+    for (const [key, value] of Object.entries(readCloudflareEnvFiles(project.dirPath, project.rootDirPath))) {
+      // ??= so that an explicitly exported empty value still wins over the file.
+      process.env[key] ??= value;
+      project.env[key] ??= value;
     }
 
     let resolvedConfig: ResolvedWranglerConfig | undefined;
@@ -519,6 +512,27 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
   },
 };
+
+/**
+ * Read the Cloudflare API token that CI drops in a `.env.cloudflare` file (e.g. the reusable
+ * deploy workflow's `file_path_1`), looking beside the Worker's wrangler config and at the
+ * monorepo root — `file_path_1` is repo-relative, so both spellings occur in practice.
+ * Nearer files win, mirroring the `.env` cascade: a workspace may override the root token,
+ * never the reverse. `CLOUDFLARE_ENV` is dropped; it would double-apply the environment suffix.
+ */
+export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string): Record<string, string> {
+  const envVars: Record<string, string> = {};
+  for (const currentDirPath of new Set([dirPath, rootDirPath])) {
+    const cloudflareEnvPath = path.join(currentDirPath, '.env.cloudflare');
+    if (!fs.existsSync(cloudflareEnvPath)) continue;
+    const parsed = config({ path: cloudflareEnvPath, processEnv: {}, quiet: true }).parsed ?? {};
+    for (const [key, value] of Object.entries(parsed)) {
+      if (key === 'CLOUDFLARE_ENV') continue;
+      envVars[key] ??= value;
+    }
+  }
+  return envVars;
+}
 
 /**
  * Select the secrets to push to the Worker from the dotenv-loaded environment variables:

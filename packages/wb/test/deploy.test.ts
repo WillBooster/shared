@@ -5,7 +5,11 @@ import path from 'node:path';
 import { parse as parseDotenv } from 'dotenv';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { selectInheritedRemoteSecretNames, selectWorkerSecrets } from '../src/commands/deploy.js';
+import {
+  readCloudflareEnvFiles,
+  selectInheritedRemoteSecretNames,
+  selectWorkerSecrets,
+} from '../src/commands/deploy.js';
 import { quoteDotenvValue } from '../src/commands/genDevVars.js';
 import {
   collectBindingNames,
@@ -191,6 +195,42 @@ describe('usesWranglerNativeMigrations', () => {
     await fs.writeFile(path.join(dirPath, 'migrations', '0001_init.sql'), 'CREATE TABLE t (id);');
     expect(usesWranglerNativeMigrations({ dirPath }, {})).toBe(true);
     expect(usesWranglerNativeMigrations({ dirPath }, { migrations_dir: 'drizzle' })).toBe(false);
+  });
+});
+
+describe('readCloudflareEnvFiles', () => {
+  let rootDirPath: string;
+  let dirPath: string;
+
+  beforeEach(async () => {
+    rootDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-deploy-test-'));
+    dirPath = path.join(rootDirPath, 'packages', 'server');
+    await fs.mkdir(dirPath, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await fs.rm(rootDirPath, { force: true, recursive: true });
+  });
+
+  it('reads the file at the monorepo root as well as beside the wrangler config', async () => {
+    expect(readCloudflareEnvFiles(dirPath, rootDirPath)).toEqual({});
+
+    // file_path_1 is repo-relative, so CI commonly writes the token at the root even though the
+    // Worker lives in a workspace; reading only the workspace would silently lose the token.
+    await fs.writeFile(path.join(rootDirPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=root-token\n');
+    expect(readCloudflareEnvFiles(dirPath, rootDirPath)).toEqual({ CLOUDFLARE_API_TOKEN: 'root-token' });
+
+    await fs.writeFile(
+      path.join(dirPath, '.env.cloudflare'),
+      'CLOUDFLARE_API_TOKEN=own-token\nCLOUDFLARE_ENV=staging\n'
+    );
+    // Nearer wins, and CLOUDFLARE_ENV never leaks through.
+    expect(readCloudflareEnvFiles(dirPath, rootDirPath)).toEqual({ CLOUDFLARE_API_TOKEN: 'own-token' });
+  });
+
+  it('reads a non-monorepo project once rather than twice', async () => {
+    await fs.writeFile(path.join(rootDirPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=token\n');
+    expect(readCloudflareEnvFiles(rootDirPath, rootDirPath)).toEqual({ CLOUDFLARE_API_TOKEN: 'token' });
   });
 });
 
