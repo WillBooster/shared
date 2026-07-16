@@ -16,6 +16,7 @@ import { generateAgentInstructions } from './generators/agents.js';
 import { generateBunfigToml } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
+import { generateFnoxToml } from './generators/fnoxToml.js';
 import { generateGeminiConfig } from './generators/geminiConfig.js';
 import { removeGeminiSettings } from './generators/geminiSettings.js';
 import { generateGitattributes } from './generators/gitattributes.js';
@@ -154,6 +155,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await removeYarnFiles(rootConfig);
     await generateBunfigToml(rootConfig);
     await generateMiseToml(rootConfig);
+    // Must finish before setupSecrets below: it rewrites the age recipients in fnox.toml and
+    // re-encrypts the secrets that FNOX_AGE_KEY (uploaded by setupSecrets) must be able to decrypt.
+    await generateFnoxToml(rootConfig);
 
     const shouldRunWorkflows =
       !isReusableWorkflowsRepo(rootConfig.repository) &&

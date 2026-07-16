@@ -6,6 +6,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import type sodiumModule from 'libsodium-wrappers';
 
+import { CI_AGE_PUBLIC_KEY } from '../generators/fnoxToml.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -13,11 +14,6 @@ import { getOctokit, gitHubUtil, hasGitHubToken } from '../utils/githubUtil.js';
 
 const DEPRECATED_SECRET_NAMES = ['READY_DISCORD_WEBHOOK_URL', 'GH_BOT_PAT', 'PUBLIC_GH_BOT_PAT'];
 const require = createRequire(import.meta.url);
-
-// The CI-dedicated age public key. Every fnox.toml must list it as a recipient so that CI can
-// decrypt secrets with the matching private key (uploaded as the FNOX_AGE_KEY repository secret
-// from ~/.config/fnox/ci-age.txt). Only the public key may appear in this repository.
-export const CI_AGE_PUBLIC_KEY = 'age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak';
 
 export async function setupSecrets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupSecrets', async () => {
