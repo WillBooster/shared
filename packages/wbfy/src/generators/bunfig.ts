@@ -188,11 +188,12 @@ ${extractRawTestSections(existingContent)}[install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 ${
   linker === 'isolated'
-    ? // bun-types references undici-types without declaring it as a dependency
-      // (oven-sh/bun#22805), so hoist it where repository tooling can resolve it;
-      // generated tsconfigs also map undici-types there (see tsconfig.ts) because
-      // the global store realpaths bun-types outside the repository.
-      'globalStore = true\nlinker = "isolated"\npublicHoistPattern = ["undici-types"]'
+    ? // tsx: build-ts under Node.js spawns `node --import tsx`, which resolves tsx from the
+      // consumer package's directory, not from build-ts's own dependencies.
+      // undici-types: bun-types references it without declaring it as a dependency
+      // (oven-sh/bun#22805); generated tsconfigs also map undici-types to the hoisted copy
+      // (see tsconfig.ts) because the global store realpaths bun-types outside the repository.
+      'globalStore = true\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
     : 'linker = "hoisted"'
 }
 minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 5 days
