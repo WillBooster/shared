@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ignoreErrorAsync } from '@willbooster/shared-lib/src';
+import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
 import semver from 'semver';
 import yargs from 'yargs';
 
@@ -14,7 +14,8 @@ import { fixTypos } from './fixers/typos.js';
 import { fixWbDbCommand } from './fixers/wbDbCommand.js';
 import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
-import { generateBunfigToml } from './generators/bunfig.js';
+import type { BunLinker } from './generators/bunfig.js';
+import { generateBunfigToml, readBunLinker } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateGeminiConfig } from './generators/geminiConfig.js';
@@ -161,17 +162,23 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     assertSafeDependencySources(allPackageConfigs);
 
     // Managed repositories use Bun with mise (and optionally fnox); Yarn artifacts are removed.
+    const previousBunLinker = readBunLinker(rootDirPath);
     await removeYarnFiles(rootConfig);
     await generateBunfigToml(rootConfig);
     await generateMiseToml(rootConfig);
+    // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
+    // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
+    await promisePool.promiseAll();
 
     // The linker must be decided BEFORE any `bun add` mutates package.json files: per-package
     // installs tolerate failures (spawnSync discards their status), so a layout that cannot
     // install would silently drop every managed dependency update for the rest of the run.
-    if (!(await ensureInstallableBunLinker(rootDirPath, rootConfig))) {
-      console.error(`Skip ${rootDirPath}: bun install fails under both the isolated and hoisted linkers.`);
+    if (!(await ensureInstallableBunLinker(rootDirPath, rootConfig, previousBunLinker))) {
+      console.error(`bun install fails in ${rootDirPath} under both the isolated and hoisted linkers.`);
+      // Continue the migration anyway: aborting here would leave the repository in an even more
+      // half-migrated state (Yarn artifacts already removed, package.json still unconverted).
+      // refreshBunLock fails the run at the end, so the broken install cannot pass silently.
       hasInvalidPackageConfig = true;
-      continue;
     }
 
     const shouldRunWorkflows =
@@ -278,7 +285,17 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
  * Returns false when neither linker can install. The probe reruns on every wbfy run, so a
  * repository automatically moves back to the isolated linker once its incompatibility is fixed.
  */
-async function ensureInstallableBunLinker(rootDirPath: string, rootConfig: PackageConfig): Promise<boolean> {
+async function ensureInstallableBunLinker(
+  rootDirPath: string,
+  rootConfig: PackageConfig,
+  previousLinker: BunLinker | undefined
+): Promise<boolean> {
+  // A layout switch must probe from a clean tree: `bun install` does not remove packages the
+  // previous layout left behind, so e.g. still-hoisted phantom dependencies can make the isolated
+  // probe succeed although a fresh checkout could not install.
+  if (previousLinker !== 'isolated') {
+    removeNodeModules(rootDirPath);
+  }
   // Retry once so a transient failure (registry hiccup, flaky lifecycle script) does not
   // masquerade as a layout incompatibility.
   if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1) === 0) return true;
@@ -286,6 +303,8 @@ async function ensureInstallableBunLinker(rootDirPath: string, rootConfig: Packa
   console.warn('bun install failed with the isolated linker; falling back to the hoisted linker.');
   await generateBunfigToml(rootConfig, 'hoisted');
   await promisePool.promiseAll();
+  // The failed isolated attempt may have left a partial isolated tree behind.
+  removeNodeModules(rootDirPath);
   if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath) === 0) return true;
 
   // Both layouts failed, so the failure is not linker-specific; keep the default isolated
@@ -293,6 +312,18 @@ async function ensureInstallableBunLinker(rootDirPath: string, rootConfig: Packa
   await generateBunfigToml(rootConfig);
   await promisePool.promiseAll();
   return false;
+}
+
+function removeNodeModules(rootDirPath: string): void {
+  const nodeModulesPaths = [
+    path.resolve(rootDirPath, 'node_modules'),
+    ...(ignoreError(() => fs.readdirSync(path.resolve(rootDirPath, 'packages'), { withFileTypes: true })) ?? [])
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => path.resolve(rootDirPath, 'packages', dirent.name, 'node_modules')),
+  ];
+  for (const nodeModulesPath of nodeModulesPaths) {
+    fs.rmSync(nodeModulesPath, { recursive: true, force: true });
+  }
 }
 
 function refreshBunLock(rootDirPath: string): void {

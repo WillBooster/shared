@@ -60,7 +60,9 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
  */
 function liftOutdatedBunVersion(bunVersion: unknown): unknown {
   if (typeof bunVersion === 'string') {
-    return isVersionRangeBelow(bunVersion, minimumBunVersion) ? 'latest' : bunVersion;
+    // Replace with the concrete minimum, not 'latest': mise resolves 'latest' to the newest
+    // locally INSTALLED version, which can still be below the floor.
+    return isVersionRangeBelow(bunVersion, minimumBunVersion) ? minimumBunVersion : bunVersion;
   }
   if (Array.isArray(bunVersion)) {
     return [
@@ -76,8 +78,10 @@ function liftOutdatedBunVersion(bunVersion: unknown): unknown {
 }
 
 function isVersionRangeBelow(versionRange: string, minimumVersion: string): boolean {
-  // Non-semver specifiers such as "latest" yield no range and are left untouched.
-  return !!semver.validRange(versionRange) && semver.gtr(minimumVersion, versionRange);
+  // mise's `prefix:1.2` selector means "latest 1.2.x", which is the semver range "1.2".
+  const range = versionRange.startsWith('prefix:') ? versionRange.slice('prefix:'.length) : versionRange;
+  // Other non-semver specifiers (e.g. "latest", "ref:…", "path:…") yield no range and are left untouched.
+  return !!semver.validRange(range) && semver.gtr(minimumVersion, range);
 }
 
 function parseMiseToml(miseTomlPath: string): MiseToml {

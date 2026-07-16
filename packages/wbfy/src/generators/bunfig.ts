@@ -11,6 +11,7 @@ import { promisePool } from '../utils/promisePool.js';
 interface BunfigToml {
   install?: {
     exact?: boolean;
+    linker?: string;
   };
 }
 
@@ -147,6 +148,14 @@ export const bunMinimumReleaseAgeExcludes = [
 ];
 
 export type BunLinker = 'isolated' | 'hoisted';
+
+/** Reads the linker currently effective in the repository's bunfig.toml (Bun defaults to hoisted). */
+export function readBunLinker(rootDirPath: string): BunLinker | undefined {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  if (!fs.existsSync(filePath)) return undefined;
+  const bunfigToml = parseBunfigToml(fs.readFileSync(filePath, 'utf8'));
+  return bunfigToml?.install?.linker === 'isolated' ? 'isolated' : 'hoisted';
+}
 
 export async function generateBunfigToml(config: PackageConfig, linker: BunLinker = 'isolated'): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {

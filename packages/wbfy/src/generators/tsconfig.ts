@@ -155,11 +155,15 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
  * to the copy that bunfig.toml's publicHoistPattern places in the root node_modules.
  */
 function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig): void {
+  // React Native repos get their ambient types from @tsconfig/react-native and never load bun-types.
+  if (config.depending.reactNative) return;
   // bun-types loads either through an explicit `types: [..., "bun"]` entry or, when `types` is
   // omitted, through TypeScript's automatic @types inclusion (wbfy installs @types/bun for every
-  // TypeScript project). Only a `types` list without "bun" keeps it out, so skip the mapping there.
+  // other TypeScript project). Only a `types` list without "bun" keeps it out, so skip it there,
+  // and keep a repo-local mapping (e.g. patched types) when the project already declares one.
   const types = settings.compilerOptions?.types;
   if (types && !types.includes('bun')) return;
+  if (settings.compilerOptions?.paths?.['undici-types']) return;
 
   settings.compilerOptions ??= {};
   settings.compilerOptions.paths = {
