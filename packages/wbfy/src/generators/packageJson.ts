@@ -450,12 +450,11 @@ async function applyPackageJsonConventions(
     }
 
     if (config.doesContainSubPackageJsons) {
-      // We don't allow non-array workspaces in monorepo.
-      jsonObj.workspaces = Array.isArray(jsonObj.workspaces)
-        ? merge.all([jsonObj.workspaces, ['packages/*']], {
-            arrayMerge: combineMerge,
-          })
-        : ['packages/*'];
+      // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
+      // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
+      jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), ['packages/*']], {
+        arrayMerge: combineMerge,
+      });
     } else if (Array.isArray(jsonObj.workspaces)) {
       jsonObj.workspaces = jsonObj.workspaces.filter(
         (workspace) =>
@@ -1217,6 +1216,12 @@ function doesProductCodeImportMicromatch(dirPath: string): boolean {
   });
 }
 
+/** Workspace patterns from either the array form or Yarn v1's `{ packages: […] }` object form. */
+function getDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): string[] {
+  if (Array.isArray(workspaces)) return workspaces;
+  return Array.isArray(workspaces?.packages) ? workspaces.packages : [];
+}
+
 const workspacePackageDirsCache = new Map<string, Map<string, string>>();
 
 /** Map from each workspace package's name to its directory (relative to the monorepo root). */
@@ -1225,12 +1230,11 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
   if (cached) return cached;
 
   const workspaceDirsByName = new Map<string, string>();
-  const declaredPatterns = rootConfig.packageJson?.workspaces;
   // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
   // not have written the root package.json yet, so mirror that normalization here.
   const workspacePatterns = [
     ...new Set([
-      ...(Array.isArray(declaredPatterns) ? declaredPatterns : []),
+      ...getDeclaredWorkspacePatterns(rootConfig.packageJson?.workspaces),
       ...(rootConfig.doesContainSubPackageJsons ? ['packages/*'] : []),
     ]),
   ];
@@ -1250,8 +1254,11 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
         ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
         : path.posix.join(workspacePattern, 'package.json')
     );
+  // followSymbolicLinks: false — a workspace symlink pointing outside the repository must not be
+  // treated as a workspace directory (removeNodeModules would delete through it).
   for (const packageJsonPath of fg.globSync(packageJsonGlobs, {
     cwd: rootConfig.dirPath,
+    followSymbolicLinks: false,
     ignore: ['**/node_modules/**'],
   })) {
     try {

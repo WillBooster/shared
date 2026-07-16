@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ignoreErrorAsync } from '@willbooster/shared-lib/src';
+import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
 import semver from 'semver';
 import yargs from 'yargs';
 
@@ -162,9 +162,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     assertSafeDependencySources(allPackageConfigs);
 
     // Managed repositories use Bun with mise (and optionally fnox); Yarn artifacts are removed.
+    // Deciding the linker requires running installs, so --skip-deps keeps the previous linker
+    // and skips the probe (and its node_modules cleanup) entirely.
     const previousBunLinker = readBunLinker(rootDirPath);
     await removeYarnFiles(rootConfig);
-    await generateBunfigToml(rootConfig);
+    await generateBunfigToml(rootConfig, skipDeps ? (previousBunLinker ?? 'isolated') : 'isolated');
     await generateMiseToml(rootConfig);
     // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
     // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
@@ -173,7 +175,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     // The linker must be decided BEFORE any `bun add` mutates package.json files: per-package
     // installs tolerate failures (spawnSync discards their status), so a layout that cannot
     // install would silently drop every managed dependency update for the rest of the run.
-    if (!(await ensureInstallableBunLinker(rootDirPath, rootConfig, previousBunLinker))) {
+    if (!skipDeps && !(await ensureInstallableBunLinker(rootDirPath, rootConfig, previousBunLinker))) {
       // Do not fail the run here: the probe observes the pre-migration lifecycle scripts (e.g.
       // still-Yarn-based postinstall commands that generatePackageJson converts later), so both
       // layouts can fail spuriously. refreshBunLock runs after the conversion and is the single
@@ -327,7 +329,17 @@ function removeNodeModules(rootDirPath: string, rootConfig: PackageConfig): void
       path.resolve(rootDirPath, workspaceDir, 'node_modules')
     ),
   ];
+  // Never delete through a symlink escaping the repository: a workspace directory (or one of its
+  // ancestors) linked to another project must not cost that project its node_modules.
+  const realRootDirPath = fs.realpathSync(rootDirPath);
   for (const nodeModulesPath of nodeModulesPaths) {
+    const realParentDirPath = ignoreError(() => fs.realpathSync(path.dirname(nodeModulesPath)));
+    if (
+      !realParentDirPath ||
+      (realParentDirPath !== realRootDirPath && !realParentDirPath.startsWith(realRootDirPath + path.sep))
+    ) {
+      continue;
+    }
     fs.rmSync(nodeModulesPath, { recursive: true, force: true });
   }
 }
@@ -349,9 +361,11 @@ async function refreshBunLock(rootDirPath: string, rootConfig: PackageConfig): P
     removeNodeModules(rootDirPath, rootConfig);
     status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
     if (status === 0) return;
-    // Both layouts failed after conversion; restore the default isolated configuration.
+    // Both layouts failed after conversion; restore the default isolated configuration and clean
+    // up the failed hoisted attempt so the next run does not probe on a polluted tree.
     await generateBunfigToml(rootConfig);
     await promisePool.promiseAll();
+    removeNodeModules(rootDirPath, rootConfig);
   }
   throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
 }
