@@ -390,6 +390,14 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     job.secrets.GH_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
   }
 
+  // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY repository secret.
+  if (
+    fs.existsSync(path.resolve(config.dirPath, 'fnox.toml')) &&
+    (kind === 'test' || kind === 'release' || job.secrets.DOT_ENV)
+  ) {
+    job.secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
+  }
+
   if (job.secrets.FIREBASE_TOKEN) {
     job.secrets.GCP_SA_KEY_JSON_FOR_FIREBASE = '${{ secrets.GCP_SA_KEY_JSON_FOR_FIREBASE }}';
     delete job.secrets.FIREBASE_TOKEN;

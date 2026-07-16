@@ -103,10 +103,7 @@ const wbfyJsonSchema = z.object({
     .optional(),
 });
 
-export async function getPackageConfig(
-  dirPath: string,
-  rootConfig?: PackageConfig
-): Promise<PackageConfig | undefined> {
+export async function getPackageConfig(dirPath: string): Promise<PackageConfig | undefined> {
   const packageJsonPath = path.resolve(dirPath, 'package.json');
   try {
     const doesContainPackageJson = fs.existsSync(packageJsonPath);
@@ -202,13 +199,8 @@ export async function getPackageConfig(
       isCloudflare: detectCloudflare(dirPath, packageJson),
       doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
-      isBun:
-        rootConfig?.isBun ||
-        fs.existsSync(path.join(dirPath, 'bun.lockb')) ||
-        fs.existsSync(path.join(dirPath, 'bun.lock')) ||
-        // Some repos gitignore bun.lock, so it may be missing on fresh clones.
-        // bunfig.toml is committed and generated only for Bun projects, making it a reliable signal.
-        fs.existsSync(path.join(dirPath, 'bunfig.toml')),
+      // wbfy now assumes every managed repository uses Bun (with mise and optionally fnox).
+      isBun: true,
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),

@@ -36,7 +36,8 @@ import { installAgentSkills } from './generators/skills.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
-import { generateYarnrcYml } from './generators/yarnrc.js';
+import { generateMiseToml } from './generators/miseToml.js';
+import { removeYarnFiles } from './generators/removeYarnFiles.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
 import { setupSecrets } from './github/secret.js';
@@ -119,9 +120,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     }
     const abbreviationPromise = fixTypos(rootConfig);
 
-    const nullableSubPackageConfigs = await Promise.all(
-      subDirPaths.map((subDirPath) => getPackageConfig(subDirPath, rootConfig))
-    );
+    const nullableSubPackageConfigs = await Promise.all(subDirPaths.map((subDirPath) => getPackageConfig(subDirPath)));
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
 
@@ -132,11 +131,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     }
     assertSafeDependencySources(allPackageConfigs);
 
-    // Install yarn berry
-    await generateYarnrcYml(rootConfig);
-    if (rootConfig.isBun) {
-      await generateBunfigToml(rootConfig);
-    }
+    // Managed repositories use Bun with mise (and optionally fnox); Yarn artifacts are removed.
+    await removeYarnFiles(rootConfig);
+    await generateBunfigToml(rootConfig);
+    await generateMiseToml(rootConfig);
 
     const shouldRunWorkflows =
       !isReusableWorkflowsRepo(rootConfig.repository) &&
@@ -216,17 +214,12 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await promisePool.promiseAll();
     await fixWbDbCommand(rootConfig, allPackageConfigs);
 
-    const packageManager = rootConfig.isBun ? 'bun' : 'yarn';
     // Refresh lock files
-    if (rootConfig.isBun) {
-      await logger.functionIgnoringException('refreshBunLock', async () => {
-        await Promise.resolve();
-        refreshBunLock(rootDirPath);
-      });
-    } else {
-      spawnSync(packageManager, ['install', '--no-immutable'], rootDirPath);
-    }
-    spawnSync(packageManager, ['cleanup'], rootDirPath);
+    await logger.functionIgnoringException('refreshBunLock', async () => {
+      await Promise.resolve();
+      refreshBunLock(rootDirPath);
+    });
+    spawnSync('bun', ['cleanup'], rootDirPath);
 
     await installAgentSkills(rootConfig);
   }

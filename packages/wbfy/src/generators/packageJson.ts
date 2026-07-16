@@ -35,7 +35,6 @@ import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '..
 import { parseSourceFile } from '../utils/typescriptApi.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
-import { yarnNpmMinimalAgeGate, yarnNpmPreapprovedPackages } from './yarnrc.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptDependency = 'typescript';
@@ -190,7 +189,6 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
     scripts.prettify = (scripts.prettify ?? '') + (await generatePrettierSuffix(config.dirPath));
   }
   normalizeYarnWorkspaceForeachScripts(scripts);
-  normalizeRailwayCliScript(config, scripts);
 }
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
@@ -276,20 +274,14 @@ function appendWranglerTypes(script: string, wranglerTypes: string | undefined):
 }
 
 function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {
-  // Deal with breaking changes in yarn berry 4.0.0-rc.49
+  // Managed repositories are Bun projects, so migrate leftover Yarn workspace commands to Bun.
   for (const [key, value] of Object.entries(scripts)) {
     if (!value?.includes('yarn workspaces foreach')) continue;
     scripts[key] = value.replaceAll(
-      /yarn workspaces foreach(?!\s+(?:-A|-R|--(?:all|recursive|since|worktree|from|include|exclude|public|private)))/gu,
-      'yarn workspaces foreach --all'
+      /yarn workspaces foreach\b[^&|;]*?\brun\s+(\S+)/gu,
+      (_, scriptName: string) => `bun run --filter '*' ${scriptName}`
     );
   }
-}
-
-function normalizeRailwayCliScript(config: PackageConfig, scripts: PackageJson.Scripts): void {
-  if (config.isBun || !scripts.railway?.includes('@railway/cli')) return;
-
-  scripts.railway = 'YARN_ENABLE_SCRIPTS=true yarn dlx @railway/cli';
 }
 
 async function applyPackageJsonConventions(
@@ -549,7 +541,7 @@ async function normalizePackageMetadata(
 
     if (config.doesContainPubspecYaml) {
       jsonObj.scripts.lint = 'flutter analyze';
-      jsonObj.scripts['lint-fix'] = 'yarn lint';
+      jsonObj.scripts['lint-fix'] = config.isBun ? 'bun run lint' : 'yarn lint';
       const dirs = ['lib', 'test', 'test_driver'].filter((dir) => fs.existsSync(path.resolve(config.dirPath, dir)));
       if (dirs.length > 0) {
         jsonObj.scripts['format-code'] = `dart format $(find ${dirs.join(
@@ -1005,19 +997,19 @@ function getLatestDependencyVersion(config: PackageConfig, dependency: string): 
   const cachedVersion = latestDependencyVersionCache.get(cacheKey);
   if (cachedVersion) return cachedVersion;
 
-  const version = getDependencyVersionFromNpm(config, dependency);
+  const version = getDependencyVersionFromNpm(dependency);
   latestDependencyVersionCache.set(cacheKey, version);
   return version;
 }
 
-function getDependencyVersionFromNpm(config: PackageConfig, dependency: string): string {
+function getDependencyVersionFromNpm(dependency: string): string {
   // wbfy-managed tooling (preapproved packages) adopts the latest release immediately,
   // bypassing the minimum-release-age gate applied to unreviewed dependencies.
-  if (!shouldApplyPackageAgeGate(config, dependency)) {
+  if (!shouldApplyPackageAgeGate(dependency)) {
     return getRawDependencyVersionFromNpm(dependency);
   }
 
-  return getLatestAgeGatedDependencyVersion(dependency, getPackageAgeGateMs(config));
+  return getLatestAgeGatedDependencyVersion(dependency, getPackageAgeGateMs());
 }
 
 function getLatestAgeGatedDependencyVersion(dependency: string, packageAgeGateMs: number): string {
@@ -1065,16 +1057,12 @@ function getNpmPackageTimes(dependency: string): Record<string, string> {
   }
 }
 
-function shouldApplyPackageAgeGate(config: PackageConfig, dependency: string): boolean {
-  const preapprovedPackages = config.isBun ? bunMinimumReleaseAgeExcludes : yarnNpmPreapprovedPackages;
-  return !preapprovedPackages.some((pattern) => doesPackagePatternMatch(pattern, dependency));
+function shouldApplyPackageAgeGate(dependency: string): boolean {
+  return !bunMinimumReleaseAgeExcludes.some((pattern) => doesPackagePatternMatch(pattern, dependency));
 }
 
-function getPackageAgeGateMs(config: PackageConfig): number {
-  if (config.isBun) return bunMinimumReleaseAgeSeconds * 1000;
-
-  const matched = /^(?<days>\d+)d$/u.exec(yarnNpmMinimalAgeGate);
-  return Number(matched?.groups?.days ?? 0) * 24 * 60 * 60 * 1000;
+function getPackageAgeGateMs(): number {
+  return bunMinimumReleaseAgeSeconds * 1000;
 }
 
 function doesPackagePatternMatch(pattern: string, dependency: string): boolean {

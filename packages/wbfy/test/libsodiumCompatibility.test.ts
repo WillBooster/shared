@@ -8,6 +8,9 @@ import { expect, test } from 'vitest';
 import packageJson from '../package.json' with { type: 'json' };
 
 const packageDirPath = path.resolve(import.meta.dirname, '..');
+// npm must run on the same Node.js as the test process; the mise shims in a temp
+// directory would otherwise resolve a global Node.js older than wbfy's engine requirement.
+const envWithTestNode = { ...process.env, PATH: `${path.dirname(process.execPath)}:${process.env.PATH ?? ''}` };
 
 test('packed cli prints its version after npm install', { timeout: 120 * 1000 }, () => {
   buildCli();
@@ -20,9 +23,10 @@ test('packed cli prints its version after npm install', { timeout: 120 * 1000 },
       {
         cwd: tempDirPath,
         encoding: 'utf8',
+        env: envWithTestNode,
       }
     );
-    expect(packResult.stderr).toBe('');
+    expect(withoutEngineWarnings(packResult.stderr)).toBe('');
     expect(packResult.status).toBe(0);
 
     const [{ filename }] = JSON.parse(packResult.stdout) as [{ filename: string }];
@@ -32,21 +36,24 @@ test('packed cli prints its version after npm install', { timeout: 120 * 1000 },
       {
         cwd: tempDirPath,
         encoding: 'utf8',
+        env: envWithTestNode,
       }
     );
-    expect(installResult.stderr).toBe('');
+    expect(withoutEngineWarnings(installResult.stderr)).toBe('');
     expect(installResult.status).toBe(0);
 
     const incompatibleHoistResult = child_process.spawnSync('npm', ['install', '--ignore-scripts', 'libsodium@0.8.3'], {
       cwd: tempDirPath,
       encoding: 'utf8',
+      env: envWithTestNode,
     });
-    expect(incompatibleHoistResult.stderr).toBe('');
+    expect(withoutEngineWarnings(incompatibleHoistResult.stderr)).toBe('');
     expect(incompatibleHoistResult.status).toBe(0);
 
     const result = child_process.spawnSync(path.join(tempDirPath, 'node_modules', '.bin', 'wbfy'), ['--version'], {
       cwd: tempDirPath,
       encoding: 'utf8',
+      env: envWithTestNode,
     });
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
@@ -67,9 +74,10 @@ test('packed cli invoked through npx fails when the target has no package config
       {
         cwd: tempDirPath,
         encoding: 'utf8',
+        env: envWithTestNode,
       }
     );
-    expect(packResult.stderr).toBe('');
+    expect(withoutEngineWarnings(packResult.stderr)).toBe('');
     expect(packResult.status).toBe(0);
 
     const [{ filename }] = JSON.parse(packResult.stdout) as [{ filename: string }];
@@ -83,7 +91,7 @@ test('packed cli invoked through npx fails when the target has no package config
         cwd: targetDirPath,
         encoding: 'utf8',
         env: {
-          ...process.env,
+          ...envWithTestNode,
           npm_config_cache: path.join(tempDirPath, 'npm-cache'),
         },
       }
@@ -96,9 +104,18 @@ test('packed cli invoked through npx fails when the target has no package config
 });
 
 function buildCli(): void {
-  const buildResult = child_process.spawnSync('yarn', ['build'], {
+  const buildResult = child_process.spawnSync('bun', ['run', 'build'], {
     cwd: packageDirPath,
     encoding: 'utf8',
   });
   expect(buildResult.status).toBe(0);
+}
+
+// npm emits EBADENGINE warnings when the host Node.js is older than wbfy's engine requirement;
+// they are unrelated to the libsodium compatibility this test verifies.
+function withoutEngineWarnings(stderr: string): string {
+  return stderr
+    .split('\n')
+    .filter((line) => !line.includes('EBADENGINE') && line.trim() !== '')
+    .join('\n');
 }

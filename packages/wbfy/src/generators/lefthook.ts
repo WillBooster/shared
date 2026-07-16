@@ -214,7 +214,7 @@ function getCleanupCommand(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
     return String.raw`
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
-yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
+bun run --cwd packages/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
 `.trim();
   }
   // Python-only Bun repos install wb for shared scripts but not Oxlint, so
