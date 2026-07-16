@@ -14,21 +14,37 @@ import { getOctokit, gitHubUtil, hasGitHubToken } from '../utils/githubUtil.js';
 const DEPRECATED_SECRET_NAMES = ['READY_DISCORD_WEBHOOK_URL', 'GH_BOT_PAT', 'PUBLIC_GH_BOT_PAT'];
 const require = createRequire(import.meta.url);
 
+// The CI-dedicated age public key. Every fnox.toml must list it as a recipient so that CI can
+// decrypt secrets with the matching private key (uploaded as the FNOX_AGE_KEY repository secret
+// from ~/.config/fnox/ci-age.txt). Only the public key may appear in this repository.
+export const CI_AGE_PUBLIC_KEY = 'age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak';
+
 export async function setupSecrets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupSecrets', async () => {
     const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
     if (!owner || !repo || owner !== 'WillBoosterLab') return;
     if (!hasGitHubToken(owner) || !options.doesUploadEnvVars) return;
 
-    const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
+    const fnoxTomlPath = path.resolve(config.dirPath, 'fnox.toml');
+    const usesFnox = fs.existsSync(fnoxTomlPath);
     let secretsToUpload: Record<string, string>;
     let obsoleteSecretNames: string[];
     if (usesFnox) {
       // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
-      // the age private key to decrypt them. The key is read from the local fnox identity and
-      // NEVER written anywhere inside the repository.
-      const ageKey = readFnoxAgeSecretKey();
-      if (!ageKey) return;
+      // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
+      // identity (never the personal one) and NEVER written anywhere inside the repository.
+      if (!fs.readFileSync(fnoxTomlPath, 'utf8').includes(CI_AGE_PUBLIC_KEY)) {
+        console.error(
+          `Skip uploading FNOX_AGE_KEY because fnox.toml does not list the CI age public key as a recipient. Add ${CI_AGE_PUBLIC_KEY} to [providers.age].recipients and run \`fnox reencrypt\`.`
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const ageKey = readCiAgeSecretKey();
+      if (!ageKey) {
+        process.exitCode = 1;
+        return;
+      }
       secretsToUpload = { FNOX_AGE_KEY: ageKey };
       obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
     } else {
@@ -95,18 +111,29 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
   });
 }
 
-function readFnoxAgeSecretKey(): string | undefined {
-  const identityPath = path.join(os.homedir(), '.config', 'fnox', 'age.txt');
+function readCiAgeSecretKey(): string | undefined {
+  // The CI-dedicated identity is separate from the personal one (~/.config/fnox/age.txt) so that
+  // the personal key never leaves the local machine and the CI key can be rotated independently.
+  const identityPath = path.join(os.homedir(), '.config', 'fnox', 'ci-age.txt');
   let content: string;
   try {
     content = fs.readFileSync(identityPath, 'utf8');
   } catch {
-    console.warn(`Skip uploading FNOX_AGE_KEY because ${identityPath} is missing.`);
+    console.error(
+      `Failed to upload FNOX_AGE_KEY because ${identityPath} is missing. Create the CI-dedicated identity with \`age-keygen -o ${identityPath}\`; the personal ~/.config/fnox/age.txt is deliberately not used.`
+    );
+    return undefined;
+  }
+  const publicKeyLine = content.split('\n').find((line) => line.includes('public key:'));
+  if (publicKeyLine && !publicKeyLine.includes(CI_AGE_PUBLIC_KEY)) {
+    console.error(
+      `Failed to upload FNOX_AGE_KEY because the public key in ${identityPath} does not match the expected CI age public key (${CI_AGE_PUBLIC_KEY}).`
+    );
     return undefined;
   }
   const keyLine = content.split('\n').find((line) => line.trim().startsWith('AGE-SECRET-KEY-'));
   if (!keyLine) {
-    console.warn(`Skip uploading FNOX_AGE_KEY because ${identityPath} contains no AGE-SECRET-KEY line.`);
+    console.error(`Failed to upload FNOX_AGE_KEY because ${identityPath} contains no AGE-SECRET-KEY line.`);
     return undefined;
   }
   return keyLine.trim();
