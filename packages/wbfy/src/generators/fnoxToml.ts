@@ -26,27 +26,61 @@ interface FnoxToml {
   [key: string]: unknown;
 }
 
+let fnoxSyncFailed = false;
+
+/** Whether any fnox recipient synchronization failed; setupSecrets must not upload then. */
+export function hasFnoxSyncFailed(): boolean {
+  return fnoxSyncFailed;
+}
+
 /**
- * Synchronizes the age recipients in fnox.toml with FNOX_AGE_RECIPIENTS and re-encrypts the
+ * Runs a function while the machine-local fnox.local.toml is temporarily moved aside: fnox loads
+ * it at higher priority than the committed fnox.toml, so a local override shadowing a committed
+ * secret would make `fnox reencrypt` skip that secret and `fnox export` report the local value.
+ */
+export function withFnoxLocalHidden<T>(dirPath: string, func: () => T): T {
+  const localPath = path.resolve(dirPath, 'fnox.local.toml');
+  const hiddenPath = `${localPath}.wbfy-bak`;
+  const exists = fs.existsSync(localPath);
+  if (exists) fs.renameSync(localPath, hiddenPath);
+  try {
+    return func();
+  } finally {
+    if (exists) fs.renameSync(hiddenPath, localPath);
+  }
+}
+
+/**
+ * Synchronizes the age recipients in every fnox.toml with FNOX_AGE_RECIPIENTS and re-encrypts the
  * committed secrets when the recipient set changed.
  */
-export async function generateFnoxToml(config: PackageConfig): Promise<void> {
+export async function generateFnoxToml(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('generateFnoxToml', async () => {
     // A failed synchronization must fail the whole wbfy run: exiting zero with stale recipients
     // would leave secrets undecryptable for new recipients while looking successful.
     try {
-      await synchronizeFnoxAgeRecipients(config);
+      // The root goes first so that package configs inheriting the root provider re-encrypt
+      // against the already-updated recipients.
+      const rootChanged = await synchronizeFnoxAgeRecipients(rootConfig, false);
+      for (const config of allConfigs.filter((config) => !config.isRoot)) {
+        await synchronizeFnoxAgeRecipients(config, rootChanged);
+      }
     } catch (error) {
-      console.error('Failed to synchronize fnox age recipients due to:', (error as Error | undefined)?.stack ?? error);
-      process.exitCode = 1;
+      failFnoxSync(`Failed to synchronize fnox age recipients due to: ${(error as Error | undefined)?.stack ?? error}`);
     }
   });
 }
 
-async function synchronizeFnoxAgeRecipients(config: PackageConfig): Promise<void> {
+function failFnoxSync(message: string): void {
+  console.error(message);
+  process.exitCode = 1;
+  fnoxSyncFailed = true;
+}
+
+async function synchronizeFnoxAgeRecipients(config: PackageConfig, rootRecipientsChanged: boolean): Promise<boolean> {
   const dirPath = config.dirPath;
   const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
-  if (!fs.existsSync(fnoxTomlPath)) return;
+  if (!fs.existsSync(fnoxTomlPath)) return false;
 
   // Recipient synchronization only understands the standard single-file layout with one
   // top-level age provider. Per-profile config files, imports, or provider overrides would keep
@@ -58,11 +92,10 @@ async function synchronizeFnoxAgeRecipients(config: PackageConfig): Promise<void
     .filter((name) => /^fnox\..+\.toml$/u.test(name) && name !== 'fnox.local.toml')
     .toSorted();
   if (profileConfigFileNames.length > 0) {
-    console.error(
+    failFnoxSync(
       `Failed to synchronize fnox age recipients in ${dirPath} because per-profile config files are not supported: ${profileConfigFileNames.join(', ')}. Merge them into fnox.toml.`
     );
-    process.exitCode = 1;
-    return;
+    return false;
   }
   const localTomlPath = path.resolve(dirPath, 'fnox.local.toml');
   if (fs.existsSync(localTomlPath)) {
@@ -72,11 +105,10 @@ async function synchronizeFnoxAgeRecipients(config: PackageConfig): Promise<void
       localSettings.providers ??
       Object.values(localSettings.profiles ?? {}).find((profile) => profile?.providers);
     if (definesProviders) {
-      console.error(
+      failFnoxSync(
         `Failed to synchronize fnox age recipients in ${dirPath} because fnox.local.toml defines imports, providers, or profile providers, which this generator cannot keep in sync. Keep only machine-local secret overrides there.`
       );
-      process.exitCode = 1;
-      return;
+      return false;
     }
   }
 
@@ -85,26 +117,35 @@ async function synchronizeFnoxAgeRecipients(config: PackageConfig): Promise<void
   const originalContent = fs.readFileSync(fnoxTomlPath, 'utf8');
   const settings = parse(originalContent) as FnoxToml;
   if (settings.import) {
-    console.error(
+    failFnoxSync(
       `Failed to synchronize fnox age recipients in ${dirPath} because \`import\` is not supported. Merge the imported files into fnox.toml.`
     );
-    process.exitCode = 1;
-    return;
+    return false;
   }
   const profilesWithProviders = Object.entries(settings.profiles ?? {})
     .filter(([, profile]) => profile?.providers)
     .map(([name]) => name);
   if (profilesWithProviders.length > 0) {
-    console.error(
+    failFnoxSync(
       `Failed to synchronize fnox age recipients in ${dirPath} because profile-specific providers are not supported: ${profilesWithProviders.join(', ')}. Move them to the top-level [providers] table.`
     );
-    process.exitCode = 1;
-    return;
+    return false;
   }
 
+  const profileNames = Object.keys(settings.profiles ?? {});
+
   // A workspace package's fnox.toml without its own age provider inherits the root one through
-  // fnox's hierarchical loading, so only the root config must declare the provider.
-  if (!config.isRoot && !settings.providers?.age) return;
+  // fnox's hierarchical loading, so only the root config must declare the provider — but the
+  // package's own ciphertexts still must be re-encrypted whenever the root recipients changed,
+  // and that only happens when `fnox reencrypt` runs from the package directory.
+  if (!config.isRoot && !settings.providers?.age) {
+    if (rootRecipientsChanged && !reencryptFnoxSecrets(dirPath, profileNames)) {
+      failFnoxSync(
+        `Failed to re-encrypt fnox secrets in ${dirPath} for the updated recipients. Fix the error and rerun wbfy.`
+      );
+    }
+    return false;
+  }
 
   const ageProvider = settings.providers?.age ?? {};
   const currentRecipients = new Set(Array.isArray(ageProvider.recipients) ? ageProvider.recipients : []);
@@ -112,7 +153,7 @@ async function synchronizeFnoxAgeRecipients(config: PackageConfig): Promise<void
     currentRecipients.size === FNOX_AGE_RECIPIENTS.length &&
     FNOX_AGE_RECIPIENTS.every((recipient) => currentRecipients.has(recipient.publicKey))
   ) {
-    return;
+    return false;
   }
 
   // Rewrite only the recipients assignment so user-authored comments and formatting survive.
@@ -129,41 +170,64 @@ async function synchronizeFnoxAgeRecipients(config: PackageConfig): Promise<void
   }
   await fsUtil.generateFile(fnoxTomlPath, updatedContent);
 
-  // Re-encrypt the base secrets and each profile's own secrets (--no-defaults keeps the merged
-  // base secrets from being duplicated into profile tables) for the new recipient set. This
-  // requires an identity that can decrypt the current ciphertexts (e.g. ~/.config/fnox/age.txt).
-  const profileArgs = [[], ...Object.keys(settings.profiles ?? {}).map((name) => ['--no-defaults', '-P', name])];
-  for (const args of profileArgs) {
-    const status = spawnSyncAndReturnStatus(
-      'fnox',
-      ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...args],
-      dirPath
+  if (!reencryptFnoxSecrets(dirPath, profileNames)) {
+    // Restore the original config: keeping the new recipients with old ciphertexts would make
+    // this generator skip re-encryption forever and let setupSecrets upload a CI key that
+    // cannot decrypt anything. The old ciphertexts remain valid for the old recipients.
+    await fsUtil.generateFile(fnoxTomlPath, originalContent);
+    failFnoxSync(
+      `Failed to re-encrypt fnox secrets in ${dirPath} for the updated recipients. Fix the error and rerun wbfy.`
     );
-    if (status !== 0) {
-      // Restore the original config: keeping the new recipients with old ciphertexts would make
-      // this generator skip re-encryption forever and let setupSecrets upload a CI key that
-      // cannot decrypt anything. The old ciphertexts remain valid for the old recipients.
-      await fsUtil.generateFile(fnoxTomlPath, originalContent);
-      console.error('Failed to re-encrypt fnox secrets for the updated recipients. Fix the error and rerun wbfy.');
-      process.exitCode = 1;
-      return;
-    }
+    return false;
   }
+  return true;
+}
+
+// Re-encrypts the base secrets and each profile's own secrets (--no-defaults keeps the merged
+// base secrets from being duplicated into profile tables) for the current recipient set. This
+// requires an identity that can decrypt the current ciphertexts (e.g. ~/.config/fnox/age.txt).
+function reencryptFnoxSecrets(dirPath: string, profileNames: string[]): boolean {
+  return withFnoxLocalHidden(dirPath, () => {
+    const profileArgs = [[], ...profileNames.map((name) => ['--no-defaults', '-P', name])];
+    for (const args of profileArgs) {
+      const status = spawnSyncAndReturnStatus(
+        'fnox',
+        ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...args],
+        dirPath
+      );
+      if (status !== 0) return false;
+    }
+    return true;
+  });
 }
 
 function replaceAgeRecipients(content: string): string {
   const recipientsText = `recipients = [${FNOX_AGE_RECIPIENTS.map((recipient) => `"${recipient.publicKey}"`).join(', ')}]`;
-  // Replace the recipients assignment inside the [providers.age] table; [^[] keeps the lazy match
-  // from crossing into the next table header.
-  const withReplacedRecipients = content.replace(
-    /(\[providers\.age\][^[]*?)recipients\s*=\s*\[[^\]]*\]/u,
+  // Standard form: a [providers.age] table. Scan line-wise so that a `[` inside a comment or a
+  // string never terminates the table early; the table ends at the next line-start table header.
+  const lines = content.split('\n');
+  const headerIndex = lines.findIndex((line) => line.trim() === '[providers.age]');
+  if (headerIndex !== -1) {
+    let endIndex = lines.length;
+    for (let index = headerIndex + 1; index < lines.length; index++) {
+      if (/^\s*\[/u.test(lines[index] ?? '')) {
+        endIndex = index;
+        break;
+      }
+    }
+    const section = lines.slice(headerIndex, endIndex).join('\n');
+    const replacedSection = section.replace(/recipients\s*=\s*\[[^\]]*\]/u, recipientsText);
+    const newSection =
+      replacedSection === section
+        ? section.replace('[providers.age]', `[providers.age]\n${recipientsText}`)
+        : replacedSection;
+    return [...lines.slice(0, headerIndex), newSection, ...lines.slice(endIndex)].join('\n');
+  }
+  // Inline form: age = { type = "age", recipients = [...] } inside a [providers] table.
+  const withReplacedInline = content.replace(
+    /(\bage\s*=\s*\{[^}]*?)recipients\s*=\s*\[[^\]]*\]/u,
     `$1${recipientsText}`
   );
-  if (withReplacedRecipients !== content) return withReplacedRecipients;
-  const withInsertedRecipients = content.replace(
-    /\[providers\.age\]([^\n]*\n)/u,
-    `[providers.age]$1${recipientsText}\n`
-  );
-  if (withInsertedRecipients !== content) return withInsertedRecipients;
+  if (withReplacedInline !== content) return withReplacedInline;
   return `${content.trimEnd()}\n\n[providers.age]\ntype = "age"\n${recipientsText}\n`;
 }
