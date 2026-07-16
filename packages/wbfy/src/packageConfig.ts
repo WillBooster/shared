@@ -83,7 +83,6 @@ export interface PackageConfig {
     github: boolean;
     npm: boolean;
   };
-  hasVersionSettings: boolean;
   miseTasks: Record<string, string>;
   packageJson?: PackageJson;
   wbfyJson?: WbfyJson;
@@ -141,14 +140,6 @@ export async function getPackageConfig(dirPath: string): Promise<PackageConfig |
     let repoInfo: Record<string, unknown> | undefined;
     if (isRoot) {
       repoInfo = await fetchRepoInfo(dirPath, packageJson);
-    }
-
-    let hasVersionSettings = hasVersionSettingsFile(dirPath);
-    for (const prefix of ['java', 'node', 'python']) {
-      if (fs.existsSync(path.resolve(dirPath, `.${prefix}-version`))) {
-        hasVersionSettings = true;
-        break;
-      }
     }
 
     let dockerfile = '';
@@ -261,7 +252,6 @@ export async function getPackageConfig(dirPath: string): Promise<PackageConfig |
         github: releasePlugins.includes('@semantic-release/github'),
         npm: releasePlugins.includes('@semantic-release/npm'),
       },
-      hasVersionSettings,
       miseTasks: await readMiseTasks(dirPath),
       packageJson,
       wbfyJson,
@@ -282,15 +272,6 @@ export async function getPackageConfig(dirPath: string): Promise<PackageConfig |
   } catch {
     // do nothing
   }
-}
-
-function hasVersionSettingsFile(dirPath: string): boolean {
-  const current = path.resolve(dirPath);
-  return (
-    fs.existsSync(path.join(current, 'mise.toml')) ||
-    fs.existsSync(path.join(current, '.mise.toml')) ||
-    fs.existsSync(path.join(current, '.tool-versions'))
-  );
 }
 
 /**

@@ -244,7 +244,7 @@ test('keeps management for a script composing gen-code with a build step', async
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'build/core': 'yarn run gen-code && vite build',
+    'build/core': 'bun run gen-code && vite build',
     'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
     postinstall: 'wb gen-code && wrangler types --strict-vars=false',
   });
@@ -317,7 +317,7 @@ test('does not append wrangler types to a postinstall that generates through a w
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('yarn gen:types');
+  expect(packageJson.scripts?.postinstall).toBe('bun run gen:types');
 });
 
 // detectWranglerConfig does not see a custom --config path, so wbfy does not manage the file — but overwriting the
@@ -626,7 +626,7 @@ test('detects generation through an env-prefixed wrapper postinstall', async () 
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('NODE_ENV=production yarn run --silent gen:types');
+  expect(packageJson.scripts?.postinstall).toBe('NODE_ENV=production bun run --silent gen:types');
 });
 
 // An appended generator after a directory-changing postinstall would run in the other directory, so it must
@@ -638,7 +638,7 @@ test('prepends the generator to a directory-changing postinstall', async () => {
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('bunx wrangler types && cd ../tools && yarn build');
+  expect(packageJson.scripts?.postinstall).toBe('bunx wrangler types && cd ../tools && bun run build');
 });
 
 // `--check` is a boolean option: only its enabled forms suppress generation, so `--check=false` is an ordinary
@@ -906,7 +906,7 @@ test('preserves a gen-code wrapper whose script is a custom pipeline', async () 
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'node scripts/prepareTypes.js && wrangler types --strict-vars=false',
-    postinstall: 'wb gen-code && yarn gen-code',
+    postinstall: 'wb gen-code && bun run gen-code',
   });
 });
 
@@ -945,7 +945,7 @@ test('preserves a gen-code wrapper whose script includes a custom-config invocat
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'wb gen-code && wrangler types --config config/worker.jsonc',
-    postinstall: 'wb gen-code && yarn gen-code',
+    postinstall: 'wb gen-code && bun run gen-code',
   });
 });
 
@@ -1253,7 +1253,7 @@ test('preserves a plain wrapper whose target uses unsupported shell syntax', asy
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-code');
 });
 
 // `cd ./.` never leaves the package directory, so a conflicting invocation behind it must still be seen.
@@ -1311,7 +1311,7 @@ test('preserves a wrapper around a global-option wrangler invocation', async () 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-types');
 });
 
 // A bare generator behind a prerequisite is a pipeline too; bypassing the preparation step could emit an Env
@@ -1384,7 +1384,7 @@ test('preserves a wrapper script invoking wrangler types with a custom config wh
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-types');
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {

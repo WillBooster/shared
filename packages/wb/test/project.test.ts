@@ -26,6 +26,17 @@ describe('project', () => {
     5 * 60 * 1000
   );
 
+  it('detects bun from a mise.toml tool pin', async () => {
+    // wbfy migrates .tool-versions into mise.toml, so the tool-manifest signal must survive
+    // for repos that gitignore bun.lock and have no packageManager field.
+    const dirPath = path.join(tempDir, 'app');
+    await initializeProjectDirectory(dirPath);
+    await fs.promises.writeFile(path.join(dirPath, 'mise.toml'), '[tools]\nnode = "24.0.0"\nbun = "latest"\n');
+
+    const project = findSelfProject({}, false, dirPath);
+    expect(project?.isBunAvailable).toBe(true);
+  });
+
   it('uses oxlint when declared', async () => {
     const dirPath = path.join(tempDir, 'app');
     await initializeProjectDirectory(dirPath);

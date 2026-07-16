@@ -298,10 +298,11 @@ function hasLocalWbWorkspace(config: PackageConfig): boolean {
 
 function generatePostMergeCommands(config: PackageConfig): string[] {
   const postMergeCommands: string[] = [];
-  if (config.hasVersionSettings) {
-    const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml|\.tool-versions|\..+-version)`;
-    postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
-  }
+  // Always emit the mise hook: every managed repository receives mise.toml from generateMiseToml
+  // in the same run, and gating on a pre-run hasVersionSettings snapshot would omit the hook on
+  // the first migration run (non-idempotent output).
+  const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml|\.tool-versions|\..+-version)`;
+  postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
   const installCommand = 'bun install';
   const rmNextDirectory = config.depending.blitz || config.depending.next ? ' && rm -Rf .next' : '';
   postMergeCommands.push(String.raw`run_if_changed "package\.json" "${installCommand}${rmNextDirectory}"`);

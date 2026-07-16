@@ -33,6 +33,9 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
       const miseTool = tool === 'nodejs' ? 'node' : tool;
       tools[miseTool] = tools[miseTool] ?? (versions.length > 1 ? versions : versions[0]);
     }
+    // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
+    // unpinned Node would come from whatever happens to be on PATH.
+    tools.node = tools.node ?? readNodeVersionFile(config.dirPath) ?? 'latest';
     tools.bun = tools.bun ?? 'latest';
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = tools.fnox ?? 'latest';
@@ -53,6 +56,15 @@ function parseMiseToml(miseTomlPath: string): MiseToml {
     return {};
   }
   return parse(content) as MiseToml;
+}
+
+function readNodeVersionFile(dirPath: string): string | undefined {
+  try {
+    const version = fs.readFileSync(path.resolve(dirPath, '.node-version'), 'utf8').trim().replace(/^v/u, '');
+    return version || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function readToolVersions(dirPath: string): Map<string, string[]> {

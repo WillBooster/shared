@@ -62,7 +62,6 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       github: false,
       npm: false,
     },
-    hasVersionSettings: false,
     miseTasks: {},
     packageJson: {},
     ...overrides,

@@ -40,11 +40,12 @@ export class Project {
   }
 
   private hasBunToolVersion(): boolean {
-    try {
-      return /(^|\n)bun\s/.test(fs.readFileSync(path.join(this.rootDirPath, '.tool-versions'), 'utf8'));
-    } catch {
-      return false;
-    }
+    // wbfy migrates .tool-versions into mise.toml, so a mise-pinned bun must count as well:
+    // repos that gitignore bun.lock and have no packageManager field rely on the tool manifest.
+    if (testFileContent(path.join(this.rootDirPath, '.tool-versions'), /(^|\n)bun\s/)) return true;
+    return ['mise.toml', '.mise.toml'].some((fileName) =>
+      testFileContent(path.join(this.rootDirPath, fileName), /^\s*(?:"bun"|bun)\s*=/m)
+    );
   }
 
   private hasBunLockfile(): boolean {
@@ -376,6 +377,14 @@ export function findRootAndSelfProjects(
     }
   }
   return { root: rootProject, self: thisProject };
+}
+
+function testFileContent(filePath: string, pattern: RegExp): boolean {
+  try {
+    return pattern.test(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 async function getAllDescendantProjects(

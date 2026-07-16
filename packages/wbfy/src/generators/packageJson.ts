@@ -180,7 +180,7 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
   delete jsonObj.scripts['start-test-server'];
 
   delete jsonObj.scripts.prettify;
-  normalizeYarnWorkspaceForeachScripts(jsonObj.scripts);
+  convertYarnCommandsToBun(jsonObj.scripts);
 }
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
@@ -265,14 +265,28 @@ function appendWranglerTypes(script: string, wranglerTypes: string | undefined):
   return `${script} && ${wranglerTypes}`;
 }
 
-function normalizeYarnWorkspaceForeachScripts(scripts: PackageJson.Scripts): void {
-  // Managed repositories are Bun projects, so migrate leftover Yarn workspace commands to Bun.
+function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
+  // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
+  // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
   for (const [key, value] of Object.entries(scripts)) {
-    if (!value?.includes('yarn workspaces foreach')) continue;
-    scripts[key] = value.replaceAll(
-      /yarn workspaces foreach\b[^&|;]*?\brun\s+(\S+)/gu,
-      (_, scriptName: string) => `bun run --filter '*' ${scriptName}`
-    );
+    if (typeof value !== 'string' || !/\byarn\b/u.test(value)) continue;
+    scripts[key] = value
+      .replaceAll(
+        /yarn workspaces foreach\b[^&|;]*?\brun\s+(\S+)/gu,
+        (_, scriptName: string) => `bun run --filter '*' ${scriptName}`
+      )
+      .replaceAll(/\byarn\s+dlx\b/gu, 'bunx')
+      .replaceAll(
+        /\byarn\s+workspace\s+(\S+)\s+(?:run\s+)?/gu,
+        (_, packageName: string) => `bun run --filter ${packageName} `
+      )
+      .replaceAll(/\byarn\s+run\b/gu, 'bun run')
+      .replaceAll(/\byarn\s+install\b/gu, 'bun install')
+      // A bare `yarn <name>` invokes the package script; flags (e.g. `yarn --cwd ...`) have no
+      // direct Bun equivalent and are intentionally left untouched to surface during review.
+      .replaceAll(/\byarn\s+(?![-.])([\w.:/-]+)/gu, (_, scriptName: string) => `bun run ${scriptName}`)
+      // A trailing bare `yarn` is an install.
+      .replaceAll(/\byarn\b(?![\w.-])(?!\s+-)/gu, 'bun install');
   }
 }
 

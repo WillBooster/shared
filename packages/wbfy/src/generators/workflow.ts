@@ -382,6 +382,10 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
   }
 }
 
+// The reusable workflows that declare FNOX_AGE_KEY under on.workflow_call.secrets
+// (see WillBooster/reusable-workflows). Passing the secret to any other callee is a GitHub error.
+const fnoxAwareReusableWorkflows = new Set(['autofix', 'deploy', 'gen-pr', 'release', 'run-script', 'test']);
+
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
   job.secrets ??= {};
@@ -391,13 +395,20 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
 
   // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY repository secret.
+  // Key the injection on the *called* reusable workflow, not the caller's filename: callers may have
+  // arbitrary names (e.g. scheduled run-script callers), and GitHub rejects passing a secret that the
+  // callee does not declare. The legacy DOT_ENV pass-through is deliberately kept: FNOX_AGE_KEY
+  // provisioning can be skipped (no --env, missing token or age identity), and the pass-through keeps
+  // CI working from the still-existing DOT_ENV secret until the fnox migration completes.
+  const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@/u.exec(
+    job.uses ?? ''
+  )?.[1];
   if (
     fs.existsSync(path.resolve(config.dirPath, 'fnox.toml')) &&
-    (kind === 'test' || kind === 'release' || kind.startsWith('deploy'))
+    calledReusableWorkflow &&
+    fnoxAwareReusableWorkflows.has(calledReusableWorkflow)
   ) {
     job.secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
-    // wbfy deletes the DOT_ENV repository secret when migrating to fnox, so drop the dead pass-through.
-    delete job.secrets.DOT_ENV;
   }
 
   if (job.secrets.FIREBASE_TOKEN) {

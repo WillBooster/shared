@@ -43,7 +43,6 @@ import { setupRepositoryRulesets } from './github/ruleset.js';
 import { setupSecrets } from './github/secret.js';
 import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
-import { logger } from './logger.js';
 import { options } from './options.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
@@ -101,6 +100,13 @@ async function main(): Promise<void> {
 }
 
 async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<boolean> {
+  // wbfy rewrites repositories to the Bun + mise toolchain and runs `bun add` / `bun install`;
+  // proceeding without Bun would delete Yarn state and then fail to produce a Bun lockfile.
+  if (spawnSyncAndReturnStatus('bun', ['--version'], '.') !== 0) {
+    console.error('wbfy requires Bun. Install Bun (e.g. via mise) and re-run.');
+    return true;
+  }
+
   let hasInvalidPackageConfig = false;
   for (const rootDirPath of paths) {
     const packagesDirPath = path.join(rootDirPath, 'packages');
@@ -215,13 +221,17 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await fixWbDbCommand(rootConfig, allPackageConfigs);
 
     // Refresh lock files
-    await logger.functionIgnoringException('refreshBunLock', async () => {
-      await Promise.resolve();
+    try {
       refreshBunLock(rootDirPath);
       // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
       // that removeYarnFiles intentionally preserved for the migration can be removed.
       fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
-    });
+    } catch (error) {
+      // A failed install must fail the CLI: exiting 0 with a stale or missing Bun lockfile would
+      // hide a broken migration.
+      console.error('Failed to refresh the Bun lockfile:', (error as Error | undefined)?.message ?? error);
+      hasInvalidPackageConfig = true;
+    }
     spawnSync('bun', ['cleanup'], rootDirPath);
 
     await installAgentSkills(rootConfig);
