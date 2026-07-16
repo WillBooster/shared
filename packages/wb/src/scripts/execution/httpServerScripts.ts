@@ -20,7 +20,7 @@ export class HttpServerScripts extends BaseScripts {
     return `YARN build-ts run ${argv.watch ? '--watch' : ''} src/index.ts -- ${argv.normalizedArgsText ?? ''}`;
   }
 
-  async testE2EProtected(
+  override async testE2EProtected(
     project: Project,
     argv: TestArgv,
     startCommand: string,
