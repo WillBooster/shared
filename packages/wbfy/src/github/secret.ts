@@ -8,7 +8,12 @@ import dotenv from 'dotenv';
 import type sodiumModule from 'libsodium-wrappers';
 import { parse } from 'smol-toml';
 
-import { FNOX_AGE_RECIPIENTS, hasFnoxSyncFailed, withFnoxLocalHidden } from '../generators/fnoxToml.js';
+import {
+  FNOX_AGE_RECIPIENTS,
+  hasFnoxSyncFailed,
+  listFnoxTomlDirPaths,
+  readFnoxProfileNames,
+} from '../generators/fnoxToml.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -42,9 +47,10 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
       // must not count. This also catches the case where generateFnoxToml failed earlier. Check
       // every fnox.toml in the repository, not just the root one: a workspace package's config
       // overrides the root via fnox's hierarchical loading.
-      for (const tomlPath of listFnoxTomlPaths(config.dirPath)) {
+      for (const dirPath of listFnoxTomlDirPaths(config.dirPath)) {
+        const tomlPath = path.resolve(dirPath, 'fnox.toml');
         const recipients = readFnoxAgeRecipients(tomlPath);
-        // A package config without its own age provider inherits the root one; only the root
+        // A nested config without its own age provider inherits the root one; only the root
         // fnox.toml must declare it.
         if (!recipients) {
           if (tomlPath === fnoxTomlPath) {
@@ -147,86 +153,54 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
   });
 }
 
-// Exports every fnox config using ONLY the CI identity (HOME/XDG_CONFIG_HOME point to an empty
-// directory so personal identities cannot leak in, and fnox.local.toml is moved aside so local
-// overrides cannot shadow committed secrets) and requires every age-encrypted key to survive:
-// `fnox export` exits 0 and silently OMITS secrets it cannot decrypt, so only a key-list
-// comparison proves the CI key can decrypt them. Secret values stay in memory and are not logged.
+// Proves the CI key alone can decrypt every committed age secret by running a REAL
+// `fnox reencrypt` on a temporary copy of the repository's fnox.toml files with ONLY the CI
+// identity available (isolated HOME, all FNOX_* variables stripped, fnox.local.toml not copied so
+// local overrides cannot shadow committed secrets). Unlike `fnox export`, reencrypt fails loudly
+// on an undecryptable ciphertext even when the secret declares a plaintext `default` fallback,
+// and it covers secrets excluded from exports (e.g. `env = false`). Mutations stay in the copy.
 function verifyCiKeyDecryptsAllSecrets(rootDirPath: string, ciAgeKey: string): boolean {
-  const emptyHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-ci-age-'));
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-ci-age-'));
+  const tempRepoDirPath = path.join(tempDirPath, 'repo');
+  const emptyHomeDirPath = path.join(tempDirPath, 'home');
   try {
-    for (const tomlPath of listFnoxTomlPaths(rootDirPath)) {
-      const dirPath = path.dirname(tomlPath);
-      const settings = parse(fs.readFileSync(tomlPath, 'utf8')) as {
-        secrets?: Record<string, unknown>;
-        profiles?: Record<string, { secrets?: Record<string, unknown> } | undefined>;
-      };
-      const secretsPerProfile: [string | undefined, Record<string, unknown>][] = [
-        [undefined, settings.secrets ?? {}],
-        ...Object.entries(settings.profiles ?? {}).map(
-          ([name, profile]): [string | undefined, Record<string, unknown>] => [name, profile?.secrets ?? {}]
-        ),
-      ];
-      const succeeded = withFnoxLocalHidden(dirPath, () => {
-        for (const [profile, secrets] of secretsPerProfile) {
-          const expectedKeys = Object.entries(secrets)
-            .filter(([, value]) => (value as { provider?: string } | undefined)?.provider === 'age')
-            .map(([key]) => key);
-          if (expectedKeys.length === 0) continue;
-          const proc = child_process.spawnSync(
-            'fnox',
-            ['export', '--format', 'json', '--no-daemon', ...(profile ? ['-P', profile] : [])],
-            {
-              cwd: dirPath,
-              encoding: 'utf8',
-              stdio: 'pipe',
-              env: { ...process.env, FNOX_AGE_KEY: ciAgeKey, HOME: emptyHomeDir, XDG_CONFIG_HOME: emptyHomeDir },
-            }
+    fs.mkdirSync(emptyHomeDirPath, { recursive: true });
+    const dirPaths = listFnoxTomlDirPaths(rootDirPath);
+    for (const dirPath of dirPaths) {
+      const tempConfigDirPath = path.join(tempRepoDirPath, path.relative(rootDirPath, dirPath));
+      fs.mkdirSync(tempConfigDirPath, { recursive: true });
+      fs.copyFileSync(path.resolve(dirPath, 'fnox.toml'), path.join(tempConfigDirPath, 'fnox.toml'));
+    }
+    const env = {
+      ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('FNOX_'))),
+      FNOX_AGE_KEY: ciAgeKey,
+      HOME: emptyHomeDirPath,
+      XDG_CONFIG_HOME: emptyHomeDirPath,
+    };
+    for (const dirPath of dirPaths) {
+      const tempConfigDirPath = path.join(tempRepoDirPath, path.relative(rootDirPath, dirPath));
+      const profileArgsList = [[], ...readFnoxProfileNames(dirPath).map((name) => ['--no-defaults', '-P', name])];
+      for (const profileArgs of profileArgsList) {
+        const proc = child_process.spawnSync(
+          'fnox',
+          ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...profileArgs],
+          { cwd: tempConfigDirPath, encoding: 'utf8', stdio: 'pipe', env }
+        );
+        if (proc.status !== 0) {
+          console.error(
+            `Skip uploading FNOX_AGE_KEY because the CI age key cannot decrypt every secret governed by ${path.resolve(
+              dirPath,
+              'fnox.toml'
+            )}. Run \`fnox reencrypt\` with the full recipient list and rerun wbfy. fnox reported:\n${(proc.stderr || proc.error?.message || '').trim()}`
           );
-          let exportedKeys: string[] = [];
-          try {
-            exportedKeys = Object.keys(
-              (JSON.parse(proc.stdout || '{}') as { secrets?: Record<string, unknown> }).secrets ?? {}
-            );
-          } catch {
-            // Unparsable output means nothing was proven decryptable; report via missingKeys.
-          }
-          const missingKeys = expectedKeys.filter((key) => !exportedKeys.includes(key));
-          if (proc.status !== 0 || missingKeys.length > 0) {
-            console.error(
-              `Skip uploading FNOX_AGE_KEY because the CI age key cannot decrypt the following secrets in ${tomlPath}${
-                profile ? ` (profile ${profile})` : ''
-              }: ${missingKeys.join(', ') || '(fnox export failed)'}. Run \`fnox reencrypt\` with the full recipient list and rerun wbfy.`
-            );
-            return false;
-          }
+          return false;
         }
-        return true;
-      });
-      if (!succeeded) return false;
+      }
     }
     return true;
   } finally {
-    fs.rmSync(emptyHomeDir, { recursive: true, force: true });
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
-}
-
-function listFnoxTomlPaths(rootDirPath: string): string[] {
-  const paths = [path.resolve(rootDirPath, 'fnox.toml')];
-  const packagesDirPath = path.resolve(rootDirPath, 'packages');
-  let dirents: fs.Dirent[] = [];
-  try {
-    dirents = fs.readdirSync(packagesDirPath, { withFileTypes: true });
-  } catch {
-    // A repository without a packages directory has only the root fnox.toml.
-  }
-  for (const dirent of dirents) {
-    const tomlPath = path.resolve(packagesDirPath, dirent.name, 'fnox.toml');
-    if (dirent.isDirectory() && fs.existsSync(tomlPath)) {
-      paths.push(tomlPath);
-    }
-  }
-  return paths;
 }
 
 function readFnoxAgeRecipients(fnoxTomlPath: string): Set<string> | undefined {
