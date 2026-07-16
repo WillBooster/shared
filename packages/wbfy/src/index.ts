@@ -167,7 +167,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     const previousBunLinker = readBunLinker(rootDirPath);
     await removeYarnFiles(rootConfig);
     await generateBunfigToml(rootConfig, skipDeps ? (previousBunLinker ?? 'isolated') : 'isolated');
-    await generateMiseToml(rootConfig);
+    await generateMiseToml(rootConfig, bunVersion);
     // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
     // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
     await promisePool.promiseAll();

@@ -149,12 +149,16 @@ export const bunMinimumReleaseAgeExcludes = [
 
 export type BunLinker = 'isolated' | 'hoisted';
 
-/** Reads the linker currently effective in the repository's bunfig.toml (Bun defaults to hoisted). */
+/**
+ * Reads the linker explicitly declared in the repository's bunfig.toml. Returns undefined when
+ * none is declared: Bun's default is context-dependent (isolated for new workspace projects with
+ * `configVersion = 1` lockfiles, hoisted otherwise), so absence must not be read as hoisted.
+ */
 export function readBunLinker(rootDirPath: string): BunLinker | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
   if (!fs.existsSync(filePath)) return undefined;
-  const bunfigToml = parseBunfigToml(fs.readFileSync(filePath, 'utf8'));
-  return bunfigToml?.install?.linker === 'isolated' ? 'isolated' : 'hoisted';
+  const linker = parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.linker;
+  return linker === 'isolated' || linker === 'hoisted' ? linker : undefined;
 }
 
 export async function generateBunfigToml(config: PackageConfig, linker: BunLinker = 'isolated'): Promise<void> {
