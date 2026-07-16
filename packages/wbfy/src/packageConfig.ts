@@ -29,7 +29,6 @@ export interface PackageConfig {
   isCloudflare: boolean;
   doesContainWranglerConfig: boolean;
   isRailway: boolean;
-  isBun: boolean;
   isEsmPackage: boolean;
   isWillBoosterConfigs: boolean;
   // dependency information
@@ -199,8 +198,6 @@ export async function getPackageConfig(dirPath: string): Promise<PackageConfig |
       isCloudflare: detectCloudflare(dirPath, packageJson),
       doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
-      // wbfy now assumes every managed repository uses Bun (with mise and optionally fnox).
-      isBun: true,
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),

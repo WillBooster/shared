@@ -60,7 +60,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
 
     let newSettings = structuredClone(config.isRoot ? rootJsonObj : subJsonObj) as TsConfigJson;
     const generatedTypes = getGeneratedTypes(config);
-    newSettings.extends = getTsconfigExtends(config);
+    newSettings.extends = getTsconfigExtends();
     newSettings.compilerOptions ??= {};
     newSettings.compilerOptions.rootDir = getRootDir(config);
     if (generatedTypes.length > 0) {
@@ -68,8 +68,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     }
     if (!config.doesContainJsxOrTsx && !config.doesContainJsxOrTsxInPackages) {
       delete newSettings.compilerOptions?.jsx;
-    } else if (!config.isBun && !config.depending.reactNative) {
-      newSettings.compilerOptions = { ...newSettings.compilerOptions, jsx: 'react-jsx' };
     }
     if (config.isRoot && !config.doesContainSubPackageJsons) {
       newSettings.include = newSettings.include?.filter((dirPath: string) => !dirPath.startsWith('packages/*/'));
@@ -125,8 +123,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     // paths is intentionally preserved so repo-local tooling can keep explicit
     // aliases without relying on baseUrl's broad fallback resolution.
     delete newSettings.compilerOptions?.baseUrl;
-    deleteLegacyModuleSettings(newSettings.compilerOptions, config);
-    normalizeCommonJsTsconfigSettings(newSettings.compilerOptions, config);
+    deleteLegacyModuleSettings(newSettings.compilerOptions);
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
@@ -261,10 +258,7 @@ function ensureTsExtensionEmitCompatibility(compilerOptions: TsConfigJson.Compil
   compilerOptions.rewriteRelativeImportExtensions = true;
 }
 
-function deleteLegacyModuleSettings(
-  compilerOptions: TsConfigJson.CompilerOptions | undefined,
-  config: PackageConfig
-): void {
+function deleteLegacyModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
   if (!compilerOptions) return;
 
   // TypeScript treats option values case-insensitively, so normalize before comparison.
@@ -274,57 +268,10 @@ function deleteLegacyModuleSettings(
   if (moduleResolution === 'node' || moduleResolution === 'node10') {
     delete compilerOptions.moduleResolution;
   }
-  if (config.isBun || config.depending.reactNative) return;
-
-  if (config.depending.vite || config.depending.tauri) {
-    // Vite owns module semantics for these packages and their sources rely on
-    // bundler-mode resolution (e.g. extensionless imports), so pin the bundler pair
-    // even when a legacy config used the node resolver, instead of falling back to
-    // the node base configs' NodeNext.
-    if (moduleResolution !== 'bundler') {
-      compilerOptions.moduleResolution = 'bundler';
-    }
-    const moduleKind = lowerCaseSetting(compilerOptions.module);
-    // TypeScript pairs the bundler resolver with Preserve or ES-module kinds. Keep an
-    // existing valid kind (e.g. Preserve, which handles import and require syntax
-    // separately) and fill in ESNext only when the pair would otherwise be invalid.
-    if (moduleKind === undefined || (moduleKind !== 'preserve' && !moduleKind.startsWith('es'))) {
-      compilerOptions.module = 'ESNext';
-    }
-    return;
-  }
-
-  if (moduleResolution === 'bundler') {
-    // The node base configs provide a consistent module/resolver pair, and every
-    // module kind they may choose is invalid with a leftover bundler resolver.
-    delete compilerOptions.moduleResolution;
-  }
-
-  const moduleKind = lowerCaseSetting(compilerOptions.module);
-  if (moduleKind === 'preserve' || moduleKind?.startsWith('es')) {
-    // Node base configs pair their resolver with a matching module kind; leftover
-    // ES/Preserve overrides are invalid with every pair they may choose.
-    delete compilerOptions.module;
-  }
 }
 
 function lowerCaseSetting(value: unknown): string | undefined {
   return typeof value === 'string' ? value.toLowerCase() : undefined;
-}
-
-function normalizeCommonJsTsconfigSettings(
-  compilerOptions: TsConfigJson.CompilerOptions | undefined,
-  config: PackageConfig
-): void {
-  if (!compilerOptions || config.isBun || config.depending.reactNative || config.isEsmPackage) return;
-
-  if (compilerOptions.module?.toLowerCase() === 'commonjs') {
-    // @tsconfig/node-lts now provides moduleResolution=node16. TypeScript requires
-    // the module kind to move with that resolver, while verbatimModuleSyntax=false
-    // preserves the long-standing CommonJS emit shape for existing packages.
-    compilerOptions.module = 'Node16';
-  }
-  compilerOptions.verbatimModuleSyntax = false;
 }
 
 function pickExistingEmitMetadata(
@@ -350,11 +297,7 @@ function getGeneratedTypes(config: PackageConfig): string[] {
     ...config.packageJson?.devDependencies,
   };
 
-  if (config.isBun) {
-    typeNames.add('bun');
-  } else if (!config.depending.reactNative) {
-    typeNames.add('node');
-  }
+  typeNames.add('bun');
   if (
     dependencies.jest ||
     dependencies['@jest/globals'] ||

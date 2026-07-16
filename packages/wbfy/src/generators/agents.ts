@@ -3,7 +3,6 @@ import path from 'node:path';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { getPackageManagerCommand } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
@@ -46,7 +45,7 @@ function generateAgentInstruction(
   toolName: string,
   extraContent?: string
 ): string {
-  const packageManager = getPackageManagerCommand(rootConfig);
+  const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway

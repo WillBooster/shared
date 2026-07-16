@@ -20,15 +20,20 @@ interface MiseToml {
 export async function generateMiseToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
+    // A parse failure must abort instead of falling back to {}: regenerating from an empty object
+    // would silently replace the user's existing (albeit broken) mise.toml.
     const settings = parseMiseToml(miseTomlPath);
     const toolVersions = readToolVersions(config.dirPath);
     const tools = { ...settings.tools };
 
-    const nodeVersion = tools.node ?? toolVersions.get('nodejs') ?? toolVersions.get('node');
-    if (nodeVersion !== undefined) {
-      tools.node = nodeVersion;
+    // Migrate every .tool-versions entry, not just Node.js and Bun: mise reads asdf tool names,
+    // so dropping e.g. python or ruby pins would silently unpin those tools.
+    for (const [tool, versions] of toolVersions) {
+      // asdf calls the Node.js plugin "nodejs"; mise's canonical name is "node".
+      const miseTool = tool === 'nodejs' ? 'node' : tool;
+      tools[miseTool] = tools[miseTool] ?? (versions.length > 1 ? versions : versions[0]);
     }
-    tools.bun = tools.bun ?? toolVersions.get('bun') ?? 'latest';
+    tools.bun = tools.bun ?? 'latest';
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = tools.fnox ?? 'latest';
     }
@@ -40,21 +45,24 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
 }
 
 function parseMiseToml(miseTomlPath: string): MiseToml {
+  let content: string;
   try {
-    return parse(fs.readFileSync(miseTomlPath, 'utf8')) as MiseToml;
+    content = fs.readFileSync(miseTomlPath, 'utf8');
   } catch {
+    // A repository without mise.toml starts from an empty configuration.
     return {};
   }
+  return parse(content) as MiseToml;
 }
 
-function readToolVersions(dirPath: string): Map<string, string> {
-  const versions = new Map<string, string>();
+function readToolVersions(dirPath: string): Map<string, string[]> {
+  const versions = new Map<string, string[]>();
   try {
     const content = fs.readFileSync(path.resolve(dirPath, '.tool-versions'), 'utf8');
     for (const line of content.split('\n')) {
-      const [tool, version] = line.replace(/#.*$/u, '').trim().split(/\s+/u);
-      if (tool && version) {
-        versions.set(tool, version);
+      const [tool, ...toolVersions] = line.replace(/#.*$/u, '').trim().split(/\s+/u);
+      if (tool && toolVersions.length > 0) {
+        versions.set(tool, toolVersions);
       }
     }
   } catch {

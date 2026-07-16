@@ -10,7 +10,17 @@ import { promisePool } from '../utils/promisePool.js';
  */
 export async function removeYarnFiles(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('removeYarnFiles', async () => {
-    for (const fileName of ['.yarnrc', '.yarnrc.yml', '.yarn', 'yarn.lock']) {
+    // yarn.lock is deliberately kept while no Bun lockfile exists yet: `bun install` migrates a
+    // yarn.lock into bun.lock only when bun.lock is absent, preserving the resolved dependency
+    // versions. It is removed in index.ts right after the Bun lockfile has been refreshed.
+    const fileNames = ['.yarnrc', '.yarnrc.yml', '.yarn'];
+    if (
+      fs.existsSync(path.resolve(config.dirPath, 'bun.lock')) ||
+      fs.existsSync(path.resolve(config.dirPath, 'bun.lockb'))
+    ) {
+      fileNames.push('yarn.lock');
+    }
+    for (const fileName of fileNames) {
       await promisePool.run(() =>
         fs.promises.rm(path.resolve(config.dirPath, fileName), { force: true, recursive: true })
       );

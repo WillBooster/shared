@@ -22,11 +22,9 @@ import {
   selectProjectWranglerTypesGenerator,
   splitCommandSegments,
 } from '../utils/wranglerTypesCommand.js';
-import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
-import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -135,7 +133,6 @@ export async function generatePackageJson(
 async function core(config: PackageConfig, rootConfig: PackageConfig, skipAddingDeps: boolean): Promise<void> {
   const filePath = path.resolve(config.dirPath, 'package.json');
   const jsonObj = await readPackageJson(filePath);
-  const packageManager = config.isBun ? 'bun' : 'yarn';
 
   await removeDeprecatedStuff(config, jsonObj);
   await updateScripts(config, jsonObj);
@@ -146,7 +143,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
-  if (config.isBun) delete jsonObj.packageManager;
+  delete jsonObj.packageManager;
   // Yarn reads package.json from disk before deciding whether `yarn add -D`
   // conflicts with an existing regular dependency, so this write must finish
   // before installing the managed dependency updates below. Keep this generated
@@ -155,8 +152,8 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   await fsUtil.generateFile(filePath, serializePackageJson(jsonObj));
 
   if (!skipAddingDeps) {
-    installDependencyUpdates(config, jsonObj, dependencyUpdates, packageManager);
-    formatPackageJsonWithProjectFormatter(config, packageManager, filePath);
+    installDependencyUpdates(config, jsonObj, dependencyUpdates, 'bun');
+    formatPackageJsonWithProjectFormatter(config, 'bun', filePath);
   }
 }
 
@@ -182,13 +179,8 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
   delete jsonObj.scripts['start-test-server'];
 
-  const scripts = jsonObj.scripts;
-  if (config.isBun || !doesContainJava(config)) {
-    delete scripts.prettify;
-  } else {
-    scripts.prettify = (scripts.prettify ?? '') + (await generatePrettierSuffix(config.dirPath));
-  }
-  normalizeYarnWorkspaceForeachScripts(scripts);
+  delete jsonObj.scripts.prettify;
+  normalizeYarnWorkspaceForeachScripts(jsonObj.scripts);
 }
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
@@ -260,7 +252,7 @@ function resolveWranglerTypesCommand(config: PackageConfig, scripts: PackageJson
 
   // Only an invocation passing flags is worth preserving; a bare one is normalized to the managed command.
   const { command } = selectProjectWranglerTypesGenerator(scripts);
-  return command ?? `${config.isBun ? 'bunx ' : ''}wrangler types`;
+  return command ?? 'bunx wrangler types';
 }
 
 /**
@@ -422,11 +414,7 @@ async function applyPackageJsonConventions(
     if (config.depending.next || config.depending.blitz || config.depending.vinext) {
       devDependencies.push(typescriptGoDependency);
     }
-    if (config.isBun) {
-      devDependencies.push('@types/bun');
-    } else if (!config.depending.reactNative) {
-      devDependencies.push('@types/node');
-    }
+    devDependencies.push('@types/bun');
     if (
       jsonObj.dependencies.jest ||
       jsonObj.devDependencies.jest ||
@@ -525,29 +513,15 @@ async function normalizePackageMetadata(
   delete jsonObj.resolutions?.['npm/chalk'];
 
   if (!config.doesContainSubPackageJsons) {
-    if (!config.isBun) {
-      if (!config.doesContainJavaScript && !config.doesContainTypeScript) {
-        delete jsonObj.scripts.lint;
-        delete jsonObj.scripts['lint-fix'];
-        for (const scriptName of ['cleanup']) {
-          const script = jsonObj.scripts[scriptName];
-          if (!script) continue;
-          jsonObj.scripts[scriptName] = script.replace(/ ?&& ?yarn lint-fix(?: --quiet)?/, '');
-        }
-      } else {
-        jsonObj.scripts['lint-fix'] = jsonObj.scripts['lint-fix'] ?? 'yarn lint --fix';
-      }
-    }
-
     if (config.doesContainPubspecYaml) {
       jsonObj.scripts.lint = 'flutter analyze';
-      jsonObj.scripts['lint-fix'] = config.isBun ? 'bun run lint' : 'yarn lint';
+      jsonObj.scripts['lint-fix'] = 'bun run lint';
       const dirs = ['lib', 'test', 'test_driver'].filter((dir) => fs.existsSync(path.resolve(config.dirPath, dir)));
       if (dirs.length > 0) {
         jsonObj.scripts['format-code'] = `dart format $(find ${dirs.join(
           ' '
         )} -name generated -prune -o -name '*.freezed.dart' -prune -o -name '*.g.dart' -prune -o -name '*.dart' -print)`;
-        jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format, config);
+        jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format);
       }
     }
 
@@ -556,7 +530,7 @@ async function normalizePackageMetadata(
       if (jsonObj.scripts.postinstall === 'poetry install') {
         delete jsonObj.scripts.postinstall;
       }
-      const scriptRunner = config.isBun ? 'bun run' : 'yarn';
+      const scriptRunner = 'bun run';
       jsonObj.scripts['common/ci-setup'] = `${scriptRunner} setup-${pythonPackageManager}`;
       delete jsonObj.scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
       delete jsonObj.scripts['setup-poetry-asdf'];
@@ -584,7 +558,7 @@ async function normalizePackageMetadata(
           jsonObj.scripts.lint = `${pythonRunner} flake8 ${dirNamesStr}`;
           jsonObj.scripts['lint-fix'] = `${scriptRunner} lint`;
         }
-        jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format, config);
+        jsonObj.scripts.format = appendFormatCodeCommand(jsonObj.scripts.format);
         dependencyUpdates.pythonDevDependencies.push('black', 'isort', 'flake8');
       }
     }
@@ -600,7 +574,7 @@ async function normalizePackageMetadata(
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    jsonObj.scripts['gen-code'] = appendWranglerTypes(`${config.isBun ? 'bun ' : ''}wb gen-code`, wranglerTypes);
+    jsonObj.scripts['gen-code'] = appendWranglerTypes('bun wb gen-code', wranglerTypes);
   } else if (
     genCodeScript &&
     wranglerTypes &&
@@ -638,11 +612,8 @@ function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: 
   );
 }
 
-function appendFormatCodeCommand(formatScript: string | undefined, config: PackageConfig): string {
-  // Bun projects may not have a Yarn lockfile, so generated package scripts
-  // must invoke local package scripts through the repository's package manager.
-  const scriptRunner = config.isBun ? 'bun run' : 'yarn';
-  return formatScript ? `${formatScript} && ${scriptRunner} format-code` : `${scriptRunner} format-code`;
+function appendFormatCodeCommand(formatScript: string | undefined): string {
+  return formatScript ? `${formatScript} && bun run format-code` : 'bun run format-code';
 }
 
 function normalizeGenI18nTsScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
@@ -759,11 +730,7 @@ function installNpmDependencies(
   const dependencySpecifiers = [
     ...new Set(dependencies.map((dependency) => getInstallDependencySpecifier(config, dependency))),
   ];
-  spawnSync(
-    packageManager,
-    ['add', ...(dev ? ['-D'] : []), ...(config.isBun ? ['--exact'] : []), ...dependencySpecifiers],
-    config.dirPath
-  );
+  spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
 }
 
 function addPackageJsonDependencies(
@@ -993,7 +960,7 @@ function getDependencySections(jsonObj: PackageJson): Partial<Record<string, str
 }
 
 function getLatestDependencyVersion(config: PackageConfig, dependency: string): string {
-  const cacheKey = `${config.isBun ? 'bun' : 'yarn'}:${dependency}`;
+  const cacheKey = dependency;
   const cachedVersion = latestDependencyVersionCache.get(cacheKey);
   if (cachedVersion) return cachedVersion;
 
@@ -1216,91 +1183,27 @@ function buildNormalizedRepositoryForPackageJson(
 }
 
 export function generateScripts(config: PackageConfig, oldScripts: PackageJson.Scripts): Record<string, string> {
-  if (config.isBun) {
-    const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
-    const scripts: Record<string, string> = {
-      // No `--bun`: its node->bun PATH shim leaks into every child process and breaks tools
-      // requiring real Node.js (Playwright, wrangler, vinext).
-      cleanup: 'bun wb lint --fix --format',
-      format: `bun wb lint --format`,
-      lint: `bun wb lint`,
-      'lint-fix': 'bun wb lint --fix',
-      test: 'bun wb test',
-      typecheck: 'bun wb typecheck',
-      verify: 'bun wb verify',
-      'verify-full': 'bun wb verify --full',
-    };
-    applyDatabaseScripts(config, scripts, oldScripts, `bun ${getWbDatabaseCommand(config)}`);
-    applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
-    if (!hasTypecheck) {
-      delete scripts.typecheck;
-    } else if (config.depending.pyright) {
-      scripts.typecheck += ' && pyright';
-    }
-    return scripts;
-  } else {
-    const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
-    const hasJsOrTs = doesContainJsOrTs(config);
-    const hasJava = doesContainJava(config);
-    const oldTest = oldScripts.test;
-    let scripts: Record<string, string> = {
-      cleanup: 'yarn format && yarn lint-fix',
-      format: generateFormatScript(hasJsOrTs, hasJava),
-      // Package-local configs must delete the root-only type-aware options, so pass the flags
-      // explicitly. Otherwise this script would silently skip type checking in workspace packages.
-      lint: `oxlint${hasTypecheck ? ' --type-aware --type-check' : ''} --no-error-on-unmatched-pattern .`,
-      'lint-fix': 'yarn lint --fix',
-      'format-code': `oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'`,
-      typecheck: 'tsc --noEmit',
-    };
-    if (hasJava) {
-      scripts.prettify = `prettier --cache --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(',')}}" "!**/test{-,/}fixtures/**"`;
-    }
-    if (config.doesContainSubPackageJsons) {
-      scripts = merge(
-        { ...scripts },
-        {
-          format: `${scripts.format} && yarn workspaces foreach --all --parallel --verbose run format`,
-          lint: `yarn workspaces foreach --all --parallel --verbose run lint`,
-          'lint-fix': 'yarn workspaces foreach --all --parallel --verbose run lint-fix',
-          // CI=1 prevents vitest from enabling watch. Color policy belongs to wb, not generated package scripts.
-          test: 'CI=1 yarn workspaces foreach --all --verbose run test',
-          typecheck: 'yarn workspaces foreach --all --parallel --verbose run typecheck',
-        }
-      );
-      if (hasJava) {
-        scripts.prettify = `prettier --cache --no-error-on-unmatched-pattern --write "**/{.*/,}*.{${extensions.prettierOnly.join(
-          ','
-        )}}" "!**/packages/**" "!**/test{-,/}fixtures/**"`;
-      }
-    } else if (config.depending.pyright) {
-      scripts.typecheck = scripts.typecheck ? `${scripts.typecheck} && ` : '';
-      scripts.typecheck += 'pyright';
-    }
-    if (oldTest?.includes('wb test')) {
-      scripts.test = oldTest;
-    }
-    if (!hasJsOrTs) {
-      delete scripts['format-code'];
-      delete scripts.lint;
-      delete scripts['lint-fix'];
-    }
-    if (!hasTypecheck) {
-      delete scripts.typecheck;
-    } else if (config.depending.wb) {
-      scripts.typecheck = 'wb typecheck';
-    }
-    if (isWbPackage(config.packageJson)) {
-      scripts.verify = oldScripts.verify ?? 'yarn workspace @willbooster/wb start --working-dir "$INIT_CWD" verify';
-      scripts['verify-full'] = oldScripts['verify-full'] ?? 'yarn verify --full';
-    } else {
-      scripts.verify = 'wb verify';
-      scripts['verify-full'] = 'wb verify --full';
-    }
-    applyDatabaseScripts(config, scripts, oldScripts, getWbDatabaseCommand(config));
-    applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
-    return scripts;
+  const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
+  const scripts: Record<string, string> = {
+    // No `--bun`: its node->bun PATH shim leaks into every child process and breaks tools
+    // requiring real Node.js (Playwright, wrangler, vinext).
+    cleanup: 'bun wb lint --fix --format',
+    format: `bun wb lint --format`,
+    lint: `bun wb lint`,
+    'lint-fix': 'bun wb lint --fix',
+    test: 'bun wb test',
+    typecheck: 'bun wb typecheck',
+    verify: 'bun wb verify',
+    'verify-full': 'bun wb verify --full',
+  };
+  applyDatabaseScripts(config, scripts, oldScripts, `bun ${getWbDatabaseCommand(config)}`);
+  applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
+  if (!hasTypecheck) {
+    delete scripts.typecheck;
+  } else if (config.depending.pyright) {
+    scripts.typecheck += ' && pyright';
   }
+  return scripts;
 }
 
 function shouldManageGenI18nTs(config: PackageConfig): boolean {
@@ -1394,35 +1297,6 @@ function doesMiseTaskCallPackageScript(config: PackageConfig, name: string): boo
 
 function escapeRegExp(value: string): string {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
-}
-
-function generateFormatScript(hasJsOrTs: boolean, hasJava: boolean): string {
-  const commands = ['sort-package-json'];
-  if (hasJsOrTs) {
-    commands.push('yarn format-code');
-  }
-  if (hasJava) {
-    commands.push('yarn prettify');
-  }
-  return commands.join(' && ');
-}
-
-async function generatePrettierSuffix(dirPath: string): Promise<string> {
-  const filePath = path.resolve(dirPath, '.prettierignore');
-  const existingContent = await fs.promises.readFile(filePath, 'utf8').catch(() => '');
-  const index = existingContent.indexOf(ignoreFileUtil.separatorPrefix);
-  if (index === -1) return '';
-
-  const originalContent = existingContent.slice(0, index);
-  const lines = originalContent
-    .split('\n')
-    .map((line) => {
-      const newLine = line.trim();
-      return newLine.endsWith('/') ? newLine.slice(0, -1) : newLine;
-    })
-    .filter((l) => l && !l.startsWith('#') && !l.includes('/'));
-
-  return `${lines.map((line) => ` "!**/${line}/**"`).join('')} || true`;
 }
 
 function removePrettierArtifacts(jsonObj: WritablePackageJson): void {

@@ -12,7 +12,6 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     isCloudflare: false,
     doesContainWranglerConfig: false,
     isRailway: false,
-    isBun: false,
     isEsmPackage: false,
     isWillBoosterConfigs: false,
     cargoTomlDirPaths: [],

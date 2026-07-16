@@ -96,7 +96,16 @@ describe('readAndApplyEnvironmentVariables()', () => {
       FNOX_ONLY: 'base-fnox',
       NAME: 'app-fnox',
       PORT: '6001',
+      // .env values referencing fnox-provided keys must resolve across sources.
+      REF: 'ref-base-fnox',
     });
+  });
+
+  it.runIf(isFnoxAvailable())('should not overwrite existing process.env values with fnox values', () => {
+    process.env.PORT = '9999';
+    const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-fnox');
+    expect(envVars.PORT).toBeUndefined();
+    expect(process.env.PORT).toBe('9999');
   });
 
   it.runIf(isFnoxAvailable())('should load env vars from a fnox profile with --cascade-env=test', () => {
@@ -106,6 +115,7 @@ describe('readAndApplyEnvironmentVariables()', () => {
       FNOX_ONLY: 'base-fnox',
       NAME: 'app-fnox',
       PORT: '6002',
+      REF: 'ref-base-fnox',
     });
   });
 });

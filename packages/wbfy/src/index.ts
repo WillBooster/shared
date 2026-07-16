@@ -218,6 +218,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await logger.functionIgnoringException('refreshBunLock', async () => {
       await Promise.resolve();
       refreshBunLock(rootDirPath);
+      // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
+      // that removeYarnFiles intentionally preserved for the migration can be removed.
+      fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
     });
     spawnSync('bun', ['cleanup'], rootDirPath);
 

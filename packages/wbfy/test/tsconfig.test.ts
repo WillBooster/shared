@@ -19,23 +19,6 @@ test('keeps the bundler pair for Vite-dependent packages', async () => {
   expect(compilerOptions.module).toBe('ESNext');
 });
 
-test('keeps the bundler pair for Tauri-dependent packages', async () => {
-  const compilerOptions = await generateCompilerOptionsFrom(
-    { compilerOptions: { moduleResolution: 'Bundler' } },
-    { tauri: true }
-  );
-  expect(compilerOptions.moduleResolution).toBe('Bundler');
-  expect(compilerOptions.module).toBe('ESNext');
-});
-
-test('drops a leftover bundler resolution and esnext module regardless of casing', async () => {
-  const compilerOptions = await generateCompilerOptionsFrom({
-    compilerOptions: { module: 'esnext', moduleResolution: 'Bundler' },
-  });
-  expect(compilerOptions.module).toBeUndefined();
-  expect(compilerOptions.moduleResolution).toBeUndefined();
-});
-
 test('keeps an existing Preserve module kind for Vite-dependent packages', async () => {
   const compilerOptions = await generateCompilerOptionsFrom(
     { compilerOptions: { module: 'Preserve', moduleResolution: 'bundler' } },
@@ -43,36 +26,6 @@ test('keeps an existing Preserve module kind for Vite-dependent packages', async
   );
   expect(compilerOptions.module).toBe('Preserve');
   expect(compilerOptions.moduleResolution).toBe('bundler');
-});
-
-test('drops a leftover bundler resolution paired with CommonJS in non-bundler packages', async () => {
-  const compilerOptions = await generateCompilerOptionsFrom({
-    compilerOptions: { module: 'CommonJS', moduleResolution: 'bundler' },
-  });
-  expect(compilerOptions.moduleResolution).toBeUndefined();
-});
-
-test('migrates a legacy node resolver to the bundler pair for Vite-dependent packages', async () => {
-  const compilerOptions = await generateCompilerOptionsFrom(
-    { compilerOptions: { module: 'ESNext', moduleResolution: 'node' } },
-    { vite: true }
-  );
-  expect(compilerOptions.moduleResolution).toBe('bundler');
-  expect(compilerOptions.module).toBe('ESNext');
-});
-
-test('drops leftover ES-module and Preserve kinds when falling back to the node bases', async () => {
-  const es2022Options = await generateCompilerOptionsFrom({
-    compilerOptions: { module: 'ES2022', moduleResolution: 'bundler' },
-  });
-  expect(es2022Options.module).toBeUndefined();
-  expect(es2022Options.moduleResolution).toBeUndefined();
-
-  const preserveOptions = await generateCompilerOptionsFrom({
-    compilerOptions: { module: 'Preserve', moduleResolution: 'bundler' },
-  });
-  expect(preserveOptions.module).toBeUndefined();
-  expect(preserveOptions.moduleResolution).toBeUndefined();
 });
 
 test('does not force a bundler resolver on Next configs that extend a base config', async () => {

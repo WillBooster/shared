@@ -127,6 +127,10 @@ export class Project {
         console.info(`Loaded ${count} environment variables from ${envPath}`);
       }
     }
+    // Spreading envVars last is safe for exported-variable precedence: readEnvironmentVariables
+    // already excludes keys present in process.env from .env/fnox sources. Mise values that
+    // differ from the ambient activation are deliberately kept so the requested cascade profile
+    // (e.g. `--cascade-env=test`) wins over a stale `mise activate` environment.
     this.envCache = { ...process.env, ...envVars };
     return this.envCache;
   }

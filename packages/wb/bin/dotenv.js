@@ -68,15 +68,67 @@ export function runDotenvCommand(args) {
 }
 
 function readAndApplyEnvironmentVariables(cwd) {
-  const parsed = {
+  const dotenvVars = {
     ...readEnvFile(path.join(cwd, '.env')),
     ...(process.env.WB_ENV ? readEnvFile(path.join(cwd, `.env.${process.env.WB_ENV}`)) : {}),
   };
+  // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win
+  // over it. Mirrors src/commands/dotenv.ts for this startup fast path.
+  const parsed = { ...readFnoxEnvironmentVariables(cwd, process.env.WB_ENV, dotenvVars), ...dotenvVars };
   const envVars = expand({ parsed, processEnv: {} }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;
     }
+  }
+}
+
+// Mirrors readFnoxEnvironmentVariables in @willbooster/shared-lib-node for this startup fast path.
+function readFnoxEnvironmentVariables(cwd, cascade, currentEnvVars) {
+  if (!hasProjectFnoxConfig(cwd)) return {};
+
+  // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve.
+  // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
+  const args = ['export', '--format', 'json', '--no-color', '--if-missing', 'error', '--non-interactive'];
+  if (cascade) {
+    args.push('--profile', cascade);
+  }
+  const result = childProcess.spawnSync('fnox', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.error || result.status !== 0 || !result.stdout?.trim()) {
+    console.warn(
+      `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
+    );
+    return {};
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return {};
+  }
+  const secrets = parsed?.secrets;
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)) return {};
+
+  const envVars = {};
+  for (const [key, value] of Object.entries(secrets)) {
+    if (typeof value !== 'string' || key in currentEnvVars || key in process.env) continue;
+    envVars[key] = value;
+  }
+  return envVars;
+}
+
+function hasProjectFnoxConfig(cwd) {
+  for (let currentPath = path.resolve(cwd); ; currentPath = path.dirname(currentPath)) {
+    if (fs.existsSync(path.join(currentPath, 'fnox.toml'))) {
+      return true;
+    }
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) return false;
   }
 }
 

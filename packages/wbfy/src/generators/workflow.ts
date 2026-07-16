@@ -393,9 +393,11 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY repository secret.
   if (
     fs.existsSync(path.resolve(config.dirPath, 'fnox.toml')) &&
-    (kind === 'test' || kind === 'release' || job.secrets.DOT_ENV)
+    (kind === 'test' || kind === 'release' || kind.startsWith('deploy'))
   ) {
     job.secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
+    // wbfy deletes the DOT_ENV repository secret when migrating to fnox, so drop the dead pass-through.
+    delete job.secrets.DOT_ENV;
   }
 
   if (job.secrets.FIREBASE_TOKEN) {
@@ -468,16 +470,15 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
 }
 
 function generateAutofixWorkflow(config: PackageConfig): Workflow {
-  const packageManager = config.isBun ? 'bun' : 'yarn';
   const steps: Step[] = [
     { uses: 'actions/checkout@v6' },
     { uses: 'actions/setup-node@v6', with: { 'check-latest': true, 'node-version': 'lts/*' } },
-    ...(config.isBun ? [{ uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } }] : []),
-    { run: `${packageManager} install` },
-    { run: `${packageManager} run cleanup` },
+    { uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } },
+    { run: 'bun install' },
+    { run: 'bun run cleanup' },
   ];
   if (config.packageJson?.scripts?.build) {
-    steps.push({ run: `${packageManager} run build` });
+    steps.push({ run: 'bun run build' });
   }
   steps.push({ uses: 'autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a' });
 

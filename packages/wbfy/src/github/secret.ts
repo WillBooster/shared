@@ -44,19 +44,6 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
     const octokit = getOctokit(owner);
 
     try {
-      for (const secretName of obsoleteSecretNames) {
-        try {
-          // Requires Secrets permission
-          await octokit.request('DELETE /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
-            owner,
-            repo,
-            secret_name: secretName,
-          });
-        } catch {
-          // do nothing
-        }
-      }
-
       // Requires Secrets permission
       const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets/public-key', {
         owner,
@@ -86,6 +73,21 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
           encrypted_value: encBase64,
           key_id: keyId,
         });
+      }
+
+      // Delete legacy secrets only after every replacement was uploaded successfully; deleting first
+      // would leave the repository without any working credential if an upload step failed.
+      for (const secretName of obsoleteSecretNames) {
+        try {
+          // Requires Secrets permission
+          await octokit.request('DELETE /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
+            owner,
+            repo,
+            secret_name: secretName,
+          });
+        } catch {
+          // do nothing
+        }
       }
     } catch (error) {
       console.warn('Skip setupSecrets due to:', (error as Error | undefined)?.stack ?? error);

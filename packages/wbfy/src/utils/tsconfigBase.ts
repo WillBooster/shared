@@ -7,25 +7,13 @@ export const managedTsconfigBaseDependencies = [
   '@tsconfig/react-native',
 ];
 
-export function getTsconfigExtends(config: PackageConfig): string | string[] {
-  if (config.isBun) {
-    return '@tsconfig/bun/tsconfig.json';
-  }
-  if (config.depending.reactNative) {
-    return '@tsconfig/react-native/tsconfig.json';
-  }
-  return ['@tsconfig/node-lts/tsconfig.json', '@tsconfig/node-ts/tsconfig.json'];
+export function getTsconfigExtends(): string | string[] {
+  return '@tsconfig/bun/tsconfig.json';
 }
 
 export function getTsconfigBaseDependencies(config: PackageConfig): string[] {
   if (config.depending.blitz || config.depending.next) {
     return [];
   }
-  if (config.isBun) {
-    return ['@tsconfig/bun'];
-  }
-  if (config.depending.reactNative) {
-    return ['@tsconfig/react-native'];
-  }
-  return ['@tsconfig/node-lts', '@tsconfig/node-ts'];
+  return ['@tsconfig/bun'];
 }
