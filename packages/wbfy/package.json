@@ -24,7 +24,6 @@
     "start": "build-ts run src/index.ts --env .env --",
     "start-prod": "bun run build && bun wbfy",
     "test": "bun wb test",
-    "test/ci-setup": "rm -Rf test-fixtures/wbfy && mkdir -p test-fixtures && git clone https://github.com/WillBooster/test-fixtures-for-wbfy.git test-fixtures/wbfy",
     "typecheck": "bun wb typecheck",
     "verify": "bun wb verify",
     "verify-full": "bun wb verify --full"

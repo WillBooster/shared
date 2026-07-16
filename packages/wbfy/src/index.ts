@@ -165,6 +165,15 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await generateBunfigToml(rootConfig);
     await generateMiseToml(rootConfig);
 
+    // The linker must be decided BEFORE any `bun add` mutates package.json files: per-package
+    // installs tolerate failures (spawnSync discards their status), so a layout that cannot
+    // install would silently drop every managed dependency update for the rest of the run.
+    if (!(await ensureInstallableBunLinker(rootDirPath, rootConfig))) {
+      console.error(`Skip ${rootDirPath}: bun install fails under both the isolated and hoisted linkers.`);
+      hasInvalidPackageConfig = true;
+      continue;
+    }
+
     const shouldRunWorkflows =
       !isReusableWorkflowsRepo(rootConfig.repository) &&
       (rootConfig.repository?.startsWith('github:WillBooster/') ||
@@ -245,7 +254,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
     // Refresh lock files
     try {
-      await refreshBunLock(rootDirPath, rootConfig);
+      refreshBunLock(rootDirPath);
       // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
       // that removeYarnFiles intentionally preserved for the migration can be removed.
       fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
@@ -262,28 +271,39 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
   return hasInvalidPackageConfig;
 }
 
-async function refreshBunLock(rootDirPath: string, rootConfig: PackageConfig): Promise<void> {
+/**
+ * Probes `bun install` under the isolated linker (the default bunfig.toml wbfy generates) and
+ * falls back to the hoisted linker when the isolated layout cannot install — it breaks projects
+ * relying on hoisted (phantom) dependencies or on install scripts incompatible with the layout.
+ * Returns false when neither linker can install. The probe reruns on every wbfy run, so a
+ * repository automatically moves back to the isolated linker once its incompatibility is fixed.
+ */
+async function ensureInstallableBunLinker(rootDirPath: string, rootConfig: PackageConfig): Promise<boolean> {
+  // Retry once so a transient failure (registry hiccup, flaky lifecycle script) does not
+  // masquerade as a layout incompatibility.
+  if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1) === 0) return true;
+
+  console.warn('bun install failed with the isolated linker; falling back to the hoisted linker.');
+  await generateBunfigToml(rootConfig, 'hoisted');
+  await promisePool.promiseAll();
+  if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath) === 0) return true;
+
+  // Both layouts failed, so the failure is not linker-specific; keep the default isolated
+  // configuration instead of persisting a downgrade that the failed install never justified.
+  await generateBunfigToml(rootConfig);
+  await promisePool.promiseAll();
+  return false;
+}
+
+function refreshBunLock(rootDirPath: string): void {
   // wbfy should update only the packages it explicitly manages through bun add.
   // Running bun update here refreshes unrelated application dependencies and
   // can change product behavior, so keep the existing lock and reconcile it.
-  // Retry once under the isolated linker so a transient failure (registry hiccup, flaky
-  // lifecycle script) does not masquerade as a layout incompatibility.
-  let status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
+  // The linker was already validated by ensureInstallableBunLinker, so a failure here is not
+  // layout-specific: retry once and fail loudly instead of downgrading the linker.
+  const status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
   if (status !== 0) {
-    // The isolated linker (the default bunfig.toml wbfy generates) breaks projects that rely on
-    // hoisted (phantom) dependencies or on install scripts incompatible with the isolated layout.
-    // Such projects keep working with the hoisted linker, so fall back instead of failing the migration.
-    console.warn('bun install failed with the isolated linker; falling back to the hoisted linker.');
-    await generateBunfigToml(rootConfig, 'hoisted');
-    await promisePool.promiseAll();
-    status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath);
-    if (status !== 0) {
-      // Both layouts failed, so the failure is not linker-specific; keep the default isolated
-      // configuration instead of persisting a downgrade that the failed install never justified.
-      await generateBunfigToml(rootConfig);
-      await promisePool.promiseAll();
-      throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
-    }
+    throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
   }
 }
 

@@ -115,9 +115,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     } catch {
       // do nothing
     }
-    if (generatedTypes.includes('bun')) {
-      addUndiciTypesPathMapping(newSettings, config);
-    }
+    addUndiciTypesPathMapping(newSettings, config);
     sortKeys(newSettings);
     newSettings.include?.sort();
     // Don't use old decorator
@@ -157,6 +155,12 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
  * to the copy that bunfig.toml's publicHoistPattern places in the root node_modules.
  */
 function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig): void {
+  // bun-types loads either through an explicit `types: [..., "bun"]` entry or, when `types` is
+  // omitted, through TypeScript's automatic @types inclusion (wbfy installs @types/bun for every
+  // TypeScript project). Only a `types` list without "bun" keeps it out, so skip the mapping there.
+  const types = settings.compilerOptions?.types;
+  if (types && !types.includes('bun')) return;
+
   settings.compilerOptions ??= {};
   settings.compilerOptions.paths = {
     ...settings.compilerOptions.paths,

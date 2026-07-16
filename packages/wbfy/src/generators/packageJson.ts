@@ -47,6 +47,11 @@ const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
+// The exact format-code commands old wbfy versions generated for JS/TS repos.
+const legacyOxfmtFormatCodeScripts = new Set([
+  'oxfmt --write --no-error-on-unmatched-pattern .',
+  "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
+]);
 const managedDependencyNames = new Set([
   wbDependency,
   buildTsDependency,
@@ -184,9 +189,9 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
 
   delete jsonObj.scripts.prettify;
   // `bun wb lint --format` owns JS/TS formatting, so the oxfmt-based format-code script wbfy used
-  // to generate is obsolete. Only the recognized generated command is removed: custom format-code
+  // to generate is obsolete. Only the exact generated command is removed: custom format-code
   // scripts (and the Dart/Python variants regenerated later in normalizePackageMetadata) survive.
-  if (jsonObj.scripts['format-code']?.includes('oxfmt')) {
+  if (legacyOxfmtFormatCodeScripts.has(jsonObj.scripts['format-code'] ?? '')) {
     delete jsonObj.scripts['format-code'];
   }
   convertYarnCommandsToBun(jsonObj.scripts);
