@@ -157,7 +157,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await generateMiseToml(rootConfig);
     // Must finish before setupSecrets below: it rewrites the age recipients in fnox.toml and
     // re-encrypts the secrets that FNOX_AGE_KEY (uploaded by setupSecrets) must be able to decrypt.
-    await generateFnoxToml(rootConfig);
+    // The root goes first so that package configs inheriting the root provider re-encrypt against
+    // the already-updated recipients.
+    for (const config of allPackageConfigs) {
+      await generateFnoxToml(config);
+    }
 
     const shouldRunWorkflows =
       !isReusableWorkflowsRepo(rootConfig.repository) &&

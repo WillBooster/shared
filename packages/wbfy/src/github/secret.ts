@@ -31,15 +31,31 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
       // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
       // identity (never the personal one) and NEVER written anywhere inside the repository.
       // Parse the TOML instead of searching the raw text: a recipient mentioned only in a comment
-      // must not count. This also catches the case where generateFnoxToml failed earlier.
-      const recipients = readFnoxAgeRecipients(fnoxTomlPath);
-      const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !recipients.has(recipient));
-      if (missingRecipients.length > 0) {
-        console.error(
-          `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in fnox.toml misses the following age public keys (generateFnoxToml should have added them): ${missingRecipients.join(', ')}`
-        );
-        process.exitCode = 1;
-        return;
+      // must not count. This also catches the case where generateFnoxToml failed earlier. Check
+      // every fnox.toml in the repository, not just the root one: a workspace package's config
+      // overrides the root via fnox's hierarchical loading.
+      for (const tomlPath of listFnoxTomlPaths(config.dirPath)) {
+        const recipients = readFnoxAgeRecipients(tomlPath);
+        // A package config without its own age provider inherits the root one; only the root
+        // fnox.toml must declare it.
+        if (!recipients) {
+          if (tomlPath === fnoxTomlPath) {
+            console.error(`Skip uploading FNOX_AGE_KEY because ${tomlPath} declares no [providers.age] table.`);
+            process.exitCode = 1;
+            return;
+          }
+          continue;
+        }
+        const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !recipients.has(recipient.publicKey));
+        if (missingRecipients.length > 0) {
+          console.error(
+            `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in ${tomlPath} misses the following age public keys (generateFnoxToml should have added them): ${missingRecipients
+              .map((recipient) => recipient.publicKey)
+              .join(', ')}`
+          );
+          process.exitCode = 1;
+          return;
+        }
       }
       const ageKey = readCiAgeSecretKey();
       if (!ageKey) {
@@ -116,12 +132,31 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
   });
 }
 
-function readFnoxAgeRecipients(fnoxTomlPath: string): Set<string> {
+function listFnoxTomlPaths(rootDirPath: string): string[] {
+  const paths = [path.resolve(rootDirPath, 'fnox.toml')];
+  const packagesDirPath = path.resolve(rootDirPath, 'packages');
+  let dirents: fs.Dirent[] = [];
+  try {
+    dirents = fs.readdirSync(packagesDirPath, { withFileTypes: true });
+  } catch {
+    // A repository without a packages directory has only the root fnox.toml.
+  }
+  for (const dirent of dirents) {
+    const tomlPath = path.resolve(packagesDirPath, dirent.name, 'fnox.toml');
+    if (dirent.isDirectory() && fs.existsSync(tomlPath)) {
+      paths.push(tomlPath);
+    }
+  }
+  return paths;
+}
+
+function readFnoxAgeRecipients(fnoxTomlPath: string): Set<string> | undefined {
   try {
     const settings = parse(fs.readFileSync(fnoxTomlPath, 'utf8')) as {
       providers?: Record<string, Record<string, unknown> | undefined>;
     };
-    const recipients = settings.providers?.age?.recipients;
+    if (!settings.providers?.age) return undefined;
+    const recipients = settings.providers.age.recipients;
     return new Set(Array.isArray(recipients) ? recipients.filter((r): r is string => typeof r === 'string') : []);
   } catch {
     // An unreadable or unparsable fnox.toml yields no recipients, so the caller reports an error.
@@ -143,12 +178,14 @@ function readCiAgeSecretKey(): string | undefined {
     return undefined;
   }
   // Require the `# public key:` comment (age-keygen always writes it) and verify it against the
-  // recipient list: skipping the check when the comment is absent would let a hand-assembled file
-  // containing an arbitrary private key be uploaded unverified.
+  // CI entry exactly: skipping the check when the comment is absent would let a hand-assembled
+  // file containing an arbitrary private key be uploaded unverified, and matching any recipient
+  // would let a personal identity copied to this path leak to every repository's CI.
+  const ciPublicKey = FNOX_AGE_RECIPIENTS.find((recipient) => recipient.name === 'ci')?.publicKey ?? '';
   const publicKeyLine = content.split('\n').find((line) => line.includes('public key:'));
-  if (!publicKeyLine || !FNOX_AGE_RECIPIENTS.some((recipient) => publicKeyLine.includes(recipient))) {
+  if (!ciPublicKey || !publicKeyLine?.includes(ciPublicKey)) {
     console.error(
-      `Failed to upload FNOX_AGE_KEY because the \`# public key:\` comment in ${identityPath} is missing or not listed in FNOX_AGE_RECIPIENTS, so the uploaded key could not be verified to decrypt the committed secrets.`
+      `Failed to upload FNOX_AGE_KEY because the \`# public key:\` comment in ${identityPath} is missing or differs from the CI age public key (${ciPublicKey}), so the file does not hold the CI-dedicated identity.`
     );
     return undefined;
   }
