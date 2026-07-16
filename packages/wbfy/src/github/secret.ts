@@ -24,8 +24,11 @@ const DEPRECATED_SECRET_NAMES = ['READY_DISCORD_WEBHOOK_URL', 'GH_BOT_PAT', 'PUB
 // The Verdaccio auth token the reusable workflows need as the VERDACCIO_TOKEN secret, age-encrypted
 // for the CI recipient of FNOX_AGE_RECIPIENTS only: this repository is public, so the plaintext must
 // never be committed, and the CI identity is the only one wbfy --env already requires locally.
-// To rotate: in an empty directory whose fnox.toml declares only the CI recipient, run
+// To rotate the TOKEN: in an empty directory whose fnox.toml declares only the CI recipient, run
 // `printf '%s' "$TOKEN" | fnox set VERDACCIO_TOKEN` and copy the generated `value` here.
+// CAUTION: rotating the CI IDENTITY must re-encrypt this value for the new public key in the SAME
+// change as the FNOX_AGE_RECIPIENTS update — decryptVerdaccioToken gates every upload, so a wbfy
+// whose recipient list and ciphertext disagree cannot upload anything (including the new key).
 const ENCRYPTED_VERDACCIO_TOKEN =
   'YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBud2p2dXFLV2N1NEFaR1MvSnBMVG9WcTY3V3RNd0wwZG9NRStiMXRDV2pRCnlEQ21BRDF6QWhzandFQWhJZlZGTWdKZGhJcDNEK1E3czJPUkpUblg1YVEKLT4gbHgpWy1ncmVhc2UgQFxVb1EgNWJEYDl5ayA+bAphc1hoTHAydmc4akFxMnNBWWp1YWhlV0I1aytMOFB6YUloZ0tuaFdqNGcKLS0tIGZVOW1zQ2xveDREOC95RkFnTEFPdmFXc0FkV212bUNnV2Y3cWcxb3hWRFkKR8rA6Rshr0v84bWEG2Mnr9H04HcBZylYGEp7U19Dp1sqwQ1yKls8Rz5QtzY5SjYY/kEfMfp4JMgBexxFTnbI7nl79u5FSOrPce+xrYZFMnZhv06zB8shZgiidqkTdcwU+rGB2ei72VTItox9CqmvpGgeonuTuhOP5+9wOPb2E6IC8FpeZLGHczSYxmuIOPMdt80IrjBfqECcv0u6cWDAOHuzwx4j9tyxl49YgU56lA9XOMA2+mSfeq/dBkTFf9Hap8eLcXzGE25TT/xMWkf6cDIn+z8JpzNuyBQUKggggtztooJ7k7ulkr1JaSyFlVCPIrPNBdo/FDbSy9aG';
 const require = createRequire(import.meta.url);
@@ -33,6 +36,9 @@ const require = createRequire(import.meta.url);
 export async function setupSecrets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupSecrets', async () => {
     const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
+    // Deliberately WillBoosterLab-only (including VERDACCIO_TOKEN): WillBooster-org repositories
+    // are provisioned manually. The VERDACCIO_TOKEN reference injected into their workflows is
+    // harmless meanwhile — the reusable workflows skip .npmrc generation when the secret is empty.
     if (!owner || !repo || owner !== 'WillBoosterLab') return;
     if (!hasGitHubToken(owner) || !options.doesUploadEnvVars) return;
 
@@ -90,7 +96,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     const unsupportedPaths = [...remoteFnoxContents.keys()].filter((relPath) => path.basename(relPath) !== 'fnox.toml');
     if (unsupportedPaths.length > 0) {
       console.error(
-        `Skip uploading FNOX_AGE_KEY because the default branch of ${owner}/${repo} contains unsupported fnox config files: ${unsupportedPaths.join(', ')}. Merge them into the adjacent fnox.toml.`
+        `Skip uploading secrets because the default branch of ${owner}/${repo} contains unsupported fnox config files: ${unsupportedPaths.join(', ')}. Merge them into the adjacent fnox.toml.`
       );
       process.exitCode = 1;
       return;
@@ -98,7 +104,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     const rootContent = remoteFnoxContents.get('fnox.toml');
     if (!rootContent) {
       console.error(
-        `Skip uploading FNOX_AGE_KEY because the default branch of ${owner}/${repo} has no root fnox.toml. Merge and push the fnox migration to the default branch, then rerun wbfy --env.`
+        `Skip uploading secrets because the default branch of ${owner}/${repo} has no root fnox.toml. Merge and push the fnox migration to the default branch, then rerun wbfy --env.`
       );
       process.exitCode = 1;
       return;
@@ -113,7 +119,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       const layoutIssue = findFnoxLayoutIssue(content);
       if (layoutIssue) {
         console.error(
-          `Skip uploading FNOX_AGE_KEY because ${relPath} on the default branch ${layoutIssue}. Fix it (wbfy reports the same issue during synchronization), push, and rerun wbfy --env.`
+          `Skip uploading secrets because ${relPath} on the default branch ${layoutIssue}. Fix it (wbfy reports the same issue during synchronization), push, and rerun wbfy --env.`
         );
         process.exitCode = 1;
         return;
@@ -124,7 +130,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       if (!recipients) {
         if (relPath === 'fnox.toml') {
           console.error(
-            `Skip uploading FNOX_AGE_KEY because fnox.toml on the default branch declares no [providers.age] table.`
+            `Skip uploading secrets because fnox.toml on the default branch declares no [providers.age] table.`
           );
           process.exitCode = 1;
           return;
@@ -143,7 +149,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       );
       if (missingRecipients.length > 0 || unexpectedRecipients.length > 0) {
         console.error(
-          `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in ${relPath} on the default branch does not match FNOX_AGE_RECIPIENTS exactly (missing: ${missingRecipients
+          `Skip uploading secrets because [providers.age].recipients in ${relPath} on the default branch does not match FNOX_AGE_RECIPIENTS exactly (missing: ${missingRecipients
             .map((recipient) => recipient.publicKey)
             .join(
               ', '
@@ -308,7 +314,7 @@ function readCiAgeSecretKey(): string | undefined {
     content = fs.readFileSync(identityPath, 'utf8');
   } catch {
     console.error(
-      `Failed to upload secrets because ${identityPath} is missing. Copy the existing CI age identity from the team credential store to that path (run \`mkdir -p ~/.config/fnox\` first); the personal ~/.config/fnox/age.txt is deliberately not used. Generate a brand-new identity with age-keygen only when rotating the CI key, and register its public key in FNOX_AGE_RECIPIENTS.`
+      `Failed to upload secrets because ${identityPath} is missing. Copy the existing CI age identity from the team credential store to that path (run \`mkdir -p ~/.config/fnox\` first); the personal ~/.config/fnox/age.txt is deliberately not used. Generate a brand-new identity with age-keygen only when rotating the CI key, register its public key in FNOX_AGE_RECIPIENTS, and re-encrypt ENCRYPTED_VERDACCIO_TOKEN for it in the same change.`
     );
     return undefined;
   }
@@ -369,11 +375,20 @@ VERDACCIO_TOKEN = { provider = "age", value = "${ENCRYPTED_VERDACCIO_TOKEN}" }
       stdio: 'pipe',
       env,
     });
+    // A non-migrated repository pins no fnox through mise, so resolveFnoxCommand may fall back to
+    // a bare `fnox` that is absent from PATH; a failed spawn (status null) must not be reported as
+    // a decryption failure — the advised re-encryption would not fix it.
+    if (proc.error || proc.status === null) {
+      console.error(
+        `Failed to upload secrets because the fnox command (${fnoxCommand}) could not be executed. Install fnox globally (e.g. \`mise use -g fnox\`) and rerun wbfy --env. Reported: ${(proc.error?.message ?? proc.stderr ?? '').trim()}`
+      );
+      return undefined;
+    }
     // `fnox get` appends a newline; the token itself never contains one.
     const token = proc.status === 0 ? proc.stdout.replace(/\n+$/u, '') : '';
     if (!token) {
       console.error(
-        `Failed to upload secrets because the CI age key cannot decrypt the embedded VERDACCIO_TOKEN. Re-encrypt it for the CI recipient (see the comment on ENCRYPTED_VERDACCIO_TOKEN) and release wbfy. fnox reported:\n${(proc.stderr || proc.error?.message || '').trim()}`
+        `Failed to upload secrets because the CI age key cannot decrypt the embedded VERDACCIO_TOKEN. Re-encrypt it for the CI recipient (see the comment on ENCRYPTED_VERDACCIO_TOKEN) and release wbfy. fnox reported:\n${(proc.stderr || '').trim()}`
       );
       return undefined;
     }
@@ -429,7 +444,7 @@ function verifyCiKeyDecryptsAllSecrets(
         );
         if (proc.status !== 0) {
           console.error(
-            `Skip uploading FNOX_AGE_KEY because the CI age key cannot decrypt every secret governed by ${relPath} on the default branch. Run \`fnox reencrypt\` with the full recipient list, push, and rerun wbfy --env. fnox reported:\n${(proc.stderr || proc.error?.message || '').trim()}`
+            `Skip uploading secrets because the CI age key cannot decrypt every secret governed by ${relPath} on the default branch. Run \`fnox reencrypt\` with the full recipient list, push, and rerun wbfy --env. fnox reported:\n${(proc.stderr || proc.error?.message || '').trim()}`
           );
           return false;
         }

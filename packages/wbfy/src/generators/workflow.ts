@@ -62,7 +62,7 @@ interface Job {
   steps?: Step[];
   uses?: string;
   if?: string;
-  secrets?: Record<string, unknown>;
+  secrets?: Record<string, unknown> | 'inherit';
   with?: Record<string, unknown>;
 }
 
@@ -389,10 +389,13 @@ const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'gen-pr', 
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
-  job.secrets ??= {};
+  // `secrets: inherit` (parsed by js-yaml as a plain string) already forwards every caller secret
+  // including the ones injected below, so preserve it untouched — property assignments on the
+  // string would throw.
+  const secrets = job.secrets === 'inherit' ? undefined : (job.secrets = job.secrets ?? {});
 
-  if (kind === 'test' || kind === 'release') {
-    job.secrets.GH_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
+  if (secrets && (kind === 'test' || kind === 'release')) {
+    secrets.GH_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
   }
 
   // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY repository secret.
@@ -404,25 +407,26 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@/u.exec(
     job.uses ?? ''
   )?.[1];
-  if (calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
+  if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee generates the workspace .npmrc for @willbooster-private/* from VERDACCIO_TOKEN
     // before installing dependencies, which every repository needs regardless of its fnox
     // migration state.
-    job.secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
+    secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      job.secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
+      secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
     }
   }
 
-  if (job.secrets.FIREBASE_TOKEN) {
-    job.secrets.GCP_SA_KEY_JSON_FOR_FIREBASE = '${{ secrets.GCP_SA_KEY_JSON_FOR_FIREBASE }}';
-    delete job.secrets.FIREBASE_TOKEN;
+  if (secrets?.FIREBASE_TOKEN) {
+    secrets.GCP_SA_KEY_JSON_FOR_FIREBASE = '${{ secrets.GCP_SA_KEY_JSON_FOR_FIREBASE }}';
+    delete secrets.FIREBASE_TOKEN;
   }
   if (
-    (job.secrets.DISCORD_WEBHOOK_URL && (kind === 'release' || kind.startsWith('deploy'))) ||
-    (job.with.server_url && kind.startsWith('deploy'))
+    secrets &&
+    ((secrets.DISCORD_WEBHOOK_URL && (kind === 'release' || kind.startsWith('deploy'))) ||
+      (job.with.server_url && kind.startsWith('deploy')))
   ) {
-    job.secrets.DISCORD_WEBHOOK_URL = '${{ secrets.DISCORD_WEBHOOK_URL_FOR_RELEASE }}';
+    secrets.DISCORD_WEBHOOK_URL = '${{ secrets.DISCORD_WEBHOOK_URL_FOR_RELEASE }}';
   }
 
   if (kind === 'sync') {
@@ -453,7 +457,7 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
 
   // Don't use `fly deploy --json` since it causes an error
-  if (kind.startsWith('deploy') && job.secrets.FLY_API_TOKEN && typeof job.with.deploy_command === 'string') {
+  if (kind.startsWith('deploy') && secrets?.FLY_API_TOKEN && typeof job.with.deploy_command === 'string') {
     job.with.deploy_command = job.with.deploy_command.replace(/\s+--json/, '');
   }
   if (config.doesContainDockerfile && !job.with.ci_label && kind.startsWith('test')) {
@@ -473,13 +477,15 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   } else {
     delete job.with;
   }
-  if (Object.keys(job.secrets).length > 0) {
-    // Move secrets prop after with prop
-    const newSecrets = sortKeys(job.secrets);
-    delete job.secrets;
-    job.secrets = newSecrets;
-  } else {
-    delete job.secrets;
+  if (secrets) {
+    if (Object.keys(secrets).length > 0) {
+      // Move secrets prop after with prop
+      const newSecrets = sortKeys(secrets);
+      delete job.secrets;
+      job.secrets = newSecrets;
+    } else {
+      delete job.secrets;
+    }
   }
 }
 
