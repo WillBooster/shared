@@ -11,6 +11,7 @@ import { promisePool } from '../utils/promisePool.js';
 interface BunfigToml {
   install?: {
     exact?: boolean;
+    linker?: string;
   };
 }
 
@@ -153,16 +154,30 @@ export const bunMinimumReleaseAgeExcludes = [
   'vinext',
 ];
 
-export async function generateBunfigToml(config: PackageConfig): Promise<void> {
+export type BunLinker = 'isolated' | 'hoisted';
+
+/**
+ * Reads the linker explicitly declared in the repository's bunfig.toml. Returns undefined when
+ * none is declared: Bun's default is context-dependent (isolated for new workspace projects with
+ * `configVersion = 1` lockfiles, hoisted otherwise), so absence must not be read as hoisted.
+ */
+export function readBunLinker(rootDirPath: string): BunLinker | undefined {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  if (!fs.existsSync(filePath)) return undefined;
+  const linker = parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.linker;
+  return linker === 'isolated' || linker === 'hoisted' ? linker : undefined;
+}
+
+export async function generateBunfigToml(config: PackageConfig, linker: BunLinker = 'isolated'): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent);
+    const content = newContent(existingContent, linker);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
 
-const newContent = (existingContent: string | undefined): string => {
+const newContent = (existingContent: string | undefined, linker: BunLinker): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
@@ -171,7 +186,16 @@ telemetry = false
 
 ${extractRawTestSections(existingContent)}[install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
-linker = "hoisted"
+${
+  linker === 'isolated'
+    ? // tsx: build-ts under Node.js spawns `node --import tsx`, which resolves tsx from the
+      // consumer package's directory, not from build-ts's own dependencies.
+      // undici-types: bun-types references it without declaring it as a dependency
+      // (oven-sh/bun#22805); generated tsconfigs also map undici-types to the hoisted copy
+      // (see tsconfig.ts) because the global store realpaths bun-types outside the repository.
+      'globalStore = true\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
+    : 'linker = "hoisted"'
+}
 minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 5 days
 minimumReleaseAgeExcludes = [
 ${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}

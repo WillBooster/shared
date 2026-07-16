@@ -47,6 +47,11 @@ const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
+// The exact format-code commands old wbfy versions generated for JS/TS repos.
+const legacyOxfmtFormatCodeScripts = new Set([
+  'oxfmt --write --no-error-on-unmatched-pattern .',
+  "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
+]);
 const managedDependencyNames = new Set([
   wbDependency,
   buildTsDependency,
@@ -54,6 +59,9 @@ const managedDependencyNames = new Set([
   typescriptDependency,
   typescriptGoDependency,
   'sort-package-json',
+  // Mixed @types/bun versions across a monorepo load two bun-types copies, which
+  // breaks global interface merging (e.g. Response/Headers) during type checking.
+  '@types/bun',
   ...oxlintDeps,
 ]);
 const willBoosterConfigsManagedDependencies = [
@@ -139,7 +147,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
-  addDependencyVersionsToPackageJson(config, jsonObj, dependencyUpdates, skipAddingDeps);
+  addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipAddingDeps);
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
@@ -180,6 +188,12 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
   delete jsonObj.scripts['start-test-server'];
 
   delete jsonObj.scripts.prettify;
+  // `bun wb lint --format` owns JS/TS formatting, so the oxfmt-based format-code script wbfy used
+  // to generate is obsolete. Only the exact generated command is removed: custom format-code
+  // scripts (and the Dart/Python variants regenerated later in normalizePackageMetadata) survive.
+  if (legacyOxfmtFormatCodeScripts.has(jsonObj.scripts['format-code'] ?? '')) {
+    delete jsonObj.scripts['format-code'];
+  }
   convertYarnCommandsToBun(jsonObj.scripts);
 }
 
@@ -390,6 +404,15 @@ async function applyPackageJsonConventions(
     delete jsonObj.scripts.prepack;
     delete jsonObj.scripts.postpack;
     jsonObj.scripts.prepare = 'lefthook install || true';
+    // When @willbooster/wb is a workspace of this repository, the generated `bun wb …` scripts run
+    // its gitignored dist build (bin/index.js imports ../dist/index.js), so a fresh checkout must
+    // build it during install; registry installs ship a prebuilt dist and need no extra step.
+    const wbWorkspaceDir = getWorkspacePackageDirs(rootConfig).get(wbDependency);
+    if (wbWorkspaceDir) {
+      // Single quotes (with embedded quotes escaped) prevent the shell from expanding `$(…)` or
+      // variables that a hostile directory name could smuggle into the generated script.
+      jsonObj.scripts.prepare += ` && bun run --cwd '${wbWorkspaceDir.replaceAll("'", String.raw`'\''`)}' build`;
+    }
     devDependencies.push(lefthookDependency);
 
     if (config.depending.semanticRelease) {
@@ -427,12 +450,11 @@ async function applyPackageJsonConventions(
     }
 
     if (config.doesContainSubPackageJsons) {
-      // We don't allow non-array workspaces in monorepo.
-      jsonObj.workspaces = Array.isArray(jsonObj.workspaces)
-        ? merge.all([jsonObj.workspaces, ['packages/*']], {
-            arrayMerge: combineMerge,
-          })
-        : ['packages/*'];
+      // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
+      // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
+      jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), ['packages/*']], {
+        arrayMerge: combineMerge,
+      });
     } else if (Array.isArray(jsonObj.workspaces)) {
       jsonObj.workspaces = jsonObj.workspaces.filter(
         (workspace) =>
@@ -733,6 +755,7 @@ const configDmtsContent = `export { default } from './config.js';
 
 function addDependencyVersionsToPackageJson(
   config: PackageConfig,
+  rootConfig: PackageConfig,
   jsonObj: WritablePackageJson,
   dependencyUpdates: DependencyUpdates,
   skipAddingDeps: boolean
@@ -741,6 +764,7 @@ function addDependencyVersionsToPackageJson(
   const packageJsonDevDependencies = jsonObj.devDependencies;
   dependencyUpdates.dependencies = addPackageJsonDependencies(
     config,
+    rootConfig,
     jsonObj,
     packageJsonDependencies,
     [...dependencyUpdates.dependencies, ...getExistingManagedDependencies(packageJsonDependencies)],
@@ -749,6 +773,7 @@ function addDependencyVersionsToPackageJson(
   dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter((dep) => !packageJsonDependencies[dep]);
   dependencyUpdates.devDependencies = addPackageJsonDependencies(
     config,
+    rootConfig,
     jsonObj,
     packageJsonDevDependencies,
     [...dependencyUpdates.devDependencies, ...getExistingManagedDependencies(packageJsonDevDependencies)],
@@ -818,6 +843,7 @@ function installNpmDependencies(
 
 function addPackageJsonDependencies(
   config: PackageConfig,
+  rootConfig: PackageConfig,
   jsonObj: WritablePackageJson,
   packageJsonDependencies: Partial<Record<string, string>>,
   dependencies: string[],
@@ -825,6 +851,14 @@ function addPackageJsonDependencies(
 ): string[] {
   const dependenciesToInstall: string[] = [];
   for (const dependency of new Set(dependencies)) {
+    // A private package whose monorepo contains this dependency as a workspace must reference it
+    // via the workspace protocol: pinning a registry version makes Bun shadow the same-name
+    // workspace and skip installing the workspace's own dependencies. (Published packages instead
+    // pin a concrete version because `npm publish` rejects `workspace:*` specifiers.)
+    if (jsonObj.private && getWorkspacePackageDirs(rootConfig).has(dependency)) {
+      packageJsonDependencies[dependency] = 'workspace:*';
+      continue;
+    }
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       config,
       dependency,
@@ -1180,6 +1214,66 @@ function doesProductCodeImportMicromatch(dirPath: string): boolean {
       return false;
     }
   });
+}
+
+/** Workspace patterns from either the array form or Yarn v1's `{ packages: […] }` object form. */
+function getDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): string[] {
+  if (Array.isArray(workspaces)) return workspaces;
+  return Array.isArray(workspaces?.packages) ? workspaces.packages : [];
+}
+
+const workspacePackageDirsCache = new Map<string, Map<string, string>>();
+
+/** Map from each workspace package's name to its directory (relative to the monorepo root). */
+export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, string> {
+  const cached = workspacePackageDirsCache.get(rootConfig.dirPath);
+  if (cached) return cached;
+
+  const workspaceDirsByName = new Map<string, string>();
+  // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
+  // not have written the root package.json yet, so mirror that normalization here.
+  const workspacePatterns = [
+    ...new Set([
+      ...getDeclaredWorkspacePatterns(rootConfig.packageJson?.workspaces),
+      ...(rootConfig.doesContainSubPackageJsons ? ['packages/*'] : []),
+    ]),
+  ];
+  // Expand all patterns in one glob call so Bun-supported negative patterns (e.g.
+  // `!packages/excluded`) actually exclude their matches. Do not apply globIgnore here: workspace
+  // membership is defined solely by the declared patterns, and source-scanning ignores such as
+  // `build` or `dist` would hide legitimately named workspace directories.
+  const packageJsonGlobs = workspacePatterns
+    // Workspace directories must stay inside the repository: absolute or `..`-traversing patterns
+    // would make consumers such as removeNodeModules operate on another repository's files.
+    .filter((workspacePattern) => {
+      const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
+      return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
+    })
+    .map((workspacePattern) =>
+      workspacePattern.startsWith('!')
+        ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
+        : path.posix.join(workspacePattern, 'package.json')
+    );
+  // followSymbolicLinks: false — a workspace symlink pointing outside the repository must not be
+  // treated as a workspace directory (removeNodeModules would delete through it).
+  for (const packageJsonPath of fg.globSync(packageJsonGlobs, {
+    cwd: rootConfig.dirPath,
+    followSymbolicLinks: false,
+    ignore: ['**/node_modules/**'],
+  })) {
+    try {
+      const workspacePackageJson = JSON.parse(
+        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
+      ) as PackageJson;
+      if (workspacePackageJson.name) {
+        workspaceDirsByName.set(workspacePackageJson.name, path.posix.dirname(packageJsonPath));
+      }
+    } catch {
+      // ignore unparsable workspace package.json
+    }
+  }
+  workspacePackageDirsCache.set(rootConfig.dirPath, workspaceDirsByName);
+  return workspaceDirsByName;
 }
 
 function shouldUpdateExistingManagedDependency(

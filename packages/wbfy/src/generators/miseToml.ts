@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import semver from 'semver';
 import { parse, stringify } from 'smol-toml';
 
 import { logger } from '../logger.js';
@@ -13,11 +14,14 @@ interface MiseToml {
   [key: string]: unknown;
 }
 
+// The oldest Bun that understands every option in the generated bunfig.toml (globalStore).
+export const minimumBunVersion = '1.3.14';
+
 /**
  * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions,
  * migrating versions from a legacy .tool-versions file and preserving unrelated mise settings.
  */
-export async function generateMiseToml(config: PackageConfig): Promise<void> {
+export async function generateMiseToml(config: PackageConfig, currentBunVersion: string): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
     // A parse failure must abort instead of falling back to {}: regenerating from an empty object
@@ -36,7 +40,7 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
     // unpinned Node would come from whatever happens to be on PATH.
     tools.node = tools.node ?? readNodeVersionFile(config.dirPath) ?? 'latest';
-    tools.bun = tools.bun ?? 'latest';
+    tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = tools.fnox ?? 'latest';
     }
@@ -45,6 +49,35 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     await fsUtil.generateFile(miseTomlPath, stringify(settings));
     await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.tool-versions'), { force: true }));
   });
+}
+
+/**
+ * The generated bunfig.toml relies on `globalStore` (Bun >= 1.3.14) and `publicHoistPattern`
+ * (Bun >= 1.3.1); older Bun versions silently ignore them and install a different layout from the
+ * one wbfy validated. mise resolves `latest` and range selectors such as "1.2" or `prefix:1.2` to
+ * the newest locally INSTALLED matching version — not the newest release — so only an exact pin
+ * at or above the minimum proves the floor. Selectors that cannot prove it are replaced with the
+ * Bun version running wbfy (which the startup guard proved meets the floor) rather than the
+ * frozen minimum, so repositories keep tracking the current toolchain — and stay aligned with
+ * @types/bun, which wbfy updates to the latest release. Handles mise's string, array, and
+ * `{ version = "…" }` tool forms.
+ */
+function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string): unknown {
+  if (typeof bunVersion === 'string') {
+    const range = bunVersion.startsWith('prefix:') ? bunVersion.slice('prefix:'.length) : bunVersion;
+    // Unverifiable selectors ("latest", "ref:…", "path:…", aliases) cannot prove the floor either.
+    const lowestResolvableVersion = semver.validRange(range) && semver.minVersion(range);
+    return lowestResolvableVersion && semver.gte(lowestResolvableVersion, minimumBunVersion)
+      ? bunVersion
+      : currentBunVersion;
+  }
+  if (Array.isArray(bunVersion)) {
+    return [...new Set(bunVersion.map((version) => liftOutdatedBunVersion(version, currentBunVersion)))];
+  }
+  if (bunVersion && typeof bunVersion === 'object' && 'version' in bunVersion) {
+    return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version, currentBunVersion) };
+  }
+  return bunVersion;
 }
 
 function parseMiseToml(miseTomlPath: string): MiseToml {

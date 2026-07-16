@@ -115,6 +115,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     } catch {
       // do nothing
     }
+    addUndiciTypesPathMapping(newSettings, config);
     sortKeys(newSettings);
     newSettings.include?.sort();
     // Don't use old decorator
@@ -139,11 +140,35 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
     normalizeNextTsconfigModuleSettings(settings);
     normalizeNextTsconfigPathAliases(settings.compilerOptions);
     addScriptsIncludeForFrameworkProject(settings);
+    addUndiciTypesPathMapping(settings, config);
     await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
   } catch {
     // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
     // node10 resolver spellings that older projects commonly inherited.
   }
+}
+
+/**
+ * bun-types references undici-types without declaring it as a dependency (oven-sh/bun#22805), so
+ * Bun's isolated linker (especially with the global store outside the repository) cannot resolve
+ * it from bun-types' location, which silently degrades global fetch types such as Response. Map it
+ * to the copy that bunfig.toml's publicHoistPattern places in the root node_modules.
+ */
+function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig): void {
+  // Map undici-types only when bun-types actually loads: an explicit `types` list loads it iff it
+  // contains "bun" (even on React Native, whose projects may opt in by hand); with `types`
+  // omitted, TypeScript's automatic @types inclusion loads it because wbfy installs @types/bun
+  // for every TypeScript project except React Native, which uses @tsconfig/react-native instead.
+  const types = settings.compilerOptions?.types;
+  if (types ? !types.includes('bun') : config.depending.reactNative) return;
+  // Keep a repo-local mapping (e.g. patched types) when the project already declares one.
+  if (settings.compilerOptions?.paths?.['undici-types']) return;
+
+  settings.compilerOptions ??= {};
+  settings.compilerOptions.paths = {
+    ...settings.compilerOptions.paths,
+    'undici-types': [`${getRootDir(config)}/node_modules/undici-types/index.d.ts`],
+  };
 }
 
 function addScriptsIncludeForFrameworkProject(settings: TsConfigJson): void {
