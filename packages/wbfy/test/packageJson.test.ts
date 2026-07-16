@@ -1420,6 +1420,30 @@ test('uses bun runner for generated Python scripts in bun projects', async () =>
   expect(packageJson.scripts?.['lint-fix']).not.toContain('yarn');
 });
 
+test('converts yarn script invocations to bun while leaving Yarn built-ins untouched', async () => {
+  const packageJson = await generatePackageJsonFrom({
+    scripts: {
+      'clean-all': 'yarn workspaces foreach --all exec rimraf dist',
+      'deps-up': 'yarn up -R typescript',
+      'gen:sub': 'cd sub && yarn build:sub',
+      publish2: 'yarn npm publish --tolerate-republish',
+      'ws-add': 'yarn workspace components add -D react',
+      'ws-run': 'yarn workspace components run gen',
+    },
+  });
+
+  expect(packageJson.scripts).toMatchObject({
+    // Yarn built-ins have no bun run equivalent and must survive verbatim to surface in review.
+    'clean-all': 'yarn workspaces foreach --all exec rimraf dist',
+    'deps-up': 'yarn up -R typescript',
+    publish2: 'yarn npm publish --tolerate-republish',
+    'ws-add': 'yarn workspace components add -D react',
+    // Script invocations are converted.
+    'gen:sub': 'cd sub && bun run build:sub',
+    'ws-run': 'bun run --filter components gen',
+  });
+});
+
 test('preserves a leading MISE_ENV prefix on a mise bridge script', async () => {
   const packageJson = await generatePackageJsonFrom(
     {

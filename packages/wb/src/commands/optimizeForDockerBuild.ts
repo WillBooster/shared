@@ -14,7 +14,6 @@ import {
   getFileDatabaseUrlPath,
   type Project,
 } from '../project.js';
-import { packageManager } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -86,7 +85,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       optimizedProjects.push(project);
     }
     if (!argv.dryRun && !argv.outside) {
-      child_process.spawnSync(packageManager, ['install'], {
+      child_process.spawnSync(projects.root.packageManagerCommand, ['install'], {
         stdio: 'inherit',
       });
       console.info('Installed dependencies.');

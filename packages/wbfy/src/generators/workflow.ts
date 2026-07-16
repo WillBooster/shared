@@ -481,6 +481,10 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
 }
 
 function generateAutofixWorkflow(config: PackageConfig): Workflow {
+  // No fnox setup or FNOX_AGE_KEY here on purpose: autofix only runs cleanup/build (never app
+  // code needing secrets), it has never received DOT_ENV either, and public-repo autofix runs on
+  // fork PRs where exposing a decryption secret would be unsafe. wb degrades gracefully (warns
+  // and proceeds without fnox variables) when fnox is unavailable.
   const steps: Step[] = [
     { uses: 'actions/checkout@v6' },
     { uses: 'actions/setup-node@v6', with: { 'check-latest': true, 'node-version': 'lts/*' } },

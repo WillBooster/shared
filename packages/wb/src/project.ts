@@ -33,6 +33,16 @@ export class Project {
     return this.usesBunPackageManager;
   }
 
+  // The package manager must follow the target project, not the runtime that launched wb:
+  // `node wb ...` against a Bun repo must still run `bun install`, and vice versa.
+  get packageManagerCommand(): 'bun' | 'yarn' {
+    return this.isBunAvailable ? 'bun' : 'yarn';
+  }
+
+  get packageManagerRunCommand(): 'bun run' | 'yarn' {
+    return this.isBunAvailable ? 'bun run' : 'yarn';
+  }
+
   @memoizeOne
   get usesBunPackageManager(): boolean {
     if (this.hasBunLockfile()) return true;

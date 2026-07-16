@@ -60,7 +60,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
 
     let newSettings = structuredClone(config.isRoot ? rootJsonObj : subJsonObj) as TsConfigJson;
     const generatedTypes = getGeneratedTypes(config);
-    newSettings.extends = getTsconfigExtends();
+    newSettings.extends = getTsconfigExtends(config);
     newSettings.compilerOptions ??= {};
     newSettings.compilerOptions.rootDir = getRootDir(config);
     if (generatedTypes.length > 0) {
@@ -297,7 +297,10 @@ function getGeneratedTypes(config: PackageConfig): string[] {
     ...config.packageJson?.devDependencies,
   };
 
-  typeNames.add('bun');
+  // React Native gets its ambient types from @tsconfig/react-native (react-native, jest).
+  if (!config.depending.reactNative) {
+    typeNames.add('bun');
+  }
   if (
     dependencies.jest ||
     dependencies['@jest/globals'] ||

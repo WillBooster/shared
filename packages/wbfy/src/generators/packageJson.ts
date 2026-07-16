@@ -265,6 +265,66 @@ function appendWranglerTypes(script: string, wranglerTypes: string | undefined):
   return `${script} && ${wranglerTypes}`;
 }
 
+// Yarn CLI built-ins (v1 and Berry) that are not package scripts; converting them to
+// `bun run <name>` would invoke a nonexistent script or the wrong action, so they are left
+// untouched to surface during review.
+const yarnBuiltinSubcommands = new Set([
+  'add',
+  'audit',
+  'autoclean',
+  'bin',
+  'cache',
+  'check',
+  'config',
+  'constraints',
+  'create',
+  'dedupe',
+  'dlx',
+  'exec',
+  'explain',
+  'generate-lock-entry',
+  'global',
+  'help',
+  'import',
+  'info',
+  'init',
+  'install',
+  'licenses',
+  'link',
+  'list',
+  'login',
+  'logout',
+  'node',
+  'npm',
+  'outdated',
+  'owner',
+  'pack',
+  'patch',
+  'patch-commit',
+  'plugin',
+  'policies',
+  'prune',
+  'publish',
+  'rebuild',
+  'remove',
+  'run',
+  'search',
+  'set',
+  'stage',
+  'tag',
+  'team',
+  'unlink',
+  'unplug',
+  'up',
+  'upgrade',
+  'upgrade-interactive',
+  'version',
+  'versions',
+  'why',
+  'workspace',
+  'workspaces',
+]);
+
 function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
   // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
   // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
@@ -277,16 +337,22 @@ function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
       )
       .replaceAll(/\byarn\s+dlx\b/gu, 'bunx')
       .replaceAll(
-        /\byarn\s+workspace\s+(\S+)\s+(?:run\s+)?/gu,
-        (_, packageName: string) => `bun run --filter ${packageName} `
+        /\byarn\s+workspace\s+(\S+)\s+(run\s+)?([\w.:/-]+)/gu,
+        (match, packageName: string, run: string | undefined, command: string) =>
+          // Without an explicit `run`, a built-in like `yarn workspace pkg add -D x` is a Yarn CLI
+          // action, not a script; Bun's --filter only executes package scripts.
+          run || !yarnBuiltinSubcommands.has(command) ? `bun run --filter ${packageName} ${command}` : match
       )
       .replaceAll(/\byarn\s+run\b/gu, 'bun run')
       .replaceAll(/\byarn\s+install\b/gu, 'bun install')
-      // A bare `yarn <name>` invokes the package script; flags (e.g. `yarn --cwd ...`) have no
-      // direct Bun equivalent and are intentionally left untouched to surface during review.
-      .replaceAll(/\byarn\s+(?![-.])([\w.:/-]+)/gu, (_, scriptName: string) => `bun run ${scriptName}`)
-      // A trailing bare `yarn` is an install.
-      .replaceAll(/\byarn\b(?![\w.-])(?!\s+-)/gu, 'bun install');
+      // A bare `yarn <name>` invokes the package script; Yarn built-ins and flag forms
+      // (e.g. `yarn --cwd ...`) have no direct Bun equivalent and are intentionally left
+      // untouched to surface during review.
+      .replaceAll(/\byarn\s+(?![-.])([\w.:/-]+)/gu, (match, scriptName: string) =>
+        yarnBuiltinSubcommands.has(scriptName) ? match : `bun run ${scriptName}`
+      )
+      // A bare `yarn` (at the end or before a command separator) is an install.
+      .replaceAll(/\byarn\b(?=\s*(?:$|&&|\|\||[;|]))/gu, 'bun install');
   }
 }
 
@@ -428,7 +494,10 @@ async function applyPackageJsonConventions(
     if (config.depending.next || config.depending.blitz || config.depending.vinext) {
       devDependencies.push(typescriptGoDependency);
     }
-    devDependencies.push('@types/bun');
+    // React Native relies on @tsconfig/react-native's ambient types instead of @types/bun.
+    if (!config.depending.reactNative) {
+      devDependencies.push('@types/bun');
+    }
     if (
       jsonObj.dependencies.jest ||
       jsonObj.devDependencies.jest ||

@@ -37,7 +37,7 @@ import { generateTsconfig } from './generators/tsconfig.js';
 import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
 import { generateMiseToml } from './generators/miseToml.js';
-import { removeYarnFiles } from './generators/removeYarnFiles.js';
+import { findUnmigratableYarnSettings, removeYarnFiles } from './generators/removeYarnFiles.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
 import { setupSecrets } from './github/secret.js';
@@ -109,6 +109,19 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
   let hasInvalidPackageConfig = false;
   for (const rootDirPath of paths) {
+    // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
+    // automatic Bun translation must abort the whole migration for this path, not just the file
+    // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.
+    const unmigratableYarnSettings = findUnmigratableYarnSettings(rootDirPath);
+    if (unmigratableYarnSettings) {
+      console.error(
+        `Skip ${rootDirPath}: ${unmigratableYarnSettings}. ` +
+          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy.'
+      );
+      hasInvalidPackageConfig = true;
+      continue;
+    }
+
     const packagesDirPath = path.join(rootDirPath, 'packages');
     const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
     const subDirPaths = dirents.filter((d) => d.isDirectory()).map((d) => path.join(packagesDirPath, d.name));

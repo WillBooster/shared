@@ -11,7 +11,6 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import type { Project } from '../project.js';
 import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { isRunningOnBun } from '../utils/runtime.js';
 
 const builder = {
   command: {
@@ -42,8 +41,7 @@ export async function buildIfNeeded(
   }
 
   const buildCommand =
-    argv.command ??
-    (project.packageJson.scripts?.build ? (isRunningOnBun ? 'bun run build' : 'yarn build') : undefined);
+    argv.command ?? (project.packageJson.scripts?.build ? `${project.packageManagerRunCommand} build` : undefined);
   if (!buildCommand) {
     console.info(chalk.green('Skip to build because no build command is defined.'));
     return false;
