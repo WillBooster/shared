@@ -23,7 +23,7 @@ export const FNOX_AGE_RECIPIENTS = [
 
 interface FnoxToml {
   providers?: Record<string, Record<string, unknown> | undefined>;
-  profiles?: Record<string, unknown>;
+  profiles?: Record<string, Record<string, unknown> | undefined>;
   [key: string]: unknown;
 }
 
@@ -36,14 +36,42 @@ export async function generateFnoxToml(config: PackageConfig): Promise<void> {
     const fnoxTomlPath = path.resolve(config.dirPath, 'fnox.toml');
     if (!fs.existsSync(fnoxTomlPath)) return;
 
+    // Recipient synchronization only understands the standard single-file layout with one
+    // top-level age provider. Per-profile config files or provider overrides would keep using
+    // recipient sets this generator does not rewrite, so their secrets would silently stay
+    // undecryptable for new recipients; fail instead of proceeding.
+    const profileConfigFileNames = fs
+      .readdirSync(config.dirPath)
+      .filter((name) => /^fnox\..+\.toml$/u.test(name))
+      .toSorted();
+    if (profileConfigFileNames.length > 0) {
+      console.error(
+        `Failed to synchronize fnox age recipients because per-profile config files are not supported: ${profileConfigFileNames.join(', ')}. Merge them into fnox.toml.`
+      );
+      process.exitCode = 1;
+      return;
+    }
+
     // A parse failure must abort instead of falling back to {}: regenerating from an empty object
     // would silently drop the committed encrypted secrets.
-    const settings = parse(fs.readFileSync(fnoxTomlPath, 'utf8')) as FnoxToml;
+    const originalContent = fs.readFileSync(fnoxTomlPath, 'utf8');
+    const settings = parse(originalContent) as FnoxToml;
+    const profilesWithProviders = Object.entries(settings.profiles ?? {})
+      .filter(([, profile]) => profile?.providers)
+      .map(([name]) => name);
+    if (profilesWithProviders.length > 0) {
+      console.error(
+        `Failed to synchronize fnox age recipients because profile-specific providers are not supported: ${profilesWithProviders.join(', ')}. Move them to the top-level [providers] table.`
+      );
+      process.exitCode = 1;
+      return;
+    }
+
     const ageProvider = settings.providers?.age ?? {};
-    const currentRecipients = Array.isArray(ageProvider.recipients) ? ageProvider.recipients : [];
+    const currentRecipients = new Set(Array.isArray(ageProvider.recipients) ? ageProvider.recipients : []);
     if (
-      currentRecipients.length === FNOX_AGE_RECIPIENTS.length &&
-      FNOX_AGE_RECIPIENTS.every((recipient, index) => currentRecipients[index] === recipient)
+      currentRecipients.size === FNOX_AGE_RECIPIENTS.length &&
+      FNOX_AGE_RECIPIENTS.every((recipient) => currentRecipients.has(recipient))
     ) {
       return;
     }
@@ -59,10 +87,16 @@ export async function generateFnoxToml(config: PackageConfig): Promise<void> {
     // requires an identity that can decrypt the current ciphertexts (e.g. ~/.config/fnox/age.txt).
     const profileArgs = [[], ...Object.keys(settings.profiles ?? {}).map((name) => ['--no-defaults', '-P', name])];
     for (const args of profileArgs) {
-      const status = spawnSyncAndReturnStatus('fnox', ['reencrypt', '--force', '--no-daemon', ...args], config.dirPath);
+      const status = spawnSyncAndReturnStatus(
+        'fnox',
+        ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...args],
+        config.dirPath
+      );
       if (status !== 0) {
-        // Leaving the new recipients with old ciphertexts would let setupSecrets upload a CI key
-        // that cannot decrypt anything, so fail the whole wbfy run loudly.
+        // Restore the original config: keeping the new recipients with old ciphertexts would make
+        // this generator skip re-encryption forever and let setupSecrets upload a CI key that
+        // cannot decrypt anything. The old ciphertexts remain valid for the old recipients.
+        await fsUtil.generateFile(fnoxTomlPath, originalContent);
         console.error('Failed to re-encrypt fnox secrets for the updated recipients. Fix the error and rerun wbfy.');
         process.exitCode = 1;
         return;

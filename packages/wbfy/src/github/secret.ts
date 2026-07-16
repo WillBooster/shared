@@ -5,6 +5,7 @@ import path from 'node:path';
 
 import dotenv from 'dotenv';
 import type sodiumModule from 'libsodium-wrappers';
+import { parse } from 'smol-toml';
 
 import { FNOX_AGE_RECIPIENTS } from '../generators/fnoxToml.js';
 import { logger } from '../logger.js';
@@ -29,11 +30,13 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
       // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
       // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
       // identity (never the personal one) and NEVER written anywhere inside the repository.
-      const fnoxTomlContent = fs.readFileSync(fnoxTomlPath, 'utf8');
-      const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !fnoxTomlContent.includes(recipient));
+      // Parse the TOML instead of searching the raw text: a recipient mentioned only in a comment
+      // must not count. This also catches the case where generateFnoxToml failed earlier.
+      const recipients = readFnoxAgeRecipients(fnoxTomlPath);
+      const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !recipients.has(recipient));
       if (missingRecipients.length > 0) {
         console.error(
-          `Skip uploading FNOX_AGE_KEY because fnox.toml does not list the following age public keys as recipients (generateFnoxToml should have added them): ${missingRecipients.join(', ')}`
+          `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in fnox.toml misses the following age public keys (generateFnoxToml should have added them): ${missingRecipients.join(', ')}`
         );
         process.exitCode = 1;
         return;
@@ -99,14 +102,31 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
             repo,
             secret_name: secretName,
           });
-        } catch {
-          // do nothing
+        } catch (error) {
+          // Most repositories never had the legacy secret, so its absence is the expected outcome.
+          if ((error as { status?: number } | undefined)?.status === 404) continue;
+          console.error(`Failed to delete the obsolete secret ${secretName}:`, error);
+          process.exitCode = 1;
         }
       }
     } catch (error) {
-      console.warn('Skip setupSecrets due to:', (error as Error | undefined)?.stack ?? error);
+      console.error('Failed to upload secrets due to:', (error as Error | undefined)?.stack ?? error);
+      process.exitCode = 1;
     }
   });
+}
+
+function readFnoxAgeRecipients(fnoxTomlPath: string): Set<string> {
+  try {
+    const settings = parse(fs.readFileSync(fnoxTomlPath, 'utf8')) as {
+      providers?: Record<string, Record<string, unknown> | undefined>;
+    };
+    const recipients = settings.providers?.age?.recipients;
+    return new Set(Array.isArray(recipients) ? recipients.filter((r): r is string => typeof r === 'string') : []);
+  } catch {
+    // An unreadable or unparsable fnox.toml yields no recipients, so the caller reports an error.
+    return new Set();
+  }
 }
 
 function readCiAgeSecretKey(): string | undefined {
@@ -118,14 +138,17 @@ function readCiAgeSecretKey(): string | undefined {
     content = fs.readFileSync(identityPath, 'utf8');
   } catch {
     console.error(
-      `Failed to upload FNOX_AGE_KEY because ${identityPath} is missing. Create the CI-dedicated identity with \`age-keygen -o ${identityPath}\`; the personal ~/.config/fnox/age.txt is deliberately not used.`
+      `Failed to upload FNOX_AGE_KEY because ${identityPath} is missing. Copy the existing CI age identity from the team credential store to that path (run \`mkdir -p ~/.config/fnox\` first); the personal ~/.config/fnox/age.txt is deliberately not used. Generate a brand-new identity with age-keygen only when rotating the CI key, and register its public key in FNOX_AGE_RECIPIENTS.`
     );
     return undefined;
   }
+  // Require the `# public key:` comment (age-keygen always writes it) and verify it against the
+  // recipient list: skipping the check when the comment is absent would let a hand-assembled file
+  // containing an arbitrary private key be uploaded unverified.
   const publicKeyLine = content.split('\n').find((line) => line.includes('public key:'));
-  if (publicKeyLine && !FNOX_AGE_RECIPIENTS.some((recipient) => publicKeyLine.includes(recipient))) {
+  if (!publicKeyLine || !FNOX_AGE_RECIPIENTS.some((recipient) => publicKeyLine.includes(recipient))) {
     console.error(
-      `Failed to upload FNOX_AGE_KEY because the public key in ${identityPath} is not listed in FNOX_AGE_RECIPIENTS, so the uploaded key could not decrypt the committed secrets.`
+      `Failed to upload FNOX_AGE_KEY because the \`# public key:\` comment in ${identityPath} is missing or not listed in FNOX_AGE_RECIPIENTS, so the uploaded key could not be verified to decrypt the committed secrets.`
     );
     return undefined;
   }
