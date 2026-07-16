@@ -354,7 +354,8 @@ function verifyCiKeyDecryptsAllSecrets(
     };
     for (const [relPath, content] of fnoxContents) {
       const tempConfigDirPath = path.join(tempRepoDirPath, path.dirname(relPath));
-      const profileNames = Object.keys((parse(content) as { profiles?: Record<string, unknown> }).profiles ?? {});
+      const settings = parse(content) as { profiles?: Record<string, unknown> };
+      const profileNames = Object.keys(settings.profiles ?? {});
       const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', `--profile=${name}`])];
       for (const profileArgs of profileArgsList) {
         const proc = child_process.spawnSync(
