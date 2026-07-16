@@ -27,29 +27,29 @@ afterEach(() => {
 describe('readAndApplyEnvironmentVariables()', () => {
   it('should load no env vars with empty options', () => {
     const envVars = readAndApplyEnvironmentVariables({}, 'test/fixtures/app1');
-    expect(envVars).toEqual({});
+    expect(withoutPath(envVars)).toEqual({});
   });
 
   it('should load env vars with --auto-cascade-env', () => {
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
+    expect(withoutPath(envVars)).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
   });
 
   it('should load env vars with --cascade-env=production', () => {
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'production', env: ['.env'] }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ ENV: 'production1', PORT: '3003', NAME: 'app1' });
+    expect(withoutPath(envVars)).toEqual({ ENV: 'production1', PORT: '3003', NAME: 'app1' });
   });
 
   it('should load env vars with --cascade-node-env and NODE_ENV=""', () => {
     process.env.NODE_ENV = '';
     const envVars = readAndApplyEnvironmentVariables({ cascadeNodeEnv: true, env: ['.env'] }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
+    expect(withoutPath(envVars)).toEqual({ ENV: 'development1', PORT: '3001', NAME: 'app1' });
   });
 
   it('should load env vars with --cascade-node-env and NODE_ENV=test', () => {
     process.env.NODE_ENV = 'test';
     const envVars = readAndApplyEnvironmentVariables({ cascadeNodeEnv: true, env: ['.env'] }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ ENV: 'test1', PORT: '3002', NAME: 'app1' });
+    expect(withoutPath(envVars)).toEqual({ ENV: 'test1', PORT: '3002', NAME: 'app1' });
   });
 
   it('should load env vars with --env=test/fixtures/app2/.env --auto-cascade-env, WB_ENV=test and NODE_ENV=production', () => {
@@ -59,14 +59,14 @@ describe('readAndApplyEnvironmentVariables()', () => {
       { autoCascadeEnv: true, env: ['../app2/.env'] },
       'test/fixtures/app1'
     );
-    expect(envVars).toEqual({ ENV: 'test2', PORT: '4002', NAME: 'app2' });
+    expect(withoutPath(envVars)).toEqual({ ENV: 'test2', PORT: '4002', NAME: 'app2' });
   });
 
   it('should not overwrite existing process.env values', () => {
     process.env.PORT = '9999';
     process.env.NAME = 'override';
     const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
-    expect(envVars).toEqual({ ENV: 'development1' });
+    expect(withoutPath(envVars)).toEqual({ ENV: 'development1' });
     expect(process.env.ENV).toBe('development1');
     expect(process.env.PORT).toBe('9999');
     expect(process.env.NAME).toBe('override');
@@ -88,6 +88,26 @@ describe('readAndApplyEnvironmentVariables()', () => {
     expect(envVars).toMatchObject({ ENV: 'test3', MISE_ONLY: 'base3', NAME: 'app3', PORT: '5002' });
     expect(process.env.PORT).toBe('9999');
   });
+
+  it.runIf(isFnoxAvailable())('should load env vars from fnox.toml preferring .env files', () => {
+    const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-fnox');
+    expect(envVars).toMatchObject({
+      ENV: 'dotenv-development',
+      FNOX_ONLY: 'base-fnox',
+      NAME: 'app-fnox',
+      PORT: '6001',
+    });
+  });
+
+  it.runIf(isFnoxAvailable())('should load env vars from a fnox profile with --cascade-env=test', () => {
+    const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app-fnox');
+    expect(envVars).toMatchObject({
+      ENV: 'dotenv-development',
+      FNOX_ONLY: 'base-fnox',
+      NAME: 'app-fnox',
+      PORT: '6002',
+    });
+  });
 });
 
 describe('readEnvironmentVariables()', () => {
@@ -98,8 +118,8 @@ describe('readEnvironmentVariables()', () => {
       { autoCascadeEnv: true },
       'test/fixtures/app1'
     );
-    expect(envVars).toEqual({ ENV: 'development1' });
-    expect(envPathAndLoadedEnvVarNames).toEqual([
+    expect(withoutPath(envVars)).toEqual({ ENV: 'development1' });
+    expect(envPathAndLoadedEnvVarNames.filter(([source]) => !source.startsWith('mise env'))).toEqual([
       ['.env.development', ['ENV']],
       ['.env', []],
     ]);
@@ -113,10 +133,20 @@ describe('readEnvironmentVariables()', () => {
     process.env.EXPORTED_SECRET = 'pa$word';
     process.env.API_HOST = 'prod.example';
     const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-expand');
-    expect(envVars).toEqual({ WORKER_SECRET: 'pa$word', CALLBACK_URL: 'https://prod.example/cb' });
+    expect(withoutPath(envVars)).toEqual({ WORKER_SECRET: 'pa$word', CALLBACK_URL: 'https://prod.example/cb' });
   });
 });
 
 function isMiseAvailable(): boolean {
   return childProcess.spawnSync('mise', ['--version'], { stdio: 'ignore' }).status === 0;
+}
+
+function isFnoxAvailable(): boolean {
+  return childProcess.spawnSync('fnox', ['--version'], { stdio: 'ignore' }).status === 0;
+}
+
+function withoutPath(envVars: Record<string, string | undefined>): Record<string, string | undefined> {
+  // The repository root now contains mise.toml, so `mise env` contributes PATH to every fixture.
+  const { PATH: _, ...rest } = envVars;
+  return rest;
 }

@@ -112,6 +112,14 @@ export function readEnvironmentVariables(
       console.info(`Read ${keys.length} environment variables from ${envPath}`);
     }
   }
+  const [fnoxEnvVars, fnoxEnvVarNames] = readFnoxEnvironmentVariables(cwd, cascade, envVars, options);
+  Object.assign(envVars, fnoxEnvVars);
+  if (fnoxEnvVarNames.length > 0) {
+    envPathAndLoadedEnvVarNames.push([fnoxEnvironmentSourceName(cascade), fnoxEnvVarNames]);
+    if (argv.verbose && !shouldSuppressOutput) {
+      console.info(`Read ${fnoxEnvVarNames.length} environment variables from ${fnoxEnvironmentSourceName(cascade)}`);
+    }
+  }
   const [miseEnvVars, miseEnvVarNames] = readMiseEnvironmentVariables(cwd, cascade, envVars, options);
   Object.assign(envVars, miseEnvVars);
   if (miseEnvVarNames.length > 0) {
@@ -145,6 +153,64 @@ export function readEnvironmentVariables(
     if (value !== undefined && !(key in envVars)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
   }
   return [expand({ parsed: envVars, processEnv: referenceEnv }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
+}
+
+/**
+ * This function reads environment variables from the repository's fnox configuration (`fnox.toml`).
+ * The base `[secrets]` table corresponds to `.env`, and `[profiles.<cascade>.secrets]` corresponds to
+ * `.env.<cascade>`; an unknown profile falls back to the base secrets.
+ */
+export function readFnoxEnvironmentVariables(
+  cwd: string,
+  cascade: string | undefined,
+  currentEnvVars: Record<string, string>,
+  options?: { ignoreProcessEnv?: boolean }
+): [Record<string, string>, string[]] {
+  if (!hasProjectFnoxConfig(cwd)) return [{}, []];
+
+  const args = ['export', '--format', 'json', '--no-color'];
+  if (cascade) {
+    args.push('--profile', cascade);
+  }
+  const result = childProcess.spawnSync('fnox', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.error || result.status !== 0 || !result.stdout?.trim()) return [{}, []];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return [{}, []];
+  }
+  const secrets = (parsed as { secrets?: unknown } | undefined)?.secrets;
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)) return [{}, []];
+
+  const envVars: Record<string, string> = {};
+  const keys: string[] = [];
+  for (const [key, value] of Object.entries(secrets)) {
+    if (typeof value !== 'string' || key in currentEnvVars) continue;
+    if (!options?.ignoreProcessEnv && process.env[key] === value) continue;
+    envVars[key] = value;
+    keys.push(key);
+  }
+  return [envVars, keys];
+}
+
+export function hasProjectFnoxConfig(cwd: string): boolean {
+  for (let currentPath = path.resolve(cwd); ; currentPath = path.dirname(currentPath)) {
+    if (fs.existsSync(path.join(currentPath, 'fnox.toml'))) {
+      return true;
+    }
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) return false;
+  }
+}
+
+function fnoxEnvironmentSourceName(cascade: string | undefined): string {
+  return cascade ? `fnox export --profile ${cascade}` : 'fnox export';
 }
 
 function readMiseEnvironmentVariables(
