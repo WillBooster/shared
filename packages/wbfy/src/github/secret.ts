@@ -395,7 +395,8 @@ function readCiAgeSecretKey(): string | undefined {
   const ciPublicKey = FNOX_AGE_RECIPIENTS.find((recipient) => recipient.name === 'ci')?.publicKey ?? '';
   // Compare the whole trimmed comment value, not a substring match: a personal identity whose
   // comment merely mentions the CI key must not pass.
-  const publicKeyLine = content.split('\n').find((line) => line.includes('public key:'));
+  const lines = content.split('\n');
+  const publicKeyLine = lines.find((line) => line.includes('public key:'));
   const commentedPublicKey = publicKeyLine?.split('public key:')[1]?.trim();
   if (!ciPublicKey || commentedPublicKey !== ciPublicKey) {
     console.error(
@@ -403,7 +404,7 @@ function readCiAgeSecretKey(): string | undefined {
     );
     return undefined;
   }
-  const keyLine = content.split('\n').find((line) => line.trim().startsWith('AGE-SECRET-KEY-'));
+  const keyLine = lines.find((line) => line.trim().startsWith('AGE-SECRET-KEY-'));
   if (!keyLine) {
     console.error(`Failed to upload FNOX_AGE_KEY because ${identityPath} contains no AGE-SECRET-KEY line.`);
     return undefined;
