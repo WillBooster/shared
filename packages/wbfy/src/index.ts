@@ -18,6 +18,7 @@ import type { BunLinker } from './generators/bunfig.js';
 import { generateBunfigToml, readBunLinker } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
+import { generateFnoxToml } from './generators/fnoxToml.js';
 import { generateGeminiConfig } from './generators/geminiConfig.js';
 import { removeGeminiSettings } from './generators/geminiSettings.js';
 import { generateGitattributes } from './generators/gitattributes.js';
@@ -168,6 +169,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await removeYarnFiles(rootConfig);
     await generateBunfigToml(rootConfig, skipDeps ? (previousBunLinker ?? 'isolated') : 'isolated');
     await generateMiseToml(rootConfig, bunVersion);
+    // Must finish before setupSecrets below: it rewrites the age recipients in fnox.toml and
+    // re-encrypts the secrets that FNOX_AGE_KEY (uploaded by setupSecrets) must be able to decrypt.
+    await generateFnoxToml(rootConfig);
     // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
     // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
     await promisePool.promiseAll();
