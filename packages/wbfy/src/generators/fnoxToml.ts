@@ -104,13 +104,16 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
     // A failed synchronization must fail the whole wbfy run: exiting zero with stale recipients
     // would leave secrets undecryptable for new recipients while looking successful.
     try {
-      // A fnox.toml in an ancestor directory would merge into (and be REWRITTEN by) this
-      // repository's `fnox reencrypt` through hierarchical loading, using this repository's
-      // recipient set for foreign secrets.
+      // Any fnox config (including aliases and local overrides) in an ancestor directory would
+      // merge into (and possibly be REWRITTEN by) this repository's `fnox reencrypt` through
+      // hierarchical loading, using this repository's recipient set for foreign secrets.
       for (let dirPath = path.dirname(rootDirPath); ; dirPath = path.dirname(dirPath)) {
-        if (fs.existsSync(path.join(dirPath, 'fnox.toml'))) {
+        const ancestorFnoxFileNames = listFnoxLikeFileNames(dirPath);
+        if (ancestorFnoxFileNames.length > 0) {
           failFnoxSync(
-            `Failed to synchronize fnox age recipients because an ancestor directory contains a fnox.toml that fnox would hierarchically merge and rewrite: ${path.join(dirPath, 'fnox.toml')}. Remove it or move the repository.`
+            `Failed to synchronize fnox age recipients because an ancestor directory contains fnox configs that fnox would hierarchically merge and rewrite: ${ancestorFnoxFileNames
+              .map((name) => path.join(dirPath, name))
+              .join(', ')}. Remove them or move the repository.`
           );
           return;
         }
@@ -133,6 +136,39 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         );
         return;
       }
+      // Git-based discovery cannot see gitignored files, so also inspect every directory in each
+      // managed config's hierarchy through the filesystem: a gitignored alias (e.g. .fnox.toml)
+      // or a gitignored fnox.toml in an intermediate directory would still be loaded by fnox and
+      // could override the provider used for nested re-encryption.
+      const managedDirPaths = new Set(dirPaths);
+      for (const dirPath of dirPaths) {
+        for (const hierarchyDirPath of listAncestorDirPaths(dirPath, rootDirPath)) {
+          const strayFileNames = listFnoxLikeFileNames(hierarchyDirPath).filter(
+            (name) => name !== 'fnox.local.toml' && !(name === 'fnox.toml' && managedDirPaths.has(hierarchyDirPath))
+          );
+          if (strayFileNames.length > 0) {
+            failFnoxSync(
+              `Failed to synchronize fnox age recipients because fnox would load unmanaged (gitignored?) configs: ${strayFileNames
+                .map((name) => path.join(hierarchyDirPath, name))
+                .join(', ')}. Commit them as fnox.toml or remove them.`
+            );
+            return;
+          }
+        }
+      }
+      // The in-memory snapshots do not survive a killed process, so before the first mutation a
+      // durable marker plus on-disk copies of the pre-migration files are written, and they are
+      // removed only when the tree is consistent again. A leftover marker restores those copies
+      // (an interrupted run may have re-encrypted some files for a recipient set the executor's
+      // identity can no longer decrypt, e.g. during a recipient removal) and forces a full
+      // re-encryption on this run.
+      migrationMarkerPath = path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-migration-marker');
+      migrationBackupDirPath = path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-migration-backup');
+      const interrupted = fs.existsSync(migrationMarkerPath);
+      if (interrupted) {
+        restoreDurableBackup(rootDirPath, migrationBackupDirPath);
+      }
+
       // A tracked symlink named fnox.toml (or a symlinked parent directory) would make the
       // rewrite and `fnox reencrypt` read and MODIFY files outside this repository.
       const realRootDirPath = fs.realpathSync(rootDirPath);
@@ -150,13 +186,8 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         }
         snapshots.set(fnoxTomlPath, fs.readFileSync(fnoxTomlPath, 'utf8'));
       }
-
-      // The in-memory snapshots do not survive a killed process, so a durable on-disk marker is
-      // written before the first mutation and removed only when the tree is consistent again; a
-      // leftover marker forces a full re-encryption on the next run (recipients may already look
-      // current while some ciphertexts were never re-encrypted).
-      migrationMarkerPath = path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-migration-marker');
-      const interrupted = fs.existsSync(migrationMarkerPath);
+      migrationSnapshots = snapshots;
+      migrationRootDirPath = rootDirPath;
 
       // Sorted order processes ancestors before descendants, so configs inheriting an updated
       // provider re-encrypt against the already-updated recipients.
@@ -176,27 +207,73 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
       }
       if (anyFailed) {
         // A failed forced re-encryption may have rewritten some ciphertexts without changing any
-        // recipients, so restore unconditionally and KEEP the marker: only a fully successful run
-        // proves every ciphertext matches the recipients again.
+        // recipients, so restore unconditionally and KEEP the marker and durable backup: only a
+        // fully successful run proves every ciphertext matches the recipients again.
         restoreSnapshots(snapshots);
       } else {
         fs.rmSync(migrationMarkerPath, { force: true });
+        fs.rmSync(migrationBackupDirPath, { recursive: true, force: true });
       }
     } catch (error) {
       restoreSnapshots(snapshots);
       failFnoxSync(`Failed to synchronize fnox age recipients due to: ${(error as Error | undefined)?.stack ?? error}`);
     } finally {
       migrationMarkerPath = undefined;
+      migrationBackupDirPath = undefined;
+      migrationSnapshots = undefined;
+      migrationRootDirPath = undefined;
     }
   });
 }
 
 let migrationMarkerPath: string | undefined;
+let migrationBackupDirPath: string | undefined;
+let migrationSnapshots: Map<string, string> | undefined;
+let migrationRootDirPath: string | undefined;
 
 function writeMigrationMarker(): void {
   if (!migrationMarkerPath || fs.existsSync(migrationMarkerPath)) return;
+  // Persist the pre-migration contents BEFORE the marker so that a marker always implies a
+  // complete durable backup.
+  if (migrationBackupDirPath && migrationSnapshots && migrationRootDirPath) {
+    for (const [filePath, content] of migrationSnapshots) {
+      const backupFilePath = path.join(migrationBackupDirPath, path.relative(migrationRootDirPath, filePath));
+      fs.mkdirSync(path.dirname(backupFilePath), { recursive: true });
+      fs.writeFileSync(backupFilePath, content);
+    }
+  }
   fs.mkdirSync(path.dirname(migrationMarkerPath), { recursive: true });
   fs.writeFileSync(migrationMarkerPath, 'wbfy fnox migration in progress; a leftover marker forces re-encryption\n');
+}
+
+function restoreDurableBackup(rootDirPath: string, backupDirPath: string): void {
+  if (!fs.existsSync(backupDirPath)) return;
+  const walk = (dirPath: string): void => {
+    for (const dirent of fs.readdirSync(dirPath, { withFileTypes: true })) {
+      const backupFilePath = path.join(dirPath, dirent.name);
+      if (dirent.isDirectory()) {
+        walk(backupFilePath);
+        continue;
+      }
+      const targetFilePath = path.join(rootDirPath, path.relative(backupDirPath, backupFilePath));
+      fs.mkdirSync(path.dirname(targetFilePath), { recursive: true });
+      fs.copyFileSync(backupFilePath, targetFilePath);
+    }
+  };
+  walk(backupDirPath);
+}
+
+function listFnoxLikeFileNames(dirPath: string): string[] {
+  try {
+    return fs
+      .readdirSync(dirPath)
+      .filter((name) => /^\.?fnox(\..+)?\.toml$/u.test(name))
+      .toSorted();
+  } catch {
+    // An unreadable directory (e.g. a permission-restricted ancestor) is equally unreadable to
+    // fnox, so there is nothing it could load from there.
+    return [];
+  }
 }
 
 function restoreSnapshots(snapshots: Map<string, string>): boolean {

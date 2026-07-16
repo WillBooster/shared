@@ -133,7 +133,10 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     secretsToUpload = { FNOX_AGE_KEY: ageKey };
     obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
   } else {
-    secretsToUpload = dotenv.config({ path: path.resolve(config.dirPath, '.env'), quiet: true }).parsed ?? {};
+    // dotenv.config would also inject the values into process.env, leaking this repository's
+    // secrets to every later subprocess and repository handled in the same wbfy invocation.
+    const envPath = path.resolve(config.dirPath, '.env');
+    secretsToUpload = fs.existsSync(envPath) ? dotenv.parse(fs.readFileSync(envPath, 'utf8')) : {};
     for (const name of ['GH_BOT_PAT', 'GH_BOT_PAT_FOR_WILLBOOSTER', 'GH_BOT_PAT_FOR_WILLBOOSTERLAB']) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete secretsToUpload[name];
@@ -204,10 +207,19 @@ async function fetchDefaultBranchFnoxConfigs(
 ): Promise<Map<string, string>> {
   const repoResponse = await octokit.request('GET /repos/{owner}/{repo}', { owner, repo });
   const defaultBranch = repoResponse.data.default_branch;
+  // Pin everything to one commit: enumerating the tree and fetching contents through the mutable
+  // branch name could mix two commits (and miss a just-added config) if the branch advances
+  // between requests.
+  const commitResponse = await octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', {
+    owner,
+    repo,
+    ref: defaultBranch,
+  });
+  const commitSha = commitResponse.data.sha;
   const treeResponse = await octokit.request('GET /repos/{owner}/{repo}/git/trees/{tree_sha}', {
     owner,
     repo,
-    tree_sha: defaultBranch,
+    tree_sha: commitSha,
     recursive: '1',
   });
   // Fail closed: a truncated tree could hide a fnox config whose ciphertext was never verified.
@@ -222,7 +234,7 @@ async function fetchDefaultBranchFnoxConfigs(
       owner,
       repo,
       path: entryPath,
-      ref: defaultBranch,
+      ref: commitSha,
       headers: { accept: 'application/vnd.github.raw+json' },
     });
     contents.set(entryPath, fileResponse.data as unknown as string);
