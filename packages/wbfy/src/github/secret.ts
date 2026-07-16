@@ -6,7 +6,7 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 import type sodiumModule from 'libsodium-wrappers';
 
-import { CI_AGE_PUBLIC_KEY } from '../generators/fnoxToml.js';
+import { FNOX_AGE_RECIPIENTS } from '../generators/fnoxToml.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -29,9 +29,11 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
       // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
       // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
       // identity (never the personal one) and NEVER written anywhere inside the repository.
-      if (!fs.readFileSync(fnoxTomlPath, 'utf8').includes(CI_AGE_PUBLIC_KEY)) {
+      const fnoxTomlContent = fs.readFileSync(fnoxTomlPath, 'utf8');
+      const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !fnoxTomlContent.includes(recipient));
+      if (missingRecipients.length > 0) {
         console.error(
-          `Skip uploading FNOX_AGE_KEY because fnox.toml does not list the CI age public key as a recipient. Add ${CI_AGE_PUBLIC_KEY} to [providers.age].recipients and run \`fnox reencrypt\`.`
+          `Skip uploading FNOX_AGE_KEY because fnox.toml does not list the following age public keys as recipients (generateFnoxToml should have added them): ${missingRecipients.join(', ')}`
         );
         process.exitCode = 1;
         return;
@@ -121,9 +123,9 @@ function readCiAgeSecretKey(): string | undefined {
     return undefined;
   }
   const publicKeyLine = content.split('\n').find((line) => line.includes('public key:'));
-  if (publicKeyLine && !publicKeyLine.includes(CI_AGE_PUBLIC_KEY)) {
+  if (publicKeyLine && !FNOX_AGE_RECIPIENTS.some((recipient) => publicKeyLine.includes(recipient))) {
     console.error(
-      `Failed to upload FNOX_AGE_KEY because the public key in ${identityPath} does not match the expected CI age public key (${CI_AGE_PUBLIC_KEY}).`
+      `Failed to upload FNOX_AGE_KEY because the public key in ${identityPath} is not listed in FNOX_AGE_RECIPIENTS, so the uploaded key could not decrypt the committed secrets.`
     );
     return undefined;
   }
