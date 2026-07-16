@@ -216,12 +216,15 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
       if (anyFailed) {
         // A failed re-encryption may have rewritten some ciphertexts, so restore unconditionally.
         // The marker is removed only when restoration fully succeeded and the tree is consistent.
-        if (restoreSnapshots(snapshots)) removeOwnedMigrationMarker();
+        // Restore ONLY when this run owns the marker: every committed-config mutation happens
+        // after marker acquisition, so a non-owner (e.g. losing a race against a concurrent wbfy)
+        // has changed nothing and must not overwrite the owner's in-progress migration.
+        if (migrationMarkerOwned && restoreSnapshots(snapshots)) removeOwnedMigrationMarker();
       } else {
         removeOwnedMigrationMarker();
       }
     } catch (error) {
-      if (restoreSnapshots(snapshots)) {
+      if (migrationMarkerOwned && restoreSnapshots(snapshots)) {
         removeOwnedMigrationMarker();
       }
       failFnoxSync(`Failed to synchronize fnox age recipients due to: ${(error as Error | undefined)?.stack ?? error}`);
@@ -516,6 +519,19 @@ function fnoxLocalBackupPath(rootDirPath: string, dirPath: string): string {
   );
 }
 
+// Creates the backup directory and proves no path component below the repository root is a
+// symlink: a repository-controlled symlink (e.g. a tracked .tmp/wbfy-fnox-local-backup link)
+// could otherwise move the plaintext local secrets outside the repository, or resolve the backup
+// back onto the source file and turn the hide rename into a no-op.
+function ensureSafeFnoxLocalBackupDir(rootDirPath: string, backupPath: string): void {
+  const backupDirPath = path.dirname(backupPath);
+  fs.mkdirSync(backupDirPath, { recursive: true });
+  const expectedRealPath = path.join(fs.realpathSync(rootDirPath), path.relative(rootDirPath, backupDirPath));
+  if (fs.realpathSync(backupDirPath) !== expectedRealPath) {
+    throw new Error(`${backupDirPath} resolves through a symlink; remove the symlinked component.`);
+  }
+}
+
 /**
  * Restores a fnox.local.toml backup left by an interrupted earlier run so the user's local
  * overrides are never silently lost.
@@ -527,6 +543,7 @@ function recoverStaleFnoxLocalBackup(rootDirPath: string, dirPath: string): void
   if (fs.existsSync(localPath)) {
     throw new Error(`Both ${localPath} and its backup ${backupPath} exist; resolve the leftover backup manually.`);
   }
+  ensureSafeFnoxLocalBackupDir(rootDirPath, backupPath);
   fs.renameSync(backupPath, localPath);
 }
 
@@ -537,13 +554,14 @@ function recoverStaleFnoxLocalBackup(rootDirPath: string, dirPath: string): void
  */
 function withFnoxLocalsHidden<T>(rootDirPath: string, dirPaths: string[], func: () => T): T {
   const hiddenDirPaths: string[] = [];
+  const conflictingLocalPaths: string[] = [];
   try {
     for (const dirPath of dirPaths) {
       recoverStaleFnoxLocalBackup(rootDirPath, dirPath);
       const localPath = path.resolve(dirPath, 'fnox.local.toml');
       if (fs.existsSync(localPath)) {
         const backupPath = fnoxLocalBackupPath(rootDirPath, dirPath);
-        fs.mkdirSync(path.dirname(backupPath), { recursive: true });
+        ensureSafeFnoxLocalBackupDir(rootDirPath, backupPath);
         fs.renameSync(localPath, backupPath);
         hiddenDirPaths.push(dirPath);
       }
@@ -555,12 +573,20 @@ function withFnoxLocalsHidden<T>(rootDirPath: string, dirPaths: string[], func: 
       // Never clobber a fnox.local.toml recreated (e.g. by an editor) while fnox was running;
       // keep the backup and let the user merge manually.
       if (fs.existsSync(localPath)) {
-        failFnoxSync(
-          `${localPath} was recreated while fnox was running; the original file is preserved at ${fnoxLocalBackupPath(rootDirPath, dirPath)} — merge them manually.`
-        );
+        conflictingLocalPaths.push(localPath);
         continue;
       }
       fs.renameSync(fnoxLocalBackupPath(rootDirPath, dirPath), localPath);
+    }
+    if (conflictingLocalPaths.length > 0) {
+      // A recreated override may have shadowed committed secrets and invalidated fnox's work, so
+      // the whole operation must fail (the outer transaction restores every committed fnox.toml
+      // and keeps the marker semantics); reporting alone would let a seemingly successful
+      // re-encryption commit the migration.
+      // eslint-disable-next-line no-unsafe-finally -- the successful return value must be discarded because the re-encryption result is invalid.
+      throw new Error(
+        `The following fnox.local.toml files were recreated while fnox was running (original files are preserved under ${path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-local-backup')} — merge them manually): ${conflictingLocalPaths.join(', ')}`
+      );
     }
   }
 }
