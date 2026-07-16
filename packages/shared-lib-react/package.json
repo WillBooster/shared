@@ -30,7 +30,6 @@
     "build-storybook": "build-storybook",
     "cleanup": "bun wb lint --fix --format",
     "format": "bun wb lint --format",
-    "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
     "lint": "bun wb lint",
     "lint-fix": "bun wb lint --fix",
     "storybook": "start-storybook -p 6006",

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import semver from 'semver';
 import { parse, stringify } from 'smol-toml';
 
 import { logger } from '../logger.js';
@@ -12,6 +13,9 @@ interface MiseToml {
   tools?: Record<string, unknown>;
   [key: string]: unknown;
 }
+
+// The oldest Bun that understands every option in the generated bunfig.toml (globalStore).
+const minimumBunVersion = '1.3.14';
 
 /**
  * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions,
@@ -37,6 +41,12 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     // unpinned Node would come from whatever happens to be on PATH.
     tools.node = tools.node ?? readNodeVersionFile(config.dirPath) ?? 'latest';
     tools.bun = tools.bun ?? 'latest';
+    // The generated bunfig.toml relies on `globalStore` (Bun >= 1.3.14) and `publicHoistPattern`
+    // (Bun >= 1.3.1); older Bun versions silently ignore them and install a different layout
+    // from the one wbfy validated, so lift any older pin.
+    if (typeof tools.bun === 'string' && semver.valid(tools.bun) && semver.lt(tools.bun, minimumBunVersion)) {
+      tools.bun = 'latest';
+    }
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = tools.fnox ?? 'latest';
     }

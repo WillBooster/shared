@@ -142,7 +142,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
-  addDependencyVersionsToPackageJson(config, jsonObj, dependencyUpdates, skipAddingDeps);
+  addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipAddingDeps);
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
@@ -183,6 +183,12 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
   delete jsonObj.scripts['start-test-server'];
 
   delete jsonObj.scripts.prettify;
+  // `bun wb lint --format` owns JS/TS formatting, so the old oxfmt-based format-code script is
+  // obsolete there. Dart/Python repos still use format-code; theirs is regenerated later in
+  // normalizePackageMetadata, which runs after this function.
+  if (doesContainJsOrTs(config) && !config.doesContainPubspecYaml && !getPythonPackageManager(config)) {
+    delete jsonObj.scripts['format-code'];
+  }
   convertYarnCommandsToBun(jsonObj.scripts);
 }
 
@@ -393,6 +399,13 @@ async function applyPackageJsonConventions(
     delete jsonObj.scripts.prepack;
     delete jsonObj.scripts.postpack;
     jsonObj.scripts.prepare = 'lefthook install || true';
+    // When @willbooster/wb is a workspace of this repository, the generated `bun wb …` scripts run
+    // its gitignored dist build (bin/index.js imports ../dist/index.js), so a fresh checkout must
+    // build it during install; registry installs ship a prebuilt dist and need no extra step.
+    const wbWorkspaceDir = getWorkspacePackageDirs(rootConfig).get(wbDependency);
+    if (wbWorkspaceDir) {
+      jsonObj.scripts.prepare += ` && bun run --cwd ${wbWorkspaceDir} build`;
+    }
     devDependencies.push(lefthookDependency);
 
     if (config.depending.semanticRelease) {
@@ -736,6 +749,7 @@ const configDmtsContent = `export { default } from './config.js';
 
 function addDependencyVersionsToPackageJson(
   config: PackageConfig,
+  rootConfig: PackageConfig,
   jsonObj: WritablePackageJson,
   dependencyUpdates: DependencyUpdates,
   skipAddingDeps: boolean
@@ -744,6 +758,7 @@ function addDependencyVersionsToPackageJson(
   const packageJsonDevDependencies = jsonObj.devDependencies;
   dependencyUpdates.dependencies = addPackageJsonDependencies(
     config,
+    rootConfig,
     jsonObj,
     packageJsonDependencies,
     [...dependencyUpdates.dependencies, ...getExistingManagedDependencies(packageJsonDependencies)],
@@ -752,6 +767,7 @@ function addDependencyVersionsToPackageJson(
   dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter((dep) => !packageJsonDependencies[dep]);
   dependencyUpdates.devDependencies = addPackageJsonDependencies(
     config,
+    rootConfig,
     jsonObj,
     packageJsonDevDependencies,
     [...dependencyUpdates.devDependencies, ...getExistingManagedDependencies(packageJsonDevDependencies)],
@@ -821,6 +837,7 @@ function installNpmDependencies(
 
 function addPackageJsonDependencies(
   config: PackageConfig,
+  rootConfig: PackageConfig,
   jsonObj: WritablePackageJson,
   packageJsonDependencies: Partial<Record<string, string>>,
   dependencies: string[],
@@ -832,7 +849,7 @@ function addPackageJsonDependencies(
     // via the workspace protocol: pinning a registry version makes Bun shadow the same-name
     // workspace and skip installing the workspace's own dependencies. (Published packages instead
     // pin a concrete version because `npm publish` rejects `workspace:*` specifiers.)
-    if (shouldUseWorkspaceProtocol(config, jsonObj, dependency)) {
+    if (jsonObj.private && getWorkspacePackageDirs(rootConfig).has(dependency)) {
       packageJsonDependencies[dependency] = 'workspace:*';
       continue;
     }
@@ -1193,22 +1210,36 @@ function doesProductCodeImportMicromatch(dirPath: string): boolean {
   });
 }
 
-function shouldUseWorkspaceProtocol(config: PackageConfig, jsonObj: PackageJson, dependency: string): boolean {
-  if (!jsonObj.private || !Array.isArray(jsonObj.workspaces)) return false;
-  return jsonObj.workspaces.some((workspacePattern) =>
-    fg
-      .globSync(path.posix.join(workspacePattern, 'package.json'), { cwd: config.dirPath, ignore: globIgnore })
-      .some((packageJsonPath) => {
+const workspacePackageDirsCache = new Map<string, Map<string, string>>();
+
+/** Map from each workspace package's name to its directory (relative to the monorepo root). */
+function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, string> {
+  const cached = workspacePackageDirsCache.get(rootConfig.dirPath);
+  if (cached) return cached;
+
+  const workspaceDirsByName = new Map<string, string>();
+  const workspacePatterns = rootConfig.packageJson?.workspaces;
+  if (Array.isArray(workspacePatterns)) {
+    for (const workspacePattern of workspacePatterns) {
+      for (const packageJsonPath of fg.globSync(path.posix.join(workspacePattern, 'package.json'), {
+        cwd: rootConfig.dirPath,
+        ignore: globIgnore,
+      })) {
         try {
           const workspacePackageJson = JSON.parse(
-            fs.readFileSync(path.resolve(config.dirPath, packageJsonPath), 'utf8')
+            fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
           ) as PackageJson;
-          return workspacePackageJson.name === dependency;
+          if (workspacePackageJson.name) {
+            workspaceDirsByName.set(workspacePackageJson.name, path.posix.dirname(packageJsonPath));
+          }
         } catch {
-          return false;
+          // ignore unparsable workspace package.json
         }
-      })
-  );
+      }
+    }
+  }
+  workspacePackageDirsCache.set(rootConfig.dirPath, workspaceDirsByName);
+  return workspaceDirsByName;
 }
 
 function shouldUpdateExistingManagedDependency(

@@ -257,7 +257,9 @@ async function refreshBunLock(rootDirPath: string, rootConfig: PackageConfig): P
   // wbfy should update only the packages it explicitly manages through bun add.
   // Running bun update here refreshes unrelated application dependencies and
   // can change product behavior, so keep the existing lock and reconcile it.
-  let status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath);
+  // Retry once under the isolated linker so a transient failure (registry hiccup, flaky
+  // lifecycle script) does not masquerade as a layout incompatibility.
+  let status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
   if (status !== 0) {
     // The isolated linker (the default bunfig.toml wbfy generates) breaks projects that rely on
     // hoisted (phantom) dependencies or on install scripts incompatible with the isolated layout.
@@ -266,9 +268,13 @@ async function refreshBunLock(rootDirPath: string, rootConfig: PackageConfig): P
     await generateBunfigToml(rootConfig, 'hoisted');
     await promisePool.promiseAll();
     status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath);
-  }
-  if (status !== 0) {
-    throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
+    if (status !== 0) {
+      // Both layouts failed, so the failure is not linker-specific; keep the default isolated
+      // configuration instead of persisting a downgrade that the failed install never justified.
+      await generateBunfigToml(rootConfig);
+      await promisePool.promiseAll();
+      throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
+    }
   }
 }
 

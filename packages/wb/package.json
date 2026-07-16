@@ -20,7 +20,6 @@
     "build": "bun run start buildIfNeeded --command 'bun build-ts app'",
     "cleanup": "bun wb lint --fix --format",
     "format": "bun wb lint --format",
-    "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
     "lint": "bun wb lint",
     "lint-fix": "bun wb lint --fix",
     "start": "build-ts run src/index.ts --",

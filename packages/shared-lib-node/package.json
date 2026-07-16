@@ -34,7 +34,6 @@
     "build": "build-ts lib",
     "cleanup": "bun wb lint --fix --format",
     "format": "bun wb lint --format",
-    "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
     "lint": "bun wb lint",
     "lint-fix": "bun wb lint --fix",
     "test": "bun wb test",
@@ -43,6 +42,7 @@
     "verify-full": "bun wb verify --full"
   },
   "dependencies": {
+    "@types/yargs": "17.0.35",
     "dotenv": "17.4.2",
     "dotenv-expand": "13.0.0"
   },
@@ -52,7 +52,6 @@
     "@tsconfig/node-ts": "23.6.4",
     "@types/bun": "1.3.14",
     "@types/node": "25.6.0",
-    "@types/yargs": "17.0.35",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
     "@willbooster/wb": "14.0.0",
