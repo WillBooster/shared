@@ -17,18 +17,18 @@
   ],
   "scripts": {
     "build": "build-ts app",
-    "cleanup": "bun run format && bun run lint-fix",
-    "format": "sort-package-json && bun run format-code",
+    "cleanup": "bun wb lint --fix --format",
+    "format": "bun wb lint --format",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
-    "lint": "oxlint --type-aware --type-check --no-error-on-unmatched-pattern .",
-    "lint-fix": "bun run lint --fix",
+    "lint": "bun wb lint",
+    "lint-fix": "bun wb lint --fix",
     "start": "build-ts run src/index.ts --env .env --",
     "start-prod": "bun run build && bun wbfy",
-    "test": "bun run test/ci-setup && vitest test",
+    "test": "bun wb test",
     "test/ci-setup": "rm -Rf test-fixtures/wbfy && mkdir -p test-fixtures && git clone https://github.com/WillBooster/test-fixtures-for-wbfy.git test-fixtures/wbfy",
-    "typecheck": "wb typecheck",
-    "verify": "wb verify",
-    "verify-full": "wb verify --full"
+    "typecheck": "bun wb typecheck",
+    "verify": "bun wb verify",
+    "verify-full": "bun wb verify --full"
   },
   "dependencies": {
     "@octokit/core": "7.0.6",
@@ -49,8 +49,10 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@tsconfig/bun": "1.0.10",
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/node-ts": "23.6.4",
+    "@types/bun": "1.3.14",
     "@types/jest": "30.0.0",
     "@types/js-yaml": "4.0.9",
     "@types/node": "25.6.0",
@@ -58,7 +60,7 @@
     "@types/yargs": "17.0.35",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "13.28.8",
+    "@willbooster/wb": "14.0.0",
     "build-ts": "17.1.34",
     "lefthook": "2.1.10",
     "oxfmt": "0.59.0",

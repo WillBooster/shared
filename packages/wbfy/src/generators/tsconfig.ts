@@ -115,6 +115,17 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     } catch {
       // do nothing
     }
+    // bun-types references undici-types without declaring it as a dependency, so Bun's isolated
+    // linker (especially with the global store outside the repository) cannot resolve it from
+    // bun-types' location, which silently degrades global fetch types such as Response. Map it to
+    // the root copy wbfy installs (see packageJson.ts) until bun-types declares the dependency.
+    if (generatedTypes.includes('bun')) {
+      newSettings.compilerOptions ??= {};
+      newSettings.compilerOptions.paths = {
+        ...newSettings.compilerOptions.paths,
+        'undici-types': [`${getRootDir(config)}/node_modules/undici-types/index.d.ts`],
+      };
+    }
     sortKeys(newSettings);
     newSettings.include?.sort();
     // Don't use old decorator

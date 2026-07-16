@@ -54,6 +54,9 @@ const managedDependencyNames = new Set([
   typescriptDependency,
   typescriptGoDependency,
   'sort-package-json',
+  // Mixed @types/bun versions across a monorepo load two bun-types copies, which
+  // breaks global interface merging (e.g. Response/Headers) during type checking.
+  '@types/bun',
   ...oxlintDeps,
 ]);
 const willBoosterConfigsManagedDependencies = [
@@ -825,6 +828,14 @@ function addPackageJsonDependencies(
 ): string[] {
   const dependenciesToInstall: string[] = [];
   for (const dependency of new Set(dependencies)) {
+    // A private package whose monorepo contains this dependency as a workspace must reference it
+    // via the workspace protocol: pinning a registry version makes Bun shadow the same-name
+    // workspace and skip installing the workspace's own dependencies. (Published packages instead
+    // pin a concrete version because `npm publish` rejects `workspace:*` specifiers.)
+    if (shouldUseWorkspaceProtocol(config, jsonObj, dependency)) {
+      packageJsonDependencies[dependency] = 'workspace:*';
+      continue;
+    }
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       config,
       dependency,
@@ -1180,6 +1191,24 @@ function doesProductCodeImportMicromatch(dirPath: string): boolean {
       return false;
     }
   });
+}
+
+function shouldUseWorkspaceProtocol(config: PackageConfig, jsonObj: PackageJson, dependency: string): boolean {
+  if (!jsonObj.private || !Array.isArray(jsonObj.workspaces)) return false;
+  return jsonObj.workspaces.some((workspacePattern) =>
+    fg
+      .globSync(path.posix.join(workspacePattern, 'package.json'), { cwd: config.dirPath, ignore: globIgnore })
+      .some((packageJsonPath) => {
+        try {
+          const workspacePackageJson = JSON.parse(
+            fs.readFileSync(path.resolve(config.dirPath, packageJsonPath), 'utf8')
+          ) as PackageJson;
+          return workspacePackageJson.name === dependency;
+        } catch {
+          return false;
+        }
+      })
+  );
 }
 
 function shouldUpdateExistingManagedDependency(
