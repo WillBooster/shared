@@ -146,16 +146,18 @@ export const bunMinimumReleaseAgeExcludes = [
   'react-dom',
 ];
 
-export async function generateBunfigToml(config: PackageConfig): Promise<void> {
+export type BunLinker = 'isolated' | 'hoisted';
+
+export async function generateBunfigToml(config: PackageConfig, linker: BunLinker = 'isolated'): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent);
+    const content = newContent(existingContent, linker);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
 
-const newContent = (existingContent: string | undefined): string => {
+const newContent = (existingContent: string | undefined, linker: BunLinker): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
@@ -164,7 +166,7 @@ telemetry = false
 
 ${extractRawTestSections(existingContent)}[install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
-linker = "hoisted"
+${linker === 'isolated' ? 'globalStore = true\nlinker = "isolated"' : 'linker = "hoisted"'}
 minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 5 days
 minimumReleaseAgeExcludes = [
 ${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}

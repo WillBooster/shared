@@ -44,6 +44,7 @@ import { setupSecrets } from './github/secret.js';
 import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
+import type { PackageConfig } from './packageConfig.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
@@ -235,7 +236,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
     // Refresh lock files
     try {
-      refreshBunLock(rootDirPath);
+      await refreshBunLock(rootDirPath, rootConfig);
       // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
       // that removeYarnFiles intentionally preserved for the migration can be removed.
       fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
@@ -252,11 +253,20 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
   return hasInvalidPackageConfig;
 }
 
-function refreshBunLock(rootDirPath: string): void {
+async function refreshBunLock(rootDirPath: string, rootConfig: PackageConfig): Promise<void> {
   // wbfy should update only the packages it explicitly manages through bun add.
   // Running bun update here refreshes unrelated application dependencies and
   // can change product behavior, so keep the existing lock and reconcile it.
-  const status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath);
+  let status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath);
+  if (status !== 0) {
+    // The isolated linker (the default bunfig.toml wbfy generates) breaks projects that rely on
+    // hoisted (phantom) dependencies or on install scripts incompatible with the isolated layout.
+    // Such projects keep working with the hoisted linker, so fall back instead of failing the migration.
+    console.warn('bun install failed with the isolated linker; falling back to the hoisted linker.');
+    await generateBunfigToml(rootConfig, 'hoisted');
+    await promisePool.promiseAll();
+    status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath);
+  }
   if (status !== 0) {
     throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
   }
