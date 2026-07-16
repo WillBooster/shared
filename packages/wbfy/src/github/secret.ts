@@ -60,7 +60,17 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     // must not count. This also catches the case where generateFnoxToml failed earlier. Check
     // every fnox.toml in the repository, not just the root one: a workspace package's config
     // overrides the root via fnox's hierarchical loading.
-    for (const dirPath of listFnoxTomlDirPaths(config.dirPath)) {
+    const managedDirPaths = listFnoxTomlDirPaths(config.dirPath);
+    if (!managedDirPaths.includes(path.resolve(config.dirPath))) {
+      // A gitignored fnox.toml never reaches CI checkouts, so CI has no use for the shared key
+      // — and the decryptability checks below would silently verify nothing.
+      console.error(
+        `Skip uploading FNOX_AGE_KEY because ${fnoxTomlPath} is invisible to git (gitignored?). Commit it or remove it.`
+      );
+      process.exitCode = 1;
+      return;
+    }
+    for (const dirPath of managedDirPaths) {
       const tomlPath = path.resolve(dirPath, 'fnox.toml');
       const recipients = readFnoxAgeRecipients(tomlPath);
       // A nested config without its own age provider inherits the root one; only the root
@@ -104,42 +114,44 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete secretsToUpload[name];
     }
-    if (Object.keys(secretsToUpload).length === 0) return;
-    // A repository that migrated away from fnox must not keep the shared CI decryption key.
+    // A repository that migrated away from fnox must not keep the shared CI decryption key, even
+    // when there are no replacement secrets to upload — so no early return on an empty .env.
     obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'FNOX_AGE_KEY'];
   }
 
   const octokit = getOctokit(owner);
 
-  // Requires Secrets permission
-  const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets/public-key', {
-    owner,
-    repo,
-  });
-  const { key, key_id: keyId } = response.data;
-
-  const sodium = getSodium();
-  await sodium.ready;
-
-  for (const [name, secret] of Object.entries(secretsToUpload)) {
-    // Convert Secret & Base64 key to Uint8Array.
-    const rawKey = sodium.from_base64(key, sodium.base64_variants.ORIGINAL);
-    const rawSec = sodium.from_string(secret);
-
-    // Encrypt the secret using LibSodium
-    const encBytes = sodium.crypto_box_seal(rawSec, rawKey);
-
-    // Convert encrypted Uint8Array to Base64
-    const encBase64 = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
-
+  if (Object.keys(secretsToUpload).length > 0) {
     // Requires Secrets permission
-    await octokit.request('PUT /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets/public-key', {
       owner,
       repo,
-      secret_name: name,
-      encrypted_value: encBase64,
-      key_id: keyId,
     });
+    const { key, key_id: keyId } = response.data;
+
+    const sodium = getSodium();
+    await sodium.ready;
+
+    for (const [name, secret] of Object.entries(secretsToUpload)) {
+      // Convert Secret & Base64 key to Uint8Array.
+      const rawKey = sodium.from_base64(key, sodium.base64_variants.ORIGINAL);
+      const rawSec = sodium.from_string(secret);
+
+      // Encrypt the secret using LibSodium
+      const encBytes = sodium.crypto_box_seal(rawSec, rawKey);
+
+      // Convert encrypted Uint8Array to Base64
+      const encBase64 = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
+
+      // Requires Secrets permission
+      await octokit.request('PUT /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
+        owner,
+        repo,
+        secret_name: name,
+        encrypted_value: encBase64,
+        key_id: keyId,
+      });
+    }
   }
 
   // Delete legacy secrets only after every replacement was uploaded successfully; deleting first
@@ -246,8 +258,11 @@ function readCiAgeSecretKey(): string | undefined {
   // file containing an arbitrary private key be uploaded unverified, and matching any recipient
   // would let a personal identity copied to this path leak to every repository's CI.
   const ciPublicKey = FNOX_AGE_RECIPIENTS.find((recipient) => recipient.name === 'ci')?.publicKey ?? '';
+  // Compare the whole trimmed comment value, not a substring match: a personal identity whose
+  // comment merely mentions the CI key must not pass.
   const publicKeyLine = content.split('\n').find((line) => line.includes('public key:'));
-  if (!ciPublicKey || !publicKeyLine?.includes(ciPublicKey)) {
+  const commentedPublicKey = publicKeyLine?.split('public key:')[1]?.trim();
+  if (!ciPublicKey || commentedPublicKey !== ciPublicKey) {
     console.error(
       `Failed to upload FNOX_AGE_KEY because the \`# public key:\` comment in ${identityPath} is missing or differs from the CI age public key (${ciPublicKey}), so the file does not hold the CI-dedicated identity.`
     );

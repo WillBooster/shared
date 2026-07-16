@@ -8,7 +8,6 @@ import { parse } from 'smol-toml';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 
 // The age public keys of every developer and of CI. Every fnox-managed repository must encrypt
 // its secrets for exactly this recipient set so that decryptability does not depend on which
@@ -51,12 +50,17 @@ export function listFnoxTomlDirPaths(rootDirPath: string): string[] {
 }
 
 function listFnoxLikeFilePaths(rootDirPath: string): string[] {
-  const stdout = spawnSyncAndReturnStdout(
+  const proc = child_process.spawnSync(
     'git',
     ['ls-files', '--cached', '--others', '--exclude-standard', '--', '*fnox*.toml'],
-    rootDirPath
+    { cwd: rootDirPath, encoding: 'utf8', stdio: 'pipe' }
   );
-  return stdout
+  // Fail closed: treating a git failure as "no fnox configs" would skip synchronization and let
+  // setupSecrets upload a key that was never verified against the repository's ciphertexts.
+  if (proc.status !== 0) {
+    throw new Error(`git ls-files failed in ${rootDirPath}: ${(proc.stderr || proc.error?.message || '').trim()}`);
+  }
+  return proc.stdout
     .split('\n')
     .filter((line) => /^\.?fnox(\..+)?\.toml$/u.test(path.basename(line)))
     .map((line) => path.resolve(rootDirPath, line));
@@ -79,14 +83,27 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
     // The failure flag is per repository: wbfy can process multiple working directories in one
     // invocation, and an earlier repository's failure must not veto a later repository's upload.
     fnoxSyncFailed = false;
-    const rootDirPath = rootConfig.dirPath;
-    const rootTomlPath = path.resolve(rootDirPath, 'fnox.toml');
-    if (!fs.existsSync(rootTomlPath)) return;
-    const rootOriginalContent = fs.readFileSync(rootTomlPath, 'utf8');
-    let rootChanged = false;
+    const rootDirPath = path.resolve(rootConfig.dirPath);
+    if (!fs.existsSync(path.resolve(rootDirPath, 'fnox.toml'))) return;
+    // The migration is transactional over every managed fnox.toml: reruns must retry from the
+    // original state, and a partially migrated tree could otherwise become undecryptable for the
+    // identity performing a later retry (e.g. when a recipient is being removed).
+    const snapshots = new Map<string, string>();
     // A failed synchronization must fail the whole wbfy run: exiting zero with stale recipients
     // would leave secrets undecryptable for new recipients while looking successful.
     try {
+      // A fnox.toml in an ancestor directory would merge into (and be REWRITTEN by) this
+      // repository's `fnox reencrypt` through hierarchical loading, using this repository's
+      // recipient set for foreign secrets.
+      for (let dirPath = path.dirname(rootDirPath); ; dirPath = path.dirname(dirPath)) {
+        if (fs.existsSync(path.join(dirPath, 'fnox.toml'))) {
+          failFnoxSync(
+            `Failed to synchronize fnox age recipients because an ancestor directory contains a fnox.toml that fnox would hierarchically merge and rewrite: ${path.join(dirPath, 'fnox.toml')}. Remove it or move the repository.`
+          );
+          return;
+        }
+        if (path.dirname(dirPath) === dirPath) break;
+      }
       // fnox also loads committed config aliases this generator cannot keep in sync.
       const unsupportedFilePaths = listFnoxLikeFilePaths(rootDirPath).filter(
         (filePath) => path.basename(filePath) !== 'fnox.toml'
@@ -97,28 +114,46 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         );
         return;
       }
-
-      // The root goes first so that configs inheriting the root provider re-encrypt against the
-      // already-updated recipients.
-      rootChanged = (await synchronizeFnoxAgeRecipients(rootDirPath, true, false)) === 'changed';
-      let childFailed = false;
-      for (const dirPath of listFnoxTomlDirPaths(rootDirPath)) {
-        if (dirPath === rootDirPath) continue;
-        const result = await synchronizeFnoxAgeRecipients(dirPath, false, rootChanged);
-        childFailed ||= result === 'failed';
+      const dirPaths = listFnoxTomlDirPaths(rootDirPath);
+      if (!dirPaths.includes(rootDirPath)) {
+        failFnoxSync(
+          `Failed to synchronize fnox age recipients because ${path.resolve(rootDirPath, 'fnox.toml')} is invisible to git (gitignored?). Commit it or remove it.`
+        );
+        return;
       }
-      if (rootChanged && childFailed) {
-        // Restore the root recipients so the next run redoes the whole migration including the
-        // failed child; otherwise the unchanged root would skip the child's re-encryption forever.
-        await fsUtil.generateFile(rootTomlPath, rootOriginalContent);
+      for (const dirPath of dirPaths) {
+        const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
+        snapshots.set(fnoxTomlPath, fs.readFileSync(fnoxTomlPath, 'utf8'));
+      }
+
+      // Sorted order processes ancestors before descendants, so configs inheriting an updated
+      // provider re-encrypt against the already-updated recipients.
+      const changedDirPaths: string[] = [];
+      let anyFailed = false;
+      for (const dirPath of dirPaths) {
+        const ancestorChanged = changedDirPaths.some((changedDirPath) => dirPath.startsWith(changedDirPath + path.sep));
+        const result = await synchronizeFnoxAgeRecipients(dirPath, dirPath === rootDirPath, ancestorChanged);
+        if (result === 'changed') changedDirPaths.push(dirPath);
+        anyFailed ||= result === 'failed';
+      }
+      if (anyFailed && changedDirPaths.length > 0) {
+        restoreSnapshots(snapshots);
       }
     } catch (error) {
-      if (rootChanged) {
-        await fsUtil.generateFile(rootTomlPath, rootOriginalContent);
-      }
+      restoreSnapshots(snapshots);
       failFnoxSync(`Failed to synchronize fnox age recipients due to: ${(error as Error | undefined)?.stack ?? error}`);
     }
   });
+}
+
+function restoreSnapshots(snapshots: Map<string, string>): void {
+  for (const [filePath, content] of snapshots) {
+    try {
+      fs.writeFileSync(filePath, content);
+    } catch (error) {
+      failFnoxSync(`Failed to restore ${filePath} after a failed migration: ${error}`);
+    }
+  }
 }
 
 function failFnoxSync(message: string): void {
@@ -130,7 +165,7 @@ function failFnoxSync(message: string): void {
 async function synchronizeFnoxAgeRecipients(
   dirPath: string,
   isRoot: boolean,
-  rootRecipientsChanged: boolean
+  ancestorRecipientsChanged: boolean
 ): Promise<'changed' | 'unchanged' | 'failed'> {
   const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
 
@@ -200,12 +235,12 @@ async function synchronizeFnoxAgeRecipients(
 
   const profileNames = Object.keys(settings.profiles ?? {});
 
-  // A nested fnox.toml without its own age provider inherits the root one through fnox's
-  // hierarchical loading, so only the root config must declare the provider — but the nested
-  // config's own ciphertexts still must be re-encrypted whenever the root recipients changed,
-  // and that only happens when `fnox reencrypt` runs from the nested directory.
+  // A nested fnox.toml without its own age provider inherits the nearest ancestor's one through
+  // fnox's hierarchical loading, so only the root config must declare the provider — but the
+  // nested config's own ciphertexts still must be re-encrypted whenever an ancestor's recipients
+  // changed, and that only happens when `fnox reencrypt` runs from the nested directory.
   if (!isRoot && !settings.providers?.age) {
-    if ((rootRecipientsChanged || recoveredLocalBackup) && !reencryptFnoxSecrets(dirPath, profileNames)) {
+    if ((ancestorRecipientsChanged || recoveredLocalBackup) && !reencryptFnoxSecrets(dirPath, profileNames)) {
       failFnoxSync(
         `Failed to re-encrypt fnox secrets in ${dirPath} for the updated recipients. Fix the error and rerun wbfy.`
       );
@@ -263,19 +298,15 @@ async function synchronizeFnoxAgeRecipients(
 // user's global secrets too. Decryption therefore needs the personal identity passed explicitly
 // via FNOX_AGE_KEY; FNOX_PROFILE is stripped so it cannot redirect the base (no -P) run.
 function reencryptFnoxSecrets(dirPath: string, profileNames: string[]): boolean {
+  // The identity is optional: a plaintext-only config has nothing to decrypt and fnox succeeds
+  // without one, while existing ciphertexts make fnox fail loudly on its own.
   const identity = readPersonalAgeSecretKey() ?? process.env.FNOX_AGE_KEY;
-  if (!identity) {
-    console.error(
-      'Failed to re-encrypt fnox secrets because no age identity is available: create ~/.config/fnox/age.txt or set FNOX_AGE_KEY.'
-    );
-    return false;
-  }
   const isolatedHomeDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fnox-home-'));
   try {
     return withFnoxLocalHidden(dirPath, () => {
       const env = {
         ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('FNOX_'))),
-        FNOX_AGE_KEY: identity,
+        ...(identity ? { FNOX_AGE_KEY: identity } : {}),
         HOME: isolatedHomeDirPath,
         XDG_CONFIG_HOME: isolatedHomeDirPath,
       };
