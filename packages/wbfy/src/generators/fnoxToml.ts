@@ -28,44 +28,12 @@ interface FnoxToml {
 }
 
 let fnoxSyncFailed = false;
+let migrationMarkerPath: string | undefined;
+let migrationMarkerOwned = false;
 
 /** Whether any fnox recipient synchronization failed in the current repository; setupSecrets must not upload then. */
 export function hasFnoxSyncFailed(): boolean {
   return fnoxSyncFailed;
-}
-
-/**
- * Lists every directory in the repository containing a committed (or committable) fnox.toml.
- * Discovery goes through git so that gitignored trees (node_modules, build outputs) are excluded
- * without excluding legitimate packages that merely happen to be named like build outputs.
- */
-export function listFnoxTomlDirPaths(rootDirPath: string): string[] {
-  return [
-    ...new Set(
-      listFnoxLikeFilePaths(rootDirPath)
-        .filter((filePath) => path.basename(filePath) === 'fnox.toml')
-        .map((filePath) => path.dirname(filePath))
-    ),
-  ].toSorted();
-}
-
-function listFnoxLikeFilePaths(rootDirPath: string): string[] {
-  // -z prints NUL-delimited verbatim paths; without it, core.quotePath C-quotes non-ASCII paths
-  // (e.g. "\346\227\245..."), which would make the basename filter silently skip those configs.
-  const proc = child_process.spawnSync(
-    'git',
-    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*fnox*.toml'],
-    { cwd: rootDirPath, encoding: 'utf8', stdio: 'pipe' }
-  );
-  // Fail closed: treating a git failure as "no fnox configs" would skip synchronization and let
-  // setupSecrets upload a key that was never verified against the repository's ciphertexts.
-  if (proc.status !== 0) {
-    throw new Error(`git ls-files failed in ${rootDirPath}: ${(proc.stderr || proc.error?.message || '').trim()}`);
-  }
-  return proc.stdout
-    .split('\0')
-    .filter((line) => /^\.?fnox(\..+)?\.toml$/u.test(path.basename(line)))
-    .map((line) => path.resolve(rootDirPath, line));
 }
 
 /**
@@ -235,87 +203,6 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
   });
 }
 
-let migrationMarkerPath: string | undefined;
-let migrationMarkerOwned = false;
-
-function writeMigrationMarker(): void {
-  if (!migrationMarkerPath || migrationMarkerOwned) return;
-  const tmpDirPath = path.dirname(migrationMarkerPath);
-  fs.mkdirSync(tmpDirPath, { recursive: true });
-  // Refuse to write through symlinks: a repository-controlled .tmp symlink could otherwise
-  // redirect the marker write outside the repository. The `wx` flag makes the open itself fail
-  // on any pre-existing path, including a dangling symlink — which also acquires the marker
-  // atomically, so a concurrent wbfy run cannot start a second migration.
-  if (fs.lstatSync(tmpDirPath).isSymbolicLink()) {
-    throw new Error(`${tmpDirPath} is a symlink; replace it with a regular directory.`);
-  }
-  try {
-    fs.writeFileSync(
-      migrationMarkerPath,
-      'wbfy fnox migration in progress; a leftover marker blocks new migrations\n',
-      { flag: 'wx' }
-    );
-  } catch (error) {
-    throw new Error(`Another wbfy process appears to be migrating (${migrationMarkerPath} exists): ${error}`);
-  }
-  migrationMarkerOwned = true;
-}
-
-// Only the run that acquired the marker may remove it: deleting a foreign marker would disable
-// interrupted-migration detection for a concurrently running wbfy.
-function removeOwnedMigrationMarker(): void {
-  if (!migrationMarkerOwned || !migrationMarkerPath) return;
-  fs.rmSync(migrationMarkerPath, { force: true });
-  migrationMarkerOwned = false;
-}
-
-// Returns a description of an unsupported fnox.local.toml in the directory, or undefined. Local
-// overrides may only hold machine-local secret values; imports or provider (re)definitions would
-// silently change which recipient set governs re-encryption.
-function findFnoxLocalTomlIssue(dirPath: string): string | undefined {
-  const localTomlPath = path.resolve(dirPath, 'fnox.local.toml');
-  if (!fs.existsSync(localTomlPath)) return undefined;
-  const localSettings = parse(fs.readFileSync(localTomlPath, 'utf8')) as FnoxToml;
-  const definesProviders =
-    localSettings.import !== undefined ||
-    localSettings.providers !== undefined ||
-    Object.values(localSettings.profiles ?? {}).some((profile) => profile?.providers !== undefined);
-  return definesProviders ? `${localTomlPath} defines imports, providers, or profile providers` : undefined;
-}
-
-function listFnoxLikeFileNames(dirPath: string): string[] {
-  try {
-    return fs
-      .readdirSync(dirPath)
-      .filter((name) => /^\.?fnox(\..+)?\.toml$/u.test(name))
-      .toSorted();
-  } catch (error) {
-    if ((error as { code?: string } | undefined)?.code === 'ENOENT') return [];
-    // Fail closed: fnox can still load a config from a directory this process cannot enumerate
-    // (e.g. execute-only permission), so an enumeration failure must not read as "no configs".
-    throw new Error(`Cannot inspect ${dirPath} for fnox configs: ${error}`);
-  }
-}
-
-function restoreSnapshots(snapshots: Map<string, string>): boolean {
-  let succeeded = true;
-  for (const [filePath, content] of snapshots) {
-    try {
-      fs.writeFileSync(filePath, content);
-    } catch (error) {
-      failFnoxSync(`Failed to restore ${filePath} after a failed migration: ${error}`);
-      succeeded = false;
-    }
-  }
-  return succeeded;
-}
-
-function failFnoxSync(message: string): void {
-  console.error(message);
-  process.exitCode = 1;
-  fnoxSyncFailed = true;
-}
-
 async function synchronizeFnoxAgeRecipients(
   dirPath: string,
   rootDirPath: string,
@@ -331,10 +218,9 @@ async function synchronizeFnoxAgeRecipients(
   // would silently stay undecryptable for new recipients; fail instead of proceeding. The
   // gitignored fnox.local.toml is a supported machine-local override, but only while it leaves
   // providers alone.
-  const unsupportedFileNames = fs
-    .readdirSync(dirPath)
-    .filter((name) => /^\.?fnox(\..+)?\.toml$/u.test(name) && name !== 'fnox.toml' && name !== 'fnox.local.toml')
-    .toSorted();
+  const unsupportedFileNames = listFnoxLikeFileNames(dirPath).filter(
+    (name) => name !== 'fnox.toml' && name !== 'fnox.local.toml'
+  );
   if (unsupportedFileNames.length > 0) {
     failFnoxSync(
       `Failed to synchronize fnox age recipients in ${dirPath} because only fnox.toml and fnox.local.toml are supported: ${unsupportedFileNames.join(', ')}. Merge them into fnox.toml.`
@@ -346,42 +232,21 @@ async function synchronizeFnoxAgeRecipients(
   // interruption left the migration itself incomplete).
   recoverStaleFnoxLocalBackup(rootDirPath, dirPath);
 
-  // A parse failure must abort instead of falling back to {}: regenerating from an empty object
-  // would silently drop the committed encrypted secrets.
   const originalContent = fs.readFileSync(fnoxTomlPath, 'utf8');
+  const layoutIssue = findFnoxLayoutIssue(originalContent);
+  if (layoutIssue) {
+    failFnoxSync(`Failed to synchronize fnox age recipients because ${fnoxTomlPath} ${layoutIssue}.`);
+    return 'failed';
+  }
   const settings = parse(originalContent) as FnoxToml;
-  if (settings.import !== undefined) {
-    failFnoxSync(
-      `Failed to synchronize fnox age recipients in ${dirPath} because \`import\` is not supported. Merge the imported files into fnox.toml.`
-    );
-    return 'failed';
-  }
-  const nonStandardAgeProviderNames = Object.entries(settings.providers ?? {})
-    .filter(([name, provider]) => (provider?.type === 'age') !== (name === 'age'))
-    .map(([name]) => name);
-  if (nonStandardAgeProviderNames.length > 0) {
-    failFnoxSync(
-      `Failed to synchronize fnox age recipients in ${dirPath} because age providers must be named \`age\` (and \`age\` must have type "age"): ${nonStandardAgeProviderNames.join(', ')}. Rename them.`
-    );
-    return 'failed';
-  }
-  const profilesWithProviders = Object.entries(settings.profiles ?? {})
-    .filter(([, profile]) => profile?.providers)
-    .map(([name]) => name);
-  if (profilesWithProviders.length > 0) {
-    failFnoxSync(
-      `Failed to synchronize fnox age recipients in ${dirPath} because profile-specific providers are not supported: ${profilesWithProviders.join(', ')}. Move them to the top-level [providers] table.`
-    );
-    return 'failed';
-  }
-
   const profileNames = Object.keys(settings.profiles ?? {});
+  const currentRecipients = readFnoxAgeRecipients(originalContent);
 
   // A nested fnox.toml without its own age provider inherits the nearest ancestor's one through
   // fnox's hierarchical loading, so only the root config must declare the provider — but the
   // nested config's own ciphertexts still must be re-encrypted whenever an ancestor's recipients
   // changed, and that only happens when `fnox reencrypt` runs from the nested directory.
-  if (!isRoot && !settings.providers?.age) {
+  if (!isRoot && !currentRecipients) {
     if (ancestorRecipientsChanged) {
       writeMigrationMarker();
       if (!reencryptFnoxSecrets(dirPath, rootDirPath, profileNames)) {
@@ -394,9 +259,8 @@ async function synchronizeFnoxAgeRecipients(
     return 'unchanged';
   }
 
-  const ageProvider = settings.providers?.age ?? {};
-  const currentRecipients = new Set(Array.isArray(ageProvider.recipients) ? ageProvider.recipients : []);
   if (
+    currentRecipients &&
     currentRecipients.size === FNOX_AGE_RECIPIENTS.length &&
     FNOX_AGE_RECIPIENTS.every((recipient) => currentRecipients.has(recipient.publicKey))
   ) {
@@ -407,11 +271,10 @@ async function synchronizeFnoxAgeRecipients(
   // Re-parse before writing: an unusual layout (e.g. dotted keys) could make the textual edit
   // produce a duplicate table or leave the old recipients in effect.
   const updatedContent = replaceAgeRecipients(originalContent);
-  const updatedProvider = (parse(updatedContent) as FnoxToml).providers?.age;
-  const updatedRecipients = Array.isArray(updatedProvider?.recipients) ? updatedProvider.recipients : [];
+  const updatedRecipients = [...(readFnoxAgeRecipients(updatedContent) ?? [])];
   if (
     updatedRecipients.length !== FNOX_AGE_RECIPIENTS.length ||
-    !FNOX_AGE_RECIPIENTS.every((recipient, index) => updatedRecipients[index] === recipient.publicKey)
+    !FNOX_AGE_RECIPIENTS.every((recipient) => updatedRecipients.includes(recipient.publicKey))
   ) {
     throw new Error(`Rewriting the age recipients in ${fnoxTomlPath} did not take effect; update them manually.`);
   }
@@ -429,6 +292,85 @@ async function synchronizeFnoxAgeRecipients(
     return 'failed';
   }
   return 'changed';
+}
+
+/**
+ * Returns a description of a fnox.toml layout that recipient synchronization and the CI-key
+ * verification cannot cover, or undefined when the standard single-file, single-age-provider
+ * layout is used.
+ */
+export function findFnoxLayoutIssue(fnoxTomlContent: string): string | undefined {
+  try {
+    const settings = parse(fnoxTomlContent) as FnoxToml;
+    if (settings.import !== undefined) return 'uses the unsupported `import` setting';
+    const nonStandardAgeProviderNames = Object.entries(settings.providers ?? {})
+      .filter(([name, provider]) => (provider?.type === 'age') !== (name === 'age'))
+      .map(([name]) => name);
+    if (nonStandardAgeProviderNames.length > 0) {
+      return `declares age providers not named \`age\` (or an \`age\` provider of another type): ${nonStandardAgeProviderNames.join(', ')}`;
+    }
+    const profilesWithProviders = Object.entries(settings.profiles ?? {})
+      .filter(([, profile]) => profile?.providers)
+      .map(([name]) => name);
+    if (profilesWithProviders.length > 0) {
+      return `declares unsupported profile-specific providers: ${profilesWithProviders.join(', ')}`;
+    }
+    return undefined;
+  } catch {
+    return 'cannot be parsed as TOML';
+  }
+}
+
+/**
+ * Reads the [providers.age].recipients of a fnox.toml, or undefined when the config declares no
+ * age provider (nested configs then inherit the root one).
+ */
+export function readFnoxAgeRecipients(fnoxTomlContent: string): Set<string> | undefined {
+  try {
+    const settings = parse(fnoxTomlContent) as FnoxToml;
+    if (!settings.providers?.age) return undefined;
+    const recipients = settings.providers.age.recipients;
+    return new Set(Array.isArray(recipients) ? recipients.filter((r): r is string => typeof r === 'string') : []);
+  } catch {
+    // An unparsable fnox.toml yields no recipients, so the caller reports an error.
+    return new Set();
+  }
+}
+
+function replaceAgeRecipients(content: string): string {
+  const recipientsText = `recipients = [${FNOX_AGE_RECIPIENTS.map((recipient) => `"${recipient.publicKey}"`).join(', ')}]`;
+  // Standard form: a [providers.age] table (possibly with a trailing comment). Scan line-wise so
+  // that a `[` inside a comment or a string never terminates the table early; the table ends at
+  // the next line-start table header. The assignment match is line-anchored so a commented-out
+  // `# recipients = [...]` is never mistaken for the real one. Known accepted limitation: a `]`
+  // inside a comment within a multiline recipients array defeats the match — the re-parse
+  // validation in the caller then fails the run safely with instructions instead of corrupting
+  // the file.
+  const lines = content.split('\n');
+  const headerIndex = lines.findIndex((line) => /^\s*\[\s*providers\.age\s*\]\s*(?:#.*)?$/u.test(line));
+  if (headerIndex !== -1) {
+    let endIndex = lines.length;
+    for (let index = headerIndex + 1; index < lines.length; index++) {
+      if (/^\s*\[/u.test(lines[index] ?? '')) {
+        endIndex = index;
+        break;
+      }
+    }
+    const section = lines.slice(headerIndex, endIndex).join('\n');
+    const replacedSection = section.replace(/^\s*recipients\s*=\s*\[[^\]]*\]/mu, recipientsText);
+    const newSection =
+      replacedSection === section
+        ? [lines[headerIndex], recipientsText, ...lines.slice(headerIndex + 1, endIndex)].join('\n')
+        : replacedSection;
+    return [...lines.slice(0, headerIndex), newSection, ...lines.slice(endIndex)].join('\n');
+  }
+  // Inline form: age = { type = "age", recipients = [...] } inside a [providers] table.
+  const withReplacedInline = content.replace(
+    /(\bage\s*=\s*\{[^}]*?)recipients\s*=\s*\[[^\]]*\]/u,
+    `$1${recipientsText}`
+  );
+  if (withReplacedInline !== content) return withReplacedInline;
+  return `${content.trimEnd()}\n\n[providers.age]\ntype = "age"\n${recipientsText}\n`;
 }
 
 // Re-encrypts the base secrets and each profile's own secrets (--no-defaults keeps the merged
@@ -484,16 +426,6 @@ export function resolveFnoxCommand(dirPath: string): string {
   return resolved || 'fnox';
 }
 
-function listAncestorDirPaths(dirPath: string, rootDirPath: string): string[] {
-  const dirPaths = [dirPath];
-  while (dirPaths.at(-1) !== rootDirPath) {
-    const parent = path.dirname(dirPaths.at(-1) ?? '');
-    if (parent === dirPaths.at(-1)) break;
-    dirPaths.push(parent);
-  }
-  return dirPaths;
-}
-
 function readPersonalAgeSecretKey(): string | undefined {
   try {
     const content = fs.readFileSync(path.join(os.homedir(), '.config', 'fnox', 'age.txt'), 'utf8');
@@ -504,47 +436,6 @@ function readPersonalAgeSecretKey(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-// The backup lives under the gitignored .tmp so a hidden fnox.local.toml can never become
-// stageable (a sibling rename like fnox.local.toml.wbfy-bak would no longer match the documented
-// `fnox.local.toml` ignore entry and could be committed by `git add -A`).
-function fnoxLocalBackupPath(rootDirPath: string, dirPath: string): string {
-  return path.resolve(
-    rootDirPath,
-    '.tmp',
-    'wbfy-fnox-local-backup',
-    path.relative(rootDirPath, dirPath),
-    'fnox.local.toml'
-  );
-}
-
-// Creates the backup directory and proves no path component below the repository root is a
-// symlink: a repository-controlled symlink (e.g. a tracked .tmp/wbfy-fnox-local-backup link)
-// could otherwise move the plaintext local secrets outside the repository, or resolve the backup
-// back onto the source file and turn the hide rename into a no-op.
-function ensureSafeFnoxLocalBackupDir(rootDirPath: string, backupPath: string): void {
-  const backupDirPath = path.dirname(backupPath);
-  fs.mkdirSync(backupDirPath, { recursive: true });
-  const expectedRealPath = path.join(fs.realpathSync(rootDirPath), path.relative(rootDirPath, backupDirPath));
-  if (fs.realpathSync(backupDirPath) !== expectedRealPath) {
-    throw new Error(`${backupDirPath} resolves through a symlink; remove the symlinked component.`);
-  }
-}
-
-/**
- * Restores a fnox.local.toml backup left by an interrupted earlier run so the user's local
- * overrides are never silently lost.
- */
-function recoverStaleFnoxLocalBackup(rootDirPath: string, dirPath: string): void {
-  const localPath = path.resolve(dirPath, 'fnox.local.toml');
-  const backupPath = fnoxLocalBackupPath(rootDirPath, dirPath);
-  if (!fs.existsSync(backupPath)) return;
-  if (fs.existsSync(localPath)) {
-    throw new Error(`Both ${localPath} and its backup ${backupPath} exist; resolve the leftover backup manually.`);
-  }
-  ensureSafeFnoxLocalBackupDir(rootDirPath, backupPath);
-  fs.renameSync(backupPath, localPath);
 }
 
 /**
@@ -591,38 +482,167 @@ function withFnoxLocalsHidden<T>(rootDirPath: string, dirPaths: string[], func: 
   }
 }
 
-function replaceAgeRecipients(content: string): string {
-  const recipientsText = `recipients = [${FNOX_AGE_RECIPIENTS.map((recipient) => `"${recipient.publicKey}"`).join(', ')}]`;
-  // Standard form: a [providers.age] table (possibly with a trailing comment). Scan line-wise so
-  // that a `[` inside a comment or a string never terminates the table early; the table ends at
-  // the next line-start table header. The assignment match is line-anchored so a commented-out
-  // `# recipients = [...]` is never mistaken for the real one. Known accepted limitation: a `]`
-  // inside a comment within a multiline recipients array defeats the match — the re-parse
-  // validation in the caller then fails the run safely with instructions instead of corrupting
-  // the file.
-  const lines = content.split('\n');
-  const headerIndex = lines.findIndex((line) => /^\s*\[\s*providers\.age\s*\]\s*(?:#.*)?$/u.test(line));
-  if (headerIndex !== -1) {
-    let endIndex = lines.length;
-    for (let index = headerIndex + 1; index < lines.length; index++) {
-      if (/^\s*\[/u.test(lines[index] ?? '')) {
-        endIndex = index;
-        break;
-      }
-    }
-    const section = lines.slice(headerIndex, endIndex).join('\n');
-    const replacedSection = section.replace(/^\s*recipients\s*=\s*\[[^\]]*\]/mu, recipientsText);
-    const newSection =
-      replacedSection === section
-        ? [lines[headerIndex], recipientsText, ...lines.slice(headerIndex + 1, endIndex)].join('\n')
-        : replacedSection;
-    return [...lines.slice(0, headerIndex), newSection, ...lines.slice(endIndex)].join('\n');
+/**
+ * Restores a fnox.local.toml backup left by an interrupted earlier run so the user's local
+ * overrides are never silently lost.
+ */
+function recoverStaleFnoxLocalBackup(rootDirPath: string, dirPath: string): void {
+  const localPath = path.resolve(dirPath, 'fnox.local.toml');
+  const backupPath = fnoxLocalBackupPath(rootDirPath, dirPath);
+  if (!fs.existsSync(backupPath)) return;
+  if (fs.existsSync(localPath)) {
+    throw new Error(`Both ${localPath} and its backup ${backupPath} exist; resolve the leftover backup manually.`);
   }
-  // Inline form: age = { type = "age", recipients = [...] } inside a [providers] table.
-  const withReplacedInline = content.replace(
-    /(\bage\s*=\s*\{[^}]*?)recipients\s*=\s*\[[^\]]*\]/u,
-    `$1${recipientsText}`
+  ensureSafeFnoxLocalBackupDir(rootDirPath, backupPath);
+  fs.renameSync(backupPath, localPath);
+}
+
+// Creates the backup directory and proves no path component below the repository root is a
+// symlink: a repository-controlled symlink (e.g. a tracked .tmp/wbfy-fnox-local-backup link)
+// could otherwise move the plaintext local secrets outside the repository, or resolve the backup
+// back onto the source file and turn the hide rename into a no-op.
+function ensureSafeFnoxLocalBackupDir(rootDirPath: string, backupPath: string): void {
+  const backupDirPath = path.dirname(backupPath);
+  fs.mkdirSync(backupDirPath, { recursive: true });
+  const expectedRealPath = path.join(fs.realpathSync(rootDirPath), path.relative(rootDirPath, backupDirPath));
+  if (fs.realpathSync(backupDirPath) !== expectedRealPath) {
+    throw new Error(`${backupDirPath} resolves through a symlink; remove the symlinked component.`);
+  }
+}
+
+// The backup lives under the gitignored .tmp so a hidden fnox.local.toml can never become
+// stageable (a sibling rename like fnox.local.toml.wbfy-bak would no longer match the documented
+// `fnox.local.toml` ignore entry and could be committed by `git add -A`).
+function fnoxLocalBackupPath(rootDirPath: string, dirPath: string): string {
+  return path.resolve(
+    rootDirPath,
+    '.tmp',
+    'wbfy-fnox-local-backup',
+    path.relative(rootDirPath, dirPath),
+    'fnox.local.toml'
   );
-  if (withReplacedInline !== content) return withReplacedInline;
-  return `${content.trimEnd()}\n\n[providers.age]\ntype = "age"\n${recipientsText}\n`;
+}
+
+function writeMigrationMarker(): void {
+  if (!migrationMarkerPath || migrationMarkerOwned) return;
+  const tmpDirPath = path.dirname(migrationMarkerPath);
+  fs.mkdirSync(tmpDirPath, { recursive: true });
+  // Refuse to write through symlinks: a repository-controlled .tmp symlink could otherwise
+  // redirect the marker write outside the repository. The `wx` flag makes the open itself fail
+  // on any pre-existing path, including a dangling symlink — which also acquires the marker
+  // atomically, so a concurrent wbfy run cannot start a second migration.
+  if (fs.lstatSync(tmpDirPath).isSymbolicLink()) {
+    throw new Error(`${tmpDirPath} is a symlink; replace it with a regular directory.`);
+  }
+  try {
+    fs.writeFileSync(
+      migrationMarkerPath,
+      'wbfy fnox migration in progress; a leftover marker blocks new migrations\n',
+      {
+        flag: 'wx',
+      }
+    );
+  } catch (error) {
+    throw new Error(`Another wbfy process appears to be migrating (${migrationMarkerPath} exists): ${error}`);
+  }
+  migrationMarkerOwned = true;
+}
+
+// Only the run that acquired the marker may remove it: deleting a foreign marker would disable
+// interrupted-migration detection for a concurrently running wbfy.
+function removeOwnedMigrationMarker(): void {
+  if (!migrationMarkerOwned || !migrationMarkerPath) return;
+  fs.rmSync(migrationMarkerPath, { force: true });
+  migrationMarkerOwned = false;
+}
+
+function restoreSnapshots(snapshots: Map<string, string>): boolean {
+  let succeeded = true;
+  for (const [filePath, content] of snapshots) {
+    try {
+      fs.writeFileSync(filePath, content);
+    } catch (error) {
+      failFnoxSync(`Failed to restore ${filePath} after a failed migration: ${error}`);
+      succeeded = false;
+    }
+  }
+  return succeeded;
+}
+
+function failFnoxSync(message: string): void {
+  console.error(message);
+  process.exitCode = 1;
+  fnoxSyncFailed = true;
+}
+
+// Returns a description of an unsupported fnox.local.toml in the directory, or undefined. Local
+// overrides may only hold machine-local secret values; imports or provider (re)definitions would
+// silently change which recipient set governs re-encryption.
+function findFnoxLocalTomlIssue(dirPath: string): string | undefined {
+  const localTomlPath = path.resolve(dirPath, 'fnox.local.toml');
+  if (!fs.existsSync(localTomlPath)) return undefined;
+  const localSettings = parse(fs.readFileSync(localTomlPath, 'utf8')) as FnoxToml;
+  const definesProviders =
+    localSettings.import !== undefined ||
+    localSettings.providers !== undefined ||
+    Object.values(localSettings.profiles ?? {}).some((profile) => profile?.providers !== undefined);
+  return definesProviders ? `${localTomlPath} defines imports, providers, or profile providers` : undefined;
+}
+
+/**
+ * Lists every directory in the repository containing a committed (or committable) fnox.toml.
+ * Discovery goes through git so that gitignored trees (node_modules, build outputs) are excluded
+ * without excluding legitimate packages that merely happen to be named like build outputs.
+ */
+function listFnoxTomlDirPaths(rootDirPath: string): string[] {
+  return [
+    ...new Set(
+      listFnoxLikeFilePaths(rootDirPath)
+        .filter((filePath) => path.basename(filePath) === 'fnox.toml')
+        .map((filePath) => path.dirname(filePath))
+    ),
+  ].toSorted();
+}
+
+function listFnoxLikeFilePaths(rootDirPath: string): string[] {
+  // -z prints NUL-delimited verbatim paths; without it, core.quotePath C-quotes non-ASCII paths
+  // (e.g. "\346\227\245..."), which would make the basename filter silently skip those configs.
+  const proc = child_process.spawnSync(
+    'git',
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*fnox*.toml'],
+    { cwd: rootDirPath, encoding: 'utf8', stdio: 'pipe' }
+  );
+  // Fail closed: treating a git failure as "no fnox configs" would skip synchronization and let
+  // setupSecrets upload a key that was never verified against the repository's ciphertexts.
+  if (proc.status !== 0) {
+    throw new Error(`git ls-files failed in ${rootDirPath}: ${(proc.stderr || proc.error?.message || '').trim()}`);
+  }
+  return proc.stdout
+    .split('\0')
+    .filter((line) => /^\.?fnox(\..+)?\.toml$/u.test(path.basename(line)))
+    .map((line) => path.resolve(rootDirPath, line));
+}
+
+function listFnoxLikeFileNames(dirPath: string): string[] {
+  try {
+    return fs
+      .readdirSync(dirPath)
+      .filter((name) => /^\.?fnox(\..+)?\.toml$/u.test(name))
+      .toSorted();
+  } catch (error) {
+    if ((error as { code?: string } | undefined)?.code === 'ENOENT') return [];
+    // Fail closed: fnox can still load a config from a directory this process cannot enumerate
+    // (e.g. execute-only permission), so an enumeration failure must not read as "no configs".
+    throw new Error(`Cannot inspect ${dirPath} for fnox configs: ${error}`);
+  }
+}
+
+function listAncestorDirPaths(dirPath: string, rootDirPath: string): string[] {
+  const dirPaths = [dirPath];
+  while (dirPaths.at(-1) !== rootDirPath) {
+    const parent = path.dirname(dirPaths.at(-1) ?? '');
+    if (parent === dirPaths.at(-1)) break;
+    dirPaths.push(parent);
+  }
+  return dirPaths;
 }

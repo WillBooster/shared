@@ -8,7 +8,13 @@ import dotenv from 'dotenv';
 import type sodiumModule from 'libsodium-wrappers';
 import { parse } from 'smol-toml';
 
-import { FNOX_AGE_RECIPIENTS, hasFnoxSyncFailed, resolveFnoxCommand } from '../generators/fnoxToml.js';
+import {
+  FNOX_AGE_RECIPIENTS,
+  findFnoxLayoutIssue,
+  hasFnoxSyncFailed,
+  readFnoxAgeRecipients,
+  resolveFnoxCommand,
+} from '../generators/fnoxToml.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -330,48 +336,6 @@ function verifyCiKeyDecryptsAllSecrets(
     return true;
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
-  }
-}
-
-// Returns a description of a config layout the CI-key verification cannot cover, or undefined
-// when the standard single-file, single-age-provider layout is used.
-function findFnoxLayoutIssue(fnoxTomlContent: string): string | undefined {
-  try {
-    const settings = parse(fnoxTomlContent) as {
-      import?: unknown;
-      providers?: Record<string, Record<string, unknown> | undefined>;
-      profiles?: Record<string, Record<string, unknown> | undefined>;
-    };
-    if (settings.import !== undefined) return 'uses the unsupported `import` setting';
-    const nonStandardAgeProviderNames = Object.entries(settings.providers ?? {})
-      .filter(([name, provider]) => (provider?.type === 'age') !== (name === 'age'))
-      .map(([name]) => name);
-    if (nonStandardAgeProviderNames.length > 0) {
-      return `declares age providers not named \`age\` (or an \`age\` provider of another type): ${nonStandardAgeProviderNames.join(', ')}`;
-    }
-    const profilesWithProviders = Object.entries(settings.profiles ?? {})
-      .filter(([, profile]) => profile?.providers)
-      .map(([name]) => name);
-    if (profilesWithProviders.length > 0) {
-      return `declares unsupported profile-specific providers: ${profilesWithProviders.join(', ')}`;
-    }
-    return undefined;
-  } catch {
-    return 'cannot be parsed as TOML';
-  }
-}
-
-function readFnoxAgeRecipients(fnoxTomlContent: string): Set<string> | undefined {
-  try {
-    const settings = parse(fnoxTomlContent) as {
-      providers?: Record<string, Record<string, unknown> | undefined>;
-    };
-    if (!settings.providers?.age) return undefined;
-    const recipients = settings.providers.age.recipients;
-    return new Set(Array.isArray(recipients) ? recipients.filter((r): r is string => typeof r === 'string') : []);
-  } catch {
-    // An unparsable fnox.toml yields no recipients, so the caller reports an error.
-    return new Set();
   }
 }
 
