@@ -36,7 +36,7 @@ class DockerScripts {
   }
 
   stop(project: Project): string {
-    return `true $(docker rm -f ${project.dockerImageName} 2> /dev/null)`;
+    return `docker rm -f ${project.dockerImageName} > /dev/null 2>&1 || true`;
   }
 
   stopAll(): string {

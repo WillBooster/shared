@@ -44,6 +44,9 @@ function isDockerAvailable(): boolean {
 
 function runDocker(args: string[]): void {
   const result = childProcess.spawnSync('docker', args, { encoding: 'utf8' });
+  if (result.error) {
+    throw result.error;
+  }
   if (result.status !== 0) {
     throw new Error(result.stderr || result.stdout || `docker ${args.join(' ')} failed`);
   }
