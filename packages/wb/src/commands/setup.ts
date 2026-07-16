@@ -8,7 +8,6 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { findDescendantProjects } from '../project.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import { promisePool } from '../utils/promisePool.js';
-import { packageManagerWithRun } from '../utils/runtime.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -60,12 +59,12 @@ export async function setup(
       (project === projects.root || !projects.root.packageJson.scripts?.['gen-code']) &&
       project.packageJson.scripts?.['gen-code']
     ) {
-      await runWithSpawn(`${packageManagerWithRun} gen-code`, project, argv);
+      await runWithSpawn(`${project.packageManagerRunCommand} gen-code`, project, argv);
     }
   }
 
   const project = projects.descendants.find((p) => p.packageJson.devDependencies?.playwright);
   if (project) {
-    await runWithSpawn(`${packageManagerWithRun} playwright install --with-deps`, project, argv);
+    await runWithSpawn(`${project.packageManagerRunCommand} playwright install --with-deps`, project, argv);
   }
 }

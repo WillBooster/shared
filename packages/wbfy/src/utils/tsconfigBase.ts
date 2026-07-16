@@ -8,24 +8,20 @@ export const managedTsconfigBaseDependencies = [
 ];
 
 export function getTsconfigExtends(config: PackageConfig): string | string[] {
-  if (config.isBun) {
-    return '@tsconfig/bun/tsconfig.json';
-  }
+  // React Native needs Metro-compatible settings (jsx: react-native, node resolution), which
+  // @tsconfig/bun would override even though the repo uses Bun as its package manager.
   if (config.depending.reactNative) {
     return '@tsconfig/react-native/tsconfig.json';
   }
-  return ['@tsconfig/node-lts/tsconfig.json', '@tsconfig/node-ts/tsconfig.json'];
+  return '@tsconfig/bun/tsconfig.json';
 }
 
 export function getTsconfigBaseDependencies(config: PackageConfig): string[] {
   if (config.depending.blitz || config.depending.next) {
     return [];
   }
-  if (config.isBun) {
-    return ['@tsconfig/bun'];
-  }
   if (config.depending.reactNative) {
     return ['@tsconfig/react-native'];
   }
-  return ['@tsconfig/node-lts', '@tsconfig/node-ts'];
+  return ['@tsconfig/bun'];
 }

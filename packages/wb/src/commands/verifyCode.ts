@@ -9,7 +9,6 @@ import type { Project } from '../project.js';
 import { findRootAndSelfProjects, findSelfProject } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { packageManager } from '../utils/runtime.js';
 
 import { lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
@@ -57,9 +56,9 @@ async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv): P
 }
 
 async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  await runPackageCommand(`${packageManager} install`, project, argv);
+  await runPackageCommand(`${project.packageManagerCommand} install`, project, argv);
   if (project.packageJson.scripts?.['gen-code']) {
-    await runPackageCommand(`${packageManager} gen-code`, project, argv);
+    await runPackageCommand(`${project.packageManagerCommand} gen-code`, project, argv);
   }
   await runInProcessCommand(
     'cleanup',
@@ -103,7 +102,7 @@ async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Pr
   console.info(
     chalk.yellow('Tests failed. This project defines "db-reset", so wb will reset the database once and retry tests.')
   );
-  await runPackageCommand(`${packageManager} db-reset`, findTestProject(project, testArgv), testArgv, {
+  await runPackageCommand(`${project.packageManagerCommand} db-reset`, findTestProject(project, testArgv), testArgv, {
     printRawOutput: true,
   });
 
@@ -188,7 +187,7 @@ async function runPackageCommand(
  * @param output The merged stdout and stderr output from the command.
  */
 function printPackageCommandOutput(command: string, exitCode: number, output: string): void {
-  if (exitCode === 0 && (command === `${packageManager} install` || command === `${packageManager} gen-code`)) {
+  if (exitCode === 0 && /^(?:bun|yarn) (?:install|gen-code)$/u.test(command)) {
     console.info(chalk.green('Succeeded.'));
     return;
   }

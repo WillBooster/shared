@@ -12,17 +12,5 @@ export async function initializeProjectDirectory(dirPath: string): Promise<void>
     force: true,
     recursive: true,
   });
-  await Promise.all([
-    fs.promises.cp(path.join('..', '..', '.yarn'), path.join(dirPath, '.yarn'), {
-      force: true,
-      recursive: true,
-    }),
-    fs.promises.cp(path.join('..', '..', '.yarnrc.yml'), path.join(dirPath, '.yarnrc.yml'), {
-      force: true,
-    }),
-    fs.promises.cp(path.join('..', '..', '.tool-versions'), path.join(dirPath, '.tool-versions'), {
-      force: true,
-    }),
-  ]);
   removeNpmAndYarnEnvironmentVariables(process.env);
 }

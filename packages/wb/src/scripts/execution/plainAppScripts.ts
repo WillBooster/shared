@@ -1,6 +1,5 @@
 import type { Project } from '../../project.js';
 import { SERVER_LOG_FILE } from '../../utils/log.js';
-import { runtimeWithArgs } from '../../utils/runtime.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
@@ -26,7 +25,7 @@ class PlainAppScripts extends BaseScripts {
   }
   override startProduction(project: Project, argv: ScriptArgv): Promise<string> {
     return Promise.resolve(
-      `${project.buildCommand} && ${runtimeWithArgs} dist/index.js ${argv.normalizedArgsText ?? ''} | tee ${SERVER_LOG_FILE}`
+      `${project.buildCommand} && ${project.isBunAvailable ? 'bun run' : 'node'} dist/index.js ${argv.normalizedArgsText ?? ''} | tee ${SERVER_LOG_FILE}`
     );
   }
   override startTest(): Promise<string> {

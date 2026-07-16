@@ -8,6 +8,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const binIndexPath = fileURLToPath(new URL('../bin/index.js', import.meta.url));
 
+function isFnoxAvailable(): boolean {
+  return childProcess.spawnSync('fnox', ['--version'], { stdio: 'ignore' }).status === 0;
+}
+
 describe('bin/index.js dotenv fast path', () => {
   let projectDirPath: string;
 
@@ -38,6 +42,30 @@ describe('bin/index.js dotenv fast path', () => {
     });
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('probe-ok\n');
+    expect(result.status).toBe(0);
+  });
+
+  it.runIf(isFnoxAvailable())('loads fnox-provided environment variables preferring .env files', async () => {
+    // The released `wb dotenv` routes through bin/dotenv.js (not dist), so fnox loading must be
+    // exercised through bin/index.js to catch drift from the TypeScript implementation.
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nENV = { default = "fnox-value" }\nFNOX_ONLY = { default = "fnox-only" }\n'
+    );
+    await fs.writeFile(path.join(projectDirPath, '.env'), 'ENV=dotenv-value\n');
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$ENV" "$FNOX_ONLY"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('dotenv-value fnox-only\n');
     expect(result.status).toBe(0);
   });
 

@@ -1,0 +1,9 @@
+[secrets]
+ENV = { default = "fnox-development" }
+PORT = { default = "6001" }
+NAME = { default = "app-fnox" }
+FNOX_ONLY = { default = "base-fnox" }
+
+[profiles.test.secrets]
+ENV = { default = "fnox-test" }
+PORT = { default = "6002" }

@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
-import { removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import { readFnoxEnvironmentVariables, removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
@@ -100,12 +100,15 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
 }
 
 function readAndApplyEnvironmentVariables(cwd: string): void {
-  const parsed = {
+  const dotenvVars = {
     ...config({ path: path.join(cwd, '.env'), processEnv: {}, quiet: true }).parsed,
     ...(process.env.WB_ENV
       ? (config({ path: path.join(cwd, `.env.${process.env.WB_ENV}`), processEnv: {}, quiet: true }).parsed ?? {})
       : {}),
   };
+  // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
+  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, process.env.WB_ENV, dotenvVars);
+  const parsed = { ...fnoxVars, ...dotenvVars };
   const envVars = expand({ parsed, processEnv: {} }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {

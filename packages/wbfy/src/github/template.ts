@@ -63,7 +63,7 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
     }
 
     for (const [fileName, newContent] of Object.entries(templates)) {
-      const content = applyPackageManagerTemplate(newContent, config);
+      const content = applyPackageManagerTemplate(newContent);
       const filePath = path.resolve(config.dirPath, '.github', fileName);
       if (fs.existsSync(filePath)) {
         const oldContent = await fs.promises.readFile(filePath, 'utf8');
@@ -78,7 +78,7 @@ export async function generateGitHubTemplates(config: PackageConfig): Promise<vo
   });
 }
 
-function applyPackageManagerTemplate(template: string, config: PackageConfig): string {
-  const packageManagerCommand = config.isBun ? 'bun run' : 'yarn';
+function applyPackageManagerTemplate(template: string): string {
+  const packageManagerCommand = 'bun run';
   return template.replaceAll(packageManagerRunPlaceholder, packageManagerCommand);
 }

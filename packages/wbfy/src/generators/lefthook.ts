@@ -153,15 +153,9 @@ async function core(config: PackageConfig): Promise<void> {
 }
 
 function getPrePushScript(config: PackageConfig): string {
-  let lintCommand: string;
-  if (config.isBun) {
-    // Bun repos receive wb as part of wbfy's managed toolchain, so generate the
-    // final hook command on the first run instead of changing it on the second.
-    lintCommand = 'bun wb lint';
-  } else {
-    lintCommand = config.depending.wb ? 'yarn wb lint' : 'yarn run lint';
-  }
-  const quietLintCommand = `${lintCommand} --quiet`;
+  // Bun repos receive wb as part of wbfy's managed toolchain, so generate the
+  // final hook command on the first run instead of changing it on the second.
+  const quietLintCommand = 'bun wb lint --quiet';
   // No separate typecheck step needed — the lint command already includes typechecking.
   if (config.repository?.startsWith('github:WillBoosterLab/')) {
     return `
@@ -195,8 +189,7 @@ function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
 function getCleanupGlobs(config: PackageConfig): string {
   // Let `wb lint --format` decide whether Prettier is available; the hook
   // still needs to trigger when adding the first prettier-only file.
-  const supportedExtensions =
-    config.isBun || config.depending.wb || doesContainJava(config) ? [...extensions.prettierOnly] : [];
+  const supportedExtensions = [...extensions.prettierOnly];
   if (doesContainJsOrTs(config)) {
     supportedExtensions.push(...extensions.oxfmt, ...extensions.oxlint);
   }
@@ -214,16 +207,16 @@ function getCleanupCommand(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
     return String.raw`
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
-yarn workspace @willbooster/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
+bun run --cwd packages/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
 `.trim();
   }
   // Python-only Bun repos install wb for shared scripts but not Oxlint, so
   // staged-file hooks must use the language-specific formatter path below.
   const canUseWbForStagedFiles = doesContainJsOrTs(config) || doesContainJava(config);
-  if ((config.isBun || config.depending.wb) && canUseWbForStagedFiles) {
+  if (canUseWbForStagedFiles) {
     return `
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
-${config.isBun ? 'bun wb' : 'yarn wb'} lint --fix --format -- {staged_files}
+bun wb lint --fix --format -- {staged_files}
 `.trim();
   }
 
@@ -305,11 +298,12 @@ function hasLocalWbWorkspace(config: PackageConfig): boolean {
 
 function generatePostMergeCommands(config: PackageConfig): string[] {
   const postMergeCommands: string[] = [];
-  if (config.hasVersionSettings) {
-    const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml|\.tool-versions|\..+-version)`;
-    postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
-  }
-  const installCommand = config.isBun ? 'bun install' : 'yarn';
+  // Always emit the mise hook: every managed repository receives mise.toml from generateMiseToml
+  // in the same run, and gating on a pre-run hasVersionSettings snapshot would omit the hook on
+  // the first migration run (non-idempotent output).
+  const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml|\.tool-versions|\..+-version)`;
+  postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
+  const installCommand = 'bun install';
   const rmNextDirectory = config.depending.blitz || config.depending.next ? ' && rm -Rf .next' : '';
   postMergeCommands.push(String.raw`run_if_changed "package\.json" "${installCommand}${rmNextDirectory}"`);
   if (config.doesContainPoetryLock) {

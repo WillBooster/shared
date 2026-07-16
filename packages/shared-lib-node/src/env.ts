@@ -112,6 +112,14 @@ export function readEnvironmentVariables(
       console.info(`Read ${keys.length} environment variables from ${envPath}`);
     }
   }
+  const [fnoxEnvVars, fnoxEnvVarNames] = readFnoxEnvironmentVariables(cwd, cascade, envVars, options);
+  Object.assign(envVars, fnoxEnvVars);
+  if (fnoxEnvVarNames.length > 0) {
+    envPathAndLoadedEnvVarNames.push([fnoxEnvironmentSourceName(cascade), fnoxEnvVarNames]);
+    if (argv.verbose && !shouldSuppressOutput) {
+      console.info(`Read ${fnoxEnvVarNames.length} environment variables from ${fnoxEnvironmentSourceName(cascade)}`);
+    }
+  }
   const [miseEnvVars, miseEnvVarNames] = readMiseEnvironmentVariables(cwd, cascade, envVars, options);
   Object.assign(envVars, miseEnvVars);
   if (miseEnvVarNames.length > 0) {
@@ -144,7 +152,89 @@ export function readEnvironmentVariables(
     // recursively re-expanding them (an exported `pa$word` must stay `pa$word`).
     if (value !== undefined && !(key in envVars)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
   }
-  return [expand({ parsed: envVars, processEnv: referenceEnv }).parsed ?? envVars, envPathAndLoadedEnvVarNames];
+  // dotenv-expand resolves references in key-insertion order, so a .env value referencing a
+  // fnox/mise-provided key would see an empty string if the fnox/mise entries stayed appended
+  // after the .env entries. Rebuild the expansion input with the lower-priority sources first;
+  // the values themselves already reflect the intended .env-over-fnox-over-mise precedence.
+  const orderedEnvVars: Record<string, string> = {};
+  for (const key of [...miseEnvVarNames, ...fnoxEnvVarNames]) orderedEnvVars[key] = envVars[key]!;
+  Object.assign(orderedEnvVars, envVars);
+  return [
+    expand({ parsed: orderedEnvVars, processEnv: referenceEnv }).parsed ?? orderedEnvVars,
+    envPathAndLoadedEnvVarNames,
+  ];
+}
+
+/**
+ * This function reads environment variables from the repository's fnox configuration (`fnox.toml`).
+ * The base `[secrets]` table corresponds to `.env`, and `[profiles.<cascade>.secrets]` corresponds to
+ * `.env.<cascade>`; an unknown profile falls back to the base secrets.
+ */
+export function readFnoxEnvironmentVariables(
+  cwd: string,
+  cascade: string | undefined,
+  currentEnvVars: Record<string, string>,
+  options?: { ignoreProcessEnv?: boolean }
+): [Record<string, string>, string[]] {
+  if (!hasProjectFnoxConfig(cwd)) return [{}, []];
+
+  // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve
+  // (e.g. a missing age key), which would be indistinguishable from undeclared secrets.
+  // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
+  const args = ['export', '--format', 'json', '--no-color', '--if-missing', 'error', '--non-interactive'];
+  if (cascade) {
+    args.push('--profile', cascade);
+  }
+  const result = childProcess.spawnSync('fnox', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.error || result.status !== 0 || !result.stdout?.trim()) {
+    // The repository declares fnox-managed secrets (fnox.toml exists), so a failing export must be
+    // surfaced: swallowing it would make declared secrets indistinguishable from undeclared ones.
+    console.warn(
+      `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
+    );
+    return [{}, []];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return [{}, []];
+  }
+  const secrets = (parsed as { secrets?: unknown } | undefined)?.secrets;
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)) return [{}, []];
+
+  const envVars: Record<string, string> = {};
+  const keys: string[] = [];
+  for (const [key, value] of Object.entries(secrets)) {
+    if (typeof value !== 'string' || key in currentEnvVars) continue;
+    // Explicitly exported environment variables win over fnox values, mirroring the .env rule.
+    // (The mise reader below intentionally uses a value-equality check instead: `mise env` echoes
+    // back variables the ambient mise activation already exported, and a differing value means the
+    // requested cascade profile should win over the stale activation.)
+    if (!options?.ignoreProcessEnv && key in process.env) continue;
+    envVars[key] = value;
+    keys.push(key);
+  }
+  return [envVars, keys];
+}
+
+export function hasProjectFnoxConfig(cwd: string): boolean {
+  for (let currentPath = path.resolve(cwd); ; currentPath = path.dirname(currentPath)) {
+    if (fs.existsSync(path.join(currentPath, 'fnox.toml'))) {
+      return true;
+    }
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) return false;
+  }
+}
+
+function fnoxEnvironmentSourceName(cascade: string | undefined): string {
+  return cascade ? `fnox export --profile ${cascade}` : 'fnox export';
 }
 
 function readMiseEnvironmentVariables(

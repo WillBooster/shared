@@ -9,4 +9,4 @@ run_if_changed() {
 }
 
 run_if_changed "(mise\.toml|\.mise\.toml|\.tool-versions|\..+-version)" "mise install"
-run_if_changed "package\.json" "yarn"
+run_if_changed "package\.json" "bun install"

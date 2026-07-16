@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('wb start --help', () => {
   it('explains how to forward arguments after --', () => {
-    const result = child_process.spawnSync('yarn', ['workspace', '@willbooster/wb', 'start', 'start', '--help'], {
+    const result = child_process.spawnSync('bun', ['run', 'start', 'start', '--help'], {
       cwd: process.cwd(),
       encoding: 'utf8',
     });

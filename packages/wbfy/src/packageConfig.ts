@@ -29,7 +29,6 @@ export interface PackageConfig {
   isCloudflare: boolean;
   doesContainWranglerConfig: boolean;
   isRailway: boolean;
-  isBun: boolean;
   isEsmPackage: boolean;
   isWillBoosterConfigs: boolean;
   // dependency information
@@ -84,7 +83,6 @@ export interface PackageConfig {
     github: boolean;
     npm: boolean;
   };
-  hasVersionSettings: boolean;
   miseTasks: Record<string, string>;
   packageJson?: PackageJson;
   wbfyJson?: WbfyJson;
@@ -103,10 +101,7 @@ const wbfyJsonSchema = z.object({
     .optional(),
 });
 
-export async function getPackageConfig(
-  dirPath: string,
-  rootConfig?: PackageConfig
-): Promise<PackageConfig | undefined> {
+export async function getPackageConfig(dirPath: string): Promise<PackageConfig | undefined> {
   const packageJsonPath = path.resolve(dirPath, 'package.json');
   try {
     const doesContainPackageJson = fs.existsSync(packageJsonPath);
@@ -145,14 +140,6 @@ export async function getPackageConfig(
     let repoInfo: Record<string, unknown> | undefined;
     if (isRoot) {
       repoInfo = await fetchRepoInfo(dirPath, packageJson);
-    }
-
-    let hasVersionSettings = hasVersionSettingsFile(dirPath);
-    for (const prefix of ['java', 'node', 'python']) {
-      if (fs.existsSync(path.resolve(dirPath, `.${prefix}-version`))) {
-        hasVersionSettings = true;
-        break;
-      }
     }
 
     let dockerfile = '';
@@ -202,13 +189,6 @@ export async function getPackageConfig(
       isCloudflare: detectCloudflare(dirPath, packageJson),
       doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
-      isBun:
-        rootConfig?.isBun ||
-        fs.existsSync(path.join(dirPath, 'bun.lockb')) ||
-        fs.existsSync(path.join(dirPath, 'bun.lock')) ||
-        // Some repos gitignore bun.lock, so it may be missing on fresh clones.
-        // bunfig.toml is committed and generated only for Bun projects, making it a reliable signal.
-        fs.existsSync(path.join(dirPath, 'bunfig.toml')),
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
@@ -272,7 +252,6 @@ export async function getPackageConfig(
         github: releasePlugins.includes('@semantic-release/github'),
         npm: releasePlugins.includes('@semantic-release/npm'),
       },
-      hasVersionSettings,
       miseTasks: await readMiseTasks(dirPath),
       packageJson,
       wbfyJson,
@@ -293,15 +272,6 @@ export async function getPackageConfig(
   } catch {
     // do nothing
   }
-}
-
-function hasVersionSettingsFile(dirPath: string): boolean {
-  const current = path.resolve(dirPath);
-  return (
-    fs.existsSync(path.join(current, 'mise.toml')) ||
-    fs.existsSync(path.join(current, '.mise.toml')) ||
-    fs.existsSync(path.join(current, '.tool-versions'))
-  );
 }
 
 /**

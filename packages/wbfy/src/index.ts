@@ -36,13 +36,13 @@ import { installAgentSkills } from './generators/skills.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
-import { generateYarnrcYml } from './generators/yarnrc.js';
+import { generateMiseToml } from './generators/miseToml.js';
+import { findUnmigratableYarnSettings, removeYarnFiles } from './generators/removeYarnFiles.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
 import { setupSecrets } from './github/secret.js';
 import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
-import { logger } from './logger.js';
 import { options } from './options.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
@@ -100,8 +100,28 @@ async function main(): Promise<void> {
 }
 
 async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<boolean> {
+  // wbfy rewrites repositories to the Bun + mise toolchain and runs `bun add` / `bun install`;
+  // proceeding without Bun would delete Yarn state and then fail to produce a Bun lockfile.
+  if (spawnSyncAndReturnStatus('bun', ['--version'], '.') !== 0) {
+    console.error('wbfy requires Bun. Install Bun (e.g. via mise) and re-run.');
+    return true;
+  }
+
   let hasInvalidPackageConfig = false;
   for (const rootDirPath of paths) {
+    // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
+    // automatic Bun translation must abort the whole migration for this path, not just the file
+    // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.
+    const unmigratableYarnSettings = findUnmigratableYarnSettings(rootDirPath);
+    if (unmigratableYarnSettings) {
+      console.error(
+        `Skip ${rootDirPath}: ${unmigratableYarnSettings}. ` +
+          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy.'
+      );
+      hasInvalidPackageConfig = true;
+      continue;
+    }
+
     const packagesDirPath = path.join(rootDirPath, 'packages');
     const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
     const subDirPaths = dirents.filter((d) => d.isDirectory()).map((d) => path.join(packagesDirPath, d.name));
@@ -119,9 +139,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     }
     const abbreviationPromise = fixTypos(rootConfig);
 
-    const nullableSubPackageConfigs = await Promise.all(
-      subDirPaths.map((subDirPath) => getPackageConfig(subDirPath, rootConfig))
-    );
+    const nullableSubPackageConfigs = await Promise.all(subDirPaths.map((subDirPath) => getPackageConfig(subDirPath)));
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
 
@@ -132,11 +150,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     }
     assertSafeDependencySources(allPackageConfigs);
 
-    // Install yarn berry
-    await generateYarnrcYml(rootConfig);
-    if (rootConfig.isBun) {
-      await generateBunfigToml(rootConfig);
-    }
+    // Managed repositories use Bun with mise (and optionally fnox); Yarn artifacts are removed.
+    await removeYarnFiles(rootConfig);
+    await generateBunfigToml(rootConfig);
+    await generateMiseToml(rootConfig);
 
     const shouldRunWorkflows =
       !isReusableWorkflowsRepo(rootConfig.repository) &&
@@ -216,17 +233,19 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await promisePool.promiseAll();
     await fixWbDbCommand(rootConfig, allPackageConfigs);
 
-    const packageManager = rootConfig.isBun ? 'bun' : 'yarn';
     // Refresh lock files
-    if (rootConfig.isBun) {
-      await logger.functionIgnoringException('refreshBunLock', async () => {
-        await Promise.resolve();
-        refreshBunLock(rootDirPath);
-      });
-    } else {
-      spawnSync(packageManager, ['install', '--no-immutable'], rootDirPath);
+    try {
+      refreshBunLock(rootDirPath);
+      // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
+      // that removeYarnFiles intentionally preserved for the migration can be removed.
+      fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
+    } catch (error) {
+      // A failed install must fail the CLI: exiting 0 with a stale or missing Bun lockfile would
+      // hide a broken migration.
+      console.error('Failed to refresh the Bun lockfile:', (error as Error | undefined)?.message ?? error);
+      hasInvalidPackageConfig = true;
     }
-    spawnSync(packageManager, ['cleanup'], rootDirPath);
+    spawnSync('bun', ['cleanup'], rootDirPath);
 
     await installAgentSkills(rootConfig);
   }

@@ -29,22 +29,36 @@ export class Project {
 
   @memoizeOne
   get isBunAvailable(): boolean {
-    if (this.hasBunToolVersion()) return true;
     return this.usesBunPackageManager;
   }
 
+  // The package manager must follow the target project, not the runtime that launched wb:
+  // `node wb ...` against a Bun repo must still run `bun install`, and vice versa.
+  get packageManagerCommand(): 'bun' | 'yarn' {
+    return this.isBunAvailable ? 'bun' : 'yarn';
+  }
+
+  get packageManagerRunCommand(): 'bun run' | 'yarn' {
+    return this.isBunAvailable ? 'bun run' : 'yarn';
+  }
+
+  // A single signal decides every bun-vs-yarn branch in wb (script normalization included):
+  // splitting the tool-manifest signal from the lockfile signal once produced commands mixing
+  // `bun install` with `yarn prisma ...` in mise-pinned repos whose bun.lock is gitignored.
   @memoizeOne
   get usesBunPackageManager(): boolean {
+    if (this.hasBunToolVersion()) return true;
     if (this.hasBunLockfile()) return true;
     return this.hasBunPackageManager();
   }
 
   private hasBunToolVersion(): boolean {
-    try {
-      return /(^|\n)bun\s/.test(fs.readFileSync(path.join(this.rootDirPath, '.tool-versions'), 'utf8'));
-    } catch {
-      return false;
-    }
+    // wbfy migrates .tool-versions into mise.toml, so a mise-pinned bun must count as well:
+    // repos that gitignore bun.lock and have no packageManager field rely on the tool manifest.
+    if (testFileContent(path.join(this.rootDirPath, '.tool-versions'), /(^|\n)bun\s/)) return true;
+    return ['mise.toml', '.mise.toml'].some((fileName) =>
+      testFileContent(path.join(this.rootDirPath, fileName), /^\s*(?:"bun"|bun)\s*=/m)
+    );
   }
 
   private hasBunLockfile(): boolean {
@@ -127,6 +141,10 @@ export class Project {
         console.info(`Loaded ${count} environment variables from ${envPath}`);
       }
     }
+    // Spreading envVars last is safe for exported-variable precedence: readEnvironmentVariables
+    // already excludes keys present in process.env from .env/fnox sources. Mise values that
+    // differ from the ambient activation are deliberately kept so the requested cascade profile
+    // (e.g. `--cascade-env=test`) wins over a stale `mise activate` environment.
     this.envCache = { ...process.env, ...envVars };
     return this.envCache;
   }
@@ -372,6 +390,14 @@ export function findRootAndSelfProjects(
     }
   }
   return { root: rootProject, self: thisProject };
+}
+
+function testFileContent(filePath: string, pattern: RegExp): boolean {
+  try {
+    return pattern.test(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 async function getAllDescendantProjects(

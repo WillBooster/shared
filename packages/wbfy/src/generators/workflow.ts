@@ -382,12 +382,33 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
   }
 }
 
+// The reusable workflows that declare FNOX_AGE_KEY under on.workflow_call.secrets
+// (see WillBooster/reusable-workflows). Passing the secret to any other callee is a GitHub error.
+const fnoxAwareReusableWorkflows = new Set(['autofix', 'deploy', 'gen-pr', 'release', 'run-script', 'test']);
+
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
   job.secrets ??= {};
 
   if (kind === 'test' || kind === 'release') {
     job.secrets.GH_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
+  }
+
+  // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY repository secret.
+  // Key the injection on the *called* reusable workflow, not the caller's filename: callers may have
+  // arbitrary names (e.g. scheduled run-script callers), and GitHub rejects passing a secret that the
+  // callee does not declare. The legacy DOT_ENV pass-through is deliberately kept: FNOX_AGE_KEY
+  // provisioning can be skipped (no --env, missing token or age identity), and the pass-through keeps
+  // CI working from the still-existing DOT_ENV secret until the fnox migration completes.
+  const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@/u.exec(
+    job.uses ?? ''
+  )?.[1];
+  if (
+    fs.existsSync(path.resolve(config.dirPath, 'fnox.toml')) &&
+    calledReusableWorkflow &&
+    fnoxAwareReusableWorkflows.has(calledReusableWorkflow)
+  ) {
+    job.secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
   }
 
   if (job.secrets.FIREBASE_TOKEN) {
@@ -460,16 +481,19 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
 }
 
 function generateAutofixWorkflow(config: PackageConfig): Workflow {
-  const packageManager = config.isBun ? 'bun' : 'yarn';
+  // No fnox setup or FNOX_AGE_KEY here on purpose: autofix only runs cleanup/build (never app
+  // code needing secrets), it has never received DOT_ENV either, and public-repo autofix runs on
+  // fork PRs where exposing a decryption secret would be unsafe. wb degrades gracefully (warns
+  // and proceeds without fnox variables) when fnox is unavailable.
   const steps: Step[] = [
     { uses: 'actions/checkout@v6' },
     { uses: 'actions/setup-node@v6', with: { 'check-latest': true, 'node-version': 'lts/*' } },
-    ...(config.isBun ? [{ uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } }] : []),
-    { run: `${packageManager} install` },
-    { run: `${packageManager} run cleanup` },
+    { uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } },
+    { run: 'bun install' },
+    { run: 'bun run cleanup' },
   ];
   if (config.packageJson?.scripts?.build) {
-    steps.push({ run: `${packageManager} run build` });
+    steps.push({ run: 'bun run build' });
   }
   steps.push({ uses: 'autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a' });
 

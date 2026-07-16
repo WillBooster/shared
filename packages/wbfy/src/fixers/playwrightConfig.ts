@@ -6,7 +6,6 @@ import * as ast from 'typescript/unstable/ast';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { getPackageManagerCommand } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 
@@ -51,7 +50,7 @@ function createDefaultConfig(config: PackageConfig, shouldUseAppServerDefaults: 
     ...(shouldUseAppServerDefaults
       ? {
           webServer: asObject({
-            command: literal(getWbStartTestCommand(config)),
+            command: literal(getWbStartTestCommand()),
             url: literal('process.env.NEXT_PUBLIC_BASE_URL'),
             reuseExistingServer: literal('!!process.env.CI'),
             timeout: literal('300_000'),
@@ -98,7 +97,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const defaultConfig = createDefaultConfig(config, shouldUseAppServerDefaults);
     const merged = mergeParsedObjects(defaultConfig, parsed);
     applyManagedUseDefaults(merged, defaultConfig);
-    setWebServerCommand(merged, config);
+    setWebServerCommand(merged);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
     const oldContent = extractedObjectLiteral.source.text;
@@ -205,18 +204,18 @@ function getEnvFilePaths(dirPath: string): string[] {
   return envFilePaths;
 }
 
-function setWebServerCommand(object: ParsedObject, config: PackageConfig): void {
+function setWebServerCommand(object: ParsedObject): void {
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
 
   // wb owns the canonical test-server startup path; keep custom Playwright
   // server settings while normalizing the command itself. Invoke wb through the
   // package manager because target repos install wb as a package dependency.
-  webServer.value.properties.command = literal(getWbStartTestCommand(config));
+  webServer.value.properties.command = literal(getWbStartTestCommand());
 }
 
-function getWbStartTestCommand(config: PackageConfig): string {
-  return `'${getPackageManagerCommand(config)} wb start --mode test'`;
+function getWbStartTestCommand(): string {
+  return `'bun wb start --mode test'`;
 }
 
 function extractDefineConfigObjectLiteral(filePath: string): ExtractedObjectLiteral | undefined {

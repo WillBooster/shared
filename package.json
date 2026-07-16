@@ -13,18 +13,21 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "yarn workspaces foreach --all --parallel --verbose run build",
-    "cleanup": "yarn format && yarn lint-fix",
-    "format": "sort-package-json && yarn format-code && yarn workspaces foreach --all --parallel --verbose run format",
+    "build": "bun run --filter '*' build",
+    "cleanup": "bun run format && bun run lint-fix",
+    "format": "sort-package-json && bun run format-code && bun run --filter '*' format",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
-    "lint": "yarn workspaces foreach --all --parallel --verbose run lint",
-    "lint-fix": "yarn workspaces foreach --all --parallel --verbose run lint-fix",
-    "prepare": "lefthook install || true",
-    "release": "yarn multi-semantic-release --debug",
-    "test": "CI=1 yarn workspaces foreach --all --verbose run test",
+    "lint": "bun run --filter '*' lint",
+    "lint-fix": "bun run --filter '*' lint-fix",
+    "prepare": "lefthook install || true && bun run --cwd packages/wb build",
+    "release": "bun multi-semantic-release --debug",
+    "test": "CI=1 bun run --filter '*' test",
     "typecheck": "wb typecheck",
     "verify": "wb verify",
     "verify-full": "wb verify --full"
+  },
+  "overrides": {
+    "@types/glob": "8.1.0"
   },
   "devDependencies": {
     "@anolilab/multi-semantic-release": "4.4.1",
@@ -33,7 +36,7 @@
     "@types/node": "25.6.0",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "13.28.7",
+    "@willbooster/wb": "workspace:*",
     "conventional-changelog-conventionalcommits": "9.3.1",
     "lefthook": "2.1.10",
     "oxfmt": "0.59.0",
@@ -43,7 +46,6 @@
     "sort-package-json": "4.0.0",
     "typescript": "7.0.2"
   },
-  "packageManager": "yarn@4.17.1",
   "engines": {
     "node": ">= 22.18.0"
   }

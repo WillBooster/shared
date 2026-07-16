@@ -106,7 +106,7 @@ describe('prisma command unknown options', () => {
   });
 
   it('explains -- passthrough in wb prisma --help output', () => {
-    const result = child_process.spawnSync('yarn', ['workspace', '@willbooster/wb', 'start', 'prisma', '--help'], {
+    const result = child_process.spawnSync('bun', ['run', 'start', 'prisma', '--help'], {
       cwd: process.cwd(),
       encoding: 'utf8',
     });

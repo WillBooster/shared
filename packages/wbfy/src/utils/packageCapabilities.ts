@@ -12,7 +12,3 @@ export function doesContainJsOrTs(config: PackageConfig): boolean {
 export function doesContainJava(config: PackageConfig): boolean {
   return config.doesContainJava || config.doesContainJavaInPackages;
 }
-
-export function getPackageManagerCommand(config: Pick<PackageConfig, 'isBun'>): 'bun' | 'yarn' {
-  return config.isBun ? 'bun' : 'yarn';
-}

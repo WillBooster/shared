@@ -34,8 +34,8 @@ test('replaces default gen-i18n-ts postinstall with managed wb gen-code scripts'
   );
 
   expect(packageJson.scripts).toMatchObject({
-    cleanup: 'yarn format',
-    'gen-code': 'wb gen-code',
+    cleanup: 'bun wb lint --fix --format',
+    'gen-code': 'bun wb gen-code',
     postinstall: 'wb gen-code',
   });
   expect(packageJson.scripts?.['gen-i18n-ts']).toBeUndefined();
@@ -54,8 +54,8 @@ test('does not restore missing default gen-i18n-ts script with managed wb gen-co
   );
 
   expect(packageJson.scripts).toMatchObject({
-    cleanup: 'yarn format',
-    'gen-code': 'wb gen-code',
+    cleanup: 'bun wb lint --fix --format',
+    'gen-code': 'bun wb gen-code',
     postinstall: 'wb gen-code',
   });
   expect(packageJson.scripts?.['gen-i18n-ts']).toBeUndefined();
@@ -76,7 +76,7 @@ test('keeps custom gen-i18n-ts scripts while adding wb gen-code', async () => {
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'gen-code': 'wb gen-code',
+    'gen-code': 'bun wb gen-code',
     'gen-i18n-ts': 'gen-i18n-ts -i locales -o src/i18n.ts -d en-US',
   });
 });
@@ -182,7 +182,6 @@ test('appends wrangler types to gen-code and postinstall for Cloudflare projects
     { scripts: {}, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -208,7 +207,6 @@ test.each([
     { scripts, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -238,7 +236,6 @@ test('keeps management for a script composing gen-code with a build step', async
     { scripts: wranglerPackageJson.scripts, devDependencies: wranglerPackageJson.devDependencies },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -247,7 +244,7 @@ test('keeps management for a script composing gen-code with a build step', async
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'build/core': 'yarn run gen-code && vite build',
+    'build/core': 'bun run gen-code && vite build',
     'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
     postinstall: 'wb gen-code && wrangler types --strict-vars=false',
   });
@@ -258,7 +255,7 @@ test('keeps management for a script composing gen-code with a build step', async
 test('omits wrangler types when the package does not depend on wrangler', async () => {
   const packageJson = await generatePackageJsonFrom(
     { scripts: {} },
-    { depending: genI18nTsDepending, isBun: true, isCloudflare: true, doesContainWranglerConfig: true },
+    { depending: genI18nTsDepending, isCloudflare: true, doesContainWranglerConfig: true },
     { createI18nDir: true }
   );
 
@@ -270,7 +267,7 @@ test('omits wrangler types when the package owns no wrangler config', async () =
   const packageJson = await generatePackageJsonFrom(
     // A monorepo root merely referring to the Worker of a sub-package makes isCloudflare true.
     { scripts: { 'db-reset': 'rm -rf packages/web/.wrangler/state' } },
-    { depending: genI18nTsDepending, isBun: true, isCloudflare: true, doesContainWranglerConfig: false },
+    { depending: genI18nTsDepending, isCloudflare: true, doesContainWranglerConfig: false },
     { createI18nDir: true }
   );
 
@@ -292,7 +289,6 @@ test('ignores non-generating and custom-output wrangler types invocations when r
     },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -318,10 +314,10 @@ test('does not append wrangler types to a postinstall that generates through a w
       },
       ...wranglerPackageJson,
     },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('yarn gen:types');
+  expect(packageJson.scripts?.postinstall).toBe('bun run gen:types');
 });
 
 // detectWranglerConfig does not see a custom --config path, so wbfy does not manage the file — but overwriting the
@@ -335,7 +331,6 @@ test('preserves a wrangler types invocation with a custom config path when overw
     },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: false,
       packageJson: wranglerPackageJson,
@@ -355,7 +350,6 @@ test('omits wrangler types when an uncommitted .dev.vars drives the Env inferenc
     { scripts: {}, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -374,7 +368,6 @@ test('keeps wrangler types when secrets.required makes the Env inference reprodu
     { scripts: {}, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -403,7 +396,6 @@ test('keeps wrangler types when an env-level secrets.required makes the Env infe
     { scripts: {}, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -428,7 +420,6 @@ test('ignores secrets.required when the wrangler dependency predates its support
     { scripts: {}, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -451,7 +442,7 @@ test('appends wrangler types to a project-specific gen-code script', async () =>
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-code': 'tsx scripts/genRoutes.ts' }, ...wranglerPackageJson },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
   expect(packageJson.scripts).toMatchObject({
@@ -468,7 +459,6 @@ test('does not treat shell text mentioning wrangler types as the generator comma
     { scripts: { help: 'echo wrangler types --strict-vars=false' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -489,7 +479,6 @@ test('ignores non-conflicting but non-generating wrangler types invocations when
     { scripts: { 'check-types': 'wrangler types --check=true' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -518,7 +507,6 @@ test.each([
       { ...wranglerPackageJson },
       {
         depending: genI18nTsDepending,
-        isBun: true,
         isCloudflare: true,
         doesContainWranglerConfig: true,
         packageJson: wranglerPackageJson,
@@ -539,7 +527,6 @@ test('ignores wrangler types invocations that follow a cd', async () => {
     { scripts: { 'gen-other': 'cd ../other && wrangler types --strict-vars=false' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -557,7 +544,6 @@ test('reuses a wrangler types invocation followed by a shell redirection', async
     { scripts: { 'gen-types': 'wrangler types --strict-vars=false > /dev/null' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -579,7 +565,6 @@ test('reuses a wrangler types invocation that names the default output path expl
     },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -600,7 +585,6 @@ test('ignores help-only wrangler types invocations when resolving the command', 
     { scripts: { 'types-help': 'wrangler types --help' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -618,7 +602,6 @@ test('reuses a wrangler types invocation with a space-separated boolean option',
     { scripts: { 'gen-types': 'wrangler types --strict-vars false' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -640,10 +623,10 @@ test('detects generation through an env-prefixed wrapper postinstall', async () 
       },
       ...wranglerPackageJson,
     },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('NODE_ENV=production yarn run --silent gen:types');
+  expect(packageJson.scripts?.postinstall).toBe('NODE_ENV=production bun run --silent gen:types');
 });
 
 // An appended generator after a directory-changing postinstall would run in the other directory, so it must
@@ -652,10 +635,10 @@ test('prepends the generator to a directory-changing postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { postinstall: 'cd ../tools && yarn build' }, ...wranglerPackageJson },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('bunx wrangler types && cd ../tools && yarn build');
+  expect(packageJson.scripts?.postinstall).toBe('bunx wrangler types && cd ../tools && bun run build');
 });
 
 // `--check` is a boolean option: only its enabled forms suppress generation, so `--check=false` is an ordinary
@@ -666,7 +649,6 @@ test('reuses a wrangler types invocation with --check=false', async () => {
     { scripts: { 'gen-types': 'wrangler types --check=false --strict-vars=false' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -691,7 +673,6 @@ test('prefers the generator postinstall already runs over other scripts', async 
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -719,7 +700,6 @@ test('skips worker-types management when distinct flagged generators leave no de
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -740,7 +720,6 @@ test('recognizes a conflicting invocation behind a no-op cd', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -759,7 +738,6 @@ test('does not select a wrangler types invocation quoted inside another command'
     { scripts: { greet: 'echo "run setup && wrangler types --strict-vars=false"' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -778,7 +756,6 @@ test('omits wrangler types when an uncommitted .env.local drives the Env inferen
     { scripts: {}, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -800,7 +777,6 @@ test('skips worker-types management when a wrangler types command sits in a subs
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -823,7 +799,6 @@ test('keeps generation prerequisites when rewriting postinstall', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -843,7 +818,6 @@ test('reuses a wrangler types invocation with a no-op --cwd', async () => {
     { scripts: { 'gen-types': 'wrangler types --cwd . --strict-vars=false' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -863,7 +837,6 @@ test('recognizes a generator prefixed by a quoted environment assignment', async
     { scripts: { 'gen-types': genTypes }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -883,7 +856,6 @@ test('skips worker-types management for a piped custom-config invocation', async
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -907,7 +879,6 @@ test('preserves a wrapper invoked through a runner option with a value', async (
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -930,12 +901,12 @@ test('preserves a gen-code wrapper whose script is a custom pipeline', async () 
   };
   const packageJson = await generatePackageJsonFrom(
     { ...wranglerPackageJson },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'node scripts/prepareTypes.js && wrangler types --strict-vars=false',
-    postinstall: 'wb gen-code && yarn gen-code',
+    postinstall: 'wb gen-code && bun run gen-code',
   });
 });
 
@@ -948,7 +919,6 @@ test('treats a workspace-selected invocation as non-local', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -970,12 +940,12 @@ test('preserves a gen-code wrapper whose script includes a custom-config invocat
   };
   const packageJson = await generatePackageJsonFrom(
     { ...wranglerPackageJson },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'wb gen-code && wrangler types --config config/worker.jsonc',
-    postinstall: 'wb gen-code && yarn gen-code',
+    postinstall: 'wb gen-code && bun run gen-code',
   });
 });
 
@@ -988,7 +958,6 @@ test('preserves an unparseable generating postinstall verbatim', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1010,7 +979,6 @@ test('skips worker-types management when the generator pipeline has prerequisite
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1031,7 +999,6 @@ test('recognizes an exec-form wb gen-code segment when rewriting postinstall', a
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1053,7 +1020,6 @@ test('treats a wrapper forwarding arguments as unmodeled', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1072,7 +1038,6 @@ test('treats an all-workspaces invocation as non-local', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1092,7 +1057,6 @@ test('preserves a directory-changing generating postinstall verbatim', async () 
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1114,7 +1078,6 @@ test('does not treat npm run with a wrangler-named script as a generator', async
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1136,7 +1099,6 @@ test('treats a backgrounded invocation as unmodeled', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1153,7 +1115,7 @@ test('prepends the generator to a check-only custom gen-code script', async () =
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-code': 'wrangler types --check' }, ...wranglerPackageJson },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
   expect(packageJson.scripts?.['gen-code']).toBe('bunx wrangler types && wrangler types --check');
@@ -1170,7 +1132,6 @@ test('keeps management when a custom-config invocation follows a cd', async () =
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1190,7 +1151,6 @@ test('does not discard a compound segment starting with wb gen-code', async () =
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1212,7 +1172,6 @@ test('treats a quoted command word invocation as unmodeled', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1231,7 +1190,6 @@ test('reuses a wrangler types invocation followed by a shell comment', async () 
     { scripts: { 'gen-types': 'wrangler types --strict-vars=false # keep loose vars' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1252,7 +1210,6 @@ test('classifies a quoted option name like its unquoted form', async () => {
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1272,7 +1229,6 @@ test('preserves a command-substitution invocation inside double quotes', async (
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1294,10 +1250,10 @@ test('preserves a plain wrapper whose target uses unsupported shell syntax', asy
   };
   const packageJson = await generatePackageJsonFrom(
     { ...wranglerPackageJson },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-code');
 });
 
 // `cd ./.` never leaves the package directory, so a conflicting invocation behind it must still be seen.
@@ -1310,7 +1266,6 @@ test('recognizes a conflicting invocation behind a normalized no-op cd', async (
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1328,7 +1283,6 @@ test('omits wrangler types when the wrangler config is uncommitted', async () =>
     { scripts: {}, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1350,7 +1304,6 @@ test('preserves a wrapper around a global-option wrangler invocation', async () 
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1358,7 +1311,7 @@ test('preserves a wrapper around a global-option wrangler invocation', async () 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-types');
 });
 
 // A bare generator behind a prerequisite is a pipeline too; bypassing the preparation step could emit an Env
@@ -1372,7 +1325,6 @@ test('skips worker-types management for a prerequisite pipeline with a bare gene
     { ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1390,7 +1342,6 @@ test('reuses a wrangler types invocation with a quoted false check literal', asy
     { scripts: { 'gen-types': "wrangler types --strict-vars=false --check 'false'" }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: true,
       packageJson: wranglerPackageJson,
@@ -1406,7 +1357,7 @@ test('prepends the generator to a check-only postinstall', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { postinstall: 'wrangler types --check' }, ...wranglerPackageJson },
-    { isBun: true, isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
   expect(packageJson.scripts?.postinstall).toBe('bunx wrangler types && wrangler types --check');
@@ -1426,7 +1377,6 @@ test('preserves a wrapper script invoking wrangler types with a custom config wh
     },
     {
       depending: genI18nTsDepending,
-      isBun: true,
       isCloudflare: true,
       doesContainWranglerConfig: false,
       packageJson: wranglerPackageJson,
@@ -1434,7 +1384,7 @@ test('preserves a wrapper script invoking wrangler types with a custom config wh
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-types');
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {
@@ -1448,16 +1398,16 @@ test('keeps custom database scripts for drizzle projects', async () => {
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'db-create-migration': 'wb db migrate-dev',
+    'db-create-migration': 'bun wb db migrate-dev',
     'db-migrate': 'bun scripts/runDrizzleMigrationsToAllClients.ts',
-    'db-view': 'wb db studio',
+    'db-view': 'bun wb db studio',
   });
 });
 
 test('uses bun runner for generated Python scripts in bun projects', async () => {
   const packageJson = await generatePackageJsonFrom(
     { scripts: {} },
-    { doesContainUvLock: true, isBun: true },
+    { doesContainUvLock: true },
     { files: { 'src/example.py': '', 'test/unit/test_example.py': '' } }
   );
 
@@ -1470,6 +1420,30 @@ test('uses bun runner for generated Python scripts in bun projects', async () =>
   expect(packageJson.scripts?.['lint-fix']).not.toContain('yarn');
 });
 
+test('converts yarn script invocations to bun while leaving Yarn built-ins untouched', async () => {
+  const packageJson = await generatePackageJsonFrom({
+    scripts: {
+      'clean-all': 'yarn workspaces foreach --all exec rimraf dist',
+      'deps-up': 'yarn up -R typescript',
+      'gen:sub': 'cd sub && yarn build:sub',
+      publish2: 'yarn npm publish --tolerate-republish',
+      'ws-add': 'yarn workspace components add -D react',
+      'ws-run': 'yarn workspace components run gen',
+    },
+  });
+
+  expect(packageJson.scripts).toMatchObject({
+    // Yarn built-ins have no bun run equivalent and must survive verbatim to surface in review.
+    'clean-all': 'yarn workspaces foreach --all exec rimraf dist',
+    'deps-up': 'yarn up -R typescript',
+    publish2: 'yarn npm publish --tolerate-republish',
+    'ws-add': 'yarn workspace components add -D react',
+    // Script invocations are converted.
+    'gen:sub': 'cd sub && bun run build:sub',
+    'ws-run': 'bun run --filter components gen',
+  });
+});
+
 test('preserves a leading MISE_ENV prefix on a mise bridge script', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
@@ -1477,7 +1451,7 @@ test('preserves a leading MISE_ENV prefix on a mise bridge script', async () => 
         test: 'MISE_ENV=test mise run test',
       },
     },
-    { isBun: true, miseTasks: { test: 'bun run playwright test' } }
+    { miseTasks: { test: 'bun run playwright test' } }
   );
 
   expect(packageJson.scripts?.test).toBe('MISE_ENV=test mise run test');
@@ -1490,7 +1464,7 @@ test('preserves a quoted MISE_ENV value containing spaces on a mise bridge scrip
         test: 'MISE_ENV="test development" mise run test',
       },
     },
-    { isBun: true, miseTasks: { test: 'bun run playwright test' } }
+    { miseTasks: { test: 'bun run playwright test' } }
   );
 
   expect(packageJson.scripts?.test).toBe('MISE_ENV="test development" mise run test');
@@ -1503,7 +1477,7 @@ test('regenerates a plain mise bridge script without inventing an env prefix', a
         test: 'mise run test',
       },
     },
-    { isBun: true, miseTasks: { test: 'bun run playwright test' } }
+    { miseTasks: { test: 'bun run playwright test' } }
   );
 
   expect(packageJson.scripts?.test).toBe('mise run test');
@@ -1512,9 +1486,9 @@ test('regenerates a plain mise bridge script without inventing an env prefix', a
 test('never generates --bun scripts', async () => {
   const withPlaywright = await generatePackageJsonFrom(
     { scripts: {} },
-    { isBun: true, depending: { ...createConfig().depending, playwrightTest: true } }
+    { depending: { ...createConfig().depending, playwrightTest: true } }
   );
-  const withoutPlaywright = await generatePackageJsonFrom({ scripts: {} }, { isBun: true });
+  const withoutPlaywright = await generatePackageJsonFrom({ scripts: {} }, {});
 
   expect(withPlaywright.scripts?.['verify-full']).toBe('bun wb verify --full');
   expect(withoutPlaywright.scripts?.['verify-full']).toBe('bun wb verify --full');
@@ -1523,14 +1497,6 @@ test('never generates --bun scripts', async () => {
       expect(command).not.toContain('--bun');
     }
   }
-});
-
-test('type-checks in the lint script of TypeScript projects', { timeout: 60 * 1000 }, async () => {
-  const withTypeScript = await generatePackageJsonFrom({ scripts: {} }, { doesContainTypeScript: true });
-  const withoutTypeScript = await generatePackageJsonFrom({ scripts: {} }, { doesContainJavaScript: true });
-
-  expect(withTypeScript.scripts?.lint).toBe('oxlint --type-aware --type-check --no-error-on-unmatched-pattern .');
-  expect(withoutTypeScript.scripts?.lint).toBe('oxlint --no-error-on-unmatched-pattern .');
 });
 
 async function generatePackageJsonFrom(

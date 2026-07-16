@@ -8,7 +8,7 @@ import { expect, test } from 'vitest';
 const packageDirPath = path.resolve(import.meta.dirname, '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
 
-test('applying wbfy keeps a small yarn project clean after rerunning cleanup', { timeout: 300 * 1000 }, () => {
+test('applying wbfy keeps a small project clean after rerunning cleanup', { timeout: 300 * 1000 }, () => {
   ensureBuiltCli();
 
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
@@ -26,7 +26,7 @@ test('applying wbfy keeps a small yarn project clean after rerunning cleanup', {
       LEFTHOOK: '0',
     });
 
-    runCommand('yarn', ['cleanup'], tempDirPath, {
+    runCommand('bun', ['run', 'cleanup'], tempDirPath, {
       HUSKY: '0',
       LEFTHOOK: '0',
     });
@@ -45,7 +45,7 @@ test('applying wbfy keeps a small yarn project clean after rerunning cleanup', {
 function ensureBuiltCli(): void {
   if (isDistUpToDate()) return;
 
-  const buildResult = child_process.spawnSync('yarn', ['build'], {
+  const buildResult = child_process.spawnSync('bun', ['run', 'build'], {
     cwd: packageDirPath,
     encoding: 'utf8',
   });
@@ -126,8 +126,8 @@ function describeCommandFailure(
     `stdout:\n${result.stdout}`,
     `stderr:\n${result.stderr}`,
     describeGeneratedFile(cwd, 'package.json'),
-    describeGeneratedFile(cwd, '.yarnrc.yml'),
-    describeGeneratedFile(cwd, 'yarn.lock'),
+    describeGeneratedFile(cwd, 'bunfig.toml'),
+    describeGeneratedFile(cwd, 'mise.toml'),
   ].join('\n\n');
 }
 
