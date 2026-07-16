@@ -8,12 +8,7 @@ import dotenv from 'dotenv';
 import type sodiumModule from 'libsodium-wrappers';
 import { parse } from 'smol-toml';
 
-import {
-  FNOX_AGE_RECIPIENTS,
-  hasFnoxSyncFailed,
-  listFnoxTomlDirPaths,
-  readFnoxProfileNames,
-} from '../generators/fnoxToml.js';
+import { FNOX_AGE_RECIPIENTS, hasFnoxSyncFailed } from '../generators/fnoxToml.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -48,36 +43,47 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     process.exitCode = 1;
     return;
   }
-  const fnoxTomlPath = path.resolve(config.dirPath, 'fnox.toml');
-  const usesFnox = fs.existsSync(fnoxTomlPath);
+  const octokit = getOctokit(owner);
+  // GitHub repository secrets are repository-wide and CI checks out the remote default branch,
+  // so every fnox decision below is made from the REMOTE default-branch contents, not the local
+  // working tree: verifying a local (or pushed-feature-branch, or fork) migration would rotate
+  // the key before compatible ciphertext reaches the branch CI actually runs against.
+  const remoteFnoxContents = await fetchDefaultBranchFnoxConfigs(octokit, owner, repo);
+  const localUsesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
   let secretsToUpload: Record<string, string>;
   let obsoleteSecretNames: string[];
-  if (usesFnox) {
+  if (localUsesFnox || remoteFnoxContents.size > 0) {
     // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
     // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
     // identity (never the personal one) and NEVER written anywhere inside the repository.
-    // Parse the TOML instead of searching the raw text: a recipient mentioned only in a comment
-    // must not count. This also catches the case where generateFnoxToml failed earlier. Check
-    // every fnox.toml in the repository, not just the root one: a workspace package's config
-    // overrides the root via fnox's hierarchical loading.
-    const managedDirPaths = listFnoxTomlDirPaths(config.dirPath);
-    if (!managedDirPaths.includes(path.resolve(config.dirPath))) {
-      // A gitignored fnox.toml never reaches CI checkouts, so CI has no use for the shared key
-      // — and the decryptability checks below would silently verify nothing.
+    const unsupportedPaths = [...remoteFnoxContents.keys()].filter((relPath) => path.basename(relPath) !== 'fnox.toml');
+    if (unsupportedPaths.length > 0) {
       console.error(
-        `Skip uploading FNOX_AGE_KEY because ${fnoxTomlPath} is invisible to git (gitignored?). Commit it or remove it.`
+        `Skip uploading FNOX_AGE_KEY because the default branch of ${owner}/${repo} contains unsupported fnox config files: ${unsupportedPaths.join(', ')}. Merge them into the adjacent fnox.toml.`
       );
       process.exitCode = 1;
       return;
     }
-    for (const dirPath of managedDirPaths) {
-      const tomlPath = path.resolve(dirPath, 'fnox.toml');
-      const recipients = readFnoxAgeRecipients(tomlPath);
+    const rootContent = remoteFnoxContents.get('fnox.toml');
+    if (!rootContent) {
+      console.error(
+        `Skip uploading FNOX_AGE_KEY because the default branch of ${owner}/${repo} has no root fnox.toml. Merge and push the fnox migration to the default branch, then rerun wbfy --env.`
+      );
+      process.exitCode = 1;
+      return;
+    }
+    // Parse the TOML instead of searching the raw text: a recipient mentioned only in a comment
+    // must not count. Check every fnox.toml, not just the root one: a nested config overrides
+    // the root via fnox's hierarchical loading.
+    for (const [relPath, content] of remoteFnoxContents) {
+      const recipients = readFnoxAgeRecipients(content);
       // A nested config without its own age provider inherits the root one; only the root
       // fnox.toml must declare it.
       if (!recipients) {
-        if (tomlPath === fnoxTomlPath) {
-          console.error(`Skip uploading FNOX_AGE_KEY because ${tomlPath} declares no [providers.age] table.`);
+        if (relPath === 'fnox.toml') {
+          console.error(
+            `Skip uploading FNOX_AGE_KEY because fnox.toml on the default branch declares no [providers.age] table.`
+          );
           process.exitCode = 1;
           return;
         }
@@ -86,23 +92,13 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !recipients.has(recipient.publicKey));
       if (missingRecipients.length > 0) {
         console.error(
-          `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in ${tomlPath} misses the following age public keys (generateFnoxToml should have added them): ${missingRecipients
+          `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in ${relPath} on the default branch misses the following age public keys: ${missingRecipients
             .map((recipient) => recipient.publicKey)
-            .join(', ')}`
+            .join(', ')}. Merge and push the wbfy migration, then rerun wbfy --env.`
         );
         process.exitCode = 1;
         return;
       }
-    }
-    // Rotating the repository key while the (re-encrypted) fnox configs exist only locally would
-    // break CI immediately: the remote branch still holds ciphertext for the old key.
-    const unsyncedReason = findUnsyncedFnoxChanges(config.dirPath);
-    if (unsyncedReason) {
-      console.error(
-        `Skip uploading FNOX_AGE_KEY because the fnox configs have not reached the remote yet (${unsyncedReason}). Commit and push them, then rerun wbfy --env.`
-      );
-      process.exitCode = 1;
-      return;
     }
     const ageKey = readCiAgeSecretKey();
     if (!ageKey) {
@@ -111,8 +107,8 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     }
     // Matching recipients do not prove the committed ciphertexts were actually re-encrypted for
     // the CI key (e.g. someone hand-added the recipient without `fnox reencrypt`), so decrypt
-    // every age secret with ONLY the CI key before replacing the repository secret.
-    if (!verifyCiKeyDecryptsAllSecrets(config.dirPath, ageKey)) {
+    // every age secret of the default branch with ONLY the CI key before replacing the secret.
+    if (!verifyCiKeyDecryptsAllSecrets(remoteFnoxContents, ageKey)) {
       process.exitCode = 1;
       return;
     }
@@ -128,8 +124,6 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     // when there are no replacement secrets to upload — so no early return on an empty .env.
     obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'FNOX_AGE_KEY'];
   }
-
-  const octokit = getOctokit(owner);
 
   if (Object.keys(secretsToUpload).length > 0) {
     // Requires Secrets permission
@@ -183,55 +177,60 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   }
 }
 
-// Returns why the repository's fnox configs are not fully on the remote yet (uncommitted or
-// unpushed changes), or undefined when they are. Fails closed: an unanswerable git query counts
-// as "not synced" because uploading a rotated key against unknown remote ciphertext breaks CI.
-function findUnsyncedFnoxChanges(rootDirPath: string): string | undefined {
-  const statusProc = child_process.spawnSync('git', ['status', '--porcelain', '--', '*fnox*.toml'], {
-    cwd: rootDirPath,
-    encoding: 'utf8',
-    stdio: 'pipe',
+// Fetches the content of every fnox-like config file on the remote default branch, keyed by its
+// repository-relative path.
+async function fetchDefaultBranchFnoxConfigs(
+  octokit: ReturnType<typeof getOctokit>,
+  owner: string,
+  repo: string
+): Promise<Map<string, string>> {
+  const repoResponse = await octokit.request('GET /repos/{owner}/{repo}', { owner, repo });
+  const defaultBranch = repoResponse.data.default_branch;
+  const treeResponse = await octokit.request('GET /repos/{owner}/{repo}/git/trees/{tree_sha}', {
+    owner,
+    repo,
+    tree_sha: defaultBranch,
+    recursive: '1',
   });
-  if (statusProc.status !== 0) {
-    return `git status failed: ${(statusProc.stderr || statusProc.error?.message || '').trim()}`;
+  // Fail closed: a truncated tree could hide a fnox config whose ciphertext was never verified.
+  if (treeResponse.data.truncated) {
+    throw new Error(`The git tree of ${owner}/${repo}@${defaultBranch} is too large to enumerate fnox configs.`);
   }
-  if (statusProc.stdout.trim()) {
-    return `uncommitted changes in ${statusProc.stdout.trim().split('\n').join(', ')}`;
+  const contents = new Map<string, string>();
+  for (const entry of treeResponse.data.tree) {
+    const entryPath = entry.path ?? '';
+    if (entry.type !== 'blob' || !/^\.?fnox(\..+)?\.toml$/u.test(path.basename(entryPath))) continue;
+    const fileResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner,
+      repo,
+      path: entryPath,
+      ref: defaultBranch,
+      headers: { accept: 'application/vnd.github.raw+json' },
+    });
+    contents.set(entryPath, fileResponse.data as unknown as string);
   }
-  const diffProc = child_process.spawnSync('git', ['diff', '--name-only', '@{upstream}', 'HEAD', '--', '*fnox*.toml'], {
-    cwd: rootDirPath,
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
-  if (diffProc.status !== 0) {
-    return `no pushed upstream branch to compare against: ${(diffProc.stderr || diffProc.error?.message || '').trim()}`;
-  }
-  if (diffProc.stdout.trim()) {
-    return `changes not on the upstream branch in ${diffProc.stdout.trim().split('\n').join(', ')}`;
-  }
-  return undefined;
+  return contents;
 }
 
-// Proves the CI key alone can decrypt every committed age secret by running a REAL
-// `fnox reencrypt` on a temporary copy of the repository's fnox.toml files with ONLY the CI
-// identity available (isolated HOME, all FNOX_* variables stripped, fnox.local.toml not copied so
-// local overrides cannot shadow committed secrets). Unlike `fnox export`, reencrypt fails loudly
-// on an undecryptable ciphertext even when the secret declares a plaintext `default` fallback,
-// and it covers secrets excluded from exports (e.g. `env = false`). Mutations stay in the copy.
-function verifyCiKeyDecryptsAllSecrets(rootDirPath: string, ciAgeKey: string): boolean {
-  // The copy must live OUTSIDE the repository (not in <repo>/.tmp): fnox searches parent
-  // directories for configs, so a copy inside the repository would hierarchically merge the
+// Proves the CI key alone can decrypt every age secret of the given (remote default-branch) fnox
+// configs by running a REAL `fnox reencrypt` on a temporary mirror of them with ONLY the CI
+// identity available (isolated HOME, all FNOX_* variables stripped; fnox.local.toml is local-only
+// and never part of the mirror). Unlike `fnox export`, reencrypt fails loudly on an undecryptable
+// ciphertext even when the secret declares a plaintext `default` fallback, and it covers secrets
+// excluded from exports (e.g. `env = false`). Mutations stay in the mirror.
+function verifyCiKeyDecryptsAllSecrets(fnoxContents: Map<string, string>, ciAgeKey: string): boolean {
+  // The mirror must live OUTSIDE any repository (not in <repo>/.tmp): fnox searches parent
+  // directories for configs, so a mirror inside the repository would hierarchically merge the
   // repository's real fnox.toml and break the isolation this check depends on.
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-ci-age-'));
   const tempRepoDirPath = path.join(tempDirPath, 'repo');
   const emptyHomeDirPath = path.join(tempDirPath, 'home');
   try {
     fs.mkdirSync(emptyHomeDirPath, { recursive: true });
-    const dirPaths = listFnoxTomlDirPaths(rootDirPath);
-    for (const dirPath of dirPaths) {
-      const tempConfigDirPath = path.join(tempRepoDirPath, path.relative(rootDirPath, dirPath));
-      fs.mkdirSync(tempConfigDirPath, { recursive: true });
-      fs.copyFileSync(path.resolve(dirPath, 'fnox.toml'), path.join(tempConfigDirPath, 'fnox.toml'));
+    for (const [relPath, content] of fnoxContents) {
+      const filePath = path.join(tempRepoDirPath, relPath);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      fs.writeFileSync(filePath, content);
     }
     const env = {
       ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('FNOX_'))),
@@ -239,9 +238,10 @@ function verifyCiKeyDecryptsAllSecrets(rootDirPath: string, ciAgeKey: string): b
       HOME: emptyHomeDirPath,
       XDG_CONFIG_HOME: emptyHomeDirPath,
     };
-    for (const dirPath of dirPaths) {
-      const tempConfigDirPath = path.join(tempRepoDirPath, path.relative(rootDirPath, dirPath));
-      const profileArgsList = [[], ...readFnoxProfileNames(dirPath).map((name) => ['--no-defaults', '-P', name])];
+    for (const [relPath, content] of fnoxContents) {
+      const tempConfigDirPath = path.join(tempRepoDirPath, path.dirname(relPath));
+      const profileNames = Object.keys((parse(content) as { profiles?: Record<string, unknown> }).profiles ?? {});
+      const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', '-P', name])];
       for (const profileArgs of profileArgsList) {
         const proc = child_process.spawnSync(
           'fnox',
@@ -250,10 +250,7 @@ function verifyCiKeyDecryptsAllSecrets(rootDirPath: string, ciAgeKey: string): b
         );
         if (proc.status !== 0) {
           console.error(
-            `Skip uploading FNOX_AGE_KEY because the CI age key cannot decrypt every secret governed by ${path.resolve(
-              dirPath,
-              'fnox.toml'
-            )}. Run \`fnox reencrypt\` with the full recipient list and rerun wbfy. fnox reported:\n${(proc.stderr || proc.error?.message || '').trim()}`
+            `Skip uploading FNOX_AGE_KEY because the CI age key cannot decrypt every secret governed by ${relPath} on the default branch. Run \`fnox reencrypt\` with the full recipient list, push, and rerun wbfy --env. fnox reported:\n${(proc.stderr || proc.error?.message || '').trim()}`
           );
           return false;
         }
@@ -265,16 +262,16 @@ function verifyCiKeyDecryptsAllSecrets(rootDirPath: string, ciAgeKey: string): b
   }
 }
 
-function readFnoxAgeRecipients(fnoxTomlPath: string): Set<string> | undefined {
+function readFnoxAgeRecipients(fnoxTomlContent: string): Set<string> | undefined {
   try {
-    const settings = parse(fs.readFileSync(fnoxTomlPath, 'utf8')) as {
+    const settings = parse(fnoxTomlContent) as {
       providers?: Record<string, Record<string, unknown> | undefined>;
     };
     if (!settings.providers?.age) return undefined;
     const recipients = settings.providers.age.recipients;
     return new Set(Array.isArray(recipients) ? recipients.filter((r): r is string => typeof r === 'string') : []);
   } catch {
-    // An unreadable or unparsable fnox.toml yields no recipients, so the caller reports an error.
+    // An unparsable fnox.toml yields no recipients, so the caller reports an error.
     return new Set();
   }
 }

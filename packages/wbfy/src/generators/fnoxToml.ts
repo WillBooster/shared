@@ -68,14 +68,6 @@ function listFnoxLikeFilePaths(rootDirPath: string): string[] {
     .map((line) => path.resolve(rootDirPath, line));
 }
 
-/** Reads the profile names declared in a fnox.toml (empty when the file is absent). */
-export function readFnoxProfileNames(dirPath: string): string[] {
-  const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
-  if (!fs.existsSync(fnoxTomlPath)) return [];
-  const settings = parse(fs.readFileSync(fnoxTomlPath, 'utf8')) as FnoxToml;
-  return Object.keys(settings.profiles ?? {});
-}
-
 /**
  * Synchronizes the age recipients in every fnox.toml with FNOX_AGE_RECIPIENTS and re-encrypts the
  * committed secrets when the recipient set changed.
@@ -96,8 +88,12 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
             `Failed to synchronize fnox age recipients because fnox configs exist without a root fnox.toml: ${strayFilePaths.join(', ')}. Add a root fnox.toml.`
           );
         }
-      } catch {
-        // Without git information there is nothing fnox-managed to protect here.
+      } catch (error) {
+        // Fail closed: without git information a nested-only fnox layout cannot be ruled out, and
+        // setupSecrets would otherwise take the dotenv path and delete FNOX_AGE_KEY.
+        failFnoxSync(
+          `Failed to check for nested fnox configs due to: ${(error as Error | undefined)?.message ?? error}`
+        );
       }
       return;
     }
@@ -142,34 +138,60 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         snapshots.set(fnoxTomlPath, fs.readFileSync(fnoxTomlPath, 'utf8'));
       }
 
+      // The in-memory snapshots do not survive a killed process, so a durable on-disk marker is
+      // written before the first mutation and removed only when the tree is consistent again; a
+      // leftover marker forces a full re-encryption on the next run (recipients may already look
+      // current while some ciphertexts were never re-encrypted).
+      migrationMarkerPath = path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-migration-marker');
+      const interrupted = fs.existsSync(migrationMarkerPath);
+
       // Sorted order processes ancestors before descendants, so configs inheriting an updated
       // provider re-encrypt against the already-updated recipients.
       const changedDirPaths: string[] = [];
       let anyFailed = false;
       for (const dirPath of dirPaths) {
         const ancestorChanged = changedDirPaths.some((changedDirPath) => dirPath.startsWith(changedDirPath + path.sep));
-        const result = await synchronizeFnoxAgeRecipients(dirPath, dirPath === rootDirPath, ancestorChanged);
+        const result = await synchronizeFnoxAgeRecipients(
+          dirPath,
+          dirPath === rootDirPath,
+          ancestorChanged,
+          interrupted
+        );
         if (result === 'changed') changedDirPaths.push(dirPath);
         anyFailed ||= result === 'failed';
       }
-      if (anyFailed && changedDirPaths.length > 0) {
-        restoreSnapshots(snapshots);
-      }
+      const restored = anyFailed && changedDirPaths.length > 0 ? restoreSnapshots(snapshots) : true;
+      if (restored) fs.rmSync(migrationMarkerPath, { force: true });
     } catch (error) {
-      restoreSnapshots(snapshots);
+      if (restoreSnapshots(snapshots) && migrationMarkerPath) {
+        fs.rmSync(migrationMarkerPath, { force: true });
+      }
       failFnoxSync(`Failed to synchronize fnox age recipients due to: ${(error as Error | undefined)?.stack ?? error}`);
+    } finally {
+      migrationMarkerPath = undefined;
     }
   });
 }
 
-function restoreSnapshots(snapshots: Map<string, string>): void {
+let migrationMarkerPath: string | undefined;
+
+function writeMigrationMarker(): void {
+  if (!migrationMarkerPath || fs.existsSync(migrationMarkerPath)) return;
+  fs.mkdirSync(path.dirname(migrationMarkerPath), { recursive: true });
+  fs.writeFileSync(migrationMarkerPath, 'wbfy fnox migration in progress; a leftover marker forces re-encryption\n');
+}
+
+function restoreSnapshots(snapshots: Map<string, string>): boolean {
+  let succeeded = true;
   for (const [filePath, content] of snapshots) {
     try {
       fs.writeFileSync(filePath, content);
     } catch (error) {
       failFnoxSync(`Failed to restore ${filePath} after a failed migration: ${error}`);
+      succeeded = false;
     }
   }
+  return succeeded;
 }
 
 function failFnoxSync(message: string): void {
@@ -181,7 +203,8 @@ function failFnoxSync(message: string): void {
 async function synchronizeFnoxAgeRecipients(
   dirPath: string,
   isRoot: boolean,
-  ancestorRecipientsChanged: boolean
+  ancestorRecipientsChanged: boolean,
+  forceReencrypt: boolean
 ): Promise<'changed' | 'unchanged' | 'failed'> {
   const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
 
@@ -256,11 +279,14 @@ async function synchronizeFnoxAgeRecipients(
   // nested config's own ciphertexts still must be re-encrypted whenever an ancestor's recipients
   // changed, and that only happens when `fnox reencrypt` runs from the nested directory.
   if (!isRoot && !settings.providers?.age) {
-    if ((ancestorRecipientsChanged || recoveredLocalBackup) && !reencryptFnoxSecrets(dirPath, profileNames)) {
-      failFnoxSync(
-        `Failed to re-encrypt fnox secrets in ${dirPath} for the updated recipients. Fix the error and rerun wbfy.`
-      );
-      return 'failed';
+    if (ancestorRecipientsChanged || recoveredLocalBackup || forceReencrypt) {
+      writeMigrationMarker();
+      if (!reencryptFnoxSecrets(dirPath, profileNames)) {
+        failFnoxSync(
+          `Failed to re-encrypt fnox secrets in ${dirPath} for the updated recipients. Fix the error and rerun wbfy.`
+        );
+        return 'failed';
+      }
     }
     return 'unchanged';
   }
@@ -271,11 +297,17 @@ async function synchronizeFnoxAgeRecipients(
     currentRecipients.size === FNOX_AGE_RECIPIENTS.length &&
     FNOX_AGE_RECIPIENTS.every((recipient) => currentRecipients.has(recipient.publicKey))
   ) {
-    if (recoveredLocalBackup && !reencryptFnoxSecrets(dirPath, profileNames)) {
-      failFnoxSync(
-        `Failed to re-encrypt fnox secrets in ${dirPath} after an interrupted earlier run. Fix the error and rerun wbfy.`
-      );
-      return 'failed';
+    if (recoveredLocalBackup || forceReencrypt) {
+      writeMigrationMarker();
+      if (!reencryptFnoxSecrets(dirPath, profileNames)) {
+        failFnoxSync(
+          `Failed to re-encrypt fnox secrets in ${dirPath} after an interrupted earlier run. Fix the error and rerun wbfy.`
+        );
+        return 'failed';
+      }
+      // Report 'changed' so that descendant configs inheriting this provider re-encrypt too: the
+      // interrupted run may have stopped before reaching them.
+      return 'changed';
     }
     return 'unchanged';
   }
@@ -292,6 +324,7 @@ async function synchronizeFnoxAgeRecipients(
   ) {
     throw new Error(`Rewriting the age recipients in ${fnoxTomlPath} did not take effect; update them manually.`);
   }
+  writeMigrationMarker();
   await fsUtil.generateFile(fnoxTomlPath, updatedContent);
 
   if (!reencryptFnoxSecrets(dirPath, profileNames)) {
@@ -390,7 +423,10 @@ function replaceAgeRecipients(content: string): string {
   // Standard form: a [providers.age] table (possibly with a trailing comment). Scan line-wise so
   // that a `[` inside a comment or a string never terminates the table early; the table ends at
   // the next line-start table header. The assignment match is line-anchored so a commented-out
-  // `# recipients = [...]` is never mistaken for the real one.
+  // `# recipients = [...]` is never mistaken for the real one. Known accepted limitation: a `]`
+  // inside a comment within a multiline recipients array defeats the match — the re-parse
+  // validation in the caller then fails the run safely with instructions instead of corrupting
+  // the file.
   const lines = content.split('\n');
   const headerIndex = lines.findIndex((line) => /^\s*\[\s*providers\.age\s*\]\s*(?:#.*)?$/u.test(line));
   if (headerIndex !== -1) {
