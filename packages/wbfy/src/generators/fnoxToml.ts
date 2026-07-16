@@ -154,10 +154,7 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
       for (const dirPath of dirPaths) {
         const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
         const realPath = fs.realpathSync(fnoxTomlPath);
-        if (
-          fs.lstatSync(fnoxTomlPath).isSymbolicLink() ||
-          (realPath !== path.join(realRootDirPath, 'fnox.toml') && !realPath.startsWith(realRootDirPath + path.sep))
-        ) {
+        if (fs.lstatSync(fnoxTomlPath).isSymbolicLink() || !realPath.startsWith(realRootDirPath + path.sep)) {
           failFnoxSync(
             `Failed to synchronize fnox age recipients because ${fnoxTomlPath} is a symlink or resolves outside the repository (${realPath}). Replace it with a regular in-repository file.`
           );
