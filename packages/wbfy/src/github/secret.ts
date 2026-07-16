@@ -41,6 +41,13 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
 }
 
 async function uploadSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
+  // Covers the dotenv path too: a failed synchronization may mean an unsupported fnox layout
+  // (e.g. nested configs without a root fnox.toml) whose FNOX_AGE_KEY must not be deleted.
+  if (hasFnoxSyncFailed()) {
+    console.error('Skip uploading secrets because synchronizing the fnox age recipients failed earlier in this run.');
+    process.exitCode = 1;
+    return;
+  }
   const fnoxTomlPath = path.resolve(config.dirPath, 'fnox.toml');
   const usesFnox = fs.existsSync(fnoxTomlPath);
   let secretsToUpload: Record<string, string>;
@@ -49,13 +56,6 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
     // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
     // identity (never the personal one) and NEVER written anywhere inside the repository.
-    if (hasFnoxSyncFailed()) {
-      console.error(
-        'Skip uploading FNOX_AGE_KEY because synchronizing the fnox age recipients failed earlier in this run.'
-      );
-      process.exitCode = 1;
-      return;
-    }
     // Parse the TOML instead of searching the raw text: a recipient mentioned only in a comment
     // must not count. This also catches the case where generateFnoxToml failed earlier. Check
     // every fnox.toml in the repository, not just the root one: a workspace package's config
@@ -93,6 +93,16 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
         process.exitCode = 1;
         return;
       }
+    }
+    // Rotating the repository key while the (re-encrypted) fnox configs exist only locally would
+    // break CI immediately: the remote branch still holds ciphertext for the old key.
+    const unsyncedReason = findUnsyncedFnoxChanges(config.dirPath);
+    if (unsyncedReason) {
+      console.error(
+        `Skip uploading FNOX_AGE_KEY because the fnox configs have not reached the remote yet (${unsyncedReason}). Commit and push them, then rerun wbfy --env.`
+      );
+      process.exitCode = 1;
+      return;
     }
     const ageKey = readCiAgeSecretKey();
     if (!ageKey) {
@@ -171,6 +181,35 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       process.exitCode = 1;
     }
   }
+}
+
+// Returns why the repository's fnox configs are not fully on the remote yet (uncommitted or
+// unpushed changes), or undefined when they are. Fails closed: an unanswerable git query counts
+// as "not synced" because uploading a rotated key against unknown remote ciphertext breaks CI.
+function findUnsyncedFnoxChanges(rootDirPath: string): string | undefined {
+  const statusProc = child_process.spawnSync('git', ['status', '--porcelain', '--', '*fnox*.toml'], {
+    cwd: rootDirPath,
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+  if (statusProc.status !== 0) {
+    return `git status failed: ${(statusProc.stderr || statusProc.error?.message || '').trim()}`;
+  }
+  if (statusProc.stdout.trim()) {
+    return `uncommitted changes in ${statusProc.stdout.trim().split('\n').join(', ')}`;
+  }
+  const diffProc = child_process.spawnSync('git', ['diff', '--name-only', '@{upstream}', 'HEAD', '--', '*fnox*.toml'], {
+    cwd: rootDirPath,
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+  if (diffProc.status !== 0) {
+    return `no pushed upstream branch to compare against: ${(diffProc.stderr || diffProc.error?.message || '').trim()}`;
+  }
+  if (diffProc.stdout.trim()) {
+    return `changes not on the upstream branch in ${diffProc.stdout.trim().split('\n').join(', ')}`;
+  }
+  return undefined;
 }
 
 // Proves the CI key alone can decrypt every committed age secret by running a REAL

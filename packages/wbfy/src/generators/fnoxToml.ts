@@ -50,9 +50,11 @@ export function listFnoxTomlDirPaths(rootDirPath: string): string[] {
 }
 
 function listFnoxLikeFilePaths(rootDirPath: string): string[] {
+  // -z prints NUL-delimited verbatim paths; without it, core.quotePath C-quotes non-ASCII paths
+  // (e.g. "\346\227\245..."), which would make the basename filter silently skip those configs.
   const proc = child_process.spawnSync(
     'git',
-    ['ls-files', '--cached', '--others', '--exclude-standard', '--', '*fnox*.toml'],
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*fnox*.toml'],
     { cwd: rootDirPath, encoding: 'utf8', stdio: 'pipe' }
   );
   // Fail closed: treating a git failure as "no fnox configs" would skip synchronization and let
@@ -61,7 +63,7 @@ function listFnoxLikeFilePaths(rootDirPath: string): string[] {
     throw new Error(`git ls-files failed in ${rootDirPath}: ${(proc.stderr || proc.error?.message || '').trim()}`);
   }
   return proc.stdout
-    .split('\n')
+    .split('\0')
     .filter((line) => /^\.?fnox(\..+)?\.toml$/u.test(path.basename(line)))
     .map((line) => path.resolve(rootDirPath, line));
 }
@@ -84,7 +86,21 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
     // invocation, and an earlier repository's failure must not veto a later repository's upload.
     fnoxSyncFailed = false;
     const rootDirPath = path.resolve(rootConfig.dirPath);
-    if (!fs.existsSync(path.resolve(rootDirPath, 'fnox.toml'))) return;
+    if (!fs.existsSync(path.resolve(rootDirPath, 'fnox.toml'))) {
+      // A nested-only fnox layout is unsupported: setupSecrets would take the dotenv path and
+      // delete FNOX_AGE_KEY even though the nested config's CI still needs it.
+      try {
+        const strayFilePaths = listFnoxLikeFilePaths(rootDirPath);
+        if (strayFilePaths.length > 0) {
+          failFnoxSync(
+            `Failed to synchronize fnox age recipients because fnox configs exist without a root fnox.toml: ${strayFilePaths.join(', ')}. Add a root fnox.toml.`
+          );
+        }
+      } catch {
+        // Without git information there is nothing fnox-managed to protect here.
+      }
+      return;
+    }
     // The migration is transactional over every managed fnox.toml: reruns must retry from the
     // original state, and a partially migrated tree could otherwise become undecryptable for the
     // identity performing a later retry (e.g. when a recipient is being removed).
