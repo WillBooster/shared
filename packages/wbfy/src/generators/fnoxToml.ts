@@ -445,7 +445,6 @@ function readPersonalAgeSecretKey(): string | undefined {
  */
 function withFnoxLocalsHidden<T>(rootDirPath: string, dirPaths: string[], func: () => T): T {
   const hiddenDirPaths: string[] = [];
-  const conflictingLocalPaths: string[] = [];
   try {
     for (const dirPath of dirPaths) {
       recoverStaleFnoxLocalBackup(rootDirPath, dirPath);
@@ -457,28 +456,41 @@ function withFnoxLocalsHidden<T>(rootDirPath: string, dirPaths: string[], func: 
         hiddenDirPaths.push(dirPath);
       }
     }
-    return func();
-  } finally {
-    for (const dirPath of hiddenDirPaths) {
-      const localPath = path.resolve(dirPath, 'fnox.local.toml');
-      // Never clobber a fnox.local.toml recreated (e.g. by an editor) while fnox was running;
-      // keep the backup and let the user merge manually.
-      if (fs.existsSync(localPath)) {
-        conflictingLocalPaths.push(localPath);
-        continue;
-      }
-      fs.renameSync(fnoxLocalBackupPath(rootDirPath, dirPath), localPath);
+    const result = func();
+    // A restoration conflict throws here and thereby invalidates the seemingly successful result:
+    // a recreated override may have shadowed committed secrets during the fnox run, so the outer
+    // transaction must restore every committed fnox.toml instead of committing the migration.
+    restoreHiddenFnoxLocals(rootDirPath, hiddenDirPaths);
+    return result;
+  } catch (error) {
+    // The original failure must win; a restoration conflict on this path is only reported so it
+    // cannot mask the root cause.
+    try {
+      restoreHiddenFnoxLocals(rootDirPath, hiddenDirPaths);
+    } catch (restoreError) {
+      failFnoxSync((restoreError as Error | undefined)?.message ?? String(restoreError));
     }
-    if (conflictingLocalPaths.length > 0) {
-      // A recreated override may have shadowed committed secrets and invalidated fnox's work, so
-      // the whole operation must fail (the outer transaction restores every committed fnox.toml
-      // and keeps the marker semantics); reporting alone would let a seemingly successful
-      // re-encryption commit the migration.
-      // eslint-disable-next-line no-unsafe-finally -- the successful return value must be discarded because the re-encryption result is invalid.
-      throw new Error(
-        `The following fnox.local.toml files were recreated while fnox was running (original files are preserved under ${path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-local-backup')} — merge them manually): ${conflictingLocalPaths.join(', ')}`
-      );
+    throw error;
+  }
+}
+
+// Moves the hidden fnox.local.toml files back, clearing the given list so a second call is a
+// no-op. Never clobbers a fnox.local.toml recreated (e.g. by an editor) while fnox was running:
+// the backup is kept and reported for a manual merge.
+function restoreHiddenFnoxLocals(rootDirPath: string, hiddenDirPaths: string[]): void {
+  const conflictingLocalPaths: string[] = [];
+  for (const dirPath of hiddenDirPaths.splice(0)) {
+    const localPath = path.resolve(dirPath, 'fnox.local.toml');
+    if (fs.existsSync(localPath)) {
+      conflictingLocalPaths.push(localPath);
+      continue;
     }
+    fs.renameSync(fnoxLocalBackupPath(rootDirPath, dirPath), localPath);
+  }
+  if (conflictingLocalPaths.length > 0) {
+    throw new Error(
+      `The following fnox.local.toml files were recreated while fnox was running (original files are preserved under ${path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-local-backup')} — merge them manually): ${conflictingLocalPaths.join(', ')}`
+    );
   }
 }
 

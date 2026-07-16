@@ -282,6 +282,43 @@ async function fetchDefaultBranchFnoxConfigs(
   return { commitSha, contents, defaultBranch };
 }
 
+function readCiAgeSecretKey(): string | undefined {
+  // The CI-dedicated identity is separate from the personal one (~/.config/fnox/age.txt) so that
+  // the personal key never leaves the local machine and the CI key can be rotated independently.
+  const identityPath = path.join(os.homedir(), '.config', 'fnox', 'ci-age.txt');
+  let content: string;
+  try {
+    content = fs.readFileSync(identityPath, 'utf8');
+  } catch {
+    console.error(
+      `Failed to upload FNOX_AGE_KEY because ${identityPath} is missing. Copy the existing CI age identity from the team credential store to that path (run \`mkdir -p ~/.config/fnox\` first); the personal ~/.config/fnox/age.txt is deliberately not used. Generate a brand-new identity with age-keygen only when rotating the CI key, and register its public key in FNOX_AGE_RECIPIENTS.`
+    );
+    return undefined;
+  }
+  // Require the `# public key:` comment (age-keygen always writes it) and verify it against the
+  // CI entry exactly: skipping the check when the comment is absent would let a hand-assembled
+  // file containing an arbitrary private key be uploaded unverified, and matching any recipient
+  // would let a personal identity copied to this path leak to every repository's CI.
+  const ciPublicKey = FNOX_AGE_RECIPIENTS.find((recipient) => recipient.name === 'ci')?.publicKey ?? '';
+  // Compare the whole trimmed comment value, not a substring match: a personal identity whose
+  // comment merely mentions the CI key must not pass.
+  const lines = content.split('\n');
+  const publicKeyLine = lines.find((line) => line.includes('public key:'));
+  const commentedPublicKey = publicKeyLine?.split('public key:')[1]?.trim();
+  if (!ciPublicKey || commentedPublicKey !== ciPublicKey) {
+    console.error(
+      `Failed to upload FNOX_AGE_KEY because the \`# public key:\` comment in ${identityPath} is missing or differs from the CI age public key (${ciPublicKey}), so the file does not hold the CI-dedicated identity.`
+    );
+    return undefined;
+  }
+  const keyLine = lines.find((line) => line.trim().startsWith('AGE-SECRET-KEY-'));
+  if (!keyLine) {
+    console.error(`Failed to upload FNOX_AGE_KEY because ${identityPath} contains no AGE-SECRET-KEY line.`);
+    return undefined;
+  }
+  return keyLine.trim();
+}
+
 // Proves the CI key alone can decrypt every age secret of the given (remote default-branch) fnox
 // configs by running a REAL `fnox reencrypt` on a temporary mirror of them with ONLY the CI
 // identity available (isolated HOME, all FNOX_* variables stripped; fnox.local.toml is local-only
@@ -337,43 +374,6 @@ function verifyCiKeyDecryptsAllSecrets(
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
-}
-
-function readCiAgeSecretKey(): string | undefined {
-  // The CI-dedicated identity is separate from the personal one (~/.config/fnox/age.txt) so that
-  // the personal key never leaves the local machine and the CI key can be rotated independently.
-  const identityPath = path.join(os.homedir(), '.config', 'fnox', 'ci-age.txt');
-  let content: string;
-  try {
-    content = fs.readFileSync(identityPath, 'utf8');
-  } catch {
-    console.error(
-      `Failed to upload FNOX_AGE_KEY because ${identityPath} is missing. Copy the existing CI age identity from the team credential store to that path (run \`mkdir -p ~/.config/fnox\` first); the personal ~/.config/fnox/age.txt is deliberately not used. Generate a brand-new identity with age-keygen only when rotating the CI key, and register its public key in FNOX_AGE_RECIPIENTS.`
-    );
-    return undefined;
-  }
-  // Require the `# public key:` comment (age-keygen always writes it) and verify it against the
-  // CI entry exactly: skipping the check when the comment is absent would let a hand-assembled
-  // file containing an arbitrary private key be uploaded unverified, and matching any recipient
-  // would let a personal identity copied to this path leak to every repository's CI.
-  const ciPublicKey = FNOX_AGE_RECIPIENTS.find((recipient) => recipient.name === 'ci')?.publicKey ?? '';
-  // Compare the whole trimmed comment value, not a substring match: a personal identity whose
-  // comment merely mentions the CI key must not pass.
-  const lines = content.split('\n');
-  const publicKeyLine = lines.find((line) => line.includes('public key:'));
-  const commentedPublicKey = publicKeyLine?.split('public key:')[1]?.trim();
-  if (!ciPublicKey || commentedPublicKey !== ciPublicKey) {
-    console.error(
-      `Failed to upload FNOX_AGE_KEY because the \`# public key:\` comment in ${identityPath} is missing or differs from the CI age public key (${ciPublicKey}), so the file does not hold the CI-dedicated identity.`
-    );
-    return undefined;
-  }
-  const keyLine = lines.find((line) => line.trim().startsWith('AGE-SECRET-KEY-'));
-  if (!keyLine) {
-    console.error(`Failed to upload FNOX_AGE_KEY because ${identityPath} contains no AGE-SECRET-KEY line.`);
-    return undefined;
-  }
-  return keyLine.trim();
 }
 
 function getSodium(): typeof sodiumModule {
