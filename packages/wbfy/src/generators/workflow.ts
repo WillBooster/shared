@@ -382,9 +382,10 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
   }
 }
 
-// The reusable workflows that declare FNOX_AGE_KEY under on.workflow_call.secrets
-// (see WillBooster/reusable-workflows). Passing the secret to any other callee is a GitHub error.
-const fnoxAwareReusableWorkflows = new Set(['autofix', 'deploy', 'gen-pr', 'release', 'run-script', 'test']);
+// The reusable workflows that declare FNOX_AGE_KEY and VERDACCIO_TOKEN under
+// on.workflow_call.secrets (see WillBooster/reusable-workflows). Passing either secret to any
+// other callee is a GitHub error.
+const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'gen-pr', 'release', 'run-script', 'test']);
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
@@ -403,12 +404,14 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@/u.exec(
     job.uses ?? ''
   )?.[1];
-  if (
-    fs.existsSync(path.resolve(config.dirPath, 'fnox.toml')) &&
-    calledReusableWorkflow &&
-    fnoxAwareReusableWorkflows.has(calledReusableWorkflow)
-  ) {
-    job.secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
+  if (calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
+    // The callee generates the workspace .npmrc for @willbooster-private/* from VERDACCIO_TOKEN
+    // before installing dependencies, which every repository needs regardless of its fnox
+    // migration state.
+    job.secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
+    if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
+      job.secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
+    }
   }
 
   if (job.secrets.FIREBASE_TOKEN) {
