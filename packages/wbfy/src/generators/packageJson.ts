@@ -1218,7 +1218,7 @@ function doesProductCodeImportMicromatch(dirPath: string): boolean {
 const workspacePackageDirsCache = new Map<string, Map<string, string>>();
 
 /** Map from each workspace package's name to its directory (relative to the monorepo root). */
-function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, string> {
+export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, string> {
   const cached = workspacePackageDirsCache.get(rootConfig.dirPath);
   if (cached) return cached;
 

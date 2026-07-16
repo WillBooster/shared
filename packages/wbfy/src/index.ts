@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
+import { ignoreErrorAsync } from '@willbooster/shared-lib/src';
 import semver from 'semver';
 import yargs from 'yargs';
 
@@ -25,7 +25,7 @@ import { generateGitignore } from './generators/gitignore.js';
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
-import { generatePackageJson } from './generators/packageJson.js';
+import { generatePackageJson, getWorkspacePackageDirs } from './generators/packageJson.js';
 import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
@@ -174,11 +174,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     // installs tolerate failures (spawnSync discards their status), so a layout that cannot
     // install would silently drop every managed dependency update for the rest of the run.
     if (!(await ensureInstallableBunLinker(rootDirPath, rootConfig, previousBunLinker))) {
-      console.error(`bun install fails in ${rootDirPath} under both the isolated and hoisted linkers.`);
-      // Continue the migration anyway: aborting here would leave the repository in an even more
-      // half-migrated state (Yarn artifacts already removed, package.json still unconverted).
-      // refreshBunLock fails the run at the end, so the broken install cannot pass silently.
-      hasInvalidPackageConfig = true;
+      // Do not fail the run here: the probe observes the pre-migration lifecycle scripts (e.g.
+      // still-Yarn-based postinstall commands that generatePackageJson converts later), so both
+      // layouts can fail spuriously. refreshBunLock runs after the conversion and is the single
+      // authority on whether the final install — and therefore the run — failed.
+      console.warn(`bun install currently fails in ${rootDirPath} under both the isolated and hoisted linkers.`);
     }
 
     const shouldRunWorkflows =
@@ -294,7 +294,7 @@ async function ensureInstallableBunLinker(
   // previous layout left behind, so e.g. still-hoisted phantom dependencies can make the isolated
   // probe succeed although a fresh checkout could not install.
   if (previousLinker !== 'isolated') {
-    removeNodeModules(rootDirPath);
+    removeNodeModules(rootDirPath, rootConfig);
   }
   // Retry once so a transient failure (registry hiccup, flaky lifecycle script) does not
   // masquerade as a layout incompatibility.
@@ -304,8 +304,10 @@ async function ensureInstallableBunLinker(
   await generateBunfigToml(rootConfig, 'hoisted');
   await promisePool.promiseAll();
   // The failed isolated attempt may have left a partial isolated tree behind.
-  removeNodeModules(rootDirPath);
-  if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath) === 0) return true;
+  removeNodeModules(rootDirPath, rootConfig);
+  // Retry here too: a transient failure would otherwise discard the correct hoisted answer and
+  // restore the isolated configuration this function just proved cannot install.
+  if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1) === 0) return true;
 
   // Both layouts failed, so the failure is not linker-specific; keep the default isolated
   // configuration instead of persisting a downgrade that the failed install never justified.
@@ -314,12 +316,14 @@ async function ensureInstallableBunLinker(
   return false;
 }
 
-function removeNodeModules(rootDirPath: string): void {
+function removeNodeModules(rootDirPath: string, rootConfig: PackageConfig): void {
+  // Cover every declared workspace (e.g. apps/*), not just packages/*: a leftover workspace tree
+  // can keep phantom dependencies resolvable and defeat the clean-tree probe.
   const nodeModulesPaths = [
     path.resolve(rootDirPath, 'node_modules'),
-    ...(ignoreError(() => fs.readdirSync(path.resolve(rootDirPath, 'packages'), { withFileTypes: true })) ?? [])
-      .filter((dirent) => dirent.isDirectory())
-      .map((dirent) => path.resolve(rootDirPath, 'packages', dirent.name, 'node_modules')),
+    ...[...getWorkspacePackageDirs(rootConfig).values()].map((workspaceDir) =>
+      path.resolve(rootDirPath, workspaceDir, 'node_modules')
+    ),
   ];
   for (const nodeModulesPath of nodeModulesPaths) {
     fs.rmSync(nodeModulesPath, { recursive: true, force: true });

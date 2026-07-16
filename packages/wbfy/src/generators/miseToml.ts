@@ -54,15 +54,20 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
 /**
  * The generated bunfig.toml relies on `globalStore` (Bun >= 1.3.14) and `publicHoistPattern`
  * (Bun >= 1.3.1); older Bun versions silently ignore them and install a different layout from the
- * one wbfy validated, so lift any pin that cannot resolve to the minimum. Handles mise's string,
- * array, and `{ version = "…" }` tool forms; prefix pins like "1.2" are ranges, so a pin is lifted
- * only when its whole range is below the minimum.
+ * one wbfy validated, so replace every selector that cannot guarantee the minimum with the
+ * concrete minimum version. mise resolves `latest` and range selectors such as "1.2" or
+ * `prefix:1.2` to the newest locally INSTALLED matching version — not the newest release — so
+ * only an exact pin at or above the minimum proves the floor. Handles mise's string, array, and
+ * `{ version = "…" }` tool forms.
  */
 function liftOutdatedBunVersion(bunVersion: unknown): unknown {
   if (typeof bunVersion === 'string') {
-    // Replace with the concrete minimum, not 'latest': mise resolves 'latest' to the newest
-    // locally INSTALLED version, which can still be below the floor.
-    return isVersionRangeBelow(bunVersion, minimumBunVersion) ? minimumBunVersion : bunVersion;
+    const range = bunVersion.startsWith('prefix:') ? bunVersion.slice('prefix:'.length) : bunVersion;
+    // Unverifiable selectors ("latest", "ref:…", "path:…", aliases) cannot prove the floor either.
+    const lowestResolvableVersion = semver.validRange(range) && semver.minVersion(range);
+    return lowestResolvableVersion && semver.gte(lowestResolvableVersion, minimumBunVersion)
+      ? bunVersion
+      : minimumBunVersion;
   }
   if (Array.isArray(bunVersion)) {
     return [
@@ -75,13 +80,6 @@ function liftOutdatedBunVersion(bunVersion: unknown): unknown {
     return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version) };
   }
   return bunVersion;
-}
-
-function isVersionRangeBelow(versionRange: string, minimumVersion: string): boolean {
-  // mise's `prefix:1.2` selector means "latest 1.2.x", which is the semver range "1.2".
-  const range = versionRange.startsWith('prefix:') ? versionRange.slice('prefix:'.length) : versionRange;
-  // Other non-semver specifiers (e.g. "latest", "ref:…", "path:…") yield no range and are left untouched.
-  return !!semver.validRange(range) && semver.gtr(minimumVersion, range);
 }
 
 function parseMiseToml(miseTomlPath: string): MiseToml {
