@@ -48,7 +48,11 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   // so every fnox decision below is made from the REMOTE default-branch contents, not the local
   // working tree: verifying a local (or pushed-feature-branch, or fork) migration would rotate
   // the key before compatible ciphertext reaches the branch CI actually runs against.
-  const remoteFnoxContents = await fetchDefaultBranchFnoxConfigs(octokit, owner, repo);
+  const {
+    commitSha: verifiedCommitSha,
+    contents: remoteFnoxContents,
+    defaultBranch,
+  } = await fetchDefaultBranchFnoxConfigs(octokit, owner, repo);
   const localUsesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
   let secretsToUpload: Record<string, string>;
   let obsoleteSecretNames: string[];
@@ -154,6 +158,23 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     delete secretsToUpload[name];
   }
 
+  // The validation above is only meaningful for the commit it inspected; if the default branch
+  // advanced meanwhile (e.g. gained new fnox secrets or dropped fnox entirely), mutating the
+  // repository-wide secrets from the stale view could break CI on the new head. Recheck right
+  // before mutating; the residual race during the mutation itself is accepted.
+  const headResponse = await octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', {
+    owner,
+    repo,
+    ref: defaultBranch,
+  });
+  if (headResponse.data.sha !== verifiedCommitSha) {
+    console.error(
+      `Skip updating secrets because the default branch of ${owner}/${repo} advanced during verification (${verifiedCommitSha} -> ${headResponse.data.sha}). Rerun wbfy --env.`
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   if (Object.keys(secretsToUpload).length > 0) {
     // Requires Secrets permission
     const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets/public-key', {
@@ -206,13 +227,13 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   }
 }
 
-// Fetches the content of every fnox-like config file on the remote default branch, keyed by its
-// repository-relative path.
+// Fetches the content of every fnox-like config file on the remote default branch (keyed by its
+// repository-relative path) together with the inspected commit SHA.
 async function fetchDefaultBranchFnoxConfigs(
   octokit: ReturnType<typeof getOctokit>,
   owner: string,
   repo: string
-): Promise<Map<string, string>> {
+): Promise<{ commitSha: string; contents: Map<string, string>; defaultBranch: string }> {
   const repoResponse = await octokit.request('GET /repos/{owner}/{repo}', { owner, repo });
   const defaultBranch = repoResponse.data.default_branch;
   // Pin everything to one commit: enumerating the tree and fetching contents through the mutable
@@ -247,7 +268,7 @@ async function fetchDefaultBranchFnoxConfigs(
     });
     contents.set(entryPath, fileResponse.data as unknown as string);
   }
-  return contents;
+  return { commitSha, contents, defaultBranch };
 }
 
 // Proves the CI key alone can decrypt every age secret of the given (remote default-branch) fnox
