@@ -154,19 +154,30 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
             );
             return;
           }
+          // A fnox.local.toml anywhere in the merged hierarchy (not only next to a managed
+          // config) can override providers.
+          const localIssue = findFnoxLocalTomlIssue(hierarchyDirPath);
+          if (localIssue) {
+            failFnoxSync(
+              `Failed to synchronize fnox age recipients because ${localIssue}. Keep only machine-local secret overrides there.`
+            );
+            return;
+          }
         }
       }
-      // The in-memory snapshots do not survive a killed process, so before the first mutation a
-      // durable marker plus on-disk copies of the pre-migration files are written, and they are
-      // removed only when the tree is consistent again. A leftover marker restores those copies
-      // (an interrupted run may have re-encrypted some files for a recipient set the executor's
-      // identity can no longer decrypt, e.g. during a recipient removal) and forces a full
-      // re-encryption on this run.
+      // The in-memory snapshots do not survive a killed process, so a durable marker is written
+      // before the first mutation and removed only when the tree is consistent again. A leftover
+      // marker means a previous run was killed mid-migration (or could not restore): some
+      // ciphertexts may not match the recipients, or may even be undecryptable for the executor's
+      // identity when a recipient was being removed — states this code cannot repair safely
+      // because the working tree may have changed since (branch switches, manual edits). The
+      // fnox.toml files are git-tracked, so the user restores them via git and clears the marker.
       migrationMarkerPath = path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-migration-marker');
-      migrationBackupDirPath = path.resolve(rootDirPath, '.tmp', 'wbfy-fnox-migration-backup');
-      const interrupted = fs.existsSync(migrationMarkerPath);
-      if (interrupted) {
-        restoreDurableBackup(rootDirPath, migrationBackupDirPath);
+      if (fs.existsSync(migrationMarkerPath)) {
+        failFnoxSync(
+          `Failed to synchronize fnox age recipients because a previous migration was interrupted. Restore the fnox.toml files via git (e.g. \`git status\` and \`git restore -- '*fnox*.toml'\` if you have no intentional local changes), then delete ${migrationMarkerPath} and rerun wbfy.`
+        );
+        return;
       }
 
       // A tracked symlink named fnox.toml (or a symlinked parent directory) would make the
@@ -186,8 +197,6 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         }
         snapshots.set(fnoxTomlPath, fs.readFileSync(fnoxTomlPath, 'utf8'));
       }
-      migrationSnapshots = snapshots;
-      migrationRootDirPath = rootDirPath;
 
       // Sorted order processes ancestors before descendants, so configs inheriting an updated
       // provider re-encrypt against the already-updated recipients.
@@ -199,68 +208,58 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
           dirPath,
           rootDirPath,
           dirPath === rootDirPath,
-          ancestorChanged,
-          interrupted
+          ancestorChanged
         );
         if (result === 'changed') changedDirPaths.push(dirPath);
         anyFailed ||= result === 'failed';
       }
       if (anyFailed) {
-        // A failed forced re-encryption may have rewritten some ciphertexts without changing any
-        // recipients, so restore unconditionally and KEEP the marker and durable backup: only a
-        // fully successful run proves every ciphertext matches the recipients again.
-        restoreSnapshots(snapshots);
+        // A failed re-encryption may have rewritten some ciphertexts, so restore unconditionally.
+        // The marker is removed only when restoration fully succeeded and the tree is consistent.
+        if (restoreSnapshots(snapshots)) fs.rmSync(migrationMarkerPath, { force: true });
       } else {
         fs.rmSync(migrationMarkerPath, { force: true });
-        fs.rmSync(migrationBackupDirPath, { recursive: true, force: true });
       }
     } catch (error) {
-      restoreSnapshots(snapshots);
+      if (restoreSnapshots(snapshots) && migrationMarkerPath) {
+        fs.rmSync(migrationMarkerPath, { force: true });
+      }
       failFnoxSync(`Failed to synchronize fnox age recipients due to: ${(error as Error | undefined)?.stack ?? error}`);
     } finally {
       migrationMarkerPath = undefined;
-      migrationBackupDirPath = undefined;
-      migrationSnapshots = undefined;
-      migrationRootDirPath = undefined;
     }
   });
 }
 
 let migrationMarkerPath: string | undefined;
-let migrationBackupDirPath: string | undefined;
-let migrationSnapshots: Map<string, string> | undefined;
-let migrationRootDirPath: string | undefined;
 
 function writeMigrationMarker(): void {
   if (!migrationMarkerPath || fs.existsSync(migrationMarkerPath)) return;
-  // Persist the pre-migration contents BEFORE the marker so that a marker always implies a
-  // complete durable backup.
-  if (migrationBackupDirPath && migrationSnapshots && migrationRootDirPath) {
-    for (const [filePath, content] of migrationSnapshots) {
-      const backupFilePath = path.join(migrationBackupDirPath, path.relative(migrationRootDirPath, filePath));
-      fs.mkdirSync(path.dirname(backupFilePath), { recursive: true });
-      fs.writeFileSync(backupFilePath, content);
-    }
+  const tmpDirPath = path.dirname(migrationMarkerPath);
+  fs.mkdirSync(tmpDirPath, { recursive: true });
+  // Refuse to write through symlinks: a repository-controlled .tmp symlink could otherwise
+  // redirect the marker write outside the repository. The `wx` flag makes the open itself fail
+  // on any pre-existing path, including a dangling symlink.
+  if (fs.lstatSync(tmpDirPath).isSymbolicLink()) {
+    throw new Error(`${tmpDirPath} is a symlink; replace it with a regular directory.`);
   }
-  fs.mkdirSync(path.dirname(migrationMarkerPath), { recursive: true });
-  fs.writeFileSync(migrationMarkerPath, 'wbfy fnox migration in progress; a leftover marker forces re-encryption\n');
+  fs.writeFileSync(migrationMarkerPath, 'wbfy fnox migration in progress; a leftover marker blocks new migrations\n', {
+    flag: 'wx',
+  });
 }
 
-function restoreDurableBackup(rootDirPath: string, backupDirPath: string): void {
-  if (!fs.existsSync(backupDirPath)) return;
-  const walk = (dirPath: string): void => {
-    for (const dirent of fs.readdirSync(dirPath, { withFileTypes: true })) {
-      const backupFilePath = path.join(dirPath, dirent.name);
-      if (dirent.isDirectory()) {
-        walk(backupFilePath);
-        continue;
-      }
-      const targetFilePath = path.join(rootDirPath, path.relative(backupDirPath, backupFilePath));
-      fs.mkdirSync(path.dirname(targetFilePath), { recursive: true });
-      fs.copyFileSync(backupFilePath, targetFilePath);
-    }
-  };
-  walk(backupDirPath);
+// Returns a description of an unsupported fnox.local.toml in the directory, or undefined. Local
+// overrides may only hold machine-local secret values; imports or provider (re)definitions would
+// silently change which recipient set governs re-encryption.
+function findFnoxLocalTomlIssue(dirPath: string): string | undefined {
+  const localTomlPath = path.resolve(dirPath, 'fnox.local.toml');
+  if (!fs.existsSync(localTomlPath)) return undefined;
+  const localSettings = parse(fs.readFileSync(localTomlPath, 'utf8')) as FnoxToml;
+  const definesProviders =
+    localSettings.import !== undefined ||
+    localSettings.providers !== undefined ||
+    Object.values(localSettings.profiles ?? {}).some((profile) => profile?.providers !== undefined);
+  return definesProviders ? `${localTomlPath} defines imports, providers, or profile providers` : undefined;
 }
 
 function listFnoxLikeFileNames(dirPath: string): string[] {
@@ -299,8 +298,7 @@ async function synchronizeFnoxAgeRecipients(
   dirPath: string,
   rootDirPath: string,
   isRoot: boolean,
-  ancestorRecipientsChanged: boolean,
-  forceReencrypt: boolean
+  ancestorRecipientsChanged: boolean
 ): Promise<'changed' | 'unchanged' | 'failed'> {
   const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
 
@@ -321,23 +319,10 @@ async function synchronizeFnoxAgeRecipients(
     );
     return 'failed';
   }
-  // A stale backup left by an interrupted earlier run means the last re-encryption may not have
-  // completed; restore the user's local overrides and force a re-encryption below.
-  const recoveredLocalBackup = recoverStaleFnoxLocalBackup(dirPath);
-  const localTomlPath = path.resolve(dirPath, 'fnox.local.toml');
-  if (fs.existsSync(localTomlPath)) {
-    const localSettings = parse(fs.readFileSync(localTomlPath, 'utf8')) as FnoxToml;
-    const definesProviders =
-      localSettings.import !== undefined ||
-      localSettings.providers !== undefined ||
-      Object.values(localSettings.profiles ?? {}).some((profile) => profile?.providers !== undefined);
-    if (definesProviders) {
-      failFnoxSync(
-        `Failed to synchronize fnox age recipients in ${dirPath} because fnox.local.toml defines imports, providers, or profile providers, which this generator cannot keep in sync. Keep only machine-local secret overrides there.`
-      );
-      return 'failed';
-    }
-  }
+  // A stale backup left by an interrupted earlier run must be restored so the user's local
+  // overrides are never silently lost (the migration marker separately blocks this run when the
+  // interruption left the migration itself incomplete).
+  recoverStaleFnoxLocalBackup(dirPath);
 
   // A parse failure must abort instead of falling back to {}: regenerating from an empty object
   // would silently drop the committed encrypted secrets.
@@ -375,7 +360,7 @@ async function synchronizeFnoxAgeRecipients(
   // nested config's own ciphertexts still must be re-encrypted whenever an ancestor's recipients
   // changed, and that only happens when `fnox reencrypt` runs from the nested directory.
   if (!isRoot && !settings.providers?.age) {
-    if (ancestorRecipientsChanged || recoveredLocalBackup || forceReencrypt) {
+    if (ancestorRecipientsChanged) {
       writeMigrationMarker();
       if (!reencryptFnoxSecrets(dirPath, rootDirPath, profileNames)) {
         failFnoxSync(
@@ -393,18 +378,6 @@ async function synchronizeFnoxAgeRecipients(
     currentRecipients.size === FNOX_AGE_RECIPIENTS.length &&
     FNOX_AGE_RECIPIENTS.every((recipient) => currentRecipients.has(recipient.publicKey))
   ) {
-    if (recoveredLocalBackup || forceReencrypt) {
-      writeMigrationMarker();
-      if (!reencryptFnoxSecrets(dirPath, rootDirPath, profileNames)) {
-        failFnoxSync(
-          `Failed to re-encrypt fnox secrets in ${dirPath} after an interrupted earlier run. Fix the error and rerun wbfy.`
-        );
-        return 'failed';
-      }
-      // Report 'changed' so that descendant configs inheriting this provider re-encrypt too: the
-      // interrupted run may have stopped before reaching them.
-      return 'changed';
-    }
     return 'unchanged';
   }
 
@@ -459,7 +432,7 @@ function reencryptFnoxSecrets(dirPath: string, rootDirPath: string, profileNames
         HOME: isolatedHomeDirPath,
         XDG_CONFIG_HOME: isolatedHomeDirPath,
       };
-      const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', '-P', name])];
+      const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', `--profile=${name}`])];
       for (const profileArgs of profileArgsList) {
         const args = ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...profileArgs];
         console.log(`$ ${fnoxCommand} ${args.join(' ')} at ${dirPath}`);

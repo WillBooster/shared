@@ -146,6 +146,14 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'FNOX_AGE_KEY'];
   }
 
+  // Never upload a secret that is about to be deleted: a .env could still contain e.g.
+  // FNOX_AGE_KEY or a deprecated name, and a PUT followed by a failed DELETE would leave the
+  // obsolete credential freshly installed.
+  for (const name of obsoleteSecretNames) {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete secretsToUpload[name];
+  }
+
   if (Object.keys(secretsToUpload).length > 0) {
     // Requires Secrets permission
     const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets/public-key', {
@@ -278,7 +286,7 @@ function verifyCiKeyDecryptsAllSecrets(
     for (const [relPath, content] of fnoxContents) {
       const tempConfigDirPath = path.join(tempRepoDirPath, path.dirname(relPath));
       const profileNames = Object.keys((parse(content) as { profiles?: Record<string, unknown> }).profiles ?? {});
-      const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', '-P', name])];
+      const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', `--profile=${name}`])];
       for (const profileArgs of profileArgsList) {
         const proc = child_process.spawnSync(
           fnoxCommand,
