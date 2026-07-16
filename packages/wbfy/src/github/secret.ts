@@ -53,10 +53,11 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     contents: remoteFnoxContents,
     defaultBranch,
   } = await fetchDefaultBranchFnoxConfigs(octokit, owner, repo);
-  const localUsesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
   let secretsToUpload: Record<string, string>;
   let obsoleteSecretNames: string[];
-  if (localUsesFnox || remoteFnoxContents.size > 0) {
+  // Choose fnox vs dotenv SOLELY from the remote default branch: an unmerged local migration
+  // branch must neither block dotenv secret synchronization nor trigger a premature key upload.
+  if (remoteFnoxContents.size > 0) {
     // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
     // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
     // identity (never the personal one) and NEVER written anywhere inside the repository.
@@ -105,7 +106,11 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
         continue;
       }
       // Require the EXACT recipient set: an extra (e.g. removed developer's) recipient means the
-      // ciphertexts remain decryptable by an identity that is no longer authorized.
+      // ciphertexts remain decryptable by an identity that is no longer authorized. Note that no
+      // recipient-set check can prove a REMOVED identity lost access: age ciphertext already
+      // readable by it (including every version in git history) stays readable forever, so
+      // removing a recipient additionally requires rotating the secret VALUES themselves — an
+      // operational task outside wbfy's scope.
       const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !recipients.has(recipient.publicKey));
       const unexpectedRecipients = [...recipients].filter(
         (publicKey) => !FNOX_AGE_RECIPIENTS.some((recipient) => recipient.publicKey === publicKey)
