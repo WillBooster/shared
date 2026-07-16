@@ -28,129 +28,137 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
     if (!owner || !repo || owner !== 'WillBoosterLab') return;
     if (!hasGitHubToken(owner) || !options.doesUploadEnvVars) return;
 
-    const fnoxTomlPath = path.resolve(config.dirPath, 'fnox.toml');
-    const usesFnox = fs.existsSync(fnoxTomlPath);
-    let secretsToUpload: Record<string, string>;
-    let obsoleteSecretNames: string[];
-    if (usesFnox) {
-      // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
-      // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
-      // identity (never the personal one) and NEVER written anywhere inside the repository.
-      if (hasFnoxSyncFailed()) {
-        console.error(
-          'Skip uploading FNOX_AGE_KEY because synchronizing the fnox age recipients failed earlier in this run.'
-        );
-        process.exitCode = 1;
-        return;
-      }
-      // Parse the TOML instead of searching the raw text: a recipient mentioned only in a comment
-      // must not count. This also catches the case where generateFnoxToml failed earlier. Check
-      // every fnox.toml in the repository, not just the root one: a workspace package's config
-      // overrides the root via fnox's hierarchical loading.
-      for (const dirPath of listFnoxTomlDirPaths(config.dirPath)) {
-        const tomlPath = path.resolve(dirPath, 'fnox.toml');
-        const recipients = readFnoxAgeRecipients(tomlPath);
-        // A nested config without its own age provider inherits the root one; only the root
-        // fnox.toml must declare it.
-        if (!recipients) {
-          if (tomlPath === fnoxTomlPath) {
-            console.error(`Skip uploading FNOX_AGE_KEY because ${tomlPath} declares no [providers.age] table.`);
-            process.exitCode = 1;
-            return;
-          }
-          continue;
-        }
-        const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !recipients.has(recipient.publicKey));
-        if (missingRecipients.length > 0) {
-          console.error(
-            `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in ${tomlPath} misses the following age public keys (generateFnoxToml should have added them): ${missingRecipients
-              .map((recipient) => recipient.publicKey)
-              .join(', ')}`
-          );
-          process.exitCode = 1;
-          return;
-        }
-      }
-      const ageKey = readCiAgeSecretKey();
-      if (!ageKey) {
-        process.exitCode = 1;
-        return;
-      }
-      // Matching recipients do not prove the committed ciphertexts were actually re-encrypted for
-      // the CI key (e.g. someone hand-added the recipient without `fnox reencrypt`), so decrypt
-      // every age secret with ONLY the CI key before replacing the repository secret.
-      if (!verifyCiKeyDecryptsAllSecrets(config.dirPath, ageKey)) {
-        process.exitCode = 1;
-        return;
-      }
-      secretsToUpload = { FNOX_AGE_KEY: ageKey };
-      obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
-    } else {
-      secretsToUpload = dotenv.config({ path: path.resolve(config.dirPath, '.env'), quiet: true }).parsed ?? {};
-      for (const name of ['GH_BOT_PAT', 'GH_BOT_PAT_FOR_WILLBOOSTER', 'GH_BOT_PAT_FOR_WILLBOOSTERLAB']) {
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete secretsToUpload[name];
-      }
-      if (Object.keys(secretsToUpload).length === 0) return;
-      obsoleteSecretNames = DEPRECATED_SECRET_NAMES;
-    }
-
-    const octokit = getOctokit(owner);
-
+    // The user explicitly requested a secret upload (--env), so any failure — including
+    // filesystem/validation errors before the GitHub requests — must fail the run instead of
+    // being swallowed by functionIgnoringException.
     try {
-      // Requires Secrets permission
-      const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets/public-key', {
-        owner,
-        repo,
-      });
-      const { key, key_id: keyId } = response.data;
-
-      const sodium = getSodium();
-      await sodium.ready;
-
-      for (const [name, secret] of Object.entries(secretsToUpload)) {
-        // Convert Secret & Base64 key to Uint8Array.
-        const rawKey = sodium.from_base64(key, sodium.base64_variants.ORIGINAL);
-        const rawSec = sodium.from_string(secret);
-
-        // Encrypt the secret using LibSodium
-        const encBytes = sodium.crypto_box_seal(rawSec, rawKey);
-
-        // Convert encrypted Uint8Array to Base64
-        const encBase64 = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
-
-        // Requires Secrets permission
-        await octokit.request('PUT /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
-          owner,
-          repo,
-          secret_name: name,
-          encrypted_value: encBase64,
-          key_id: keyId,
-        });
-      }
-
-      // Delete legacy secrets only after every replacement was uploaded successfully; deleting first
-      // would leave the repository without any working credential if an upload step failed.
-      for (const secretName of obsoleteSecretNames) {
-        try {
-          // Requires Secrets permission
-          await octokit.request('DELETE /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
-            owner,
-            repo,
-            secret_name: secretName,
-          });
-        } catch (error) {
-          // Most repositories never had the legacy secret, so its absence is the expected outcome.
-          if ((error as { status?: number } | undefined)?.status === 404) continue;
-          console.error(`Failed to delete the obsolete secret ${secretName}:`, error);
-          process.exitCode = 1;
-        }
-      }
+      await uploadSecrets(config, owner, repo);
     } catch (error) {
       console.error('Failed to upload secrets due to:', (error as Error | undefined)?.stack ?? error);
       process.exitCode = 1;
     }
   });
+}
+
+async function uploadSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
+  const fnoxTomlPath = path.resolve(config.dirPath, 'fnox.toml');
+  const usesFnox = fs.existsSync(fnoxTomlPath);
+  let secretsToUpload: Record<string, string>;
+  let obsoleteSecretNames: string[];
+  if (usesFnox) {
+    // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
+    // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
+    // identity (never the personal one) and NEVER written anywhere inside the repository.
+    if (hasFnoxSyncFailed()) {
+      console.error(
+        'Skip uploading FNOX_AGE_KEY because synchronizing the fnox age recipients failed earlier in this run.'
+      );
+      process.exitCode = 1;
+      return;
+    }
+    // Parse the TOML instead of searching the raw text: a recipient mentioned only in a comment
+    // must not count. This also catches the case where generateFnoxToml failed earlier. Check
+    // every fnox.toml in the repository, not just the root one: a workspace package's config
+    // overrides the root via fnox's hierarchical loading.
+    for (const dirPath of listFnoxTomlDirPaths(config.dirPath)) {
+      const tomlPath = path.resolve(dirPath, 'fnox.toml');
+      const recipients = readFnoxAgeRecipients(tomlPath);
+      // A nested config without its own age provider inherits the root one; only the root
+      // fnox.toml must declare it.
+      if (!recipients) {
+        if (tomlPath === fnoxTomlPath) {
+          console.error(`Skip uploading FNOX_AGE_KEY because ${tomlPath} declares no [providers.age] table.`);
+          process.exitCode = 1;
+          return;
+        }
+        continue;
+      }
+      const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !recipients.has(recipient.publicKey));
+      if (missingRecipients.length > 0) {
+        console.error(
+          `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in ${tomlPath} misses the following age public keys (generateFnoxToml should have added them): ${missingRecipients
+            .map((recipient) => recipient.publicKey)
+            .join(', ')}`
+        );
+        process.exitCode = 1;
+        return;
+      }
+    }
+    const ageKey = readCiAgeSecretKey();
+    if (!ageKey) {
+      process.exitCode = 1;
+      return;
+    }
+    // Matching recipients do not prove the committed ciphertexts were actually re-encrypted for
+    // the CI key (e.g. someone hand-added the recipient without `fnox reencrypt`), so decrypt
+    // every age secret with ONLY the CI key before replacing the repository secret.
+    if (!verifyCiKeyDecryptsAllSecrets(config.dirPath, ageKey)) {
+      process.exitCode = 1;
+      return;
+    }
+    secretsToUpload = { FNOX_AGE_KEY: ageKey };
+    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
+  } else {
+    secretsToUpload = dotenv.config({ path: path.resolve(config.dirPath, '.env'), quiet: true }).parsed ?? {};
+    for (const name of ['GH_BOT_PAT', 'GH_BOT_PAT_FOR_WILLBOOSTER', 'GH_BOT_PAT_FOR_WILLBOOSTERLAB']) {
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete secretsToUpload[name];
+    }
+    if (Object.keys(secretsToUpload).length === 0) return;
+    // A repository that migrated away from fnox must not keep the shared CI decryption key.
+    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'FNOX_AGE_KEY'];
+  }
+
+  const octokit = getOctokit(owner);
+
+  // Requires Secrets permission
+  const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets/public-key', {
+    owner,
+    repo,
+  });
+  const { key, key_id: keyId } = response.data;
+
+  const sodium = getSodium();
+  await sodium.ready;
+
+  for (const [name, secret] of Object.entries(secretsToUpload)) {
+    // Convert Secret & Base64 key to Uint8Array.
+    const rawKey = sodium.from_base64(key, sodium.base64_variants.ORIGINAL);
+    const rawSec = sodium.from_string(secret);
+
+    // Encrypt the secret using LibSodium
+    const encBytes = sodium.crypto_box_seal(rawSec, rawKey);
+
+    // Convert encrypted Uint8Array to Base64
+    const encBase64 = sodium.to_base64(encBytes, sodium.base64_variants.ORIGINAL);
+
+    // Requires Secrets permission
+    await octokit.request('PUT /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
+      owner,
+      repo,
+      secret_name: name,
+      encrypted_value: encBase64,
+      key_id: keyId,
+    });
+  }
+
+  // Delete legacy secrets only after every replacement was uploaded successfully; deleting first
+  // would leave the repository without any working credential if an upload step failed.
+  for (const secretName of obsoleteSecretNames) {
+    try {
+      // Requires Secrets permission
+      await octokit.request('DELETE /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
+        owner,
+        repo,
+        secret_name: secretName,
+      });
+    } catch (error) {
+      // Most repositories never had the legacy secret, so its absence is the expected outcome.
+      if ((error as { status?: number } | undefined)?.status === 404) continue;
+      console.error(`Failed to delete the obsolete secret ${secretName}:`, error);
+      process.exitCode = 1;
+    }
+  }
 }
 
 // Proves the CI key alone can decrypt every committed age secret by running a REAL
@@ -160,6 +168,9 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
 // on an undecryptable ciphertext even when the secret declares a plaintext `default` fallback,
 // and it covers secrets excluded from exports (e.g. `env = false`). Mutations stay in the copy.
 function verifyCiKeyDecryptsAllSecrets(rootDirPath: string, ciAgeKey: string): boolean {
+  // The copy must live OUTSIDE the repository (not in <repo>/.tmp): fnox searches parent
+  // directories for configs, so a copy inside the repository would hierarchically merge the
+  // repository's real fnox.toml and break the isolation this check depends on.
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-ci-age-'));
   const tempRepoDirPath = path.join(tempDirPath, 'repo');
   const emptyHomeDirPath = path.join(tempDirPath, 'home');

@@ -1,4 +1,6 @@
+import child_process from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { parse } from 'smol-toml';
@@ -6,7 +8,7 @@ import { parse } from 'smol-toml';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { spawnSyncAndReturnStatus } from '../utils/spawnUtil.js';
+import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 
 // The age public keys of every developer and of CI. Every fnox-managed repository must encrypt
 // its secrets for exactly this recipient set so that decryptability does not depend on which
@@ -18,8 +20,6 @@ export const FNOX_AGE_RECIPIENTS = [
   { name: 'exkazuu', publicKey: 'age1j2354xhvm3fv9y77t5g6y3q8mexgk2mf00tgrkzgp73tynrvz55s8auayw' },
   { name: 'ci', publicKey: 'age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak' },
 ];
-
-const IGNORED_DIRECTORY_NAMES = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'test_fixtures']);
 
 interface FnoxToml {
   import?: unknown;
@@ -36,20 +36,30 @@ export function hasFnoxSyncFailed(): boolean {
 }
 
 /**
- * Lists every directory in the repository containing a fnox.toml (excluding dependency and build
- * output directories): fnox loads configs hierarchically, so any of them can govern secrets.
+ * Lists every directory in the repository containing a committed (or committable) fnox.toml.
+ * Discovery goes through git so that gitignored trees (node_modules, build outputs) are excluded
+ * without excluding legitimate packages that merely happen to be named like build outputs.
  */
 export function listFnoxTomlDirPaths(rootDirPath: string): string[] {
-  const dirPaths: string[] = [];
-  const walk = (dirPath: string): void => {
-    if (fs.existsSync(path.join(dirPath, 'fnox.toml'))) dirPaths.push(dirPath);
-    for (const dirent of fs.readdirSync(dirPath, { withFileTypes: true })) {
-      if (!dirent.isDirectory() || dirent.name.startsWith('.') || IGNORED_DIRECTORY_NAMES.has(dirent.name)) continue;
-      walk(path.join(dirPath, dirent.name));
-    }
-  };
-  walk(rootDirPath);
-  return dirPaths;
+  return [
+    ...new Set(
+      listFnoxLikeFilePaths(rootDirPath)
+        .filter((filePath) => path.basename(filePath) === 'fnox.toml')
+        .map((filePath) => path.dirname(filePath))
+    ),
+  ].toSorted();
+}
+
+function listFnoxLikeFilePaths(rootDirPath: string): string[] {
+  const stdout = spawnSyncAndReturnStdout(
+    'git',
+    ['ls-files', '--cached', '--others', '--exclude-standard', '--', '*fnox*.toml'],
+    rootDirPath
+  );
+  return stdout
+    .split('\n')
+    .filter((line) => /^\.?fnox(\..+)?\.toml$/u.test(path.basename(line)))
+    .map((line) => path.resolve(rootDirPath, line));
 }
 
 /** Reads the profile names declared in a fnox.toml (empty when the file is absent). */
@@ -61,30 +71,6 @@ export function readFnoxProfileNames(dirPath: string): string[] {
 }
 
 /**
- * Runs a function while the machine-local fnox.local.toml is temporarily moved aside: fnox loads
- * it at higher priority than the committed fnox.toml, so a local override shadowing a committed
- * secret would make `fnox reencrypt` skip that secret. A stale backup from an interrupted earlier
- * run is restored first so the user's local overrides are never silently lost.
- */
-function withFnoxLocalHidden<T>(dirPath: string, func: () => T): T {
-  const localPath = path.resolve(dirPath, 'fnox.local.toml');
-  const hiddenPath = `${localPath}.wbfy-bak`;
-  if (fs.existsSync(hiddenPath)) {
-    if (fs.existsSync(localPath)) {
-      throw new Error(`Both ${localPath} and ${hiddenPath} exist; resolve the leftover backup manually.`);
-    }
-    fs.renameSync(hiddenPath, localPath);
-  }
-  const exists = fs.existsSync(localPath);
-  if (exists) fs.renameSync(localPath, hiddenPath);
-  try {
-    return func();
-  } finally {
-    if (exists) fs.renameSync(hiddenPath, localPath);
-  }
-}
-
-/**
  * Synchronizes the age recipients in every fnox.toml with FNOX_AGE_RECIPIENTS and re-encrypts the
  * committed secrets when the recipient set changed.
  */
@@ -93,22 +79,33 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
     // The failure flag is per repository: wbfy can process multiple working directories in one
     // invocation, and an earlier repository's failure must not veto a later repository's upload.
     fnoxSyncFailed = false;
+    const rootDirPath = rootConfig.dirPath;
+    const rootTomlPath = path.resolve(rootDirPath, 'fnox.toml');
+    if (!fs.existsSync(rootTomlPath)) return;
+    const rootOriginalContent = fs.readFileSync(rootTomlPath, 'utf8');
+    let rootChanged = false;
     // A failed synchronization must fail the whole wbfy run: exiting zero with stale recipients
     // would leave secrets undecryptable for new recipients while looking successful.
     try {
-      const rootDirPath = rootConfig.dirPath;
-      const rootTomlPath = path.resolve(rootDirPath, 'fnox.toml');
-      if (!fs.existsSync(rootTomlPath)) return;
-      const rootOriginalContent = fs.readFileSync(rootTomlPath, 'utf8');
+      // fnox also loads committed config aliases this generator cannot keep in sync.
+      const unsupportedFilePaths = listFnoxLikeFilePaths(rootDirPath).filter(
+        (filePath) => path.basename(filePath) !== 'fnox.toml'
+      );
+      if (unsupportedFilePaths.length > 0) {
+        failFnoxSync(
+          `Failed to synchronize fnox age recipients because only fnox.toml files are supported: ${unsupportedFilePaths.join(', ')}. Merge them into the adjacent fnox.toml.`
+        );
+        return;
+      }
 
       // The root goes first so that configs inheriting the root provider re-encrypt against the
       // already-updated recipients.
-      const rootResult = await synchronizeFnoxAgeRecipients(rootDirPath, true, false);
-      const rootChanged = rootResult === 'changed';
+      rootChanged = (await synchronizeFnoxAgeRecipients(rootDirPath, true, false)) === 'changed';
       let childFailed = false;
       for (const dirPath of listFnoxTomlDirPaths(rootDirPath)) {
         if (dirPath === rootDirPath) continue;
-        childFailed ||= (await synchronizeFnoxAgeRecipients(dirPath, false, rootChanged)) === 'failed';
+        const result = await synchronizeFnoxAgeRecipients(dirPath, false, rootChanged);
+        childFailed ||= result === 'failed';
       }
       if (rootChanged && childFailed) {
         // Restore the root recipients so the next run redoes the whole migration including the
@@ -116,6 +113,9 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         await fsUtil.generateFile(rootTomlPath, rootOriginalContent);
       }
     } catch (error) {
+      if (rootChanged) {
+        await fsUtil.generateFile(rootTomlPath, rootOriginalContent);
+      }
       failFnoxSync(`Failed to synchronize fnox age recipients due to: ${(error as Error | undefined)?.stack ?? error}`);
     }
   });
@@ -135,21 +135,25 @@ async function synchronizeFnoxAgeRecipients(
   const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
 
   // Recipient synchronization only understands the standard single-file layout with one
-  // top-level age provider named `age`. Per-profile config files, imports, differently named age
-  // providers, or provider overrides would keep using recipient sets this generator does not
-  // rewrite, so their secrets would silently stay undecryptable for new recipients; fail instead
-  // of proceeding. The gitignored fnox.local.toml is a supported machine-local override, but only
-  // while it leaves providers alone.
-  const profileConfigFileNames = fs
+  // top-level age provider named `age`. Gitignored config aliases (e.g. .fnox.local.toml) that
+  // git-based discovery cannot see, imports, differently named age providers, or provider
+  // overrides would keep using recipient sets this generator does not rewrite, so their secrets
+  // would silently stay undecryptable for new recipients; fail instead of proceeding. The
+  // gitignored fnox.local.toml is a supported machine-local override, but only while it leaves
+  // providers alone.
+  const unsupportedFileNames = fs
     .readdirSync(dirPath)
-    .filter((name) => /^fnox\..+\.toml$/u.test(name) && name !== 'fnox.local.toml')
+    .filter((name) => /^\.?fnox(\..+)?\.toml$/u.test(name) && name !== 'fnox.toml' && name !== 'fnox.local.toml')
     .toSorted();
-  if (profileConfigFileNames.length > 0) {
+  if (unsupportedFileNames.length > 0) {
     failFnoxSync(
-      `Failed to synchronize fnox age recipients in ${dirPath} because per-profile config files are not supported: ${profileConfigFileNames.join(', ')}. Merge them into fnox.toml.`
+      `Failed to synchronize fnox age recipients in ${dirPath} because only fnox.toml and fnox.local.toml are supported: ${unsupportedFileNames.join(', ')}. Merge them into fnox.toml.`
     );
     return 'failed';
   }
+  // A stale backup left by an interrupted earlier run means the last re-encryption may not have
+  // completed; restore the user's local overrides and force a re-encryption below.
+  const recoveredLocalBackup = recoverStaleFnoxLocalBackup(dirPath);
   const localTomlPath = path.resolve(dirPath, 'fnox.local.toml');
   if (fs.existsSync(localTomlPath)) {
     const localSettings = parse(fs.readFileSync(localTomlPath, 'utf8')) as FnoxToml;
@@ -201,7 +205,7 @@ async function synchronizeFnoxAgeRecipients(
   // config's own ciphertexts still must be re-encrypted whenever the root recipients changed,
   // and that only happens when `fnox reencrypt` runs from the nested directory.
   if (!isRoot && !settings.providers?.age) {
-    if (rootRecipientsChanged && !reencryptFnoxSecrets(dirPath, profileNames)) {
+    if ((rootRecipientsChanged || recoveredLocalBackup) && !reencryptFnoxSecrets(dirPath, profileNames)) {
       failFnoxSync(
         `Failed to re-encrypt fnox secrets in ${dirPath} for the updated recipients. Fix the error and rerun wbfy.`
       );
@@ -216,6 +220,12 @@ async function synchronizeFnoxAgeRecipients(
     currentRecipients.size === FNOX_AGE_RECIPIENTS.length &&
     FNOX_AGE_RECIPIENTS.every((recipient) => currentRecipients.has(recipient.publicKey))
   ) {
+    if (recoveredLocalBackup && !reencryptFnoxSecrets(dirPath, profileNames)) {
+      failFnoxSync(
+        `Failed to re-encrypt fnox secrets in ${dirPath} after an interrupted earlier run. Fix the error and rerun wbfy.`
+      );
+      return 'failed';
+    }
     return 'unchanged';
   }
 
@@ -247,23 +257,85 @@ async function synchronizeFnoxAgeRecipients(
 }
 
 // Re-encrypts the base secrets and each profile's own secrets (--no-defaults keeps the merged
-// base secrets from being duplicated into profile tables) for the current recipient set. This
-// requires an identity that can decrypt the current ciphertexts (e.g. ~/.config/fnox/age.txt).
+// base secrets from being duplicated into profile tables) for the current recipient set. The
+// spawned fnox runs with an isolated HOME/XDG_CONFIG_HOME because fnox merges the user-global
+// ~/.config/fnox/config.toml into every project config — a plain reencrypt would rewrite the
+// user's global secrets too. Decryption therefore needs the personal identity passed explicitly
+// via FNOX_AGE_KEY; FNOX_PROFILE is stripped so it cannot redirect the base (no -P) run.
 function reencryptFnoxSecrets(dirPath: string, profileNames: string[]): boolean {
-  return withFnoxLocalHidden(dirPath, () => {
-    // An ambient FNOX_PROFILE would silently redirect the base (no -P) run to a profile.
-    delete process.env.FNOX_PROFILE;
-    const profileArgs = [[], ...profileNames.map((name) => ['--no-defaults', '-P', name])];
-    for (const args of profileArgs) {
-      const status = spawnSyncAndReturnStatus(
-        'fnox',
-        ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...args],
-        dirPath
-      );
-      if (status !== 0) return false;
-    }
-    return true;
-  });
+  const identity = readPersonalAgeSecretKey() ?? process.env.FNOX_AGE_KEY;
+  if (!identity) {
+    console.error(
+      'Failed to re-encrypt fnox secrets because no age identity is available: create ~/.config/fnox/age.txt or set FNOX_AGE_KEY.'
+    );
+    return false;
+  }
+  const isolatedHomeDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fnox-home-'));
+  try {
+    return withFnoxLocalHidden(dirPath, () => {
+      const env = {
+        ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('FNOX_'))),
+        FNOX_AGE_KEY: identity,
+        HOME: isolatedHomeDirPath,
+        XDG_CONFIG_HOME: isolatedHomeDirPath,
+      };
+      const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', '-P', name])];
+      for (const profileArgs of profileArgsList) {
+        const args = ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...profileArgs];
+        console.log(`$ fnox ${args.join(' ')} at ${dirPath}`);
+        const proc = child_process.spawnSync('fnox', args, { cwd: dirPath, encoding: 'utf8', stdio: 'inherit', env });
+        if ((proc.status ?? 1) !== 0) return false;
+      }
+      return true;
+    });
+  } finally {
+    fs.rmSync(isolatedHomeDirPath, { recursive: true, force: true });
+  }
+}
+
+function readPersonalAgeSecretKey(): string | undefined {
+  try {
+    const content = fs.readFileSync(path.join(os.homedir(), '.config', 'fnox', 'age.txt'), 'utf8');
+    return content
+      .split('\n')
+      .find((line) => line.trim().startsWith('AGE-SECRET-KEY-'))
+      ?.trim();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Restores a fnox.local.toml backup left by an interrupted earlier run so the user's local
+ * overrides are never silently lost. Returns whether a stale backup was recovered.
+ */
+function recoverStaleFnoxLocalBackup(dirPath: string): boolean {
+  const localPath = path.resolve(dirPath, 'fnox.local.toml');
+  const hiddenPath = `${localPath}.wbfy-bak`;
+  if (!fs.existsSync(hiddenPath)) return false;
+  if (fs.existsSync(localPath)) {
+    throw new Error(`Both ${localPath} and ${hiddenPath} exist; resolve the leftover backup manually.`);
+  }
+  fs.renameSync(hiddenPath, localPath);
+  return true;
+}
+
+/**
+ * Runs a function while the machine-local fnox.local.toml is temporarily moved aside: fnox loads
+ * it at higher priority than the committed fnox.toml, so a local override shadowing a committed
+ * secret would make `fnox reencrypt` skip that secret.
+ */
+function withFnoxLocalHidden<T>(dirPath: string, func: () => T): T {
+  recoverStaleFnoxLocalBackup(dirPath);
+  const localPath = path.resolve(dirPath, 'fnox.local.toml');
+  const hiddenPath = `${localPath}.wbfy-bak`;
+  const exists = fs.existsSync(localPath);
+  if (exists) fs.renameSync(localPath, hiddenPath);
+  try {
+    return func();
+  } finally {
+    if (exists) fs.renameSync(hiddenPath, localPath);
+  }
 }
 
 function replaceAgeRecipients(content: string): string {
