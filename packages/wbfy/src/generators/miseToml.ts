@@ -70,11 +70,7 @@ function liftOutdatedBunVersion(bunVersion: unknown): unknown {
       : minimumBunVersion;
   }
   if (Array.isArray(bunVersion)) {
-    return [
-      ...new Set(
-        bunVersion.map((version) => (typeof version === 'string' ? liftOutdatedBunVersion(version) : version))
-      ),
-    ];
+    return [...new Set(bunVersion.map((version) => liftOutdatedBunVersion(version)))];
   }
   if (bunVersion && typeof bunVersion === 'object' && 'version' in bunVersion) {
     return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version) };

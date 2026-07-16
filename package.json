@@ -18,7 +18,7 @@
     "format": "bun wb lint --format",
     "lint": "bun wb lint",
     "lint-fix": "bun wb lint --fix",
-    "prepare": "lefthook install || true && bun run --cwd \"packages/wb\" build",
+    "prepare": "lefthook install || true && bun run --cwd 'packages/wb' build",
     "release": "bun multi-semantic-release --debug",
     "test": "bun wb test",
     "typecheck": "bun wb typecheck",

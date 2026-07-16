@@ -261,7 +261,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
     // Refresh lock files
     try {
-      refreshBunLock(rootDirPath);
+      await refreshBunLock(rootDirPath, rootConfig);
       // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
       // that removeYarnFiles intentionally preserved for the migration can be removed.
       fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
@@ -311,8 +311,10 @@ async function ensureInstallableBunLinker(
 
   // Both layouts failed, so the failure is not linker-specific; keep the default isolated
   // configuration instead of persisting a downgrade that the failed install never justified.
+  // Clean up the failed hoisted attempt too, so later installs do not run on a polluted tree.
   await generateBunfigToml(rootConfig);
   await promisePool.promiseAll();
+  removeNodeModules(rootDirPath, rootConfig);
   return false;
 }
 
@@ -330,16 +332,28 @@ function removeNodeModules(rootDirPath: string, rootConfig: PackageConfig): void
   }
 }
 
-function refreshBunLock(rootDirPath: string): void {
+async function refreshBunLock(rootDirPath: string, rootConfig: PackageConfig): Promise<void> {
   // wbfy should update only the packages it explicitly manages through bun add.
   // Running bun update here refreshes unrelated application dependencies and
   // can change product behavior, so keep the existing lock and reconcile it.
-  // The linker was already validated by ensureInstallableBunLinker, so a failure here is not
-  // layout-specific: retry once and fail loudly instead of downgrading the linker.
-  const status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
-  if (status !== 0) {
-    throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
+  let status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
+  if (status === 0) return;
+
+  // The pre-conversion probe can be inconclusive (legacy lifecycle scripts fail under both
+  // linkers), so the converted repository gets one more chance on the hoisted linker before the
+  // run fails — e.g. a converted script may exercise a phantom dependency only hoisting provides.
+  if (readBunLinker(rootDirPath) === 'isolated') {
+    console.warn('bun install failed with the isolated linker after migration; retrying with the hoisted linker.');
+    await generateBunfigToml(rootConfig, 'hoisted');
+    await promisePool.promiseAll();
+    removeNodeModules(rootDirPath, rootConfig);
+    status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
+    if (status === 0) return;
+    // Both layouts failed after conversion; restore the default isolated configuration.
+    await generateBunfigToml(rootConfig);
+    await promisePool.promiseAll();
   }
+  throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
 }
 
 function getVersion(): string {

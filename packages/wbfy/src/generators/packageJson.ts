@@ -409,7 +409,9 @@ async function applyPackageJsonConventions(
     // build it during install; registry installs ship a prebuilt dist and need no extra step.
     const wbWorkspaceDir = getWorkspacePackageDirs(rootConfig).get(wbDependency);
     if (wbWorkspaceDir) {
-      jsonObj.scripts.prepare += ` && bun run --cwd "${wbWorkspaceDir}" build`;
+      // Single quotes (with embedded quotes escaped) prevent the shell from expanding `$(…)` or
+      // variables that a hostile directory name could smuggle into the generated script.
+      jsonObj.scripts.prepare += ` && bun run --cwd '${wbWorkspaceDir.replaceAll("'", String.raw`'\''`)}' build`;
     }
     devDependencies.push(lefthookDependency);
 
@@ -1236,11 +1238,18 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
   // `!packages/excluded`) actually exclude their matches. Do not apply globIgnore here: workspace
   // membership is defined solely by the declared patterns, and source-scanning ignores such as
   // `build` or `dist` would hide legitimately named workspace directories.
-  const packageJsonGlobs = workspacePatterns.map((workspacePattern) =>
-    workspacePattern.startsWith('!')
-      ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
-      : path.posix.join(workspacePattern, 'package.json')
-  );
+  const packageJsonGlobs = workspacePatterns
+    // Workspace directories must stay inside the repository: absolute or `..`-traversing patterns
+    // would make consumers such as removeNodeModules operate on another repository's files.
+    .filter((workspacePattern) => {
+      const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
+      return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
+    })
+    .map((workspacePattern) =>
+      workspacePattern.startsWith('!')
+        ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
+        : path.posix.join(workspacePattern, 'package.json')
+    );
   for (const packageJsonPath of fg.globSync(packageJsonGlobs, {
     cwd: rootConfig.dirPath,
     ignore: ['**/node_modules/**'],
