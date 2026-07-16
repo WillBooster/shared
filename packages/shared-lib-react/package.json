@@ -28,13 +28,13 @@
   "scripts": {
     "build": "build-ts lib",
     "build-storybook": "build-storybook",
-    "cleanup": "yarn format && yarn lint-fix",
-    "format": "sort-package-json && yarn format-code",
+    "cleanup": "bun run format && bun run lint-fix",
+    "format": "sort-package-json && bun run format-code",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
     "lint": "oxlint --type-aware --type-check --no-error-on-unmatched-pattern .",
-    "lint-fix": "yarn lint --fix",
+    "lint-fix": "bun run lint --fix",
     "storybook": "start-storybook -p 6006",
-    "test/ci": "yarn build-storybook",
+    "test/ci": "bun run build-storybook",
     "typecheck": "wb typecheck",
     "verify": "wb verify",
     "verify-full": "wb verify --full"

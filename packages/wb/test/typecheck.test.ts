@@ -11,14 +11,13 @@ describe('typecheck', () => {
     async () => {
       const dirPath = path.join(tempDir, 'monorepo');
       await initializeProjectDirectory(dirPath);
-      // '--no-immutable' avoids errors on 'yarn install' even on CI
-      child_process.spawnSync('yarn --no-immutable', {
+      child_process.spawnSync('bun install', {
         shell: true,
         stdio: 'inherit',
         cwd: dirPath,
       });
 
-      child_process.spawnSync('yarn build', {
+      child_process.spawnSync('bun run build', {
         shell: true,
         stdio: 'inherit',
       });

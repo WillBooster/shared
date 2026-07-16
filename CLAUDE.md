@@ -1,7 +1,7 @@
 ## Project Information
 
 - Name: `willbooster-shared`
-- Package Manager: yarn
+- Package Manager: bun
 
 ## General Instructions
 
@@ -14,7 +14,7 @@
   - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
   - Avoid fixed waits in E2E tests; wait for conditions instead.
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
-- After making changes, run `yarn verify` (type checking and linting; takes up to 10 minutes), or `yarn verify-full` (all tests; takes up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
+- After making changes, run `bun verify` (type checking and linting; takes up to 10 minutes), or `bun verify-full` (all tests; takes up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
 - Once verified, commit and push to the current (non-main) branch, and create a PR via `gh` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., `feat:`, `fix:`).
   - End your commit message with a blank line followed by `Co-authored-by: WillBooster (Claude Code) <agent@willbooster.com>`.

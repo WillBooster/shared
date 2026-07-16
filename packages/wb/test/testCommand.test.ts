@@ -32,7 +32,7 @@ describe('buildPlaywrightArgsForE2E', () => {
 
 describe('wb test --help', () => {
   it('explains that -- forwards the remaining flags to Playwright', () => {
-    const result = child_process.spawnSync('yarn', ['workspace', '@willbooster/wb', 'start', 'test', '--help'], {
+    const result = child_process.spawnSync('bun', ['run', 'start', 'test', '--help'], {
       cwd: process.cwd(),
       encoding: 'utf8',
     });

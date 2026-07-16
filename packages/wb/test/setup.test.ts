@@ -13,15 +13,14 @@ describe('setup', () => {
     async () => {
       const dirPath = path.join(tempDir, 'blitz');
       await initializeProjectDirectory(dirPath);
-      // '--no-immutable' avoids errors on 'yarn install' even on CI
-      child_process.spawnSync('yarn --no-immutable', {
+      child_process.spawnSync('bun install', {
         shell: true,
         stdio: 'inherit',
         cwd: dirPath,
       });
 
       await setup({}, dirPath);
-      const ret = child_process.spawnSync(`yarn start test-on-ci -w ${dirPath}`, {
+      const ret = child_process.spawnSync(`bun run start test-on-ci -w ${dirPath}`, {
         shell: true,
         stdio: 'inherit',
       });

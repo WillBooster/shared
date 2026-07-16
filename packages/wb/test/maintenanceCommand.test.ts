@@ -79,29 +79,21 @@ describe('wb maintenance', () => {
 });
 
 function spawnWbMaintenance(action: 'start' | 'stop', port: number, args: string[] = []): childProcess.ChildProcess {
-  return childProcess.spawn(
-    'yarn',
-    ['workspace', '@willbooster/wb', 'start', 'maintenance', action, '--quiet-env', ...args],
-    {
-      cwd: process.cwd(),
-      detached: true,
-      env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
-      stdio: 'ignore',
-    }
-  );
+  return childProcess.spawn('bun', ['run', 'start', 'maintenance', action, '--quiet-env', ...args], {
+    cwd: process.cwd(),
+    detached: true,
+    env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
+    stdio: 'ignore',
+  });
 }
 
 function runWbMaintenanceStop(port: number): childProcess.SpawnSyncReturns<string> {
-  return childProcess.spawnSync(
-    'yarn',
-    ['workspace', '@willbooster/wb', 'start', 'maintenance', 'stop', '--quiet-env'],
-    {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-      env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
-      timeout: 20_000,
-    }
-  );
+  return childProcess.spawnSync('bun', ['run', 'start', 'maintenance', 'stop', '--quiet-env'], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+    env: { ...process.env, PORT: String(port), WB_ENV: 'development' },
+    timeout: 20_000,
+  });
 }
 
 function spawnNodeServer(port: number): childProcess.ChildProcess {

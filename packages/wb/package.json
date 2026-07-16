@@ -17,18 +17,18 @@
     "dist/"
   ],
   "scripts": {
-    "build": "yarn start buildIfNeeded --command 'yarn build-ts app'",
-    "cleanup": "yarn format && yarn lint-fix",
-    "format": "sort-package-json && yarn format-code",
+    "build": "bun run start buildIfNeeded --command 'bun build-ts app'",
+    "cleanup": "bun run format && bun run lint-fix",
+    "format": "sort-package-json && bun run format-code",
     "format-code": "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
     "lint": "oxlint --type-aware --type-check --no-error-on-unmatched-pattern .",
-    "lint-fix": "yarn lint --fix",
+    "lint-fix": "bun run lint --fix",
     "start": "build-ts run src/index.ts --",
-    "start-prod": "yarn build && yarn wb",
+    "start-prod": "bun run build && bun wb",
     "test": "WB_ENV=test vitest run test",
     "typecheck": "tsc --noEmit",
-    "verify": "yarn workspace @willbooster/wb start --working-dir \"$INIT_CWD\" verify",
-    "verify-full": "yarn verify --full"
+    "verify": "bun run start verify",
+    "verify-full": "bun run start verify --full"
   },
   "dependencies": {
     "chalk": "5.6.2",
