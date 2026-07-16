@@ -133,8 +133,21 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         );
         return;
       }
+      // A tracked symlink named fnox.toml (or a symlinked parent directory) would make the
+      // rewrite and `fnox reencrypt` read and MODIFY files outside this repository.
+      const realRootDirPath = fs.realpathSync(rootDirPath);
       for (const dirPath of dirPaths) {
         const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
+        const realPath = fs.realpathSync(fnoxTomlPath);
+        if (
+          fs.lstatSync(fnoxTomlPath).isSymbolicLink() ||
+          (realPath !== path.join(realRootDirPath, 'fnox.toml') && !realPath.startsWith(realRootDirPath + path.sep))
+        ) {
+          failFnoxSync(
+            `Failed to synchronize fnox age recipients because ${fnoxTomlPath} is a symlink or resolves outside the repository (${realPath}). Replace it with a regular in-repository file.`
+          );
+          return;
+        }
         snapshots.set(fnoxTomlPath, fs.readFileSync(fnoxTomlPath, 'utf8'));
       }
 
@@ -153,6 +166,7 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         const ancestorChanged = changedDirPaths.some((changedDirPath) => dirPath.startsWith(changedDirPath + path.sep));
         const result = await synchronizeFnoxAgeRecipients(
           dirPath,
+          rootDirPath,
           dirPath === rootDirPath,
           ancestorChanged,
           interrupted
@@ -160,12 +174,16 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         if (result === 'changed') changedDirPaths.push(dirPath);
         anyFailed ||= result === 'failed';
       }
-      const restored = anyFailed && changedDirPaths.length > 0 ? restoreSnapshots(snapshots) : true;
-      if (restored) fs.rmSync(migrationMarkerPath, { force: true });
-    } catch (error) {
-      if (restoreSnapshots(snapshots) && migrationMarkerPath) {
+      if (anyFailed) {
+        // A failed forced re-encryption may have rewritten some ciphertexts without changing any
+        // recipients, so restore unconditionally and KEEP the marker: only a fully successful run
+        // proves every ciphertext matches the recipients again.
+        restoreSnapshots(snapshots);
+      } else {
         fs.rmSync(migrationMarkerPath, { force: true });
       }
+    } catch (error) {
+      restoreSnapshots(snapshots);
       failFnoxSync(`Failed to synchronize fnox age recipients due to: ${(error as Error | undefined)?.stack ?? error}`);
     } finally {
       migrationMarkerPath = undefined;
@@ -202,6 +220,7 @@ function failFnoxSync(message: string): void {
 
 async function synchronizeFnoxAgeRecipients(
   dirPath: string,
+  rootDirPath: string,
   isRoot: boolean,
   ancestorRecipientsChanged: boolean,
   forceReencrypt: boolean
@@ -281,7 +300,7 @@ async function synchronizeFnoxAgeRecipients(
   if (!isRoot && !settings.providers?.age) {
     if (ancestorRecipientsChanged || recoveredLocalBackup || forceReencrypt) {
       writeMigrationMarker();
-      if (!reencryptFnoxSecrets(dirPath, profileNames)) {
+      if (!reencryptFnoxSecrets(dirPath, rootDirPath, profileNames)) {
         failFnoxSync(
           `Failed to re-encrypt fnox secrets in ${dirPath} for the updated recipients. Fix the error and rerun wbfy.`
         );
@@ -299,7 +318,7 @@ async function synchronizeFnoxAgeRecipients(
   ) {
     if (recoveredLocalBackup || forceReencrypt) {
       writeMigrationMarker();
-      if (!reencryptFnoxSecrets(dirPath, profileNames)) {
+      if (!reencryptFnoxSecrets(dirPath, rootDirPath, profileNames)) {
         failFnoxSync(
           `Failed to re-encrypt fnox secrets in ${dirPath} after an interrupted earlier run. Fix the error and rerun wbfy.`
         );
@@ -327,7 +346,7 @@ async function synchronizeFnoxAgeRecipients(
   writeMigrationMarker();
   await fsUtil.generateFile(fnoxTomlPath, updatedContent);
 
-  if (!reencryptFnoxSecrets(dirPath, profileNames)) {
+  if (!reencryptFnoxSecrets(dirPath, rootDirPath, profileNames)) {
     // Restore the original config: keeping the new recipients with old ciphertexts would make
     // this generator skip re-encryption forever and let setupSecrets upload a CI key that
     // cannot decrypt anything. The old ciphertexts remain valid for the old recipients.
@@ -346,13 +365,17 @@ async function synchronizeFnoxAgeRecipients(
 // ~/.config/fnox/config.toml into every project config — a plain reencrypt would rewrite the
 // user's global secrets too. Decryption therefore needs the personal identity passed explicitly
 // via FNOX_AGE_KEY; FNOX_PROFILE is stripped so it cannot redirect the base (no -P) run.
-function reencryptFnoxSecrets(dirPath: string, profileNames: string[]): boolean {
+function reencryptFnoxSecrets(dirPath: string, rootDirPath: string, profileNames: string[]): boolean {
   // The identity is optional: a plaintext-only config has nothing to decrypt and fnox succeeds
   // without one, while existing ciphertexts make fnox fail loudly on its own.
   const identity = readPersonalAgeSecretKey() ?? process.env.FNOX_AGE_KEY;
+  const fnoxCommand = resolveFnoxCommand(dirPath);
   const isolatedHomeDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fnox-home-'));
   try {
-    return withFnoxLocalHidden(dirPath, () => {
+    // Hide the local overrides of EVERY directory fnox merges hierarchically (from the command
+    // directory up to the repository root): an ancestor's fnox.local.toml would otherwise shadow
+    // committed secrets or itself get rewritten by the re-encryption.
+    return withFnoxLocalsHidden(listAncestorDirPaths(dirPath, rootDirPath), () => {
       const env = {
         ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('FNOX_'))),
         ...(identity ? { FNOX_AGE_KEY: identity } : {}),
@@ -362,8 +385,13 @@ function reencryptFnoxSecrets(dirPath: string, profileNames: string[]): boolean 
       const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', '-P', name])];
       for (const profileArgs of profileArgsList) {
         const args = ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...profileArgs];
-        console.log(`$ fnox ${args.join(' ')} at ${dirPath}`);
-        const proc = child_process.spawnSync('fnox', args, { cwd: dirPath, encoding: 'utf8', stdio: 'inherit', env });
+        console.log(`$ ${fnoxCommand} ${args.join(' ')} at ${dirPath}`);
+        const proc = child_process.spawnSync(fnoxCommand, args, {
+          cwd: dirPath,
+          encoding: 'utf8',
+          stdio: 'inherit',
+          env,
+        });
         if ((proc.status ?? 1) !== 0) return false;
       }
       return true;
@@ -371,6 +399,27 @@ function reencryptFnoxSecrets(dirPath: string, profileNames: string[]): boolean 
   } finally {
     fs.rmSync(isolatedHomeDirPath, { recursive: true, force: true });
   }
+}
+
+/**
+ * Resolves the actual fnox binary. `fnox` on PATH is often a mise shim, and mise refuses to run
+ * once HOME/XDG_CONFIG_HOME point at the isolated directory (its trust state disappears), so the
+ * isolated spawns need the shim resolved to the real executable beforehand.
+ */
+export function resolveFnoxCommand(dirPath: string): string {
+  const proc = child_process.spawnSync('mise', ['which', 'fnox'], { cwd: dirPath, encoding: 'utf8', stdio: 'pipe' });
+  const resolved = proc.status === 0 ? proc.stdout.trim() : '';
+  return resolved || 'fnox';
+}
+
+function listAncestorDirPaths(dirPath: string, rootDirPath: string): string[] {
+  const dirPaths = [dirPath];
+  while (dirPaths.at(-1) !== rootDirPath) {
+    const parent = path.dirname(dirPaths.at(-1) ?? '');
+    if (parent === dirPaths.at(-1)) break;
+    dirPaths.push(parent);
+  }
+  return dirPaths;
 }
 
 function readPersonalAgeSecretKey(): string | undefined {
@@ -401,20 +450,26 @@ function recoverStaleFnoxLocalBackup(dirPath: string): boolean {
 }
 
 /**
- * Runs a function while the machine-local fnox.local.toml is temporarily moved aside: fnox loads
- * it at higher priority than the committed fnox.toml, so a local override shadowing a committed
- * secret would make `fnox reencrypt` skip that secret.
+ * Runs a function while the machine-local fnox.local.toml files of the given directories are
+ * temporarily moved aside: fnox loads them at higher priority than the committed fnox.toml, so a
+ * local override shadowing a committed secret would make `fnox reencrypt` skip that secret.
  */
-function withFnoxLocalHidden<T>(dirPath: string, func: () => T): T {
-  recoverStaleFnoxLocalBackup(dirPath);
-  const localPath = path.resolve(dirPath, 'fnox.local.toml');
-  const hiddenPath = `${localPath}.wbfy-bak`;
-  const exists = fs.existsSync(localPath);
-  if (exists) fs.renameSync(localPath, hiddenPath);
+function withFnoxLocalsHidden<T>(dirPaths: string[], func: () => T): T {
+  const hiddenLocalPaths: string[] = [];
   try {
+    for (const dirPath of dirPaths) {
+      recoverStaleFnoxLocalBackup(dirPath);
+      const localPath = path.resolve(dirPath, 'fnox.local.toml');
+      if (fs.existsSync(localPath)) {
+        fs.renameSync(localPath, `${localPath}.wbfy-bak`);
+        hiddenLocalPaths.push(localPath);
+      }
+    }
     return func();
   } finally {
-    if (exists) fs.renameSync(hiddenPath, localPath);
+    for (const localPath of hiddenLocalPaths) {
+      fs.renameSync(`${localPath}.wbfy-bak`, localPath);
+    }
   }
 }
 

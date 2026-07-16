@@ -8,7 +8,7 @@ import dotenv from 'dotenv';
 import type sodiumModule from 'libsodium-wrappers';
 import { parse } from 'smol-toml';
 
-import { FNOX_AGE_RECIPIENTS, hasFnoxSyncFailed } from '../generators/fnoxToml.js';
+import { FNOX_AGE_RECIPIENTS, hasFnoxSyncFailed, resolveFnoxCommand } from '../generators/fnoxToml.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -76,6 +76,17 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     // must not count. Check every fnox.toml, not just the root one: a nested config overrides
     // the root via fnox's hierarchical loading.
     for (const [relPath, content] of remoteFnoxContents) {
+      // The decryptability verification below runs `fnox reencrypt --provider age`, so a layout
+      // it cannot cover (imports, differently named age providers, profile providers) would
+      // leave secrets unverified; fail instead of proceeding.
+      const layoutIssue = findFnoxLayoutIssue(content);
+      if (layoutIssue) {
+        console.error(
+          `Skip uploading FNOX_AGE_KEY because ${relPath} on the default branch ${layoutIssue}. Fix it (wbfy reports the same issue during synchronization), push, and rerun wbfy --env.`
+        );
+        process.exitCode = 1;
+        return;
+      }
       const recipients = readFnoxAgeRecipients(content);
       // A nested config without its own age provider inherits the root one; only the root
       // fnox.toml must declare it.
@@ -89,12 +100,19 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
         }
         continue;
       }
+      // Require the EXACT recipient set: an extra (e.g. removed developer's) recipient means the
+      // ciphertexts remain decryptable by an identity that is no longer authorized.
       const missingRecipients = FNOX_AGE_RECIPIENTS.filter((recipient) => !recipients.has(recipient.publicKey));
-      if (missingRecipients.length > 0) {
+      const unexpectedRecipients = [...recipients].filter(
+        (publicKey) => !FNOX_AGE_RECIPIENTS.some((recipient) => recipient.publicKey === publicKey)
+      );
+      if (missingRecipients.length > 0 || unexpectedRecipients.length > 0) {
         console.error(
-          `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in ${relPath} on the default branch misses the following age public keys: ${missingRecipients
+          `Skip uploading FNOX_AGE_KEY because [providers.age].recipients in ${relPath} on the default branch does not match FNOX_AGE_RECIPIENTS exactly (missing: ${missingRecipients
             .map((recipient) => recipient.publicKey)
-            .join(', ')}. Merge and push the wbfy migration, then rerun wbfy --env.`
+            .join(
+              ', '
+            )}; unexpected: ${unexpectedRecipients.join(', ')}). Merge and push the wbfy migration, then rerun wbfy --env.`
         );
         process.exitCode = 1;
         return;
@@ -108,7 +126,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     // Matching recipients do not prove the committed ciphertexts were actually re-encrypted for
     // the CI key (e.g. someone hand-added the recipient without `fnox reencrypt`), so decrypt
     // every age secret of the default branch with ONLY the CI key before replacing the secret.
-    if (!verifyCiKeyDecryptsAllSecrets(remoteFnoxContents, ageKey)) {
+    if (!verifyCiKeyDecryptsAllSecrets(remoteFnoxContents, ageKey, config.dirPath)) {
       process.exitCode = 1;
       return;
     }
@@ -218,13 +236,20 @@ async function fetchDefaultBranchFnoxConfigs(
 // and never part of the mirror). Unlike `fnox export`, reencrypt fails loudly on an undecryptable
 // ciphertext even when the secret declares a plaintext `default` fallback, and it covers secrets
 // excluded from exports (e.g. `env = false`). Mutations stay in the mirror.
-function verifyCiKeyDecryptsAllSecrets(fnoxContents: Map<string, string>, ciAgeKey: string): boolean {
+function verifyCiKeyDecryptsAllSecrets(
+  fnoxContents: Map<string, string>,
+  ciAgeKey: string,
+  repoDirPath: string
+): boolean {
   // The mirror must live OUTSIDE any repository (not in <repo>/.tmp): fnox searches parent
   // directories for configs, so a mirror inside the repository would hierarchically merge the
   // repository's real fnox.toml and break the isolation this check depends on.
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-ci-age-'));
   const tempRepoDirPath = path.join(tempDirPath, 'repo');
   const emptyHomeDirPath = path.join(tempDirPath, 'home');
+  // Resolve a possible mise shim to the real fnox binary BEFORE isolating HOME: the shim refuses
+  // to run once mise loses its trust state under the isolated HOME.
+  const fnoxCommand = resolveFnoxCommand(repoDirPath);
   try {
     fs.mkdirSync(emptyHomeDirPath, { recursive: true });
     for (const [relPath, content] of fnoxContents) {
@@ -244,7 +269,7 @@ function verifyCiKeyDecryptsAllSecrets(fnoxContents: Map<string, string>, ciAgeK
       const profileArgsList = [[], ...profileNames.map((name) => ['--no-defaults', '-P', name])];
       for (const profileArgs of profileArgsList) {
         const proc = child_process.spawnSync(
-          'fnox',
+          fnoxCommand,
           ['reencrypt', '--force', '--no-daemon', '--provider', 'age', ...profileArgs],
           { cwd: tempConfigDirPath, encoding: 'utf8', stdio: 'pipe', env }
         );
@@ -259,6 +284,34 @@ function verifyCiKeyDecryptsAllSecrets(fnoxContents: Map<string, string>, ciAgeK
     return true;
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+}
+
+// Returns a description of a config layout the CI-key verification cannot cover, or undefined
+// when the standard single-file, single-age-provider layout is used.
+function findFnoxLayoutIssue(fnoxTomlContent: string): string | undefined {
+  try {
+    const settings = parse(fnoxTomlContent) as {
+      import?: unknown;
+      providers?: Record<string, Record<string, unknown> | undefined>;
+      profiles?: Record<string, Record<string, unknown> | undefined>;
+    };
+    if (settings.import !== undefined) return 'uses the unsupported `import` setting';
+    const nonStandardAgeProviderNames = Object.entries(settings.providers ?? {})
+      .filter(([name, provider]) => (provider?.type === 'age') !== (name === 'age'))
+      .map(([name]) => name);
+    if (nonStandardAgeProviderNames.length > 0) {
+      return `declares age providers not named \`age\` (or an \`age\` provider of another type): ${nonStandardAgeProviderNames.join(', ')}`;
+    }
+    const profilesWithProviders = Object.entries(settings.profiles ?? {})
+      .filter(([, profile]) => profile?.providers)
+      .map(([name]) => name);
+    if (profilesWithProviders.length > 0) {
+      return `declares unsupported profile-specific providers: ${profilesWithProviders.join(', ')}`;
+    }
+    return undefined;
+  } catch {
+    return 'cannot be parsed as TOML';
   }
 }
 
