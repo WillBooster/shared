@@ -29,7 +29,6 @@ export class Project {
 
   @memoizeOne
   get isBunAvailable(): boolean {
-    if (this.hasBunToolVersion()) return true;
     return this.usesBunPackageManager;
   }
 
@@ -43,8 +42,12 @@ export class Project {
     return this.isBunAvailable ? 'bun run' : 'yarn';
   }
 
+  // A single signal decides every bun-vs-yarn branch in wb (script normalization included):
+  // splitting the tool-manifest signal from the lockfile signal once produced commands mixing
+  // `bun install` with `yarn prisma ...` in mise-pinned repos whose bun.lock is gitignored.
   @memoizeOne
   get usesBunPackageManager(): boolean {
+    if (this.hasBunToolVersion()) return true;
     if (this.hasBunLockfile()) return true;
     return this.hasBunPackageManager();
   }
