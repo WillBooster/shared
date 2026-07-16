@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { ignoreErrorAsync } from '@willbooster/shared-lib/src';
+import semver from 'semver';
 import yargs from 'yargs';
 
 import { fixNextConfigJson } from './fixers/nextConfig.js';
@@ -36,7 +37,7 @@ import { installAgentSkills } from './generators/skills.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
-import { generateMiseToml } from './generators/miseToml.js';
+import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
 import { findUnmigratableYarnSettings, removeYarnFiles } from './generators/removeYarnFiles.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
@@ -49,7 +50,7 @@ import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
-import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
 
 async function main(): Promise<void> {
@@ -103,8 +104,16 @@ async function main(): Promise<void> {
 async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<boolean> {
   // wbfy rewrites repositories to the Bun + mise toolchain and runs `bun add` / `bun install`;
   // proceeding without Bun would delete Yarn state and then fail to produce a Bun lockfile.
-  if (spawnSyncAndReturnStatus('bun', ['--version'], '.') !== 0) {
+  // The version floor matters too: older Bun silently ignores the generated bunfig.toml options
+  // (globalStore, publicHoistPattern) and would validate a different install layout than the one
+  // repositories get once mise upgrades them.
+  const bunVersion = spawnSyncAndReturnStdout('bun', ['--version'], '.');
+  if (!semver.valid(bunVersion)) {
     console.error('wbfy requires Bun. Install Bun (e.g. via mise) and re-run.');
+    return true;
+  }
+  if (semver.lt(bunVersion, minimumBunVersion)) {
+    console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }
 

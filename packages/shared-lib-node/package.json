@@ -61,8 +61,7 @@
     "oxlint-tsgolint": "0.24.0",
     "sort-package-json": "4.0.0",
     "typescript": "7.0.2",
-    "vitest": "4.1.5",
-    "yargs": "18.0.0"
+    "vitest": "4.1.5"
   },
   "publishConfig": {
     "access": "public"

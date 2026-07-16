@@ -183,10 +183,10 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
   delete jsonObj.scripts['start-test-server'];
 
   delete jsonObj.scripts.prettify;
-  // `bun wb lint --format` owns JS/TS formatting, so the old oxfmt-based format-code script is
-  // obsolete there. Dart/Python repos still use format-code; theirs is regenerated later in
-  // normalizePackageMetadata, which runs after this function.
-  if (doesContainJsOrTs(config) && !config.doesContainPubspecYaml && !getPythonPackageManager(config)) {
+  // `bun wb lint --format` owns JS/TS formatting, so the oxfmt-based format-code script wbfy used
+  // to generate is obsolete. Only the recognized generated command is removed: custom format-code
+  // scripts (and the Dart/Python variants regenerated later in normalizePackageMetadata) survive.
+  if (jsonObj.scripts['format-code']?.includes('oxfmt')) {
     delete jsonObj.scripts['format-code'];
   }
   convertYarnCommandsToBun(jsonObj.scripts);
@@ -404,7 +404,7 @@ async function applyPackageJsonConventions(
     // build it during install; registry installs ship a prebuilt dist and need no extra step.
     const wbWorkspaceDir = getWorkspacePackageDirs(rootConfig).get(wbDependency);
     if (wbWorkspaceDir) {
-      jsonObj.scripts.prepare += ` && bun run --cwd ${wbWorkspaceDir} build`;
+      jsonObj.scripts.prepare += ` && bun run --cwd "${wbWorkspaceDir}" build`;
     }
     devDependencies.push(lefthookDependency);
 
@@ -1218,24 +1218,37 @@ function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, string>
   if (cached) return cached;
 
   const workspaceDirsByName = new Map<string, string>();
-  const workspacePatterns = rootConfig.packageJson?.workspaces;
-  if (Array.isArray(workspacePatterns)) {
-    for (const workspacePattern of workspacePatterns) {
-      for (const packageJsonPath of fg.globSync(path.posix.join(workspacePattern, 'package.json'), {
-        cwd: rootConfig.dirPath,
-        ignore: globIgnore,
-      })) {
-        try {
-          const workspacePackageJson = JSON.parse(
-            fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
-          ) as PackageJson;
-          if (workspacePackageJson.name) {
-            workspaceDirsByName.set(workspacePackageJson.name, path.posix.dirname(packageJsonPath));
-          }
-        } catch {
-          // ignore unparsable workspace package.json
-        }
+  const declaredPatterns = rootConfig.packageJson?.workspaces;
+  // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
+  // not have written the root package.json yet, so mirror that normalization here.
+  const workspacePatterns = [
+    ...new Set([
+      ...(Array.isArray(declaredPatterns) ? declaredPatterns : []),
+      ...(rootConfig.doesContainSubPackageJsons ? ['packages/*'] : []),
+    ]),
+  ];
+  // Expand all patterns in one glob call so Bun-supported negative patterns (e.g.
+  // `!packages/excluded`) actually exclude their matches. Do not apply globIgnore here: workspace
+  // membership is defined solely by the declared patterns, and source-scanning ignores such as
+  // `build` or `dist` would hide legitimately named workspace directories.
+  const packageJsonGlobs = workspacePatterns.map((workspacePattern) =>
+    workspacePattern.startsWith('!')
+      ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
+      : path.posix.join(workspacePattern, 'package.json')
+  );
+  for (const packageJsonPath of fg.globSync(packageJsonGlobs, {
+    cwd: rootConfig.dirPath,
+    ignore: ['**/node_modules/**'],
+  })) {
+    try {
+      const workspacePackageJson = JSON.parse(
+        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
+      ) as PackageJson;
+      if (workspacePackageJson.name) {
+        workspaceDirsByName.set(workspacePackageJson.name, path.posix.dirname(packageJsonPath));
       }
+    } catch {
+      // ignore unparsable workspace package.json
     }
   }
   workspacePackageDirsCache.set(rootConfig.dirPath, workspaceDirsByName);

@@ -15,7 +15,7 @@ interface MiseToml {
 }
 
 // The oldest Bun that understands every option in the generated bunfig.toml (globalStore).
-const minimumBunVersion = '1.3.14';
+export const minimumBunVersion = '1.3.14';
 
 /**
  * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions,
@@ -40,13 +40,7 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
     // unpinned Node would come from whatever happens to be on PATH.
     tools.node = tools.node ?? readNodeVersionFile(config.dirPath) ?? 'latest';
-    tools.bun = tools.bun ?? 'latest';
-    // The generated bunfig.toml relies on `globalStore` (Bun >= 1.3.14) and `publicHoistPattern`
-    // (Bun >= 1.3.1); older Bun versions silently ignore them and install a different layout
-    // from the one wbfy validated, so lift any older pin.
-    if (typeof tools.bun === 'string' && semver.valid(tools.bun) && semver.lt(tools.bun, minimumBunVersion)) {
-      tools.bun = 'latest';
-    }
+    tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest');
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = tools.fnox ?? 'latest';
     }
@@ -55,6 +49,35 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     await fsUtil.generateFile(miseTomlPath, stringify(settings));
     await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.tool-versions'), { force: true }));
   });
+}
+
+/**
+ * The generated bunfig.toml relies on `globalStore` (Bun >= 1.3.14) and `publicHoistPattern`
+ * (Bun >= 1.3.1); older Bun versions silently ignore them and install a different layout from the
+ * one wbfy validated, so lift any pin that cannot resolve to the minimum. Handles mise's string,
+ * array, and `{ version = "…" }` tool forms; prefix pins like "1.2" are ranges, so a pin is lifted
+ * only when its whole range is below the minimum.
+ */
+function liftOutdatedBunVersion(bunVersion: unknown): unknown {
+  if (typeof bunVersion === 'string') {
+    return isVersionRangeBelow(bunVersion, minimumBunVersion) ? 'latest' : bunVersion;
+  }
+  if (Array.isArray(bunVersion)) {
+    return [
+      ...new Set(
+        bunVersion.map((version) => (typeof version === 'string' ? liftOutdatedBunVersion(version) : version))
+      ),
+    ];
+  }
+  if (bunVersion && typeof bunVersion === 'object' && 'version' in bunVersion) {
+    return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version) };
+  }
+  return bunVersion;
+}
+
+function isVersionRangeBelow(versionRange: string, minimumVersion: string): boolean {
+  // Non-semver specifiers such as "latest" yield no range and are left untouched.
+  return !!semver.validRange(versionRange) && semver.gtr(minimumVersion, versionRange);
 }
 
 function parseMiseToml(miseTomlPath: string): MiseToml {
