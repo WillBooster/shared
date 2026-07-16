@@ -339,7 +339,8 @@ function replaceAgeRecipients(content: string): string {
   // Standard form: a [providers.age] table (possibly with a trailing comment). Scan line-wise so
   // that a `[` inside a comment or a string never terminates the table early; the table ends at
   // the next line-start table header. The assignment match is line-anchored so a commented-out
-  // `# recipients = [...]` is never mistaken for the real one. Known accepted limitation: a `]`
+  // `# recipients = [...]` is never mistaken for the real one, while multiline arrays still match
+  // because the negated class [^\]] (unlike `.`) spans newlines. Known accepted limitation: a `]`
   // inside a comment within a multiline recipients array defeats the match — the re-parse
   // validation in the caller then fails the run safely with instructions instead of corrupting
   // the file.
