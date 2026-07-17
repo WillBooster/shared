@@ -17,37 +17,73 @@ const jsonObj = {
 };
 
 type Settings = Omit<typeof jsonObj, 'extends'> & {
-  extends?: string[];
+  // Renovate's schema allows a single preset string in addition to an array.
+  extends?: string | string[];
   packageRules?: { matchPackageNames: string[]; enabled?: boolean }[];
 };
+
+// Renovate stops at the first matching config file and renovate.json matches first, so generating
+// renovate.json next to any of these alternative locations would silently shadow the user's
+// config. `.renovaterc.json` is intentionally absent: wbfy migrates it into renovate.json below.
+const shadowedRenovateConfigPaths = [
+  'renovate.jsonc',
+  'renovate.json5',
+  '.github/renovate.json',
+  '.github/renovate.jsonc',
+  '.github/renovate.json5',
+  '.gitlab/renovate.json',
+  '.gitlab/renovate.jsonc',
+  '.gitlab/renovate.json5',
+  '.renovaterc',
+  '.renovaterc.jsonc',
+  '.renovaterc.json5',
+];
 
 export async function generateRenovateJson(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateRenovateJson', async () => {
     let newSettings = structuredClone(jsonObj) as Settings;
     const filePath = path.resolve(config.dirPath, 'renovate.json');
-    // Renovate reads only the first matching config file (renovate.json wins over these variants),
-    // so generating renovate.json next to one of them would silently shadow the user's config.
-    if (
-      ['renovate.jsonc', 'renovate.json5'].some((fileName) => fs.existsSync(path.resolve(config.dirPath, fileName)))
-    ) {
+    if (shadowedRenovateConfigPaths.some((configPath) => fs.existsSync(path.resolve(config.dirPath, configPath)))) {
       return;
     }
-    const oldContent = await fsUtil.readFileIfExists(filePath);
+
+    // Renovate accepts JSONC in renovate.json; an existing file wbfy cannot parse must be left
+    // untouched instead of being overwritten with the bare template.
+    const oldSettingsList: Settings[] = [];
     let originalSettingsJson: string | undefined;
+    const oldContent = await fsUtil.readFileIfExists(filePath);
     if (oldContent !== undefined && !jsoncUtil.isTriviaOnly(oldContent)) {
-      // Renovate accepts JSONC in renovate.json; an existing file wbfy cannot parse must be left
-      // untouched instead of being overwritten with the bare template.
       const oldSettings = jsoncUtil.parseObjectIgnoringError<Settings>(oldContent);
       if (!oldSettings) {
         console.warn(`Skipped generating ${filePath} because the existing content is not parsable as JSONC.`);
         return;
       }
       originalSettingsJson = JSON.stringify(sortKeys(structuredClone(oldSettings) as Record<string, unknown>));
+      oldSettingsList.push(oldSettings);
+    }
+
+    // The legacy .renovaterc.json is superseded by the generated renovate.json, so merge its
+    // settings before it is deleted below.
+    const legacyFilePath = path.resolve(config.dirPath, '.renovaterc.json');
+    const legacyContent = await fsUtil.readFileIfExists(legacyFilePath);
+    if (legacyContent !== undefined && !jsoncUtil.isTriviaOnly(legacyContent)) {
+      const legacySettings = jsoncUtil.parseObjectIgnoringError<Settings>(legacyContent);
+      if (!legacySettings) {
+        console.warn(`Skipped generating ${filePath} because ${legacyFilePath} is not parsable as JSONC.`);
+        return;
+      }
+      oldSettingsList.push(legacySettings);
+    }
+
+    for (const oldSettings of oldSettingsList) {
       newSettings = merge.all([newSettings, oldSettings, newSettings], {
         arrayMerge: overwriteMerge,
       }) as Settings;
-      newSettings.extends = mergeRenovateExtends(jsonObj.extends, oldSettings.extends ?? []);
     }
+    newSettings.extends = mergeRenovateExtends(
+      jsonObj.extends,
+      oldSettingsList.map((oldSettings) => oldSettings.extends)
+    );
 
     // Don't upgrade Next.js automatically
     if (config.depending.blitz) {
@@ -62,7 +98,7 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     }
 
     await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.dependabot'), { force: true }));
-    await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.renovaterc.json'), { force: true }));
+    await promisePool.run(() => fs.promises.rm(legacyFilePath, { force: true }));
     // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
     // already-clean renovate.json survive wbfy runs.
     if (originalSettingsJson === JSON.stringify(sortKeys(structuredClone(newSettings) as Record<string, unknown>))) {
@@ -73,6 +109,11 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
   });
 }
 
-function mergeRenovateExtends(generatedExtends: string[], existingExtends: string[]): string[] {
+function mergeRenovateExtends(generatedExtends: string[], existingExtendsList: Settings['extends'][]): string[] {
+  // Renovate's schema allows `extends` to be a single preset string; spreading a string would
+  // corrupt it into its individual characters, so normalize each value to an array first.
+  const existingExtends = existingExtendsList.flatMap((value) =>
+    value === undefined ? [] : Array.isArray(value) ? value : [value]
+  );
   return [...new Set([...generatedExtends, ...existingExtends])].filter((item) => item !== '@willbooster');
 }
