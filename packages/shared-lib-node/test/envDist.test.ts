@@ -1,6 +1,6 @@
 import childProcess from 'node:child_process';
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 // Bundlers (build-ts/rolldown) replace the `process.env.NODE_ENV` member expression with the
 // literal 'production' at build time, which constant-folds the auto-cascade default
@@ -8,12 +8,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 // every wb command select the production profile when WB_ENV was unset). The source avoids the
 // foldable expression via an alias of `process.env`, but only the built artifact can prove the
 // workaround still defeats the bundler, so this suite exercises dist/env.js in a child process.
+// dist/ is built once for the whole run by the globalSetup in vitest.config.ts.
 describe('bundled env cascade', () => {
-  beforeAll(() => {
-    const result = childProcess.spawnSync('bun', ['run', 'build'], { encoding: 'utf8', stdio: 'inherit' });
-    expect(result.status).toBe(0);
-  }, 120_000);
-
   it('defaults --auto-cascade-env to development in the built artifact when WB_ENV and NODE_ENV are unset', () => {
     const script = `
       import { readEnvironmentVariables } from './dist/env.js';

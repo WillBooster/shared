@@ -1,10 +1,10 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { beforeAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { isProcessRunning, wait, waitForProcessStopped } from '../../../test/processUtils.js';
 import { spawnAsync } from '../src/spawn.js';
@@ -13,13 +13,7 @@ import { treeKill } from '../src/treeKill.js';
 describe('spawnAsync killOnExit with SIGTERM', () => {
   const pidsToCleanUp = new Set<number>();
 
-  beforeAll(() => {
-    const result = spawnSync('yarn', ['build'], {
-      encoding: 'utf8',
-      stdio: 'inherit',
-    });
-    expect(result.status).toBe(0);
-  });
+  // dist/ is built once for the whole run by the globalSetup in vitest.config.ts.
 
   afterEach(async () => {
     for (const pid of pidsToCleanUp) {
