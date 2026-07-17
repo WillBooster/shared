@@ -74,6 +74,27 @@ test('initializes an empty tsconfig with the generated settings', async () => {
   });
 });
 
+test('initializes a comment-only tsconfig with the generated settings', async () => {
+  await withTempTsconfig('// intentionally empty\n', async (filePath, config) => {
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { compilerOptions?: object };
+    expect(generated.compilerOptions).toBeDefined();
+  });
+});
+
+test('keeps a commented tsconfig byte-identical when the settings are already up to date', async () => {
+  await withTempTsconfig('', async (filePath, config) => {
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const commented = fs.readFileSync(filePath, 'utf8').replace('{\n', '{\n  // explains the setup\n');
+    fs.writeFileSync(filePath, commented);
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(commented);
+  });
+});
+
 test('merges settings from a tsconfig with a UTF-8 BOM instead of skipping it', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(
     '\uFEFF' + JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./node_modules/undici-types'] } } })

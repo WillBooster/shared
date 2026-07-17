@@ -22,7 +22,7 @@ export async function generateVscodeSettings(config: PackageConfig): Promise<voi
   return logger.functionIgnoringException('generateVscodeSettings', async () => {
     const filePath = path.resolve(config.dirPath, '.vscode', 'settings.json');
     const existingContent = await fsUtil.readFileIfExists(filePath);
-    if (existingContent === undefined || !existingContent.trim()) return;
+    if (existingContent === undefined || jsoncUtil.isTriviaOnly(existingContent)) return;
     // .vscode/settings.json is JSONC by definition; JSON.parse would make wbfy silently skip
     // commented files, leaving the settings it intends to remove in place.
     const parsedSettings = jsoncUtil.parseObjectIgnoringError<object>(existingContent);

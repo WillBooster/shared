@@ -83,8 +83,8 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
     const existingContent = await fsUtil.readFileIfExists(filePath);
     let originalSettingsJson: string | undefined;
-    // An empty (or whitespace-only) file carries no configuration, so treat it like a missing one.
-    if (existingContent !== undefined && existingContent.trim()) {
+    // A file with no configuration (empty or comment-only) is treated like a missing one, as tsc does.
+    if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
       const oldSettings = jsoncUtil.parseObjectIgnoringError<TsConfigJson>(existingContent);
       // An existing tsconfig.json wbfy cannot parse must be left untouched: writing the
       // generated settings without merging would silently discard the project's configuration.
@@ -149,7 +149,7 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
   // node10 resolver spellings that older projects commonly inherited.
   const filePath = path.resolve(config.dirPath, 'tsconfig.json');
   const existingContent = await fsUtil.readFileIfExists(filePath);
-  if (existingContent === undefined || !existingContent.trim()) return;
+  if (existingContent === undefined || jsoncUtil.isTriviaOnly(existingContent)) return;
   const settings = jsoncUtil.parseObjectIgnoringError<TsConfigJson>(existingContent);
   if (!settings) {
     console.warn(`Skipped cleaning up ${filePath} because the existing content is not parsable as JSONC.`);

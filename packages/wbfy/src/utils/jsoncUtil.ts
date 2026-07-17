@@ -1,7 +1,15 @@
 import type { ParseError } from 'jsonc-parser';
-import { parse as parseJsonc } from 'jsonc-parser';
+import { parse as parseJsonc, stripComments } from 'jsonc-parser';
 
 export const jsoncUtil = {
+  /**
+   * Tells whether the content holds no configuration at all — only whitespace, comments, and/or a
+   * BOM. tsc treats such a tsconfig.json as an empty config, so generators should treat it like a
+   * missing file (and generate defaults) instead of refusing to manage it.
+   */
+  isTriviaOnly(content: string): boolean {
+    return !stripComments(content.replace(/^\uFEFF/, '')).trim();
+  },
   /**
    * Parses a JSONC (JSON with comments) object from config files such as tsconfig.json,
    * pyrightconfig.json, renovate.json, .vscode/settings.json, and wrangler.jsonc.

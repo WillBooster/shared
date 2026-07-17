@@ -381,8 +381,15 @@ function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
 // A declaration at any config level replaces the .dev.vars/.env inference: `wrangler types` aggregates
 // per-environment secrets into the generated type (Cloudflare changelog 2026-03-24).
 function declaresRequiredSecretsAnywhere(config: WranglerConfigSecretsSubtree): boolean {
-  if ((config.secrets?.required?.length ?? 0) > 0) return true;
-  return Object.values(config.env ?? {}).some((envConfig) => (envConfig?.secrets?.required?.length ?? 0) > 0);
+  if (declaresRequiredSecrets(config.secrets)) return true;
+  return Object.values(config.env ?? {}).some((envConfig) => declaresRequiredSecrets(envConfig?.secrets));
+}
+
+// The parsed config comes from an unvalidated file, so check the documented `string[]` shape at
+// runtime: a malformed declaration (e.g. a plain string) must not prove reproducibility.
+function declaresRequiredSecrets(secrets: WranglerConfigSecretsSubtree['secrets']): boolean {
+  const required: unknown = secrets?.required;
+  return Array.isArray(required) && required.length > 0 && required.every((name) => typeof name === 'string');
 }
 
 /**
