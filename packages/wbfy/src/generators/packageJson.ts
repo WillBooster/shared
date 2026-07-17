@@ -608,6 +608,10 @@ function ensureTrustedDependencies(config: PackageConfig, jsonObj: WritablePacka
     ...(config.depending.drizzle ? ['drizzle-kit'] : []),
   ];
   if (requiredPackages.length === 0) return;
+  // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
+  // it, silently blocking lifecycle scripts of packages the default list trusts — lefthook's
+  // postinstall in every managed repository — so it must come along whenever the field is set.
+  requiredPackages.push(lefthookDependency);
   const bunJsonObj = jsonObj as WritablePackageJson & { trustedDependencies?: string[] };
   bunJsonObj.trustedDependencies = [
     ...new Set([...(bunJsonObj.trustedDependencies ?? []), ...requiredPackages]),
