@@ -587,19 +587,11 @@ function doesSeedCommandUseBuildTs(seedCommand: unknown): boolean {
   return typeof seedCommand === 'string' && /(?<![\w-])build-ts(?![\w-])/u.test(seedCommand);
 }
 
-/**
- * Forces store-incompatible packages to stay project-local under Bun's global store
- * (`globalStore = true` in the generated bunfig.toml): `chakra typegen` (run by `wb gen-code`)
- * writes generated types into the installed @chakra-ui/react package, which would otherwise
- * mutate the machine-wide store shared across repositories, and drizzle-kit requires drizzle-orm
- * without declaring it, which the store's realpath places beyond Node's node_modules walk-up.
- * Listing them in `trustedDependencies` makes Bun materialize a per-project copy under
- * `node_modules/.bun/`, whose walk-up reaches the project's node_modules.
- */
 async function ensureTrustedDependencies(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
   // Bun consults trustedDependencies in the workspace root's package.json only, so the list is
   // managed there and must cover dependencies declared anywhere in the repository.
   if (!config.isRoot) return;
+  const bunJsonObj = jsonObj as WritablePackageJson & { trustedDependencies?: string[] };
   const declaredDependencies = new Set([
     ...Object.keys(jsonObj.dependencies ?? {}),
     ...Object.keys(jsonObj.devDependencies ?? {}),
@@ -619,22 +611,30 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
       // ignore unreadable workspace package.json
     }
   }
-  const requiredPackages = [
+  const wbfyTrustedPackages = new Set(['@chakra-ui/react', 'drizzle-kit']);
+  const requiredWbfyPackages = [
     // Only chakra typegen (enabled by @chakra-ui/cli) mutates the installed @chakra-ui/react.
     ...(declaredDependencies.has('@chakra-ui/cli') && declaredDependencies.has('@chakra-ui/react')
       ? ['@chakra-ui/react']
       : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
   ];
-  if (requiredPackages.length === 0) return;
-  // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
-  // it, silently blocking lifecycle scripts of packages the default list trusts — lefthook's
-  // postinstall in every managed repository — so it must come along whenever the field is set.
-  requiredPackages.push(lefthookDependency);
-  const bunJsonObj = jsonObj as WritablePackageJson & { trustedDependencies?: string[] };
-  bunJsonObj.trustedDependencies = [
-    ...new Set([...(bunJsonObj.trustedDependencies ?? []), ...requiredPackages]),
-  ].toSorted();
+
+  const existingTrusted = bunJsonObj.trustedDependencies ?? [];
+  const customTrustedPackages = existingTrusted.filter(
+    (pkg) => pkg !== lefthookDependency && !wbfyTrustedPackages.has(pkg)
+  );
+
+  if (customTrustedPackages.length > 0 || requiredWbfyPackages.length > 0) {
+    // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
+    // it, silently blocking lifecycle scripts of packages the default list trusts — lefthook's
+    // postinstall in every managed repository — so it must come along whenever the field is set.
+    bunJsonObj.trustedDependencies = [
+      ...new Set([...customTrustedPackages, ...requiredWbfyPackages, lefthookDependency]),
+    ].toSorted();
+  } else {
+    delete bunJsonObj.trustedDependencies;
+  }
 }
 
 async function normalizePackageMetadata(

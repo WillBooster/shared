@@ -11,6 +11,7 @@ interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
   devDependencies?: Record<string, string | undefined>;
   scripts?: Record<string, string | undefined>;
+  trustedDependencies?: string[];
 }
 
 const genI18nTsDepending = {
@@ -1497,6 +1498,61 @@ test('never generates --bun scripts', async () => {
       expect(command).not.toContain('--bun');
     }
   }
+});
+
+test('manages trustedDependencies correctly when store-incompatible packages are present', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {
+        'drizzle-kit': '1.0.0',
+      },
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson).toMatchObject({
+    trustedDependencies: ['drizzle-kit', 'lefthook'],
+  });
+});
+
+test('ensures lefthook is included if custom trustedDependencies exist', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {},
+      trustedDependencies: ['some-custom-dependency'],
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson).toMatchObject({
+    trustedDependencies: ['lefthook', 'some-custom-dependency'],
+  });
+});
+
+test('cleans up wbfy-managed trustedDependencies when they are no longer declared', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {},
+      trustedDependencies: ['@chakra-ui/react', 'drizzle-kit', 'lefthook'],
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.trustedDependencies).toBeUndefined();
+});
+
+test('preserves custom trustedDependencies while cleaning up wbfy-managed ones', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {},
+      trustedDependencies: ['@chakra-ui/react', 'custom-pkg', 'drizzle-kit'],
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson).toMatchObject({
+    trustedDependencies: ['custom-pkg', 'lefthook'],
+  });
 });
 
 async function generatePackageJsonFrom(
