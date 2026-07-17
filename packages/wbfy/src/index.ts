@@ -122,6 +122,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
   let hasInvalidPackageConfig = false;
   for (const rootDirPath of paths) {
+    // Confine every generated file to this repository (see fsUtil.generateFile). Set BEFORE any
+    // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
+    fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
     // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
     // automatic Bun translation must abort the whole migration for this path, not just the file
     // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.
@@ -150,8 +153,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       hasInvalidPackageConfig = true;
       continue;
     }
-    // Confine every generated file to this repository (see fsUtil.generateFile).
-    fsUtil.setRootDirPath(rootDirPath);
     const abbreviationPromise = fixTypos(rootConfig);
 
     const nullableSubPackageConfigs = await Promise.all(subDirPaths.map((subDirPath) => getPackageConfig(subDirPath)));

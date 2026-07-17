@@ -111,7 +111,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       // rootDir="src", and include=["src/**/*"], so preserving noEmit=false or
       // rootDir="src" here would only break non-src type-aware lint coverage.
       newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitMetadata };
-      ensureTsExtensionEmitCompatibility(newSettings.compilerOptions);
 
       const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
       if (mergedTypes.length > 0) {
@@ -290,15 +289,6 @@ function filterExistingTypes(existingTypes: string[], generatedTypes: string[]):
 
 function isGeneratedTestGlobalType(typeName: string): boolean {
   return typeName === 'cypress' || typeName === 'jest' || typeName === 'mocha' || typeName === 'vitest/globals';
-}
-
-function ensureTsExtensionEmitCompatibility(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
-  if (!compilerOptions) return;
-  if (compilerOptions.noEmit !== false || compilerOptions.emitDeclarationOnly === true) return;
-
-  // @tsconfig/bun enables allowImportingTsExtensions, which TypeScript permits
-  // during emit only when relative TS extensions are rewritten.
-  compilerOptions.rewriteRelativeImportExtensions = true;
 }
 
 function deleteLegacyModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {

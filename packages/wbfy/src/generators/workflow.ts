@@ -9,6 +9,7 @@ import merge from 'deepmerge';
 import yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
+import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
@@ -516,7 +517,7 @@ async function writeYaml(newSettings: Workflow, filePath: string): Promise<void>
   const yamlText = removeTrailingSpaces(
     yaml.dump(newSettings, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } })
   );
-  await fs.promises.writeFile(filePath, yamlText);
+  await fsUtil.writeFileConfined(filePath, yamlText);
 }
 
 function removeTrailingSpaces(text: string): string {

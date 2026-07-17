@@ -45,14 +45,15 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
   return logger.functionIgnoringException('generateRenovateJson', async () => {
     let newSettings = structuredClone(jsonObj) as Settings;
     const filePath = path.resolve(config.dirPath, 'renovate.json');
-    if (shadowedRenovateConfigPaths.some((configPath) => fs.existsSync(path.resolve(config.dirPath, configPath)))) {
-      return;
-    }
     const oldContent = await fsUtil.readFileIfExists(filePath);
-    // A "renovate" section in package.json is the LAST entry of Renovate's resolution order, so it
-    // is live (and must not be shadowed by a generated renovate.json) only while renovate.json
-    // does not exist; an existing renovate.json already shadows it and stays managed.
-    if (oldContent === undefined && config.packageJson?.['renovate']) {
+    // The shadow checks matter only while renovate.json does not exist: it is FIRST in Renovate's
+    // resolution order, so an existing renovate.json already shadows every alternative (including
+    // a "renovate" section in package.json, the LAST entry) and must stay managed.
+    if (
+      oldContent === undefined &&
+      (shadowedRenovateConfigPaths.some((configPath) => fs.existsSync(path.resolve(config.dirPath, configPath))) ||
+        config.packageJson?.['renovate'])
+    ) {
       return;
     }
 
@@ -104,14 +105,15 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     await promisePool.run(() =>
       fs.promises.rm(path.resolve(config.dirPath, '.dependabot'), { force: true, recursive: true })
     );
-    await promisePool.run(() => fs.promises.rm(legacyFilePath, { force: true }));
     // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
     // already-clean renovate.json survive wbfy runs.
-    if (originalSettingsJson === JSON.stringify(sortKeys(structuredClone(newSettings) as Record<string, unknown>))) {
-      return;
+    if (originalSettingsJson !== JSON.stringify(sortKeys(structuredClone(newSettings) as Record<string, unknown>))) {
+      const newContent = JSON.stringify(newSettings, undefined, 2);
+      // Await the write directly: the superseded .renovaterc.json below must survive when the
+      // confinement guards refuse the write (e.g. renovate.json is a dangling symlink).
+      if (!(await fsUtil.generateFile(filePath, newContent))) return;
     }
-    const newContent = JSON.stringify(newSettings, undefined, 2);
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.run(() => fs.promises.rm(legacyFilePath, { force: true }));
   });
 }
 
