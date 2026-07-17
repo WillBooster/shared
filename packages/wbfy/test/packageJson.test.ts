@@ -1510,12 +1510,13 @@ test('manages trustedDependencies correctly when store-incompatible packages are
     { isRoot: true }
   );
 
-  expect(packageJson).toMatchObject({
-    trustedDependencies: ['drizzle-kit', 'lefthook'],
-  });
+  expect(packageJson.trustedDependencies).toEqual(expect.arrayContaining(['drizzle-kit', 'lefthook']));
+  expect(packageJson.trustedDependencies).toEqual([...(packageJson.trustedDependencies ?? [])].toSorted());
 });
 
-test('ensures lefthook is included if custom trustedDependencies exist', async () => {
+// wbfy fully owns trustedDependencies: packages whose lifecycle scripts must run get added to
+// wbfy itself, so unmanaged entries are removed and the field is deleted when wbfy needs nothing.
+test('removes custom trustedDependencies and deletes the field when wbfy needs no entries', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       dependencies: {},
@@ -1524,9 +1525,30 @@ test('ensures lefthook is included if custom trustedDependencies exist', async (
     { isRoot: true }
   );
 
-  expect(packageJson).toMatchObject({
-    trustedDependencies: ['lefthook', 'some-custom-dependency'],
-  });
+  expect(packageJson.trustedDependencies).toBeUndefined();
+});
+
+// An explicit trustedDependencies list replaces Bun's default allow-list, so wbfy writes the
+// ENTIRE default list alongside its own entries: uninstalled entries are inert, and no
+// intersection with a (possibly missing or stale) lockfile can cover the transitive dependencies
+// the final `bun install` resolves only after generation.
+test('writes the entire default allow-list alongside wbfy-managed packages', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {
+        'drizzle-kit': '1.0.0',
+      },
+      trustedDependencies: ['some-custom-dependency'],
+    },
+    { isRoot: true }
+  );
+
+  // Default-trusted packages must be present even though nothing is installed here.
+  expect(packageJson.trustedDependencies).toEqual(
+    expect.arrayContaining(['@railway/cli', 'drizzle-kit', 'esbuild', 'lefthook', 'node-pty'])
+  );
+  expect(packageJson.trustedDependencies?.length).toBeGreaterThan(300);
+  expect(packageJson.trustedDependencies).not.toContain('some-custom-dependency');
 });
 
 test('cleans up wbfy-managed trustedDependencies when they are no longer declared', async () => {
@@ -1541,7 +1563,7 @@ test('cleans up wbfy-managed trustedDependencies when they are no longer declare
   expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
-test('preserves custom trustedDependencies while cleaning up wbfy-managed ones', async () => {
+test('removes custom trustedDependencies while cleaning up wbfy-managed ones', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       dependencies: {},
@@ -1550,14 +1572,12 @@ test('preserves custom trustedDependencies while cleaning up wbfy-managed ones',
     { isRoot: true }
   );
 
-  expect(packageJson).toMatchObject({
-    trustedDependencies: ['custom-pkg', 'lefthook'],
-  });
+  expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
-// An explicitly empty list is a deliberate block-everything policy; deleting it would re-enable
-// Bun's default allow-list.
-test('preserves an explicitly empty trustedDependencies list', async () => {
+// Even an explicitly empty (block-everything) list is user policy wbfy overrides: the field is
+// wbfy-owned, and deleting it restores Bun's default allow-list.
+test('deletes an explicitly empty trustedDependencies list', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       dependencies: {},
@@ -1566,7 +1586,7 @@ test('preserves an explicitly empty trustedDependencies list', async () => {
     { isRoot: true }
   );
 
-  expect(packageJson.trustedDependencies).toEqual([]);
+  expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
 // @chakra-ui/cli v2's `chakra-cli tokens` writes into @chakra-ui/styled-system, not

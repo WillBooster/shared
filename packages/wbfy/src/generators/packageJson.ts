@@ -645,31 +645,88 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   const hasChakraCliV3 = (declaredDependencies.get('@chakra-ui/cli') ?? []).some(
     (versionRange) => /\d+/u.exec(versionRange)?.[0] !== '2'
   );
-  const wbfyTrustedPackages = new Set(['@chakra-ui/react', 'drizzle-kit']);
   const requiredWbfyPackages = [
     ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
   ];
 
+  // wbfy fully owns this field: a package whose lifecycle scripts must run gets added to wbfy
+  // itself instead of to individual repositories, so unmanaged entries are always removed —
+  // including an explicitly empty deny-all list, whose deletion deliberately restores Bun's
+  // default allow-list (the ownership policy chosen in #975).
   const existingTrusted = bunJsonObj.trustedDependencies;
-  const customTrustedPackages = (existingTrusted ?? []).filter(
-    (pkg) => pkg !== lefthookDependency && !wbfyTrustedPackages.has(pkg)
-  );
-
-  if (customTrustedPackages.length > 0 || requiredWbfyPackages.length > 0) {
-    // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
-    // it, silently blocking lifecycle scripts of packages the default list trusts — lefthook's
-    // postinstall in every managed repository — so it must come along whenever the field is set.
-    bunJsonObj.trustedDependencies = [
-      ...new Set([...customTrustedPackages, ...requiredWbfyPackages, lefthookDependency]),
-    ].toSorted();
-  } else if (existingTrusted?.some((pkg) => wbfyTrustedPackages.has(pkg))) {
-    // Only a list wbfy itself authored is cleaned up once its packages are gone; wbfy always
-    // writes a chakra/drizzle entry alongside lefthook, so that entry marks its provenance. Any
-    // other explicit list — empty, or e.g. ["lefthook"] alone — is a user policy whose deletion
-    // would silently widen script execution to Bun's default allow-list.
-    delete bunJsonObj.trustedDependencies;
+  if (requiredWbfyPackages.length === 0) {
+    if (existingTrusted !== undefined) {
+      // Deleting the field restores Bun's full default allow-list, so only entries outside that
+      // list actually lose their lifecycle scripts.
+      warnAboutRemovedTrustedDependencies(config, existingTrusted, new Set());
+      delete bunJsonObj.trustedDependencies;
+    }
+    return;
   }
+
+  // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
+  // it, and Bun prints no warning for the postinstalls it consequently skips (e.g. @railway/cli
+  // downloads its binary in postinstall and exits 1 without one). Include the ENTIRE default list:
+  // entries for packages that are not installed are inert, and this is the only representation
+  // that stays correct for transitive dependencies the final `bun install` resolves after this
+  // runs — an intersection with a missing or stale lockfile would silently drop them.
+  const defaultTrustedDependencies = getDefaultTrustedDependencies(config);
+  // lefthook is appended explicitly so the default-list lookup failing cannot drop it: it is
+  // required in every managed repository.
+  const newTrustedPackages = new Set([
+    ...requiredWbfyPackages,
+    lefthookDependency,
+    ...(defaultTrustedDependencies ?? []),
+  ]);
+  warnAboutRemovedTrustedDependencies(config, existingTrusted ?? [], newTrustedPackages);
+  bunJsonObj.trustedDependencies = [...newTrustedPackages].toSorted();
+}
+
+// The packages wbfy itself may write into trustedDependencies; their removal is managed cleanup,
+// never a loss of user policy.
+const wbfyManagedTrustedDependencies = new Set(['@chakra-ui/react', 'drizzle-kit', lefthookDependency]);
+
+function warnAboutRemovedTrustedDependencies(
+  config: PackageConfig,
+  existingTrusted: readonly string[],
+  keptPackages: ReadonlySet<string>
+): void {
+  // A default-trusted entry never loses anything by removal: while the package is installed the
+  // kept list (or, when the field is deleted, Bun's own default list) still trusts it.
+  const defaultTrustedDependencies = getDefaultTrustedDependencies(config);
+  const removedPackages = existingTrusted.filter(
+    (pkg) => !keptPackages.has(pkg) && !wbfyManagedTrustedDependencies.has(pkg) && !defaultTrustedDependencies?.has(pkg)
+  );
+  if (removedPackages.length > 0) {
+    console.warn(
+      `Removing unmanaged trustedDependencies entries: ${removedPackages.join(', ')}. wbfy owns this field; if their lifecycle scripts are required, add the packages to wbfy itself.`
+    );
+  }
+}
+
+let cachedDefaultTrustedDependencies: Set<string> | undefined;
+
+/** Fetches Bun's default trusted-dependency allow-list from the Bun version installing the repository. */
+function getDefaultTrustedDependencies(config: PackageConfig): Set<string> | undefined {
+  if (!cachedDefaultTrustedDependencies) {
+    // Bun colorizes the list markers when FORCE_COLOR is set (e.g. by test runners on CI), so
+    // ANSI escape sequences must be stripped before parsing.
+    const stdout = spawnSyncAndReturnStdout('bun', ['pm', 'default-trusted'], config.dirPath).replaceAll(
+      // oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences requires the ESC control character
+      /\u001B\[[0-9;]*m/gu,
+      ''
+    );
+    const parsedDependencies = new Set([...stdout.matchAll(/^\s*-\s+(\S+)$/gmu)].map((match) => match[1] as string));
+    if (parsedDependencies.size === 0) {
+      // Do not cache the failure: a target-local problem (e.g. an unreadable package.json) must
+      // not deny the default list to every later target of a multi-path run.
+      console.warn('Failed to read the default allow-list via `bun pm default-trusted`.');
+      return undefined;
+    }
+    cachedDefaultTrustedDependencies = parsedDependencies;
+  }
+  return cachedDefaultTrustedDependencies;
 }
 
 async function normalizePackageMetadata(
