@@ -100,23 +100,28 @@ function readNodeVersionFile(dirPath: string): string | undefined {
   try {
     const version = fs.readFileSync(path.resolve(dirPath, '.node-version'), 'utf8').trim().replace(/^v/u, '');
     return version || undefined;
-  } catch {
-    return undefined;
+  } catch (error) {
+    // An unreadable file must abort instead of being ignored; the file is a migration source.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
   }
 }
 
 function readToolVersions(dirPath: string): Map<string, string[]> {
   const versions = new Map<string, string[]>();
+  let content: string | undefined;
   try {
-    const content = fs.readFileSync(path.resolve(dirPath, '.tool-versions'), 'utf8');
-    for (const line of content.split('\n')) {
-      const [tool, ...toolVersions] = line.replace(/#.*$/u, '').trim().split(/\s+/u);
-      if (tool && toolVersions.length > 0) {
-        versions.set(tool, toolVersions);
-      }
+    content = fs.readFileSync(path.resolve(dirPath, '.tool-versions'), 'utf8');
+  } catch (error) {
+    // Only a repository without .tool-versions has nothing to migrate; an unreadable file must
+    // abort instead of being silently discarded (it is deleted after mise.toml is written).
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  for (const line of content?.split('\n') ?? []) {
+    const [tool, ...toolVersions] = line.replace(/#.*$/u, '').trim().split(/\s+/u);
+    if (tool && toolVersions.length > 0) {
+      versions.set(tool, toolVersions);
     }
-  } catch {
-    // A repository without .tool-versions has nothing to migrate.
   }
   return versions;
 }
