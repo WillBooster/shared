@@ -74,6 +74,29 @@ test('initializes an empty tsconfig with the generated settings', async () => {
   });
 });
 
+test('leaves a tsconfig with an unterminated block comment untouched', async () => {
+  const brokenContent = '/* unfinished';
+  await withTempTsconfig(brokenContent, async (filePath, config) => {
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(brokenContent);
+  });
+});
+
+test('does not write through a dangling tsconfig.json symlink', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
+  try {
+    const targetPath = path.join(tempDirPath, 'outside.json');
+    fs.symlinkSync(targetPath, path.join(tempDirPath, 'tsconfig.json'));
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true, doesContainTypeScript: true });
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    expect(fs.existsSync(targetPath)).toBe(false);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('initializes a comment-only tsconfig with the generated settings', async () => {
   await withTempTsconfig('// intentionally empty\n', async (filePath, config) => {
     await generateTsconfig(config);

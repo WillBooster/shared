@@ -334,9 +334,9 @@ function areTrackedCleanRegularFiles(dirPath: string, fileNames: string[]): bool
   );
 }
 
-// `wrangler types` generates from `secrets.required` only since wrangler 4.77.0 (announced 2026-03-24, the 4.77.0
-// release date); older wranglers warn about the unexpected field and keep inferring from .dev.vars.
-const minimumWranglerVersionForRequiredSecrets = '4.77.0';
+// `wrangler types` generates from `secrets.required` since wrangler 4.70.0 (4.77.0 only added deploy/upload
+// validation of the field); older wranglers warn about the unexpected field and keep inferring from .dev.vars.
+const minimumWranglerVersionForRequiredSecrets = '4.70.0';
 
 function declaresSupportedRequiredSecrets(config: PackageConfig): boolean {
   const wranglerVersionRange =
@@ -381,15 +381,18 @@ function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
 // A declaration at any config level replaces the .dev.vars/.env inference: `wrangler types` aggregates
 // per-environment secrets into the generated type (Cloudflare changelog 2026-03-24).
 function declaresRequiredSecretsAnywhere(config: WranglerConfigSecretsSubtree): boolean {
-  if (declaresRequiredSecrets(config.secrets)) return true;
-  return Object.values(config.env ?? {}).some((envConfig) => declaresRequiredSecrets(envConfig?.secrets));
+  if (declaresSecrets(config.secrets)) return true;
+  return Object.values(config.env ?? {}).some((envConfig) => declaresSecrets(envConfig?.secrets));
 }
 
-// The parsed config comes from an unvalidated file, so check the documented `string[]` shape at
-// runtime: a malformed declaration (e.g. a plain string) must not prove reproducibility.
-function declaresRequiredSecrets(secrets: WranglerConfigSecretsSubtree['secrets']): boolean {
-  const required: unknown = secrets?.required;
-  return Array.isArray(required) && required.length > 0 && required.every((name) => typeof name === 'string');
+// Defining `secrets` at any config level makes `wrangler types` use it exclusively instead of
+// inferring from .dev.vars/.env, so even an empty declaration is reproducible. The parsed config
+// comes from an unvalidated file, so check the documented `string[]` shape at runtime: a malformed
+// declaration (e.g. a plain string) must not prove reproducibility.
+function declaresSecrets(secrets: WranglerConfigSecretsSubtree['secrets']): boolean {
+  if (secrets === undefined || secrets === null || typeof secrets !== 'object') return false;
+  const required: unknown = secrets.required;
+  return required === undefined || (Array.isArray(required) && required.every((name) => typeof name === 'string'));
 }
 
 /**

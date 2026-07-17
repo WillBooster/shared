@@ -46,25 +46,25 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     if (shadowedRenovateConfigPaths.some((configPath) => fs.existsSync(path.resolve(config.dirPath, configPath)))) {
       return;
     }
-    // A "renovate" section in package.json is the last entry of Renovate's resolution order, so a
-    // generated renovate.json would shadow it as well.
-    if (config.packageJson?.['renovate']) {
+    const oldContent = await fsUtil.readFileIfExists(filePath);
+    // A "renovate" section in package.json is the LAST entry of Renovate's resolution order, so it
+    // is live (and must not be shadowed by a generated renovate.json) only while renovate.json
+    // does not exist; an existing renovate.json already shadows it and stays managed.
+    if (oldContent === undefined && config.packageJson?.['renovate']) {
       return;
     }
 
     // Renovate accepts JSONC in renovate.json; an existing file wbfy cannot parse must be left
     // untouched instead of being overwritten with the bare template.
-    const oldSettingsList: Settings[] = [];
+    let oldSettings: Settings | undefined;
     let originalSettingsJson: string | undefined;
-    const oldContent = await fsUtil.readFileIfExists(filePath);
     if (oldContent !== undefined && !jsoncUtil.isTriviaOnly(oldContent)) {
-      const oldSettings = jsoncUtil.parseObjectIgnoringError<Settings>(oldContent);
+      oldSettings = jsoncUtil.parseObjectIgnoringError<Settings>(oldContent);
       if (!oldSettings) {
         console.warn(`Skipped generating ${filePath} because the existing content is not parsable as JSONC.`);
         return;
       }
       originalSettingsJson = JSON.stringify(sortKeys(structuredClone(oldSettings) as Record<string, unknown>));
-      oldSettingsList.push(oldSettings);
     }
 
     // A legacy .renovaterc.json is migrated into the generated renovate.json before it is deleted
@@ -73,23 +73,19 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     const legacyFilePath = path.resolve(config.dirPath, '.renovaterc.json');
     const legacyContent = oldContent === undefined ? await fsUtil.readFileIfExists(legacyFilePath) : undefined;
     if (legacyContent !== undefined && !jsoncUtil.isTriviaOnly(legacyContent)) {
-      const legacySettings = jsoncUtil.parseObjectIgnoringError<Settings>(legacyContent);
-      if (!legacySettings) {
+      oldSettings = jsoncUtil.parseObjectIgnoringError<Settings>(legacyContent);
+      if (!oldSettings) {
         console.warn(`Skipped generating ${filePath} because ${legacyFilePath} is not parsable as JSONC.`);
         return;
       }
-      oldSettingsList.push(legacySettings);
     }
 
-    for (const oldSettings of oldSettingsList) {
+    if (oldSettings) {
       newSettings = merge.all([newSettings, oldSettings, newSettings], {
         arrayMerge: overwriteMerge,
       }) as Settings;
     }
-    newSettings.extends = mergeRenovateExtends(
-      jsonObj.extends,
-      oldSettingsList.map((oldSettings) => oldSettings.extends)
-    );
+    newSettings.extends = mergeRenovateExtends(jsonObj.extends, oldSettings?.extends);
 
     // Don't upgrade Next.js automatically
     if (config.depending.blitz) {
@@ -117,11 +113,10 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
   });
 }
 
-function mergeRenovateExtends(generatedExtends: string[], existingExtendsList: Settings['extends'][]): string[] {
+function mergeRenovateExtends(generatedExtends: string[], existingExtends: Settings['extends']): string[] {
   // Renovate's schema allows `extends` to be a single preset string; spreading a string would
-  // corrupt it into its individual characters, so normalize each value to an array first.
-  const existingExtends = existingExtendsList.flatMap((value) =>
-    value === undefined ? [] : Array.isArray(value) ? value : [value]
-  );
-  return [...new Set([...generatedExtends, ...existingExtends])].filter((item) => item !== '@willbooster');
+  // corrupt it into its individual characters, so normalize it to an array first.
+  const normalizedExtends =
+    existingExtends === undefined ? [] : Array.isArray(existingExtends) ? existingExtends : [existingExtends];
+  return [...new Set([...generatedExtends, ...normalizedExtends])].filter((item) => item !== '@willbooster');
 }

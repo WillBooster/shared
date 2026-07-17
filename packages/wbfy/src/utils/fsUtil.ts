@@ -22,6 +22,13 @@ export const fsUtil = {
     }
   },
   async generateFile(filePath: string, content: string): Promise<void> {
+    // Never write through a symlink: a (possibly dangling) link committed in the target repository
+    // could redirect the write outside it.
+    const stats = await fs.promises.lstat(filePath).catch(() => {});
+    if (stats?.isSymbolicLink()) {
+      console.warn(`Skipped generating ${filePath} because it is a symbolic link.`);
+      return;
+    }
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     let normalizedContent = content.trim();
     if (normalizedContent) {
