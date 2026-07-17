@@ -246,6 +246,13 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
         fileNamesByKind.set(kind, `${kind}.yml`);
       }
     }
+    if (fileNamesByKind.has('sync')) {
+      // The sync workflow's generation owns these files (it rewrites the force-sync workflow and
+      // deletes the obsolete sync-init one), so processing them as independent kinds would race
+      // concurrent writes on the same paths.
+      fileNamesByKind.delete('sync-force');
+      fileNamesByKind.delete('sync-init');
+    }
     if (!rootConfig.isPublicRepo) {
       // The reusable test workflow already fixes and pushes code on private repos,
       // so a separate autofix workflow only duplicates the same process.
