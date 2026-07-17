@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
+import type { ParseError } from 'jsonc-parser';
+import { parse as parseJsonc } from 'jsonc-parser';
 import type { TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
@@ -80,9 +82,12 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     }
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
-    try {
-      const existingContent = await fs.promises.readFile(filePath, 'utf8');
-      const oldSettings = JSON.parse(existingContent) as TsConfigJson;
+    const existingContent = await fs.promises.readFile(filePath, 'utf8').catch(() => {});
+    if (existingContent !== undefined) {
+      const oldSettings = parseTsconfigJsonc(existingContent);
+      // An existing tsconfig.json wbfy cannot parse must be left untouched: writing the
+      // generated settings without merging would silently discard the project's configuration.
+      if (!oldSettings) return;
       const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
       const existingEmitMetadata = pickExistingEmitMetadata(oldSettings.compilerOptions);
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
@@ -112,8 +117,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       if (shouldDeleteTypeRoots(generatedTypes)) {
         delete newSettings.compilerOptions.typeRoots;
       }
-    } catch {
-      // do nothing
     }
     addUndiciTypesPathMapping(newSettings, config);
     sortKeys(newSettings);
@@ -134,18 +137,29 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
 }
 
 async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promise<void> {
+  // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
+  // node10 resolver spellings that older projects commonly inherited.
   const filePath = path.resolve(config.dirPath, 'tsconfig.json');
-  try {
-    const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as TsConfigJson;
-    normalizeNextTsconfigModuleSettings(settings);
-    normalizeNextTsconfigPathAliases(settings.compilerOptions);
-    addScriptsIncludeForFrameworkProject(settings);
-    addUndiciTypesPathMapping(settings, config);
-    await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
-  } catch {
-    // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
-    // node10 resolver spellings that older projects commonly inherited.
-  }
+  const existingContent = await fs.promises.readFile(filePath, 'utf8').catch(() => {});
+  if (existingContent === undefined) return;
+  const settings = parseTsconfigJsonc(existingContent);
+  if (!settings) return;
+  normalizeNextTsconfigModuleSettings(settings);
+  normalizeNextTsconfigPathAliases(settings.compilerOptions);
+  addScriptsIncludeForFrameworkProject(settings);
+  addUndiciTypesPathMapping(settings, config);
+  await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
+}
+
+/**
+ * tsconfig.json allows JSONC, so read it with jsonc-parser instead of JSON.parse. jsonc-parser is
+ * fault tolerant and returns a partial object for malformed input, which must not be merged as if
+ * it were the project's configuration; reject any parse error.
+ */
+function parseTsconfigJsonc(content: string): TsConfigJson | undefined {
+  const parseErrors: ParseError[] = [];
+  const settings = parseJsonc(content, parseErrors, { allowTrailingComma: true }) as TsConfigJson | undefined;
+  return parseErrors.length === 0 && settings && typeof settings === 'object' ? settings : undefined;
 }
 
 /**

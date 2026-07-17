@@ -44,21 +44,59 @@ test('drops removed node10 resolver spellings regardless of casing', async () =>
   expect(compilerOptions.moduleResolution).toBeUndefined();
 });
 
+test('merges settings from a tsconfig containing JSONC comments instead of replacing the file', async () => {
+  const compilerOptions = await generateCompilerOptionsFromContent(`{
+  "compilerOptions": {
+    // explains why the mapping exists
+    "paths": {
+      "undici-types": ["./node_modules/undici-types"]
+    },
+  }
+}`);
+  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types'] });
+});
+
+test('leaves an unparseable tsconfig untouched', async () => {
+  const brokenContent = '{ "compilerOptions": { "paths": ';
+  await withTempTsconfig(brokenContent, async (filePath, config) => {
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(brokenContent);
+  });
+});
+
 async function generateCompilerOptionsFrom(
   existingTsconfig: object,
   dependingOverrides: Partial<PackageConfig['depending']> = {}
 ): Promise<Record<string, unknown>> {
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
-  try {
-    fs.writeFileSync(path.join(tempDirPath, 'tsconfig.json'), JSON.stringify(existingTsconfig));
-    const config = createConfig({ dirPath: tempDirPath, isRoot: true, doesContainTypeScript: true });
+  return generateCompilerOptionsFromContent(JSON.stringify(existingTsconfig), dependingOverrides);
+}
+
+async function generateCompilerOptionsFromContent(
+  existingContent: string,
+  dependingOverrides: Partial<PackageConfig['depending']> = {}
+): Promise<Record<string, unknown>> {
+  return withTempTsconfig(existingContent, async (filePath, config) => {
     Object.assign(config.depending, dependingOverrides);
     await generateTsconfig(config);
     await promisePool.promiseAll();
-    const generated = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+    const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as {
       compilerOptions?: Record<string, unknown>;
     };
     return generated.compilerOptions ?? {};
+  });
+}
+
+async function withTempTsconfig<T>(
+  existingContent: string,
+  runTest: (filePath: string, config: PackageConfig) => Promise<T>
+): Promise<T> {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
+  try {
+    const filePath = path.join(tempDirPath, 'tsconfig.json');
+    fs.writeFileSync(filePath, existingContent);
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true, doesContainTypeScript: true });
+    return await runTest(filePath, config);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
