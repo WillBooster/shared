@@ -1510,9 +1510,8 @@ test('manages trustedDependencies correctly when store-incompatible packages are
     { isRoot: true }
   );
 
-  expect(packageJson).toMatchObject({
-    trustedDependencies: ['drizzle-kit', 'lefthook'],
-  });
+  expect(packageJson.trustedDependencies).toEqual(expect.arrayContaining(['drizzle-kit', 'lefthook']));
+  expect(packageJson.trustedDependencies).toEqual([...(packageJson.trustedDependencies ?? [])].toSorted());
 });
 
 // wbfy fully owns trustedDependencies: packages whose lifecycle scripts must run get added to
@@ -1529,81 +1528,27 @@ test('removes custom trustedDependencies and deletes the field when wbfy needs n
   expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
-// An explicit trustedDependencies list replaces Bun's default allow-list, so wbfy must re-add
-// every installed package (including transitive ones from bun.lock) that the default list trusts.
-test('restores default-trusted installed packages when writing trustedDependencies', async () => {
-  const bunLock = `{
-  "lockfileVersion": 1,
-  "packages": {
-    "@railway/cli": ["@railway/cli@4.10.0", "", {}, "sha512-dummy"],
-    "esbuild": ["esbuild@0.25.0", "", {}, "sha512-dummy"],
-    "drizzle-kit": ["drizzle-kit@1.0.0", "", {}, "sha512-dummy"],
-  },
-}`;
+// An explicit trustedDependencies list replaces Bun's default allow-list, so wbfy writes the
+// ENTIRE default list alongside its own entries: uninstalled entries are inert, and no
+// intersection with a (possibly missing or stale) lockfile can cover the transitive dependencies
+// the final `bun install` resolves only after generation.
+test('writes the entire default allow-list alongside wbfy-managed packages', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       dependencies: {
         'drizzle-kit': '1.0.0',
       },
+      trustedDependencies: ['some-custom-dependency'],
     },
-    { isRoot: true },
-    { files: { 'bun.lock': bunLock } }
+    { isRoot: true }
   );
 
-  expect(packageJson).toMatchObject({
-    trustedDependencies: ['@railway/cli', 'drizzle-kit', 'esbuild', 'lefthook'],
-  });
-});
-
-// The trust list is generated before the final lockfile refresh, so a stale bun.lock must not
-// hide newly declared default-trusted packages.
-test('unions declared dependencies with a stale bun.lock', async () => {
-  const bunLock = `{
-  "lockfileVersion": 1,
-  "packages": {
-    "drizzle-kit": ["drizzle-kit@1.0.0", "", {}, "sha512-dummy"],
-  },
-}`;
-  const packageJson = await generatePackageJsonFrom(
-    {
-      dependencies: {
-        '@railway/cli': '4.10.0',
-        'drizzle-kit': '1.0.0',
-      },
-    },
-    { isRoot: true },
-    { files: { 'bun.lock': bunLock } }
+  // Default-trusted packages must be present even though nothing is installed here.
+  expect(packageJson.trustedDependencies).toEqual(
+    expect.arrayContaining(['@railway/cli', 'drizzle-kit', 'esbuild', 'lefthook', 'node-pty'])
   );
-
-  expect(packageJson).toMatchObject({
-    trustedDependencies: ['@railway/cli', 'drizzle-kit', 'lefthook'],
-  });
-});
-
-// Bun serializes Git dependencies as "<name>@git+ssh://git@github.com/…", so the name must be
-// split at the first '@' past the scope, not the last one.
-test('parses package names from Git URL resolutions in bun.lock', async () => {
-  const bunLock = `{
-  "lockfileVersion": 1,
-  "packages": {
-    "drizzle-kit": ["drizzle-kit@1.0.0", "", {}, "sha512-dummy"],
-    "node-pty": ["node-pty@git+ssh://git@github.com/microsoft/node-pty.git#1def577", {}],
-    "@cdktf/node-pty-prebuilt-multiarch": ["@cdktf/node-pty-prebuilt-multiarch@0.11.0", "", {}, "sha512-dummy"],
-  },
-}`;
-  const packageJson = await generatePackageJsonFrom(
-    {
-      dependencies: {
-        'drizzle-kit': '1.0.0',
-      },
-    },
-    { isRoot: true },
-    { files: { 'bun.lock': bunLock } }
-  );
-
-  expect(packageJson).toMatchObject({
-    trustedDependencies: ['@cdktf/node-pty-prebuilt-multiarch', 'drizzle-kit', 'lefthook', 'node-pty'],
-  });
+  expect(packageJson.trustedDependencies?.length).toBeGreaterThan(300);
+  expect(packageJson.trustedDependencies).not.toContain('some-custom-dependency');
 });
 
 test('cleans up wbfy-managed trustedDependencies when they are no longer declared', async () => {
