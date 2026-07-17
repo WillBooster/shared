@@ -47,12 +47,6 @@ const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
-// wb's auto-cascade env resolves `WB_ENV || NODE_ENV || 'development'`, but build-ts inlines
-// `process.env.NODE_ENV` to "production" in wb's published bundle, so an unset WB_ENV makes wb
-// load the production .env/fnox profiles (and e.g. .wrangler/state-production) on developer
-// machines. Local-facing generated scripts therefore default WB_ENV to development explicitly,
-// while still respecting an explicitly supplied WB_ENV (CI and deploy workflows set their own).
-const developmentWbEnvPrefix = 'WB_ENV=${WB_ENV:-development} ';
 // The exact format-code commands old wbfy versions generated for JS/TS repos.
 const legacyOxfmtFormatCodeScripts = new Set([
   'oxfmt --write --no-error-on-unmatched-pattern .',
@@ -236,7 +230,7 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: st
     const preservedSegments = involvesWranglerTypes
       ? postinstallSegments.filter((segment) => segment !== '' && !isManagedGenCodeSegment(segment, scripts))
       : [];
-    scripts.postinstall = [`${developmentWbEnvPrefix}wb gen-code`, ...preservedSegments].join(' && ');
+    scripts.postinstall = ['wb gen-code', ...preservedSegments].join(' && ');
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
   }
@@ -713,7 +707,7 @@ async function normalizePackageMetadata(
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    jsonObj.scripts['gen-code'] = appendWranglerTypes(`${developmentWbEnvPrefix}bun wb gen-code`, wranglerTypes);
+    jsonObj.scripts['gen-code'] = appendWranglerTypes('bun wb gen-code', wranglerTypes);
   } else if (
     genCodeScript &&
     wranglerTypes &&
@@ -1407,7 +1401,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     verify: 'bun wb verify',
     'verify-full': 'bun wb verify --full',
   };
-  applyDatabaseScripts(config, scripts, oldScripts, `${developmentWbEnvPrefix}bun ${getWbDatabaseCommand(config)}`);
+  applyDatabaseScripts(config, scripts, oldScripts, `bun ${getWbDatabaseCommand(config)}`);
   applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
   if (!hasTypecheck) {
     delete scripts.typecheck;
