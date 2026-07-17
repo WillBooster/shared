@@ -27,6 +27,10 @@ export const fsUtil = {
       throw error;
     }
   },
+  /** Tells whether a write to filePath would pass the symlink/repository-containment guards. */
+  async isConfinedWritablePath(filePath: string): Promise<boolean> {
+    return await isConfinedWritablePath(filePath);
+  },
   /** Writes content verbatim, applying the same symlink/repository-containment guards as generateFile. */
   async writeFileConfined(filePath: string, content: string): Promise<boolean> {
     if (!(await isConfinedWritablePath(filePath))) return false;

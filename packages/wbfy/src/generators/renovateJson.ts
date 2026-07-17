@@ -51,7 +51,11 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     // a "renovate" section in package.json, the LAST entry) and must stay managed.
     if (
       oldContent === undefined &&
-      (shadowedRenovateConfigPaths.some((configPath) => fs.existsSync(path.resolve(config.dirPath, configPath))) ||
+      // lstat instead of existsSync: a dangling symlink still names an alternative config location
+      // that would resurface (and be shadowed) once its target is restored.
+      (shadowedRenovateConfigPaths.some(
+        (configPath) => !!fs.lstatSync(path.resolve(config.dirPath, configPath), { throwIfNoEntry: false })
+      ) ||
         config.packageJson?.['renovate'])
     ) {
       return;
