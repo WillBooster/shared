@@ -102,17 +102,17 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
       }
     }
 
-    await promisePool.run(() =>
-      fs.promises.rm(path.resolve(config.dirPath, '.dependabot'), { force: true, recursive: true })
-    );
     // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
     // already-clean renovate.json survive wbfy runs.
     if (originalSettingsJson !== JSON.stringify(sortKeys(structuredClone(newSettings) as Record<string, unknown>))) {
       const newContent = JSON.stringify(newSettings, undefined, 2);
-      // Await the write directly: the superseded .renovaterc.json below must survive when the
-      // confinement guards refuse the write (e.g. renovate.json is a dangling symlink).
+      // Await the write directly: the superseded sources below must survive when the confinement
+      // guards refuse the write (e.g. renovate.json is a dangling symlink).
       if (!(await fsUtil.generateFile(filePath, newContent))) return;
     }
+    await promisePool.run(() =>
+      fs.promises.rm(path.resolve(config.dirPath, '.dependabot'), { force: true, recursive: true })
+    );
     await promisePool.run(() => fs.promises.rm(legacyFilePath, { force: true }));
   });
 }

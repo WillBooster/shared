@@ -25,11 +25,15 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
       existingContent,
       filePath,
     });
-    const promises = [promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true }))];
-    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
-      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
+    // Remove the superseded legacy config only when the replacement landed (or none was needed):
+    // a refused write (e.g. a symlinked config) must not leave the repository with no config.
+    if (
+      normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent) &&
+      !(await fsUtil.generateFile(filePath, desiredContent))
+    ) {
+      return;
     }
-    await Promise.all(promises);
+    await promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true }));
   });
 }
 

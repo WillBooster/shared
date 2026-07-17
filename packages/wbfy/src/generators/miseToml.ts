@@ -46,8 +46,11 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     }
     settings.tools = tools;
 
-    await fsUtil.generateFile(miseTomlPath, stringify(settings));
-    await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.tool-versions'), { force: true }));
+    // Delete the migration source only after the replacement actually landed; a refused write
+    // (e.g. a symlinked mise.toml) must not destroy the only tool configuration.
+    if (await fsUtil.generateFile(miseTomlPath, stringify(settings))) {
+      await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.tool-versions'), { force: true }));
+    }
   });
 }
 
