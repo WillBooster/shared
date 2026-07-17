@@ -652,9 +652,6 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   ];
 
   const existingTrusted = bunJsonObj.trustedDependencies;
-  // An explicitly empty list is a deliberate block-everything policy; deleting it would silently
-  // re-enable Bun's default allow-list, so it is preserved when wbfy has nothing to add.
-  if (existingTrusted?.length === 0 && requiredWbfyPackages.length === 0) return;
   const customTrustedPackages = (existingTrusted ?? []).filter(
     (pkg) => pkg !== lefthookDependency && !wbfyTrustedPackages.has(pkg)
   );
@@ -666,7 +663,11 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
     bunJsonObj.trustedDependencies = [
       ...new Set([...customTrustedPackages, ...requiredWbfyPackages, lefthookDependency]),
     ].toSorted();
-  } else {
+  } else if (existingTrusted?.some((pkg) => wbfyTrustedPackages.has(pkg))) {
+    // Only a list wbfy itself authored is cleaned up once its packages are gone; wbfy always
+    // writes a chakra/drizzle entry alongside lefthook, so that entry marks its provenance. Any
+    // other explicit list — empty, or e.g. ["lefthook"] alone — is a user policy whose deletion
+    // would silently widen script execution to Bun's default allow-list.
     delete bunJsonObj.trustedDependencies;
   }
 }
