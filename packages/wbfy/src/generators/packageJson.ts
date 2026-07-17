@@ -710,11 +710,14 @@ let cachedDefaultTrustedDependencies: Set<string> | undefined;
 /** Fetches Bun's default trusted-dependency allow-list from the Bun version installing the repository. */
 function getDefaultTrustedDependencies(config: PackageConfig): Set<string> | undefined {
   if (!cachedDefaultTrustedDependencies) {
-    const parsedDependencies = new Set(
-      [...spawnSyncAndReturnStdout('bun', ['pm', 'default-trusted'], config.dirPath).matchAll(/^\s*-\s+(\S+)$/gmu)].map(
-        (match) => match[1] as string
-      )
+    // Bun colorizes the list markers when FORCE_COLOR is set (e.g. by test runners on CI), so
+    // ANSI escape sequences must be stripped before parsing.
+    const stdout = spawnSyncAndReturnStdout('bun', ['pm', 'default-trusted'], config.dirPath).replaceAll(
+      // oxlint-disable-next-line no-control-regex -- matching ANSI escape sequences requires the ESC control character
+      /\u001B\[[0-9;]*m/gu,
+      ''
     );
+    const parsedDependencies = new Set([...stdout.matchAll(/^\s*-\s+(\S+)$/gmu)].map((match) => match[1] as string));
     if (parsedDependencies.size === 0) {
       // Do not cache the failure: a target-local problem (e.g. an unreadable package.json) must
       // not deny the default list to every later target of a multi-path run.
