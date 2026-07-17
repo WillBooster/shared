@@ -9,6 +9,7 @@ import merge from 'deepmerge';
 import yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
+import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
@@ -273,12 +274,18 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
 
   let newSettings = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
 
-  try {
-    const oldContent = await fs.promises.readFile(filePath, 'utf8');
-    const oldSettings = yaml.load(oldContent) as Workflow;
+  const oldContent = await fsUtil.readFileIfExists(filePath);
+  if (oldContent !== undefined) {
+    let oldSettings: Workflow;
+    try {
+      oldSettings = yaml.load(oldContent) as Workflow;
+    } catch {
+      // An existing workflow wbfy cannot parse must be left untouched: writing the template
+      // without merging would silently discard the repository's workflow.
+      console.warn(`Skipped generating ${filePath} because the existing content is not parsable as YAML.`);
+      return;
+    }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
-  } catch {
-    // do nothing
   }
 
   // Skip a broken workflow
@@ -516,7 +523,7 @@ async function writeYaml(newSettings: Workflow, filePath: string): Promise<void>
   const yamlText = removeTrailingSpaces(
     yaml.dump(newSettings, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } })
   );
-  await fs.promises.writeFile(filePath, yamlText);
+  await fsUtil.writeFileConfined(filePath, yamlText);
 }
 
 function removeTrailingSpaces(text: string): string {

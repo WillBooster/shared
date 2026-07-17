@@ -177,7 +177,7 @@ test('uses stable age-gated versions for generated dependencies when skipping in
 });
 
 test('appends wrangler types to gen-code and postinstall for Cloudflare projects', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
@@ -202,7 +202,7 @@ test.each([
   ['postinstall', { postinstall: 'wb gen-code && wrangler types --strict-vars=false' }],
   ['a script of its own', { 'gen-types': 'wrangler types --strict-vars=false' }],
 ])('preserves a project-specific wrangler types invocation kept in %s', async (_description, scripts) => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts, ...wranglerPackageJson },
     {
@@ -278,7 +278,7 @@ test('omits wrangler types when the package owns no wrangler config', async () =
 // `wrangler types --check` validates freshness and generates nothing, and a positional output path generates a
 // different file than the worker-configuration.d.ts wbfy manages, so neither can serve as the shared generator.
 test('ignores non-generating and custom-output wrangler types invocations when resolving the command', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: {
@@ -305,7 +305,7 @@ test('ignores non-generating and custom-output wrangler types invocations when r
 // Appending the resolved command to a postinstall that already generates through a wrapper script would generate
 // the ~15k-line file twice per install.
 test('does not append wrangler types to a postinstall that generates through a wrapper script', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: {
@@ -323,7 +323,7 @@ test('does not append wrangler types to a postinstall that generates through a w
 // detectWranglerConfig does not see a custom --config path, so wbfy does not manage the file — but overwriting the
 // project's own postinstall invocation would leave fresh checkouts without worker types.
 test('preserves a wrangler types invocation with a custom config path when overwriting postinstall', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: { postinstall: 'wb gen-code && wrangler types --config config/worker.jsonc' },
@@ -345,7 +345,7 @@ test('preserves a wrangler types invocation with a custom config path when overw
 // falling back to .env) is committed, absent, or overridden by a top-level `secrets.required` declaration; wbfy
 // must not manage (generate, ignore, untrack) a file CI would regenerate differently.
 test('omits wrangler types when an uncommitted .dev.vars drives the Env inference', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
@@ -362,8 +362,8 @@ test('omits wrangler types when an uncommitted .dev.vars drives the Env inferenc
 });
 
 test('keeps wrangler types when secrets.required makes the Env inference reproducible', async () => {
-  // 4.77.0 is the first wrangler that generates types from secrets.required instead of .dev.vars.
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.77.0' } };
+  // 4.70.0 is the first wrangler that generates types from secrets.required instead of .dev.vars.
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.70.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
@@ -391,7 +391,7 @@ test('keeps wrangler types when secrets.required makes the Env inference reprodu
 // A declaration at any config level replaces the .dev.vars/.env inference: wrangler aggregates per-environment
 // secrets into the generated type.
 test('keeps wrangler types when an env-level secrets.required makes the Env inference reproducible', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.77.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.70.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
@@ -412,10 +412,10 @@ test('keeps wrangler types when an env-level secrets.required makes the Env infe
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
 });
 
-// Wranglers older than 4.77.0 warn about the unexpected top-level `secrets` field and keep inferring from
+// Wranglers older than 4.70.0 warn about the unexpected top-level `secrets` field and keep inferring from
 // .dev.vars, so the declaration must not count as a reproducible inference source for them.
 test('ignores secrets.required when the wrangler dependency predates its support', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
@@ -439,7 +439,7 @@ test('ignores secrets.required when the wrangler dependency predates its support
 // Running the documented code-generation entry point must produce the same declarations as postinstall,
 // even when wbfy would not create the gen-code script from scratch.
 test('appends wrangler types to a project-specific gen-code script', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-code': 'tsx scripts/genRoutes.ts' }, ...wranglerPackageJson },
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
@@ -454,7 +454,7 @@ test('appends wrangler types to a project-specific gen-code script', async () =>
 // Only a command-position invocation counts: shell text that merely mentions the words must not be
 // selected as the shared generator.
 test('does not treat shell text mentioning wrangler types as the generator command', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { help: 'echo wrangler types --strict-vars=false' }, ...wranglerPackageJson },
     {
@@ -474,7 +474,7 @@ test('does not treat shell text mentioning wrangler types as the generator comma
 // --check=true generates nothing and a custom positional path writes another file, so neither is selected as
 // the shared generator; the managed default applies instead.
 test('ignores non-conflicting but non-generating wrangler types invocations when resolving the command', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'check-types': 'wrangler types --check=true' }, ...wranglerPackageJson },
     {
@@ -522,7 +522,7 @@ test.each([
 // Commands after a `cd` run somewhere else and generate another package's file, so they neither qualify as this
 // package's generator nor block the managed default.
 test('ignores wrangler types invocations that follow a cd', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-other': 'cd ../other && wrangler types --strict-vars=false' }, ...wranglerPackageJson },
     {
@@ -539,7 +539,7 @@ test('ignores wrangler types invocations that follow a cd', async () => {
 
 // Shell redirections are not wrangler arguments and must not disqualify (or truncate) the project's invocation.
 test('reuses a wrangler types invocation followed by a shell redirection', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-types': 'wrangler types --strict-vars=false > /dev/null' }, ...wranglerPackageJson },
     {
@@ -557,7 +557,7 @@ test('reuses a wrangler types invocation followed by a shell redirection', async
 // Wrangler's documented default output path is exactly ./worker-configuration.d.ts, so naming it explicitly
 // must not discard the project's flags.
 test('reuses a wrangler types invocation that names the default output path explicitly', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: { 'gen-types': 'wrangler types ./worker-configuration.d.ts --strict-vars=false' },
@@ -580,7 +580,7 @@ test('reuses a wrangler types invocation that names the default output path expl
 // --help/--version generate nothing, so they can never be selected as the shared generator (a selected
 // `wrangler types --help` would have allowed untracking a declaration nothing recreates).
 test('ignores help-only wrangler types invocations when resolving the command', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'types-help': 'wrangler types --help' }, ...wranglerPackageJson },
     {
@@ -597,7 +597,7 @@ test('ignores help-only wrangler types invocations when resolving the command', 
 
 // Boolean options accept a space-separated literal, which must not be misread as a positional output path.
 test('reuses a wrangler types invocation with a space-separated boolean option', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-types': 'wrangler types --strict-vars false' }, ...wranglerPackageJson },
     {
@@ -614,7 +614,7 @@ test('reuses a wrangler types invocation with a space-separated boolean option',
 
 // Wrapper detection must survive environment assignments and runner flags around the script name.
 test('detects generation through an env-prefixed wrapper postinstall', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: {
@@ -632,7 +632,7 @@ test('detects generation through an env-prefixed wrapper postinstall', async () 
 // An appended generator after a directory-changing postinstall would run in the other directory, so it must
 // run first instead.
 test('prepends the generator to a directory-changing postinstall', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { postinstall: 'cd ../tools && yarn build' }, ...wranglerPackageJson },
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
@@ -644,7 +644,7 @@ test('prepends the generator to a directory-changing postinstall', async () => {
 // `--check` is a boolean option: only its enabled forms suppress generation, so `--check=false` is an ordinary
 // generating invocation whose flags must be preserved.
 test('reuses a wrangler types invocation with --check=false', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-types': 'wrangler types --check=false --strict-vars=false' }, ...wranglerPackageJson },
     {
@@ -733,7 +733,7 @@ test('recognizes a conflicting invocation behind a no-op cd', async () => {
 // A quoted `&&` is argument text; splitting inside it would fabricate a generator command that was never run
 // (and whose trailing quote breaks the shell).
 test('does not select a wrangler types invocation quoted inside another command', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { greet: 'echo "run setup && wrangler types --strict-vars=false"' }, ...wranglerPackageJson },
     {
@@ -751,7 +751,7 @@ test('does not select a wrangler types invocation quoted inside another command'
 // Wrangler also layers .env.local (and environment-specific variants) into the Env inference, so an uncommitted
 // one makes the generated file irreproducible even when .dev.vars and .env are absent.
 test('omits wrangler types when an uncommitted .env.local drives the Env inference', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
@@ -813,7 +813,7 @@ test('keeps generation prerequisites when rewriting postinstall', async () => {
 
 // `--cwd .` still runs in this package's directory, so the invocation is an ordinary local generator.
 test('reuses a wrangler types invocation with a no-op --cwd', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-types': 'wrangler types --cwd . --strict-vars=false' }, ...wranglerPackageJson },
     {
@@ -831,7 +831,7 @@ test('reuses a wrangler types invocation with a no-op --cwd', async () => {
 // Quoted environment values contain spaces; whitespace-only tokenization would push the assignment into the
 // command position and miss the generator.
 test('recognizes a generator prefixed by a quoted environment assignment', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const genTypes = 'NODE_OPTIONS="--conditions=workerd --no-warnings" wrangler types --strict-vars=false';
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-types': genTypes }, ...wranglerPackageJson },
@@ -1112,7 +1112,7 @@ test('treats a backgrounded invocation as unmodeled', async () => {
 // A check-only custom gen-code fails while the gitignored file is absent, so the generator must run first,
 // mirroring the postinstall ordering rule.
 test('prepends the generator to a check-only custom gen-code script', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-code': 'wrangler types --check' }, ...wranglerPackageJson },
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
@@ -1185,7 +1185,7 @@ test('treats a quoted command word invocation as unmodeled', async () => {
 // A trailing shell comment is not a positional output path; the flags before it must be reused — without the
 // comment, which would swallow anything composed after the reused command.
 test('reuses a wrangler types invocation followed by a shell comment', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-types': 'wrangler types --strict-vars=false # keep loose vars' }, ...wranglerPackageJson },
     {
@@ -1278,7 +1278,7 @@ test('recognizes a conflicting invocation behind a normalized no-op cd', async (
 
 // The wrangler config itself drives the generation, so an uncommitted config makes the file irreproducible.
 test('omits wrangler types when the wrangler config is uncommitted', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     {
@@ -1337,7 +1337,7 @@ test('skips worker-types management for a prerequisite pipeline with a bare gene
 
 // Quoting does not enable the check: `--check 'false'` still generates and its flags must be preserved.
 test('reuses a wrangler types invocation with a quoted false check literal', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { 'gen-types': "wrangler types --strict-vars=false --check 'false'" }, ...wranglerPackageJson },
     {
@@ -1354,7 +1354,7 @@ test('reuses a wrangler types invocation with a quoted false check literal', asy
 
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
 test('prepends the generator to a check-only postinstall', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: { postinstall: 'wrangler types --check' }, ...wranglerPackageJson },
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
@@ -1366,7 +1366,7 @@ test('prepends the generator to a check-only postinstall', async () => {
 // A custom --config layout is not managed by wbfy, but the project's own generation — even behind a wrapper
 // script — must survive the postinstall rewrite.
 test('preserves a wrapper script invoking wrangler types with a custom config when overwriting postinstall', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.42.0' } };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: {

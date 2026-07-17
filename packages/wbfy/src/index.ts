@@ -50,6 +50,7 @@ import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
+import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
@@ -121,6 +122,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
   let hasInvalidPackageConfig = false;
   for (const rootDirPath of paths) {
+    // Confine every generated file to this repository (see fsUtil.generateFile). Set BEFORE any
+    // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
+    fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
     // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
     // automatic Bun translation must abort the whole migration for this path, not just the file
     // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.
@@ -137,6 +141,26 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     const packagesDirPath = path.join(rootDirPath, 'packages');
     const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
     const subDirPaths = dirents.filter((d) => d.isDirectory()).map((d) => path.join(packagesDirPath, d.name));
+
+    // Refused writes on core managed files would leave the migration half-applied (e.g. Yarn state
+    // removed but bunfig.toml unchanged, or a test directory renamed without its script), so skip
+    // the repository BEFORE any mutation when one of them is a symlink or resolves outside it.
+    const managedFilePaths = [
+      ...['bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
+        path.resolve(rootDirPath, name)
+      ),
+      ...subDirPaths.flatMap((subDirPath) =>
+        ['package.json', 'tsconfig.json'].map((name) => path.resolve(subDirPath, name))
+      ),
+    ];
+    const writableResults = await Promise.all(
+      managedFilePaths.map((filePath) => fsUtil.isConfinedWritablePath(filePath))
+    );
+    if (writableResults.includes(false)) {
+      console.error(`Skip ${rootDirPath}: a managed config file is a symlink or resolves outside the repository.`);
+      hasInvalidPackageConfig = true;
+      continue;
+    }
 
     await fixTestDirectoriesUpdatingPackageJson([rootDirPath, ...subDirPaths]);
 

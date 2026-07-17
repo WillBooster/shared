@@ -12,7 +12,7 @@ const managedScriptsBlock = `scripts/**
 export async function fixRailwayignore(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixRailwayignore', async () => {
     const filePath = path.resolve(config.dirPath, '.railwayignore');
-    const content = await fsUtil.readFileIgnoringError(filePath);
+    const content = await fsUtil.readFileIfExists(filePath);
     if (!content) return;
 
     const newContent = content.replace(/^scripts\/$/m, managedScriptsBlock);

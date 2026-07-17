@@ -42,7 +42,7 @@ tmp/
 export async function generateGitignore(config: PackageConfig, rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateGitignore', async () => {
     const filePath = path.resolve(config.dirPath, '.gitignore');
-    const content = (await fsUtil.readFileIgnoringError(filePath)) ?? '';
+    const content = (await fsUtil.readFileIfExists(filePath)) ?? '';
     let headUserContent = ignoreFileUtil.getHeadUserContent(content) + commonContent;
     const tailUserContent = ignoreFileUtil.getTailUserContent(content);
 

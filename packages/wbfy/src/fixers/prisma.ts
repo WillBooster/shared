@@ -4,6 +4,7 @@ import path from 'node:path';
 import fg from 'fast-glob';
 
 import { logger } from '../logger.js';
+import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { globIgnore } from '../utils/globUtil.js';
 
@@ -21,7 +22,7 @@ export async function fixPrismaEnvFiles(config: PackageConfig): Promise<void> {
         }
       );
       if (newContent !== content) {
-        await fs.writeFile(envFilePath, newContent);
+        await fsUtil.writeFileConfined(envFilePath, newContent);
       }
     }
   });

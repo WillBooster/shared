@@ -3,8 +3,6 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import fg from 'fast-glob';
-import type { ParseError } from 'jsonc-parser';
-import { parse as parseJsonc } from 'jsonc-parser';
 import semver from 'semver';
 import { simpleGit } from 'simple-git';
 import { parse as parseToml } from 'smol-toml';
@@ -13,6 +11,7 @@ import { z } from 'zod';
 
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
+import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
 
@@ -304,6 +303,9 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
  */
 function hasReproducibleWorkerTypesInference(config: PackageConfig): boolean {
   const dirPath = config.dirPath;
+  // With a secrets declaration, `wrangler types` reads only the wrangler config, so a missing or
+  // stale config on CI fails the generation LOUDLY instead of silently inferring a wrong Env; the
+  // tracked-clean checks below guard only the silent-drift hazard of the dotenv-inference path.
   if (declaresSupportedRequiredSecrets(config)) return true;
   // The wrangler config itself drives the generation, so an untracked, modified, or symlinked config makes the
   // generated file irreproducible whatever the dotenv inputs say.
@@ -335,9 +337,9 @@ function areTrackedCleanRegularFiles(dirPath: string, fileNames: string[]): bool
   );
 }
 
-// `wrangler types` generates from `secrets.required` only since wrangler 4.77.0 (announced 2026-03-24, the 4.77.0
-// release date); older wranglers warn about the unexpected field and keep inferring from .dev.vars.
-const minimumWranglerVersionForRequiredSecrets = '4.77.0';
+// `wrangler types` generates from `secrets.required` since wrangler 4.70.0 (4.77.0 only added deploy/upload
+// validation of the field); older wranglers warn about the unexpected field and keep inferring from .dev.vars.
+const minimumWranglerVersionForRequiredSecrets = '4.70.0';
 
 function declaresSupportedRequiredSecrets(config: PackageConfig): boolean {
   const wranglerVersionRange =
@@ -362,13 +364,11 @@ function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
     for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
       const filePath = path.resolve(dirPath, fileName);
       if (!fs.existsSync(filePath)) continue;
-      // jsonc-parser is fault tolerant and would return a partial object for malformed input,
-      // which cannot prove a declaration; reject any parse error.
-      const parseErrors: ParseError[] = [];
-      const config = parseJsonc(fs.readFileSync(filePath, 'utf8'), parseErrors, { allowTrailingComma: true }) as
-        | WranglerConfigSecretsSubtree
-        | undefined;
-      return parseErrors.length === 0 && !!config && declaresRequiredSecretsAnywhere(config);
+      // A config that does not parse cannot prove a declaration.
+      const config = jsoncUtil.parseObjectIgnoringError<WranglerConfigSecretsSubtree>(
+        fs.readFileSync(filePath, 'utf8')
+      );
+      return !!config && declaresRequiredSecretsAnywhere(config);
     }
     const tomlPath = path.resolve(dirPath, 'wrangler.toml');
     if (fs.existsSync(tomlPath)) {
@@ -384,8 +384,18 @@ function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
 // A declaration at any config level replaces the .dev.vars/.env inference: `wrangler types` aggregates
 // per-environment secrets into the generated type (Cloudflare changelog 2026-03-24).
 function declaresRequiredSecretsAnywhere(config: WranglerConfigSecretsSubtree): boolean {
-  if ((config.secrets?.required?.length ?? 0) > 0) return true;
-  return Object.values(config.env ?? {}).some((envConfig) => (envConfig?.secrets?.required?.length ?? 0) > 0);
+  if (declaresSecrets(config.secrets)) return true;
+  return Object.values(config.env ?? {}).some((envConfig) => declaresSecrets(envConfig?.secrets));
+}
+
+// Defining `secrets` at any config level makes `wrangler types` use it exclusively instead of
+// inferring from .dev.vars/.env, so even an empty declaration is reproducible. The parsed config
+// comes from an unvalidated file, so check the documented `string[]` shape at runtime: a malformed
+// declaration (e.g. a plain string) must not prove reproducibility.
+function declaresSecrets(secrets: WranglerConfigSecretsSubtree['secrets']): boolean {
+  if (secrets === undefined || secrets === null || typeof secrets !== 'object' || Array.isArray(secrets)) return false;
+  const required: unknown = secrets.required;
+  return required === undefined || (Array.isArray(required) && required.every((name) => typeof name === 'string'));
 }
 
 /**

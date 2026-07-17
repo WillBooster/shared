@@ -7,6 +7,7 @@ import type { TsConfigJson } from 'type-fest';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -80,9 +81,18 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     }
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
-    try {
-      const existingContent = await fs.promises.readFile(filePath, 'utf8');
-      const oldSettings = JSON.parse(existingContent) as TsConfigJson;
+    const existingContent = await fsUtil.readFileIfExists(filePath);
+    let originalSettingsJson: string | undefined;
+    // A file with no configuration (empty or comment-only) is treated like a missing one, as tsc does.
+    if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
+      const oldSettings = jsoncUtil.parseObjectIgnoringError<TsConfigJson>(existingContent);
+      // An existing tsconfig.json wbfy cannot parse must be left untouched: writing the
+      // generated settings without merging would silently discard the project's configuration.
+      if (!oldSettings) {
+        console.warn(`Skipped generating ${filePath} because the existing content is not parsable as JSONC.`);
+        return;
+      }
+      originalSettingsJson = JSON.stringify(sortKeys(structuredClone(oldSettings)));
       const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
       const existingEmitMetadata = pickExistingEmitMetadata(oldSettings.compilerOptions);
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
@@ -101,7 +111,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       // rootDir="src", and include=["src/**/*"], so preserving noEmit=false or
       // rootDir="src" here would only break non-src type-aware lint coverage.
       newSettings.compilerOptions = { ...newSettings.compilerOptions, ...existingEmitMetadata };
-      ensureTsExtensionEmitCompatibility(newSettings.compilerOptions);
 
       const mergedTypes = [...new Set([...filterExistingTypes(existingTypes, generatedTypes), ...generatedTypes])];
       if (mergedTypes.length > 0) {
@@ -112,8 +121,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       if (shouldDeleteTypeRoots(generatedTypes)) {
         delete newSettings.compilerOptions.typeRoots;
       }
-    } catch {
-      // do nothing
     }
     addUndiciTypesPathMapping(newSettings, config);
     sortKeys(newSettings);
@@ -128,24 +135,34 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
+    // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
+    // already-up-to-date tsconfig.json survive wbfy runs.
+    if (originalSettingsJson === JSON.stringify(newSettings)) return;
     const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 
 async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promise<void> {
+  // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
+  // node10 resolver spellings that older projects commonly inherited.
   const filePath = path.resolve(config.dirPath, 'tsconfig.json');
-  try {
-    const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as TsConfigJson;
-    normalizeNextTsconfigModuleSettings(settings);
-    normalizeNextTsconfigPathAliases(settings.compilerOptions);
-    addScriptsIncludeForFrameworkProject(settings);
-    addUndiciTypesPathMapping(settings, config);
-    await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
-  } catch {
-    // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
-    // node10 resolver spellings that older projects commonly inherited.
+  const existingContent = await fsUtil.readFileIfExists(filePath);
+  if (existingContent === undefined || jsoncUtil.isTriviaOnly(existingContent)) return;
+  const settings = jsoncUtil.parseObjectIgnoringError<TsConfigJson>(existingContent);
+  if (!settings) {
+    console.warn(`Skipped cleaning up ${filePath} because the existing content is not parsable as JSONC.`);
+    return;
   }
+  const originalSettingsJson = JSON.stringify(settings);
+  normalizeNextTsconfigModuleSettings(settings);
+  normalizeNextTsconfigPathAliases(settings.compilerOptions);
+  addScriptsIncludeForFrameworkProject(settings);
+  addUndiciTypesPathMapping(settings, config);
+  // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
+  // already-clean tsconfig.json survive wbfy runs.
+  if (JSON.stringify(settings) === originalSettingsJson) return;
+  await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
 }
 
 /**
@@ -272,15 +289,6 @@ function filterExistingTypes(existingTypes: string[], generatedTypes: string[]):
 
 function isGeneratedTestGlobalType(typeName: string): boolean {
   return typeName === 'cypress' || typeName === 'jest' || typeName === 'mocha' || typeName === 'vitest/globals';
-}
-
-function ensureTsExtensionEmitCompatibility(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
-  if (!compilerOptions) return;
-  if (compilerOptions.noEmit !== false || compilerOptions.emitDeclarationOnly === true) return;
-
-  // @tsconfig/bun enables allowImportingTsExtensions, which TypeScript permits
-  // during emit only when relative TS extensions are rewritten.
-  compilerOptions.rewriteRelativeImportExtensions = true;
 }
 
 function deleteLegacyModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {

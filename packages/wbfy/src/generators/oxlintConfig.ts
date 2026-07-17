@@ -23,7 +23,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     // managed blocks are still safe to update.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
-    const existingContent = await fsUtil.readFileIgnoringError(filePath);
+    const existingContent = await fsUtil.readFileIfExists(filePath);
     const shouldPreserveExistingContent =
       shouldPreservePublishedLinterConfig && existingContent && !managedConfigBlocks.hasManagedBlocks(existingContent);
     const desiredContent = shouldPreserveExistingContent
@@ -36,6 +36,14 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
           })
         );
 
+    // Remove the superseded legacy configs only when the replacement landed (or none was needed):
+    // a refused write (e.g. a symlinked config) must not leave the repository with no config.
+    if (
+      normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent) &&
+      !(await fsUtil.generateFile(filePath, desiredContent))
+    ) {
+      return;
+    }
     const promises: Promise<void>[] = [];
     if (!shouldPreservePublishedLinterConfig) {
       promises.push(
@@ -53,9 +61,6 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.mjs'), { force: true })),
         promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'eslint.config.ts'), { force: true }))
       );
-    }
-    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
-      promises.push(promisePool.run(() => fsUtil.generateFile(filePath, desiredContent)));
     }
     await Promise.all(promises);
   });

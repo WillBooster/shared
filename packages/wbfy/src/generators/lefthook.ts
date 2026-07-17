@@ -5,6 +5,7 @@ import path from 'node:path';
 import yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
+import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { getGenI18nTsCommand } from '../utils/genI18nTs.js';
@@ -118,7 +119,7 @@ async function core(config: PackageConfig): Promise<void> {
     delete settings['pre-push'];
   }
   await Promise.all([
-    fs.promises.writeFile(
+    fsUtil.writeFileConfined(
       path.join(config.dirPath, 'lefthook.yml'),
       yaml.dump(settings, {
         lineWidth: -1,

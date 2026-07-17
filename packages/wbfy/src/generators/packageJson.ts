@@ -157,7 +157,9 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   // before installing the managed dependency updates below. Keep this generated
   // file sorted even when we later run the target repository's formatter so a
   // mid-run interruption never leaves package.json in a partially managed order.
-  await fsUtil.generateFile(filePath, serializePackageJson(jsonObj));
+  // A refused write (e.g. a symlinked package.json) must also abort the dependency installation
+  // below: `bun add` follows the symlink and would modify the file outside the repository.
+  if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, jsonObj, dependencyUpdates, 'bun');
