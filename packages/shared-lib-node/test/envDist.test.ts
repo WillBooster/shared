@@ -19,11 +19,17 @@ describe('bundled env cascade', () => {
     const env = { ...process.env };
     delete env.WB_ENV;
     delete env.NODE_ENV;
+    // readEnvironmentVariables skips keys already present in process.env, so ambient values
+    // for the fixture's own keys would drop them from the result and fail the assertion.
+    delete env.ENV;
+    delete env.PORT;
+    delete env.NAME;
     const result = childProcess.spawnSync(process.execPath, ['--input-type=module', '-e', script], {
       encoding: 'utf8',
       env,
     });
-    expect(result.status).toBe(0);
+    // Surface the child's stderr: on failure it carries the whole diagnosis (broken dist, import error).
+    expect({ status: result.status, stderr: result.stderr }).toMatchObject({ status: 0 });
     expect(JSON.parse(result.stdout)).toMatchObject({ ENV: 'development1' });
   });
 });
