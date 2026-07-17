@@ -3,8 +3,6 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import fg from 'fast-glob';
-import type { ParseError } from 'jsonc-parser';
-import { parse as parseJsonc } from 'jsonc-parser';
 import semver from 'semver';
 import { simpleGit } from 'simple-git';
 import { parse as parseToml } from 'smol-toml';
@@ -13,6 +11,7 @@ import { z } from 'zod';
 
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
+import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
 
@@ -362,13 +361,11 @@ function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
     for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
       const filePath = path.resolve(dirPath, fileName);
       if (!fs.existsSync(filePath)) continue;
-      // jsonc-parser is fault tolerant and would return a partial object for malformed input,
-      // which cannot prove a declaration; reject any parse error.
-      const parseErrors: ParseError[] = [];
-      const config = parseJsonc(fs.readFileSync(filePath, 'utf8'), parseErrors, { allowTrailingComma: true }) as
-        | WranglerConfigSecretsSubtree
-        | undefined;
-      return parseErrors.length === 0 && !!config && declaresRequiredSecretsAnywhere(config);
+      // A config that does not parse cannot prove a declaration.
+      const config = jsoncUtil.parseObjectIgnoringError<WranglerConfigSecretsSubtree>(
+        fs.readFileSync(filePath, 'utf8')
+      );
+      return !!config && declaresRequiredSecretsAnywhere(config);
     }
     const tomlPath = path.resolve(dirPath, 'wrangler.toml');
     if (fs.existsSync(tomlPath)) {

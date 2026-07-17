@@ -2,13 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import type { ParseError } from 'jsonc-parser';
-import { parse as parseJsonc } from 'jsonc-parser';
 import type { TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -82,12 +81,18 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     }
 
     const filePath = path.resolve(config.dirPath, 'tsconfig.json');
-    const existingContent = await fs.promises.readFile(filePath, 'utf8').catch(() => {});
-    if (existingContent !== undefined) {
-      const oldSettings = parseTsconfigJsonc(existingContent);
+    const existingContent = await fsUtil.readFileIfExists(filePath);
+    let originalSettingsJson: string | undefined;
+    // An empty (or whitespace-only) file carries no configuration, so treat it like a missing one.
+    if (existingContent !== undefined && existingContent.trim()) {
+      const oldSettings = jsoncUtil.parseObjectIgnoringError<TsConfigJson>(existingContent);
       // An existing tsconfig.json wbfy cannot parse must be left untouched: writing the
       // generated settings without merging would silently discard the project's configuration.
-      if (!oldSettings) return;
+      if (!oldSettings) {
+        console.warn(`Skipped generating ${filePath} because the existing content is not parsable as JSONC.`);
+        return;
+      }
+      originalSettingsJson = JSON.stringify(sortKeys(structuredClone(oldSettings)));
       const existingTypes = normalizeStringArray(oldSettings.compilerOptions?.types);
       const existingEmitMetadata = pickExistingEmitMetadata(oldSettings.compilerOptions);
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
@@ -131,6 +136,9 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
+    // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
+    // already-up-to-date tsconfig.json survive wbfy runs.
+    if (originalSettingsJson === JSON.stringify(newSettings)) return;
     const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
@@ -140,26 +148,22 @@ async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promi
   // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
   // node10 resolver spellings that older projects commonly inherited.
   const filePath = path.resolve(config.dirPath, 'tsconfig.json');
-  const existingContent = await fs.promises.readFile(filePath, 'utf8').catch(() => {});
-  if (existingContent === undefined) return;
-  const settings = parseTsconfigJsonc(existingContent);
-  if (!settings) return;
+  const existingContent = await fsUtil.readFileIfExists(filePath);
+  if (existingContent === undefined || !existingContent.trim()) return;
+  const settings = jsoncUtil.parseObjectIgnoringError<TsConfigJson>(existingContent);
+  if (!settings) {
+    console.warn(`Skipped cleaning up ${filePath} because the existing content is not parsable as JSONC.`);
+    return;
+  }
+  const originalSettingsJson = JSON.stringify(settings);
   normalizeNextTsconfigModuleSettings(settings);
   normalizeNextTsconfigPathAliases(settings.compilerOptions);
   addScriptsIncludeForFrameworkProject(settings);
   addUndiciTypesPathMapping(settings, config);
+  // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
+  // already-clean tsconfig.json survive wbfy runs.
+  if (JSON.stringify(settings) === originalSettingsJson) return;
   await promisePool.run(() => fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2)));
-}
-
-/**
- * tsconfig.json allows JSONC, so read it with jsonc-parser instead of JSON.parse. jsonc-parser is
- * fault tolerant and returns a partial object for malformed input, which must not be merged as if
- * it were the project's configuration; reject any parse error.
- */
-function parseTsconfigJsonc(content: string): TsConfigJson | undefined {
-  const parseErrors: ParseError[] = [];
-  const settings = parseJsonc(content, parseErrors, { allowTrailingComma: true }) as TsConfigJson | undefined;
-  return parseErrors.length === 0 && settings && typeof settings === 'object' ? settings : undefined;
 }
 
 /**

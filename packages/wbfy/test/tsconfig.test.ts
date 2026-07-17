@@ -65,6 +65,40 @@ test('leaves an unparseable tsconfig untouched', async () => {
   });
 });
 
+test('initializes an empty tsconfig with the generated settings', async () => {
+  await withTempTsconfig('', async (filePath, config) => {
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { compilerOptions?: object };
+    expect(generated.compilerOptions).toBeDefined();
+  });
+});
+
+test('merges settings from a tsconfig with a UTF-8 BOM instead of skipping it', async () => {
+  const compilerOptions = await generateCompilerOptionsFromContent(
+    '\uFEFF' + JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./node_modules/undici-types'] } } })
+  );
+  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types'] });
+});
+
+test('keeps a commented Next tsconfig byte-identical when no cleanup is needed', async () => {
+  const commentedContent = `{
+  "compilerOptions": {
+    // explains why the mapping exists
+    "moduleResolution": "bundler",
+    "paths": {
+      "undici-types": ["./node_modules/undici-types/index.d.ts"]
+    }
+  }
+}`;
+  await withTempTsconfig(commentedContent, async (filePath, config) => {
+    config.depending.next = true;
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    expect(fs.readFileSync(filePath, 'utf8')).toBe(commentedContent);
+  });
+});
+
 async function generateCompilerOptionsFrom(
   existingTsconfig: object,
   dependingOverrides: Partial<PackageConfig['depending']> = {}

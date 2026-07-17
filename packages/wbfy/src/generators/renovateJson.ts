@@ -6,6 +6,7 @@ import merge from 'deepmerge';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
@@ -27,15 +28,19 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
       // Since it is difficult for parsing renovate.json5, we do nothing
       return;
     }
-    try {
-      const oldContent = await fs.promises.readFile(filePath, 'utf8');
-      const oldSettings = JSON.parse(oldContent) as Settings;
+    const oldContent = await fsUtil.readFileIfExists(filePath);
+    if (oldContent !== undefined && oldContent.trim()) {
+      // Renovate accepts JSONC in renovate.json; an existing file wbfy cannot parse must be left
+      // untouched instead of being overwritten with the bare template.
+      const oldSettings = jsoncUtil.parseObjectIgnoringError<Settings>(oldContent);
+      if (!oldSettings) {
+        console.warn(`Skipped generating ${filePath} because the existing content is not parsable as JSONC.`);
+        return;
+      }
       newSettings = merge.all([newSettings, oldSettings, newSettings], {
         arrayMerge: overwriteMerge,
       }) as Settings;
       newSettings.extends = mergeRenovateExtends(jsonObj.extends, oldSettings.extends ?? []);
-    } catch {
-      // do nothing
     }
 
     // Don't upgrade Next.js automatically
