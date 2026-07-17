@@ -302,6 +302,12 @@ async function writeWorkflowYaml(
       console.warn(`Skipped generating ${filePath} because the existing content is not parsable as YAML.`);
       return;
     }
+    // yaml.load returns undefined for empty/comment-only files and non-objects for scalar
+    // documents without throwing; deepmerge would crash on them.
+    if (typeof oldSettings !== 'object' || oldSettings === null || Array.isArray(oldSettings)) {
+      console.warn(`Skipped generating ${filePath} because the existing content is not a workflow.`);
+      return;
+    }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   }
 
@@ -390,10 +396,13 @@ async function writeWorkflowYaml(
   await writeYaml(newSettings, filePath);
 
   if (kind === 'sync') {
-    await fs.promises.rm(path.join(workflowsPath, 'sync-init.yml'), { force: true });
+    for (const syncInitFileName of ['sync-init.yml', 'sync-init.yaml']) {
+      await fs.promises.rm(path.join(workflowsPath, syncInitFileName), { force: true });
+    }
     if (!newSettings.jobs.sync?.with) return;
 
-    // Generate sync-force.yml based on sync.yml if it exists.
+    // Generate the force-sync workflow based on the sync workflow if it exists, keeping the
+    // spelling of an existing sync-force file so its identity (badge URLs, API) is preserved.
     newSettings.jobs['sync-force'] = newSettings.jobs.sync;
     const params = newSettings.jobs.sync.with.sync_params_without_dest;
     if (typeof params !== 'string') return;
@@ -402,7 +411,12 @@ async function writeWorkflowYaml(
     newSettings.name = 'Force to Sync';
     newSettings.on = { workflow_dispatch: null };
     delete newSettings.jobs.sync;
-    await writeYaml(newSettings, path.join(workflowsPath, 'sync-force.yml'));
+    const syncForceFileName =
+      !fs.existsSync(path.join(workflowsPath, 'sync-force.yml')) &&
+      fs.existsSync(path.join(workflowsPath, 'sync-force.yaml'))
+        ? 'sync-force.yaml'
+        : 'sync-force.yml';
+    await writeYaml(newSettings, path.join(workflowsPath, syncForceFileName));
   }
 }
 
