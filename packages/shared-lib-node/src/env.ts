@@ -67,12 +67,17 @@ export function readEnvironmentVariables(
   }
 ): [Record<string, string>, [string, string[]][]] {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
+  // Read NODE_ENV through an alias, never as the `process.env.NODE_ENV` member expression:
+  // bundlers replace that exact expression at build time (rolldown/build-ts inline it as
+  // 'production'), which constant-folds the fallback below and made the published wb select
+  // the production profile whenever WB_ENV was unset.
+  const runtimeEnv = process.env;
   const cascade =
     argv.cascadeEnv ??
     (argv.cascadeNodeEnv
-      ? process.env.NODE_ENV || 'development'
+      ? runtimeEnv.NODE_ENV || 'development'
       : argv.autoCascadeEnv
-        ? process.env.WB_ENV || process.env.NODE_ENV || 'development'
+        ? runtimeEnv.WB_ENV || runtimeEnv.NODE_ENV || 'development'
         : undefined);
   if (typeof cascade === 'string') {
     if (envPaths.length === 0) {
@@ -93,7 +98,7 @@ export function readEnvironmentVariables(
   envPaths = envPaths.filter((envPath) => fs.existsSync(envPath)).map((envPath) => path.relative(cwd, envPath));
   const shouldSuppressOutput = shouldSuppressEnvironmentOutput(argv);
   if (argv.verbose && !shouldSuppressOutput) {
-    console.info(`WB_ENV: ${process.env.WB_ENV}, NODE_ENV: ${process.env.NODE_ENV}`);
+    console.info(`WB_ENV: ${runtimeEnv.WB_ENV}, NODE_ENV: ${runtimeEnv.NODE_ENV}`);
     console.info('Reading env files:', envPaths.join(', '));
   }
 
