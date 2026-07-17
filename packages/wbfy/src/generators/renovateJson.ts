@@ -46,6 +46,11 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     if (shadowedRenovateConfigPaths.some((configPath) => fs.existsSync(path.resolve(config.dirPath, configPath)))) {
       return;
     }
+    // A "renovate" section in package.json is the last entry of Renovate's resolution order, so a
+    // generated renovate.json would shadow it as well.
+    if (config.packageJson?.['renovate']) {
+      return;
+    }
 
     // Renovate accepts JSONC in renovate.json; an existing file wbfy cannot parse must be left
     // untouched instead of being overwritten with the bare template.
@@ -62,10 +67,11 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
       oldSettingsList.push(oldSettings);
     }
 
-    // The legacy .renovaterc.json is superseded by the generated renovate.json, so merge its
-    // settings before it is deleted below.
+    // A legacy .renovaterc.json is migrated into the generated renovate.json before it is deleted
+    // below — but only when renovate.json does not exist yet: renovate.json resolves first, so a
+    // .renovaterc.json next to it is dead config whose settings must not be resurrected.
     const legacyFilePath = path.resolve(config.dirPath, '.renovaterc.json');
-    const legacyContent = await fsUtil.readFileIfExists(legacyFilePath);
+    const legacyContent = oldContent === undefined ? await fsUtil.readFileIfExists(legacyFilePath) : undefined;
     if (legacyContent !== undefined && !jsoncUtil.isTriviaOnly(legacyContent)) {
       const legacySettings = jsoncUtil.parseObjectIgnoringError<Settings>(legacyContent);
       if (!legacySettings) {
@@ -97,7 +103,9 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
       }
     }
 
-    await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, '.dependabot'), { force: true }));
+    await promisePool.run(() =>
+      fs.promises.rm(path.resolve(config.dirPath, '.dependabot'), { force: true, recursive: true })
+    );
     await promisePool.run(() => fs.promises.rm(legacyFilePath, { force: true }));
     // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
     // already-clean renovate.json survive wbfy runs.
