@@ -1515,7 +1515,9 @@ test('manages trustedDependencies correctly when store-incompatible packages are
   });
 });
 
-test('ensures lefthook is included if custom trustedDependencies exist', async () => {
+// wbfy fully owns trustedDependencies: packages whose lifecycle scripts must run get added to
+// wbfy itself, so unmanaged entries are removed and the field is deleted when wbfy needs nothing.
+test('removes custom trustedDependencies and deletes the field when wbfy needs no entries', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       dependencies: {},
@@ -1524,8 +1526,32 @@ test('ensures lefthook is included if custom trustedDependencies exist', async (
     { isRoot: true }
   );
 
+  expect(packageJson.trustedDependencies).toBeUndefined();
+});
+
+// An explicit trustedDependencies list replaces Bun's default allow-list, so wbfy must re-add
+// every installed package (including transitive ones from bun.lock) that the default list trusts.
+test('restores default-trusted installed packages when writing trustedDependencies', async () => {
+  const bunLock = `{
+  "lockfileVersion": 1,
+  "packages": {
+    "@railway/cli": ["@railway/cli@4.10.0", "", {}, "sha512-dummy"],
+    "esbuild": ["esbuild@0.25.0", "", {}, "sha512-dummy"],
+    "drizzle-kit": ["drizzle-kit@1.0.0", "", {}, "sha512-dummy"],
+  },
+}`;
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {
+        'drizzle-kit': '1.0.0',
+      },
+    },
+    { isRoot: true },
+    { files: { 'bun.lock': bunLock } }
+  );
+
   expect(packageJson).toMatchObject({
-    trustedDependencies: ['lefthook', 'some-custom-dependency'],
+    trustedDependencies: ['@railway/cli', 'drizzle-kit', 'esbuild', 'lefthook'],
   });
 });
 
@@ -1541,7 +1567,7 @@ test('cleans up wbfy-managed trustedDependencies when they are no longer declare
   expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
-test('preserves custom trustedDependencies while cleaning up wbfy-managed ones', async () => {
+test('removes custom trustedDependencies while cleaning up wbfy-managed ones', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       dependencies: {},
@@ -1550,14 +1576,12 @@ test('preserves custom trustedDependencies while cleaning up wbfy-managed ones',
     { isRoot: true }
   );
 
-  expect(packageJson).toMatchObject({
-    trustedDependencies: ['custom-pkg', 'lefthook'],
-  });
+  expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
-// An explicitly empty list is a deliberate block-everything policy; deleting it would re-enable
-// Bun's default allow-list.
-test('preserves an explicitly empty trustedDependencies list', async () => {
+// Even an explicitly empty (block-everything) list is user policy wbfy overrides: the field is
+// wbfy-owned, and deleting it restores Bun's default allow-list.
+test('deletes an explicitly empty trustedDependencies list', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       dependencies: {},
@@ -1566,7 +1590,7 @@ test('preserves an explicitly empty trustedDependencies list', async () => {
     { isRoot: true }
   );
 
-  expect(packageJson.trustedDependencies).toEqual([]);
+  expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
 // @chakra-ui/cli v2's `chakra-cli tokens` writes into @chakra-ui/styled-system, not

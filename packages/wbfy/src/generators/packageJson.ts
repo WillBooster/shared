@@ -25,6 +25,7 @@ import {
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
+import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -645,31 +646,98 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   const hasChakraCliV3 = (declaredDependencies.get('@chakra-ui/cli') ?? []).some(
     (versionRange) => /\d+/u.exec(versionRange)?.[0] !== '2'
   );
-  const wbfyTrustedPackages = new Set(['@chakra-ui/react', 'drizzle-kit']);
   const requiredWbfyPackages = [
     ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
   ];
 
+  // wbfy fully owns this field: a package whose lifecycle scripts must run gets added to wbfy
+  // itself instead of to individual repositories, so unmanaged entries are always removed.
   const existingTrusted = bunJsonObj.trustedDependencies;
-  const customTrustedPackages = (existingTrusted ?? []).filter(
-    (pkg) => pkg !== lefthookDependency && !wbfyTrustedPackages.has(pkg)
-  );
-
-  if (customTrustedPackages.length > 0 || requiredWbfyPackages.length > 0) {
-    // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
-    // it, silently blocking lifecycle scripts of packages the default list trusts — lefthook's
-    // postinstall in every managed repository — so it must come along whenever the field is set.
-    bunJsonObj.trustedDependencies = [
-      ...new Set([...customTrustedPackages, ...requiredWbfyPackages, lefthookDependency]),
-    ].toSorted();
-  } else if (existingTrusted?.some((pkg) => wbfyTrustedPackages.has(pkg))) {
-    // Only a list wbfy itself authored is cleaned up once its packages are gone; wbfy always
-    // writes a chakra/drizzle entry alongside lefthook, so that entry marks its provenance. Any
-    // other explicit list — empty, or e.g. ["lefthook"] alone — is a user policy whose deletion
-    // would silently widen script execution to Bun's default allow-list.
-    delete bunJsonObj.trustedDependencies;
+  if (requiredWbfyPackages.length === 0) {
+    if (existingTrusted !== undefined) {
+      // Deleting the field restores Bun's full default allow-list, so only entries outside that
+      // list actually lose their lifecycle scripts.
+      warnAboutRemovedTrustedDependencies(config, existingTrusted, new Set());
+      delete bunJsonObj.trustedDependencies;
+    }
+    return;
   }
+
+  // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
+  // it, and Bun prints no warning for the postinstalls it consequently skips (e.g. @railway/cli
+  // downloads its binary in postinstall and exits 1 without one). Restore the default semantics
+  // by re-adding every installed package the default list would have trusted.
+  const defaultTrustedDependencies = getDefaultTrustedDependencies(config);
+  const installedPackages = await getInstalledPackageNames(config, declaredDependencies);
+  const restoredDefaultPackages = defaultTrustedDependencies
+    ? [...installedPackages].filter((pkg) => defaultTrustedDependencies.has(pkg))
+    : [];
+  // lefthook is appended unconditionally: this runs before wbfy adds it to devDependencies, so
+  // neither the lockfile nor the declared dependencies are guaranteed to contain it yet.
+  const newTrustedPackages = new Set([...requiredWbfyPackages, lefthookDependency, ...restoredDefaultPackages]);
+  warnAboutRemovedTrustedDependencies(config, existingTrusted ?? [], newTrustedPackages);
+  bunJsonObj.trustedDependencies = [...newTrustedPackages].toSorted();
+}
+
+function warnAboutRemovedTrustedDependencies(
+  config: PackageConfig,
+  existingTrusted: readonly string[],
+  keptPackages: ReadonlySet<string>
+): void {
+  // A default-trusted entry never loses anything by removal: while the package is installed the
+  // kept list (or, when the field is deleted, Bun's own default list) still trusts it.
+  const defaultTrustedDependencies = getDefaultTrustedDependencies(config);
+  const removedPackages = existingTrusted.filter(
+    (pkg) => !keptPackages.has(pkg) && !defaultTrustedDependencies?.has(pkg)
+  );
+  if (removedPackages.length > 0) {
+    console.warn(
+      `Removing unmanaged trustedDependencies entries: ${removedPackages.join(', ')}. wbfy owns this field; if their lifecycle scripts are required, add the packages to wbfy itself.`
+    );
+  }
+}
+
+let cachedDefaultTrustedDependencies: Set<string> | undefined;
+
+/** Fetches Bun's default trusted-dependency allow-list from the Bun version installing the repository. */
+function getDefaultTrustedDependencies(config: PackageConfig): Set<string> | undefined {
+  cachedDefaultTrustedDependencies ??= new Set(
+    [...spawnSyncAndReturnStdout('bun', ['pm', 'default-trusted'], config.dirPath).matchAll(/^\s*-\s+(\S+)$/gmu)].map(
+      (match) => match[1] as string
+    )
+  );
+  if (cachedDefaultTrustedDependencies.size === 0) {
+    console.warn('Failed to read the default allow-list via `bun pm default-trusted`.');
+    return undefined;
+  }
+  return cachedDefaultTrustedDependencies;
+}
+
+async function getInstalledPackageNames(
+  config: PackageConfig,
+  declaredDependencies: ReadonlyMap<string, string[]>
+): Promise<Set<string>> {
+  // The lockfile covers transitive dependencies (e.g. @railway/cli arriving via a private
+  // package), which declared dependencies alone would miss.
+  try {
+    const lockContent = await fs.promises.readFile(path.resolve(config.dirPath, 'bun.lock'), 'utf8');
+    // bun.lock is JSONC (trailing commas). Each packages entry's first element is "<name>@<version>".
+    const lock = jsoncUtil.parseObjectIgnoringError<{ packages?: Record<string, unknown[]> }>(lockContent);
+    const installedPackages = new Set<string>();
+    for (const entry of Object.values(lock?.packages ?? {})) {
+      const resolution = entry[0];
+      if (typeof resolution !== 'string') continue;
+      const atIndex = resolution.lastIndexOf('@');
+      if (atIndex > 0) installedPackages.add(resolution.slice(0, atIndex));
+    }
+    if (installedPackages.size > 0) return installedPackages;
+  } catch {
+    // fall through to declared dependencies
+  }
+  // Before the first `bun install` no lockfile exists; the next wbfy run converges via the
+  // refreshed lockfile.
+  return new Set(declaredDependencies.keys());
 }
 
 async function normalizePackageMetadata(
