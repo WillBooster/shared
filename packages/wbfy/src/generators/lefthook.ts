@@ -306,10 +306,10 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
   postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
   const installCommand = 'bun install';
   const rmNextDirectory = config.depending.blitz || config.depending.next ? ' && rm -Rf .next' : '';
-  // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml changes (linker, registry,
-  // hoisting), and patch edits all change the installed tree without touching package.json.
+  // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
+  // registry, hoisting), and patch edits all change the installed tree without touching package.json.
   postMergeCommands.push(
-    String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|patches/)" "${installCommand}${rmNextDirectory}"`
+    String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|\.npmrc|patches/)" "${installCommand}${rmNextDirectory}"`
   );
   if (config.doesContainPoetryLock) {
     postMergeCommands.push(String.raw`run_if_changed "poetry\.lock" "poetry install"`);

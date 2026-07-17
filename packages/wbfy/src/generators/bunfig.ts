@@ -122,6 +122,7 @@ export const bunMinimumReleaseAgeExcludes = [
   'build-ts',
   'gen-i18n-ts',
   'one-way-git-sync',
+  'vinext-progress',
   // ---------- END: We believe our packages are safe ----------
 
   // wbfy pins these tooling packages and may apply them immediately after a
@@ -157,7 +158,6 @@ export const bunMinimumReleaseAgeExcludes = [
   '@vinext/cloudflare',
   '@vinext/types',
   'vinext',
-  'vinext-progress',
 ];
 
 export type BunLinker = 'isolated' | 'hoisted';

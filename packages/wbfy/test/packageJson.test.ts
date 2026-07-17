@@ -1555,6 +1555,34 @@ test('preserves custom trustedDependencies while cleaning up wbfy-managed ones',
   });
 });
 
+// An explicitly empty list is a deliberate block-everything policy; deleting it would re-enable
+// Bun's default allow-list.
+test('preserves an explicitly empty trustedDependencies list', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {},
+      trustedDependencies: [],
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.trustedDependencies).toEqual([]);
+});
+
+// @chakra-ui/cli v2's `chakra-cli tokens` writes into @chakra-ui/styled-system, not
+// @chakra-ui/react, so trusting @chakra-ui/react there would be inert.
+test('does not trust @chakra-ui/react for @chakra-ui/cli v2', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: { '@chakra-ui/react': '^2.10.9' },
+      devDependencies: { '@chakra-ui/cli': '^2.5.8' },
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.trustedDependencies).toBeUndefined();
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},

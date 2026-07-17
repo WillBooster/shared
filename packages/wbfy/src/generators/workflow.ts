@@ -225,9 +225,11 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       'autofix.yml',
       'semantic-pr.yml',
       'close-comment.yml',
+      // GitHub accepts both .yml and .yaml workflow files, so custom .yaml workflows must be
+      // normalized too (e.g. their reusable-workflow secrets), not silently left stale.
       ...entries
         .filter(
-          (dirent) => dirent.isFile() && dirent.name.endsWith('.yml') && !isObsoleteGenPrWorkflowFileName(dirent.name)
+          (dirent) => dirent.isFile() && /\.ya?ml$/u.test(dirent.name) && !isObsoleteGenPrWorkflowFileName(dirent.name)
         )
         .map((dirent) => dirent.name),
     ]);
@@ -246,8 +248,8 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
 
     for (const fileName of fileNameSet) {
       // 実際はKnownKind以外の値も代入されることに注意
-      const kind = path.basename(fileName, '.yml') as KnownKind;
-      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind));
+      const kind = fileName.replace(/\.ya?ml$/u, '') as KnownKind;
+      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind, fileName));
     }
   });
 }
@@ -260,8 +262,13 @@ function isObsoleteGenPrWorkflowFileName(fileName: string): boolean {
   return /^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName);
 }
 
-async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, kind: KnownKind): Promise<void> {
-  const filePath = path.join(workflowsPath, `${kind}.yml`);
+async function writeWorkflowYaml(
+  config: PackageConfig,
+  workflowsPath: string,
+  kind: KnownKind,
+  fileName = `${kind}.yml`
+): Promise<void> {
+  const filePath = path.join(workflowsPath, fileName);
   const deployProductionWorkflowExists = fs.existsSync(path.join(workflowsPath, 'deploy-production.yml'));
 
   if (kind === 'autofix') {
@@ -411,7 +418,11 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // callee does not declare. The legacy DOT_ENV pass-through is deliberately kept: FNOX_AGE_KEY
   // provisioning can be skipped (no --env, missing token or age identity), and the pass-through keeps
   // CI working from the still-existing DOT_ENV secret until the fnox migration completes.
-  const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@/u.exec(
+  // Only an @main callee is known to follow the current secret contract: a workflow pinned to an
+  // older tag or SHA may still declare NPM_TOKEN (and not VERDACCIO_TOKEN), and GitHub rejects a
+  // caller whose secrets do not match the selected revision's declarations, so pinned callers keep
+  // their secrets untouched.
+  const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@main$/u.exec(
     job.uses ?? ''
   )?.[1];
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {

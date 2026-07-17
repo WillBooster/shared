@@ -587,41 +587,68 @@ function doesSeedCommandUseBuildTs(seedCommand: unknown): boolean {
   return typeof seedCommand === 'string' && /(?<![\w-])build-ts(?![\w-])/u.test(seedCommand);
 }
 
+const dependencyDeclarationSections = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+] as const;
+
+/**
+ * Forces store-incompatible packages to stay project-local under Bun's global store
+ * (`globalStore = true` in the generated bunfig.toml): `chakra typegen` (run by `wb gen-code`)
+ * writes generated types into the installed @chakra-ui/react package, which would otherwise
+ * mutate the machine-wide store shared across repositories, and drizzle-kit requires drizzle-orm
+ * without declaring it, which the store realpath places beyond a plain node_modules walk-up.
+ * Listing them in `trustedDependencies` makes Bun materialize a per-project copy under
+ * `node_modules/.bun/`, whose sibling `node_modules/.bun/node_modules/` links every installed
+ * package and therefore resolves the undeclared requires.
+ */
 async function ensureTrustedDependencies(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
   // Bun consults trustedDependencies in the workspace root's package.json only, so the list is
   // managed there and must cover dependencies declared anywhere in the repository.
   if (!config.isRoot) return;
   const bunJsonObj = jsonObj as WritablePackageJson & { trustedDependencies?: string[] };
-  const declaredDependencies = new Set([
-    ...Object.keys(jsonObj.dependencies ?? {}),
-    ...Object.keys(jsonObj.devDependencies ?? {}),
-  ]);
+  // Bun installs optional and peer dependencies by default, so all declaration sections count.
+  const declaredDependencies = new Map<string, string>();
+  const addDeclaredDependencies = (packageJson: PackageJson): void => {
+    for (const section of dependencyDeclarationSections) {
+      for (const [dependencyName, versionRange] of Object.entries(packageJson[section] ?? {})) {
+        if (typeof versionRange === 'string' && !declaredDependencies.has(dependencyName)) {
+          declaredDependencies.set(dependencyName, versionRange);
+        }
+      }
+    }
+  };
+  addDeclaredDependencies(jsonObj);
   for (const workspaceDir of getWorkspacePackageDirs(config).values()) {
     try {
-      const workspacePackageJson = JSON.parse(
-        await fs.promises.readFile(path.resolve(config.dirPath, workspaceDir, 'package.json'), 'utf8')
-      ) as PackageJson;
-      for (const dependencyName of [
-        ...Object.keys(workspacePackageJson.dependencies ?? {}),
-        ...Object.keys(workspacePackageJson.devDependencies ?? {}),
-      ]) {
-        declaredDependencies.add(dependencyName);
-      }
+      addDeclaredDependencies(
+        JSON.parse(
+          await fs.promises.readFile(path.resolve(config.dirPath, workspaceDir, 'package.json'), 'utf8')
+        ) as PackageJson
+      );
     } catch {
       // ignore unreadable workspace package.json
     }
   }
+  // Only @chakra-ui/cli v3's `chakra typegen` writes into the installed @chakra-ui/react;
+  // v2's `chakra-cli tokens` writes into @chakra-ui/styled-system instead, so trusting
+  // @chakra-ui/react there would force a useless project-local copy without fixing gen-code.
+  const chakraCliMajor = /\d+/u.exec(declaredDependencies.get('@chakra-ui/cli') ?? '')?.[0];
   const wbfyTrustedPackages = new Set(['@chakra-ui/react', 'drizzle-kit']);
   const requiredWbfyPackages = [
-    // Only chakra typegen (enabled by @chakra-ui/cli) mutates the installed @chakra-ui/react.
-    ...(declaredDependencies.has('@chakra-ui/cli') && declaredDependencies.has('@chakra-ui/react')
+    ...(chakraCliMajor !== undefined && Number(chakraCliMajor) >= 3 && declaredDependencies.has('@chakra-ui/react')
       ? ['@chakra-ui/react']
       : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
   ];
 
-  const existingTrusted = bunJsonObj.trustedDependencies ?? [];
-  const customTrustedPackages = existingTrusted.filter(
+  const existingTrusted = bunJsonObj.trustedDependencies;
+  // An explicitly empty list is a deliberate block-everything policy; deleting it would silently
+  // re-enable Bun's default allow-list, so it is preserved when wbfy has nothing to add.
+  if (existingTrusted?.length === 0 && requiredWbfyPackages.length === 0) return;
+  const customTrustedPackages = (existingTrusted ?? []).filter(
     (pkg) => pkg !== lefthookDependency && !wbfyTrustedPackages.has(pkg)
   );
 
