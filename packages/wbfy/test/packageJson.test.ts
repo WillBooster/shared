@@ -1555,6 +1555,57 @@ test('restores default-trusted installed packages when writing trustedDependenci
   });
 });
 
+// The trust list is generated before the final lockfile refresh, so a stale bun.lock must not
+// hide newly declared default-trusted packages.
+test('unions declared dependencies with a stale bun.lock', async () => {
+  const bunLock = `{
+  "lockfileVersion": 1,
+  "packages": {
+    "drizzle-kit": ["drizzle-kit@1.0.0", "", {}, "sha512-dummy"],
+  },
+}`;
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {
+        '@railway/cli': '4.10.0',
+        'drizzle-kit': '1.0.0',
+      },
+    },
+    { isRoot: true },
+    { files: { 'bun.lock': bunLock } }
+  );
+
+  expect(packageJson).toMatchObject({
+    trustedDependencies: ['@railway/cli', 'drizzle-kit', 'lefthook'],
+  });
+});
+
+// Bun serializes Git dependencies as "<name>@git+ssh://git@github.com/…", so the name must be
+// split at the first '@' past the scope, not the last one.
+test('parses package names from Git URL resolutions in bun.lock', async () => {
+  const bunLock = `{
+  "lockfileVersion": 1,
+  "packages": {
+    "drizzle-kit": ["drizzle-kit@1.0.0", "", {}, "sha512-dummy"],
+    "node-pty": ["node-pty@git+ssh://git@github.com/microsoft/node-pty.git#1def577", {}],
+    "@cdktf/node-pty-prebuilt-multiarch": ["@cdktf/node-pty-prebuilt-multiarch@0.11.0", "", {}, "sha512-dummy"],
+  },
+}`;
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {
+        'drizzle-kit': '1.0.0',
+      },
+    },
+    { isRoot: true },
+    { files: { 'bun.lock': bunLock } }
+  );
+
+  expect(packageJson).toMatchObject({
+    trustedDependencies: ['@cdktf/node-pty-prebuilt-multiarch', 'drizzle-kit', 'lefthook', 'node-pty'],
+  });
+});
+
 test('cleans up wbfy-managed trustedDependencies when they are no longer declared', async () => {
   const packageJson = await generatePackageJsonFrom(
     {

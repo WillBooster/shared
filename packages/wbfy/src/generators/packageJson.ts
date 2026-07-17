@@ -680,6 +680,10 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   bunJsonObj.trustedDependencies = [...newTrustedPackages].toSorted();
 }
 
+// The packages wbfy itself may write into trustedDependencies; their removal is managed cleanup,
+// never a loss of user policy.
+const wbfyManagedTrustedDependencies = new Set(['@chakra-ui/react', 'drizzle-kit', lefthookDependency]);
+
 function warnAboutRemovedTrustedDependencies(
   config: PackageConfig,
   existingTrusted: readonly string[],
@@ -689,7 +693,7 @@ function warnAboutRemovedTrustedDependencies(
   // kept list (or, when the field is deleted, Bun's own default list) still trusts it.
   const defaultTrustedDependencies = getDefaultTrustedDependencies(config);
   const removedPackages = existingTrusted.filter(
-    (pkg) => !keptPackages.has(pkg) && !defaultTrustedDependencies?.has(pkg)
+    (pkg) => !keptPackages.has(pkg) && !wbfyManagedTrustedDependencies.has(pkg) && !defaultTrustedDependencies?.has(pkg)
   );
   if (removedPackages.length > 0) {
     console.warn(
@@ -718,26 +722,37 @@ async function getInstalledPackageNames(
   config: PackageConfig,
   declaredDependencies: ReadonlyMap<string, string[]>
 ): Promise<Set<string>> {
+  // Declared dependencies seed the result: this runs before the final lockfile refresh (and
+  // `--skip-deps` skips the pre-generation install probe entirely), so a stale lockfile must not
+  // hide newly declared packages from the trust list.
+  const installedPackages = new Set(declaredDependencies.keys());
+  const lockPath = path.resolve(config.dirPath, 'bun.lock');
+  // Bun keeps using a legacy binary bun.lockb unless explicitly migrated
+  // (https://bun.sh/docs/pm/lockfile), so convert it here without touching node_modules; the
+  // read below then picks up the migrated text lockfile.
+  if (!fs.existsSync(lockPath) && fs.existsSync(path.resolve(config.dirPath, 'bun.lockb'))) {
+    spawnSync('bun', ['install', '--save-text-lockfile', '--frozen-lockfile', '--lockfile-only'], config.dirPath);
+  }
   // The lockfile covers transitive dependencies (e.g. @railway/cli arriving via a private
   // package), which declared dependencies alone would miss.
   try {
-    const lockContent = await fs.promises.readFile(path.resolve(config.dirPath, 'bun.lock'), 'utf8');
-    // bun.lock is JSONC (trailing commas). Each packages entry's first element is "<name>@<version>".
+    const lockContent = await fs.promises.readFile(lockPath, 'utf8');
+    // bun.lock is JSONC (trailing commas). Each packages entry's first element is
+    // "<name>@<resolution>".
     const lock = jsoncUtil.parseObjectIgnoringError<{ packages?: Record<string, unknown[]> }>(lockContent);
-    const installedPackages = new Set<string>();
     for (const entry of Object.values(lock?.packages ?? {})) {
       const resolution = entry[0];
       if (typeof resolution !== 'string') continue;
-      const atIndex = resolution.lastIndexOf('@');
-      if (atIndex > 0) installedPackages.add(resolution.slice(0, atIndex));
+      // The resolution part may itself contain '@' (e.g. "node-pty@git+ssh://git@github.com/…"),
+      // so split at the first '@' past the optional leading scope marker.
+      const separatorIndex = resolution.indexOf('@', 1);
+      if (separatorIndex > 0) installedPackages.add(resolution.slice(0, separatorIndex));
     }
-    if (installedPackages.size > 0) return installedPackages;
   } catch {
-    // fall through to declared dependencies
+    // Before the first `bun install` no lockfile exists; transitive dependencies are restored on
+    // the next wbfy run via the refreshed lockfile.
   }
-  // Before the first `bun install` no lockfile exists; the next wbfy run converges via the
-  // refreshed lockfile.
-  return new Set(declaredDependencies.keys());
+  return installedPackages;
 }
 
 async function normalizePackageMetadata(

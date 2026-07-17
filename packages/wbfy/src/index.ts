@@ -74,7 +74,8 @@ async function main(): Promise<void> {
         alias: 'e',
       },
       skipDeps: {
-        description: 'Skip dependency installation',
+        description:
+          'Skip adding managed dependencies and the linker probe (the final `bun install` refreshing the lockfile still runs)',
         type: 'boolean',
         default: false,
         alias: 'd',
