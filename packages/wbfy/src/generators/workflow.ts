@@ -225,15 +225,30 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // works on the .yml spelling, so .yaml files are canonicalized to .yml up front instead of
     // being silently left stale. When both spellings exist, the .yaml file is left untouched:
     // merging two workflow definitions is ambiguous, and renaming over the .yml would discard it.
+    const workflowEntries = entries.filter(
+      (entry) => entry.isFile() && /\.ya?ml$/u.test(entry.name) && !isObsoleteGenPrWorkflowFileName(entry.name)
+    );
+    // Same-repository reusable workflows are referenced by their exact file path
+    // (`uses: ./.github/workflows/<name>.yaml`), so renaming a referenced file would break every
+    // caller; such files are left under their original name (and skipped, as before this support).
+    const isReferencedByAnotherWorkflow = async (fileName: string): Promise<boolean> => {
+      for (const other of workflowEntries) {
+        if (other.name === fileName) continue;
+        const content = await fsUtil.readFileIfExists(path.join(workflowsPath, other.name));
+        if (content?.includes(fileName)) return true;
+      }
+      return false;
+    };
     const discoveredFileNames: string[] = [];
-    for (const entry of entries) {
-      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || isObsoleteGenPrWorkflowFileName(entry.name)) continue;
+    for (const entry of workflowEntries) {
       if (entry.name.endsWith('.yml')) {
         discoveredFileNames.push(entry.name);
         continue;
       }
       const ymlFileName = entry.name.replace(/\.yaml$/u, '.yml');
-      if (fs.existsSync(path.join(workflowsPath, ymlFileName))) continue;
+      if (fs.existsSync(path.join(workflowsPath, ymlFileName)) || (await isReferencedByAnotherWorkflow(entry.name))) {
+        continue;
+      }
       await fs.promises.rename(path.join(workflowsPath, entry.name), path.join(workflowsPath, ymlFileName));
       discoveredFileNames.push(ymlFileName);
     }

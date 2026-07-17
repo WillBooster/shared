@@ -628,12 +628,10 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
     }
   };
   addDeclaredDependencies(jsonObj);
-  for (const workspaceDir of getWorkspacePackageDirs(config).values()) {
+  for (const packageJsonPath of getWorkspacePackageJsonPaths(config)) {
     try {
       addDeclaredDependencies(
-        JSON.parse(
-          await fs.promises.readFile(path.resolve(config.dirPath, workspaceDir, 'package.json'), 'utf8')
-        ) as PackageJson
+        JSON.parse(await fs.promises.readFile(path.resolve(config.dirPath, packageJsonPath), 'utf8')) as PackageJson
       );
     } catch {
       // ignore unreadable workspace package.json
@@ -642,8 +640,10 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   // Only @chakra-ui/cli v3's `chakra typegen` writes into the installed @chakra-ui/react;
   // v2's `chakra-cli tokens` writes into @chakra-ui/styled-system instead, so trusting
   // @chakra-ui/react there would force a useless project-local copy without fixing gen-code.
+  // Mirror wb gen-code's classification: only a range whose leading major parses to 2 selects the
+  // v2 command, so digitless specs like `latest` or catalog references count as v3.
   const hasChakraCliV3 = (declaredDependencies.get('@chakra-ui/cli') ?? []).some(
-    (versionRange) => Number(/\d+/u.exec(versionRange)?.[0]) >= 3
+    (versionRange) => /\d+/u.exec(versionRange)?.[0] !== '2'
   );
   const wbfyTrustedPackages = new Set(['@chakra-ui/react', 'drizzle-kit']);
   const requiredWbfyPackages = [
@@ -1317,6 +1317,27 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
   if (cached) return cached;
 
   const workspaceDirsByName = new Map<string, string>();
+  for (const packageJsonPath of getWorkspacePackageJsonPaths(rootConfig)) {
+    try {
+      const workspacePackageJson = JSON.parse(
+        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
+      ) as PackageJson;
+      if (workspacePackageJson.name) {
+        workspaceDirsByName.set(workspacePackageJson.name, path.posix.dirname(packageJsonPath));
+      }
+    } catch {
+      // ignore unparsable workspace package.json
+    }
+  }
+  workspacePackageDirsCache.set(rootConfig.dirPath, workspaceDirsByName);
+  return workspaceDirsByName;
+}
+
+/**
+ * Every workspace package.json path (relative to the monorepo root), including manifests without
+ * a `name` field — wbfy names those later, so dependency scans must not skip them.
+ */
+function getWorkspacePackageJsonPaths(rootConfig: PackageConfig): string[] {
   // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
   // not have written the root package.json yet, so mirror that normalization here.
   const workspacePatterns = [
@@ -1343,24 +1364,11 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
     );
   // followSymbolicLinks: false — a workspace symlink pointing outside the repository must not be
   // treated as a workspace directory (removeNodeModules would delete through it).
-  for (const packageJsonPath of fg.globSync(packageJsonGlobs, {
+  return fg.globSync(packageJsonGlobs, {
     cwd: rootConfig.dirPath,
     followSymbolicLinks: false,
     ignore: ['**/node_modules/**'],
-  })) {
-    try {
-      const workspacePackageJson = JSON.parse(
-        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
-      ) as PackageJson;
-      if (workspacePackageJson.name) {
-        workspaceDirsByName.set(workspacePackageJson.name, path.posix.dirname(packageJsonPath));
-      }
-    } catch {
-      // ignore unparsable workspace package.json
-    }
-  }
-  workspacePackageDirsCache.set(rootConfig.dirPath, workspaceDirsByName);
-  return workspaceDirsByName;
+  });
 }
 
 function shouldUpdateExistingManagedDependency(
