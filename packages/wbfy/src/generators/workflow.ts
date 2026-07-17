@@ -423,6 +423,12 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
     }
   }
+  // reusable-workflows replaced the NPM_TOKEN secret declaration with VERDACCIO_TOKEN; GitHub
+  // rejects passing an undeclared secret to a reusable workflow with a startup_failure that emits
+  // no check runs, so a leftover NPM_TOKEN silently disables every calling workflow.
+  if (secrets && calledReusableWorkflow) {
+    delete secrets.NPM_TOKEN;
+  }
 
   if (secrets?.FIREBASE_TOKEN) {
     secrets.GCP_SA_KEY_JSON_FOR_FIREBASE = '${{ secrets.GCP_SA_KEY_JSON_FOR_FIREBASE }}';

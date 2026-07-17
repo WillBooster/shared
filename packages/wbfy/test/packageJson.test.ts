@@ -35,8 +35,8 @@ test('replaces default gen-i18n-ts postinstall with managed wb gen-code scripts'
 
   expect(packageJson.scripts).toMatchObject({
     cleanup: 'bun wb lint --fix --format',
-    'gen-code': 'bun wb gen-code',
-    postinstall: 'wb gen-code',
+    'gen-code': 'WB_ENV=${WB_ENV:-development} bun wb gen-code',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code',
   });
   expect(packageJson.scripts?.['gen-i18n-ts']).toBeUndefined();
 });
@@ -55,8 +55,8 @@ test('does not restore missing default gen-i18n-ts script with managed wb gen-co
 
   expect(packageJson.scripts).toMatchObject({
     cleanup: 'bun wb lint --fix --format',
-    'gen-code': 'bun wb gen-code',
-    postinstall: 'wb gen-code',
+    'gen-code': 'WB_ENV=${WB_ENV:-development} bun wb gen-code',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code',
   });
   expect(packageJson.scripts?.['gen-i18n-ts']).toBeUndefined();
 });
@@ -76,7 +76,7 @@ test('keeps custom gen-i18n-ts scripts while adding wb gen-code', async () => {
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'gen-code': 'bun wb gen-code',
+    'gen-code': 'WB_ENV=${WB_ENV:-development} bun wb gen-code',
     'gen-i18n-ts': 'gen-i18n-ts -i locales -o src/i18n.ts -d en-US',
   });
 });
@@ -98,7 +98,7 @@ test.each([
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 test('keeps build-ts as a runtime dependency when prisma seed uses it', async () => {
@@ -190,8 +190,8 @@ test('appends wrangler types to gen-code and postinstall for Cloudflare projects
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'gen-code': 'bun wb gen-code && bunx wrangler types',
-    postinstall: 'wb gen-code && bunx wrangler types',
+    'gen-code': 'WB_ENV=${WB_ENV:-development} bun wb gen-code && bunx wrangler types',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types',
   });
 });
 
@@ -215,8 +215,8 @@ test.each([
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
-    postinstall: 'wb gen-code && wrangler types --strict-vars=false',
+    'gen-code': 'WB_ENV=${WB_ENV:-development} bun wb gen-code && wrangler types --strict-vars=false',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --strict-vars=false',
   });
 });
 
@@ -245,8 +245,8 @@ test('keeps management for a script composing gen-code with a build step', async
 
   expect(packageJson.scripts).toMatchObject({
     'build/core': 'bun run gen-code && vite build',
-    'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
-    postinstall: 'wb gen-code && wrangler types --strict-vars=false',
+    'gen-code': 'WB_ENV=${WB_ENV:-development} bun wb gen-code && wrangler types --strict-vars=false',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --strict-vars=false',
   });
 });
 
@@ -259,7 +259,7 @@ test('omits wrangler types when the package does not depend on wrangler', async 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // `wrangler types` exits non-zero without a wrangler config, which would break `install` for the whole repository.
@@ -271,8 +271,8 @@ test('omits wrangler types when the package owns no wrangler config', async () =
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code');
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.['gen-code']).toBe('WB_ENV=${WB_ENV:-development} bun wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // `wrangler types --check` validates freshness and generates nothing, and a positional output path generates a
@@ -297,8 +297,8 @@ test('ignores non-generating and custom-output wrangler types invocations when r
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'gen-code': 'bun wb gen-code && bunx wrangler types',
-    postinstall: 'wb gen-code && bunx wrangler types',
+    'gen-code': 'WB_ENV=${WB_ENV:-development} bun wb gen-code && bunx wrangler types',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types',
   });
 });
 
@@ -338,7 +338,9 @@ test('preserves a wrangler types invocation with a custom config path when overw
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --config config/worker.jsonc');
+  expect(packageJson.scripts?.postinstall).toBe(
+    'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --config config/worker.jsonc'
+  );
 });
 
 // The generated file is a pure function of committed inputs only when the `Env` inference source (.dev.vars,
@@ -358,7 +360,7 @@ test('omits wrangler types when an uncommitted .dev.vars drives the Env inferenc
     { createI18nDir: true, files: { '.dev.vars': 'AUTH_SECRET=local-secret\n', 'wrangler.jsonc': '{}' } }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 test('keeps wrangler types when secrets.required makes the Env inference reproducible', async () => {
@@ -385,7 +387,7 @@ test('keeps wrangler types when secrets.required makes the Env inference reprodu
     }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types');
 });
 
 // A declaration at any config level replaces the .dev.vars/.env inference: wrangler aggregates per-environment
@@ -409,7 +411,7 @@ test('keeps wrangler types when an env-level secrets.required makes the Env infe
     }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types');
 });
 
 // Wranglers older than 4.70.0 warn about the unexpected top-level `secrets` field and keep inferring from
@@ -433,7 +435,7 @@ test('ignores secrets.required when the wrangler dependency predates its support
     }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // Running the documented code-generation entry point must produce the same declarations as postinstall,
@@ -447,7 +449,7 @@ test('appends wrangler types to a project-specific gen-code script', async () =>
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'tsx scripts/genRoutes.ts && bunx wrangler types',
-    postinstall: 'wb gen-code && bunx wrangler types',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types',
   });
 });
 
@@ -466,7 +468,7 @@ test('does not treat shell text mentioning wrangler types as the generator comma
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types');
 });
 
 // --cwd/--config/--env change the config, output directory, or .dev.vars inference inputs away from the ones the
@@ -486,7 +488,7 @@ test('ignores non-conflicting but non-generating wrangler types invocations when
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types');
 });
 
 // An invocation that writes the managed default file from inputs wbfy cannot validate (--config, --env,
@@ -514,7 +516,7 @@ test.each([
       { createI18nDir: true }
     );
 
-    expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+    expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
     expect(packageJson.scripts?.['gen-types']).toBe(genTypes);
   }
 );
@@ -534,7 +536,7 @@ test('ignores wrangler types invocations that follow a cd', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types');
 });
 
 // Shell redirections are not wrangler arguments and must not disqualify (or truncate) the project's invocation.
@@ -551,7 +553,9 @@ test('reuses a wrangler types invocation followed by a shell redirection', async
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false > /dev/null');
+  expect(packageJson.scripts?.postinstall).toBe(
+    'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --strict-vars=false > /dev/null'
+  );
 });
 
 // Wrangler's documented default output path is exactly ./worker-configuration.d.ts, so naming it explicitly
@@ -573,7 +577,7 @@ test('reuses a wrangler types invocation that names the default output path expl
   );
 
   expect(packageJson.scripts?.postinstall).toBe(
-    'wb gen-code && wrangler types ./worker-configuration.d.ts --strict-vars=false'
+    'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types ./worker-configuration.d.ts --strict-vars=false'
   );
 });
 
@@ -592,7 +596,7 @@ test('ignores help-only wrangler types invocations when resolving the command', 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types');
 });
 
 // Boolean options accept a space-separated literal, which must not be misread as a positional output path.
@@ -609,7 +613,9 @@ test('reuses a wrangler types invocation with a space-separated boolean option',
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars false');
+  expect(packageJson.scripts?.postinstall).toBe(
+    'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --strict-vars false'
+  );
 });
 
 // Wrapper detection must survive environment assignments and runner flags around the script name.
@@ -656,7 +662,9 @@ test('reuses a wrangler types invocation with --check=false', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --check=false --strict-vars=false');
+  expect(packageJson.scripts?.postinstall).toBe(
+    'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --check=false --strict-vars=false'
+  );
 });
 
 // postinstall shapes the file after every install, so its generator wins over other scripts' flagged
@@ -681,8 +689,8 @@ test('prefers the generator postinstall already runs over other scripts', async 
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'gen-code': 'bun wb gen-code && wrangler types --env-interface AppEnv',
-    postinstall: 'wb gen-code && wrangler types --env-interface AppEnv',
+    'gen-code': 'WB_ENV=${WB_ENV:-development} bun wb gen-code && wrangler types --env-interface AppEnv',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --env-interface AppEnv',
   });
 });
 
@@ -707,7 +715,7 @@ test('skips worker-types management when distinct flagged generators leave no de
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // `cd .` never leaves the package directory, so a conflicting invocation behind it must still be seen.
@@ -727,7 +735,7 @@ test('recognizes a conflicting invocation behind a no-op cd', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // A quoted `&&` is argument text; splitting inside it would fabricate a generator command that was never run
@@ -745,7 +753,7 @@ test('does not select a wrangler types invocation quoted inside another command'
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types');
 });
 
 // Wrangler also layers .env.local (and environment-specific variants) into the Env inference, so an uncommitted
@@ -763,7 +771,7 @@ test('omits wrangler types when an uncommitted .env.local drives the Env inferen
     { createI18nDir: true, files: { '.env.local': 'LOCAL_ONLY_SECRET=local-value\n', 'wrangler.jsonc': '{}' } }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // Subshells and pipes are not modeled by the segment parser: splitting them apart would fabricate malformed
@@ -784,7 +792,7 @@ test('skips worker-types management when a wrangler types command sits in a subs
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
   expect(packageJson.scripts?.['gen-other']).toBe('(cd ../other && wrangler types --strict-vars=false)');
 });
 
@@ -807,7 +815,7 @@ test('keeps generation prerequisites when rewriting postinstall', async () => {
   );
 
   expect(packageJson.scripts?.postinstall).toBe(
-    'wb gen-code && node scripts/prepareTypes.js && wrangler types --strict-vars=false'
+    'WB_ENV=${WB_ENV:-development} wb gen-code && node scripts/prepareTypes.js && wrangler types --strict-vars=false'
   );
 });
 
@@ -825,7 +833,9 @@ test('reuses a wrangler types invocation with a no-op --cwd', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --cwd . --strict-vars=false');
+  expect(packageJson.scripts?.postinstall).toBe(
+    'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --cwd . --strict-vars=false'
+  );
 });
 
 // Quoted environment values contain spaces; whitespace-only tokenization would push the assignment into the
@@ -844,7 +854,7 @@ test('recognizes a generator prefixed by a quoted environment assignment', async
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${genTypes}`);
+  expect(packageJson.scripts?.postinstall).toBe(`WB_ENV=\${WB_ENV:-development} wb gen-code && ${genTypes}`);
 });
 
 // Pipes are not modeled by the parser, so a piped conflicting invocation must disable management (and survive
@@ -863,7 +873,7 @@ test('skips worker-types management for a piped custom-config invocation', async
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(`WB_ENV=\${WB_ENV:-development} wb gen-code && ${postinstall}`);
 });
 
 // `yarn --cwd . gen-types` runs this package's script; the option value must not be mistaken for the script name.
@@ -886,7 +896,7 @@ test('preserves a wrapper invoked through a runner option with a value', async (
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn --cwd . gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && yarn --cwd . gen-types');
 });
 
 // A gen-code wrapper is interchangeable with `wb gen-code` only when the gen-code script is the managed
@@ -906,7 +916,7 @@ test('preserves a gen-code wrapper whose script is a custom pipeline', async () 
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'node scripts/prepareTypes.js && wrangler types --strict-vars=false',
-    postinstall: 'wb gen-code && bun run gen-code',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code && bun run gen-code',
   });
 });
 
@@ -926,7 +936,7 @@ test('treats a workspace-selected invocation as non-local', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(`WB_ENV=\${WB_ENV:-development} wb gen-code && ${postinstall}`);
 });
 
 // A gen-code wrapper hiding a custom-config invocation is not interchangeable with `wb gen-code`.
@@ -945,7 +955,7 @@ test('preserves a gen-code wrapper whose script includes a custom-config invocat
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'wb gen-code && wrangler types --config config/worker.jsonc',
-    postinstall: 'wb gen-code && bun run gen-code',
+    postinstall: 'WB_ENV=${WB_ENV:-development} wb gen-code && bun run gen-code',
   });
 });
 
@@ -965,7 +975,7 @@ test('preserves an unparseable generating postinstall verbatim', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(`WB_ENV=\${WB_ENV:-development} wb gen-code && ${postinstall}`);
 });
 
 // Reusing only the generator segment of a prerequisite pipeline outside postinstall would bypass the
@@ -986,7 +996,7 @@ test('skips worker-types management when the generator pipeline has prerequisite
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // `npm exec -- wb gen-code` is the managed code generation; the rewrite must not run it a second time.
@@ -1006,7 +1016,9 @@ test('recognizes an exec-form wb gen-code segment when rewriting postinstall', a
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false');
+  expect(packageJson.scripts?.postinstall).toBe(
+    'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --strict-vars=false'
+  );
 });
 
 // Forwarded wrapper arguments (`npm run gen-types -- --check`) change the effective invocation, so the wrapper
@@ -1027,7 +1039,9 @@ test('treats a wrapper forwarding arguments as unmodeled', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && npm run gen-types -- --check');
+  expect(packageJson.scripts?.postinstall).toBe(
+    'WB_ENV=${WB_ENV:-development} wb gen-code && npm run gen-types -- --check'
+  );
 });
 
 // `npm --workspaces exec ...` runs in every workspace, not (only) this package.
@@ -1045,7 +1059,7 @@ test('treats an all-workspaces invocation as non-local', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(`WB_ENV=\${WB_ENV:-development} wb gen-code && ${postinstall}`);
 });
 
 // A generator behind a real `cd` belongs to another directory: the package stays managed (the local generator
@@ -1064,7 +1078,9 @@ test('preserves a directory-changing generating postinstall verbatim', async () 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`bunx wrangler types && wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(
+    `bunx wrangler types && WB_ENV=\${WB_ENV:-development} wb gen-code && ${postinstall}`
+  );
 });
 
 // `npm run wrangler types` invokes the package script called `wrangler` with `types` as an argument, never the
@@ -1085,7 +1101,7 @@ test('does not treat npm run with a wrangler-named script as a generator', async
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && npm run wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && npm run wrangler types');
 });
 
 // A backgrounding `&` changes shell grammar in ways the parser does not model, so such invocations disable
@@ -1106,7 +1122,7 @@ test('treats a backgrounded invocation as unmodeled', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // A check-only custom gen-code fails while the gitignored file is absent, so the generator must run first,
@@ -1139,7 +1155,7 @@ test('keeps management when a custom-config invocation follows a cd', async () =
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bunx wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bunx wrangler types');
 });
 
 // `wb gen-code ; wrangler types --config ...` is a compound command, not the plain managed invocation, and must
@@ -1158,7 +1174,7 @@ test('does not discard a compound segment starting with wb gen-code', async () =
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(`WB_ENV=\${WB_ENV:-development} wb gen-code && ${postinstall}`);
 });
 
 // A syntactically quoted command word (`"wrangler" types`) executes wrangler but evades tokenization, so the
@@ -1179,7 +1195,7 @@ test('treats a quoted command word invocation as unmodeled', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // A trailing shell comment is not a positional output path; the flags before it must be reused — without the
@@ -1197,7 +1213,9 @@ test('reuses a wrangler types invocation followed by a shell comment', async () 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false');
+  expect(packageJson.scripts?.postinstall).toBe(
+    'WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --strict-vars=false'
+  );
 });
 
 // Shell quoting does not change an argument's value: `'--config'` still selects another config.
@@ -1217,7 +1235,7 @@ test('classifies a quoted option name like its unquoted form', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // Double quotes do not suppress command substitution, so `echo "$(wrangler types ...)"` still generates and
@@ -1236,7 +1254,7 @@ test('preserves a command-substitution invocation inside double quotes', async (
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(`WB_ENV=\${WB_ENV:-development} wb gen-code && ${postinstall}`);
 });
 
 // A plain wrapper of an unmodeled target must also be preserved, or the only install-time generation is lost.
@@ -1253,7 +1271,7 @@ test('preserves a plain wrapper whose target uses unsupported shell syntax', asy
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bun run gen-code');
 });
 
 // `cd ./.` never leaves the package directory, so a conflicting invocation behind it must still be seen.
@@ -1273,7 +1291,7 @@ test('recognizes a conflicting invocation behind a normalized no-op cd', async (
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // The wrangler config itself drives the generation, so an uncommitted config makes the file irreproducible.
@@ -1291,7 +1309,7 @@ test('omits wrangler types when the wrangler config is uncommitted', async () =>
     { createI18nDir: true, files: { 'wrangler.jsonc': '{ "name": "app" }' } }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // Global wrangler options may precede the subcommand; such forms cannot be modeled and must survive verbatim.
@@ -1311,7 +1329,7 @@ test('preserves a wrapper around a global-option wrangler invocation', async () 
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bun run gen-types');
 });
 
 // A bare generator behind a prerequisite is a pipeline too; bypassing the preparation step could emit an Env
@@ -1332,7 +1350,7 @@ test('skips worker-types management for a prerequisite pipeline with a bare gene
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code');
 });
 
 // Quoting does not enable the check: `--check 'false'` still generates and its flags must be preserved.
@@ -1349,7 +1367,9 @@ test('reuses a wrangler types invocation with a quoted false check literal', asy
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe("wb gen-code && wrangler types --strict-vars=false --check 'false'");
+  expect(packageJson.scripts?.postinstall).toBe(
+    "WB_ENV=${WB_ENV:-development} wb gen-code && wrangler types --strict-vars=false --check 'false'"
+  );
 });
 
 // `wrangler types --check` fails while the gitignored file is still absent, so the generator must run first.
@@ -1384,7 +1404,7 @@ test('preserves a wrapper script invoking wrangler types with a custom config wh
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('WB_ENV=${WB_ENV:-development} wb gen-code && bun run gen-types');
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {
@@ -1398,9 +1418,9 @@ test('keeps custom database scripts for drizzle projects', async () => {
   );
 
   expect(packageJson.scripts).toMatchObject({
-    'db-create-migration': 'bun wb db migrate-dev',
+    'db-create-migration': 'WB_ENV=${WB_ENV:-development} bun wb db migrate-dev',
     'db-migrate': 'bun scripts/runDrizzleMigrationsToAllClients.ts',
-    'db-view': 'bun wb db studio',
+    'db-view': 'WB_ENV=${WB_ENV:-development} bun wb db studio',
   });
 });
 
