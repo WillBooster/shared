@@ -11,6 +11,7 @@ interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
   devDependencies?: Record<string, string | undefined>;
   scripts?: Record<string, string | undefined>;
+  trustedDependencies?: string[];
 }
 
 const genI18nTsDepending = {
@@ -1497,6 +1498,89 @@ test('never generates --bun scripts', async () => {
       expect(command).not.toContain('--bun');
     }
   }
+});
+
+test('manages trustedDependencies correctly when store-incompatible packages are present', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {
+        'drizzle-kit': '1.0.0',
+      },
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson).toMatchObject({
+    trustedDependencies: ['drizzle-kit', 'lefthook'],
+  });
+});
+
+test('ensures lefthook is included if custom trustedDependencies exist', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {},
+      trustedDependencies: ['some-custom-dependency'],
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson).toMatchObject({
+    trustedDependencies: ['lefthook', 'some-custom-dependency'],
+  });
+});
+
+test('cleans up wbfy-managed trustedDependencies when they are no longer declared', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {},
+      trustedDependencies: ['@chakra-ui/react', 'drizzle-kit', 'lefthook'],
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.trustedDependencies).toBeUndefined();
+});
+
+test('preserves custom trustedDependencies while cleaning up wbfy-managed ones', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {},
+      trustedDependencies: ['@chakra-ui/react', 'custom-pkg', 'drizzle-kit'],
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson).toMatchObject({
+    trustedDependencies: ['custom-pkg', 'lefthook'],
+  });
+});
+
+// An explicitly empty list is a deliberate block-everything policy; deleting it would re-enable
+// Bun's default allow-list.
+test('preserves an explicitly empty trustedDependencies list', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {},
+      trustedDependencies: [],
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.trustedDependencies).toEqual([]);
+});
+
+// @chakra-ui/cli v2's `chakra-cli tokens` writes into @chakra-ui/styled-system, not
+// @chakra-ui/react, so trusting @chakra-ui/react there would be inert.
+test('does not trust @chakra-ui/react for @chakra-ui/cli v2', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: { '@chakra-ui/react': '^2.10.9' },
+      devDependencies: { '@chakra-ui/cli': '^2.5.8' },
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
 async function generatePackageJsonFrom(

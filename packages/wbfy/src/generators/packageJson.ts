@@ -144,6 +144,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   await removeDeprecatedStuff(config, jsonObj);
   await updateScripts(config, jsonObj);
+  await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
@@ -584,6 +585,91 @@ function doesSeedCommandUseBuildTs(seedCommand: unknown): boolean {
   // Production Docker images run seed scripts after devDependencies are pruned,
   // so TypeScript seed runners must remain available at runtime.
   return typeof seedCommand === 'string' && /(?<![\w-])build-ts(?![\w-])/u.test(seedCommand);
+}
+
+const dependencyDeclarationSections = [
+  'dependencies',
+  'devDependencies',
+  'optionalDependencies',
+  'peerDependencies',
+] as const;
+
+/**
+ * Forces store-incompatible packages to stay project-local under Bun's global store
+ * (`globalStore = true` in the generated bunfig.toml): `chakra typegen` (run by `wb gen-code`)
+ * writes generated types into the installed @chakra-ui/react package, which would otherwise
+ * mutate the machine-wide store shared across repositories, and drizzle-kit requires drizzle-orm
+ * without declaring it, which the store realpath places beyond a plain node_modules walk-up.
+ * Listing them in `trustedDependencies` makes Bun materialize a per-project copy under
+ * `node_modules/.bun/`, whose sibling `node_modules/.bun/node_modules/` links every installed
+ * package and therefore resolves the undeclared requires.
+ */
+async function ensureTrustedDependencies(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
+  // Bun consults trustedDependencies in the workspace root's package.json only, so the list is
+  // managed there and must cover dependencies declared anywhere in the repository.
+  if (!config.isRoot) return;
+  const bunJsonObj = jsonObj as WritablePackageJson & { trustedDependencies?: string[] };
+  // Bun installs optional and peer dependencies by default, so all declaration sections count.
+  // Every declared range is kept per package: a root declaration must not mask a workspace one
+  // (e.g. root @chakra-ui/cli v2 alongside a workspace on v3).
+  const declaredDependencies = new Map<string, string[]>();
+  const addDeclaredDependencies = (packageJson: PackageJson): void => {
+    for (const section of dependencyDeclarationSections) {
+      for (const [dependencyName, versionRange] of Object.entries(packageJson[section] ?? {})) {
+        if (typeof versionRange === 'string') {
+          const versionRanges = declaredDependencies.get(dependencyName);
+          if (versionRanges) {
+            versionRanges.push(versionRange);
+          } else {
+            declaredDependencies.set(dependencyName, [versionRange]);
+          }
+        }
+      }
+    }
+  };
+  addDeclaredDependencies(jsonObj);
+  for (const packageJsonPath of getWorkspacePackageJsonPaths(config)) {
+    try {
+      addDeclaredDependencies(
+        JSON.parse(await fs.promises.readFile(path.resolve(config.dirPath, packageJsonPath), 'utf8')) as PackageJson
+      );
+    } catch {
+      // ignore unreadable workspace package.json
+    }
+  }
+  // Only @chakra-ui/cli v3's `chakra typegen` writes into the installed @chakra-ui/react;
+  // v2's `chakra-cli tokens` writes into @chakra-ui/styled-system instead, so trusting
+  // @chakra-ui/react there would force a useless project-local copy without fixing gen-code.
+  // Mirror wb gen-code's classification: only a range whose leading major parses to 2 selects the
+  // v2 command, so digitless specs like `latest` or catalog references count as v3.
+  const hasChakraCliV3 = (declaredDependencies.get('@chakra-ui/cli') ?? []).some(
+    (versionRange) => /\d+/u.exec(versionRange)?.[0] !== '2'
+  );
+  const wbfyTrustedPackages = new Set(['@chakra-ui/react', 'drizzle-kit']);
+  const requiredWbfyPackages = [
+    ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
+    ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
+  ];
+
+  const existingTrusted = bunJsonObj.trustedDependencies;
+  const customTrustedPackages = (existingTrusted ?? []).filter(
+    (pkg) => pkg !== lefthookDependency && !wbfyTrustedPackages.has(pkg)
+  );
+
+  if (customTrustedPackages.length > 0 || requiredWbfyPackages.length > 0) {
+    // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
+    // it, silently blocking lifecycle scripts of packages the default list trusts — lefthook's
+    // postinstall in every managed repository — so it must come along whenever the field is set.
+    bunJsonObj.trustedDependencies = [
+      ...new Set([...customTrustedPackages, ...requiredWbfyPackages, lefthookDependency]),
+    ].toSorted();
+  } else if (existingTrusted?.some((pkg) => wbfyTrustedPackages.has(pkg))) {
+    // Only a list wbfy itself authored is cleaned up once its packages are gone; wbfy always
+    // writes a chakra/drizzle entry alongside lefthook, so that entry marks its provenance. Any
+    // other explicit list — empty, or e.g. ["lefthook"] alone — is a user policy whose deletion
+    // would silently widen script execution to Bun's default allow-list.
+    delete bunJsonObj.trustedDependencies;
+  }
 }
 
 async function normalizePackageMetadata(
@@ -1232,6 +1318,27 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
   if (cached) return cached;
 
   const workspaceDirsByName = new Map<string, string>();
+  for (const packageJsonPath of getWorkspacePackageJsonPaths(rootConfig)) {
+    try {
+      const workspacePackageJson = JSON.parse(
+        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
+      ) as PackageJson;
+      if (workspacePackageJson.name) {
+        workspaceDirsByName.set(workspacePackageJson.name, path.posix.dirname(packageJsonPath));
+      }
+    } catch {
+      // ignore unparsable workspace package.json
+    }
+  }
+  workspacePackageDirsCache.set(rootConfig.dirPath, workspaceDirsByName);
+  return workspaceDirsByName;
+}
+
+/**
+ * Every workspace package.json path (relative to the monorepo root), including manifests without
+ * a `name` field — wbfy names those later, so dependency scans must not skip them.
+ */
+function getWorkspacePackageJsonPaths(rootConfig: PackageConfig): string[] {
   // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
   // not have written the root package.json yet, so mirror that normalization here.
   const workspacePatterns = [
@@ -1258,24 +1365,11 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
     );
   // followSymbolicLinks: false — a workspace symlink pointing outside the repository must not be
   // treated as a workspace directory (removeNodeModules would delete through it).
-  for (const packageJsonPath of fg.globSync(packageJsonGlobs, {
+  return fg.globSync(packageJsonGlobs, {
     cwd: rootConfig.dirPath,
     followSymbolicLinks: false,
     ignore: ['**/node_modules/**'],
-  })) {
-    try {
-      const workspacePackageJson = JSON.parse(
-        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
-      ) as PackageJson;
-      if (workspacePackageJson.name) {
-        workspaceDirsByName.set(workspacePackageJson.name, path.posix.dirname(packageJsonPath));
-      }
-    } catch {
-      // ignore unparsable workspace package.json
-    }
-  }
-  workspacePackageDirsCache.set(rootConfig.dirPath, workspaceDirsByName);
-  return workspaceDirsByName;
+  });
 }
 
 function shouldUpdateExistingManagedDependency(

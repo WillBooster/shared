@@ -220,34 +220,51 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       if (!entry.isFile() || !isObsoleteGenPrWorkflowFileName(entry.name)) continue;
       await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, entry.name), { force: true }));
     }
-    const fileNameSet = new Set([
-      'test.yml',
-      'autofix.yml',
-      'semantic-pr.yml',
-      'close-comment.yml',
-      ...entries
-        .filter(
-          (dirent) => dirent.isFile() && dirent.name.endsWith('.yml') && !isObsoleteGenPrWorkflowFileName(dirent.name)
-        )
-        .map((dirent) => dirent.name),
-    ]);
+    // GitHub accepts both .yml and .yaml workflow files, and a workflow's file name is its public
+    // identity (badge URLs, the workflow REST API, same-repository `uses:` references), so .yaml
+    // files are processed under their own name instead of being renamed or silently left stale.
+    // Each kind maps to the one file that carries it; when both spellings exist the .yml wins and
+    // the .yaml twin is left untouched, since merging two workflow definitions is ambiguous.
+    const fileNamesByKind = new Map<string, string>();
+    for (const entry of entries) {
+      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || isObsoleteGenPrWorkflowFileName(entry.name)) continue;
+      const kind = entry.name.replace(/\.ya?ml$/u, '');
+      const existingFileName = fileNamesByKind.get(kind);
+      if (existingFileName === undefined || existingFileName.endsWith('.yaml')) {
+        fileNamesByKind.set(kind, entry.name);
+      }
+    }
+    const mandatoryKinds = ['test', 'autofix', 'semantic-pr', 'close-comment'];
     if (rootConfig.depending.semanticRelease) {
-      fileNameSet.add('release.yml');
+      mandatoryKinds.push('release');
     }
     if (rootConfig.cargoTomlDirPaths.length > 0) {
-      fileNameSet.add('test-rust.yml');
+      mandatoryKinds.push('test-rust');
+    }
+    for (const kind of mandatoryKinds) {
+      if (!fileNamesByKind.has(kind)) {
+        fileNamesByKind.set(kind, `${kind}.yml`);
+      }
+    }
+    if (fileNamesByKind.has('sync')) {
+      // The sync workflow's generation owns these files (it rewrites the force-sync workflow and
+      // deletes the obsolete sync-init one), so processing them as independent kinds would race
+      // concurrent writes on the same paths.
+      fileNamesByKind.delete('sync-force');
+      fileNamesByKind.delete('sync-init');
     }
     if (!rootConfig.isPublicRepo) {
       // The reusable test workflow already fixes and pushes code on private repos,
       // so a separate autofix workflow only duplicates the same process.
-      fileNameSet.delete('autofix.yml');
-      await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, 'autofix.yml'), { force: true }));
+      fileNamesByKind.delete('autofix');
+      for (const autofixFileName of ['autofix.yml', 'autofix.yaml']) {
+        await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, autofixFileName), { force: true }));
+      }
     }
 
-    for (const fileName of fileNameSet) {
+    for (const [kind, fileName] of fileNamesByKind) {
       // 実際はKnownKind以外の値も代入されることに注意
-      const kind = path.basename(fileName, '.yml') as KnownKind;
-      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind));
+      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName));
     }
   });
 }
@@ -260,9 +277,16 @@ function isObsoleteGenPrWorkflowFileName(fileName: string): boolean {
   return /^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName);
 }
 
-async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, kind: KnownKind): Promise<void> {
-  const filePath = path.join(workflowsPath, `${kind}.yml`);
-  const deployProductionWorkflowExists = fs.existsSync(path.join(workflowsPath, 'deploy-production.yml'));
+async function writeWorkflowYaml(
+  config: PackageConfig,
+  workflowsPath: string,
+  kind: KnownKind,
+  fileName = `${kind}.yml`
+): Promise<void> {
+  const filePath = path.join(workflowsPath, fileName);
+  const deployProductionFileName = ['deploy-production.yml', 'deploy-production.yaml'].find((deployFileName) =>
+    fs.existsSync(path.join(workflowsPath, deployFileName))
+  );
 
   if (kind === 'autofix') {
     await writeYaml(generateAutofixWorkflow(config), filePath);
@@ -283,6 +307,12 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
       // An existing workflow wbfy cannot parse must be left untouched: writing the template
       // without merging would silently discard the repository's workflow.
       console.warn(`Skipped generating ${filePath} because the existing content is not parsable as YAML.`);
+      return;
+    }
+    // yaml.load returns undefined for empty/comment-only files and non-objects for scalar
+    // documents without throwing; deepmerge would crash on them.
+    if (typeof oldSettings !== 'object' || oldSettings === null || Array.isArray(oldSettings)) {
+      console.warn(`Skipped generating ${filePath} because the existing content is not a workflow.`);
       return;
     }
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
@@ -318,11 +348,11 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
     }
   }
 
-  if (kind === 'release' && newSettings.jobs.release && deployProductionWorkflowExists) {
+  if (kind === 'release' && newSettings.jobs.release && deployProductionFileName) {
     newSettings.permissions ??= {};
     newSettings.permissions.actions = 'write';
     newSettings.jobs.release.with ??= {};
-    newSettings.jobs.release.with.trigger_deploy_workflow = 'deploy-production.yml';
+    newSettings.jobs.release.with.trigger_deploy_workflow = deployProductionFileName;
   }
 
   let isReusableWorkflow = false;
@@ -342,8 +372,8 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
       } else if (newSettings.on?.push && config.release.branches.length > 0) {
         newSettings.on.push.branches = config.release.branches;
       } else {
-        // Don't use release.yml if release branch is not specified
-        await fs.promises.rm(path.join(workflowsPath, 'release.yml'), { force: true });
+        // Don't use the release workflow if release branch is not specified
+        await fs.promises.rm(filePath, { force: true });
         return;
       }
       if (config.isPublicRepo) {
@@ -373,10 +403,13 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
   await writeYaml(newSettings, filePath);
 
   if (kind === 'sync') {
-    await fs.promises.rm(path.join(workflowsPath, 'sync-init.yml'), { force: true });
+    for (const syncInitFileName of ['sync-init.yml', 'sync-init.yaml']) {
+      await fs.promises.rm(path.join(workflowsPath, syncInitFileName), { force: true });
+    }
     if (!newSettings.jobs.sync?.with) return;
 
-    // Generate sync-force.yml based on sync.yml if it exists.
+    // Generate the force-sync workflow based on the sync workflow if it exists, keeping the
+    // spelling of an existing sync-force file so its identity (badge URLs, API) is preserved.
     newSettings.jobs['sync-force'] = newSettings.jobs.sync;
     const params = newSettings.jobs.sync.with.sync_params_without_dest;
     if (typeof params !== 'string') return;
@@ -385,7 +418,12 @@ async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, k
     newSettings.name = 'Force to Sync';
     newSettings.on = { workflow_dispatch: null };
     delete newSettings.jobs.sync;
-    await writeYaml(newSettings, path.join(workflowsPath, 'sync-force.yml'));
+    const syncForceFileName =
+      !fs.existsSync(path.join(workflowsPath, 'sync-force.yml')) &&
+      fs.existsSync(path.join(workflowsPath, 'sync-force.yaml'))
+        ? 'sync-force.yaml'
+        : 'sync-force.yml';
+    await writeYaml(newSettings, path.join(workflowsPath, syncForceFileName));
   }
 }
 
@@ -411,7 +449,11 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // callee does not declare. The legacy DOT_ENV pass-through is deliberately kept: FNOX_AGE_KEY
   // provisioning can be skipped (no --env, missing token or age identity), and the pass-through keeps
   // CI working from the still-existing DOT_ENV secret until the fnox migration completes.
-  const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@/u.exec(
+  // Only an @main callee is known to follow the current secret contract: a workflow pinned to an
+  // older tag or SHA may still declare NPM_TOKEN (and not VERDACCIO_TOKEN), and GitHub rejects a
+  // caller whose secrets do not match the selected revision's declarations, so pinned callers keep
+  // their secrets untouched.
+  const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@main$/u.exec(
     job.uses ?? ''
   )?.[1];
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
@@ -422,6 +464,12 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
     }
+  }
+  // reusable-workflows replaced the NPM_TOKEN secret declaration with VERDACCIO_TOKEN; GitHub
+  // rejects passing an undeclared secret to a reusable workflow with a startup_failure that emits
+  // no check runs, so a leftover NPM_TOKEN silently disables every calling workflow.
+  if (secrets && calledReusableWorkflow) {
+    delete secrets.NPM_TOKEN;
   }
 
   if (secrets?.FIREBASE_TOKEN) {
