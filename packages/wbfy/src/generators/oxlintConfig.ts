@@ -23,7 +23,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     // managed blocks are still safe to update.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
-    const existingContent = await fsUtil.readFileIgnoringError(filePath);
+    const existingContent = await fsUtil.readFileIfExists(filePath);
     const shouldPreserveExistingContent =
       shouldPreservePublishedLinterConfig && existingContent && !managedConfigBlocks.hasManagedBlocks(existingContent);
     const desiredContent = shouldPreserveExistingContent

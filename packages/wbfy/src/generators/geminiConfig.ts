@@ -54,7 +54,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
       },
     });
 
-    const extraContent = await fsUtil.readFileIgnoringError(agentsExtraPath);
+    const extraContent = await fsUtil.readFileIfExists(agentsExtraPath);
     const codingRuleExtraContent = extraContent?.trimStart().startsWith('#') ? undefined : extraContent;
     const reviewLanguageInstruction = config.isPublicRepo
       ? 'Review in English based on the following coding standards.'

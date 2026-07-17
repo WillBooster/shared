@@ -11,7 +11,7 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
 
     // Check if AGENTS_EXTRA.md exists and read its content
     const agentsExtraPath = path.resolve(rootConfig.dirPath, 'AGENTS_EXTRA.md');
-    const extraContent = await fsUtil.readFileIgnoringError(agentsExtraPath);
+    const extraContent = await fsUtil.readFileIfExists(agentsExtraPath);
 
     for (const [fileName, toolName] of [
       ['AGENTS.md', 'Codex CLI'],

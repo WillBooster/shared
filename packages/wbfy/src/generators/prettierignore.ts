@@ -28,7 +28,7 @@ export async function generatePrettierignore(config: PackageConfig): Promise<voi
       await promisePool.run(() => fs.promises.rm(filePath, { force: true }));
       return;
     }
-    const content = (await fsUtil.readFileIgnoringError(filePath)) ?? '';
+    const content = (await fsUtil.readFileIfExists(filePath)) ?? '';
     const headUserContent = ignoreFileUtil.getHeadUserContent(content);
     const tailUserContent = ignoreFileUtil.getTailUserContent(content);
 

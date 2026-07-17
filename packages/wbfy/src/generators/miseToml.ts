@@ -87,9 +87,11 @@ function parseMiseToml(miseTomlPath: string): MiseToml {
   let content: string;
   try {
     content = fs.readFileSync(miseTomlPath, 'utf8');
-  } catch {
-    // A repository without mise.toml starts from an empty configuration.
-    return {};
+  } catch (error) {
+    // Only a repository without mise.toml starts from an empty configuration; an unreadable file
+    // (e.g. permissions) must abort instead of being overwritten with generated settings.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw error;
   }
   return parse(content) as MiseToml;
 }

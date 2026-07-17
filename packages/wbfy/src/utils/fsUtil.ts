@@ -8,13 +8,6 @@ export const fsUtil = {
   setRootDirPath(rootDirPath: string | undefined): void {
     realRootDirPath = rootDirPath === undefined ? undefined : fs.realpathSync(rootDirPath);
   },
-  async readFileIgnoringError(filePath: string): Promise<string | undefined> {
-    try {
-      return await fs.promises.readFile(filePath, 'utf8');
-    } catch {
-      // do nothing
-    }
-  },
   /**
    * Returns undefined only when the file does not exist. Other failures (e.g. permissions) are
    * rethrown so callers regenerating config files never overwrite content they could not read.

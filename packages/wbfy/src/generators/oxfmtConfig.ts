@@ -19,7 +19,7 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
     const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
-    const existingContent = await fsUtil.readFileIgnoringError(filePath);
+    const existingContent = await fsUtil.readFileIfExists(filePath);
     const desiredContent = managedConfigBlocks.getConfigContent({
       desiredContent: getConfigContent(config),
       existingContent,
