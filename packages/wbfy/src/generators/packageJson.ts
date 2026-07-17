@@ -144,7 +144,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   await removeDeprecatedStuff(config, jsonObj);
   await updateScripts(config, jsonObj);
-  ensureTrustedDependencies(config, jsonObj);
+  await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
@@ -596,10 +596,35 @@ function doesSeedCommandUseBuildTs(seedCommand: unknown): boolean {
  * Listing them in `trustedDependencies` makes Bun materialize a per-project copy under
  * `node_modules/.bun/`, whose walk-up reaches the project's node_modules.
  */
-function ensureTrustedDependencies(config: PackageConfig, jsonObj: WritablePackageJson): void {
+async function ensureTrustedDependencies(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
+  // Bun consults trustedDependencies in the workspace root's package.json only, so the list is
+  // managed there and must cover dependencies declared anywhere in the repository.
+  if (!config.isRoot) return;
+  const declaredDependencies = new Set([
+    ...Object.keys(jsonObj.dependencies ?? {}),
+    ...Object.keys(jsonObj.devDependencies ?? {}),
+  ]);
+  for (const workspaceDir of getWorkspacePackageDirs(config).values()) {
+    try {
+      const workspacePackageJson = JSON.parse(
+        await fs.promises.readFile(path.resolve(config.dirPath, workspaceDir, 'package.json'), 'utf8')
+      ) as PackageJson;
+      for (const dependencyName of [
+        ...Object.keys(workspacePackageJson.dependencies ?? {}),
+        ...Object.keys(workspacePackageJson.devDependencies ?? {}),
+      ]) {
+        declaredDependencies.add(dependencyName);
+      }
+    } catch {
+      // ignore unreadable workspace package.json
+    }
+  }
   const requiredPackages = [
-    ...(config.depending.chakra ? ['@chakra-ui/react'] : []),
-    ...(config.depending.drizzle ? ['drizzle-kit'] : []),
+    // Only chakra typegen (enabled by @chakra-ui/cli) mutates the installed @chakra-ui/react.
+    ...(declaredDependencies.has('@chakra-ui/cli') && declaredDependencies.has('@chakra-ui/react')
+      ? ['@chakra-ui/react']
+      : []),
+    ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
   ];
   if (requiredPackages.length === 0) return;
   // An explicit trustedDependencies list REPLACES Bun's default allow-list instead of extending
