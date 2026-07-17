@@ -617,8 +617,12 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
     for (const section of dependencyDeclarationSections) {
       for (const [dependencyName, versionRange] of Object.entries(packageJson[section] ?? {})) {
         if (typeof versionRange === 'string') {
-          declaredDependencies.get(dependencyName)?.push(versionRange) ??
+          const versionRanges = declaredDependencies.get(dependencyName);
+          if (versionRanges) {
+            versionRanges.push(versionRange);
+          } else {
             declaredDependencies.set(dependencyName, [versionRange]);
+          }
         }
       }
     }
