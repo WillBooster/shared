@@ -25,6 +25,8 @@ type Settings = Omit<typeof jsonObj, 'extends'> & {
 // Renovate stops at the first matching config file and renovate.json matches first, so generating
 // renovate.json next to any of these alternative locations would silently shadow the user's
 // config. `.renovaterc.json` is intentionally absent: wbfy migrates it into renovate.json below.
+// The list is deliberately platform-agnostic: wbfy manages GitHub-hosted repositories, and bailing
+// on a config for another platform is a safe no-op rather than a missed generation.
 const shadowedRenovateConfigPaths = [
   'renovate.jsonc',
   'renovate.json5',

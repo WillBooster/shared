@@ -50,6 +50,7 @@ import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
+import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
@@ -149,6 +150,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       hasInvalidPackageConfig = true;
       continue;
     }
+    // Confine every generated file to this repository (see fsUtil.generateFile).
+    fsUtil.setRootDirPath(rootDirPath);
     const abbreviationPromise = fixTypos(rootConfig);
 
     const nullableSubPackageConfigs = await Promise.all(subDirPaths.map((subDirPath) => getPackageConfig(subDirPath)));

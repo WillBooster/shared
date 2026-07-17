@@ -303,6 +303,9 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
  */
 function hasReproducibleWorkerTypesInference(config: PackageConfig): boolean {
   const dirPath = config.dirPath;
+  // With a secrets declaration, `wrangler types` reads only the wrangler config, so a missing or
+  // stale config on CI fails the generation LOUDLY instead of silently inferring a wrong Env; the
+  // tracked-clean checks below guard only the silent-drift hazard of the dotenv-inference path.
   if (declaresSupportedRequiredSecrets(config)) return true;
   // The wrangler config itself drives the generation, so an untracked, modified, or symlinked config makes the
   // generated file irreproducible whatever the dotenv inputs say.
@@ -390,7 +393,7 @@ function declaresRequiredSecretsAnywhere(config: WranglerConfigSecretsSubtree): 
 // comes from an unvalidated file, so check the documented `string[]` shape at runtime: a malformed
 // declaration (e.g. a plain string) must not prove reproducibility.
 function declaresSecrets(secrets: WranglerConfigSecretsSubtree['secrets']): boolean {
-  if (secrets === undefined || secrets === null || typeof secrets !== 'object') return false;
+  if (secrets === undefined || secrets === null || typeof secrets !== 'object' || Array.isArray(secrets)) return false;
   const required: unknown = secrets.required;
   return required === undefined || (Array.isArray(required) && required.every((name) => typeof name === 'string'));
 }
