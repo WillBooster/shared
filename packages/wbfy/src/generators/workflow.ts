@@ -220,18 +220,29 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       if (!entry.isFile() || !isObsoleteGenPrWorkflowFileName(entry.name)) continue;
       await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, entry.name), { force: true }));
     }
+    // GitHub accepts both .yml and .yaml workflow files, but every managed-name operation below
+    // (autofix suppression, release cleanup, deploy-production detection, the mandatory names)
+    // works on the .yml spelling, so .yaml files are canonicalized to .yml up front instead of
+    // being silently left stale. When both spellings exist, the .yaml file is left untouched:
+    // merging two workflow definitions is ambiguous, and renaming over the .yml would discard it.
+    const discoveredFileNames: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || isObsoleteGenPrWorkflowFileName(entry.name)) continue;
+      if (entry.name.endsWith('.yml')) {
+        discoveredFileNames.push(entry.name);
+        continue;
+      }
+      const ymlFileName = entry.name.replace(/\.yaml$/u, '.yml');
+      if (fs.existsSync(path.join(workflowsPath, ymlFileName))) continue;
+      await fs.promises.rename(path.join(workflowsPath, entry.name), path.join(workflowsPath, ymlFileName));
+      discoveredFileNames.push(ymlFileName);
+    }
     const fileNameSet = new Set([
       'test.yml',
       'autofix.yml',
       'semantic-pr.yml',
       'close-comment.yml',
-      // GitHub accepts both .yml and .yaml workflow files, so custom .yaml workflows must be
-      // normalized too (e.g. their reusable-workflow secrets), not silently left stale.
-      ...entries
-        .filter(
-          (dirent) => dirent.isFile() && /\.ya?ml$/u.test(dirent.name) && !isObsoleteGenPrWorkflowFileName(dirent.name)
-        )
-        .map((dirent) => dirent.name),
+      ...discoveredFileNames,
     ]);
     if (rootConfig.depending.semanticRelease) {
       fileNameSet.add('release.yml');
@@ -248,8 +259,8 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
 
     for (const fileName of fileNameSet) {
       // 実際はKnownKind以外の値も代入されることに注意
-      const kind = fileName.replace(/\.ya?ml$/u, '') as KnownKind;
-      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind, fileName));
+      const kind = path.basename(fileName, '.yml') as KnownKind;
+      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind));
     }
   });
 }
@@ -262,13 +273,8 @@ function isObsoleteGenPrWorkflowFileName(fileName: string): boolean {
   return /^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName);
 }
 
-async function writeWorkflowYaml(
-  config: PackageConfig,
-  workflowsPath: string,
-  kind: KnownKind,
-  fileName = `${kind}.yml`
-): Promise<void> {
-  const filePath = path.join(workflowsPath, fileName);
+async function writeWorkflowYaml(config: PackageConfig, workflowsPath: string, kind: KnownKind): Promise<void> {
+  const filePath = path.join(workflowsPath, `${kind}.yml`);
   const deployProductionWorkflowExists = fs.existsSync(path.join(workflowsPath, 'deploy-production.yml'));
 
   if (kind === 'autofix') {

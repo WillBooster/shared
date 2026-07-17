@@ -610,12 +610,15 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   if (!config.isRoot) return;
   const bunJsonObj = jsonObj as WritablePackageJson & { trustedDependencies?: string[] };
   // Bun installs optional and peer dependencies by default, so all declaration sections count.
-  const declaredDependencies = new Map<string, string>();
+  // Every declared range is kept per package: a root declaration must not mask a workspace one
+  // (e.g. root @chakra-ui/cli v2 alongside a workspace on v3).
+  const declaredDependencies = new Map<string, string[]>();
   const addDeclaredDependencies = (packageJson: PackageJson): void => {
     for (const section of dependencyDeclarationSections) {
       for (const [dependencyName, versionRange] of Object.entries(packageJson[section] ?? {})) {
-        if (typeof versionRange === 'string' && !declaredDependencies.has(dependencyName)) {
-          declaredDependencies.set(dependencyName, versionRange);
+        if (typeof versionRange === 'string') {
+          declaredDependencies.get(dependencyName)?.push(versionRange) ??
+            declaredDependencies.set(dependencyName, [versionRange]);
         }
       }
     }
@@ -635,12 +638,12 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   // Only @chakra-ui/cli v3's `chakra typegen` writes into the installed @chakra-ui/react;
   // v2's `chakra-cli tokens` writes into @chakra-ui/styled-system instead, so trusting
   // @chakra-ui/react there would force a useless project-local copy without fixing gen-code.
-  const chakraCliMajor = /\d+/u.exec(declaredDependencies.get('@chakra-ui/cli') ?? '')?.[0];
+  const hasChakraCliV3 = (declaredDependencies.get('@chakra-ui/cli') ?? []).some(
+    (versionRange) => Number(/\d+/u.exec(versionRange)?.[0]) >= 3
+  );
   const wbfyTrustedPackages = new Set(['@chakra-ui/react', 'drizzle-kit']);
   const requiredWbfyPackages = [
-    ...(chakraCliMajor !== undefined && Number(chakraCliMajor) >= 3 && declaredDependencies.has('@chakra-ui/react')
-      ? ['@chakra-ui/react']
-      : []),
+    ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
   ];
 
