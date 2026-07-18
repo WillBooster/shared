@@ -112,6 +112,32 @@ export function wrapWithDrizzleConfigDir(project: Project, command: string): str
     : command;
 }
 
+// Markers indicating the drizzle config manages a (Cloudflare D1 compatible) SQLite database:
+// `dialect: 'sqlite'` covers d1-http and plain SQLite configs, `driver: 'd1-http'` and
+// `driver: 'durable-sqlite'` are the explicit D1/Durable Object drivers.
+const drizzleSqliteConfigPattern = /dialect\s*:\s*['"`]sqlite['"`]|driver\s*:\s*['"`](?:d1-http|durable-sqlite)['"`]/;
+
+/**
+ * Whether drizzle-kit is the project's D1 migration mechanism. A drizzle-orm dependency alone is
+ * not a reliable marker: a Worker may use D1 only for caching while its drizzle config targets an
+ * unrelated database (e.g. PostgreSQL via Hyperdrive), and running `drizzle-kit migrate` against
+ * that database during a D1 deploy would be wrong (https://github.com/WillBooster/shared/issues/942).
+ * So require an explicit marker: a drizzle config whose dialect/driver targets sqlite, d1-http, or
+ * durable-sqlite.
+ */
+export function usesDrizzleKitForD1(project: Project): boolean {
+  if (!project.hasDrizzle) return false;
+
+  const config = findDrizzleConfig(project);
+  if (!config) return false;
+
+  try {
+    return drizzleSqliteConfigPattern.test(fs.readFileSync(path.join(config.dirPath, config.fileName), 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
 export function findDrizzleConfig(project: Project): { dirPath: string; fileName: string } | undefined {
   const candidates = ['drizzle.config.ts', 'drizzle.config.mts', 'drizzle.config.js', 'drizzle.config.mjs'];
   for (const dirPath of [project.dirPath, project.rootDirPath]) {
