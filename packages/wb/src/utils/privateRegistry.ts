@@ -11,7 +11,20 @@ import path from 'node:path';
  */
 export const PRIVATE_REGISTRY_SCOPE = '@willbooster-private';
 
-const nonRegistrySpecifierPrefixes = ['git', 'file:', 'link:', 'workspace:', 'http:', 'https:', 'portal:', 'patch:'];
+// `git:`/`git+`/`git@` (not the bare word `git`): npm allows arbitrary dist-tags, so a tag named
+// `git` or `git-next` must still be treated as a registry specifier.
+const nonRegistrySpecifierPrefixes = [
+  'git:',
+  'git+',
+  'git@',
+  'file:',
+  'link:',
+  'workspace:',
+  'http:',
+  'https:',
+  'portal:',
+  'patch:',
+];
 
 // The single source of truth for which git specifiers the private-package tooling supports:
 // `wb setup-private-packages` materializes exactly these, and `wb optimizeForDockerBuild` must
@@ -144,9 +157,10 @@ async function resolveVersion(
   packageName: string,
   versionSpecifier: string
 ): Promise<string> {
-  const exactVersion = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(versionSpecifier)
+  // Prerelease and `+build` metadata are both part of valid exact SemVer versions.
+  const exactVersion = /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(versionSpecifier)
     ? versionSpecifier
-    : /^[\^~]\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(versionSpecifier)
+    : /^[\^~]\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(versionSpecifier)
       ? // Without a semver resolver, degrade a simple range to its base version (org repos pin
         // exact versions, so this path is a best-effort fallback).
         versionSpecifier.slice(1)

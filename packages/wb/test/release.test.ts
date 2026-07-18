@@ -80,6 +80,25 @@ describe('restoreWorkspaceRanges', () => {
 }`);
   });
 
+  it('restores each section independently for a dependency present in multiple sections', () => {
+    // A peer range next to a workspace devDependency must keep its own value, and two workspace
+    // ranges of the same package must each get their own specifier back.
+    const original = `{
+  "peerDependencies": { "@willbooster/shared-lib": ">=1.0.0" },
+  "devDependencies": { "@willbooster/shared-lib": "workspace:*" }
+}`;
+    const currentAfterRelease = `{
+  "version": "1.1.0",
+  "peerDependencies": { "@willbooster/shared-lib": ">=1.0.0" },
+  "devDependencies": { "@willbooster/shared-lib": "1.1.0" }
+}`;
+    expect(restoreWorkspaceRanges(currentAfterRelease, original)).toBe(`{
+  "version": "1.1.0",
+  "peerDependencies": { "@willbooster/shared-lib": ">=1.0.0" },
+  "devDependencies": { "@willbooster/shared-lib": "workspace:*" }
+}`);
+  });
+
   it('leaves same-named keys outside dependency sections untouched', () => {
     const original = `{
   "dependencies": { "foo": "workspace:*" },

@@ -136,10 +136,10 @@ export class Project {
       return this.envCache;
     }
 
-    const [envVars, envPathAndLoadedEnvVarCountPairs] = readEnvironmentVariables(this.argv, this.dirPath);
+    const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(this.argv, this.dirPath);
     if (!shouldSuppressEnvironmentOutput(this.argv)) {
-      for (const [envPath, count] of envPathAndLoadedEnvVarCountPairs) {
-        console.info(`Loaded ${count} environment variables from ${envPath}`);
+      for (const [envPath, names] of envPathAndLoadedEnvVarNamePairs) {
+        console.info(`Loaded ${names.length} environment variables from ${envPath}`);
       }
     }
     // Spreading envVars last is safe for exported-variable precedence: readEnvironmentVariables
@@ -151,7 +151,7 @@ export class Project {
     // `mise env` is excluded: it reports tool-activation output (e.g. PATH) even in repos that
     // declare no environment variables at all, which must not force the WB_ENV requirement.
     this.validateRequiredEnvironmentVariables(
-      envPathAndLoadedEnvVarCountPairs.some(([source]) => !source.startsWith('mise env'))
+      envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env'))
     );
     return this.envCache;
   }

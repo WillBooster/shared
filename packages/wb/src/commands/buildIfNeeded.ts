@@ -57,7 +57,9 @@ export async function buildIfNeeded(
   // The cache requires the git repository root to BE rootDirPath: porcelain paths and diff
   // pathspecs below are joined/executed against rootDirPath. When the repo root is elsewhere
   // (e.g. a subproject of a larger repository), always build instead of mis-resolving paths.
-  if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
+  // A freshly initialized repo without commits (unborn HEAD) likewise builds without caching:
+  // `git rev-parse HEAD` would throw.
+  if (!fs.existsSync(path.join(project.rootDirPath, '.git')) || !hasGitCommit(project)) {
     build(project, argv);
     return true;
   }
@@ -96,6 +98,15 @@ function getExplicitOutputPaths(
 
 function detectExistingDefaultOutputPaths(project: Project): string[] {
   return defaultOutputCandidates.filter((outputPath) => fs.existsSync(path.join(project.dirPath, outputPath)));
+}
+
+function hasGitCommit(project: Project): boolean {
+  return (
+    child_process.spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+      cwd: project.dirPath,
+      stdio: 'ignore',
+    }).status === 0
+  );
 }
 
 function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
@@ -238,15 +249,16 @@ async function updateHashWithDiffResult(
     // Build OUTPUTS must never count as build inputs: hashing e.g. an untracked dist/ file would
     // change the hash on every build and disable the cache permanently.
     const projectRelativeDirPath = path.relative(project.rootDirPath, project.dirPath);
-    const outputPathPrefixes = (getExplicitOutputPaths(argv) ?? defaultOutputCandidates).map(
-      (outputPath) => `${path.join(projectRelativeDirPath, outputPath)}/`
+    const outputPaths = (getExplicitOutputPaths(argv) ?? defaultOutputCandidates).map((outputPath) =>
+      path.join(projectRelativeDirPath, outputPath)
     );
     const filteredEntries = normalizedEntries.filter(
       ({ filePath, hashPath }) =>
         (includePatterns.some((pattern) => hashPath.includes(pattern)) ||
           includeSuffix.some((suffix) => hashPath.endsWith(suffix))) &&
         !excludePatterns.some((pattern) => hashPath.includes(pattern)) &&
-        !outputPathPrefixes.some((prefix) => filePath.startsWith(prefix))
+        // An `--output` value may name a file, so exclude the exact path as well as descendants.
+        !outputPaths.some((outputPath) => filePath === outputPath || filePath.startsWith(`${outputPath}/`))
     );
     if (argv.verbose) {
       console.info(`Changed files: ${filteredEntries.map((entry) => entry.hashPath).join(', ')}`);

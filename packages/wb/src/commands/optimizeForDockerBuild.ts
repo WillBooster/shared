@@ -123,15 +123,27 @@ function rewritePrivateGitHubDependenciesForDir(
         rewrittenDependencies.push(`${key}.${name}`);
       } else if (isPrivateRegistryDependency(name, value)) {
         const materializedVersion = readMaterializedPackageVersion(rootDirPath, name);
-        if (materializedVersion === undefined) continue;
+        if (materializedVersion === undefined) {
+          // Leaving the registry specifier means the in-image install needs Verdaccio
+          // credentials — the failure this feature exists to avoid — so say so out loud.
+          console.warn(
+            chalk.yellow(
+              `${name} is not materialized under ${PRIVATE_REGISTRY_SCOPE}/; run \`wb setup-private-packages\` so the Docker build does not need registry credentials.`
+            )
+          );
+          continue;
+        }
         // `wb setup-private-packages` degrades ^/~ ranges to their base version, so equality
         // against the stripped specifier is exact for pinned versions and simple ranges;
         // dist-tag specifiers (non-numeric) skip the staleness check.
         const requestedVersion = value.replace(/^[\^~]/, '');
         if (/^\d/.test(requestedVersion) && materializedVersion !== requestedVersion) {
-          throw new Error(
-            `Materialized ${name} is ${materializedVersion} but package.json requires ${value}; rerun \`wb setup-private-packages\`.`
+          console.error(
+            chalk.red(
+              `Materialized ${name} is ${materializedVersion} but package.json requires ${value}; rerun \`wb setup-private-packages\`.`
+            )
           );
+          process.exit(1);
         }
         // Registry packages that `wb setup-private-packages` materialized on the host are used as
         // local paths so image builds need no Verdaccio credentials; the COMMITTED package.json

@@ -191,9 +191,13 @@ export function rewriteWorkspaceRanges(packageJsonContent: string): string {
  */
 export function restoreWorkspaceRanges(currentContent: string, originalContent: string): string {
   const workspaceDependencies = collectWorkspaceDependencies(originalContent);
-  return replaceInDependencySections(currentContent, (section) => {
+  // Restore per (section, name): a same-named dependency in another section may legitimately
+  // hold a non-workspace range (e.g. a peerDependencies `>=1.0.0` next to a devDependencies
+  // `workspace:*`) or a different workspace range, and must keep its own value.
+  return replaceInDependencySections(currentContent, (section, sectionKey) => {
     let result = section;
-    for (const { name, specifier } of workspaceDependencies) {
+    for (const { section: dependencySection, name, specifier } of workspaceDependencies) {
+      if (dependencySection !== sectionKey) continue;
       result = result.replaceAll(
         new RegExp(`("${escapeRegExp(name)}"\\s*:\\s*)"[^"]*"`, 'gu'),
         // A replacer function, not a replacement string: specifiers containing `$` must be
@@ -206,29 +210,35 @@ export function restoreWorkspaceRanges(currentContent: string, originalContent: 
 }
 
 /** Dependency sections contain only `"name": "specifier"` string pairs, so `[^{}]*` spans them. */
-function replaceInDependencySections(content: string, replaceSection: (section: string) => string): string {
+function replaceInDependencySections(
+  content: string,
+  replaceSection: (section: string, sectionKey: string) => string
+): string {
   return content.replaceAll(
-    /("(?:dependencies|devDependencies|optionalDependencies|peerDependencies)"\s*:\s*\{)([^{}]*)(\})/gu,
-    (_match, prefix: string, body: string, suffix: string) => `${prefix}${replaceSection(body)}${suffix}`
+    /("(dependencies|devDependencies|optionalDependencies|peerDependencies)"\s*:\s*\{)([^{}]*)(\})/gu,
+    (_match, prefix: string, sectionKey: string, body: string, suffix: string) =>
+      `${prefix}${replaceSection(body, sectionKey)}${suffix}`
   );
 }
 
-function collectWorkspaceDependencies(packageJsonContent: string): { name: string; specifier: string }[] {
+function collectWorkspaceDependencies(
+  packageJsonContent: string
+): { section: string; name: string; specifier: string }[] {
   let packageJson: PackageJson;
   try {
     packageJson = JSON.parse(packageJsonContent) as PackageJson;
   } catch {
     return [];
   }
-  const dependenciesByName = new Map<string, string>();
+  const dependencies: { section: string; name: string; specifier: string }[] = [];
   for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const) {
     for (const [name, value] of Object.entries(packageJson[key] ?? {})) {
       if (typeof value === 'string' && value.startsWith('workspace:')) {
-        dependenciesByName.set(name, value);
+        dependencies.push({ section: key, name, specifier: value });
       }
     }
   }
-  return [...dependenciesByName].map(([name, specifier]) => ({ name, specifier }));
+  return dependencies;
 }
 
 function escapeRegExp(text: string): string {

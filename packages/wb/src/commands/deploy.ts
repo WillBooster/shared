@@ -184,32 +184,15 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
     // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
     if (!argv.dryRun) {
-      // Whenever a deploy/post hook exists, drizzle-kit manages a D1 database, and wb will export
-      // CLOUDFLARE_D1_DATABASE_ID to the hook (exactly one D1 binding WITH a database_id — see
-      // step 5), the hook's drizzle config selects its d1-http branch, which needs
-      // CLOUDFLARE_API_TOKEN even for local, wrangler-OAuth deploys. Failing here keeps the
-      // fail-fast ordering: a missing token must abort before the deploy goes live, not during
-      // deploy/post (https://github.com/WillBooster/shared/issues/956). Hooks unrelated to
-      // drizzle-managed D1 (e.g. cache purges on a wrangler-native project) must not require the
-      // token: a local wrangler OAuth login suffices for them.
-      const postHookReceivesD1DatabaseId =
-        !!project.packageJson.scripts?.['deploy/post'] &&
-        drizzleKitManagesD1 &&
-        // When wrangler-native migrations are the selected mechanism, a wrangler OAuth login
-        // suffices; only a drizzle-selected D1 database routes the hook through d1-http.
-        wranglerNativeD1Databases.length === 0 &&
-        resolvedConfig.d1Databases.length === 1 &&
-        !!resolvedConfig.d1Databases[0]?.database_id;
-      if ((drizzleD1Database || postHookReceivesD1DatabaseId) && !project.env.CLOUDFLARE_API_TOKEN) {
-        // drizzle-kit's d1-http driver requires this specific token even for local runs; a
-        // local wrangler OAuth login covers only the wrangler-native path.
-        console.error(
-          chalk.red(
-            drizzleD1Database
-              ? 'CLOUDFLARE_API_TOKEN is required for remote drizzle-kit migrations.'
-              : 'CLOUDFLARE_API_TOKEN is required because deploy/post will receive CLOUDFLARE_D1_DATABASE_ID.'
-          )
-        );
+      // A drizzle-selected D1 database routes both the migration in step 3 and any deploy/post
+      // hook through drizzle-kit's d1-http driver, which needs CLOUDFLARE_API_TOKEN even for
+      // local, wrangler-OAuth deploys. Failing here keeps the fail-fast ordering: a missing token
+      // must abort before the deploy goes live, not during migration or deploy/post
+      // (https://github.com/WillBooster/shared/issues/956). Wrangler-native projects (with or
+      // without hooks) must not require the token: a local wrangler OAuth login suffices there,
+      // even though step 5 still exports CLOUDFLARE_D1_DATABASE_ID to their hooks.
+      if (drizzleD1Database && !project.env.CLOUDFLARE_API_TOKEN) {
+        console.error(chalk.red('CLOUDFLARE_API_TOKEN is required for remote drizzle-kit migrations.'));
         process.exit(1);
       }
       const hasWranglerAuthentication =

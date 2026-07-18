@@ -133,8 +133,16 @@ export function usesDrizzleKitForD1(project: Project): boolean {
   if (!config) return false;
 
   try {
+    const content = stripJsComments(fs.readFileSync(path.join(config.dirPath, config.fileName), 'utf8'));
+    // Scan only from the exported config onward: drizzle-kit consumes the default export, and
+    // matching earlier text (e.g. an unused sqlite-shaped constant above a PostgreSQL config)
+    // would select the wrong migration mechanism. Configs whose export references earlier
+    // objects fall outside the heuristic; wb deploy warns when no mechanism is detected.
+    const exportIndices = ['export default', 'module.exports']
+      .map((marker) => content.indexOf(marker))
+      .filter((index) => index !== -1);
     return drizzleSqliteConfigPattern.test(
-      stripJsComments(fs.readFileSync(path.join(config.dirPath, config.fileName), 'utf8'))
+      exportIndices.length > 0 ? content.slice(Math.min(...exportIndices)) : content
     );
   } catch {
     return false;
