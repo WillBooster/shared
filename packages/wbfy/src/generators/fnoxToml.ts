@@ -50,7 +50,13 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
       // A nested-only fnox layout is unsupported: setupSecrets would take the dotenv path and
       // delete FNOX_AGE_KEY even though the nested config's CI still needs it.
       try {
-        const strayFilePaths = listFnoxLikeFilePaths(rootDirPath);
+        // Only age-using configs carry that risk. Without a root providing the age provider, a
+        // stray config that declares none uses no age encryption at all (e.g. a plaintext test
+        // fixture or example config any repository may legitimately commit), so it neither needs
+        // recipient synchronization nor owns an FNOX_AGE_KEY and must not block the run.
+        const strayFilePaths = listFnoxLikeFilePaths(rootDirPath).filter((filePath) =>
+          declaresFnoxAgeProvider(filePath)
+        );
         if (strayFilePaths.length > 0) {
           failFnoxSync(
             `Failed to synchronize fnox age recipients because fnox configs exist without a root fnox.toml: ${strayFilePaths.join(', ')}. Add a root fnox.toml.`
@@ -612,6 +618,28 @@ function listFnoxTomlDirPaths(rootDirPath: string): string[] {
         .map((filePath) => path.dirname(filePath))
     ),
   ].toSorted();
+}
+
+/**
+ * Whether a fnox config declares its own `[providers.age]`, i.e. participates in age encryption.
+ * A config without one either inherits a managed root's provider (handled by the root-exists path)
+ * or, when no root exists, uses no age encryption at all — so it needs no recipient synchronization
+ * and owns no FNOX_AGE_KEY.
+ */
+function declaresFnoxAgeProvider(filePath: string): boolean {
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, 'utf8');
+  } catch {
+    // Fail closed: an unreadable config might declare an age provider.
+    return true;
+  }
+  try {
+    return Boolean((parse(content) as FnoxToml).providers?.age);
+  } catch {
+    // Fail closed: an unparsable config might declare an age provider.
+    return true;
+  }
 }
 
 function listFnoxLikeFilePaths(rootDirPath: string): string[] {
