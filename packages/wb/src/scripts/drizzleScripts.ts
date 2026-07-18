@@ -213,7 +213,12 @@ function declaresSqliteTarget(content: string): boolean {
   return false;
 }
 
-/** Split into alternating code and string-literal-content tokens (quotes excluded). */
+/**
+ * Split into alternating code and string-literal-content tokens (quotes excluded). The input is
+ * already comment-free — usesDrizzleKitForD1 runs stripJsComments before any scanning — so
+ * comment delimiters need no handling here (a commented-out `// dialect: 'sqlite'` can never
+ * reach this tokenizer).
+ */
 function tokenizeStrings(content: string): { type: 'code' | 'string'; value: string }[] {
   const tokens: { type: 'code' | 'string'; value: string }[] = [];
   let code = '';
