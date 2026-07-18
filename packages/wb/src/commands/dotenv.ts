@@ -7,6 +7,7 @@ import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { prependNodeModulesBinToPath } from '../utils/binPath.js';
+import { isCI } from '../utils/ci.js';
 
 interface ParsedDotenvArgs {
   command: string[];
@@ -57,14 +58,12 @@ async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<vo
     stdio: 'inherit',
   });
   const signalHandlers = new Map<NodeJS.Signals, () => void>();
-  let forwardedShutdownSignal: NodeJS.Signals | undefined;
   child.on('error', (error) => {
     console.error(error);
     process.exit(1);
   });
   for (const signal of shutdownSignals) {
     const signalHandler = (): void => {
-      forwardedShutdownSignal = signal;
       child.kill(signal);
     };
     signalHandlers.set(signal, signalHandler);
@@ -74,10 +73,9 @@ async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<vo
     for (const [shutdownSignal, signalHandler] of signalHandlers) {
       process.off(shutdownSignal, signalHandler);
     }
-    if (signal && signal === forwardedShutdownSignal) {
-      process.exit(0);
-    }
     if (signal) {
+      // Re-raise even for forwarded shutdown signals so callers observe the conventional
+      // signal exit status (e.g. 130 for SIGINT) instead of a misleading success.
       process.kill(process.pid, signal);
       return;
     }
@@ -99,20 +97,60 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
   return { command: separatorIndex === -1 ? args : args.slice(separatorIndex + 1) };
 }
 
+// NOTE: `wb dotenv` deliberately skips Project.env's WB_ENV/NEXT_PUBLIC_WB_ENV validation: it is
+// a generic runner also used before env sources exist (bootstrap) and must not fail fast for
+// repositories that have not adopted the org env standard.
 function readAndApplyEnvironmentVariables(cwd: string): void {
+  const mode = process.env.WB_ENV;
+  const readEnvFile = (fileName: string): Record<string, string> =>
+    config({ path: path.join(cwd, fileName), processEnv: {}, quiet: true }).parsed ?? {};
+  // Mode-specific sources drive the forced-mode override below.
+  const modeVars = mode ? { ...readEnvFile(`.env.${mode}`), ...readEnvFile(`.env.${mode}.local`) } : {};
+  // Mirror the shared cascade's precedence: .env.<mode>.local > .env.local > .env.<mode> > .env.
   const dotenvVars = {
-    ...config({ path: path.join(cwd, '.env'), processEnv: {}, quiet: true }).parsed,
-    ...(process.env.WB_ENV
-      ? (config({ path: path.join(cwd, `.env.${process.env.WB_ENV}`), processEnv: {}, quiet: true }).parsed ?? {})
-      : {}),
+    ...readEnvFile('.env'),
+    ...(mode ? readEnvFile(`.env.${mode}`) : {}),
+    ...readEnvFile('.env.local'),
+    ...(mode ? readEnvFile(`.env.${mode}.local`) : {}),
   };
+  // WB_ENV in process.env means the mode is explicitly forced, so values from the mode's own
+  // sources (.env.<mode>[.local] and the fnox profile) win over variables inherited from the
+  // parent shell — except on CI, where injected env vars must keep overriding committed files
+  // (see https://github.com/WillBooster/shared/issues/930).
+  const modeFileOverridesProcessEnv = !!mode && !isCI(process.env.CI);
   // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
-  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, process.env.WB_ENV, dotenvVars);
+  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, mode, dotenvVars, { modeFileOverridesProcessEnv });
   const parsed = { ...fnoxVars, ...dotenvVars };
-  const envVars = expand({ parsed, processEnv: {} }).parsed ?? parsed;
+  // Expand ${...} references against exported variables whose FILE value loses to the shell
+  // (mirroring readEnvironmentVariables' effective-value semantics): a reference must resolve to
+  // the value the child will actually see, so a shell-shadowed key expands to the shell value
+  // while a winning file/override value expands to the file value.
+  const fileValueWins = (key: string): boolean =>
+    !(key in process.env) || (modeFileOverridesProcessEnv && (key in modeVars || key in fnoxVars));
+  const referenceEnv: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    // Escape dollar signs so exported values substitute literally (pa$word stays pa$word).
+    if (value !== undefined && !(key in parsed && fileValueWins(key))) {
+      referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+    }
+  }
+  const envVars = expand({ parsed, processEnv: referenceEnv }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;
+      continue;
     }
+    // readFnoxEnvironmentVariables returns a process.env-shadowed key only when the forced
+    // profile overrides it, so fnox-provided keys count as mode-specific here.
+    if (!(key in modeVars || key in fnoxVars) || process.env[key] === value) continue;
+
+    if (modeFileOverridesProcessEnv) {
+      console.warn(
+        `Warning: ${key} in the "${mode}" mode's env sources overrides the value inherited from the parent environment because WB_ENV is explicitly set.`
+      );
+      process.env[key] = value;
+    }
+    // On CI, inherited variables intentionally win (workflows deliberately inject env vars that
+    // override the committed files); this is the designed behavior, so no warning is emitted.
   }
 }

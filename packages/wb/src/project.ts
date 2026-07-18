@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import { readEnvironmentVariables, shouldSuppressEnvironmentOutput } from '@willbooster/shared-lib-node/src';
 import { memoizeOne } from 'at-decorators';
+import chalk from 'chalk';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 
@@ -135,18 +136,63 @@ export class Project {
       return this.envCache;
     }
 
-    const [envVars, envPathAndLoadedEnvVarCountPairs] = readEnvironmentVariables(this.argv, this.dirPath);
+    const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(this.argv, this.dirPath);
     if (!shouldSuppressEnvironmentOutput(this.argv)) {
-      for (const [envPath, count] of envPathAndLoadedEnvVarCountPairs) {
-        console.info(`Loaded ${count} environment variables from ${envPath}`);
+      for (const [envPath, names] of envPathAndLoadedEnvVarNamePairs) {
+        console.info(`Loaded ${names.length} environment variables from ${envPath}`);
       }
     }
     // Spreading envVars last is safe for exported-variable precedence: readEnvironmentVariables
-    // already excludes keys present in process.env from .env/fnox sources. Mise values that
+    // already excludes keys present in process.env from .env/fnox sources (returning a key that
+    // exists in process.env only for deliberate forced-mode overrides). Mise values that
     // differ from the ambient activation are deliberately kept so the requested cascade profile
     // (e.g. `--cascade-env=test`) wins over a stale `mise activate` environment.
     this.envCache = { ...process.env, ...envVars };
+    // `mise env` is excluded: it reports tool-activation output (e.g. PATH) even in repos that
+    // declare no environment variables at all, which must not force the WB_ENV requirement.
+    this.validateRequiredEnvironmentVariables(
+      envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env'))
+    );
     return this.envCache;
+  }
+
+  /**
+   * Fail fast when the resolved environment violates the org standard: every mode
+   * (development/test/staging/production) must define `WB_ENV`, and Next.js/vinext apps must also
+   * define `NEXT_PUBLIC_WB_ENV` (see the guidelines-for-mise-fnox skill). Skipped while no env
+   * sources exist yet (e.g. during `wb setup` bootstrap before env files/fnox.toml are created)
+   * and when `WB_SKIP_ENV_CHECK=1` is set.
+   */
+  private validateRequiredEnvironmentVariables(hasEnvironmentSources: boolean): void {
+    const env = this.envCache;
+    if (!env || !hasEnvironmentSources) return;
+    if (env.WB_SKIP_ENV_CHECK === '1' || env.WB_SKIP_ENV_CHECK === 'true') return;
+
+    const missingKeys: string[] = [];
+    if (!env.WB_ENV) missingKeys.push('WB_ENV');
+    if (this.requiresNextPublicWbEnv && !env.NEXT_PUBLIC_WB_ENV) missingKeys.push('NEXT_PUBLIC_WB_ENV');
+    if (missingKeys.length === 0) return;
+
+    // Resolve the mode label from the loaded environment (not process.env): a WB_ENV/NODE_ENV
+    // supplied only by env files or fnox must still name the correct mode in the error message.
+    const mode =
+      this.argv.cascadeEnv ??
+      (this.argv.cascadeNodeEnv ? env.NODE_ENV || 'development' : (env.WB_ENV ?? env.NODE_ENV ?? 'development'));
+    console.error(
+      chalk.red(
+        `${missingKeys.join(' and ')} ${missingKeys.length === 1 ? 'is' : 'are'} not defined for the "${mode}" environment. ` +
+          `Define ${missingKeys.join(' and ')} in the mode's env source (e.g. .env.${mode} or the fnox "${mode}" profile; see guidelines-for-mise-fnox), ` +
+          'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+      )
+    );
+    process.exit(1);
+  }
+
+  @memoizeOne
+  private get requiresNextPublicWbEnv(): boolean {
+    // OWN dependencies only: a root-level next/vinext devDependency in a mixed monorepo must not
+    // force NEXT_PUBLIC_WB_ENV onto every non-Next workspace package.
+    return !!this.getOwnDependencyVersion('next') || !!this.getOwnDependencyVersion('vinext');
   }
 
   @memoizeOne

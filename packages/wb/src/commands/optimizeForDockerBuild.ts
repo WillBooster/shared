@@ -15,6 +15,14 @@ import {
   type Project,
 } from '../project.js';
 
+import {
+  PRIVATE_REGISTRY_SCOPE,
+  isPrivateGitDependency,
+  isPrivateRegistryDependency,
+  rangeAdmits,
+  toBaseVersion,
+} from '../utils/privateRegistry.js';
+
 import { prepareForRunningCommand } from './commandUtils.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
@@ -107,26 +115,85 @@ function rewritePrivateGitHubDependenciesForDir(
   for (const key of dependencySectionKeys) {
     const deps = packageJson[key] ?? {};
     for (const [name, value] of Object.entries(deps)) {
-      if (value?.startsWith('git@github.com:')) {
+      if (isPrivateGitDependency(value)) {
         // Docker builds cannot access private SSH URLs unless credentials are forwarded.
-        // The Dockerfile copies those workspace packages into the image instead.
-        deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, name);
+        // The Dockerfile copies those workspace packages into the image instead. Only the org's
+        // own git dependencies are rewritten — the shared predicate matches exactly what
+        // `wb setup-private-packages` materializes, so other SSH URLs are left unchanged instead
+        // of being pointed at never-materialized local paths.
+        deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, '@willbooster', name);
+        rewrittenDependencies.push(`${key}.${name}`);
+      } else if (isPrivateRegistryDependency(name, value)) {
+        const materializedVersion = readMaterializedPackageVersion(rootDirPath, name);
+        if (materializedVersion === undefined) {
+          // Leaving the registry specifier means the in-image install needs Verdaccio
+          // credentials — the failure this feature exists to avoid — so say so out loud.
+          console.warn(
+            chalk.yellow(
+              `${name} is not materialized under ${PRIVATE_REGISTRY_SCOPE}/; run \`wb setup-private-packages\` so the Docker build does not need registry credentials.`
+            )
+          );
+          continue;
+        }
+        // The materialized version is stale when it neither equals the specifier's degraded base
+        // (`wb setup-private-packages` degrades ^/~ to the base version) nor is admitted by the
+        // ^/~ range — setup may legitimately materialize a NEWER admitted version selected by an
+        // exact pin elsewhere in the manifest. Dist-tag specifiers (no x.y.z base, e.g.
+        // `2026-stable`) skip the staleness check.
+        const requestedBaseVersion = toBaseVersion(value);
+        if (
+          requestedBaseVersion !== undefined &&
+          materializedVersion !== requestedBaseVersion &&
+          !rangeAdmits(value, materializedVersion)
+        ) {
+          console.error(
+            chalk.red(
+              `Materialized ${name} is ${materializedVersion} but package.json requires ${value}; rerun \`wb setup-private-packages\`.`
+            )
+          );
+          process.exit(1);
+        }
+        // Registry packages that `wb setup-private-packages` materialized on the host are used as
+        // local paths so image builds need no Verdaccio credentials; the COMMITTED package.json
+        // keeps the registry specifier — only the generated (dist/)package.json is rewritten
+        // (https://github.com/WillBooster/shared/issues/964).
+        deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, PRIVATE_REGISTRY_SCOPE, name);
         rewrittenDependencies.push(`${key}.${name}`);
       }
     }
   }
-  console.info('Rewrote private GitHub dependencies:', rewrittenDependencies.join(', ') || 'none');
+  console.info('Rewrote private dependencies:', rewrittenDependencies.join(', ') || 'none');
   return rewrittenDependencies;
 }
 
-function getPrivatePackageDockerSpecifier(rootDirPath: string, packageDirPath: string, packageName: string): string {
-  const privatePackageDirPath = path.join(rootDirPath, '@willbooster', toUnscopedPackageName(packageName));
+function getPrivatePackageDockerSpecifier(
+  rootDirPath: string,
+  packageDirPath: string,
+  scopeDirName: string,
+  packageName: string
+): string {
+  const privatePackageDirPath = path.join(rootDirPath, scopeDirName, toUnscopedPackageName(packageName));
   const relativePath = path.relative(packageDirPath, privatePackageDirPath);
   return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
 }
 
 function toUnscopedPackageName(packageName: string): string {
-  return packageName.replace(/^@willbooster\//, '');
+  return packageName.replace(/^@willbooster(?:-private)?\//, '');
+}
+
+/** Undefined when the package is not materialized (or its manifest is unreadable/versionless). */
+function readMaterializedPackageVersion(rootDirPath: string, packageName: string): string | undefined {
+  const packageJsonPath = path.join(
+    rootDirPath,
+    PRIVATE_REGISTRY_SCOPE,
+    toUnscopedPackageName(packageName),
+    'package.json'
+  );
+  try {
+    return (JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson).version;
+  } catch {
+    return undefined;
+  }
 }
 
 async function writeDockerShellScripts(dirPath: string): Promise<void> {

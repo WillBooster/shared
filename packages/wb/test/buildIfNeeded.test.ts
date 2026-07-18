@@ -43,4 +43,25 @@ describe('buildIfNeeded', () => {
     );
     expect(await buildIfNeeded({ command }, dirPath)).toBe(true);
   });
+
+  it('rebuilds when a recorded build output directory is missing', async () => {
+    const dirPath = path.join(tempDir, 'outputs', 'app');
+    await fs.promises.rm(path.join(tempDir, 'outputs'), { recursive: true, force: true });
+    await fs.promises.mkdir(path.join(tempDir, 'outputs'), { recursive: true });
+    await initializeProjectDirectory(dirPath);
+
+    child_process.execSync('git init', { cwd: dirPath, stdio: 'inherit' });
+    child_process.execSync('git config user.email "bot@willbooster.com"', { cwd: dirPath, stdio: 'inherit' });
+    child_process.execSync('git config user.name "WillBooster Inc."', { cwd: dirPath, stdio: 'inherit' });
+    child_process.execSync('git add -A', { cwd: dirPath, stdio: 'inherit' });
+    child_process.execSync('git commit -m .', { cwd: dirPath, stdio: 'inherit' });
+
+    const command = 'mkdir -p dist && echo built > dist/index.txt';
+    expect(await buildIfNeeded({ command }, dirPath)).toBe(true);
+    expect(await buildIfNeeded({ command }, dirPath)).toBe(false);
+
+    await fs.promises.rm(path.join(dirPath, 'dist'), { recursive: true, force: true });
+    expect(await buildIfNeeded({ command }, dirPath)).toBe(true);
+    expect(await buildIfNeeded({ command }, dirPath)).toBe(false);
+  });
 }, 30_000);
