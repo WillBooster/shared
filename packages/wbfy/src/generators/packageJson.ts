@@ -1628,8 +1628,15 @@ function applyDatabaseScript(
   scripts[name] = oldScript && !isGeneratedDatabaseScript(oldScript) ? oldScript : generatedScript;
 }
 
+/**
+ * Whether a script body is one of the generated `wb db`/`wb prisma` invocations (allowing legacy
+ * runner prefixes and extra subcommand/flag tokens). Anchored on the WHOLE body so a custom
+ * wrapper that merely CONTAINS a wb call (`prepare-sqlite && WB_ENV=… wb db studio`) is preserved
+ * instead of being replaced wholesale; any shell operator or env-assignment prefix marks the
+ * script as custom.
+ */
 function isGeneratedDatabaseScript(script: string): boolean {
-  return /\bwb\s+(?:db|prisma)\b/u.test(script);
+  return /^(?:(?:bun|yarn|npx)\s+)?wb\s+(?:db|prisma)(?:\s+[\w./=@:-]+)*$/u.test(script.trim());
 }
 
 function getWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' {
