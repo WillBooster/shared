@@ -159,11 +159,11 @@ function extractExportedConfigObject(
 ): string | undefined {
   const exportedExpression = maskedContent
     .slice(exportStartIndex)
-    .replace(/^(?:export\s+default|module\.exports\s*=)\s*/, '')
-    // Drop a TypeScript type postfix (`config satisfies Config;` / `config as Config;`) so the
-    // identifier branch below still recognizes the export.
-    .replace(/^([A-Za-z_$][\w$]*)\s+(?:satisfies|as)\b[^;\n{]*/, '$1');
-  const identifierMatch = /^([A-Za-z_$][\w$]*)\s*(?:;|\n|$)/.exec(exportedExpression);
+    .replace(/^(?:export\s+default|module\.exports\s*=)\s*/, '');
+  // An identifier export may carry a TypeScript type postfix (`config satisfies Config;` /
+  // `config as Config;`); the identifier is recognized FIRST so a postfix containing a TYPE
+  // literal (`satisfies { dialect: 'sqlite' | ... }`) is never mistaken for the runtime config.
+  const identifierMatch = /^([A-Za-z_$][\w$]*)\s*(?:satisfies\b|as\b|;|\n|$)/.exec(exportedExpression);
   if (!identifierMatch) {
     const braceOffset = maskedContent.slice(exportStartIndex).indexOf('{');
     if (braceOffset === -1) return;

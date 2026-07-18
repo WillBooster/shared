@@ -58,7 +58,15 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
     receivedSignal = signal;
     // treeKill (not child.kill): semantic-release and bun install spawn their own subprocesses
     // (npm publish, git push, ...), which must not keep publishing after wb reports cancellation.
-    if (activeChild.current?.pid) treeKill(activeChild.current.pid, signal);
+    // treeKill THROWS (missing/timing-out `ps`, EPERM), and an exception escaping a signal
+    // listener would terminate the process and skip the restoring finally — so degrade to
+    // killing the direct child instead.
+    try {
+      if (activeChild.current?.pid) treeKill(activeChild.current.pid, signal);
+    } catch (error) {
+      console.error(chalk.red(`Failed to terminate the release child process tree: ${String(error)}`));
+      activeChild.current?.kill(signal);
+    }
   };
   const guardedSignals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
   for (const signal of guardedSignals) process.on(signal, signalHandler);
@@ -117,19 +125,6 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   }
 }
 
-/**
- * Make the checkout digestible for npm, which semantic-release's npm plugin shells out to for
- * `npm version` / `npm publish`:
- * 1. npm's arborist cannot walk Bun's ISOLATED node_modules layout (the `.bun` symlink farm), so
- *    clean-reinstall with the hoisted linker first. A non-clean linker switch would leave stale
- *    global-store symlinks behind (packages then resolve from ~/.bun/install/cache/links where
- *    phantom dependencies are unreachable), so every node_modules directory is wiped first.
- * 2. npm cannot parse `workspace:` specifiers, while Bun REQUIRES the protocol so a cold install
- *    links the workspace — so rewrite the ranges to `*` AFTER the reinstall (Bun must still see
- *    the protocol while installing; npm only needs the manifest TEXT to be parseable). The
- *    affected manifests are private/unpublished or rewritten by the npm plugin on publish.
- * All mutations are restored by the caller after the release.
- */
 interface ActiveChildRef {
   current: child_process.ChildProcess | undefined;
 }
@@ -159,6 +154,19 @@ async function spawnAndWait(
   });
 }
 
+/**
+ * Make the checkout digestible for npm, which semantic-release's npm plugin shells out to for
+ * `npm version` / `npm publish`:
+ * 1. npm's arborist cannot walk Bun's ISOLATED node_modules layout (the `.bun` symlink farm), so
+ *    clean-reinstall with the hoisted linker first. A non-clean linker switch would leave stale
+ *    global-store symlinks behind (packages then resolve from ~/.bun/install/cache/links where
+ *    phantom dependencies are unreachable), so every node_modules directory is wiped first.
+ * 2. npm cannot parse `workspace:` specifiers, while Bun REQUIRES the protocol so a cold install
+ *    links the workspace — so rewrite the ranges to `*` AFTER the reinstall (Bun must still see
+ *    the protocol while installing; npm only needs the manifest TEXT to be parseable). The
+ *    affected manifests are private/unpublished or rewritten by the npm plugin on publish.
+ * All mutations are restored by the caller after the release.
+ */
 async function prepareNpmCompatibleLayout(
   project: Project,
   argv: ReleaseArgv,
