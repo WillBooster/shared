@@ -23,7 +23,17 @@ const hoistedBunfig = bunfig
   .replace(/^globalStore = true\n/mu, '');
 if (hoistedBunfig !== bunfig) {
   fs.writeFileSync(bunfigPath, hoistedBunfig);
-  console.info('Reinstalling with the hoisted linker so npm can walk node_modules...');
+  console.info('Clean-reinstalling with the hoisted linker so npm can walk node_modules...');
+  // A non-clean linker switch leaves stale global-store symlinks behind (semantic-release then
+  // resolves from ~/.bun/install/cache/links, where cosmiconfig's phantom `env-paths` dependency
+  // is unreachable), so wipe every node_modules first — the same clean-reinstall rule the
+  // isolated-install migration documents.
+  fs.rmSync('node_modules', { force: true, recursive: true });
+  for (const entry of fs.readdirSync('packages', { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      fs.rmSync(path.join('packages', entry.name, 'node_modules'), { force: true, recursive: true });
+    }
+  }
   execSync('bun install', { stdio: 'inherit' });
 }
 
