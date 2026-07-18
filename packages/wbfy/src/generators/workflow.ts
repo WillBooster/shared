@@ -367,19 +367,17 @@ async function writeWorkflowYaml(
 
   // Deploy callers need no repository writes: the called reusable workflow inherits the caller's
   // token permissions, repositories default the token to write, and the reusable deploy workflow
-  // at main performs no GITHUB_TOKEN writes. A top-level permissions block applies to EVERY job
-  // and resets unspecified scopes to none, so inject the read-only default only when each job is
-  // an @main call of the reusable deploy workflow — an inline job may need writes, a PINNED
-  // callee follows an older revision whose write needs are unaudited, and run-script callers
-  // execute arbitrary package scripts that may push commits. Only default it — a workflow that
-  // declares its own permissions keeps them (OIDC deploys always do, for id-token).
-  const jobs = Object.values(newSettings.jobs);
-  if (
-    !newSettings.permissions &&
-    jobs.length > 0 &&
-    jobs.every((job) => /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@main$/u.test(job.uses ?? ''))
-  ) {
-    newSettings.permissions = { contents: 'read' };
+  // at main performs no GITHUB_TOKEN writes. The read-only default is injected at the JOB level
+  // (job permissions do not affect sibling jobs, so inline jobs or pinned callees — whose write
+  // needs are unaudited — keep theirs), and only when neither the workflow nor the job declares
+  // its own permissions (OIDC deploys always do, for id-token). run-script callers are excluded
+  // because arbitrary package scripts may push commits.
+  if (!newSettings.permissions) {
+    for (const job of Object.values(newSettings.jobs)) {
+      if (!job.permissions && /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@main$/u.test(job.uses ?? '')) {
+        job.permissions = { contents: 'read' };
+      }
+    }
   }
 
   switch (kind) {

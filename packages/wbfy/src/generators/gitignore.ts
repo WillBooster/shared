@@ -8,6 +8,7 @@ import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 
 // Do not remove `windows`: generated .gitignore files must keep ignoring Windows-created local artifacts.
 const defaultNames = ['windows', 'macos', 'linux', 'jetbrains', 'visualstudiocode', 'emacs', 'vim', 'yarn'];
@@ -143,6 +144,17 @@ src-tauri/gen/schemas/
     if (generatesWorkerTypes(config)) {
       headUserContent += `/worker-configuration.d.ts
 `;
+    } else if (config.doesContainWranglerConfig) {
+      // On a worker-types opt-out the ignore rule above disappears, so an already-generated file
+      // would surface as untracked noise on every checkout — delete it, but only an UNTRACKED
+      // copy (a tracked one is the user's own file, not wbfy's leftover).
+      const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
+      if (
+        fs.existsSync(workerTypesPath) &&
+        !spawnSyncAndReturnStdout('git', ['ls-files', '--', 'worker-configuration.d.ts'], config.dirPath).trim()
+      ) {
+        await promisePool.run(() => fs.promises.rm(workerTypesPath, { force: true }));
+      }
     }
     if (rootConfig.depending.vinext || config.depending.vinext) {
       headUserContent += `.vinext/

@@ -327,9 +327,11 @@ export function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPat
     return patternSet.patterns.some((pattern) => {
       if (typeof pattern !== 'string') return false;
       // `${configDir}`-prefixed patterns were expanded to absolute paths at resolve time.
-      if (path.isAbsolute(pattern)) return tsconfigPatternCouldMatchPath(pattern, workerTypesPath);
+      if (path.isAbsolute(pattern)) {
+        return tsconfigPatternCouldMatchPath(pattern, workerTypesPath, patternSet.expandsDirectories);
+      }
       if (relativePath.startsWith('..')) return false;
-      return tsconfigPatternCouldMatchPath(pattern, relativePath);
+      return tsconfigPatternCouldMatchPath(pattern, relativePath, patternSet.expandsDirectories);
     });
   };
   // `files` entries are always part of the program, even when `exclude` matches them.
@@ -343,6 +345,8 @@ export function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPat
 interface TsconfigPatternSet {
   /** Directory of the config that declared the patterns; tsc resolves them relative to it. */
   baseDirPath: string;
+  /** include/exclude treat an extensionless non-glob pattern as a directory subtree; `files` does not. */
+  expandsDirectories: boolean;
   patterns: unknown;
 }
 
@@ -374,10 +378,11 @@ function resolveTsconfigFileSet(
   if (!tsconfig) return undefined;
   const dirPath = path.dirname(filePath);
   // `${configDir}` resolves to the directory of the ROOT (consuming) config, wherever it appears.
-  const toPatternSet = (patterns: unknown): TsconfigPatternSet | undefined =>
+  const toPatternSet = (patterns: unknown, expandsDirectories: boolean): TsconfigPatternSet | undefined =>
     Array.isArray(patterns)
       ? {
           baseDirPath: dirPath,
+          expandsDirectories,
           patterns: patterns.map((pattern) =>
             typeof pattern === 'string' && pattern.startsWith('${configDir}')
               ? path.join(consumerDirPath, pattern.slice('${configDir}'.length))
@@ -386,9 +391,9 @@ function resolveTsconfigFileSet(
         }
       : undefined;
   const fileSet: TsconfigFileSet = {
-    exclude: toPatternSet(tsconfig.exclude),
-    files: toPatternSet(tsconfig.files),
-    include: toPatternSet(tsconfig.include),
+    exclude: toPatternSet(tsconfig.exclude, true),
+    files: toPatternSet(tsconfig.files, false),
+    include: toPatternSet(tsconfig.include, true),
   };
   const parents =
     typeof tsconfig.extends === 'string' ? [tsconfig.extends] : Array.isArray(tsconfig.extends) ? tsconfig.extends : [];
@@ -409,10 +414,13 @@ function resolveTsconfigFileSet(
   return fileSet;
 }
 
-function tsconfigPatternCouldMatchPath(pattern: string, targetPath: string): boolean {
+function tsconfigPatternCouldMatchPath(pattern: string, targetPath: string, expandsDirectories: boolean): boolean {
   const normalized = pattern.replace(/^\.\//u, '');
   // A bare `.` include covers everything under the config's directory.
   if (normalized === '' || normalized === '.') return true;
+  // Absolute patterns (expanded `${configDir}`) are matched against the absolute target; drop the
+  // leading slashes from both so the segment-built regex anchors identically.
+  targetPath = targetPath.replace(/^\/+/u, '');
   const segments = normalized.split('/').filter((segment) => segment !== '');
   const regexSource = segments
     .map((segment, index) => {
@@ -425,7 +433,11 @@ function tsconfigPatternCouldMatchPath(pattern: string, targetPath: string): boo
       return isLast ? segmentSource : `${segmentSource}/`;
     })
     .join('');
-  return new RegExp(`^${regexSource}$`, 'u').test(targetPath);
+  // tsc treats an extensionless non-glob include/exclude entry as a directory whose subtree is included.
+  const lastSegment = segments.at(-1) ?? '';
+  const directorySuffix =
+    expandsDirectories && !/[*?]/u.test(lastSegment) && !lastSegment.includes('.') ? String.raw`(?:/.*)?` : '';
+  return new RegExp(`^${regexSource}${directorySuffix}$`, 'u').test(targetPath);
 }
 
 /**

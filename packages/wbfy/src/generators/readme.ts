@@ -4,7 +4,7 @@ import path from 'node:path';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { getOctokit, hasGitHubToken } from '../utils/githubUtil.js';
+import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
 const semanticReleaseBadge =
@@ -37,7 +37,8 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
         // GitHub's badge endpoint returns 404 until the workflow has at least one run, so a badge
         // for a dispatch-only deploy workflow that has never run renders as a broken image.
         // Test workflows run on every PR, so only deploy badges need the guard.
-        if (fileName.startsWith('deploy') && !(await hasAnyWorkflowRun(repository, fileName))) continue;
+        if (fileName.startsWith('deploy') && !(await hasAnyWorkflowRun(repository, fileName, config.isPublicRepo)))
+          continue;
         newContent = insertBadge(newContent, badge);
       }
     }
@@ -46,12 +47,13 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
   });
 }
 
-async function hasAnyWorkflowRun(repository: string, workflowFileName: string): Promise<boolean> {
+async function hasAnyWorkflowRun(
+  repository: string,
+  workflowFileName: string,
+  isPublicRepo: boolean
+): Promise<boolean> {
   const [owner, repo] = repository.split('/');
   if (!owner || !repo) return true;
-  // GitHub answers 404 (not 401/403) for private resources accessed without authorization, so an
-  // unauthenticated 404 cannot distinguish "no runs" from "no access" — keep the badge then.
-  if (!hasGitHubToken(owner)) return true;
   try {
     const response = await getOctokit(owner).request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', {
       owner,
@@ -61,11 +63,12 @@ async function hasAnyWorkflowRun(repository: string, workflowFileName: string): 
     });
     return response.data.total_count > 0;
   } catch (error) {
-    // GitHub resolves the file name against the REMOTE repository, so a locally added workflow
-    // that has never been pushed yields 404 — its badge would be broken too, exactly like zero runs.
-    if ((error as { status?: number }).status === 404) return false;
-    // Keep the pre-guard behavior (insert the badge) when the check itself cannot run,
-    // e.g. offline or without a GitHub token.
+    // For a PUBLIC repository the runs endpoint needs no authorization, so 404 reliably means the
+    // workflow is absent from the remote (e.g. added locally, never pushed) — like zero runs, its
+    // badge would render broken. For a PRIVATE repository GitHub also answers 404 when the token
+    // is missing or under-scoped, so 404 is ambiguous there and the badge is kept.
+    if ((error as { status?: number }).status === 404 && isPublicRepo) return false;
+    // Keep the pre-guard behavior (insert the badge) when the check itself cannot run.
     return true;
   }
 }

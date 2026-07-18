@@ -67,6 +67,13 @@ test('honors exclude and relative extends chains when resolving the effective fi
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.base.json'), '{ "include": ["pkg/**/*"] }');
     await fs.promises.writeFile(path.join(packageDirPath, 'tsconfig.json'), '{ "extends": "../tsconfig.base.json" }');
     expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
+    // `${configDir}` resolves to the consuming package's directory, wherever declared.
+    await fs.promises.writeFile(path.join(packageDirPath, 'tsconfig.json'), '{ "include": ["${configDir}/**/*"] }');
+    expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
+    // A directory include (extensionless, no glob) covers its whole subtree, like tsc.
+    await fs.promises.writeFile(path.join(dirPath, 'tsconfig.base.json'), '{ "include": ["pkg"] }');
+    await fs.promises.writeFile(path.join(packageDirPath, 'tsconfig.json'), '{ "extends": "../tsconfig.base.json" }');
+    expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
     // ...while a base config covering only a sibling directory does not.
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.base.json'), '{ "include": ["other/**/*"] }');
     expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(false);

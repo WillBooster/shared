@@ -10,7 +10,7 @@ import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
-import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
+import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import {
   classifyWranglerTypesInvocation,
   isManagedGenCodeSegment,
@@ -210,7 +210,27 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   }
 }
 
-function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: string | undefined): void {
+function updatePostinstallScript(
+  scripts: PackageJson.Scripts,
+  wranglerTypes: string | undefined,
+  removesObsoleteWranglerTypes: boolean
+): void {
+  // On a worker-types opt-out (a wrangler package whose TypeScript project no longer consumes the
+  // generated file), strip the generating default-output invocations wbfy used to manage from
+  // postinstall — otherwise every install keeps recreating the now-unignored ~500KB file. Custom
+  // pipelines (non-default output, wrappers, unmodeled shells) are classified differently and stay.
+  if (removesObsoleteWranglerTypes && scripts.postinstall) {
+    const remaining = splitCommandSegments(scripts.postinstall).filter((segment) => {
+      if (segment === '') return false;
+      const invocationArgs = parseWranglerTypesInvocation(segment);
+      return !invocationArgs || classifyWranglerTypesInvocation(invocationArgs) !== 'reusableGenerator';
+    });
+    if (remaining.length > 0) {
+      scripts.postinstall = remaining.join(' && ');
+    } else {
+      delete scripts.postinstall;
+    }
+  }
   if (scripts['gen-code']) {
     // Keep the project's own worker-types pipeline (prerequisites included — e.g. `node scripts/prepareTypes.js
     // && wrangler types ...`) when rewriting postinstall: dropping a prerequisite would leave fresh checkouts
@@ -850,7 +870,11 @@ async function normalizePackageMetadata(
         : appendWranglerTypes(genCodeScript, wranglerTypes);
   }
   normalizeGenI18nTsScript(config, jsonObj);
-  updatePostinstallScript(jsonObj.scripts, wranglerTypes);
+  updatePostinstallScript(
+    jsonObj.scripts,
+    wranglerTypes,
+    config.doesContainWranglerConfig && !wranglerTypes && !consumesGeneratedWorkerTypes(config)
+  );
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
@@ -1020,14 +1044,18 @@ function addPackageJsonDependencies(
     // EXISTING `workspace:` declaration is always kept: overwriting it with a registry release
     // would silently break the local workspace link.)
 
-    if (getWorkspacePackageDirs(rootConfig).has(dependency)) {
+    // A declared `workspace:` specifier always wins, whether or not the workspace map sees the
+    // package: running wbfy on a monorepo SUBDIRECTORY hides the parent's workspaces, so the map
+    // alone cannot be trusted to detect a local workspace link.
+    if (packageJsonDependencies[dependency]?.startsWith('workspace:')) {
       if (jsonObj.private) {
         packageJsonDependencies[dependency] = 'workspace:*';
-        continue;
       }
-      if (packageJsonDependencies[dependency]?.startsWith('workspace:')) {
-        continue;
-      }
+      continue;
+    }
+    if (jsonObj.private && getWorkspacePackageDirs(rootConfig).has(dependency)) {
+      packageJsonDependencies[dependency] = 'workspace:*';
+      continue;
     }
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       config,
