@@ -356,7 +356,10 @@ function replaceAgeRecipients(content: string): string {
   // validation in the caller then fails the run safely with instructions instead of corrupting
   // the file.
   const lines = content.split('\n');
-  const headerIndex = lines.findIndex((line) => /^\s*\[\s*providers\.age\s*\]\s*(?:#.*)?$/u.test(line));
+  // TOML permits whitespace around dotted-key components, so `[providers . age]` equals
+  // `[providers.age]`; quoted-key spellings remain unmatched and fall through to the caller's
+  // re-parse validation, which fails the run safely.
+  const headerIndex = lines.findIndex((line) => /^\s*\[\s*providers\s*\.\s*age\s*\]\s*(?:#.*)?$/u.test(line));
   if (headerIndex !== -1) {
     let endIndex = lines.length;
     for (let index = headerIndex + 1; index < lines.length; index++) {
