@@ -1054,8 +1054,18 @@ function addPackageJsonDependencies(
       continue;
     }
     if (jsonObj.private && getWorkspacePackageDirs(rootConfig).has(dependency)) {
-      packageJsonDependencies[dependency] = 'workspace:*';
-      continue;
+      const existingSpecifier = packageJsonDependencies[dependency];
+      if (!existingSpecifier || existingSpecifier.startsWith('workspace:')) {
+        packageJsonDependencies[dependency] = 'workspace:*';
+        continue;
+      }
+      // An existing CONCRETE pin on a workspace package is a deliberate choice and must not be
+      // converted to the workspace protocol. Note the trade-off either way: npm (which
+      // semantic-release's npm plugin shells out to) cannot parse `workspace:` specifiers, while
+      // a registry pin makes a cold bun install shadow the workspace and skip its dependencies —
+      // WillBooster/shared keeps `workspace:*` and strips the protocol on the CI checkout right
+      // before releasing (scripts/stripWorkspaceProtocol.mjs). Fall through so a concrete pin
+      // keeps being bumped like any managed dependency.
     }
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       config,
