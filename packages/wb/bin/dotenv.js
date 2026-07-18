@@ -124,13 +124,21 @@ function readFnoxEnvironmentVariables(cwd, cascade, currentEnvVars, modeFileOver
   if (!secrets) return {};
   // A key is profile-specific (and may override process.env off CI) when the profile export's
   // value differs from the base export's; when the base export fails, no override is applied.
-  const baseSecrets = modeFileOverridesProcessEnv && cascade ? runFnoxExport(cwd, undefined, true) : undefined;
+  // The base export runs lazily, only when a process.env collision needs adjudicating.
+  let cachedBaseSecrets = false;
+  const getBaseSecrets = () => {
+    if (cachedBaseSecrets === false) cachedBaseSecrets = runFnoxExport(cwd, undefined, true);
+    return cachedBaseSecrets;
+  };
 
   const envVars = {};
   for (const [key, value] of Object.entries(secrets)) {
     if (typeof value !== 'string' || key in currentEnvVars) continue;
-    const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
-    if (key in process.env && !overridesProcessEnv) continue;
+    if (key in process.env) {
+      const baseSecrets = modeFileOverridesProcessEnv && cascade ? getBaseSecrets() : undefined;
+      const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
+      if (!overridesProcessEnv) continue;
+    }
     envVars[key] = value;
   }
   return envVars;

@@ -190,7 +190,9 @@ export class Project {
 
   @memoizeOne
   private get requiresNextPublicWbEnv(): boolean {
-    return this.hasDependency('next') || this.hasDependency('vinext');
+    // OWN dependencies only: a root-level next/vinext devDependency in a mixed monorepo must not
+    // force NEXT_PUBLIC_WB_ENV onto every non-Next workspace package.
+    return !!this.getOwnDependencyVersion('next') || !!this.getOwnDependencyVersion('vinext');
   }
 
   @memoizeOne

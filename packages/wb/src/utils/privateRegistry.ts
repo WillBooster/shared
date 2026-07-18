@@ -13,6 +13,17 @@ export const PRIVATE_REGISTRY_SCOPE = '@willbooster-private';
 
 const nonRegistrySpecifierPrefixes = ['git', 'file:', 'link:', 'workspace:', 'http:', 'https:', 'portal:', 'patch:'];
 
+// The single source of truth for which git specifiers the private-package tooling supports:
+// `wb setup-private-packages` materializes exactly these, and `wb optimizeForDockerBuild` must
+// rewrite exactly these (rewriting other orgs' SSH URLs would point at never-materialized paths).
+const privateGitDependencyPattern = /^git@github\.com:(?:WillBooster|WillBoosterLab)\/[^/#]+(?:\.git)?(?:#.*)?$/;
+
+// Returns boolean (not a `value is string` predicate): a predicate would narrow the negative
+// branch to `undefined` and break `else if` chains over `string | undefined` dependency values.
+export function isPrivateGitDependency(value: unknown): boolean {
+  return typeof value === 'string' && privateGitDependencyPattern.test(value);
+}
+
 export function isPrivateRegistryDependency(name: string, value: unknown): value is string {
   return (
     name.startsWith(`${PRIVATE_REGISTRY_SCOPE}/`) &&
@@ -52,7 +63,9 @@ export function resolvePrivateRegistryAuth(rootDirPath: string): PrivateRegistry
   let matchedToken: string | undefined;
   let matchedPrefixLength = -1;
   for (const [key, value] of Object.entries(entries)) {
-    if (!key.endsWith(':_authToken')) continue;
+    // Skip empty tokens (an unset `${VAR}` expands to ''): an empty match must not defeat the
+    // VERDACCIO_TOKEN fallback below.
+    if (!key.endsWith(':_authToken') || !value) continue;
     const prefix = `${key.slice(0, -':_authToken'.length).replace(/\/+$/, '')}/`;
     if (normalizedRegistryUrl.startsWith(prefix) && prefix.length > matchedPrefixLength) {
       matchedPrefixLength = prefix.length;

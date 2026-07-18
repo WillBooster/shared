@@ -54,6 +54,9 @@ export async function buildIfNeeded(
   }
   argv = { ...argv, command: buildCommand };
 
+  // The cache requires the git repository root to BE rootDirPath: porcelain paths and diff
+  // pathspecs below are joined/executed against rootDirPath. When the repo root is elsewhere
+  // (e.g. a subproject of a larger repository), always build instead of mis-resolving paths.
   if (!fs.existsSync(path.join(project.rootDirPath, '.git'))) {
     build(project, argv);
     return true;
@@ -191,6 +194,8 @@ const includeSuffix = [
   // Because some build commands affected by changes in `package.json`
   'package.json',
   'yarn.lock',
+  'bun.lock',
+  'bun.lockb',
 ];
 const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'test/fixtures/'];
 
@@ -201,37 +206,47 @@ async function updateHashWithDiffResult(
 ): Promise<void> {
   return new Promise((resolve) => {
     // `-uall` lists untracked files individually (not just their directory), so new files in a
-    // brand-new source directory participate in the hash below.
-    const ret = child_process.spawnSync('git', ['status', '--porcelain', '-uall'], {
+    // brand-new source directory participate in the hash below. `-z` yields NUL-delimited,
+    // UNQUOTED records: without it git C-quotes non-ASCII paths, which would silently drop those
+    // files from both the untracked hashing and the `git diff` pathspecs.
+    const ret = child_process.spawnSync('git', ['status', '--porcelain', '-uall', '-z'], {
       cwd: project.dirPath,
       env: project.env,
       stdio: 'pipe',
       encoding: 'utf8',
     });
-    const statusEntries = ret.stdout
-      .trim()
-      .split('\n')
-      .filter((line) => line.length > 0)
-      .map((line) => {
-        const rawPath = line.slice(2).trim();
-        return {
-          untracked: line.startsWith('??'),
-          // Renames are reported as `old -> new`; only the new path exists in the worktree.
-          filePath: rawPath.includes(' -> ') ? (rawPath.split(' -> ').at(-1) ?? rawPath) : rawPath,
-        };
-      })
-      .map((entry) => ({
-        ...entry,
-        hashPath:
-          project.env.WB_ENV === 'test'
-            ? entry.filePath.replace(/packages\/wb\/test\/fixtures\/[^/]+\//, '')
-            : entry.filePath,
-      }));
-    const filteredEntries = statusEntries.filter(
-      ({ hashPath }) =>
+    const tokens = ret.stdout.split('\0').filter((token) => token.length > 0);
+    const statusEntries: { untracked: boolean; filePath: string }[] = [];
+    for (let index = 0; index < tokens.length; index++) {
+      const token = tokens[index]!;
+      const status = token.slice(0, 2);
+      statusEntries.push({ untracked: status === '??', filePath: token.slice(3) });
+      // Rename/copy records carry the ORIGINAL path as an extra NUL-delimited field; include it
+      // so a file renamed out of the build inputs still invalidates the cache.
+      if (status.includes('R') || status.includes('C')) {
+        const originalPath = tokens[++index];
+        if (originalPath) statusEntries.push({ untracked: false, filePath: originalPath });
+      }
+    }
+    const normalizedEntries = statusEntries.map((entry) => ({
+      ...entry,
+      hashPath:
+        project.env.WB_ENV === 'test'
+          ? entry.filePath.replace(/packages\/wb\/test\/fixtures\/[^/]+\//, '')
+          : entry.filePath,
+    }));
+    // Build OUTPUTS must never count as build inputs: hashing e.g. an untracked dist/ file would
+    // change the hash on every build and disable the cache permanently.
+    const projectRelativeDirPath = path.relative(project.rootDirPath, project.dirPath);
+    const outputPathPrefixes = (getExplicitOutputPaths(argv) ?? defaultOutputCandidates).map(
+      (outputPath) => `${path.join(projectRelativeDirPath, outputPath)}/`
+    );
+    const filteredEntries = normalizedEntries.filter(
+      ({ filePath, hashPath }) =>
         (includePatterns.some((pattern) => hashPath.includes(pattern)) ||
           includeSuffix.some((suffix) => hashPath.endsWith(suffix))) &&
-        !excludePatterns.some((pattern) => hashPath.includes(pattern))
+        !excludePatterns.some((pattern) => hashPath.includes(pattern)) &&
+        !outputPathPrefixes.some((prefix) => filePath.startsWith(prefix))
     );
     if (argv.verbose) {
       console.info(`Changed files: ${filteredEntries.map((entry) => entry.hashPath).join(', ')}`);

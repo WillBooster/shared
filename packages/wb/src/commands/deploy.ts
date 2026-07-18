@@ -165,16 +165,20 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       );
       process.exit(1);
     }
-    if (resolvedConfig.d1Databases.length > 0 && wranglerNativeD1Databases.length === 0 && !drizzleKitManagesD1) {
+    const managedD1Databases = new Set(wranglerNativeD1Databases);
+    if (drizzleD1Database) managedD1Databases.add(drizzleD1Database);
+    const unmanagedD1Databases = resolvedConfig.d1Databases.filter((database) => !managedD1Databases.has(database));
+    if (unmanagedD1Databases.length > 0) {
       // Say so out loud instead of silently deploying code against unmigrated databases: the
       // drizzle marker detection is heuristic (text scan of drizzle.config.*), so a project that
-      // genuinely migrates D1 must be able to notice when no mechanism was selected.
+      // genuinely migrates D1 must be able to notice when no mechanism was selected. This also
+      // covers partial layouts (some bindings wrangler-native, others unmanaged).
       console.warn(
         chalk.yellow(
-          `No D1 migration mechanism detected for ${resolvedConfig.d1Databases
+          `No D1 migration mechanism detected for ${unmanagedD1Databases
             .map((database) => database.binding ?? database.database_name ?? 'unnamed binding')
             .join(', ')} ` +
-            '(no wrangler migrations directory and no drizzle config targeting sqlite/d1-http/durable-sqlite); wb deploy will not run D1 migrations.'
+            '(no wrangler migrations directory and no drizzle config targeting sqlite/d1-http/durable-sqlite); wb deploy will not run D1 migrations for them.'
         )
       );
     }
@@ -191,6 +195,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       const postHookReceivesD1DatabaseId =
         !!project.packageJson.scripts?.['deploy/post'] &&
         drizzleKitManagesD1 &&
+        // When wrangler-native migrations are the selected mechanism, a wrangler OAuth login
+        // suffices; only a drizzle-selected D1 database routes the hook through d1-http.
+        wranglerNativeD1Databases.length === 0 &&
         resolvedConfig.d1Databases.length === 1 &&
         !!resolvedConfig.d1Databases[0]?.database_id;
       if ((drizzleD1Database || postHookReceivesD1DatabaseId) && !project.env.CLOUDFLARE_API_TOKEN) {

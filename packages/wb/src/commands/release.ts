@@ -41,9 +41,9 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   // multi-semantic-release walks the workspaces itself.
   const project = projects.root;
 
-  // Maps a mutated file to its pre-release content; `undefined` marks a file that did not exist
-  // and must be deleted on restore (e.g. a lockfile `bun install` created).
-  const modifiedFiles = new Map<string, string | undefined>();
+  // Maps a mutated file to its pre-release content (raw bytes — bun.lockb is binary); `undefined`
+  // marks a file that did not exist and must be deleted on restore (e.g. a created lockfile).
+  const modifiedFiles = new Map<string, Buffer | undefined>();
   let exitCode = 0;
   try {
     await prepareNpmCompatibleLayout(project, argv, modifiedFiles);
@@ -91,7 +91,7 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
 async function prepareNpmCompatibleLayout(
   project: Project,
   argv: ReleaseArgv,
-  modifiedFiles: Map<string, string | undefined>
+  modifiedFiles: Map<string, Buffer | undefined>
 ): Promise<void> {
   const bunfigPath = path.join(project.dirPath, 'bunfig.toml');
   const bunfig = fs.existsSync(bunfigPath) ? fs.readFileSync(bunfigPath, 'utf8') : undefined;
@@ -99,21 +99,22 @@ async function prepareNpmCompatibleLayout(
   if (bunfig !== undefined && hoistedBunfig !== bunfig) {
     console.info(chalk.cyan('Clean-reinstalling with the hoisted linker so npm can walk node_modules...'));
     if (!argv.dryRun) {
-      modifiedFiles.set(bunfigPath, bunfig);
-      // The hoisted reinstall may rewrite (or create) the lockfile; snapshot it so a successful
-      // release leaves no tracked or untracked lockfile changes behind.
+      modifiedFiles.set(bunfigPath, Buffer.from(bunfig, 'utf8'));
+      // The hoisted reinstall may rewrite (or create) the lockfile; snapshot the raw bytes so a
+      // successful release leaves no tracked or untracked lockfile changes behind.
       for (const lockFileName of ['bun.lock', 'bun.lockb']) {
         const lockFilePath = path.join(project.dirPath, lockFileName);
-        modifiedFiles.set(
-          lockFilePath,
-          fs.existsSync(lockFilePath) ? fs.readFileSync(lockFilePath, 'utf8') : undefined
-        );
+        modifiedFiles.set(lockFilePath, fs.existsSync(lockFilePath) ? fs.readFileSync(lockFilePath) : undefined);
       }
       fs.writeFileSync(bunfigPath, hoistedBunfig ?? '', 'utf8');
       for (const packageDirPath of [project.dirPath, ...(await findWorkspacePackageDirs(project))]) {
         fs.rmSync(path.join(packageDirPath, 'node_modules'), { force: true, recursive: true });
       }
-      const ret = child_process.spawnSync('bun', ['install'], { cwd: project.dirPath, stdio: 'inherit' });
+      const ret = child_process.spawnSync('bun', ['install'], {
+        cwd: project.dirPath,
+        env: project.env,
+        stdio: 'inherit',
+      });
       if (ret.status !== 0) {
         // Throwing (instead of process.exit, which would skip the caller's finally) lets the
         // restore run before the process terminates.
@@ -135,7 +136,7 @@ async function prepareNpmCompatibleLayout(
 
     console.info(chalk.cyan(`Rewriting workspace: ranges in ${path.relative(project.dirPath, packageJsonPath)}...`));
     if (!argv.dryRun) {
-      modifiedFiles.set(packageJsonPath, original);
+      modifiedFiles.set(packageJsonPath, Buffer.from(original, 'utf8'));
       fs.writeFileSync(packageJsonPath, rewritten, 'utf8');
     }
   }
@@ -148,19 +149,22 @@ async function prepareNpmCompatibleLayout(
  * revert that bump — so when the file changed during the release, only the `workspace:`
  * specifiers are written back into the CURRENT content.
  */
-function restoreModifiedFile(filePath: string, originalContent: string | undefined): void {
+function restoreModifiedFile(filePath: string, originalContent: Buffer | undefined): void {
   if (originalContent === undefined) {
     fs.rmSync(filePath, { force: true });
     return;
   }
   if (path.basename(filePath) === 'package.json' && fs.existsSync(filePath)) {
     const currentContent = fs.readFileSync(filePath, 'utf8');
-    if (currentContent !== rewriteWorkspaceRanges(originalContent)) {
-      fs.writeFileSync(filePath, restoreWorkspaceRanges(currentContent, originalContent), 'utf8');
+    const originalText = originalContent.toString('utf8');
+    if (currentContent !== rewriteWorkspaceRanges(originalText)) {
+      fs.writeFileSync(filePath, restoreWorkspaceRanges(currentContent, originalText), 'utf8');
       return;
     }
   }
-  fs.writeFileSync(filePath, originalContent, 'utf8');
+  // Write the snapshot bytes verbatim: bun.lockb is binary, so any text decode/encode round trip
+  // would corrupt it.
+  fs.writeFileSync(filePath, originalContent);
 }
 
 export function buildHoistedBunfig(bunfig: string): string {
@@ -170,25 +174,43 @@ export function buildHoistedBunfig(bunfig: string): string {
 }
 
 export function rewriteWorkspaceRanges(packageJsonContent: string): string {
-  // Rewrite only dependency entries collected from the parsed manifest: a blanket
-  // `"workspace:..."` replacement would also corrupt unrelated string values (e.g. a
-  // description starting with `workspace:`) in the manifest npm publishes.
-  let content = packageJsonContent;
-  for (const { name } of collectWorkspaceDependencies(packageJsonContent)) {
-    content = content.replaceAll(new RegExp(`("${escapeRegExp(name)}"\\s*:\\s*)"workspace:[^"]*"`, 'gu'), '$1"*"');
-  }
-  return content;
+  // Operate only inside the dependency sections: a blanket `"workspace:..."` replacement would
+  // also corrupt unrelated string values (e.g. a description starting with `workspace:`), and a
+  // name-keyed global replacement would touch same-named keys in other sections (e.g. overrides).
+  return replaceInDependencySections(packageJsonContent, (section) =>
+    section.replaceAll(/("[^"\n]+"\s*:\s*)"workspace:[^"]*"/gu, '$1"*"')
+  );
 }
 
+/**
+ * Re-apply the original `workspace:` specifiers to the CURRENT manifest content. Matching keys
+ * off the dependency NAME (not the `"*"` placeholder) is deliberate: multi-semantic-release's
+ * prepare step overwrites local dependency specifiers with concrete released versions, and the
+ * committed manifest must get its `workspace:` protocol back regardless — Bun requires the
+ * protocol so a cold install links the workspace instead of resolving a registry copy.
+ */
 export function restoreWorkspaceRanges(currentContent: string, originalContent: string): string {
-  let content = currentContent;
-  for (const { name, specifier } of collectWorkspaceDependencies(originalContent)) {
-    content = content.replaceAll(
-      new RegExp(`("${escapeRegExp(name)}"\\s*:\\s*)"\\*"`, 'gu'),
-      `$1${JSON.stringify(specifier)}`
-    );
-  }
-  return content;
+  const workspaceDependencies = collectWorkspaceDependencies(originalContent);
+  return replaceInDependencySections(currentContent, (section) => {
+    let result = section;
+    for (const { name, specifier } of workspaceDependencies) {
+      result = result.replaceAll(
+        new RegExp(`("${escapeRegExp(name)}"\\s*:\\s*)"[^"]*"`, 'gu'),
+        // A replacer function, not a replacement string: specifiers containing `$` must be
+        // inserted literally instead of being interpreted as substitution patterns.
+        (_match, prefix: string) => `${prefix}${JSON.stringify(specifier)}`
+      );
+    }
+    return result;
+  });
+}
+
+/** Dependency sections contain only `"name": "specifier"` string pairs, so `[^{}]*` spans them. */
+function replaceInDependencySections(content: string, replaceSection: (section: string) => string): string {
+  return content.replaceAll(
+    /("(?:dependencies|devDependencies|optionalDependencies|peerDependencies)"\s*:\s*\{)([^{}]*)(\})/gu,
+    (_match, prefix: string, body: string, suffix: string) => `${prefix}${replaceSection(body)}${suffix}`
+  );
 }
 
 function collectWorkspaceDependencies(packageJsonContent: string): { name: string; specifier: string }[] {
@@ -222,7 +244,10 @@ function runSemanticRelease(project: Project, argv: ReleaseArgv): number {
       ? 'multi-semantic-release'
       : 'semantic-release';
 
-  const env = { ...process.env };
+  // The project is loaded with loadEnv: false (semantic-release runs with the ambient/CI
+  // environment by design), so project.env aliases process.env here; using it keeps the
+  // project.env convention and picks up env loading if that design ever changes.
+  const env = { ...project.env };
   prependNodeModulesBinToPath(project.dirPath, env);
   const hasLocalBin = fs.existsSync(path.join(project.dirPath, 'node_modules', '.bin', releaseBin));
   const command = hasLocalBin

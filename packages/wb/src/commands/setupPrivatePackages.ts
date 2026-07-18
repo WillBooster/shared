@@ -10,6 +10,7 @@ import type { PrivateRegistryAuth } from '../utils/privateRegistry.js';
 import {
   PRIVATE_REGISTRY_SCOPE,
   downloadAndExtractRegistryPackage,
+  isPrivateGitDependency,
   isPrivateRegistryDependency,
   resolvePrivateRegistryAuth,
 } from '../utils/privateRegistry.js';
@@ -24,7 +25,6 @@ interface PrivatePackage {
 }
 
 const dependencyKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
-const privateGitDependencyPattern = /^git@github\.com:(?:WillBooster|WillBoosterLab)\/[^/#]+(?:\.git)?(?:#.*)?$/;
 
 const builder = {
   'out-dir': {
@@ -48,8 +48,9 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
 
     const outDirPath = path.resolve(projects.root.dirPath, argv.outDir);
     assertSubdirectory(projects.root.dirPath, outDirPath);
-    const registryOutDirPath = path.join(path.dirname(outDirPath), PRIVATE_REGISTRY_SCOPE);
-    assertSubdirectory(projects.root.dirPath, registryOutDirPath);
+    // Registry packages always materialize at the repository root: `wb optimizeForDockerBuild`
+    // resolves them from `<root>/@willbooster-private` regardless of `--out-dir`.
+    const registryOutDirPath = path.join(projects.root.dirPath, PRIVATE_REGISTRY_SCOPE);
     if (outDirPath === registryOutDirPath) {
       // e.g. `--out-dir @willbooster-private`: the registry download step would delete the git
       // packages copied into the aliased directory moments earlier.
@@ -83,36 +84,53 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     }
 
     await fs.promises.rm(outDirPath, { recursive: true, force: true });
-    if (copiedPackages.length > 0) {
-      await fs.promises.mkdir(outDirPath, { recursive: true });
-    }
+    // Both output directories always exist afterwards: Dockerfiles COPY them unconditionally,
+    // and a missing source path fails the build.
+    await fs.promises.mkdir(outDirPath, { recursive: true });
     for (const privatePackage of copiedPackages) {
       await copyGitPackage(projects.root.dirPath, privatePackage);
     }
 
-    await fs.promises.rm(registryOutDirPath, { recursive: true, force: true });
     if (auth) {
-      for (const privatePackage of registryPackages) {
-        await downloadAndExtractRegistryPackage(
-          auth,
-          privatePackage.name,
-          privatePackage.versionSpecifier ?? 'latest',
-          privatePackage.targetDirPath
-        );
-        console.info(
-          `Downloaded ${privatePackage.name} to ${path.relative(projects.root.dirPath, privatePackage.targetDirPath)}`
-        );
-        // A downloaded package may itself depend on private packages that were not visible before
-        // extraction; materialize them too.
-        await collectNestedPrivatePackages(
-          projects.root.dirPath,
-          auth,
-          privatePackage,
-          privatePackages,
-          outDirPath,
-          registryOutDirPath
-        );
+      // Download into a staging directory and swap it in only after every download succeeded, so
+      // a failing registry/token/extraction cannot destroy the last usable materialization.
+      const stagingDirPath = path.join(projects.root.dirPath, '.tmp', 'wb-private-registry-staging');
+      const toStagedPath = (targetDirPath: string): string =>
+        path.join(stagingDirPath, path.relative(registryOutDirPath, targetDirPath));
+      await fs.promises.rm(stagingDirPath, { recursive: true, force: true });
+      await fs.promises.mkdir(stagingDirPath, { recursive: true });
+      try {
+        for (const privatePackage of registryPackages) {
+          await downloadAndExtractRegistryPackage(
+            auth,
+            privatePackage.name,
+            privatePackage.versionSpecifier ?? 'latest',
+            toStagedPath(privatePackage.targetDirPath)
+          );
+          console.info(
+            `Downloaded ${privatePackage.name} to ${path.relative(projects.root.dirPath, privatePackage.targetDirPath)}`
+          );
+          // A downloaded package may itself depend on private packages that were not visible
+          // before extraction; materialize them too.
+          await collectNestedPrivatePackages(
+            projects.root.dirPath,
+            auth,
+            privatePackage,
+            privatePackages,
+            outDirPath,
+            registryOutDirPath,
+            toStagedPath
+          );
+        }
+        await fs.promises.rm(registryOutDirPath, { recursive: true, force: true });
+        await fs.promises.rename(stagingDirPath, registryOutDirPath);
+      } catch (error) {
+        await fs.promises.rm(stagingDirPath, { recursive: true, force: true });
+        throw error;
       }
+    } else {
+      await fs.promises.rm(registryOutDirPath, { recursive: true, force: true });
+      await fs.promises.mkdir(registryOutDirPath, { recursive: true });
     }
 
     await replacePrivateDependencies(projects.root.dirPath, privatePackages);
@@ -164,9 +182,12 @@ async function collectNestedPrivatePackages(
   extractedPackage: PrivatePackage,
   privatePackages: Map<string, PrivatePackage>,
   outDirPath: string,
-  registryOutDirPath: string
+  registryOutDirPath: string,
+  toStagedPath: (targetDirPath: string) => string
 ): Promise<void> {
-  const packageJsonPath = path.join(extractedPackage.targetDirPath, 'package.json');
+  // Registry packages still live in the staging directory at this point (they are swapped into
+  // place only after every download succeeded).
+  const packageJsonPath = path.join(toStagedPath(extractedPackage.targetDirPath), 'package.json');
   if (!fs.existsSync(packageJsonPath)) return;
 
   for (const nested of findPrivateDependencies(
@@ -190,12 +211,20 @@ async function collectNestedPrivatePackages(
         auth,
         nested.name,
         nested.versionSpecifier ?? 'latest',
-        nested.targetDirPath
+        toStagedPath(nested.targetDirPath)
       );
       console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
     }
     privatePackages.set(nested.name, nested);
-    await collectNestedPrivatePackages(rootDirPath, auth, nested, privatePackages, outDirPath, registryOutDirPath);
+    await collectNestedPrivatePackages(
+      rootDirPath,
+      auth,
+      nested,
+      privatePackages,
+      outDirPath,
+      registryOutDirPath,
+      toStagedPath
+    );
   }
 }
 
@@ -203,6 +232,10 @@ async function copyGitPackage(rootDirPath: string, privatePackage: PrivatePackag
   await fs.promises.cp(privatePackage.sourceDirPath!, privatePackage.targetDirPath, {
     recursive: true,
     force: true,
+    // Bun's isolated linker exposes installed packages through symlinks; the materialized tree
+    // must contain real files (a copied absolute symlink would dangle inside the Docker image,
+    // and later dependency rewriting would write through it into the shared store).
+    dereference: true,
     filter: (src) => {
       const segments = path.relative(privatePackage.sourceDirPath!, src).split(path.sep);
       return !segments.includes('node_modules') && !segments.includes('.git');
@@ -230,11 +263,27 @@ function assertSubdirectory(rootDirPath: string, outDirPath: string): void {
 }
 
 function findInstalledPackageDir(rootDirPath: string, packageName: string): string {
-  const sourceDirPath = path.join(rootDirPath, 'node_modules', '@willbooster', toUnscopedPackageName(packageName));
-  if (!fs.existsSync(path.join(sourceDirPath, 'package.json'))) {
-    throw new Error(`Private package is not installed: ${packageName} (${sourceDirPath})`);
+  const unscopedName = toUnscopedPackageName(packageName);
+  // realpathSync resolves the isolated linker's symlink so copies read (and the copy filter
+  // computes relative paths against) the actual package directory.
+  const directDirPath = path.join(rootDirPath, 'node_modules', '@willbooster', unscopedName);
+  if (fs.existsSync(path.join(directDirPath, 'package.json'))) {
+    return fs.realpathSync(directDirPath);
   }
-  return sourceDirPath;
+  // Bun's isolated linker keeps transitive-only dependencies out of the root node_modules;
+  // search the .bun store for the package before giving up.
+  const bunStoreDirPath = path.join(rootDirPath, 'node_modules', '.bun');
+  try {
+    for (const dirent of fs.readdirSync(bunStoreDirPath, { withFileTypes: true })) {
+      const candidateDirPath = path.join(bunStoreDirPath, dirent.name, 'node_modules', '@willbooster', unscopedName);
+      if (fs.existsSync(path.join(candidateDirPath, 'package.json'))) {
+        return fs.realpathSync(candidateDirPath);
+      }
+    }
+  } catch {
+    // No .bun store (hoisted install); fall through to the error below.
+  }
+  throw new Error(`Private package is not installed: ${packageName} (${directDirPath})`);
 }
 
 function findPrivateDependencies(
@@ -260,16 +309,40 @@ function findPrivateDependencies(
       if (!/^[\w.-]+$/.test(unscopedName) || unscopedName.startsWith('.')) {
         throw new Error(`Invalid private package name: ${name}`);
       }
-      privatePackages.set(name, {
+      const requested: PrivatePackage = {
         name,
         kind: isGit ? 'git' : 'registry',
         sourceDirPath: undefined,
         targetDirPath: path.join(isGit ? outDirPath : registryOutDirPath, unscopedName),
         versionSpecifier: isGit ? undefined : (value as string),
-      });
+      };
+      const existing = privatePackages.get(name);
+      privatePackages.set(name, existing ? mergeSameManifestRequirement(existing, requested) : requested);
     }
   }
   return [...privatePackages.values()];
+}
+
+/**
+ * A manifest may legitimately request one package from several dependency sections (e.g. an exact
+ * devDependencies pin alongside a peerDependencies range): prefer the exact pin, and fail loudly
+ * only when the requirements genuinely diverge.
+ */
+function mergeSameManifestRequirement(existing: PrivatePackage, requested: PrivatePackage): PrivatePackage {
+  if (existing.kind === requested.kind && existing.versionSpecifier === requested.versionSpecifier) return existing;
+
+  if (existing.kind === requested.kind) {
+    if (isExactVersion(existing.versionSpecifier) && !isExactVersion(requested.versionSpecifier)) return existing;
+    if (!isExactVersion(existing.versionSpecifier) && isExactVersion(requested.versionSpecifier)) return requested;
+  }
+  throw new Error(
+    `Conflicting requirements for ${existing.name} within one manifest: ` +
+      `${existing.versionSpecifier ?? existing.kind} vs ${requested.versionSpecifier ?? requested.kind}.`
+  );
+}
+
+function isExactVersion(specifier: string | undefined): boolean {
+  return !!specifier && /^\d/.test(specifier);
 }
 
 async function replacePrivateDependencies(
@@ -330,10 +403,6 @@ async function findPackageJsonPaths(dirPath: string): Promise<string[]> {
 
 async function readPackageJson(packageJsonPath: string): Promise<PackageJson> {
   return JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf8')) as PackageJson;
-}
-
-function isPrivateGitDependency(value: unknown): value is string {
-  return typeof value === 'string' && privateGitDependencyPattern.test(value);
 }
 
 function toUnscopedPackageName(packageName: string): string {

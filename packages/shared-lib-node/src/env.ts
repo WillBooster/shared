@@ -113,21 +113,28 @@ export function readEnvironmentVariables(
     (argv.cascadeNodeEnv ? runtimeEnv.NODE_ENV || 'development' : argv.autoCascadeEnv ? runtimeEnv.WB_ENV : undefined)
   );
   const modeFileOverridesProcessEnv = modeIsForced && !isCIEnvironment(runtimeEnv.CI);
+  // Override eligibility is decided per KEY, not per file: `.env.local` outranks `.env.<mode>`
+  // in the cascade, so once the mode defines a key, the value winning the normal file precedence
+  // (which may come from `.env.local`) must be the one overriding the shell.
+  const modeSpecificEnvKeys = new Set<string>();
+  if (modeFileOverridesProcessEnv && typeof cascade === 'string' && cascade.length > 0) {
+    for (const envPath of envPaths) {
+      if (envPath.endsWith(`.${cascade}`) || envPath.endsWith(`.${cascade}.local`)) {
+        for (const key of Object.keys(readEnvFile(path.join(cwd, envPath)))) modeSpecificEnvKeys.add(key);
+      }
+    }
+  }
 
   const envPathAndLoadedEnvVarNames: [string, string[]][] = [];
   const envVars: Record<string, string> = {};
   for (const envPath of envPaths) {
-    const isModeSpecificEnvFile =
-      typeof cascade === 'string' &&
-      cascade.length > 0 &&
-      (envPath.endsWith(`.${cascade}`) || envPath.endsWith(`.${cascade}.local`));
     const keys: string[] = [];
     for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
       if (key in envVars) continue;
 
       const inheritedValue = process.env[key];
       const shadowedByProcessEnv = !options?.ignoreProcessEnv && key in process.env;
-      if (shadowedByProcessEnv && !(isModeSpecificEnvFile && modeFileOverridesProcessEnv)) {
+      if (shadowedByProcessEnv && !(modeFileOverridesProcessEnv && modeSpecificEnvKeys.has(key))) {
         continue;
       }
       if (shadowedByProcessEnv && inheritedValue !== value && !shouldSuppressOutput) {
@@ -221,19 +228,28 @@ export function readFnoxEnvironmentVariables(
   // forces a mode off CI, profile-specific values must override inherited shell variables just
   // like `.env.<mode>` values do, while base `[secrets]` values keep losing to process.env. A key
   // is profile-specific when the profile export's value differs from the base export's; when the
-  // base export fails, no override is applied (conservative).
-  const baseSecrets = options?.modeFileOverridesProcessEnv && cascade ? runFnoxExport(cwd, undefined, true) : undefined;
+  // base export fails, no override is applied (conservative). The base export runs LAZILY, only
+  // when a process.env collision actually needs adjudicating — it would otherwise add a
+  // subprocess (including age decryption) to every forced-mode invocation for nothing.
+  let cachedBaseSecrets: Record<string, unknown> | undefined | false = false;
+  const getBaseSecrets = (): Record<string, unknown> | undefined => {
+    if (cachedBaseSecrets === false) cachedBaseSecrets = runFnoxExport(cwd, undefined, true);
+    return cachedBaseSecrets;
+  };
 
   const envVars: Record<string, string> = {};
   const keys: string[] = [];
   for (const [key, value] of Object.entries(secrets)) {
     if (typeof value !== 'string' || key in currentEnvVars) continue;
-    const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
     // Explicitly exported environment variables win over fnox base values, mirroring the .env rule.
     // (The mise reader below intentionally uses a value-equality check instead: `mise env` echoes
     // back variables the ambient mise activation already exported, and a differing value means the
     // requested cascade profile should win over the stale activation.)
-    if (!options?.ignoreProcessEnv && key in process.env && !overridesProcessEnv) continue;
+    if (!options?.ignoreProcessEnv && key in process.env) {
+      const baseSecrets = options?.modeFileOverridesProcessEnv && cascade ? getBaseSecrets() : undefined;
+      const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
+      if (!overridesProcessEnv) continue;
+    }
     envVars[key] = value;
     keys.push(key);
   }

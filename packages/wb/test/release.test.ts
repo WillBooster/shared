@@ -62,4 +62,36 @@ describe('restoreWorkspaceRanges', () => {
   "dependencies": { "@willbooster/shared-lib": "workspace:^1.0.0" }
 }`);
   });
+
+  it('restores specifiers multi-semantic-release overwrote with concrete versions', () => {
+    // multi-semantic-release's prepare step overwrites local dependency specifiers (e.g. the
+    // temporary "*" becomes "^1.1.0"); the committed manifest must still get workspace: back.
+    const original = `{
+  "version": "1.0.0",
+  "dependencies": { "@willbooster/shared-lib": "workspace:^1.0.0" }
+}`;
+    const currentAfterRelease = `{
+  "version": "1.1.0",
+  "dependencies": { "@willbooster/shared-lib": "^1.1.0" }
+}`;
+    expect(restoreWorkspaceRanges(currentAfterRelease, original)).toBe(`{
+  "version": "1.1.0",
+  "dependencies": { "@willbooster/shared-lib": "workspace:^1.0.0" }
+}`);
+  });
+
+  it('leaves same-named keys outside dependency sections untouched', () => {
+    const original = `{
+  "dependencies": { "foo": "workspace:*" },
+  "overrides": { "foo": "*" }
+}`;
+    const currentAfterRelease = `{
+  "dependencies": { "foo": "*" },
+  "overrides": { "foo": "*" }
+}`;
+    expect(restoreWorkspaceRanges(currentAfterRelease, original)).toBe(`{
+  "dependencies": { "foo": "workspace:*" },
+  "overrides": { "foo": "*" }
+}`);
+  });
 });

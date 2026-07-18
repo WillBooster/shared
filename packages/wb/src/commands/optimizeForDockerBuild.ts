@@ -15,7 +15,11 @@ import {
   type Project,
 } from '../project.js';
 
-import { PRIVATE_REGISTRY_SCOPE, isPrivateRegistryDependency } from '../utils/privateRegistry.js';
+import {
+  PRIVATE_REGISTRY_SCOPE,
+  isPrivateGitDependency,
+  isPrivateRegistryDependency,
+} from '../utils/privateRegistry.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
 
@@ -109,9 +113,12 @@ function rewritePrivateGitHubDependenciesForDir(
   for (const key of dependencySectionKeys) {
     const deps = packageJson[key] ?? {};
     for (const [name, value] of Object.entries(deps)) {
-      if (value?.startsWith('git@github.com:')) {
+      if (isPrivateGitDependency(value)) {
         // Docker builds cannot access private SSH URLs unless credentials are forwarded.
-        // The Dockerfile copies those workspace packages into the image instead.
+        // The Dockerfile copies those workspace packages into the image instead. Only the org's
+        // own git dependencies are rewritten — the shared predicate matches exactly what
+        // `wb setup-private-packages` materializes, so other SSH URLs are left unchanged instead
+        // of being pointed at never-materialized local paths.
         deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, '@willbooster', name);
         rewrittenDependencies.push(`${key}.${name}`);
       } else if (isPrivateRegistryDependency(name, value)) {

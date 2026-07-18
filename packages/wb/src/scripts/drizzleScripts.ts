@@ -115,7 +115,8 @@ export function wrapWithDrizzleConfigDir(project: Project, command: string): str
 // Markers indicating the drizzle config manages a (Cloudflare D1 compatible) SQLite database:
 // `dialect: 'sqlite'` covers d1-http and plain SQLite configs, `driver: 'd1-http'` and
 // `driver: 'durable-sqlite'` are the explicit D1/Durable Object drivers.
-const drizzleSqliteConfigPattern = /dialect\s*:\s*['"`]sqlite['"`]|driver\s*:\s*['"`](?:d1-http|durable-sqlite)['"`]/;
+const drizzleSqliteConfigPattern =
+  /['"`]?dialect['"`]?\s*:\s*['"`]sqlite['"`]|['"`]?driver['"`]?\s*:\s*['"`](?:d1-http|durable-sqlite)['"`]/;
 
 /**
  * Whether drizzle-kit is the project's D1 migration mechanism. A drizzle-orm dependency alone is
@@ -142,11 +143,47 @@ export function usesDrizzleKitForD1(project: Project): boolean {
 
 /**
  * Remove block and line comments so commented-out markers (e.g. `// dialect: 'sqlite'` in a
- * PostgreSQL config) cannot misclassify the config. `//` preceded by `:`, quotes, or a backslash
- * is kept so URLs such as `https://...` in connection strings survive.
+ * PostgreSQL config) cannot misclassify the config. The scanner tracks string state, so `//`
+ * inside string literals (URLs such as `https://...` in connection strings) survives while
+ * comments directly after a string literal are still removed.
  */
 function stripJsComments(content: string): string {
-  return content.replaceAll(/\/\*[\s\S]*?\*\//g, '').replaceAll(/(^|[^:"'`\\])\/\/.*$/gm, '$1');
+  let result = '';
+  let stringDelimiter: string | undefined;
+  for (let index = 0; index < content.length; index++) {
+    const char = content[index]!;
+    const nextChar = content[index + 1];
+    if (stringDelimiter) {
+      if (char === '\\') {
+        result += char + (nextChar ?? '');
+        index++;
+        continue;
+      }
+      if (char === stringDelimiter || (stringDelimiter !== '`' && char === '\n')) {
+        stringDelimiter = undefined;
+      }
+      result += char;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`') {
+      stringDelimiter = char;
+      result += char;
+      continue;
+    }
+    if (char === '/' && nextChar === '/') {
+      while (index < content.length && content[index] !== '\n') index++;
+      result += '\n';
+      continue;
+    }
+    if (char === '/' && nextChar === '*') {
+      index += 2;
+      while (index < content.length && !(content[index] === '*' && content[index + 1] === '/')) index++;
+      index++;
+      continue;
+    }
+    result += char;
+  }
+  return result;
 }
 
 export function findDrizzleConfig(project: Project): { dirPath: string; fileName: string } | undefined {
