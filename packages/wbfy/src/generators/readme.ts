@@ -31,11 +31,13 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       if (!repository) continue;
       const badge = `[![${badgeName}](https://github.com/${repository}/actions/workflows/${fileName}/badge.svg)](https://github.com/${repository}/actions/workflows/${fileName})`;
       if (fs.existsSync(path.resolve(config.dirPath, `.github/workflows/${fileName}`))) {
+        // Always drop the existing badge first, so a stale broken badge is removed even when the
+        // guard below skips re-inserting it.
+        newContent = removeGitHubActionsBadge(newContent, badgeName, fileName);
         // GitHub's badge endpoint returns 404 until the workflow has at least one run, so a badge
         // for a dispatch-only deploy workflow that has never run renders as a broken image.
         // Test workflows run on every PR, so only deploy badges need the guard.
         if (fileName.startsWith('deploy') && !(await hasAnyWorkflowRun(repository, fileName))) continue;
-        newContent = removeGitHubActionsBadge(newContent, badgeName, fileName);
         newContent = insertBadge(newContent, badge);
       }
     }
@@ -55,7 +57,10 @@ async function hasAnyWorkflowRun(repository: string, workflowFileName: string): 
       per_page: 1,
     });
     return response.data.total_count > 0;
-  } catch {
+  } catch (error) {
+    // GitHub resolves the file name against the REMOTE repository, so a locally added workflow
+    // that has never been pushed yields 404 — its badge would be broken too, exactly like zero runs.
+    if ((error as { status?: number }).status === 404) return false;
     // Keep the pre-guard behavior (insert the badge) when the check itself cannot run,
     // e.g. offline or without a GitHub token.
     return true;

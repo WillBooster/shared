@@ -1005,8 +1005,13 @@ function addPackageJsonDependencies(
     // A private package whose monorepo contains this dependency as a workspace must reference it
     // via the workspace protocol: pinning a registry version makes Bun shadow the same-name
     // workspace and skip installing the workspace's own dependencies. (Published packages instead
-    // pin a concrete version because `npm publish` rejects `workspace:*` specifiers.)
-    if (jsonObj.private && getWorkspacePackageDirs(rootConfig).has(dependency)) {
+    // pin a concrete version because `npm publish` rejects `workspace:*` specifiers — but an
+    // EXISTING `workspace:` declaration is always kept: overwriting it with a registry release
+    // would silently break the local workspace link.)
+    if (
+      getWorkspacePackageDirs(rootConfig).has(dependency) &&
+      (jsonObj.private || packageJsonDependencies[dependency]?.startsWith('workspace:'))
+    ) {
       packageJsonDependencies[dependency] = 'workspace:*';
       continue;
     }

@@ -204,21 +204,23 @@ src-tauri/gen/schemas/
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
     }
-    // Drop user-section lines that duplicate a managed pattern verbatim, so hand-added entries
-    // (e.g. a pre-migration `.wrangler/`) do not linger once wbfy manages the same rule.
+    // Drop HEAD user-section lines that duplicate a managed or template pattern verbatim, so
+    // hand-added entries (e.g. a pre-migration `.wrangler/`) do not linger once wbfy manages the
+    // same rule. Removing a head duplicate cannot change semantics: git honors the LAST matching
+    // rule and the managed/template copy always comes after the head. The TAIL section is left
+    // untouched — a tail rule comes after every managed rule and may deliberately re-assert a
+    // pattern over an earlier negation (e.g. `!.env.production` followed by `.env.production`),
+    // so deleting it would un-ignore files.
     const managedContent = headUserContent.slice(userHeadContent.length);
-    const managedLines = new Set(managedContent.split('\n').filter((line) => line && !line.startsWith('#')));
-    const removeManagedDuplicates = (text: string): string =>
-      text
-        .split('\n')
-        .filter((line) => !managedLines.has(line))
-        .join('\n');
-    const newContent =
-      removeManagedDuplicates(userHeadContent) +
-      managedContent +
-      '\n' +
-      generated +
-      removeManagedDuplicates(tailUserContent);
+    const managedLines = new Set(
+      [...managedContent.split('\n'), ...generated.split('\n')].filter((line) => line && !line.startsWith('#'))
+    );
+    const dedupedUserHeadContent = userHeadContent
+      .split('\n')
+      // Tolerate CRLF user content (now preserved by the generated `.gitignore -text` attribute).
+      .filter((line) => !managedLines.has(line.endsWith('\r') ? line.slice(0, -1) : line))
+      .join('\n');
+    const newContent = dedupedUserHeadContent + managedContent + '\n' + generated + tailUserContent;
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }

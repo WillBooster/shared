@@ -299,24 +299,63 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
  * A package whose tsconfig cannot include worker-configuration.d.ts (e.g. one on a hand-maintained minimal `Env`
  * with `types: ["bun"]`, the standard escape when the ambient wrangler globals conflict with the `@types/bun`
  * globals its tests need) gains nothing from regenerating the ~500KB file on every install, so wbfy leaves such
- * packages unmanaged instead of re-adding the generation step. Only an explicit `include`/`files` set that cannot
- * match the file opts out; a missing or unparseable tsconfig (or TypeScript's default `**` inclusion) keeps the
- * current managed behavior.
+ * packages unmanaged instead of re-adding the generation step. The `files`/`include`/`exclude` set is resolved
+ * through relative `extends` chains (child keys override parent keys, matching tsc; package-name extends such as
+ * `@tsconfig/bun` define no file set, so they contribute nothing); whenever the effective set cannot be
+ * determined (missing or unparseable tsconfig, or TypeScript's default `**` inclusion), the current managed
+ * behavior is kept.
  */
 export function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPath'>): boolean {
+  const fileSet = resolveTsconfigFileSet(path.resolve(config.dirPath, 'tsconfig.json'), 5);
+  if (!fileSet) return true;
+  const matches = (patterns: unknown): boolean =>
+    Array.isArray(patterns) &&
+    patterns.some((pattern) => typeof pattern === 'string' && tsconfigPatternCouldMatchWorkerTypes(pattern));
+  // `files` entries are always part of the program, even when `exclude` matches them.
+  if (matches(fileSet.files)) return true;
+  if (matches(fileSet.exclude)) return false;
+  // Neither include nor files declared: TypeScript's default `**` inclusion covers the file.
+  if (!Array.isArray(fileSet.include) && !Array.isArray(fileSet.files)) return true;
+  return matches(fileSet.include);
+}
+
+/** Resolves files/include/exclude through relative `extends` chains; undefined when unreadable. */
+function resolveTsconfigFileSet(
+  filePath: string,
+  remainingDepth: number
+): { exclude?: unknown; files?: unknown; include?: unknown } | undefined {
+  if (remainingDepth <= 0) return undefined;
   let content: string;
   try {
-    content = fs.readFileSync(path.resolve(config.dirPath, 'tsconfig.json'), 'utf8');
+    content = fs.readFileSync(filePath, 'utf8');
   } catch {
-    return true;
+    return undefined;
   }
-  const tsconfig = jsoncUtil.parseObjectIgnoringError<{ files?: unknown; include?: unknown }>(content);
-  if (!tsconfig) return true;
-  const declaredPatterns = [tsconfig.include, tsconfig.files].filter((value) => Array.isArray(value));
-  if (declaredPatterns.length === 0) return true;
-  return declaredPatterns
-    .flat()
-    .some((pattern) => typeof pattern === 'string' && tsconfigPatternCouldMatchWorkerTypes(pattern));
+  const tsconfig = jsoncUtil.parseObjectIgnoringError<{
+    exclude?: unknown;
+    extends?: unknown;
+    files?: unknown;
+    include?: unknown;
+  }>(content);
+  if (!tsconfig) return undefined;
+  const fileSet = { exclude: tsconfig.exclude, files: tsconfig.files, include: tsconfig.include };
+  const parents =
+    typeof tsconfig.extends === 'string' ? [tsconfig.extends] : Array.isArray(tsconfig.extends) ? tsconfig.extends : [];
+  // With an `extends` array, later entries override earlier ones, and the child overrides all —
+  // so fill each still-missing key from the last parent that defines it.
+  for (const parent of parents.toReversed()) {
+    if (fileSet.exclude !== undefined && fileSet.files !== undefined && fileSet.include !== undefined) break;
+    // Package-name extends (e.g. `@tsconfig/bun`) are compilerOptions presets without file sets.
+    if (typeof parent !== 'string' || !parent.startsWith('.')) continue;
+    let parentPath = path.resolve(path.dirname(filePath), parent);
+    if (!fs.existsSync(parentPath) && fs.existsSync(`${parentPath}.json`)) parentPath += '.json';
+    const parentFileSet = resolveTsconfigFileSet(parentPath, remainingDepth - 1);
+    if (!parentFileSet) continue;
+    fileSet.exclude ??= parentFileSet.exclude;
+    fileSet.files ??= parentFileSet.files;
+    fileSet.include ??= parentFileSet.include;
+  }
+  return fileSet;
 }
 
 function tsconfigPatternCouldMatchWorkerTypes(pattern: string): boolean {
