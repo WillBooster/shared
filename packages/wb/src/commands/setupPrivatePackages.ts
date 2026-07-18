@@ -204,44 +204,46 @@ async function collectNestedPrivatePackages(
     extractedPackage.kind === 'registry'
       ? toStagedPath(extractedPackage.targetDirPath)
       : extractedPackage.targetDirPath;
-  const packageJsonPath = path.join(extractedDirPath, 'package.json');
-  if (!fs.existsSync(packageJsonPath)) return;
-
-  for (const nested of findPrivateDependencies(
-    await readPackageJson(packageJsonPath),
-    outDirPath,
-    registryOutDirPath
-  )) {
-    const existing = privatePackages.get(nested.name);
-    if (existing) {
-      // Collapsing different requested versions into one materialization would silently violate
-      // the dependent's requirement, so conflicts must fail loudly.
-      assertNoVersionConflict(existing, nested, extractedPackage.name);
-      continue;
-    }
-
-    if (nested.kind === 'git') {
-      nested.sourceDirPath = findInstalledPackageDir(rootDirPath, nested.name);
-      await copyGitPackage(rootDirPath, nested);
-    } else {
-      await downloadAndExtractRegistryPackage(
-        auth,
-        nested.name,
-        nested.versionSpecifier ?? 'latest',
-        toStagedPath(nested.targetDirPath)
-      );
-      console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
-    }
-    privatePackages.set(nested.name, nested);
-    await collectNestedPrivatePackages(
-      rootDirPath,
-      auth,
-      nested,
-      privatePackages,
+  // Scan EVERY manifest of the materialized package (org git dependencies are whole monorepo
+  // checkouts with packages/*/package.json), mirroring collectPrivatePackages' deep scan — the
+  // dependency-rewrite step walks the same set, so anything declared there must be materialized.
+  for (const packageJsonPath of await findPackageJsonPaths(extractedDirPath)) {
+    for (const nested of findPrivateDependencies(
+      await readPackageJson(packageJsonPath),
       outDirPath,
-      registryOutDirPath,
-      toStagedPath
-    );
+      registryOutDirPath
+    )) {
+      const existing = privatePackages.get(nested.name);
+      if (existing) {
+        // Collapsing different requested versions into one materialization would silently violate
+        // the dependent's requirement, so conflicts must fail loudly.
+        assertNoVersionConflict(existing, nested, extractedPackage.name);
+        continue;
+      }
+
+      if (nested.kind === 'git') {
+        nested.sourceDirPath = findInstalledPackageDir(rootDirPath, nested.name);
+        await copyGitPackage(rootDirPath, nested);
+      } else {
+        await downloadAndExtractRegistryPackage(
+          auth,
+          nested.name,
+          nested.versionSpecifier ?? 'latest',
+          toStagedPath(nested.targetDirPath)
+        );
+        console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
+      }
+      privatePackages.set(nested.name, nested);
+      await collectNestedPrivatePackages(
+        rootDirPath,
+        auth,
+        nested,
+        privatePackages,
+        outDirPath,
+        registryOutDirPath,
+        toStagedPath
+      );
+    }
   }
 }
 
@@ -311,17 +313,27 @@ function findInstalledPackageDir(rootDirPath: string, packageName: string): stri
     return fs.realpathSync(directDirPath);
   }
   // Bun's isolated linker keeps transitive-only dependencies out of the root node_modules;
-  // search the .bun store for the package before giving up.
+  // search the .bun store for the package before giving up. The store may legitimately hold
+  // MULTIPLE resolutions of one package (different versions/revisions), and picking an arbitrary
+  // one could silently materialize the wrong content — so ambiguity fails loudly.
   const bunStoreDirPath = path.join(rootDirPath, 'node_modules', '.bun');
+  const candidateDirPaths = new Set<string>();
   try {
     for (const dirent of fs.readdirSync(bunStoreDirPath, { withFileTypes: true })) {
       const candidateDirPath = path.join(bunStoreDirPath, dirent.name, 'node_modules', '@willbooster', unscopedName);
       if (fs.existsSync(path.join(candidateDirPath, 'package.json'))) {
-        return fs.realpathSync(candidateDirPath);
+        candidateDirPaths.add(fs.realpathSync(candidateDirPath));
       }
     }
   } catch {
     // No .bun store (hoisted install); fall through to the error below.
+  }
+  if (candidateDirPaths.size === 1) return [...candidateDirPaths][0]!;
+  if (candidateDirPaths.size > 1) {
+    throw new Error(
+      `Multiple installed resolutions found for ${packageName}: ${[...candidateDirPaths].join(', ')}. ` +
+        'Deduplicate the dependency so a single resolution remains.'
+    );
   }
   throw new Error(`Private package is not installed: ${packageName} (${directDirPath})`);
 }

@@ -230,10 +230,13 @@ export function toBaseVersion(specifier: string | undefined): string | undefined
  * return false, so only an exact string match (checked separately by the callers) is accepted.
  */
 export function rangeAdmits(range: string, version: string): boolean {
-  const rangeBase = range.replace(/^[\^~]/, '');
-  if (rangeBase.includes('-') || version.includes('-')) return false;
+  // SemVer build metadata (`+build-1`) is ignored for ordering and may itself contain hyphens,
+  // so strip it BEFORE the prerelease (`-`) check.
+  const rangeBase = range.replace(/^[\^~]/, '').split('+')[0]!;
+  const candidateVersion = version.split('+')[0]!;
+  if (rangeBase.includes('-') || candidateVersion.includes('-')) return false;
   const baseVersion = parseVersion(rangeBase);
-  const candidate = parseVersion(version);
+  const candidate = parseVersion(candidateVersion);
   if (!baseVersion || !candidate) return false;
   if (range.startsWith('^')) {
     if (baseVersion[0] === 0) {
