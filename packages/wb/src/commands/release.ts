@@ -44,12 +44,17 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   // Maps a mutated file to its pre-release content (raw bytes — bun.lockb is binary); `undefined`
   // marks a file that did not exist and must be deleted on restore (e.g. a created lockfile).
   const modifiedFiles = new Map<string, Buffer | undefined>();
-  // With a handler installed, SIGINT/SIGTERM no longer terminate this process while a child runs
-  // (the child in the same terminal group still receives the signal and exits, making spawnSync
-  // return), so the finally-restore always executes; the signal is re-raised afterwards.
+  // With a handler installed, SIGINT/SIGTERM no longer terminate this process, so the
+  // finally-restore always executes and the signal is re-raised afterwards. The handler also
+  // FORWARDS the signal to the running child: children are spawned asynchronously (never
+  // spawnSync, which would block the event loop and defer the handler until after the child —
+  // and a publish — completed), so a signal targeted at this process alone still cancels the
+  // child promptly.
   let receivedSignal: NodeJS.Signals | undefined;
+  const activeChild: ActiveChildRef = { current: undefined };
   const signalHandler = (signal: NodeJS.Signals): void => {
     receivedSignal = signal;
+    activeChild.current?.kill(signal);
   };
   const guardedSignals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
   for (const signal of guardedSignals) process.on(signal, signalHandler);
@@ -57,13 +62,13 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   let exitCode = 0;
   let releaseRanSuccessfully = false;
   try {
-    await prepareNpmCompatibleLayout(project, argv, modifiedFiles);
-    // A signal targeted at this process alone (not the terminal group) leaves the prepare
-    // children untouched, so it must be checked explicitly before anything publishes.
+    await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
+    // A signal may have arrived between children (nothing to forward to at that instant), so it
+    // must be checked explicitly before anything publishes.
     if (receivedSignal) {
       throw new Error(`Aborted by ${receivedSignal} before running the release.`);
     }
-    exitCode = runSemanticRelease(project, argv);
+    exitCode = await runSemanticRelease(project, argv, activeChild);
     // Recorded separately from receivedSignal: a signal arriving AFTER a successful publish must
     // not demote the restore to byte-for-byte (that would revert the published version bumps).
     releaseRanSuccessfully = exitCode === 0;
@@ -121,10 +126,40 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
  *    affected manifests are private/unpublished or rewritten by the npm plugin on publish.
  * All mutations are restored by the caller after the release.
  */
+interface ActiveChildRef {
+  current: child_process.ChildProcess | undefined;
+}
+
+/**
+ * Spawn asynchronously and await the exit status. The event loop stays free, so parent-only
+ * signals are handled promptly and forwarded to the child by release()'s signal handler.
+ */
+async function spawnAndWait(
+  activeChild: ActiveChildRef,
+  command: string,
+  args: string[],
+  options: child_process.SpawnOptions
+): Promise<number> {
+  return await new Promise<number>((resolve) => {
+    const child = child_process.spawn(command, args, options);
+    activeChild.current = child;
+    child.on('error', (error) => {
+      activeChild.current = undefined;
+      console.error(chalk.red(String(error)));
+      resolve(1);
+    });
+    child.on('exit', (code) => {
+      activeChild.current = undefined;
+      resolve(code ?? 1);
+    });
+  });
+}
+
 async function prepareNpmCompatibleLayout(
   project: Project,
   argv: ReleaseArgv,
-  modifiedFiles: Map<string, Buffer | undefined>
+  modifiedFiles: Map<string, Buffer | undefined>,
+  activeChild: ActiveChildRef
 ): Promise<void> {
   const bunfigPath = path.join(project.dirPath, 'bunfig.toml');
   const bunfig = fs.existsSync(bunfigPath) ? fs.readFileSync(bunfigPath, 'utf8') : undefined;
@@ -143,12 +178,12 @@ async function prepareNpmCompatibleLayout(
       for (const packageDirPath of [project.dirPath, ...(await findWorkspacePackageDirs(project))]) {
         fs.rmSync(path.join(packageDirPath, 'node_modules'), { force: true, recursive: true });
       }
-      const ret = child_process.spawnSync('bun', ['install'], {
+      const installStatus = await spawnAndWait(activeChild, 'bun', ['install'], {
         cwd: project.dirPath,
         env: project.env,
         stdio: 'inherit',
       });
-      if (ret.status !== 0) {
+      if (installStatus !== 0) {
         // Throwing (instead of process.exit, which would skip the caller's finally) lets the
         // restore run before the process terminates.
         throw new Error('bun install failed while preparing the release.');
@@ -293,7 +328,7 @@ function escapeRegExp(text: string): string {
   return text.replaceAll(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
 }
 
-function runSemanticRelease(project: Project, argv: ReleaseArgv): number {
+async function runSemanticRelease(project: Project, argv: ReleaseArgv, activeChild: ActiveChildRef): Promise<number> {
   const forwardedArgs = [...(argv.args ?? []), ...(argv['--'] ?? [])].map(String);
   // The PACKAGE name (for `bunx`/`yarn dlx`, which fetch a package) and the BIN name (for the
   // local node_modules/.bin lookup) differ for the scoped forks: `bunx multi-semantic-release`
@@ -318,12 +353,11 @@ function runSemanticRelease(project: Project, argv: ReleaseArgv): number {
   console.info(chalk.cyan(`Running: ${command.join(' ')}`));
   if (argv.dryRun) return 0;
 
-  const ret = child_process.spawnSync(command[0]!, command.slice(1), {
+  return await spawnAndWait(activeChild, command[0]!, command.slice(1), {
     cwd: project.dirPath,
     env,
     stdio: 'inherit',
   });
-  return ret.status ?? 1;
 }
 
 async function findWorkspacePackageDirs(project: Project): Promise<string[]> {

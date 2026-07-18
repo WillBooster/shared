@@ -172,21 +172,37 @@ function extractExportedConfigObject(
 
   // `$` is legal in identifiers but a regex anchor, so it must be escaped before interpolation;
   // `(?![\w$])` (not `\b`) ends the match because `\b` never fires after a trailing `$`.
-  // Anchored to the line start (module scope): a same-named declaration inside a function body is
-  // indented and must not shadow the top-level binding the export actually references.
   const escapedIdentifier = identifierMatch[1]!.replaceAll('$', String.raw`\$`);
-  const declarationMatch = new RegExp(
-    String.raw`^(?:export\s+)?(?:const|let|var)\s+${escapedIdentifier}(?![\w$])`,
-    'm'
-  ).exec(maskedContent);
-  if (!declarationMatch) return;
+  const declarationEndIndex = findModuleScopeDeclarationEnd(maskedContent, escapedIdentifier);
+  if (declarationEndIndex === undefined) return;
   // The initializer must belong to THIS declaration (a type annotation may precede the `=`); an
   // uninitialized `let config;` stays unresolved instead of grabbing a later statement's `=`.
-  const afterDeclaration = maskedContent.slice(declarationMatch.index + declarationMatch[0].length);
-  const assignmentMatch = /^\s*(?::[^=;\n]*)?=/.exec(afterDeclaration);
+  const assignmentMatch = /^\s*(?::[^=;\n]*)?=/.exec(maskedContent.slice(declarationEndIndex));
   if (!assignmentMatch) return;
-  const assignmentIndex = declarationMatch.index + declarationMatch[0].length + assignmentMatch[0].length;
-  return extractFirstBalancedObject(content.slice(assignmentIndex));
+  return extractFirstBalancedObject(content.slice(declarationEndIndex + assignmentMatch[0].length));
+}
+
+/**
+ * The end index of the identifier's declaration at brace depth ZERO (module scope): a same-named
+ * declaration inside a function body must not shadow the binding the export references, and
+ * indentation is no scope signal — depth over the string-masked content is.
+ */
+function findModuleScopeDeclarationEnd(maskedContent: string, escapedIdentifier: string): number | undefined {
+  const declarationRegex = new RegExp(
+    String.raw`(?<![\w$])(?:export\s+)?(?:const|let|var)\s+${escapedIdentifier}(?![\w$])`,
+    'g'
+  );
+  let depth = 0;
+  let scanIndex = 0;
+  for (let match = declarationRegex.exec(maskedContent); match; match = declarationRegex.exec(maskedContent)) {
+    for (; scanIndex < match.index; scanIndex++) {
+      const char = maskedContent[scanIndex];
+      if (char === '{') depth++;
+      else if (char === '}') depth--;
+    }
+    if (depth === 0) return match.index + match[0].length;
+  }
+  return;
 }
 
 /**
