@@ -313,7 +313,18 @@ export function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPat
   // package could never opt out.
   const grepResult = spawnSyncAndReturnStdout(
     'git',
-    ['grep', '-l', 'worker-configuration', '--', '.', ':(exclude).gitignore', ':(exclude).gitattributes'],
+    // tsconfig files are classified by the resolved files/include/exclude logic below — a textual
+    // hit there (e.g. an `exclude` entry) must not count as consumption.
+    [
+      'grep',
+      '-l',
+      'worker-configuration',
+      '--',
+      '.',
+      ':(exclude).gitignore',
+      ':(exclude).gitattributes',
+      String.raw`:(glob,exclude)**/tsconfig*.json`,
+    ],
     config.dirPath
   );
   if (grepResult.trim()) return true;

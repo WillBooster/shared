@@ -95,6 +95,17 @@ test('counts tracked source mentions as consumption but ignores the managed .git
     git('add', '-A');
     expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
 
+    // A tracked tsconfig mentioning the file (here: an exclude entry) is classified by the
+    // resolved file-set logic, not the grep — the exclusion must win.
+    await fs.promises.writeFile(
+      path.join(dirPath, 'tsconfig.json'),
+      '{ "include": ["**/*"], "exclude": ["worker-configuration.d.ts"] }'
+    );
+    git('add', '-A');
+    expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(false);
+    await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "include": ["src/**/*"] }');
+    git('add', '-A');
+
     // A genuine reference in a tracked source file DOES count.
     await fs.promises.mkdir(path.join(dirPath, 'src'));
     await fs.promises.writeFile(
