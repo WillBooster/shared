@@ -18,6 +18,12 @@ const builder = {
     type: 'string',
     alias: 'c',
   },
+  output: {
+    description:
+      'Build output paths (relative to the project directory) that must exist for the cache to be valid (default: auto-detected common output directories)',
+    type: 'array',
+    alias: 'o',
+  },
 } as const;
 
 export const buildIfNeededCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
@@ -62,9 +68,24 @@ export async function buildIfNeeded(
   if (!build(project, argv)) return;
 
   if (!argv.dryRun) {
-    await fs.promises.writeFile(cacheFilePath, contentHash, 'utf8');
+    const outputPaths = getExplicitOutputPaths(argv) ?? detectExistingDefaultOutputPaths(project);
+    await fs.promises.writeFile(cacheFilePath, JSON.stringify({ hash: contentHash, outputPaths }), 'utf8');
   }
   return true;
+}
+
+// Common build output directories used across org projects (vinext/build-ts emit dist,
+// Next.js emits .next, CRA-style apps emit build, `next export` emits out).
+const defaultOutputCandidates = ['dist', 'build', '.next', 'out'];
+
+function getExplicitOutputPaths(
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
+): string[] | undefined {
+  return argv.output?.length ? argv.output.map(String) : undefined;
+}
+
+function detectExistingDefaultOutputPaths(project: Project): string[] {
+  return defaultOutputCandidates.filter((outputPath) => fs.existsSync(path.join(project.dirPath, outputPath)));
 }
 
 function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
@@ -109,8 +130,37 @@ export async function canSkipBuild(
   await updateHashWithDiffResult(project, argv, hash);
   const contentHash = hash.digest('hex');
 
-  const cachedContentHash = await ignoreEnoentAsync(() => fs.promises.readFile(cacheFilePath, 'utf8'));
-  return [cachedContentHash === contentHash, cacheFilePath, contentHash];
+  const cachedContent = await ignoreEnoentAsync(() => fs.promises.readFile(cacheFilePath, 'utf8'));
+  const cache = parseBuildCache(cachedContent);
+  if (cache?.hash !== contentHash) return [false, cacheFilePath, contentHash];
+
+  // The cache is valid only while the recorded (or explicitly requested) build outputs still
+  // exist: a deleted output directory (e.g. `rm -rf dist`) must trigger a rebuild even when the
+  // inputs are unchanged (https://github.com/WillBooster/shared/issues/981).
+  const requiredOutputPaths = getExplicitOutputPaths(argv) ?? cache.outputPaths;
+  const missingOutputPaths = requiredOutputPaths.filter(
+    (outputPath) => !fs.existsSync(path.resolve(project.dirPath, outputPath))
+  );
+  if (missingOutputPaths.length > 0) {
+    console.info(chalk.yellow(`Rebuilding because build outputs are missing: ${missingOutputPaths.join(', ')}`));
+    return [false, cacheFilePath, contentHash];
+  }
+  return [true, cacheFilePath, contentHash];
+}
+
+function parseBuildCache(cachedContent: string | undefined): { hash: string; outputPaths: string[] } | undefined {
+  if (!cachedContent) return;
+  try {
+    const parsed = JSON.parse(cachedContent) as { hash?: unknown; outputPaths?: unknown };
+    if (typeof parsed?.hash !== 'string') return;
+    const outputPaths = Array.isArray(parsed.outputPaths)
+      ? parsed.outputPaths.filter((p) => typeof p === 'string')
+      : [];
+    return { hash: parsed.hash, outputPaths };
+  } catch {
+    // A legacy cache file contains the raw content hash without output records.
+    return { hash: cachedContent, outputPaths: [] };
+  }
 }
 
 const includePatterns = ['src/', 'public/'];
