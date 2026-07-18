@@ -156,7 +156,10 @@ function extractExportedConfigObject(content: string, exportedContent: string): 
   const identifierMatch = /^([A-Za-z_$][\w$]*)\s*(?:;|\n|$)/.exec(exportedExpression);
   if (!identifierMatch) return extractFirstBalancedObject(exportedContent);
 
-  const declarationMatch = new RegExp(String.raw`(?:const|let|var)\s+${identifierMatch[1]}\b`).exec(content);
+  // `$` is legal in identifiers but a regex anchor, so it must be escaped before interpolation;
+  // `(?![\w$])` (not `\b`) ends the match because `\b` never fires after a trailing `$`.
+  const escapedIdentifier = identifierMatch[1]!.replaceAll('$', String.raw`\$`);
+  const declarationMatch = new RegExp(String.raw`(?:const|let|var)\s+${escapedIdentifier}(?![\w$])`).exec(content);
   if (!declarationMatch) return;
   const assignmentIndex = content.indexOf('=', declarationMatch.index);
   if (assignmentIndex === -1) return;
