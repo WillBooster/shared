@@ -10,6 +10,7 @@ import yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { jsoncUtil } from '../utils/jsoncUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
@@ -246,6 +247,17 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
         fileNamesByKind.set(kind, `${kind}.yml`);
       }
     }
+    // A Cloudflare repository with a wb-driven deploy script but no deploy workflow gets a
+    // dispatch-only production caller scaffolded, so new repositories need no hand-written
+    // deploy wiring (maintainers add push/release triggers themselves once ready). The gate is
+    // the wrangler config at the deploy script's worker directory, NOT isCloudflare — that
+    // heuristic also reads workflow files, which are exactly what is missing here.
+    if (
+      resolveCloudflareDeployTarget(rootConfig) &&
+      ![...fileNamesByKind.keys()].some((kind) => kind.startsWith('deploy'))
+    ) {
+      fileNamesByKind.set('deploy', 'deploy.yml');
+    }
     if (fileNamesByKind.has('sync')) {
       // The sync workflow's generation owns these files (it rewrites the force-sync workflow and
       // deletes the obsolete sync-init one), so processing them as independent kinds would race
@@ -297,6 +309,11 @@ async function writeWorkflowYaml(
   if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) return;
 
   let newSettings = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;
+  if (kind === 'deploy' && !fs.existsSync(filePath)) {
+    const scaffold = generateCloudflareDeployWorkflow(config);
+    if (!scaffold) return;
+    newSettings = scaffold;
+  }
 
   const oldContent = await fsUtil.readFileIfExists(filePath);
   if (oldContent !== undefined) {
@@ -440,6 +457,73 @@ async function writeWorkflowYaml(
         : 'sync-force.yml';
     await writeYaml(newSettings, path.join(workflowsPath, syncForceFileName));
   }
+}
+
+/**
+ * Scaffolds a dispatch-only production deploy caller for a Cloudflare repository. The worker
+ * directory is read from the root deploy script (`wb deploy -w packages/<worker>`; the repo root
+ * otherwise) and `server_url` from the production custom-domain route in wrangler.jsonc when one
+ * exists. The shared normalization then injects concurrency, job-level read-only permissions,
+ * and the FNOX_AGE_KEY/VERDACCIO_TOKEN secrets like any hand-written caller.
+ */
+export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Workflow | undefined {
+  const workerDirPath = resolveCloudflareDeployTarget(rootConfig);
+  if (!workerDirPath) return;
+  const serverUrl = readProductionCustomDomain(rootConfig.dirPath, workerDirPath);
+  return {
+    name: 'Deploy',
+    on: { workflow_dispatch: null },
+    jobs: {
+      deploy: {
+        uses: 'WillBooster/reusable-workflows/.github/workflows/deploy.yml@main',
+        with: {
+          environment: 'production',
+          file_path_1: path.posix.join(workerDirPath, '.env.cloudflare'),
+          ...(serverUrl ? { server_url: serverUrl } : {}),
+        },
+        secrets: {
+          DISCORD_WEBHOOK_URL: '${{ secrets.DISCORD_WEBHOOK_URL_FOR_RELEASE }}',
+          FILE_CONTENT_1: 'CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }}',
+        },
+      },
+    },
+  };
+}
+
+/** The worker directory of a wb-driven Cloudflare deploy script, or undefined when there is none. */
+function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath' | 'packageJson'>): string | undefined {
+  const deployScript = rootConfig.packageJson?.scripts?.deploy;
+  if (typeof deployScript !== 'string' || !deployScript.includes('wb deploy')) return;
+  const workerDirPath = / -w\s+(\S+)/u.exec(deployScript)?.[1] ?? '.';
+  const hasWranglerConfig = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
+    fs.existsSync(path.resolve(rootConfig.dirPath, workerDirPath, fileName))
+  );
+  return hasWranglerConfig ? workerDirPath : undefined;
+}
+
+function readProductionCustomDomain(rootDirPath: string, workerDirPath: string): string | undefined {
+  for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
+    const configPath = path.resolve(rootDirPath, workerDirPath, fileName);
+    let content: string;
+    try {
+      content = fs.readFileSync(configPath, 'utf8');
+    } catch {
+      continue;
+    }
+    const wranglerConfig = jsoncUtil.parseObjectIgnoringError<{ routes?: unknown }>(content);
+    if (!wranglerConfig || !Array.isArray(wranglerConfig.routes)) continue;
+    for (const route of wranglerConfig.routes) {
+      if (
+        route &&
+        typeof route === 'object' &&
+        (route as { custom_domain?: unknown }).custom_domain === true &&
+        typeof (route as { pattern?: unknown }).pattern === 'string'
+      ) {
+        return `https://${(route as { pattern: string }).pattern}/`;
+      }
+    }
+  }
+  return undefined;
 }
 
 // The reusable workflows that declare FNOX_AGE_KEY and VERDACCIO_TOKEN under

@@ -40,7 +40,10 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     }
     // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
     // unpinned Node would come from whatever happens to be on PATH.
-    tools.node = pinConcreteToolVersion('node', tools.node ?? readNodeVersionFile(config.dirPath), config.dirPath);
+    tools.node = liftOutdatedNodeVersion(
+      pinConcreteToolVersion('node', tools.node ?? readNodeVersionFile(config.dirPath), config.dirPath),
+      config.dirPath
+    );
     tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = pinConcreteToolVersion('fnox', tools.fnox, config.dirPath);
@@ -93,6 +96,23 @@ function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string):
  * unavailable or cannot resolve the selector (e.g. offline), the original selector is kept —
  * an unpinned tool is better than a broken configuration.
  */
+/**
+ * Lifts an exact Node.js pin below the latest LTS — within the SAME major — to the latest LTS:
+ * the repository-structure standard tracks the current LTS across repositories and Renovate does
+ * not manage mise.toml pins, so patch/minor drift (e.g. 24.16.0 vs 24.18.0) never self-heals. A
+ * pin on an older major is a deliberate compatibility choice and is kept, as are non-exact and
+ * non-string forms. When mise cannot resolve the LTS (e.g. offline), the pin is kept.
+ */
+function liftOutdatedNodeVersion(nodeVersion: unknown, cwd: string): unknown {
+  if (typeof nodeVersion !== 'string' || !semver.valid(nodeVersion)) return nodeVersion;
+  const latestLts = spawnSyncAndReturnStdout('mise', ['latest', 'node@lts'], cwd);
+  return semver.valid(latestLts) &&
+    semver.major(latestLts) === semver.major(nodeVersion) &&
+    semver.lt(nodeVersion, latestLts)
+    ? latestLts
+    : nodeVersion;
+}
+
 function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): unknown {
   if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
   // Normalize selector forms `mise latest` cannot resolve even though mise configuration accepts
