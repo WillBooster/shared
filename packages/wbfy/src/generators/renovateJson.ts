@@ -78,7 +78,9 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     // below — but only when renovate.json does not exist yet: renovate.json resolves first, so a
     // .renovaterc.json next to it is dead config whose settings must not be resurrected.
     const legacyFilePath = path.resolve(config.dirPath, '.renovaterc.json');
-    const legacyContent = oldContent === undefined ? await fsUtil.readFileIfExists(legacyFilePath) : undefined;
+    // Confined read: a committed .renovaterc.json symlink pointing outside the repository must not
+    // get its target's content copied into the tracked renovate.json.
+    const legacyContent = oldContent === undefined ? await fsUtil.readFileConfinedIfExists(legacyFilePath) : undefined;
     if (legacyContent !== undefined && !jsoncUtil.isTriviaOnly(legacyContent)) {
       oldSettings = jsoncUtil.parseObjectIgnoringError<Settings>(legacyContent);
       if (!oldSettings) {
@@ -115,9 +117,14 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
       if (!(await fsUtil.generateFile(filePath, newContent))) return;
     }
     await promisePool.run(() =>
-      fs.promises.rm(path.resolve(config.dirPath, '.dependabot'), { force: true, recursive: true })
+      fsUtil.removeConfined(path.resolve(config.dirPath, '.dependabot'), { recursive: true })
     );
-    await promisePool.run(() => fs.promises.rm(legacyFilePath, { force: true }));
+    // Keep a symlinked legacy config: the confined read above rejected it, so its settings were
+    // never migrated and deleting the link would silently drop them.
+    const legacyStats = await fs.promises.lstat(legacyFilePath).catch(() => {});
+    if (legacyStats && !legacyStats.isSymbolicLink()) {
+      await promisePool.run(() => fsUtil.removeConfined(legacyFilePath));
+    }
   });
 }
 

@@ -210,16 +210,24 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     }
 
     const workflowsPath = path.resolve(rootConfig.dirPath, '.github', 'workflows');
+    // With .github or .github/workflows symlinked outside the repository, writeYaml's guards
+    // already refuse the writes, but readdir/rm below would still enumerate and DELETE files
+    // outside the repository — so require the directory to resolve inside it before any
+    // traversal, mkdir, or cleanup.
+    if (!(await fsUtil.isConfinedWritablePath(workflowsPath))) {
+      console.warn(`Skipped generating workflows because ${workflowsPath} resolves outside the repository.`);
+      return;
+    }
     await fs.promises.mkdir(workflowsPath, { recursive: true });
 
     // Remove config of semantic pull request
     const semanticYmlPath = path.resolve(rootConfig.dirPath, '.github', 'semantic.yml');
-    await promisePool.run(() => fs.promises.rm(semanticYmlPath, { force: true, recursive: true }));
+    await promisePool.run(() => fsUtil.removeConfined(semanticYmlPath, { recursive: true }));
 
     const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isFile() || !isObsoleteGenPrWorkflowFileName(entry.name)) continue;
-      await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, entry.name), { force: true }));
+      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, entry.name)));
     }
     // GitHub accepts both .yml and .yaml workflow files, and a workflow's file name is its public
     // identity (badge URLs, the workflow REST API, same-repository `uses:` references), so .yaml
@@ -297,7 +305,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       // so a separate autofix workflow only duplicates the same process.
       fileNamesByKind.delete('autofix');
       for (const autofixFileName of ['autofix.yml', 'autofix.yaml']) {
-        await promisePool.run(() => fs.promises.rm(path.join(workflowsPath, autofixFileName), { force: true }));
+        await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, autofixFileName)));
       }
     }
 
@@ -432,7 +440,7 @@ async function writeWorkflowYaml(
         newSettings.on.push.branches = config.release.branches;
       } else {
         // Don't use the release workflow if release branch is not specified
-        await fs.promises.rm(filePath, { force: true });
+        await fsUtil.removeConfined(filePath);
         return;
       }
       if (config.isPublicRepo) {
@@ -463,7 +471,7 @@ async function writeWorkflowYaml(
 
   if (kind === 'sync') {
     for (const syncInitFileName of ['sync-init.yml', 'sync-init.yaml']) {
-      await fs.promises.rm(path.join(workflowsPath, syncInitFileName), { force: true });
+      await fsUtil.removeConfined(path.join(workflowsPath, syncInitFileName));
     }
     if (!newSettings.jobs.sync?.with) return;
 
