@@ -69,14 +69,12 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
 async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
   const octokit = getOctokit(owner);
   const requiredNames = ['VERDACCIO_TOKEN'];
-  // Only a ROOT fnox.toml makes CI need FNOX_AGE_KEY (nested fixtures without an age provider
-  // neither need nor own the key, and workflow generation keys FNOX_AGE_KEY injection on the root
-  // file too), so probe that single path instead of enumerating the whole tree — the recursive
-  // scanner uploadSecrets needs for ciphertext verification fails on trees GitHub truncates.
-  if (await defaultBranchHasRootFnoxToml(octokit, owner, repo)) requiredNames.push('FNOX_AGE_KEY');
-  // Deliberately based on the LOCAL working tree, unlike the remote-based fnox probe: a wrangler
-  // config added on a feature branch will need CLOUDFLARE_API_TOKEN as soon as it merges, and
-  // surfacing the missing org secret before the deploy workflow lands is the point of this check.
+  // Both requirement checks are deliberately based on the LOCAL working tree: workflow generation
+  // keys FNOX_AGE_KEY injection on the local root fnox.toml too, and a config added on a feature
+  // branch will need its secret as soon as it merges — surfacing the missing org secret before
+  // the change lands is the point of this verification. Only a ROOT fnox.toml counts (nested
+  // fixtures without an age provider neither need nor own the key).
+  if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) requiredNames.push('FNOX_AGE_KEY');
   if (containsWranglerConfig(config.dirPath)) requiredNames.push('CLOUDFLARE_API_TOKEN');
 
   // GitHub allows far more than one page of secrets, so paginate instead of trusting page one
@@ -131,22 +129,6 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
     );
   } else {
     process.exitCode = 1;
-  }
-}
-
-// A single-path existence probe of the remote default branch; verification needs only this
-// boolean, not the full fnox contents uploadSecrets enumerates.
-async function defaultBranchHasRootFnoxToml(
-  octokit: ReturnType<typeof getOctokit>,
-  owner: string,
-  repo: string
-): Promise<boolean> {
-  try {
-    await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', { owner, repo, path: 'fnox.toml' });
-    return true;
-  } catch (error) {
-    if ((error as { status?: number } | undefined)?.status === 404) return false;
-    throw error;
   }
 }
 
