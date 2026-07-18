@@ -310,7 +310,7 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
   // server). vinext's build output goes to `dist/`, and Vite's dependency cache in
   // `node_modules/.vite` self-invalidates on lockfile / patches / config / NODE_ENV changes
   // (see Vite's dep pre-bundling docs) - the residual install-layout case (bunfig.toml/.npmrc
-  // changes alone) is tracked in #983, outside this code path.
+  // changes alone don't touch the lockfile, so Vite's cache survives) is tracked in #983.
   const rmNextDirectory = config.depending.blitz || config.depending.next ? ' && rm -Rf .next' : '';
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
