@@ -39,7 +39,7 @@
     "@willbooster/oxlint-config": "1.4.8",
     "@willbooster/shared-lib": "workspace:*",
     "@willbooster/shared-lib-node": "workspace:*",
-    "@willbooster/wb": "workspace:*",
+    "@willbooster/wb": "14.0.0",
     "conventional-changelog-conventionalcommits": "9.3.1",
     "lefthook": "2.1.10",
     "oxfmt": "0.59.0",
