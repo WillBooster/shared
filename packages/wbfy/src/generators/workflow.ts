@@ -494,8 +494,15 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath' | 'packageJson'>): string | undefined {
   const deployScript = rootConfig.packageJson?.scripts?.deploy;
   if (typeof deployScript !== 'string' || !deployScript.includes('wb deploy')) return;
-  const workerDirPath = / -w\s+(\S+)/u.exec(deployScript)?.[1] ?? '.';
-  const hasWranglerConfig = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
+  // wb declares --working-dir with alias -w (yargs also accepts `=` separators and quoted values).
+  const workerDirPath =
+    /(?:^|\s)(?:--working-dir|-w)(?:\s+|=)(?:"([^"]+)"|'([^']+)'|(\S+))/u
+      .exec(deployScript)
+      ?.slice(1)
+      .find((group) => group !== undefined) ?? '.';
+  // wb deploy supports wrangler.jsonc/wrangler.json only (no TOML), so a TOML-only target would
+  // scaffold a workflow that always fails.
+  const hasWranglerConfig = ['wrangler.jsonc', 'wrangler.json'].some((fileName) =>
     fs.existsSync(path.resolve(rootConfig.dirPath, workerDirPath, fileName))
   );
   return hasWranglerConfig ? workerDirPath : undefined;
@@ -510,9 +517,16 @@ function readProductionCustomDomain(rootDirPath: string, workerDirPath: string):
     } catch {
       continue;
     }
-    const wranglerConfig = jsoncUtil.parseObjectIgnoringError<{ routes?: unknown }>(content);
-    if (!wranglerConfig || !Array.isArray(wranglerConfig.routes)) continue;
-    for (const route of wranglerConfig.routes) {
+    const wranglerConfig = jsoncUtil.parseObjectIgnoringError<{
+      env?: { production?: { routes?: unknown } };
+      routes?: unknown;
+    }>(content);
+    if (!wranglerConfig) continue;
+    // wb deploy resolves the production target from env.production when that section exists,
+    // falling back to the top-level config — mirror that precedence.
+    const routes = wranglerConfig.env?.production?.routes ?? wranglerConfig.routes;
+    if (!Array.isArray(routes)) continue;
+    for (const route of routes) {
       if (
         route &&
         typeof route === 'object' &&

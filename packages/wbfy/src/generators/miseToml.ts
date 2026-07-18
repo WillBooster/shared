@@ -88,15 +88,6 @@ function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string):
 }
 
 /**
- * Replaces an unpinned selector (`latest`, a range such as "24", an alias, or a missing entry)
- * with the newest concrete version mise resolves for it, because the repository-structure
- * standard requires concrete pins: CI installs whatever an unpinned selector resolves to at run
- * time, so builds drift across runs. Exact versions are kept as-is, and non-string forms (mise's
- * array and `{ version = "…" }` forms) are user-managed and left untouched. When mise is
- * unavailable or cannot resolve the selector (e.g. offline), the original selector is kept —
- * an unpinned tool is better than a broken configuration.
- */
-/**
  * Lifts an exact Node.js pin below the latest LTS — within the SAME major — to the latest LTS:
  * the repository-structure standard tracks the current LTS across repositories and Renovate does
  * not manage mise.toml pins, so patch/minor drift (e.g. 24.16.0 vs 24.18.0) never self-heals. A
@@ -113,6 +104,15 @@ function liftOutdatedNodeVersion(nodeVersion: unknown, cwd: string): unknown {
     : nodeVersion;
 }
 
+/**
+ * Replaces an unpinned selector (`latest`, a range such as "24", an alias, or a missing entry)
+ * with the newest concrete version mise resolves for it, because the repository-structure
+ * standard requires concrete pins: CI installs whatever an unpinned selector resolves to at run
+ * time, so builds drift across runs. Exact versions are kept as-is, and non-string forms (mise's
+ * array and `{ version = "…" }` forms) are user-managed and left untouched. When mise is
+ * unavailable or cannot resolve the selector (e.g. offline), the original selector is kept —
+ * an unpinned tool is better than a broken configuration.
+ */
 function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): unknown {
   if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
   // Normalize selector forms `mise latest` cannot resolve even though mise configuration accepts
