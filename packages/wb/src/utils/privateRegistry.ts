@@ -158,13 +158,10 @@ async function resolveVersion(
   versionSpecifier: string
 ): Promise<string> {
   // Prerelease and `+build` metadata are both part of valid exact SemVer versions.
-  const exactVersion = /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(versionSpecifier)
-    ? versionSpecifier
-    : /^[\^~]\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/.test(versionSpecifier)
-      ? // Without a semver resolver, degrade a simple range to its base version (org repos pin
-        // exact versions, so this path is a best-effort fallback).
-        versionSpecifier.slice(1)
-      : undefined;
+  // toBaseVersion applies the shared anchored SemVer classification: an exact version resolves to
+  // itself and a simple `^`/`~` range degrades to its base version (org repos pin exact versions,
+  // so the range path is a best-effort fallback); anything else resolves as a dist-tag below.
+  const exactVersion = toBaseVersion(versionSpecifier);
   if (exactVersion) return exactVersion;
 
   const packument = await fetchRegistryJson<{ 'dist-tags'?: Record<string, string> }>(

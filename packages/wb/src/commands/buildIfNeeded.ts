@@ -256,21 +256,21 @@ async function updateHashWithDiffResult(
     // Build OUTPUTS must never count as build inputs: hashing e.g. an untracked dist/ file would
     // change the hash on every build and disable the cache permanently.
     const projectRelativeDirPath = path.relative(project.rootDirPath, project.dirPath);
-    const toProjectPath = (outputPath: string): string => path.join(projectRelativeDirPath, outputPath);
-    const explicitOutputPaths = (getExplicitOutputPaths(argv) ?? []).map(toProjectPath);
-    const defaultOutputPaths = defaultOutputCandidates.map(toProjectPath);
-    const filteredEntries = normalizedEntries.filter(({ filePath, hashPath, untracked }) => {
+    const explicitOutputPaths = (getExplicitOutputPaths(argv) ?? []).map((outputPath) =>
+      path.join(projectRelativeDirPath, outputPath)
+    );
+    const filteredEntries = normalizedEntries.filter(({ filePath, hashPath }) => {
       const directorySegments = hashPath.split('/').slice(0, -1);
       return (
         (directorySegments.some((segment) => includeDirNames.has(segment)) ||
           includeSuffix.some((suffix) => hashPath.endsWith(suffix))) &&
         !directorySegments.some((segment) => excludeDirNames.has(segment)) &&
-        // Explicitly declared outputs are never inputs. The default candidates exclude only
-        // UNTRACKED entries: real build artifacts are untracked (usually gitignored), so
-        // hashing them would change the hash on every build and disable the cache — while a
-        // TRACKED file under e.g. build/ is source (build scripts/config) and must invalidate.
-        !matchesOutputPath(explicitOutputPaths, filePath) &&
-        !(untracked && matchesOutputPath(defaultOutputPaths, filePath))
+        // Only EXPLICITLY declared outputs are excluded from the input hash. Default candidates
+        // (dist/build/.next/out) are NOT: gitignored artifacts never appear in `git status`
+        // anyway, and a non-ignored file there may be genuine source (e.g. build/ scripts), whose
+        // changes must invalidate the cache — correctness over cache hits. Projects keeping
+        // non-ignored artifacts in those directories should gitignore them or pass --output.
+        !matchesOutputPath(explicitOutputPaths, filePath)
       );
     });
     if (argv.verbose) {

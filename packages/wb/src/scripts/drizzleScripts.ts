@@ -152,7 +152,11 @@ export function usesDrizzleKitForD1(project: Project): boolean {
  * Undefined when the expression cannot be resolved; wb deploy's unmanaged-D1 warning covers that.
  */
 function extractExportedConfigObject(content: string, exportedContent: string): string | undefined {
-  const exportedExpression = exportedContent.replace(/^(?:export\s+default|module\.exports\s*=)\s*/, '');
+  const exportedExpression = exportedContent
+    .replace(/^(?:export\s+default|module\.exports\s*=)\s*/, '')
+    // Drop a TypeScript type postfix (`config satisfies Config;` / `config as Config;`) so the
+    // identifier branch below still recognizes the export.
+    .replace(/^([A-Za-z_$][\w$]*)\s+(?:satisfies|as)\b[^;\n{]*/, '$1');
   const identifierMatch = /^([A-Za-z_$][\w$]*)\s*(?:;|\n|$)/.exec(exportedExpression);
   if (!identifierMatch) return extractFirstBalancedObject(exportedContent);
 
