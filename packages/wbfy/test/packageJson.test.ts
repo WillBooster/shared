@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { expect, test } from 'vitest';
+import type { PackageJson } from 'type-fest';
 
 import { generatePackageJson } from '../src/generators/packageJson.js';
 import { createConfig } from './testConfig.js';
@@ -168,7 +169,45 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
 
   expect(packageJson.dependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+/u);
   expect(packageJson.dependencies?.['@willbooster/wb']).not.toBe(oldWbVersion);
-  expect(packageJson.devDependencies?.['@willbooster/wb']).toBeUndefined();
+});
+
+test('preserves workspace: dependency specifiers in public packages', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      devDependencies: {
+        '@willbooster/wb': 'workspace:^14.0.0',
+      },
+      workspaces: ['packages/*'],
+    },
+    { isRoot: true },
+    {
+      files: {
+        'packages/wb/package.json': JSON.stringify({ name: '@willbooster/wb' }),
+      },
+    }
+  );
+
+  expect(packageJson.devDependencies?.['@willbooster/wb']).toBe('workspace:^14.0.0');
+});
+
+test('updates non-workspace dependency specifiers in public packages', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      devDependencies: {
+        '@willbooster/wb': '0.0.1',
+      },
+      workspaces: ['packages/*'],
+    },
+    { isRoot: true },
+    {
+      files: {
+        'packages/wb/package.json': JSON.stringify({ name: '@willbooster/wb' }),
+      },
+    }
+  );
+
+  expect(packageJson.devDependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+$/u);
+  expect(packageJson.devDependencies?.['@willbooster/wb']).not.toBe('0.0.1');
 });
 
 test('uses stable age-gated versions for generated dependencies when skipping installs', async () => {
@@ -1608,7 +1647,7 @@ async function generatePackageJsonFrom(
   configOverrides: Parameters<typeof createConfig>[0] = {},
   options: { createI18nDir?: boolean; files?: Record<string, string> } = {}
 ): Promise<GeneratedPackageJson> {
-  const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-'));
+  const dirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-')));
   const packageJsonPath = path.join(dirPath, 'package.json');
 
   try {
@@ -1623,6 +1662,7 @@ async function generatePackageJsonFrom(
     await fs.writeFile(packageJsonPath, JSON.stringify(initialPackageJson));
 
     const config = createConfig({
+      packageJson: initialPackageJson as PackageJson,
       ...configOverrides,
       dirPath,
     });

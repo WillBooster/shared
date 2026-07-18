@@ -1008,12 +1008,15 @@ function addPackageJsonDependencies(
     // pin a concrete version because `npm publish` rejects `workspace:*` specifiers — but an
     // EXISTING `workspace:` declaration is always kept: overwriting it with a registry release
     // would silently break the local workspace link.)
-    if (
-      getWorkspacePackageDirs(rootConfig).has(dependency) &&
-      (jsonObj.private || packageJsonDependencies[dependency]?.startsWith('workspace:'))
-    ) {
-      packageJsonDependencies[dependency] = 'workspace:*';
-      continue;
+
+    if (getWorkspacePackageDirs(rootConfig).has(dependency)) {
+      if (jsonObj.private) {
+        packageJsonDependencies[dependency] = 'workspace:*';
+        continue;
+      }
+      if (packageJsonDependencies[dependency]?.startsWith('workspace:')) {
+        continue;
+      }
     }
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       config,

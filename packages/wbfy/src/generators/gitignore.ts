@@ -213,7 +213,9 @@ src-tauri/gen/schemas/
     // so deleting it would un-ignore files.
     const managedContent = headUserContent.slice(userHeadContent.length);
     const managedLines = new Set(
-      [...managedContent.split('\n'), ...generated.split('\n')].filter((line) => line && !line.startsWith('#'))
+      [...managedContent.split('\n'), ...generated.split('\n')]
+        .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
+        .filter((line) => line && !line.startsWith('#'))
     );
     const dedupedUserHeadContent = userHeadContent
       .split('\n')

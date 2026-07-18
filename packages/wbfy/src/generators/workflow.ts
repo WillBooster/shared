@@ -376,7 +376,7 @@ async function writeWorkflowYaml(
   if (
     !newSettings.permissions &&
     jobs.length > 0 &&
-    jobs.every((job) => /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@main$/u.test(job.uses ?? ''))
+    jobs.every((job) => /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@\S+$/u.test(job.uses ?? ''))
   ) {
     newSettings.permissions = { contents: 'read' };
   }
