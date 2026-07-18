@@ -47,7 +47,16 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupSecrets', async () => {
     const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
     if (!owner || !repo || (owner !== 'WillBooster' && owner !== 'WillBoosterLab')) return;
-    if (!hasGitHubToken(owner) || !options.doesUploadEnvVars) return;
+    if (!options.doesUploadEnvVars) return;
+    // --env explicitly requested secret handling, so a missing credential is a failure, not a
+    // silent skip that would report success without verifying or uploading anything.
+    if (!hasGitHubToken(owner)) {
+      console.error(
+        `--env was requested but no GitHub credential for ${owner} is available (set the org PAT environment variable or authenticate \`gh\`). Secrets were neither verified nor uploaded.`
+      );
+      process.exitCode = 1;
+      return;
+    }
 
     // The user explicitly requested secret handling (--env), so any failure — including
     // filesystem/validation errors before the GitHub requests — must fail the run instead of
@@ -79,7 +88,7 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
 
   // GitHub allows far more than one page of secrets, so paginate instead of trusting page one
   // (this Octokit instance carries no paginate plugin, hence the manual loops).
-  const orgVisibleNames = new Set<string>();
+  const assignedOrgNames: string[] = [];
   for (let page = 1; ; page++) {
     const response = await octokit.request('GET /repos/{owner}/{repo}/actions/organization-secrets', {
       owner,
@@ -87,9 +96,14 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
       per_page: 100,
       page,
     });
-    for (const secret of response.data.secrets) orgVisibleNames.add(secret.name);
+    for (const secret of response.data.secrets) assignedOrgNames.push(secret.name);
     if (response.data.secrets.length < 100) break;
   }
+  // A workflow run can use only the first 100 organization secrets sorted alphabetically, so an
+  // assigned-but-beyond-limit secret is NOT usable and must not pass verification (nor justify
+  // deleting a repository-level fallback that is the only working source).
+  const usableOrgNames = new Set([...assignedOrgNames].toSorted().slice(0, 100));
+  const assignedButUnusableNames = new Set(assignedOrgNames.filter((name) => !usableOrgNames.has(name)));
   const repoLevelNames = new Set<string>();
   for (let page = 1; ; page++) {
     const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets', {
@@ -106,17 +120,20 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
   // same wbfy invocation, so gate this repository's success message on a local flag.
   let verified = true;
   for (const name of requiredNames) {
-    if (!orgVisibleNames.has(name)) {
+    if (!usableOrgNames.has(name)) {
       console.error(
-        `The organization secret ${name} is not visible to ${owner}/${repo}. Ask a WillBooster org admin to register it as an organization secret (or extend its repository access to this repository) — do NOT create a repository-level copy.${repoLevelNames.has(name) ? ` A repository-level ${name} currently keeps CI working, but it violates the org-secret policy and must be deleted once the organization secret is visible.` : ''}`
+        assignedButUnusableNames.has(name)
+          ? `The organization secret ${name} is assigned to ${owner}/${repo} but falls beyond the 100-organization-secret limit a workflow run can use (only the alphabetically first 100 are usable). Ask a WillBooster org admin to prune the assigned organization secrets.`
+          : `The organization secret ${name} is not visible to ${owner}/${repo}. Ask a WillBooster org admin to register it as an organization secret (or extend its repository access to this repository) — do NOT create a repository-level copy.${repoLevelNames.has(name) ? ` A repository-level ${name} currently keeps CI working, but it violates the org-secret policy and must be deleted once the organization secret is visible.` : ''}`
       );
       verified = false;
     }
   }
   // A repository secret silently overrides a same-named organization secret, so a stale
-  // repository-level copy would keep winning even after the admin rotates the org value.
+  // repository-level copy would keep winning even after the admin rotates the org value. Only a
+  // genuinely workflow-usable organization secret justifies deleting the repository fallback.
   for (const name of ORG_MANAGED_SECRET_NAMES) {
-    if (orgVisibleNames.has(name) && repoLevelNames.has(name)) {
+    if (usableOrgNames.has(name) && repoLevelNames.has(name)) {
       console.error(
         `The repository-level secret ${name} in ${owner}/${repo} shadows the organization secret of the same name. After confirming the organization value is current, delete the repository-level copy manually (e.g. \`gh secret delete ${name} --repo ${owner}/${repo}\`); wbfy deliberately never deletes it.`
       );
