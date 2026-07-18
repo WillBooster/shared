@@ -34,6 +34,7 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun wb -w packages/api deploy',
       'bun run --filter web build -w ignored && bun wb deploy -w packages/api',
       'bun wb deploy -w ./packages/api/',
+      'bun wb -wpackages/api deploy',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');

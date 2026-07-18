@@ -258,15 +258,28 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // scaffold only via the conservative filename check.
     const hasDeployWorkflow =
       [...fileNamesByKind.keys()].some((kind) => kind.startsWith('deploy')) ||
-      // Scan every workflow file (not fileNamesByKind, which collapses same-stem .yml/.yaml twins).
+      // Scan every workflow file (not fileNamesByKind, which collapses same-stem .yml/.yaml
+      // twins) and inspect live jobs.*.uses values — a raw text search would also match comments.
+      // Unparseable files fall back to the conservative text search.
       entries.some((entry) => {
         if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name)) return false;
+        let content: string;
         try {
-          return /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/u.test(
-            fs.readFileSync(path.join(workflowsPath, entry.name), 'utf8')
-          );
+          content = fs.readFileSync(path.join(workflowsPath, entry.name), 'utf8');
         } catch {
           return false;
+        }
+        const deployCallPattern = /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/u;
+        try {
+          const workflow = yaml.load(content) as Workflow | undefined;
+          if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
+            return Object.values(workflow.jobs).some(
+              (job) => typeof job?.uses === 'string' && deployCallPattern.test(job.uses)
+            );
+          }
+          return false;
+        } catch {
+          return deployCallPattern.test(content);
         }
       });
     if (resolveCloudflareDeployTarget(rootConfig) && !hasDeployWorkflow) {
@@ -521,9 +534,10 @@ function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath'
     return tokens[index] === 'wb' && tokens.slice(index + 1).includes('deploy');
   });
   if (!deploySegment) return;
-  // wb declares --working-dir with alias -w (yargs also accepts `=` separators and quoted values).
+  // wb declares --working-dir with alias -w (yargs also accepts `=` separators, quoted values,
+  // and the attached short form `-wVALUE`).
   const rawWorkerDirPath =
-    /(?:^|\s)(?:--working-dir|-w)(?:\s+|=)(?:"([^"]+)"|'([^']+)'|(\S+))/u
+    /(?:^|\s)(?:--working-dir(?:\s+|=)|-w(?:\s+|=)?)(?:"([^"]+)"|'([^']+)'|(\S+))/u
       .exec(deploySegment)
       ?.slice(1)
       .find((group) => group !== undefined) ?? '.';
