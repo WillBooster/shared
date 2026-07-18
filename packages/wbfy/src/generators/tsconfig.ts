@@ -178,8 +178,17 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   // for every TypeScript project except React Native, which uses @tsconfig/react-native instead.
   const types = settings.compilerOptions?.types;
   if (types ? !types.includes('bun') : config.depending.reactNative) return;
-  // Keep a repo-local mapping (e.g. patched types) when the project already declares one.
-  if (settings.compilerOptions?.paths?.['undici-types']) return;
+  const existingMapping = settings.compilerOptions?.paths?.['undici-types'];
+  if (existingMapping) {
+    // Normalize the package-directory form older wbfy versions generated: it resolves through the
+    // package's `types` condition today but breaks once TypeScript needs the concrete file. Any
+    // other value is a deliberate repo-local mapping (e.g. patched types) and must be kept.
+    const legacyDirMapping = `${getRootDir(config)}/node_modules/undici-types`;
+    if (existingMapping.length === 1 && existingMapping[0] === legacyDirMapping) {
+      settings.compilerOptions!.paths!['undici-types'] = [`${legacyDirMapping}/index.d.ts`];
+    }
+    return;
+  }
 
   settings.compilerOptions ??= {};
   settings.compilerOptions.paths = {

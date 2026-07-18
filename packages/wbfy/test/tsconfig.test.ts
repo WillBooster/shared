@@ -53,7 +53,15 @@ test('merges settings from a tsconfig containing JSONC comments instead of repla
     },
   }
 }`);
-  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types'] });
+  // The legacy package-directory mapping is normalized to the concrete index.d.ts file.
+  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
+});
+
+test('keeps a deliberate repo-local undici-types mapping untouched', async () => {
+  const compilerOptions = await generateCompilerOptionsFromContent(
+    JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./patched-types/undici-types/index.d.ts'] } } })
+  );
+  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./patched-types/undici-types/index.d.ts'] });
 });
 
 test('leaves an unparseable tsconfig untouched', async () => {
@@ -122,7 +130,7 @@ test('merges settings from a tsconfig with a UTF-8 BOM instead of skipping it', 
   const compilerOptions = await generateCompilerOptionsFromContent(
     '\uFEFF' + JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./node_modules/undici-types'] } } })
   );
-  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types'] });
+  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
 });
 
 test('keeps a commented Next tsconfig byte-identical when no cleanup is needed', async () => {

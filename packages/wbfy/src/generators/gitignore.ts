@@ -4,10 +4,11 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import { options } from '../options.js';
-import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
+import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 
 // Do not remove `windows`: generated .gitignore files must keep ignoring Windows-created local artifacts.
 const defaultNames = ['windows', 'macos', 'linux', 'jetbrains', 'visualstudiocode', 'emacs', 'vim', 'yarn'];
@@ -43,7 +44,8 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
   return logger.functionIgnoringException('generateGitignore', async () => {
     const filePath = path.resolve(config.dirPath, '.gitignore');
     const content = (await fsUtil.readFileIfExists(filePath)) ?? '';
-    let headUserContent = ignoreFileUtil.getHeadUserContent(content) + commonContent;
+    const userHeadContent = ignoreFileUtil.getHeadUserContent(content);
+    let headUserContent = userHeadContent + commonContent;
     const tailUserContent = ignoreFileUtil.getTailUserContent(content);
 
     const names = [...defaultNames];
@@ -142,6 +144,19 @@ src-tauri/gen/schemas/
     if (generatesWorkerTypes(config)) {
       headUserContent += `/worker-configuration.d.ts
 `;
+    } else if (config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config)) {
+      // On a genuine worker-types opt-out (nothing consumes the generated file — the same gate as
+      // the postinstall strip; generatesWorkerTypes alone is false for unrelated reasons such as a
+      // missing local wrangler dependency, where the file may still be consumed) the ignore rule
+      // above disappears, so an already-generated file would surface as untracked noise on every
+      // checkout — delete it, but only an UNTRACKED copy (a tracked one is the user's own file).
+      const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
+      if (
+        fs.existsSync(workerTypesPath) &&
+        !spawnSyncAndReturnStdout('git', ['ls-files', '--', 'worker-configuration.d.ts'], config.dirPath).trim()
+      ) {
+        await promisePool.run(() => fs.promises.rm(workerTypesPath, { force: true }));
+      }
     }
     if (rootConfig.depending.vinext || config.depending.vinext) {
       headUserContent += `.vinext/
@@ -203,7 +218,25 @@ src-tauri/gen/schemas/
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
     }
-    const newContent = headUserContent + '\n' + generated + tailUserContent;
+    // Drop HEAD user-section lines that duplicate a managed or template pattern verbatim, so
+    // hand-added entries (e.g. a pre-migration `.wrangler/`) do not linger once wbfy manages the
+    // same rule. Removing a head duplicate cannot change semantics: git honors the LAST matching
+    // rule and the managed/template copy always comes after the head. The TAIL section is left
+    // untouched — a tail rule comes after every managed rule and may deliberately re-assert a
+    // pattern over an earlier negation (e.g. `!.env.production` followed by `.env.production`),
+    // so deleting it would un-ignore files.
+    const managedContent = headUserContent.slice(userHeadContent.length);
+    const managedLines = new Set(
+      [...managedContent.split('\n'), ...generated.split('\n')]
+        .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
+        .filter((line) => line && !line.startsWith('#'))
+    );
+    const dedupedUserHeadContent = userHeadContent
+      .split('\n')
+      // Tolerate CRLF user content (now preserved by the generated `.gitignore -text` attribute).
+      .filter((line) => !managedLines.has(line.endsWith('\r') ? line.slice(0, -1) : line))
+      .join('\n');
+    const newContent = dedupedUserHeadContent + managedContent + '\n' + generated + tailUserContent;
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }

@@ -10,7 +10,7 @@ import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
-import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
+import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import {
   classifyWranglerTypesInvocation,
   isManagedGenCodeSegment,
@@ -210,7 +210,27 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   }
 }
 
-function updatePostinstallScript(scripts: PackageJson.Scripts, wranglerTypes: string | undefined): void {
+function updatePostinstallScript(
+  scripts: PackageJson.Scripts,
+  wranglerTypes: string | undefined,
+  removesObsoleteWranglerTypes: boolean
+): void {
+  // On a worker-types opt-out (a wrangler package whose TypeScript project no longer consumes the
+  // generated file), strip the generating default-output invocations wbfy used to manage from
+  // postinstall — otherwise every install keeps recreating the now-unignored ~500KB file. Custom
+  // pipelines (non-default output, wrappers, unmodeled shells) are classified differently and stay.
+  if (removesObsoleteWranglerTypes && scripts.postinstall) {
+    const remaining = splitCommandSegments(scripts.postinstall).filter((segment) => {
+      if (segment === '') return false;
+      const invocationArgs = parseWranglerTypesInvocation(segment);
+      return !invocationArgs || classifyWranglerTypesInvocation(invocationArgs) !== 'reusableGenerator';
+    });
+    if (remaining.length > 0) {
+      scripts.postinstall = remaining.join(' && ');
+    } else {
+      delete scripts.postinstall;
+    }
+  }
   if (scripts['gen-code']) {
     // Keep the project's own worker-types pipeline (prerequisites included — e.g. `node scripts/prepareTypes.js
     // && wrangler types ...`) when rewriting postinstall: dropping a prerequisite would leave fresh checkouts
@@ -481,10 +501,16 @@ async function applyPackageJsonConventions(
   }
 
   if (!isWbPackage(jsonObj)) {
-    if (shouldKeepWbAsRuntimeDependency(jsonObj)) {
-      dependencies.push(wbDependency);
-    } else {
-      devDependencies.push(wbDependency);
+    // A `workspace:` specifier depends on the wb developed in this repository (e.g.
+    // WillBooster/shared itself); installing the latest registry release over it would silently
+    // replace the local build with a published one, so leave such a declaration untouched.
+    const wbSpecifier = jsonObj.dependencies[wbDependency] ?? jsonObj.devDependencies[wbDependency];
+    if (!wbSpecifier?.startsWith('workspace:')) {
+      if (shouldKeepWbAsRuntimeDependency(jsonObj)) {
+        dependencies.push(wbDependency);
+      } else {
+        devDependencies.push(wbDependency);
+      }
     }
   }
   // build-ts owns TypeScript execution and declaration emit. wbfy must always
@@ -844,7 +870,11 @@ async function normalizePackageMetadata(
         : appendWranglerTypes(genCodeScript, wranglerTypes);
   }
   normalizeGenI18nTsScript(config, jsonObj);
-  updatePostinstallScript(jsonObj.scripts, wranglerTypes);
+  updatePostinstallScript(
+    jsonObj.scripts,
+    wranglerTypes,
+    config.doesContainWranglerConfig && !wranglerTypes && !consumesGeneratedWorkerTypes(config)
+  );
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
@@ -912,7 +942,7 @@ function addDependencyVersionsToPackageJson(
     rootConfig,
     jsonObj,
     packageJsonDependencies,
-    [...dependencyUpdates.dependencies, ...getExistingManagedDependencies(packageJsonDependencies)],
+    [...dependencyUpdates.dependencies, ...getExistingManagedDependencies(packageJsonDependencies, jsonObj)],
     skipAddingDeps
   );
   dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter((dep) => !packageJsonDependencies[dep]);
@@ -921,13 +951,24 @@ function addDependencyVersionsToPackageJson(
     rootConfig,
     jsonObj,
     packageJsonDevDependencies,
-    [...dependencyUpdates.devDependencies, ...getExistingManagedDependencies(packageJsonDevDependencies)],
+    [...dependencyUpdates.devDependencies, ...getExistingManagedDependencies(packageJsonDevDependencies, jsonObj)],
     skipAddingDeps
   );
 }
 
-function getExistingManagedDependencies(packageJsonDependencies: Partial<Record<string, string>>): string[] {
-  return Object.keys(packageJsonDependencies).filter((dependency) => managedDependencyNames.has(dependency));
+function getExistingManagedDependencies(
+  packageJsonDependencies: Partial<Record<string, string>>,
+  jsonObj: PackageJson
+): string[] {
+  return Object.keys(packageJsonDependencies).filter(
+    (dependency) =>
+      managedDependencyNames.has(dependency) &&
+      // A public package's `workspace:` specifier must never be re-managed via a registry install
+      // (private ones are normalized to `workspace:*` later). This also covers running wbfy on a
+      // monorepo SUBDIRECTORY, where the parent's workspaces are invisible and the workspace-map
+      // guard in addPackageJsonDependencies cannot protect the specifier.
+      (jsonObj.private || !packageJsonDependencies[dependency]?.startsWith('workspace:'))
+  );
 }
 
 function removeEmptyDependencySections(jsonObj: PackageJson): void {
@@ -999,7 +1040,19 @@ function addPackageJsonDependencies(
     // A private package whose monorepo contains this dependency as a workspace must reference it
     // via the workspace protocol: pinning a registry version makes Bun shadow the same-name
     // workspace and skip installing the workspace's own dependencies. (Published packages instead
-    // pin a concrete version because `npm publish` rejects `workspace:*` specifiers.)
+    // pin a concrete version because `npm publish` rejects `workspace:*` specifiers — but an
+    // EXISTING `workspace:` declaration is always kept: overwriting it with a registry release
+    // would silently break the local workspace link.)
+
+    // A declared `workspace:` specifier always wins, whether or not the workspace map sees the
+    // package: running wbfy on a monorepo SUBDIRECTORY hides the parent's workspaces, so the map
+    // alone cannot be trusted to detect a local workspace link.
+    if (packageJsonDependencies[dependency]?.startsWith('workspace:')) {
+      if (jsonObj.private) {
+        packageJsonDependencies[dependency] = 'workspace:*';
+      }
+      continue;
+    }
     if (jsonObj.private && getWorkspacePackageDirs(rootConfig).has(dependency)) {
       packageJsonDependencies[dependency] = 'workspace:*';
       continue;
