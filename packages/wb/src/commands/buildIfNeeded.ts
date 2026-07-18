@@ -100,6 +100,11 @@ function detectExistingDefaultOutputPaths(project: Project): string[] {
   return defaultOutputCandidates.filter((outputPath) => fs.existsSync(path.join(project.dirPath, outputPath)));
 }
 
+/** An `--output` value may name a file, so match the exact path as well as descendants. */
+function matchesOutputPath(outputPaths: string[], filePath: string): boolean {
+  return outputPaths.some((outputPath) => filePath === outputPath || filePath.startsWith(`${outputPath}/`));
+}
+
 function hasGitCommit(project: Project): boolean {
   return (
     child_process.spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
@@ -251,21 +256,21 @@ async function updateHashWithDiffResult(
     // Build OUTPUTS must never count as build inputs: hashing e.g. an untracked dist/ file would
     // change the hash on every build and disable the cache permanently.
     const projectRelativeDirPath = path.relative(project.rootDirPath, project.dirPath);
-    // The UNION of defaults and explicit paths: an `--output` naming a single file must not stop
-    // sibling artifacts in dist/build/.next/out from being excluded, or every build would change
-    // the hash and permanently disable the cache. (The cache-validity existence check in
-    // canSkipBuild deliberately narrows to the explicit paths instead.)
-    const outputPaths = [...new Set([...defaultOutputCandidates, ...(getExplicitOutputPaths(argv) ?? [])])].map(
-      (outputPath) => path.join(projectRelativeDirPath, outputPath)
-    );
-    const filteredEntries = normalizedEntries.filter(({ filePath, hashPath }) => {
+    const toProjectPath = (outputPath: string): string => path.join(projectRelativeDirPath, outputPath);
+    const explicitOutputPaths = (getExplicitOutputPaths(argv) ?? []).map(toProjectPath);
+    const defaultOutputPaths = defaultOutputCandidates.map(toProjectPath);
+    const filteredEntries = normalizedEntries.filter(({ filePath, hashPath, untracked }) => {
       const directorySegments = hashPath.split('/').slice(0, -1);
       return (
         (directorySegments.some((segment) => includeDirNames.has(segment)) ||
           includeSuffix.some((suffix) => hashPath.endsWith(suffix))) &&
         !directorySegments.some((segment) => excludeDirNames.has(segment)) &&
-        // An `--output` value may name a file, so exclude the exact path as well as descendants.
-        !outputPaths.some((outputPath) => filePath === outputPath || filePath.startsWith(`${outputPath}/`))
+        // Explicitly declared outputs are never inputs. The default candidates exclude only
+        // UNTRACKED entries: real build artifacts are untracked (usually gitignored), so
+        // hashing them would change the hash on every build and disable the cache — while a
+        // TRACKED file under e.g. build/ is source (build scripts/config) and must invalidate.
+        !matchesOutputPath(explicitOutputPaths, filePath) &&
+        !(untracked && matchesOutputPath(defaultOutputPaths, filePath))
       );
     });
     if (argv.verbose) {

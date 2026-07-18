@@ -76,20 +76,26 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
     // On failure or interruption, restore byte-for-byte: semantic-release may have left PARTIAL
     // edits (e.g. a version bump without a publish), which must not survive. The semantic
     // workspace-range restore is reserved for a successful release.
+    const restoredFilePaths: string[] = [];
     for (const [filePath, content] of modifiedFiles) {
-      restoreModifiedFile(filePath, content, releaseRanSuccessfully);
+      if (restoreModifiedFile(filePath, content, releaseRanSuccessfully)) restoredFilePaths.push(filePath);
     }
-    if (modifiedFiles.size > 0) {
+    if (restoredFilePaths.length > 0) {
       console.info(
-        chalk.cyan(`Restored ${[...modifiedFiles.keys()].map((p) => path.relative(project.dirPath, p)).join(', ')}.`)
+        chalk.cyan(`Restored ${restoredFilePaths.map((p) => path.relative(project.dirPath, p)).join(', ')}.`)
       );
-      if (!isCI(project.env.CI)) {
-        console.info(
-          chalk.yellow(
-            'node_modules now uses the hoisted layout; run a clean reinstall (`rm -rf node_modules packages/*/node_modules && bun install`) to restore the isolated layout.'
-          )
-        );
-      }
+    }
+    // The hint applies only when the hoisted reinstall actually ran; bunfig.toml is snapshotted
+    // exactly in that branch.
+    const reinstalledWithHoistedLinker = [...modifiedFiles.keys()].some(
+      (filePath) => path.basename(filePath) === 'bunfig.toml'
+    );
+    if (reinstalledWithHoistedLinker && !isCI(project.env.CI)) {
+      console.info(
+        chalk.yellow(
+          'node_modules now uses the hoisted layout; run a clean reinstall (`rm -rf node_modules packages/*/node_modules && bun install`) to restore the isolated layout.'
+        )
+      );
     }
     for (const signal of guardedSignals) process.off(signal, signalHandler);
   }
@@ -180,22 +186,33 @@ async function prepareNpmCompatibleLayout(
  * revert that bump — so when the file changed during the release, only the `workspace:`
  * specifiers are written back into the CURRENT content.
  */
-function restoreModifiedFile(filePath: string, originalContent: Buffer | undefined, releaseSucceeded: boolean): void {
+/** Returns whether the on-disk content actually changed (drives the "Restored ..." message). */
+function restoreModifiedFile(
+  filePath: string,
+  originalContent: Buffer | undefined,
+  releaseSucceeded: boolean
+): boolean {
   if (originalContent === undefined) {
+    const existed = fs.existsSync(filePath);
     fs.rmSync(filePath, { force: true });
-    return;
+    return existed;
   }
   if (releaseSucceeded && path.basename(filePath) === 'package.json' && fs.existsSync(filePath)) {
     const currentContent = fs.readFileSync(filePath, 'utf8');
     const originalText = originalContent.toString('utf8');
     if (currentContent !== rewriteWorkspaceRanges(originalText)) {
-      fs.writeFileSync(filePath, restoreWorkspaceRanges(currentContent, originalText), 'utf8');
-      return;
+      const restoredContent = restoreWorkspaceRanges(currentContent, originalText);
+      if (restoredContent === currentContent) return false;
+      fs.writeFileSync(filePath, restoredContent, 'utf8');
+      return true;
     }
   }
+  const currentBuffer = fs.existsSync(filePath) ? fs.readFileSync(filePath) : undefined;
+  if (currentBuffer?.equals(originalContent)) return false;
   // Write the snapshot bytes verbatim: bun.lockb is binary, so any text decode/encode round trip
   // would corrupt it.
   fs.writeFileSync(filePath, originalContent);
+  return true;
 }
 
 export function buildHoistedBunfig(bunfig: string): string {

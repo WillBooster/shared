@@ -137,14 +137,30 @@ export function usesDrizzleKitForD1(project: Project): boolean {
       .map((marker) => content.indexOf(marker))
       .filter((index) => index !== -1);
     const exportedContent = exportIndices.length > 0 ? content.slice(Math.min(...exportIndices)) : content;
-    // When the export references an identifier (`const config = {...}; export default config;`),
-    // no object literal follows the marker; scan the WHOLE file then, so such configs are still
-    // detected (the string-aware property scanner keeps string noise from matching).
-    const objectSpan = extractFirstBalancedObject(exportedContent);
-    return declaresSqliteTarget(objectSpan ?? content);
+    const objectSpan = extractExportedConfigObject(content, exportedContent);
+    return objectSpan !== undefined && declaresSqliteTarget(objectSpan);
   } catch {
     return false;
   }
+}
+
+/**
+ * The object literal the export actually evaluates to: for `export default {...}` or
+ * `export default defineConfig({...})` the first balanced object after the marker, and for
+ * `export default config;` the initializer of that identifier's declaration — never the whole
+ * file, since an unrelated object (e.g. an unused sqlite-shaped constant) must not be selected.
+ * Undefined when the expression cannot be resolved; wb deploy's unmanaged-D1 warning covers that.
+ */
+function extractExportedConfigObject(content: string, exportedContent: string): string | undefined {
+  const exportedExpression = exportedContent.replace(/^(?:export\s+default|module\.exports\s*=)\s*/, '');
+  const identifierMatch = /^([A-Za-z_$][\w$]*)\s*(?:;|\n|$)/.exec(exportedExpression);
+  if (!identifierMatch) return extractFirstBalancedObject(exportedContent);
+
+  const declarationMatch = new RegExp(String.raw`(?:const|let|var)\s+${identifierMatch[1]}\b`).exec(content);
+  if (!declarationMatch) return;
+  const assignmentIndex = content.indexOf('=', declarationMatch.index);
+  if (assignmentIndex === -1) return;
+  return extractFirstBalancedObject(content.slice(assignmentIndex));
 }
 
 /**
