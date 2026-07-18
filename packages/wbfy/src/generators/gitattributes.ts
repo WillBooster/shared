@@ -9,6 +9,10 @@ import { promisePool } from '../utils/promisePool.js';
 // cf. https://bun.sh/guides/install/git-diff-bun-lockfile
 const newContent = `* text=auto
 
+# The macOS template's \`Icon\\r\\r\` rule needs its literal carriage returns: \`text=auto\`
+# normalization strips one CR per checkin, degrading the rule until it matches nothing.
+.gitignore -text
+
 *.lockb binary diff=lockb
 *.vcproj text eol=crlf
 
