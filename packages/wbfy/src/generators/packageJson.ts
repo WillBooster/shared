@@ -918,7 +918,7 @@ function addDependencyVersionsToPackageJson(
     rootConfig,
     jsonObj,
     packageJsonDependencies,
-    [...dependencyUpdates.dependencies, ...getExistingManagedDependencies(packageJsonDependencies)],
+    [...dependencyUpdates.dependencies, ...getExistingManagedDependencies(packageJsonDependencies, jsonObj)],
     skipAddingDeps
   );
   dependencyUpdates.devDependencies = dependencyUpdates.devDependencies.filter((dep) => !packageJsonDependencies[dep]);
@@ -927,13 +927,24 @@ function addDependencyVersionsToPackageJson(
     rootConfig,
     jsonObj,
     packageJsonDevDependencies,
-    [...dependencyUpdates.devDependencies, ...getExistingManagedDependencies(packageJsonDevDependencies)],
+    [...dependencyUpdates.devDependencies, ...getExistingManagedDependencies(packageJsonDevDependencies, jsonObj)],
     skipAddingDeps
   );
 }
 
-function getExistingManagedDependencies(packageJsonDependencies: Partial<Record<string, string>>): string[] {
-  return Object.keys(packageJsonDependencies).filter((dependency) => managedDependencyNames.has(dependency));
+function getExistingManagedDependencies(
+  packageJsonDependencies: Partial<Record<string, string>>,
+  jsonObj: PackageJson
+): string[] {
+  return Object.keys(packageJsonDependencies).filter(
+    (dependency) =>
+      managedDependencyNames.has(dependency) &&
+      // A public package's `workspace:` specifier must never be re-managed via a registry install
+      // (private ones are normalized to `workspace:*` later). This also covers running wbfy on a
+      // monorepo SUBDIRECTORY, where the parent's workspaces are invisible and the workspace-map
+      // guard in addPackageJsonDependencies cannot protect the specifier.
+      (jsonObj.private || !packageJsonDependencies[dependency]?.startsWith('workspace:'))
+  );
 }
 
 function removeEmptyDependencySections(jsonObj: PackageJson): void {

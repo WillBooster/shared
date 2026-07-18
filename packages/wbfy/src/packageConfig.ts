@@ -308,7 +308,14 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
  */
 export function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPath'>): boolean {
   // `git grep` searches tracked files only, so the gitignored generated file itself never matches.
-  const grepResult = spawnSyncAndReturnStdout('git', ['grep', '-l', 'worker-configuration', '--', '.'], config.dirPath);
+  // wbfy's own managed artifacts are excluded: the `.gitignore` rule (`/worker-configuration.d.ts`)
+  // wbfy committed while it managed the package must not count as consumption, or a once-managed
+  // package could never opt out.
+  const grepResult = spawnSyncAndReturnStdout(
+    'git',
+    ['grep', '-l', 'worker-configuration', '--', '.', ':(exclude).gitignore', ':(exclude).gitattributes'],
+    config.dirPath
+  );
   if (grepResult.trim()) return true;
 
   const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
