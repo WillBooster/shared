@@ -39,14 +39,12 @@ export function runDotenvCommand(args) {
     stdio: 'inherit',
   });
   const signalHandlers = new Map();
-  let forwardedShutdownSignal;
   child.on('error', (error) => {
     console.error(error);
     process.exit(1);
   });
   for (const signal of shutdownSignals) {
     const signalHandler = () => {
-      forwardedShutdownSignal = signal;
       child.kill(signal);
     };
     signalHandlers.set(signal, signalHandler);
@@ -56,10 +54,9 @@ export function runDotenvCommand(args) {
     for (const [shutdownSignal, signalHandler] of signalHandlers) {
       process.off(shutdownSignal, signalHandler);
     }
-    if (signal && signal === forwardedShutdownSignal) {
-      process.exit(0);
-    }
     if (signal) {
+      // Re-raise even for forwarded shutdown signals so callers observe the conventional
+      // signal exit status (e.g. 130 for SIGINT) instead of a misleading success.
       process.kill(process.pid, signal);
       return;
     }
@@ -67,59 +64,135 @@ export function runDotenvCommand(args) {
   });
 }
 
+// Mirrors src/commands/dotenv.ts (readAndApplyEnvironmentVariables) for this startup fast path.
 function readAndApplyEnvironmentVariables(cwd) {
+  const mode = process.env.WB_ENV;
+  // Mode-specific sources drive the forced-mode override below.
+  const modeVars = mode
+    ? { ...readEnvFile(path.join(cwd, `.env.${mode}`)), ...readEnvFile(path.join(cwd, `.env.${mode}.local`)) }
+    : {};
+  // Mirror the shared cascade's precedence: .env.<mode>.local > .env.local > .env.<mode> > .env.
   const dotenvVars = {
     ...readEnvFile(path.join(cwd, '.env')),
-    ...(process.env.WB_ENV ? readEnvFile(path.join(cwd, `.env.${process.env.WB_ENV}`)) : {}),
+    ...(mode ? readEnvFile(path.join(cwd, `.env.${mode}`)) : {}),
+    ...readEnvFile(path.join(cwd, '.env.local')),
+    ...(mode ? readEnvFile(path.join(cwd, `.env.${mode}.local`)) : {}),
   };
-  // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win
-  // over it. Mirrors src/commands/dotenv.ts for this startup fast path.
-  const parsed = { ...readFnoxEnvironmentVariables(cwd, process.env.WB_ENV, dotenvVars), ...dotenvVars };
-  const envVars = expand({ parsed, processEnv: {} }).parsed ?? parsed;
+  // WB_ENV in process.env means the mode is explicitly forced, so values from the mode's own
+  // sources (.env.<mode>[.local] and the fnox profile) win over variables inherited from the
+  // parent shell — except on CI, where injected env vars must keep overriding committed files
+  // (see https://github.com/WillBooster/shared/issues/930).
+  const modeFileOverridesProcessEnv = !!mode && !isCI(process.env.CI);
+  // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
+  const fnoxVars = readFnoxEnvironmentVariables(cwd, mode, dotenvVars, modeFileOverridesProcessEnv);
+  const parsed = { ...fnoxVars, ...dotenvVars };
+  // Expand ${...} references against exported variables whose FILE value loses to the shell
+  // (mirroring readEnvironmentVariables' effective-value semantics): a reference must resolve to
+  // the value the child will actually see, so a shell-shadowed key expands to the shell value
+  // while a winning file/override value expands to the file value.
+  const fileValueWins = (key) =>
+    !(key in process.env) || (modeFileOverridesProcessEnv && (key in modeVars || key in fnoxVars));
+  const referenceEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    // Escape dollar signs so exported values substitute literally (pa$word stays pa$word).
+    if (value !== undefined && !(key in parsed && fileValueWins(key))) {
+      referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+    }
+  }
+  const envVars = expand({ parsed, processEnv: referenceEnv }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;
+      continue;
     }
+    // readFnoxEnvironmentVariables returns a process.env-shadowed key only when the forced
+    // profile overrides it, so fnox-provided keys count as mode-specific here.
+    if (!(key in modeVars || key in fnoxVars) || process.env[key] === value) continue;
+
+    if (modeFileOverridesProcessEnv) {
+      console.warn(
+        `Warning: ${key} in the "${mode}" mode's env sources overrides the value inherited from the parent environment because WB_ENV is explicitly set.`
+      );
+      process.env[key] = value;
+    }
+    // On CI, inherited variables intentionally win; no warning is emitted.
   }
 }
 
 // Mirrors readFnoxEnvironmentVariables in @willbooster/shared-lib-node for this startup fast path.
-function readFnoxEnvironmentVariables(cwd, cascade, currentEnvVars) {
+function readFnoxEnvironmentVariables(cwd, cascade, currentEnvVars, modeFileOverridesProcessEnv) {
   if (!hasProjectFnoxConfig(cwd)) return {};
 
+  const secrets = runFnoxExport(cwd, cascade, { quiet: false });
+  if (!secrets) return {};
+  // A key is profile-specific (and may override process.env off CI) when the profile export's
+  // value differs from the base export's; when the base export fails, no override is applied.
+  // The base export runs lazily, only when a process.env collision needs adjudicating.
+  let cachedBaseSecrets = false;
+  const getBaseSecrets = () => {
+    if (cachedBaseSecrets === false) {
+      cachedBaseSecrets = runFnoxExport(cwd, undefined, { quiet: true, ignoreProfileEnvVar: true });
+    }
+    return cachedBaseSecrets;
+  };
+
+  const envVars = {};
+  for (const [key, value] of Object.entries(secrets)) {
+    if (typeof value !== 'string' || key in currentEnvVars) continue;
+    if (key in process.env) {
+      const baseSecrets = modeFileOverridesProcessEnv && cascade ? getBaseSecrets() : undefined;
+      const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
+      if (!overridesProcessEnv) continue;
+    }
+    envVars[key] = value;
+  }
+  return envVars;
+}
+
+function runFnoxExport(cwd, cascade, options) {
   // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve.
   // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
   const args = ['export', '--format', 'json', '--no-color', '--if-missing', 'error', '--non-interactive'];
+  const env = { ...process.env };
   if (cascade) {
     args.push('--profile', cascade);
   }
+  if (options.ignoreProfileEnvVar) {
+    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must
+    // read the BASE secrets, so the inherited profile selection is cleared for it — and only for
+    // it: a profile-less PRIMARY export (e.g. `wb dotenv` without WB_ENV) keeps honoring
+    // FNOX_PROFILE.
+    delete env.FNOX_PROFILE;
+  }
   const result = childProcess.spawnSync('fnox', args, {
     cwd,
+    env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (result.error || result.status !== 0 || !result.stdout?.trim()) {
-    console.warn(
-      `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
-    );
-    return {};
+    if (!options.quiet) {
+      console.warn(
+        `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
+      );
+    }
+    return;
   }
 
   let parsed;
   try {
     parsed = JSON.parse(result.stdout);
   } catch {
-    return {};
+    return;
   }
   const secrets = parsed?.secrets;
-  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)) return {};
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)) return;
+  return secrets;
+}
 
-  const envVars = {};
-  for (const [key, value] of Object.entries(secrets)) {
-    if (typeof value !== 'string' || key in currentEnvVars || key in process.env) continue;
-    envVars[key] = value;
-  }
-  return envVars;
+// Mirrors src/utils/ci.ts for this startup fast path.
+function isCI(ciEnv) {
+  return !!ciEnv && ciEnv !== '0' && ciEnv !== 'false';
 }
 
 function hasProjectFnoxConfig(cwd) {

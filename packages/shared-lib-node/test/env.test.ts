@@ -108,6 +108,24 @@ describe('readAndApplyEnvironmentVariables()', () => {
     expect(process.env.PORT).toBe('9999');
   });
 
+  it.runIf(isFnoxAvailable())(
+    'should let fnox profile values override inherited process.env when the mode is forced (non-CI)',
+    () => {
+      delete process.env.CI;
+      process.env.WB_ENV = 'test';
+      process.env.PORT = '9999';
+      process.env.FNOX_ONLY = 'shell';
+      const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-fnox');
+      // The test profile defines PORT=6002 (differing from the base 6001), so the forced test
+      // mode must win over the inherited shell value; FNOX_ONLY exists only in the base secrets
+      // and must keep losing to process.env.
+      expect(envVars.PORT).toBe('6002');
+      expect(envVars.FNOX_ONLY).toBeUndefined();
+      expect(process.env.PORT).toBe('9999');
+      delete process.env.FNOX_ONLY;
+    }
+  );
+
   it.runIf(isFnoxAvailable())('should load env vars from a fnox profile with --cascade-env=test', () => {
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app-fnox');
     expect(envVars).toMatchObject({
@@ -134,6 +152,34 @@ describe('readEnvironmentVariables()', () => {
       ['.env', []],
     ]);
     expect(process.env.PORT).toBe('9999');
+    expect(process.env.NAME).toBe('override');
+  });
+
+  it('should let mode-specific env file values override inherited process.env when the mode is forced (non-CI)', () => {
+    delete process.env.CI;
+    process.env.WB_ENV = 'test';
+    process.env.PORT = '9999';
+    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
+    // .env.test defines PORT=3002; the forced test mode must win over the inherited shell value.
+    expect(envVars.PORT).toBe('3002');
+    expect(envVars.ENV).toBe('test1');
+  });
+
+  it('should keep inherited process.env values on CI even when the mode is forced', () => {
+    process.env.CI = 'true';
+    process.env.WB_ENV = 'test';
+    process.env.PORT = '9999';
+    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
+    expect(envVars.PORT).toBeUndefined();
+    expect(process.env.PORT).toBe('9999');
+  });
+
+  it('should not override inherited process.env values that only the base .env defines even when the mode is forced', () => {
+    delete process.env.CI;
+    process.env.WB_ENV = 'test';
+    process.env.NAME = 'override';
+    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
+    expect(envVars.NAME).toBeUndefined();
     expect(process.env.NAME).toBe('override');
   });
 

@@ -10,7 +10,7 @@ import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } fro
 
 import type { Project } from '../project.js';
 import { findSelfProject } from '../project.js';
-import { buildDrizzleKitCommand } from '../scripts/drizzleScripts.js';
+import { buildDrizzleKitCommand, usesDrizzleKitForD1 } from '../scripts/drizzleScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
@@ -136,13 +136,17 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
     const accountId = resolvedConfig.accountId ?? project.env.CLOUDFLARE_ACCOUNT_ID;
     // Prefer wrangler-native migrations whenever the resolved environment's D1 bindings have an
-    // existing migrations directory: a drizzle-orm dependency alone does not imply the project
-    // migrates D1 with drizzle-kit's d1-http driver (some drizzle apps use wrangler-native).
+    // existing migrations directory. A drizzle-orm dependency alone does not imply the project
+    // migrates D1 with drizzle-kit's d1-http driver: the explicit marker is a drizzle config
+    // whose dialect/driver targets sqlite / d1-http / durable-sqlite (see usesDrizzleKitForD1;
+    // https://github.com/WillBooster/shared/issues/942). A drizzle config targeting another
+    // database (e.g. PostgreSQL via Hyperdrive) leaves the D1 bindings unmanaged by wb deploy.
     const wranglerNativeD1Databases = resolvedConfig.d1Databases.filter((database) =>
       usesWranglerNativeMigrations(project, database)
     );
+    const drizzleKitManagesD1 = usesDrizzleKitForD1(project);
     if (
-      project.hasDrizzle &&
+      drizzleKitManagesD1 &&
       wranglerNativeD1Databases.length > 0 &&
       wranglerNativeD1Databases.length < resolvedConfig.d1Databases.length
     ) {
@@ -154,18 +158,40 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       process.exit(1);
     }
     const drizzleD1Database =
-      wranglerNativeD1Databases.length === 0 && project.hasDrizzle ? resolvedConfig.d1Databases[0] : undefined;
-    if (wranglerNativeD1Databases.length === 0 && project.hasDrizzle && resolvedConfig.d1Databases.length > 1) {
+      wranglerNativeD1Databases.length === 0 && drizzleKitManagesD1 ? resolvedConfig.d1Databases[0] : undefined;
+    if (wranglerNativeD1Databases.length === 0 && drizzleKitManagesD1 && resolvedConfig.d1Databases.length > 1) {
       console.error(
         chalk.red('wb deploy supports drizzle-kit migrations only for a single D1 binding; found multiple.')
       );
       process.exit(1);
     }
+    const managedD1Databases = new Set(wranglerNativeD1Databases);
+    if (drizzleD1Database) managedD1Databases.add(drizzleD1Database);
+    const unmanagedD1Databases = resolvedConfig.d1Databases.filter((database) => !managedD1Databases.has(database));
+    if (unmanagedD1Databases.length > 0) {
+      // Say so out loud instead of silently deploying code against unmigrated databases: the
+      // drizzle marker detection is heuristic (text scan of drizzle.config.*), so a project that
+      // genuinely migrates D1 must be able to notice when no mechanism was selected. This also
+      // covers partial layouts (some bindings wrangler-native, others unmanaged).
+      console.warn(
+        chalk.yellow(
+          `No D1 migration mechanism detected for ${unmanagedD1Databases
+            .map((database) => database.binding ?? database.database_name ?? 'unnamed binding')
+            .join(', ')} ` +
+            '(no wrangler migrations directory and no drizzle config targeting sqlite/d1-http/durable-sqlite); wb deploy will not run D1 migrations for them.'
+        )
+      );
+    }
     // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
     if (!argv.dryRun) {
+      // A drizzle-selected D1 database routes both the migration in step 3 and any deploy/post
+      // hook through drizzle-kit's d1-http driver, which needs CLOUDFLARE_API_TOKEN even for
+      // local, wrangler-OAuth deploys. Failing here keeps the fail-fast ordering: a missing token
+      // must abort before the deploy goes live, not during migration or deploy/post
+      // (https://github.com/WillBooster/shared/issues/956). Wrangler-native projects (with or
+      // without hooks) must not require the token: a local wrangler OAuth login suffices there,
+      // even though step 5 still exports CLOUDFLARE_D1_DATABASE_ID to their hooks.
       if (drizzleD1Database && !project.env.CLOUDFLARE_API_TOKEN) {
-        // drizzle-kit's d1-http driver requires this specific token even for local runs; a
-        // local wrangler OAuth login covers only the wrangler-native path.
         console.error(chalk.red('CLOUDFLARE_API_TOKEN is required for remote drizzle-kit migrations.'));
         process.exit(1);
       }
@@ -367,8 +393,9 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
 
     // 3. Apply D1 migrations to the remote database with the project's single migration
-    //    mechanism (wrangler-native when a migrations directory exists, else drizzle-kit for
-    //    drizzle-orm apps). Migrations must be backward compatible: the old Worker serves
+    //    mechanism (wrangler-native when a migrations directory exists, else drizzle-kit when
+    //    the drizzle config targets sqlite/d1-http/durable-sqlite). Migrations must be backward
+    //    compatible: the old Worker serves
     //    traffic until the deploy below.
     const envOption = resolvedConfig.usesEnvSection ? ` --env ${shellEscapeArgument(envName)}` : '';
     for (const database of wranglerNativeD1Databases) {
