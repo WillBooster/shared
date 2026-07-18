@@ -95,9 +95,11 @@ function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string):
  */
 function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): unknown {
   if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
-  // mise supports `prefix:` selectors in mise.toml/.tool-versions, but `mise latest` rejects the
-  // prefix and needs the bare range (`mise latest node@prefix:24` fails; `node@24` resolves).
-  const range = typeof version === 'string' ? version.replace(/^prefix:/u, '') : undefined;
+  // Normalize selector forms `mise latest` cannot resolve even though mise configuration accepts
+  // them: `prefix:24` is rejected outright while `24` resolves, and `lts/*` (idiomatic in
+  // .node-version files) yields empty output while `lts` resolves. Modifier selectors such as
+  // `sub-2:lts` stay unresolvable and fall back to the original selector below.
+  const range = typeof version === 'string' ? version.replace(/^prefix:/u, '').replace(/\/\*$/u, '') : undefined;
   // With no meaningful selector, Node.js pins to the latest LTS (matching the reusable workflows'
   // `lts/*` fallback) rather than the newest release.
   const defaultSelector = tool === 'node' ? 'node@lts' : tool;
