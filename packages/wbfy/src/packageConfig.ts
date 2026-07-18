@@ -290,8 +290,53 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
     // fallback generator over the same file, and several distinct flagged generators leave no deterministic
     // choice, so such packages stay unmanaged.
     !selectProjectWranglerTypesGenerator(packageJson?.scripts ?? {}).conflicting &&
+    consumesGeneratedWorkerTypes(config) &&
     hasReproducibleWorkerTypesInference(config)
   );
+}
+
+/**
+ * A package whose tsconfig cannot include worker-configuration.d.ts (e.g. one on a hand-maintained minimal `Env`
+ * with `types: ["bun"]`, the standard escape when the ambient wrangler globals conflict with the `@types/bun`
+ * globals its tests need) gains nothing from regenerating the ~500KB file on every install, so wbfy leaves such
+ * packages unmanaged instead of re-adding the generation step. Only an explicit `include`/`files` set that cannot
+ * match the file opts out; a missing or unparseable tsconfig (or TypeScript's default `**` inclusion) keeps the
+ * current managed behavior.
+ */
+export function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPath'>): boolean {
+  let content: string;
+  try {
+    content = fs.readFileSync(path.resolve(config.dirPath, 'tsconfig.json'), 'utf8');
+  } catch {
+    return true;
+  }
+  const tsconfig = jsoncUtil.parseObjectIgnoringError<{ files?: unknown; include?: unknown }>(content);
+  if (!tsconfig) return true;
+  const declaredPatterns = [tsconfig.include, tsconfig.files].filter((value) => Array.isArray(value));
+  if (declaredPatterns.length === 0) return true;
+  return declaredPatterns
+    .flat()
+    .some((pattern) => typeof pattern === 'string' && tsconfigPatternCouldMatchWorkerTypes(pattern));
+}
+
+function tsconfigPatternCouldMatchWorkerTypes(pattern: string): boolean {
+  const normalized = pattern.replace(/^\.\//u, '');
+  // A bare `.` include covers everything under the package root, where worker-configuration.d.ts lives;
+  // a plain directory segment (e.g. `src`) cannot contain the root-level file.
+  if (normalized === '' || normalized === '.') return true;
+  const segments = normalized.split('/').filter((segment) => segment !== '');
+  const regexSource = segments
+    .map((segment, index) => {
+      const isLast = index === segments.length - 1;
+      if (segment === '**') return isLast ? '.*' : String.raw`(?:[^/]+/)*`;
+      const segmentSource = segment
+        .replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`)
+        .replaceAll('*', String.raw`[^/]*`)
+        .replaceAll('?', String.raw`[^/]`);
+      return isLast ? segmentSource : `${segmentSource}/`;
+    })
+    .join('');
+  return new RegExp(`^${regexSource}$`, 'u').test('worker-configuration.d.ts');
 }
 
 /**

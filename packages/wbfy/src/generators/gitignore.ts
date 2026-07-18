@@ -43,7 +43,8 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
   return logger.functionIgnoringException('generateGitignore', async () => {
     const filePath = path.resolve(config.dirPath, '.gitignore');
     const content = (await fsUtil.readFileIfExists(filePath)) ?? '';
-    let headUserContent = ignoreFileUtil.getHeadUserContent(content) + commonContent;
+    const userHeadContent = ignoreFileUtil.getHeadUserContent(content);
+    let headUserContent = userHeadContent + commonContent;
     const tailUserContent = ignoreFileUtil.getTailUserContent(content);
 
     const names = [...defaultNames];
@@ -203,7 +204,21 @@ src-tauri/gen/schemas/
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
     }
-    const newContent = headUserContent + '\n' + generated + tailUserContent;
+    // Drop user-section lines that duplicate a managed pattern verbatim, so hand-added entries
+    // (e.g. a pre-migration `.wrangler/`) do not linger once wbfy manages the same rule.
+    const managedContent = headUserContent.slice(userHeadContent.length);
+    const managedLines = new Set(managedContent.split('\n').filter((line) => line && !line.startsWith('#')));
+    const removeManagedDuplicates = (text: string): string =>
+      text
+        .split('\n')
+        .filter((line) => !managedLines.has(line))
+        .join('\n');
+    const newContent =
+      removeManagedDuplicates(userHeadContent) +
+      managedContent +
+      '\n' +
+      generated +
+      removeManagedDuplicates(tailUserContent);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }

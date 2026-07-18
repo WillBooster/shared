@@ -481,10 +481,16 @@ async function applyPackageJsonConventions(
   }
 
   if (!isWbPackage(jsonObj)) {
-    if (shouldKeepWbAsRuntimeDependency(jsonObj)) {
-      dependencies.push(wbDependency);
-    } else {
-      devDependencies.push(wbDependency);
+    // A `workspace:` specifier depends on the wb developed in this repository (e.g.
+    // WillBooster/shared itself); installing the latest registry release over it would silently
+    // replace the local build with a published one, so leave such a declaration untouched.
+    const wbSpecifier = jsonObj.dependencies[wbDependency] ?? jsonObj.devDependencies[wbDependency];
+    if (!wbSpecifier?.startsWith('workspace:')) {
+      if (shouldKeepWbAsRuntimeDependency(jsonObj)) {
+        dependencies.push(wbDependency);
+      } else {
+        devDependencies.push(wbDependency);
+      }
     }
   }
   // build-ts owns TypeScript execution and declaration emit. wbfy must always

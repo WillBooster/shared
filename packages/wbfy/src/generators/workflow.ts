@@ -356,14 +356,28 @@ async function writeWorkflowYaml(
   }
 
   let isReusableWorkflow = false;
+  const calledReusableWorkflows = new Set<string>();
   for (const job of Object.values(newSettings.jobs)) {
     // Ignore non-reusable workflows
     if (!job.uses?.includes('/reusable-workflows/')) continue;
 
-    normalizeJob(config, job, kind);
+    const calledReusableWorkflow = normalizeJob(config, job, kind);
+    if (calledReusableWorkflow) calledReusableWorkflows.add(calledReusableWorkflow);
     isReusableWorkflow = true;
   }
   if (!isReusableWorkflow) return;
+
+  // Deploy and scheduled-script callers need no repository writes: the called reusable workflow
+  // inherits the caller's token permissions, and repositories default the token to write, so an
+  // undeclared permissions block silently over-privileges deployments. Only default it — a
+  // workflow that declares its own permissions keeps them.
+  if (
+    !newSettings.permissions &&
+    calledReusableWorkflows.size > 0 &&
+    [...calledReusableWorkflows].every((name) => name === 'deploy' || name === 'run-script')
+  ) {
+    newSettings.permissions = { contents: 'read' };
+  }
 
   switch (kind) {
     case 'release': {
@@ -432,7 +446,8 @@ async function writeWorkflowYaml(
 // other callee is a GitHub error.
 const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'gen-pr', 'release', 'run-script', 'test']);
 
-function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
+/** Returns the basename of the called `@main` reusable workflow, or undefined for other callees. */
+function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): string | undefined {
   job.with ??= {};
   // `secrets: inherit` (parsed by js-yaml as a plain string) already forwards every caller secret
   // including the ones injected below, so preserve it untouched — property assignments on the
@@ -542,6 +557,7 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       delete job.secrets;
     }
   }
+  return calledReusableWorkflow;
 }
 
 function generateAutofixWorkflow(config: PackageConfig): Workflow {
