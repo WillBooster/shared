@@ -7,6 +7,8 @@ import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
+import { treeKill } from '@willbooster/shared-lib-node/src';
+
 import type { Project } from '../project.js';
 import { findRootAndSelfProjects } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
@@ -54,7 +56,9 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   const activeChild: ActiveChildRef = { current: undefined };
   const signalHandler = (signal: NodeJS.Signals): void => {
     receivedSignal = signal;
-    activeChild.current?.kill(signal);
+    // treeKill (not child.kill): semantic-release and bun install spawn their own subprocesses
+    // (npm publish, git push, ...), which must not keep publishing after wb reports cancellation.
+    if (activeChild.current?.pid) treeKill(activeChild.current.pid, signal);
   };
   const guardedSignals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
   for (const signal of guardedSignals) process.on(signal, signalHandler);
