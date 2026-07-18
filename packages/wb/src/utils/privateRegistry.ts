@@ -208,9 +208,11 @@ function encodePackageName(packageName: string): string {
   return packageName.replace('/', '%2F');
 }
 
-// Anchored: numeric-looking dist-tags such as `1.2.3latest` must NOT count as versions
-// (resolveVersion treats them as tags), only complete SemVer with optional prerelease/build.
-const exactSemverPattern = /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/;
+// The official SemVer 2.0.0 grammar (semver.org), anchored: numeric-looking dist-tags such as
+// `1.2.3latest`, leading-zero versions (`01.2.3`), and underscore identifiers are NOT versions —
+// resolveVersion treats them as tags, matching node-semver's classification.
+const exactSemverPattern =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
 
 /** Whether the specifier is an exact SemVer version (not a range, tag, or git URL). */
 export function isExactVersion(specifier: string | undefined): boolean {

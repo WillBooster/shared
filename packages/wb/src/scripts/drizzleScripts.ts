@@ -162,8 +162,13 @@ function extractExportedConfigObject(content: string, exportedContent: string): 
 
   // `$` is legal in identifiers but a regex anchor, so it must be escaped before interpolation;
   // `(?![\w$])` (not `\b`) ends the match because `\b` never fires after a trailing `$`.
+  // Anchored to the line start (module scope): a same-named declaration inside a function body is
+  // indented and must not shadow the top-level binding the export actually references.
   const escapedIdentifier = identifierMatch[1]!.replaceAll('$', String.raw`\$`);
-  const declarationMatch = new RegExp(String.raw`(?:const|let|var)\s+${escapedIdentifier}(?![\w$])`).exec(content);
+  const declarationMatch = new RegExp(
+    String.raw`^(?:export\s+)?(?:const|let|var)\s+${escapedIdentifier}(?![\w$])`,
+    'm'
+  ).exec(content);
   if (!declarationMatch) return;
   const assignmentIndex = content.indexOf('=', declarationMatch.index);
   if (assignmentIndex === -1) return;
