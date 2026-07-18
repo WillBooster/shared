@@ -10,9 +10,12 @@ import type { PrivateRegistryAuth } from '../utils/privateRegistry.js';
 import {
   PRIVATE_REGISTRY_SCOPE,
   downloadAndExtractRegistryPackage,
+  isExactVersion,
   isPrivateGitDependency,
   isPrivateRegistryDependency,
+  rangeAdmits,
   resolvePrivateRegistryAuth,
+  toBaseVersion,
 } from '../utils/privateRegistry.js';
 
 interface PrivatePackage {
@@ -51,10 +54,11 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     // Registry packages always materialize at the repository root: `wb optimizeForDockerBuild`
     // resolves them from `<root>/@willbooster-private` regardless of `--out-dir`.
     const registryOutDirPath = path.join(projects.root.dirPath, PRIVATE_REGISTRY_SCOPE);
-    if (outDirPath === registryOutDirPath) {
-      // e.g. `--out-dir @willbooster-private`: the registry download step would delete the git
-      // packages copied into the aliased directory moments earlier.
-      console.error(chalk.red(`--out-dir must not be the ${PRIVATE_REGISTRY_SCOPE} registry output directory itself.`));
+    if (pathsOverlap(outDirPath, registryOutDirPath)) {
+      // e.g. `--out-dir @willbooster-private` or `--out-dir @willbooster-private/sub`: the
+      // registry step recursively deletes registryOutDirPath, which would destroy the git
+      // packages copied into an equal or NESTED directory moments earlier.
+      console.error(chalk.red(`--out-dir must not overlap the ${PRIVATE_REGISTRY_SCOPE} registry output directory.`));
       process.exit(1);
     }
     if (path.relative(projects.root.dirPath, outDirPath) !== '@willbooster') {
@@ -280,39 +284,14 @@ function assertNoVersionConflict(existing: PrivatePackage, requested: PrivatePac
   );
 }
 
-/** The version the specifier resolves to under the degrade-ranges rule, or undefined for tags/git. */
-function toBaseVersion(specifier: string | undefined): string | undefined {
-  if (!specifier) return;
-  const base = specifier.replace(/^[\^~]/, '');
-  return /^\d+\.\d+\.\d+/.test(base) ? base : undefined;
+/** Whether the two paths are equal or one contains the other. */
+function pathsOverlap(a: string, b: string): boolean {
+  return isEqualOrAncestorPath(a, b) || isEqualOrAncestorPath(b, a);
 }
 
-/** Simplified semver: `^` admits same-major >= base, `~` admits same-major.minor >= base. */
-function rangeAdmits(range: string, version: string): boolean {
-  const baseVersion = parseVersion(range.replace(/^[\^~]/, ''));
-  const candidate = parseVersion(version);
-  if (!baseVersion || !candidate) return false;
-  if (range.startsWith('^')) {
-    return candidate[0] === baseVersion[0] && compareVersions(candidate, baseVersion) >= 0;
-  }
-  if (range.startsWith('~')) {
-    return (
-      candidate[0] === baseVersion[0] && candidate[1] === baseVersion[1] && compareVersions(candidate, baseVersion) >= 0
-    );
-  }
-  return false;
-}
-
-function parseVersion(version: string): [number, number, number] | undefined {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
-}
-
-function compareVersions(a: [number, number, number], b: [number, number, number]): number {
-  for (let index = 0; index < 3; index++) {
-    if (a[index]! !== b[index]!) return a[index]! - b[index]!;
-  }
-  return 0;
+function isEqualOrAncestorPath(ancestorPath: string, descendantPath: string): boolean {
+  const relativePath = path.relative(ancestorPath, descendantPath);
+  return relativePath === '' || (!relativePath.startsWith('..') && !path.isAbsolute(relativePath));
 }
 
 function assertSubdirectory(rootDirPath: string, outDirPath: string): void {
@@ -388,11 +367,6 @@ function findPrivateDependencies(
 
 /**
  * A manifest may legitimately request one package from several dependency sections (e.g. an exact
- * devDependencies pin alongside a peerDependencies range): prefer the exact pin, and fail loudly
- * only when the requirements genuinely diverge.
- */
-/**
- * A manifest may legitimately request one package from several dependency sections (e.g. an exact
  * devDependencies pin alongside a peerDependencies range). Prefer the exact pin when the other
  * side is a range admitting it (that pin becomes the materialized version); fail loudly when the
  * requirements genuinely diverge.
@@ -418,10 +392,6 @@ function mergeSameManifestRequirement(existing: PrivatePackage, requested: Priva
     `Conflicting requirements for ${existing.name} within one manifest: ` +
       `${existing.versionSpecifier ?? existing.kind} vs ${requested.versionSpecifier ?? requested.kind}.`
   );
-}
-
-function isExactVersion(specifier: string | undefined): boolean {
-  return !!specifier && /^\d/.test(specifier);
 }
 
 async function replacePrivateDependencies(

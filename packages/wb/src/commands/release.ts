@@ -44,6 +44,16 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   // Maps a mutated file to its pre-release content (raw bytes — bun.lockb is binary); `undefined`
   // marks a file that did not exist and must be deleted on restore (e.g. a created lockfile).
   const modifiedFiles = new Map<string, Buffer | undefined>();
+  // With a handler installed, SIGINT/SIGTERM no longer terminate this process while a child runs
+  // (the child in the same terminal group still receives the signal and exits, making spawnSync
+  // return), so the finally-restore always executes; the signal is re-raised afterwards.
+  let receivedSignal: NodeJS.Signals | undefined;
+  const signalHandler = (signal: NodeJS.Signals): void => {
+    receivedSignal = signal;
+  };
+  const guardedSignals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
+  for (const signal of guardedSignals) process.on(signal, signalHandler);
+
   let exitCode = 0;
   try {
     await prepareNpmCompatibleLayout(project, argv, modifiedFiles);
@@ -54,8 +64,12 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
     console.error(chalk.red(String(error instanceof Error ? error.message : error)));
     exitCode = 1;
   } finally {
+    // On failure or interruption, restore byte-for-byte: semantic-release may have left PARTIAL
+    // edits (e.g. a version bump without a publish), which must not survive. The semantic
+    // workspace-range restore is reserved for a successful release.
+    const releaseSucceeded = exitCode === 0 && receivedSignal === undefined;
     for (const [filePath, content] of modifiedFiles) {
-      restoreModifiedFile(filePath, content);
+      restoreModifiedFile(filePath, content, releaseSucceeded);
     }
     if (modifiedFiles.size > 0) {
       console.info(
@@ -69,6 +83,11 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
         );
       }
     }
+    for (const signal of guardedSignals) process.off(signal, signalHandler);
+  }
+  if (receivedSignal) {
+    process.kill(process.pid, receivedSignal);
+    return;
   }
   if (exitCode !== 0) {
     process.exit(exitCode);
@@ -149,12 +168,12 @@ async function prepareNpmCompatibleLayout(
  * revert that bump — so when the file changed during the release, only the `workspace:`
  * specifiers are written back into the CURRENT content.
  */
-function restoreModifiedFile(filePath: string, originalContent: Buffer | undefined): void {
+function restoreModifiedFile(filePath: string, originalContent: Buffer | undefined, releaseSucceeded: boolean): void {
   if (originalContent === undefined) {
     fs.rmSync(filePath, { force: true });
     return;
   }
-  if (path.basename(filePath) === 'package.json' && fs.existsSync(filePath)) {
+  if (releaseSucceeded && path.basename(filePath) === 'package.json' && fs.existsSync(filePath)) {
     const currentContent = fs.readFileSync(filePath, 'utf8');
     const originalText = originalContent.toString('utf8');
     if (currentContent !== rewriteWorkspaceRanges(originalText)) {
@@ -247,12 +266,13 @@ function escapeRegExp(text: string): string {
 
 function runSemanticRelease(project: Project, argv: ReleaseArgv): number {
   const forwardedArgs = [...(argv.args ?? []), ...(argv['--'] ?? [])].map(String);
-  const releaseBin =
-    project.packageJson.devDependencies?.['@anolilab/multi-semantic-release'] ||
-    project.packageJson.devDependencies?.['multi-semantic-release'] ||
-    project.packageJson.devDependencies?.['@qiwi/multi-semantic-release']
-      ? 'multi-semantic-release'
-      : 'semantic-release';
+  // The PACKAGE name (for `bunx`/`yarn dlx`, which fetch a package) and the BIN name (for the
+  // local node_modules/.bin lookup) differ for the scoped forks: `bunx multi-semantic-release`
+  // would fetch the unrelated unscoped npm package instead of e.g. @anolilab's fork.
+  const releasePackageName = (
+    ['@anolilab/multi-semantic-release', 'multi-semantic-release', '@qiwi/multi-semantic-release'] as const
+  ).find((packageName) => project.packageJson.devDependencies?.[packageName]);
+  const releaseBin = releasePackageName ? 'multi-semantic-release' : 'semantic-release';
 
   // The project is loaded with loadEnv: false (semantic-release runs with the ambient/CI
   // environment by design), so project.env aliases process.env here; using it keeps the
@@ -260,11 +280,12 @@ function runSemanticRelease(project: Project, argv: ReleaseArgv): number {
   const env = { ...project.env };
   prependNodeModulesBinToPath(project.dirPath, env);
   const hasLocalBin = fs.existsSync(path.join(project.dirPath, 'node_modules', '.bin', releaseBin));
+  const fallbackPackageName = releasePackageName ?? 'semantic-release';
   const command = hasLocalBin
     ? [releaseBin, ...forwardedArgs]
     : project.packageManagerCommand === 'bun'
-      ? ['bunx', releaseBin, ...forwardedArgs]
-      : ['yarn', 'dlx', releaseBin, ...forwardedArgs];
+      ? ['bunx', fallbackPackageName, ...forwardedArgs]
+      : ['yarn', 'dlx', fallbackPackageName, ...forwardedArgs];
   console.info(chalk.cyan(`Running: ${command.join(' ')}`));
   if (argv.dryRun) return 0;
 

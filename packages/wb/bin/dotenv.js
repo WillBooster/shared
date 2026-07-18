@@ -39,14 +39,12 @@ export function runDotenvCommand(args) {
     stdio: 'inherit',
   });
   const signalHandlers = new Map();
-  let forwardedShutdownSignal;
   child.on('error', (error) => {
     console.error(error);
     process.exit(1);
   });
   for (const signal of shutdownSignals) {
     const signalHandler = () => {
-      forwardedShutdownSignal = signal;
       child.kill(signal);
     };
     signalHandlers.set(signal, signalHandler);
@@ -56,10 +54,9 @@ export function runDotenvCommand(args) {
     for (const [shutdownSignal, signalHandler] of signalHandlers) {
       process.off(shutdownSignal, signalHandler);
     }
-    if (signal && signal === forwardedShutdownSignal) {
-      process.exit(0);
-    }
     if (signal) {
+      // Re-raise even for forwarded shutdown signals so callers observe the conventional
+      // signal exit status (e.g. 130 for SIGINT) instead of a misleading success.
       process.kill(process.pid, signal);
       return;
     }

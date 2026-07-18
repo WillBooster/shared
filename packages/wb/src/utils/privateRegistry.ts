@@ -210,3 +210,54 @@ function isSameOrigin(url: string, registryUrl: string): boolean {
 function encodePackageName(packageName: string): string {
   return packageName.replace('/', '%2F');
 }
+
+/** Whether the specifier is an exact version-like string (not a range, tag, or git URL). */
+export function isExactVersion(specifier: string | undefined): boolean {
+  return !!specifier && /^\d+\.\d+\.\d+/.test(specifier);
+}
+
+/** The version the specifier resolves to under the degrade-ranges rule, or undefined for tags/git. */
+export function toBaseVersion(specifier: string | undefined): string | undefined {
+  if (!specifier) return;
+  const base = specifier.replace(/^[\^~]/, '');
+  return /^\d+\.\d+\.\d+/.test(base) ? base : undefined;
+}
+
+/**
+ * Simplified node-semver rules: `^` admits versions not changing the left-most non-zero component
+ * (so `^0.1.0` rejects `0.2.0` and `^0.0.3` admits only `0.0.3`), `~` admits same-major.minor
+ * >= base. Prerelease identifiers are handled conservatively: any `-` on either side makes this
+ * return false, so only an exact string match (checked separately by the callers) is accepted.
+ */
+export function rangeAdmits(range: string, version: string): boolean {
+  const rangeBase = range.replace(/^[\^~]/, '');
+  if (rangeBase.includes('-') || version.includes('-')) return false;
+  const baseVersion = parseVersion(rangeBase);
+  const candidate = parseVersion(version);
+  if (!baseVersion || !candidate) return false;
+  if (range.startsWith('^')) {
+    if (baseVersion[0] === 0) {
+      if (baseVersion[1] === 0) return compareVersions(candidate, baseVersion) === 0;
+      return candidate[0] === 0 && candidate[1] === baseVersion[1] && compareVersions(candidate, baseVersion) >= 0;
+    }
+    return candidate[0] === baseVersion[0] && compareVersions(candidate, baseVersion) >= 0;
+  }
+  if (range.startsWith('~')) {
+    return (
+      candidate[0] === baseVersion[0] && candidate[1] === baseVersion[1] && compareVersions(candidate, baseVersion) >= 0
+    );
+  }
+  return false;
+}
+
+function parseVersion(version: string): [number, number, number] | undefined {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
+}
+
+function compareVersions(a: [number, number, number], b: [number, number, number]): number {
+  for (let index = 0; index < 3; index++) {
+    if (a[index]! !== b[index]!) return a[index]! - b[index]!;
+  }
+  return 0;
+}

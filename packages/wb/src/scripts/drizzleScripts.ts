@@ -134,19 +134,40 @@ export function usesDrizzleKitForD1(project: Project): boolean {
 
   try {
     const content = stripJsComments(fs.readFileSync(path.join(config.dirPath, config.fileName), 'utf8'));
-    // Scan only from the exported config onward: drizzle-kit consumes the default export, and
-    // matching earlier text (e.g. an unused sqlite-shaped constant above a PostgreSQL config)
-    // would select the wrong migration mechanism. Configs whose export references earlier
-    // objects fall outside the heuristic; wb deploy warns when no mechanism is detected.
+    // Scan only the exported config's object literal: drizzle-kit consumes the default export,
+    // and matching other text (an unused sqlite-shaped constant above the export, or marker-like
+    // string content in statements after it) would select the wrong migration mechanism. Configs
+    // whose export references an earlier object fall back to scanning from the export marker;
+    // wb deploy warns when no mechanism is detected.
     const exportIndices = ['export default', 'module.exports']
       .map((marker) => content.indexOf(marker))
       .filter((index) => index !== -1);
-    return drizzleSqliteConfigPattern.test(
-      exportIndices.length > 0 ? content.slice(Math.min(...exportIndices)) : content
-    );
+    const exportedContent = exportIndices.length > 0 ? content.slice(Math.min(...exportIndices)) : content;
+    return drizzleSqliteConfigPattern.test(extractFirstBalancedObject(exportedContent) ?? exportedContent);
   } catch {
     return false;
   }
+}
+
+/** The first `{ ... }` span (string-aware brace matching), or undefined when none exists. */
+function extractFirstBalancedObject(content: string): string | undefined {
+  const startIndex = content.indexOf('{');
+  if (startIndex === -1) return;
+
+  let depth = 0;
+  let stringDelimiter: string | undefined;
+  for (let index = startIndex; index < content.length; index++) {
+    const char = content[index]!;
+    if (stringDelimiter) {
+      if (char === '\\') index++;
+      else if (char === stringDelimiter || (stringDelimiter !== '`' && char === '\n')) stringDelimiter = undefined;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`') stringDelimiter = char;
+    else if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) return content.slice(startIndex, index + 1);
+  }
+  return;
 }
 
 /**

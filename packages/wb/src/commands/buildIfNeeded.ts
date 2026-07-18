@@ -190,7 +190,9 @@ function parseBuildCache(cachedContent: string | undefined): { hash: string; out
   }
 }
 
-const includePatterns = ['src/', 'public/'];
+// Matched as complete path SEGMENTS (not substrings): `src/contest/` must not be excluded by
+// `test`, and `mysrc/` must not be included by `src`.
+const includeDirNames = new Set(['src', 'public']);
 const includeSuffix = [
   '.js',
   '.cjs',
@@ -208,7 +210,7 @@ const includeSuffix = [
   'bun.lock',
   'bun.lockb',
 ];
-const excludePatterns = ['test/', 'tests/', '__tests__/', 'test-fixtures/', 'test/fixtures/'];
+const excludeDirNames = new Set(['test', 'tests', '__tests__', 'test-fixtures']);
 
 async function updateHashWithDiffResult(
   project: Project,
@@ -252,14 +254,16 @@ async function updateHashWithDiffResult(
     const outputPaths = (getExplicitOutputPaths(argv) ?? defaultOutputCandidates).map((outputPath) =>
       path.join(projectRelativeDirPath, outputPath)
     );
-    const filteredEntries = normalizedEntries.filter(
-      ({ filePath, hashPath }) =>
-        (includePatterns.some((pattern) => hashPath.includes(pattern)) ||
+    const filteredEntries = normalizedEntries.filter(({ filePath, hashPath }) => {
+      const directorySegments = hashPath.split('/').slice(0, -1);
+      return (
+        (directorySegments.some((segment) => includeDirNames.has(segment)) ||
           includeSuffix.some((suffix) => hashPath.endsWith(suffix))) &&
-        !excludePatterns.some((pattern) => hashPath.includes(pattern)) &&
+        !directorySegments.some((segment) => excludeDirNames.has(segment)) &&
         // An `--output` value may name a file, so exclude the exact path as well as descendants.
         !outputPaths.some((outputPath) => filePath === outputPath || filePath.startsWith(`${outputPath}/`))
-    );
+      );
+    });
     if (argv.verbose) {
       console.info(`Changed files: ${filteredEntries.map((entry) => entry.hashPath).join(', ')}`);
     }
