@@ -307,9 +307,10 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
   const installCommand = 'bun install';
   // Do NOT add `.vinext` here: it holds only vinext's content-hashed font cache and the dev
   // server's lock file (deleting the lock disables the duplicate-dev-server guard for a running
-  // server). vinext's build output goes to `dist/` and Vite's dependency cache stays in
-  // `node_modules/.vite`, which `bun install` already rewrites - so there is no vinext state
-  // that can go stale across installs.
+  // server). vinext's build output goes to `dist/`, and Vite's dependency cache in
+  // `node_modules/.vite` self-invalidates on lockfile / patches / config / NODE_ENV changes
+  // (see Vite's dep pre-bundling docs) - the residual install-layout case (bunfig.toml/.npmrc
+  // changes alone) is tracked in #983, outside this code path.
   const rmNextDirectory = config.depending.blitz || config.depending.next ? ' && rm -Rf .next' : '';
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
