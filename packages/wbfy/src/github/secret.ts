@@ -455,12 +455,15 @@ function readCiAgeSecretKey(): string | undefined {
     );
     return undefined;
   }
-  const keyLine = lines.find((line) => line.trim().startsWith('AGE-SECRET-KEY-'));
-  if (!keyLine) {
+  // Keep EVERY identity line: fnox parses FNOX_AGE_KEY as age identity-file content and tries all
+  // identities, so truncating a multi-identity file (key rotation, multiple recipients) to the
+  // first key would make CI silently skip every secret encrypted to the other identities.
+  const keyLines = lines.map((line) => line.trim()).filter((line) => line.startsWith('AGE-SECRET-KEY-'));
+  if (keyLines.length === 0) {
     console.error(`Failed to upload secrets because ${identityPath} contains no AGE-SECRET-KEY line.`);
     return undefined;
   }
-  return keyLine.trim();
+  return keyLines.join('\n');
 }
 
 // Decrypts ENCRYPTED_VERDACCIO_TOKEN with the CI age identity by running `fnox get` on a minimal
