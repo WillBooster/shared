@@ -305,7 +305,12 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
   const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml|\.tool-versions|\..+-version)`;
   postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
   const installCommand = 'bun install';
-  const rmNextDirectory = config.depending.blitz || config.depending.next ? ' && rm -Rf .next' : '';
+  // vinext projects keep `next` as a type-compatibility dependency, so both caches can coexist.
+  const staleBuildCaches = [
+    ...(config.depending.blitz || config.depending.next ? ['.next'] : []),
+    ...(config.depending.vinext ? ['.vinext'] : []),
+  ];
+  const rmNextDirectory = staleBuildCaches.length > 0 ? ` && rm -Rf ${staleBuildCaches.join(' ')}` : '';
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
   postMergeCommands.push(
