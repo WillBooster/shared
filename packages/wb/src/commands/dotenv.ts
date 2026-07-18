@@ -100,38 +100,56 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
   return { command: separatorIndex === -1 ? args : args.slice(separatorIndex + 1) };
 }
 
+// NOTE: `wb dotenv` deliberately skips Project.env's WB_ENV/NEXT_PUBLIC_WB_ENV validation: it is
+// a generic runner also used before env sources exist (bootstrap) and must not fail fast for
+// repositories that have not adopted the org env standard.
 function readAndApplyEnvironmentVariables(cwd: string): void {
-  const modeVars = process.env.WB_ENV
-    ? (config({ path: path.join(cwd, `.env.${process.env.WB_ENV}`), processEnv: {}, quiet: true }).parsed ?? {})
-    : {};
+  const mode = process.env.WB_ENV;
+  const readEnvFile = (fileName: string): Record<string, string> =>
+    config({ path: path.join(cwd, fileName), processEnv: {}, quiet: true }).parsed ?? {};
+  // Mode-specific sources drive the forced-mode override below.
+  const modeVars = mode ? { ...readEnvFile(`.env.${mode}`), ...readEnvFile(`.env.${mode}.local`) } : {};
+  // Mirror the shared cascade's precedence: .env.<mode>.local > .env.local > .env.<mode> > .env.
   const dotenvVars = {
-    ...config({ path: path.join(cwd, '.env'), processEnv: {}, quiet: true }).parsed,
-    ...modeVars,
+    ...readEnvFile('.env'),
+    ...(mode ? readEnvFile(`.env.${mode}`) : {}),
+    ...readEnvFile('.env.local'),
+    ...(mode ? readEnvFile(`.env.${mode}.local`) : {}),
   };
+  // WB_ENV in process.env means the mode is explicitly forced, so values from the mode's own
+  // sources (.env.<mode>[.local] and the fnox profile) win over variables inherited from the
+  // parent shell — except on CI, where injected env vars must keep overriding committed files
+  // (see https://github.com/WillBooster/shared/issues/930).
+  const modeFileOverridesProcessEnv = !!mode && !isCI(process.env.CI);
   // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
-  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, process.env.WB_ENV, dotenvVars);
+  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, mode, dotenvVars, { modeFileOverridesProcessEnv });
   const parsed = { ...fnoxVars, ...dotenvVars };
-  const envVars = expand({ parsed, processEnv: {} }).parsed ?? parsed;
-  // WB_ENV in process.env means the mode is explicitly forced, so the mode file's own values win
-  // over variables inherited from the parent shell — except on CI, where injected env vars must
-  // keep overriding committed files (see https://github.com/WillBooster/shared/issues/930).
-  const modeFileOverridesProcessEnv = !isCI(process.env.CI);
+  // Expand ${...} references against exported variables NOT loaded from files (mirroring
+  // readEnvironmentVariables): with an empty processEnv a reference to a shell-only variable
+  // would expand to '', and the forced-mode override below would then replace a correct
+  // inherited value with a broken one.
+  const referenceEnv: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    // Escape dollar signs so exported values substitute literally (pa$word stays pa$word).
+    if (value !== undefined && !(key in parsed)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+  }
+  const envVars = expand({ parsed, processEnv: referenceEnv }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;
       continue;
     }
-    if (!(key in modeVars) || process.env[key] === value) continue;
+    // readFnoxEnvironmentVariables returns a process.env-shadowed key only when the forced
+    // profile overrides it, so fnox-provided keys count as mode-specific here.
+    if (!(key in modeVars || key in fnoxVars) || process.env[key] === value) continue;
 
     if (modeFileOverridesProcessEnv) {
       console.warn(
-        `Warning: ${key} in .env.${process.env.WB_ENV} overrides the value inherited from the parent environment because WB_ENV is explicitly set.`
+        `Warning: ${key} in the "${mode}" mode's env sources overrides the value inherited from the parent environment because WB_ENV is explicitly set.`
       );
       process.env[key] = value;
-    } else {
-      console.warn(
-        `Warning: the inherited environment variable ${key} shadows the value defined in .env.${process.env.WB_ENV}.`
-      );
     }
+    // On CI, inherited variables intentionally win (workflows deliberately inject env vars that
+    // override the committed files); this is the designed behavior, so no warning is emitted.
   }
 }

@@ -69,6 +69,13 @@ export async function buildIfNeeded(
 
   if (!argv.dryRun) {
     const outputPaths = getExplicitOutputPaths(argv) ?? detectExistingDefaultOutputPaths(project);
+    if (outputPaths.length === 0) {
+      // With no recorded outputs, a deleted build directory can never invalidate the cache; make
+      // the inactive protection visible instead of failing silently (cf. issue #981).
+      console.info(
+        chalk.yellow('No build output directory detected; pass --output to enable missing-output cache invalidation.')
+      );
+    }
     await fs.promises.writeFile(cacheFilePath, JSON.stringify({ hash: contentHash, outputPaths }), 'utf8');
   }
   return true;
@@ -120,6 +127,10 @@ export async function canSkipBuild(
   const commitHash = child_process.execSync('git rev-parse HEAD', { cwd: project.dirPath }).toString().trim();
   hash.update(commitHash);
 
+  // The invoked build command is part of the cache identity: `-c commandB` must not reuse a
+  // cache recorded for commandA with otherwise unchanged inputs.
+  hash.update(argv.command ?? '');
+
   const environmentJson = JSON.stringify(
     Object.entries(project.env)
       .filter(([key]) => !ignoringEnvVarNames.has(key))
@@ -151,15 +162,17 @@ export async function canSkipBuild(
 function parseBuildCache(cachedContent: string | undefined): { hash: string; outputPaths: string[] } | undefined {
   if (!cachedContent) return;
   try {
-    const parsed = JSON.parse(cachedContent) as { hash?: unknown; outputPaths?: unknown };
+    const parsed = JSON.parse(cachedContent) as { hash?: unknown; outputPaths?: unknown } | undefined;
     if (typeof parsed?.hash !== 'string') return;
     const outputPaths = Array.isArray(parsed.outputPaths)
       ? parsed.outputPaths.filter((p) => typeof p === 'string')
       : [];
     return { hash: parsed.hash, outputPaths };
   } catch {
-    // A legacy cache file contains the raw content hash without output records.
-    return { hash: cachedContent, outputPaths: [] };
+    // A legacy cache file contains a raw content hash without output records. Treat it as a miss:
+    // honoring it would let a matching hash skip a build whose outputs were deleted, and one
+    // rebuild upgrades the record to the JSON format.
+    return;
   }
 }
 
@@ -187,33 +200,63 @@ async function updateHashWithDiffResult(
   hash: Hash
 ): Promise<void> {
   return new Promise((resolve) => {
-    const ret = child_process.spawnSync('git', ['status', '--porcelain'], {
+    // `-uall` lists untracked files individually (not just their directory), so new files in a
+    // brand-new source directory participate in the hash below.
+    const ret = child_process.spawnSync('git', ['status', '--porcelain', '-uall'], {
       cwd: project.dirPath,
       env: project.env,
       stdio: 'pipe',
       encoding: 'utf8',
     });
-    const lines = ret.stdout
+    const statusEntries = ret.stdout
       .trim()
       .split('\n')
-      .filter((line) => line.length > 0);
-    const filePaths = lines
-      .map((line) => line.slice(2).trim())
-      .map((filePath) =>
-        project.env.WB_ENV === 'test' ? filePath.replace(/packages\/wb\/test\/fixtures\/[^/]+\//, '') : filePath
-      );
-    const filteredFilePaths = filePaths.filter(
-      (filePath) =>
-        (includePatterns.some((pattern) => filePath.includes(pattern)) ||
-          includeSuffix.some((suffix) => filePath.endsWith(suffix))) &&
-        !excludePatterns.some((pattern) => filePath.includes(pattern))
+      .filter((line) => line.length > 0)
+      .map((line) => {
+        const rawPath = line.slice(2).trim();
+        return {
+          untracked: line.startsWith('??'),
+          // Renames are reported as `old -> new`; only the new path exists in the worktree.
+          filePath: rawPath.includes(' -> ') ? (rawPath.split(' -> ').at(-1) ?? rawPath) : rawPath,
+        };
+      })
+      .map((entry) => ({
+        ...entry,
+        hashPath:
+          project.env.WB_ENV === 'test'
+            ? entry.filePath.replace(/packages\/wb\/test\/fixtures\/[^/]+\//, '')
+            : entry.filePath,
+      }));
+    const filteredEntries = statusEntries.filter(
+      ({ hashPath }) =>
+        (includePatterns.some((pattern) => hashPath.includes(pattern)) ||
+          includeSuffix.some((suffix) => hashPath.endsWith(suffix))) &&
+        !excludePatterns.some((pattern) => hashPath.includes(pattern))
     );
     if (argv.verbose) {
-      console.info(`Changed files: ${filteredFilePaths.join(', ')}`);
+      console.info(`Changed files: ${filteredEntries.map((entry) => entry.hashPath).join(', ')}`);
     }
 
-    // 'git diff --' works only on rootDirPath
-    const proc = child_process.spawn('git', ['diff', '--', ...filteredFilePaths], { cwd: project.rootDirPath });
+    // Untracked files never appear in `git diff`, so hash their contents directly.
+    for (const entry of filteredEntries.filter((entry) => entry.untracked)) {
+      try {
+        hash.update(entry.hashPath);
+        hash.update(fs.readFileSync(path.join(project.rootDirPath, entry.filePath)));
+      } catch {
+        // The file may vanish concurrently; the tracked-state diff below is unaffected.
+      }
+    }
+
+    const trackedPaths = filteredEntries.filter((entry) => !entry.untracked).map((entry) => entry.hashPath);
+    if (trackedPaths.length === 0) {
+      // `git diff HEAD --` with no pathspec would diff EVERY file, letting excluded changes
+      // (docs, tests) invalidate the cache.
+      resolve();
+      return;
+    }
+    // `git diff HEAD` (not plain `git diff`) so staged-only changes invalidate the cache too;
+    // 'git diff --' works only on rootDirPath.
+    const proc = child_process.spawn('git', ['diff', 'HEAD', '--', ...trackedPaths], { cwd: project.rootDirPath });
     proc.stdout.on('data', (data: BinaryLike) => {
       hash.update(data);
       if (argv.verbose) {

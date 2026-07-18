@@ -6,6 +6,7 @@ import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findRootAndSelfProjects } from '../project.js';
+import type { PrivateRegistryAuth } from '../utils/privateRegistry.js';
 import {
   PRIVATE_REGISTRY_SCOPE,
   downloadAndExtractRegistryPackage,
@@ -49,6 +50,12 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     assertSubdirectory(projects.root.dirPath, outDirPath);
     const registryOutDirPath = path.join(path.dirname(outDirPath), PRIVATE_REGISTRY_SCOPE);
     assertSubdirectory(projects.root.dirPath, registryOutDirPath);
+    if (outDirPath === registryOutDirPath) {
+      // e.g. `--out-dir @willbooster-private`: the registry download step would delete the git
+      // packages copied into the aliased directory moments earlier.
+      console.error(chalk.red(`--out-dir must not be the ${PRIVATE_REGISTRY_SCOPE} registry output directory itself.`));
+      process.exit(1);
+    }
     const privatePackages = await collectPrivatePackages(
       projects.root.dirPath,
       projects.root.packageJson,
@@ -63,35 +70,28 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
 
     const copiedPackages = [...privatePackages.values()].filter((p) => p.kind === 'git');
     const registryPackages = [...privatePackages.values()].filter((p) => p.kind === 'registry');
+    // Resolve required configuration BEFORE deleting the existing materializations, so a missing
+    // registry configuration cannot destroy a previously usable output tree.
+    const auth = registryPackages.length > 0 ? resolvePrivateRegistryAuth(projects.root.dirPath) : undefined;
+    if (registryPackages.length > 0 && !auth) {
+      console.error(
+        chalk.red(
+          `No registry configured for the ${PRIVATE_REGISTRY_SCOPE} scope; add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to .npmrc or ~/.npmrc.`
+        )
+      );
+      process.exit(1);
+    }
+
     await fs.promises.rm(outDirPath, { recursive: true, force: true });
     if (copiedPackages.length > 0) {
       await fs.promises.mkdir(outDirPath, { recursive: true });
     }
     for (const privatePackage of copiedPackages) {
-      await fs.promises.cp(privatePackage.sourceDirPath!, privatePackage.targetDirPath, {
-        recursive: true,
-        force: true,
-        filter: (src) => {
-          const segments = path.relative(privatePackage.sourceDirPath!, src).split(path.sep);
-          return !segments.includes('node_modules') && !segments.includes('.git');
-        },
-      });
-      console.info(
-        `Copied ${privatePackage.name} to ${path.relative(projects.root.dirPath, privatePackage.targetDirPath)}`
-      );
+      await copyGitPackage(projects.root.dirPath, privatePackage);
     }
 
     await fs.promises.rm(registryOutDirPath, { recursive: true, force: true });
-    if (registryPackages.length > 0) {
-      const auth = resolvePrivateRegistryAuth(projects.root.dirPath);
-      if (!auth) {
-        console.error(
-          chalk.red(
-            `No registry configured for the ${PRIVATE_REGISTRY_SCOPE} scope; add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to .npmrc or ~/.npmrc.`
-          )
-        );
-        process.exit(1);
-      }
+    if (auth) {
       for (const privatePackage of registryPackages) {
         await downloadAndExtractRegistryPackage(
           auth,
@@ -104,7 +104,14 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
         );
         // A downloaded package may itself depend on private packages that were not visible before
         // extraction; materialize them too.
-        await collectNestedPrivatePackages(privatePackage, privatePackages, outDirPath, registryOutDirPath);
+        await collectNestedPrivatePackages(
+          projects.root.dirPath,
+          auth,
+          privatePackage,
+          privatePackages,
+          outDirPath,
+          registryOutDirPath
+        );
       }
     }
 
@@ -121,7 +128,7 @@ async function collectPrivatePackages(
   const privatePackages = new Map<string, PrivatePackage>();
   // Start from the root package.json by design; workspace package dependencies are outside this command's target.
   const packagesToProcess = findPrivateDependencies(rootPackageJson, outDirPath, registryOutDirPath);
-  const queuedPackageNames = new Set(packagesToProcess.map((p) => p.name));
+  const queuedPackages = new Map(packagesToProcess.map((p) => [p.name, p]));
 
   for (let index = 0; index < packagesToProcess.length; index++) {
     const privatePackage = packagesToProcess[index];
@@ -135,8 +142,11 @@ async function collectPrivatePackages(
       for (const packageJsonPath of await findPackageJsonPaths(privatePackage.sourceDirPath)) {
         const packageJson = await readPackageJson(packageJsonPath);
         for (const nested of findPrivateDependencies(packageJson, outDirPath, registryOutDirPath)) {
-          if (!queuedPackageNames.has(nested.name)) {
-            queuedPackageNames.add(nested.name);
+          const queued = queuedPackages.get(nested.name);
+          if (queued) {
+            assertNoVersionConflict(queued, nested, privatePackage.name);
+          } else {
+            queuedPackages.set(nested.name, nested);
             packagesToProcess.push(nested);
           }
         }
@@ -149,6 +159,8 @@ async function collectPrivatePackages(
 }
 
 async function collectNestedPrivatePackages(
+  rootDirPath: string,
+  auth: PrivateRegistryAuth,
   extractedPackage: PrivatePackage,
   privatePackages: Map<string, PrivatePackage>,
   outDirPath: string,
@@ -162,20 +174,51 @@ async function collectNestedPrivatePackages(
     outDirPath,
     registryOutDirPath
   )) {
-    if (privatePackages.has(nested.name) || nested.kind !== 'registry') continue;
+    const existing = privatePackages.get(nested.name);
+    if (existing) {
+      // Collapsing different requested versions into one materialization would silently violate
+      // the dependent's requirement, so conflicts must fail loudly.
+      assertNoVersionConflict(existing, nested, extractedPackage.name);
+      continue;
+    }
 
-    const auth = resolvePrivateRegistryAuth(path.dirname(registryOutDirPath));
-    if (!auth) continue;
-    await downloadAndExtractRegistryPackage(
-      auth,
-      nested.name,
-      nested.versionSpecifier ?? 'latest',
-      nested.targetDirPath
-    );
-    console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
+    if (nested.kind === 'git') {
+      nested.sourceDirPath = findInstalledPackageDir(rootDirPath, nested.name);
+      await copyGitPackage(rootDirPath, nested);
+    } else {
+      await downloadAndExtractRegistryPackage(
+        auth,
+        nested.name,
+        nested.versionSpecifier ?? 'latest',
+        nested.targetDirPath
+      );
+      console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
+    }
     privatePackages.set(nested.name, nested);
-    await collectNestedPrivatePackages(nested, privatePackages, outDirPath, registryOutDirPath);
+    await collectNestedPrivatePackages(rootDirPath, auth, nested, privatePackages, outDirPath, registryOutDirPath);
   }
+}
+
+async function copyGitPackage(rootDirPath: string, privatePackage: PrivatePackage): Promise<void> {
+  await fs.promises.cp(privatePackage.sourceDirPath!, privatePackage.targetDirPath, {
+    recursive: true,
+    force: true,
+    filter: (src) => {
+      const segments = path.relative(privatePackage.sourceDirPath!, src).split(path.sep);
+      return !segments.includes('node_modules') && !segments.includes('.git');
+    },
+  });
+  console.info(`Copied ${privatePackage.name} to ${path.relative(rootDirPath, privatePackage.targetDirPath)}`);
+}
+
+function assertNoVersionConflict(existing: PrivatePackage, requested: PrivatePackage, dependentName: string): void {
+  if (existing.kind === requested.kind && existing.versionSpecifier === requested.versionSpecifier) return;
+
+  throw new Error(
+    `Conflicting requirements for ${existing.name}: ` +
+      `${existing.versionSpecifier ?? existing.kind} is already selected, but ${dependentName} requires ` +
+      `${requested.versionSpecifier ?? requested.kind}. Only a single version per private package is supported.`
+  );
 }
 
 function assertSubdirectory(rootDirPath: string, outDirPath: string): void {
@@ -205,26 +248,25 @@ function findPrivateDependencies(
     if (!dependencies) continue;
 
     for (const [name, value] of Object.entries(dependencies)) {
-      if (isPrivateGitDependency(value)) {
-        if (!name.startsWith('@willbooster/')) {
-          throw new Error(`Private git dependency must be an @willbooster package: ${name}`);
-        }
-        privatePackages.set(name, {
-          name,
-          kind: 'git',
-          sourceDirPath: undefined,
-          targetDirPath: path.join(outDirPath, toUnscopedPackageName(name)),
-          versionSpecifier: undefined,
-        });
-      } else if (isPrivateRegistryDependency(name, value)) {
-        privatePackages.set(name, {
-          name,
-          kind: 'registry',
-          sourceDirPath: undefined,
-          targetDirPath: path.join(registryOutDirPath, toUnscopedPackageName(name)),
-          versionSpecifier: value,
-        });
+      const isGit = isPrivateGitDependency(value);
+      if (!isGit && !isPrivateRegistryDependency(name, value)) continue;
+      if (isGit && !name.startsWith('@willbooster/')) {
+        throw new Error(`Private git dependency must be an @willbooster package: ${name}`);
       }
+      const unscopedName = toUnscopedPackageName(name);
+      // Dependency names become external data once nested manifests come from downloaded
+      // tarballs; reject anything (path separators, `..`, hidden-file prefixes) that could
+      // escape the output directory the name is joined into before it is recursively deleted.
+      if (!/^[\w.-]+$/.test(unscopedName) || unscopedName.startsWith('.')) {
+        throw new Error(`Invalid private package name: ${name}`);
+      }
+      privatePackages.set(name, {
+        name,
+        kind: isGit ? 'git' : 'registry',
+        sourceDirPath: undefined,
+        targetDirPath: path.join(isGit ? outDirPath : registryOutDirPath, unscopedName),
+        versionSpecifier: isGit ? undefined : (value as string),
+      });
     }
   }
   return [...privatePackages.values()];

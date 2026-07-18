@@ -173,11 +173,11 @@ export class Project {
     if (this.requiresNextPublicWbEnv && !env.NEXT_PUBLIC_WB_ENV) missingKeys.push('NEXT_PUBLIC_WB_ENV');
     if (missingKeys.length === 0) return;
 
+    // Resolve the mode label from the loaded environment (not process.env): a WB_ENV/NODE_ENV
+    // supplied only by env files or fnox must still name the correct mode in the error message.
     const mode =
       this.argv.cascadeEnv ??
-      (this.argv.cascadeNodeEnv
-        ? process.env.NODE_ENV || 'development'
-        : (process.env.WB_ENV ?? process.env.NODE_ENV ?? 'development'));
+      (this.argv.cascadeNodeEnv ? env.NODE_ENV || 'development' : (env.WB_ENV ?? env.NODE_ENV ?? 'development'));
     console.error(
       chalk.red(
         `${missingKeys.join(' and ')} ${missingKeys.length === 1 ? 'is' : 'are'} not defined for the "${mode}" environment. ` +

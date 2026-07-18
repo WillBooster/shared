@@ -114,10 +114,18 @@ function rewritePrivateGitHubDependenciesForDir(
         // The Dockerfile copies those workspace packages into the image instead.
         deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, '@willbooster', name);
         rewrittenDependencies.push(`${key}.${name}`);
-      } else if (
-        isPrivateRegistryDependency(name, value) &&
-        fs.existsSync(path.join(rootDirPath, PRIVATE_REGISTRY_SCOPE, toUnscopedPackageName(name), 'package.json'))
-      ) {
+      } else if (isPrivateRegistryDependency(name, value)) {
+        const materializedVersion = readMaterializedPackageVersion(rootDirPath, name);
+        if (materializedVersion === undefined) continue;
+        // `wb setup-private-packages` degrades ^/~ ranges to their base version, so equality
+        // against the stripped specifier is exact for pinned versions and simple ranges;
+        // dist-tag specifiers (non-numeric) skip the staleness check.
+        const requestedVersion = value.replace(/^[\^~]/, '');
+        if (/^\d/.test(requestedVersion) && materializedVersion !== requestedVersion) {
+          throw new Error(
+            `Materialized ${name} is ${materializedVersion} but package.json requires ${value}; rerun \`wb setup-private-packages\`.`
+          );
+        }
         // Registry packages that `wb setup-private-packages` materialized on the host are used as
         // local paths so image builds need no Verdaccio credentials; the COMMITTED package.json
         // keeps the registry specifier — only the generated (dist/)package.json is rewritten
@@ -144,6 +152,21 @@ function getPrivatePackageDockerSpecifier(
 
 function toUnscopedPackageName(packageName: string): string {
   return packageName.replace(/^@willbooster(?:-private)?\//, '');
+}
+
+/** Undefined when the package is not materialized (or its manifest is unreadable/versionless). */
+function readMaterializedPackageVersion(rootDirPath: string, packageName: string): string | undefined {
+  const packageJsonPath = path.join(
+    rootDirPath,
+    PRIVATE_REGISTRY_SCOPE,
+    toUnscopedPackageName(packageName),
+    'package.json'
+  );
+  try {
+    return (JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageJson).version;
+  } catch {
+    return undefined;
+  }
 }
 
 async function writeDockerShellScripts(dirPath: string): Promise<void> {

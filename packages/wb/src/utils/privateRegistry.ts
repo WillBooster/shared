@@ -45,13 +45,23 @@ export function resolvePrivateRegistryAuth(rootDirPath: string): PrivateRegistry
   const registryUrl = entries[`${PRIVATE_REGISTRY_SCOPE}:registry`]?.replace(/\/+$/, '');
   if (!registryUrl) return;
 
-  const registryUrlWithoutProtocol = registryUrl.replace(/^https?:/, '');
-  const authToken =
-    Object.entries(entries).find(
-      ([key]) =>
-        key.endsWith(':_authToken') &&
-        registryUrlWithoutProtocol.startsWith(key.slice(0, -':_authToken'.length).replace(/\/+$/, ''))
-    )?.[1] ?? process.env.VERDACCIO_TOKEN;
+  // npm-style URI matching: normalize both sides to a trailing slash so a token for
+  // `//verdaccio.example.com/` can never match `//verdaccio.example.com-other.org/`, and pick the
+  // MOST SPECIFIC (longest) matching prefix so `//host/private/` beats `//host/`.
+  const normalizedRegistryUrl = `${registryUrl.replace(/^https?:/, '').replace(/\/+$/, '')}/`;
+  let matchedToken: string | undefined;
+  let matchedPrefixLength = -1;
+  for (const [key, value] of Object.entries(entries)) {
+    if (!key.endsWith(':_authToken')) continue;
+    const prefix = `${key.slice(0, -':_authToken'.length).replace(/\/+$/, '')}/`;
+    if (normalizedRegistryUrl.startsWith(prefix) && prefix.length > matchedPrefixLength) {
+      matchedPrefixLength = prefix.length;
+      matchedToken = value;
+    }
+  }
+  // No Project instance exists at this layer, so process.env is the only source for the
+  // CI-injected fallback token.
+  const authToken = matchedToken ?? process.env.VERDACCIO_TOKEN;
   return { registryUrl, authToken };
 }
 
@@ -149,13 +159,25 @@ async function fetchRegistryJson<T>(auth: PrivateRegistryAuth, url: string): Pro
 }
 
 async function fetchFromRegistry(auth: PrivateRegistryAuth, url: string): Promise<Response> {
+  // Tarball URLs come from registry-controlled metadata; attach the token only to the configured
+  // registry's own origin so a malicious or misconfigured registry cannot redirect the credential
+  // to a third-party host.
+  const sendAuthToken = !!auth.authToken && isSameOrigin(url, auth.registryUrl);
   const response = await fetch(url, {
-    headers: auth.authToken ? { authorization: `Bearer ${auth.authToken}` } : {},
+    headers: sendAuthToken ? { authorization: `Bearer ${auth.authToken}` } : {},
   });
   if (!response.ok) {
     throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
   }
   return response;
+}
+
+function isSameOrigin(url: string, registryUrl: string): boolean {
+  try {
+    return new URL(url).origin === new URL(registryUrl).origin;
+  } catch {
+    return false;
+  }
 }
 
 function encodePackageName(packageName: string): string {

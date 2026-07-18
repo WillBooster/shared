@@ -108,6 +108,24 @@ describe('readAndApplyEnvironmentVariables()', () => {
     expect(process.env.PORT).toBe('9999');
   });
 
+  it.runIf(isFnoxAvailable())(
+    'should let fnox profile values override inherited process.env when the mode is forced (non-CI)',
+    () => {
+      delete process.env.CI;
+      process.env.WB_ENV = 'test';
+      process.env.PORT = '9999';
+      process.env.FNOX_ONLY = 'shell';
+      const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-fnox');
+      // The test profile defines PORT=6002 (differing from the base 6001), so the forced test
+      // mode must win over the inherited shell value; FNOX_ONLY exists only in the base secrets
+      // and must keep losing to process.env.
+      expect(envVars.PORT).toBe('6002');
+      expect(envVars.FNOX_ONLY).toBeUndefined();
+      expect(process.env.PORT).toBe('9999');
+      delete process.env.FNOX_ONLY;
+    }
+  );
+
   it.runIf(isFnoxAvailable())('should load env vars from a fnox profile with --cascade-env=test', () => {
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app-fnox');
     expect(envVars).toMatchObject({

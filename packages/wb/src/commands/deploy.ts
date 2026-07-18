@@ -165,15 +165,34 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       );
       process.exit(1);
     }
+    if (resolvedConfig.d1Databases.length > 0 && wranglerNativeD1Databases.length === 0 && !drizzleKitManagesD1) {
+      // Say so out loud instead of silently deploying code against unmigrated databases: the
+      // drizzle marker detection is heuristic (text scan of drizzle.config.*), so a project that
+      // genuinely migrates D1 must be able to notice when no mechanism was selected.
+      console.warn(
+        chalk.yellow(
+          `No D1 migration mechanism detected for ${resolvedConfig.d1Databases
+            .map((database) => database.binding ?? database.database_name ?? 'unnamed binding')
+            .join(', ')} ` +
+            '(no wrangler migrations directory and no drizzle config targeting sqlite/d1-http/durable-sqlite); wb deploy will not run D1 migrations.'
+        )
+      );
+    }
     // Dry runs execute nothing authenticated, so they skip the credential preflight entirely.
     if (!argv.dryRun) {
-      // Whenever a deploy/post hook exists and wb will export CLOUDFLARE_D1_DATABASE_ID to it
-      // (exactly one D1 binding — see step 5), the hook's drizzle config typically selects its
-      // d1-http branch, which needs CLOUDFLARE_API_TOKEN even for local, wrangler-OAuth deploys.
-      // Failing here keeps the fail-fast ordering: a missing token must abort before the deploy
-      // goes live, not during deploy/post (https://github.com/WillBooster/shared/issues/956).
+      // Whenever a deploy/post hook exists, drizzle-kit manages a D1 database, and wb will export
+      // CLOUDFLARE_D1_DATABASE_ID to the hook (exactly one D1 binding WITH a database_id — see
+      // step 5), the hook's drizzle config selects its d1-http branch, which needs
+      // CLOUDFLARE_API_TOKEN even for local, wrangler-OAuth deploys. Failing here keeps the
+      // fail-fast ordering: a missing token must abort before the deploy goes live, not during
+      // deploy/post (https://github.com/WillBooster/shared/issues/956). Hooks unrelated to
+      // drizzle-managed D1 (e.g. cache purges on a wrangler-native project) must not require the
+      // token: a local wrangler OAuth login suffices for them.
       const postHookReceivesD1DatabaseId =
-        !!project.packageJson.scripts?.['deploy/post'] && resolvedConfig.d1Databases.length === 1;
+        !!project.packageJson.scripts?.['deploy/post'] &&
+        drizzleKitManagesD1 &&
+        resolvedConfig.d1Databases.length === 1 &&
+        !!resolvedConfig.d1Databases[0]?.database_id;
       if ((drizzleD1Database || postHookReceivesD1DatabaseId) && !project.env.CLOUDFLARE_API_TOKEN) {
         // drizzle-kit's d1-http driver requires this specific token even for local runs; a
         // local wrangler OAuth login covers only the wrangler-native path.

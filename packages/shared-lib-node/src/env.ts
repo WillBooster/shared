@@ -102,12 +102,16 @@ export function readEnvironmentVariables(
     console.info('Reading env files:', envPaths.join(', '));
   }
 
-  // When the caller explicitly forces a mode (--cascade-env / an exported WB_ENV), values that the
-  // mode's own env files define must win over variables inherited from the parent shell: a stale
-  // `export DATABASE_URL=...` from a development shell must not leak into `wb test`'s test mode
-  // (cf. https://github.com/WillBooster/shared/issues/930). On CI the inherited variables keep
-  // winning — workflows deliberately inject env vars that override the committed files.
-  const modeIsForced = Boolean(argv.cascadeEnv ?? (argv.autoCascadeEnv ? runtimeEnv.WB_ENV : undefined));
+  // When the caller explicitly forces a mode (--cascade-env / --cascade-node-env / an exported
+  // WB_ENV), values that the mode's own env files define must win over variables inherited from
+  // the parent shell: a stale `export DATABASE_URL=...` from a development shell must not leak
+  // into `wb test`'s test mode (cf. https://github.com/WillBooster/shared/issues/930). On CI the
+  // inherited variables keep winning — workflows deliberately inject env vars that override the
+  // committed files — and that shadowing is the designed behavior, so no warning is emitted.
+  const modeIsForced = Boolean(
+    argv.cascadeEnv ??
+    (argv.cascadeNodeEnv ? runtimeEnv.NODE_ENV || 'development' : argv.autoCascadeEnv ? runtimeEnv.WB_ENV : undefined)
+  );
   const modeFileOverridesProcessEnv = modeIsForced && !isCIEnvironment(runtimeEnv.CI);
 
   const envPathAndLoadedEnvVarNames: [string, string[]][] = [];
@@ -124,9 +128,6 @@ export function readEnvironmentVariables(
       const inheritedValue = process.env[key];
       const shadowedByProcessEnv = !options?.ignoreProcessEnv && key in process.env;
       if (shadowedByProcessEnv && !(isModeSpecificEnvFile && modeFileOverridesProcessEnv)) {
-        if (isModeSpecificEnvFile && modeIsForced && inheritedValue !== value && !shouldSuppressOutput) {
-          console.warn(`Warning: the inherited environment variable ${key} shadows the value defined in ${envPath}.`);
-        }
         continue;
       }
       if (shadowedByProcessEnv && inheritedValue !== value && !shouldSuppressOutput) {
@@ -142,9 +143,15 @@ export function readEnvironmentVariables(
       console.info(`Read ${keys.length} environment variables from ${envPath}`);
     }
   }
-  const [fnoxEnvVars, fnoxEnvVarNames] = readFnoxEnvironmentVariables(cwd, cascade, envVars, options);
+  const [fnoxEnvVars, fnoxEnvVarNames] = readFnoxEnvironmentVariables(cwd, cascade, envVars, {
+    ...options,
+    modeFileOverridesProcessEnv,
+  });
   Object.assign(envVars, fnoxEnvVars);
-  if (fnoxEnvVarNames.length > 0) {
+  // Report the fnox source whenever fnox.toml exists — even when it yields no keys (all shadowed,
+  // empty profile, or a failing export): consumers such as wb's required-environment validation
+  // must see that a declared env source exists rather than silently failing open.
+  if (fnoxEnvVarNames.length > 0 || hasProjectFnoxConfig(cwd)) {
     envPathAndLoadedEnvVarNames.push([fnoxEnvironmentSourceName(cascade), fnoxEnvVarNames]);
     if (argv.verbose && !shouldSuppressOutput) {
       console.info(`Read ${fnoxEnvVarNames.length} environment variables from ${fnoxEnvironmentSourceName(cascade)}`);
@@ -204,10 +211,36 @@ export function readFnoxEnvironmentVariables(
   cwd: string,
   cascade: string | undefined,
   currentEnvVars: Record<string, string>,
-  options?: { ignoreProcessEnv?: boolean }
+  options?: { ignoreProcessEnv?: boolean; modeFileOverridesProcessEnv?: boolean }
 ): [Record<string, string>, string[]] {
   if (!hasProjectFnoxConfig(cwd)) return [{}, []];
 
+  const secrets = runFnoxExport(cwd, cascade, false);
+  if (!secrets) return [{}, []];
+  // `[profiles.<cascade>.secrets]` is the fnox analogue of `.env.<cascade>`: when the caller
+  // forces a mode off CI, profile-specific values must override inherited shell variables just
+  // like `.env.<mode>` values do, while base `[secrets]` values keep losing to process.env. A key
+  // is profile-specific when the profile export's value differs from the base export's; when the
+  // base export fails, no override is applied (conservative).
+  const baseSecrets = options?.modeFileOverridesProcessEnv && cascade ? runFnoxExport(cwd, undefined, true) : undefined;
+
+  const envVars: Record<string, string> = {};
+  const keys: string[] = [];
+  for (const [key, value] of Object.entries(secrets)) {
+    if (typeof value !== 'string' || key in currentEnvVars) continue;
+    const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
+    // Explicitly exported environment variables win over fnox base values, mirroring the .env rule.
+    // (The mise reader below intentionally uses a value-equality check instead: `mise env` echoes
+    // back variables the ambient mise activation already exported, and a differing value means the
+    // requested cascade profile should win over the stale activation.)
+    if (!options?.ignoreProcessEnv && key in process.env && !overridesProcessEnv) continue;
+    envVars[key] = value;
+    keys.push(key);
+  }
+  return [envVars, keys];
+}
+
+function runFnoxExport(cwd: string, cascade: string | undefined, quiet: boolean): Record<string, unknown> | undefined {
   // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve
   // (e.g. a missing age key), which would be indistinguishable from undeclared secrets.
   // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
@@ -223,34 +256,23 @@ export function readFnoxEnvironmentVariables(
   if (result.error || result.status !== 0 || !result.stdout?.trim()) {
     // The repository declares fnox-managed secrets (fnox.toml exists), so a failing export must be
     // surfaced: swallowing it would make declared secrets indistinguishable from undeclared ones.
-    console.warn(
-      `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
-    );
-    return [{}, []];
+    if (!quiet) {
+      console.warn(
+        `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
+      );
+    }
+    return;
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(result.stdout);
   } catch {
-    return [{}, []];
+    return;
   }
   const secrets = (parsed as { secrets?: unknown } | undefined)?.secrets;
-  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)) return [{}, []];
-
-  const envVars: Record<string, string> = {};
-  const keys: string[] = [];
-  for (const [key, value] of Object.entries(secrets)) {
-    if (typeof value !== 'string' || key in currentEnvVars) continue;
-    // Explicitly exported environment variables win over fnox values, mirroring the .env rule.
-    // (The mise reader below intentionally uses a value-equality check instead: `mise env` echoes
-    // back variables the ambient mise activation already exported, and a differing value means the
-    // requested cascade profile should win over the stale activation.)
-    if (!options?.ignoreProcessEnv && key in process.env) continue;
-    envVars[key] = value;
-    keys.push(key);
-  }
-  return [envVars, keys];
+  if (!secrets || typeof secrets !== 'object' || Array.isArray(secrets)) return;
+  return secrets as Record<string, unknown>;
 }
 
 export function hasProjectFnoxConfig(cwd: string): boolean {

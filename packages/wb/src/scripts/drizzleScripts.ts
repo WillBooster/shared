@@ -132,10 +132,21 @@ export function usesDrizzleKitForD1(project: Project): boolean {
   if (!config) return false;
 
   try {
-    return drizzleSqliteConfigPattern.test(fs.readFileSync(path.join(config.dirPath, config.fileName), 'utf8'));
+    return drizzleSqliteConfigPattern.test(
+      stripJsComments(fs.readFileSync(path.join(config.dirPath, config.fileName), 'utf8'))
+    );
   } catch {
     return false;
   }
+}
+
+/**
+ * Remove block and line comments so commented-out markers (e.g. `// dialect: 'sqlite'` in a
+ * PostgreSQL config) cannot misclassify the config. `//` preceded by `:`, quotes, or a backslash
+ * is kept so URLs such as `https://...` in connection strings survive.
+ */
+function stripJsComments(content: string): string {
+  return content.replaceAll(/\/\*[\s\S]*?\*\//g, '').replaceAll(/(^|[^:"'`\\])\/\/.*$/gm, '$1');
 }
 
 export function findDrizzleConfig(project: Project): { dirPath: string; fileName: string } | undefined {
