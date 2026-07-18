@@ -8,6 +8,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 
 interface MiseToml {
   tools?: Record<string, unknown>;
@@ -39,10 +40,10 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     }
     // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
     // unpinned Node would come from whatever happens to be on PATH.
-    tools.node = tools.node ?? readNodeVersionFile(config.dirPath) ?? 'latest';
+    tools.node = pinConcreteToolVersion('node', tools.node ?? readNodeVersionFile(config.dirPath), config.dirPath);
     tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      tools.fnox = tools.fnox ?? 'latest';
+      tools.fnox = pinConcreteToolVersion('fnox', tools.fnox, config.dirPath);
     }
     settings.tools = tools;
 
@@ -81,6 +82,25 @@ function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string):
     return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version, currentBunVersion) };
   }
   return bunVersion;
+}
+
+/**
+ * Replaces an unpinned selector (`latest`, a range such as "24", an alias, or a missing entry)
+ * with the newest concrete version mise resolves for it, because the repository-structure
+ * standard requires concrete pins: CI installs whatever an unpinned selector resolves to at run
+ * time, so builds drift across runs. Exact versions are kept as-is, and non-string forms (mise's
+ * array and `{ version = "…" }` forms) are user-managed and left untouched. When mise is
+ * unavailable or cannot resolve the selector (e.g. offline), the original selector is kept —
+ * an unpinned tool is better than a broken configuration.
+ */
+function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): unknown {
+  if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
+  // With no meaningful selector, Node.js pins to the latest LTS (matching the reusable workflows'
+  // `lts/*` fallback) rather than the newest release.
+  const defaultSelector = tool === 'node' ? 'node@lts' : tool;
+  const selector = typeof version === 'string' && version !== 'latest' ? `${tool}@${version}` : defaultSelector;
+  const resolvedVersion = spawnSyncAndReturnStdout('mise', ['latest', selector], cwd);
+  return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
 }
 
 function parseMiseToml(miseTomlPath: string): MiseToml {

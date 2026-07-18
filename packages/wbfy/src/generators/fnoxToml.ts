@@ -341,7 +341,12 @@ export function readFnoxAgeRecipients(fnoxTomlContent: string): Set<string> | un
 }
 
 function replaceAgeRecipients(content: string): string {
-  const recipientsText = `recipients = [${FNOX_AGE_RECIPIENTS.map((recipient) => `"${recipient.publicKey}"`).join(', ')}]`;
+  // Trailing name comments let humans tell whose key each recipient is without consulting wbfy.
+  const recipientsText = `recipients = [\n${FNOX_AGE_RECIPIENTS.map(
+    (recipient) => `  "${recipient.publicKey}", # ${recipient.name}`
+  ).join('\n')}\n]`;
+  // TOML forbids newlines and comments inside inline tables, so the inline form stays single-line.
+  const inlineRecipientsText = `recipients = [${FNOX_AGE_RECIPIENTS.map((recipient) => `"${recipient.publicKey}"`).join(', ')}]`;
   // Standard form: a [providers.age] table (possibly with a trailing comment). Scan line-wise so
   // that a `[` inside a comment or a string never terminates the table early; the table ends at
   // the next line-start table header. The assignment match is line-anchored so a commented-out
@@ -371,7 +376,7 @@ function replaceAgeRecipients(content: string): string {
   // Inline form: age = { type = "age", recipients = [...] } inside a [providers] table.
   const withReplacedInline = content.replace(
     /(\bage\s*=\s*\{[^}]*?)recipients\s*=\s*\[[^\]]*\]/u,
-    `$1${recipientsText}`
+    `$1${inlineRecipientsText}`
   );
   if (withReplacedInline !== content) return withReplacedInline;
   return `${content.trimEnd()}\n\n[providers.age]\ntype = "age"\n${recipientsText}\n`;
