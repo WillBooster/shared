@@ -4,7 +4,7 @@ import path from 'node:path';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { getOctokit } from '../utils/githubUtil.js';
+import { getOctokit, hasGitHubToken } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
 const semanticReleaseBadge =
@@ -49,6 +49,9 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
 async function hasAnyWorkflowRun(repository: string, workflowFileName: string): Promise<boolean> {
   const [owner, repo] = repository.split('/');
   if (!owner || !repo) return true;
+  // GitHub answers 404 (not 401/403) for private resources accessed without authorization, so an
+  // unauthenticated 404 cannot distinguish "no runs" from "no access" — keep the badge then.
+  if (!hasGitHubToken(owner)) return true;
   try {
     const response = await getOctokit(owner).request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', {
       owner,

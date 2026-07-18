@@ -58,6 +58,17 @@ test('honors exclude and relative extends chains when resolving the effective fi
     // A package-name extends contributes no file set, so the default `**` inclusion applies.
     await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "extends": "@tsconfig/bun/tsconfig.json" }');
     expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(true);
+
+    // Inherited patterns stay relative to the config that declared them (tsc semantics): a base
+    // config one level up whose include covers the package DOES reach the package's root file.
+    const packageDirPath = path.join(dirPath, 'pkg');
+    await fs.promises.mkdir(packageDirPath);
+    await fs.promises.writeFile(path.join(dirPath, 'tsconfig.base.json'), '{ "include": ["pkg/**/*"] }');
+    await fs.promises.writeFile(path.join(packageDirPath, 'tsconfig.json'), '{ "extends": "../tsconfig.base.json" }');
+    expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(true);
+    // ...while a base config covering only a sibling directory does not.
+    await fs.promises.writeFile(path.join(dirPath, 'tsconfig.base.json'), '{ "include": ["other/**/*"] }');
+    expect(consumesGeneratedWorkerTypes({ dirPath: packageDirPath })).toBe(false);
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
   }

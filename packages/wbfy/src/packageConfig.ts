@@ -296,34 +296,61 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
 }
 
 /**
- * A package whose tsconfig cannot include worker-configuration.d.ts (e.g. one on a hand-maintained minimal `Env`
- * with `types: ["bun"]`, the standard escape when the ambient wrangler globals conflict with the `@types/bun`
- * globals its tests need) gains nothing from regenerating the ~500KB file on every install, so wbfy leaves such
- * packages unmanaged instead of re-adding the generation step. The `files`/`include`/`exclude` set is resolved
- * through relative `extends` chains (child keys override parent keys, matching tsc; package-name extends such as
- * `@tsconfig/bun` define no file set, so they contribute nothing); whenever the effective set cannot be
- * determined (missing or unparseable tsconfig, or TypeScript's default `**` inclusion), the current managed
- * behavior is kept.
+ * A package whose TypeScript project cannot include worker-configuration.d.ts (e.g. one on a hand-maintained
+ * minimal `Env` with `types: ["bun"]`, the standard escape when the ambient wrangler globals conflict with the
+ * `@types/bun` globals its tests need) gains nothing from regenerating the ~500KB file on every install, so wbfy
+ * leaves such packages unmanaged instead of re-adding the generation step. Consumption is detected two ways:
+ * a textual `worker-configuration` reference in any tracked file of the package (covers imports, triple-slash
+ * references, and explicit tsconfig entries), or a `files`/`include`/`exclude` set that can match the file —
+ * resolved through relative `extends` chains with each pattern kept relative to the config that declared it,
+ * matching tsc. Whenever the effective set cannot be determined (missing or unparseable tsconfig, package-name
+ * `extends` presets, or TypeScript's default `**` inclusion), the current managed behavior is kept.
  */
 export function consumesGeneratedWorkerTypes(config: Pick<PackageConfig, 'dirPath'>): boolean {
-  const fileSet = resolveTsconfigFileSet(path.resolve(config.dirPath, 'tsconfig.json'), 5);
+  // `git grep` searches tracked files only, so the gitignored generated file itself never matches.
+  const grepResult = spawnSyncAndReturnStdout('git', ['grep', '-l', 'worker-configuration', '--', '.'], config.dirPath);
+  if (grepResult.trim()) return true;
+
+  const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
+  const fileSet = resolveTsconfigFileSet(path.resolve(config.dirPath, 'tsconfig.json'), config.dirPath, 5);
   if (!fileSet) return true;
-  const matches = (patterns: unknown): boolean =>
-    Array.isArray(patterns) &&
-    patterns.some((pattern) => typeof pattern === 'string' && tsconfigPatternCouldMatchWorkerTypes(pattern));
+  const matches = (patternSet: TsconfigPatternSet | undefined): boolean => {
+    if (!patternSet || !Array.isArray(patternSet.patterns)) return false;
+    const relativePath = path.relative(patternSet.baseDirPath, workerTypesPath).replaceAll('\\', '/');
+    return patternSet.patterns.some((pattern) => {
+      if (typeof pattern !== 'string') return false;
+      // `${configDir}`-prefixed patterns were expanded to absolute paths at resolve time.
+      if (path.isAbsolute(pattern)) return tsconfigPatternCouldMatchPath(pattern, workerTypesPath);
+      if (relativePath.startsWith('..')) return false;
+      return tsconfigPatternCouldMatchPath(pattern, relativePath);
+    });
+  };
   // `files` entries are always part of the program, even when `exclude` matches them.
   if (matches(fileSet.files)) return true;
   if (matches(fileSet.exclude)) return false;
   // Neither include nor files declared: TypeScript's default `**` inclusion covers the file.
-  if (!Array.isArray(fileSet.include) && !Array.isArray(fileSet.files)) return true;
+  if (!fileSet.include && !fileSet.files) return true;
   return matches(fileSet.include);
+}
+
+interface TsconfigPatternSet {
+  /** Directory of the config that declared the patterns; tsc resolves them relative to it. */
+  baseDirPath: string;
+  patterns: unknown;
+}
+
+interface TsconfigFileSet {
+  exclude?: TsconfigPatternSet;
+  files?: TsconfigPatternSet;
+  include?: TsconfigPatternSet;
 }
 
 /** Resolves files/include/exclude through relative `extends` chains; undefined when unreadable. */
 function resolveTsconfigFileSet(
   filePath: string,
+  consumerDirPath: string,
   remainingDepth: number
-): { exclude?: unknown; files?: unknown; include?: unknown } | undefined {
+): TsconfigFileSet | undefined {
   if (remainingDepth <= 0) return undefined;
   let content: string;
   try {
@@ -338,18 +365,35 @@ function resolveTsconfigFileSet(
     include?: unknown;
   }>(content);
   if (!tsconfig) return undefined;
-  const fileSet = { exclude: tsconfig.exclude, files: tsconfig.files, include: tsconfig.include };
+  const dirPath = path.dirname(filePath);
+  // `${configDir}` resolves to the directory of the ROOT (consuming) config, wherever it appears.
+  const toPatternSet = (patterns: unknown): TsconfigPatternSet | undefined =>
+    Array.isArray(patterns)
+      ? {
+          baseDirPath: dirPath,
+          patterns: patterns.map((pattern) =>
+            typeof pattern === 'string' && pattern.startsWith('${configDir}')
+              ? path.join(consumerDirPath, pattern.slice('${configDir}'.length))
+              : pattern
+          ),
+        }
+      : undefined;
+  const fileSet: TsconfigFileSet = {
+    exclude: toPatternSet(tsconfig.exclude),
+    files: toPatternSet(tsconfig.files),
+    include: toPatternSet(tsconfig.include),
+  };
   const parents =
     typeof tsconfig.extends === 'string' ? [tsconfig.extends] : Array.isArray(tsconfig.extends) ? tsconfig.extends : [];
   // With an `extends` array, later entries override earlier ones, and the child overrides all —
   // so fill each still-missing key from the last parent that defines it.
   for (const parent of parents.toReversed()) {
-    if (fileSet.exclude !== undefined && fileSet.files !== undefined && fileSet.include !== undefined) break;
+    if (fileSet.exclude && fileSet.files && fileSet.include) break;
     // Package-name extends (e.g. `@tsconfig/bun`) are compilerOptions presets without file sets.
     if (typeof parent !== 'string' || !parent.startsWith('.')) continue;
-    let parentPath = path.resolve(path.dirname(filePath), parent);
+    let parentPath = path.resolve(dirPath, parent);
     if (!fs.existsSync(parentPath) && fs.existsSync(`${parentPath}.json`)) parentPath += '.json';
-    const parentFileSet = resolveTsconfigFileSet(parentPath, remainingDepth - 1);
+    const parentFileSet = resolveTsconfigFileSet(parentPath, consumerDirPath, remainingDepth - 1);
     if (!parentFileSet) continue;
     fileSet.exclude ??= parentFileSet.exclude;
     fileSet.files ??= parentFileSet.files;
@@ -358,10 +402,9 @@ function resolveTsconfigFileSet(
   return fileSet;
 }
 
-function tsconfigPatternCouldMatchWorkerTypes(pattern: string): boolean {
+function tsconfigPatternCouldMatchPath(pattern: string, targetPath: string): boolean {
   const normalized = pattern.replace(/^\.\//u, '');
-  // A bare `.` include covers everything under the package root, where worker-configuration.d.ts lives;
-  // a plain directory segment (e.g. `src`) cannot contain the root-level file.
+  // A bare `.` include covers everything under the config's directory.
   if (normalized === '' || normalized === '.') return true;
   const segments = normalized.split('/').filter((segment) => segment !== '');
   const regexSource = segments
@@ -375,7 +418,7 @@ function tsconfigPatternCouldMatchWorkerTypes(pattern: string): boolean {
       return isLast ? segmentSource : `${segmentSource}/`;
     })
     .join('');
-  return new RegExp(`^${regexSource}$`, 'u').test('worker-configuration.d.ts');
+  return new RegExp(`^${regexSource}$`, 'u').test(targetPath);
 }
 
 /**
