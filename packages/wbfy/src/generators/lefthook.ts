@@ -305,12 +305,12 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
   const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml|\.tool-versions|\..+-version)`;
   postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
   const installCommand = 'bun install';
-  // vinext projects keep `next` as a type-compatibility dependency, so both caches can coexist.
-  const staleBuildCaches = [
-    ...(config.depending.blitz || config.depending.next ? ['.next'] : []),
-    ...(config.depending.vinext ? ['.vinext'] : []),
-  ];
-  const rmNextDirectory = staleBuildCaches.length > 0 ? ` && rm -Rf ${staleBuildCaches.join(' ')}` : '';
+  // Do NOT add `.vinext` here: it holds only vinext's content-hashed font cache and the dev
+  // server's lock file (deleting the lock disables the duplicate-dev-server guard for a running
+  // server). vinext's build output goes to `dist/` and Vite's dependency cache stays in
+  // `node_modules/.vite`, which `bun install` already rewrites - so there is no vinext state
+  // that can go stale across installs.
+  const rmNextDirectory = config.depending.blitz || config.depending.next ? ' && rm -Rf .next' : '';
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
   postMergeCommands.push(
