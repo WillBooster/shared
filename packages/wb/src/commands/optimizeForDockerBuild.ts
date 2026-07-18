@@ -15,6 +15,8 @@ import {
   type Project,
 } from '../project.js';
 
+import { PRIVATE_REGISTRY_SCOPE, isPrivateRegistryDependency } from '../utils/privateRegistry.js';
+
 import { prepareForRunningCommand } from './commandUtils.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
@@ -110,23 +112,38 @@ function rewritePrivateGitHubDependenciesForDir(
       if (value?.startsWith('git@github.com:')) {
         // Docker builds cannot access private SSH URLs unless credentials are forwarded.
         // The Dockerfile copies those workspace packages into the image instead.
-        deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, name);
+        deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, '@willbooster', name);
+        rewrittenDependencies.push(`${key}.${name}`);
+      } else if (
+        isPrivateRegistryDependency(name, value) &&
+        fs.existsSync(path.join(rootDirPath, PRIVATE_REGISTRY_SCOPE, toUnscopedPackageName(name), 'package.json'))
+      ) {
+        // Registry packages that `wb setup-private-packages` materialized on the host are used as
+        // local paths so image builds need no Verdaccio credentials; the COMMITTED package.json
+        // keeps the registry specifier — only the generated (dist/)package.json is rewritten
+        // (https://github.com/WillBooster/shared/issues/964).
+        deps[name] = getPrivatePackageDockerSpecifier(rootDirPath, packageDirPath, PRIVATE_REGISTRY_SCOPE, name);
         rewrittenDependencies.push(`${key}.${name}`);
       }
     }
   }
-  console.info('Rewrote private GitHub dependencies:', rewrittenDependencies.join(', ') || 'none');
+  console.info('Rewrote private dependencies:', rewrittenDependencies.join(', ') || 'none');
   return rewrittenDependencies;
 }
 
-function getPrivatePackageDockerSpecifier(rootDirPath: string, packageDirPath: string, packageName: string): string {
-  const privatePackageDirPath = path.join(rootDirPath, '@willbooster', toUnscopedPackageName(packageName));
+function getPrivatePackageDockerSpecifier(
+  rootDirPath: string,
+  packageDirPath: string,
+  scopeDirName: string,
+  packageName: string
+): string {
+  const privatePackageDirPath = path.join(rootDirPath, scopeDirName, toUnscopedPackageName(packageName));
   const relativePath = path.relative(packageDirPath, privatePackageDirPath);
   return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
 }
 
 function toUnscopedPackageName(packageName: string): string {
-  return packageName.replace(/^@willbooster\//, '');
+  return packageName.replace(/^@willbooster(?:-private)?\//, '');
 }
 
 async function writeDockerShellScripts(dirPath: string): Promise<void> {

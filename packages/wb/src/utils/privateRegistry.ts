@@ -1,0 +1,163 @@
+import child_process from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+/**
+ * Materialization of `@willbooster-private/*` registry (Verdaccio) dependencies for Docker builds:
+ * the packages are downloaded on the host (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN
+ * on CI) and extracted next to the repository so image builds need no registry credentials
+ * (https://github.com/WillBooster/shared/issues/964).
+ */
+export const PRIVATE_REGISTRY_SCOPE = '@willbooster-private';
+
+const nonRegistrySpecifierPrefixes = ['git', 'file:', 'link:', 'workspace:', 'http:', 'https:', 'portal:', 'patch:'];
+
+export function isPrivateRegistryDependency(name: string, value: unknown): value is string {
+  return (
+    name.startsWith(`${PRIVATE_REGISTRY_SCOPE}/`) &&
+    typeof value === 'string' &&
+    !nonRegistrySpecifierPrefixes.some((prefix) => value.startsWith(prefix))
+  );
+}
+
+export interface PrivateRegistryAuth {
+  registryUrl: string;
+  authToken: string | undefined;
+}
+
+/**
+ * Resolve the registry URL and auth token for the private scope from the project's .npmrc and
+ * ~/.npmrc (nearer file wins), expanding `${VAR}` references from the environment. On CI the
+ * VERDACCIO_TOKEN environment variable serves as the fallback token.
+ */
+export function resolvePrivateRegistryAuth(rootDirPath: string): PrivateRegistryAuth | undefined {
+  const entries: Record<string, string> = {};
+  // Reverse order so nearer files overwrite the home-directory defaults.
+  for (const npmrcPath of [path.join(os.homedir(), '.npmrc'), path.join(rootDirPath, '.npmrc')]) {
+    try {
+      Object.assign(entries, parseNpmrc(fs.readFileSync(npmrcPath, 'utf8')));
+    } catch {
+      // Missing npmrc files are fine; the other file or VERDACCIO_TOKEN may still provide auth.
+    }
+  }
+
+  const registryUrl = entries[`${PRIVATE_REGISTRY_SCOPE}:registry`]?.replace(/\/+$/, '');
+  if (!registryUrl) return;
+
+  const registryUrlWithoutProtocol = registryUrl.replace(/^https?:/, '');
+  const authToken =
+    Object.entries(entries).find(
+      ([key]) =>
+        key.endsWith(':_authToken') &&
+        registryUrlWithoutProtocol.startsWith(key.slice(0, -':_authToken'.length).replace(/\/+$/, ''))
+    )?.[1] ?? process.env.VERDACCIO_TOKEN;
+  return { registryUrl, authToken };
+}
+
+export function parseNpmrc(content: string): Record<string, string> {
+  const entries: Record<string, string> = {};
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+
+    const separatorIndex = line.indexOf('=');
+    if (separatorIndex <= 0) continue;
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line
+      .slice(separatorIndex + 1)
+      .trim()
+      .replaceAll(/\$\{([^}]+)\}/g, (_, variableName: string) => process.env[variableName] ?? '');
+    entries[key] = value;
+  }
+  return entries;
+}
+
+/**
+ * Download and extract one registry package into `targetDirPath`. The version must be an exact
+ * semver (the org pins exact versions via bunfig `exact = true`); `latest` and simple `^`/`~`
+ * ranges degrade to the range's base version or the registry's latest dist-tag.
+ */
+export async function downloadAndExtractRegistryPackage(
+  auth: PrivateRegistryAuth,
+  packageName: string,
+  versionSpecifier: string,
+  targetDirPath: string
+): Promise<void> {
+  const version = await resolveVersion(auth, packageName, versionSpecifier);
+  const metadata = await fetchRegistryJson<{ dist?: { tarball?: string } }>(
+    auth,
+    `${auth.registryUrl}/${encodePackageName(packageName)}/${version}`
+  );
+  const tarballUrl = metadata.dist?.tarball;
+  if (!tarballUrl) {
+    throw new Error(`No tarball URL for ${packageName}@${version} in ${auth.registryUrl}.`);
+  }
+
+  const response = await fetchFromRegistry(auth, tarballUrl);
+  const tarballPath = path.join(
+    await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-private-package-')),
+    'package.tgz'
+  );
+  try {
+    await fs.promises.writeFile(tarballPath, Buffer.from(await response.arrayBuffer()));
+    await fs.promises.rm(targetDirPath, { force: true, recursive: true });
+    await fs.promises.mkdir(targetDirPath, { recursive: true });
+    // npm tarballs place the content under a top-level `package/` directory.
+    const ret = child_process.spawnSync('tar', ['-xzf', tarballPath, '-C', targetDirPath, '--strip-components=1'], {
+      stdio: 'inherit',
+    });
+    if (ret.status !== 0) {
+      throw new Error(`Failed to extract ${packageName}@${version} (${tarballUrl}).`);
+    }
+  } finally {
+    await fs.promises.rm(path.dirname(tarballPath), { force: true, recursive: true });
+  }
+}
+
+async function resolveVersion(
+  auth: PrivateRegistryAuth,
+  packageName: string,
+  versionSpecifier: string
+): Promise<string> {
+  const exactVersion = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(versionSpecifier)
+    ? versionSpecifier
+    : /^[\^~]\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(versionSpecifier)
+      ? // Without a semver resolver, degrade a simple range to its base version (org repos pin
+        // exact versions, so this path is a best-effort fallback).
+        versionSpecifier.slice(1)
+      : undefined;
+  if (exactVersion) return exactVersion;
+
+  const packument = await fetchRegistryJson<{ 'dist-tags'?: Record<string, string> }>(
+    auth,
+    `${auth.registryUrl}/${encodePackageName(packageName)}`
+  );
+  const distTag = packument['dist-tags']?.[versionSpecifier === '*' ? 'latest' : versionSpecifier];
+  if (!distTag) {
+    throw new Error(
+      `Cannot resolve ${packageName}@${versionSpecifier}; use an exact version, a ^/~ range, or a dist-tag.`
+    );
+  }
+  return distTag;
+}
+
+async function fetchRegistryJson<T>(auth: PrivateRegistryAuth, url: string): Promise<T> {
+  const response = await fetchFromRegistry(auth, url);
+  return (await response.json()) as T;
+}
+
+async function fetchFromRegistry(auth: PrivateRegistryAuth, url: string): Promise<Response> {
+  const response = await fetch(url, {
+    headers: auth.authToken ? { authorization: `Bearer ${auth.authToken}` } : {},
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+  }
+  return response;
+}
+
+function encodePackageName(packageName: string): string {
+  return packageName.replace('/', '%2F');
+}
