@@ -13,6 +13,20 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Order matters: reinstall FIRST while the `workspace:` ranges are still intact (so Bun links
+// the workspaces and the prepare hook can build the local wb), THEN rewrite the manifests —
+// npm only needs the manifest TEXT to be parseable; node_modules stays as Bun built it.
+const bunfigPath = 'bunfig.toml';
+const bunfig = fs.readFileSync(bunfigPath, 'utf8');
+const hoistedBunfig = bunfig
+  .replace('linker = "isolated"', 'linker = "hoisted"')
+  .replace(/^globalStore = true\n/mu, '');
+if (hoistedBunfig !== bunfig) {
+  fs.writeFileSync(bunfigPath, hoistedBunfig);
+  console.info('Reinstalling with the hoisted linker so npm can walk node_modules...');
+  execSync('bun install', { stdio: 'inherit' });
+}
+
 const packageJsonPaths = [
   'package.json',
   ...fs
@@ -28,15 +42,4 @@ for (const packageJsonPath of packageJsonPaths) {
     fs.writeFileSync(packageJsonPath, rewritten);
     console.info(`Rewrote workspace: ranges in ${packageJsonPath} for npm-based release tooling.`);
   }
-}
-
-const bunfigPath = 'bunfig.toml';
-const bunfig = fs.readFileSync(bunfigPath, 'utf8');
-const hoistedBunfig = bunfig
-  .replace('linker = "isolated"', 'linker = "hoisted"')
-  .replace(/^globalStore = true\n/mu, '');
-if (hoistedBunfig !== bunfig) {
-  fs.writeFileSync(bunfigPath, hoistedBunfig);
-  console.info('Reinstalling with the hoisted linker so npm can walk node_modules...');
-  execSync('bun install', { stdio: 'inherit' });
 }
