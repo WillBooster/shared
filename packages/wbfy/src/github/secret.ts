@@ -68,30 +68,51 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
 // are manual org-admin operations by policy.
 async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
   const octokit = getOctokit(owner);
-  const { contents: remoteFnoxContents } = await fetchDefaultBranchFnoxConfigs(octokit, owner, repo);
   const requiredNames = ['VERDACCIO_TOKEN'];
-  if (remoteFnoxContents.size > 0) requiredNames.push('FNOX_AGE_KEY');
+  // Only a ROOT fnox.toml makes CI need FNOX_AGE_KEY (nested fixtures without an age provider
+  // neither need nor own the key, and workflow generation keys FNOX_AGE_KEY injection on the root
+  // file too), so probe that single path instead of enumerating the whole tree — the recursive
+  // scanner uploadSecrets needs for ciphertext verification fails on trees GitHub truncates.
+  if (await defaultBranchHasRootFnoxToml(octokit, owner, repo)) requiredNames.push('FNOX_AGE_KEY');
+  // Deliberately based on the LOCAL working tree, unlike the remote-based fnox probe: a wrangler
+  // config added on a feature branch will need CLOUDFLARE_API_TOKEN as soon as it merges, and
+  // surfacing the missing org secret before the deploy workflow lands is the point of this check.
   if (containsWranglerConfig(config.dirPath)) requiredNames.push('CLOUDFLARE_API_TOKEN');
 
-  const orgResponse = await octokit.request('GET /repos/{owner}/{repo}/actions/organization-secrets', {
-    owner,
-    repo,
-    per_page: 100,
-  });
-  const orgVisibleNames = new Set(orgResponse.data.secrets.map((secret) => secret.name));
-  const repoResponse = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets', {
-    owner,
-    repo,
-    per_page: 100,
-  });
-  const repoLevelNames = new Set(repoResponse.data.secrets.map((secret) => secret.name));
+  // GitHub allows far more than one page of secrets, so paginate instead of trusting page one
+  // (this Octokit instance carries no paginate plugin, hence the manual loops).
+  const orgVisibleNames = new Set<string>();
+  for (let page = 1; ; page++) {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/actions/organization-secrets', {
+      owner,
+      repo,
+      per_page: 100,
+      page,
+    });
+    for (const secret of response.data.secrets) orgVisibleNames.add(secret.name);
+    if (response.data.secrets.length < 100) break;
+  }
+  const repoLevelNames = new Set<string>();
+  for (let page = 1; ; page++) {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets', {
+      owner,
+      repo,
+      per_page: 100,
+      page,
+    });
+    for (const secret of response.data.secrets) repoLevelNames.add(secret.name);
+    if (response.data.secrets.length < 100) break;
+  }
 
+  // process.exitCode is process-global and may already be 1 from an earlier repository in the
+  // same wbfy invocation, so gate this repository's success message on a local flag.
+  let verified = true;
   for (const name of requiredNames) {
     if (!orgVisibleNames.has(name)) {
       console.error(
         `The organization secret ${name} is not visible to ${owner}/${repo}. Ask a WillBooster org admin to register it as an organization secret (or extend its repository access to this repository) — do NOT create a repository-level copy.${repoLevelNames.has(name) ? ` A repository-level ${name} currently keeps CI working, but it violates the org-secret policy and must be deleted once the organization secret is visible.` : ''}`
       );
-      process.exitCode = 1;
+      verified = false;
     }
   }
   // A repository secret silently overrides a same-named organization secret, so a stale
@@ -101,13 +122,31 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
       console.error(
         `The repository-level secret ${name} in ${owner}/${repo} shadows the organization secret of the same name. After confirming the organization value is current, delete the repository-level copy manually (e.g. \`gh secret delete ${name} --repo ${owner}/${repo}\`); wbfy deliberately never deletes it.`
       );
-      process.exitCode = 1;
+      verified = false;
     }
   }
-  if (process.exitCode !== 1) {
+  if (verified) {
     console.info(
       `Confirmed the organization secrets required by ${owner}/${repo} are visible: ${requiredNames.join(', ')}.`
     );
+  } else {
+    process.exitCode = 1;
+  }
+}
+
+// A single-path existence probe of the remote default branch; verification needs only this
+// boolean, not the full fnox contents uploadSecrets enumerates.
+async function defaultBranchHasRootFnoxToml(
+  octokit: ReturnType<typeof getOctokit>,
+  owner: string,
+  repo: string
+): Promise<boolean> {
+  try {
+    await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', { owner, repo, path: 'fnox.toml' });
+    return true;
+  } catch (error) {
+    if ((error as { status?: number } | undefined)?.status === 404) return false;
+    throw error;
   }
 }
 
@@ -121,8 +160,10 @@ function containsWranglerConfig(rootDirPath: string): boolean {
       for (const entry of fs.readdirSync(groupDirPath, { withFileTypes: true })) {
         if (entry.isDirectory()) candidateDirPaths.push(path.join(groupDirPath, entry.name));
       }
-    } catch {
-      // A repository without that workspace group simply has nothing to scan there.
+    } catch (error) {
+      // Only a missing workspace group is benign; an unreadable one (e.g. EACCES) could hide a
+      // Worker and must fail the run loudly instead of silently passing verification.
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
   }
   return candidateDirPaths.some((dirPath) =>
