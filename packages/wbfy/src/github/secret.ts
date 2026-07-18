@@ -155,14 +155,19 @@ function containsWranglerConfig(rootDirPath: string): boolean {
   const candidateDirPaths = [rootDirPath];
   for (const groupDirName of ['packages', 'apps']) {
     const groupDirPath = path.join(rootDirPath, groupDirName);
+    let stats;
     try {
-      for (const entry of fs.readdirSync(groupDirPath, { withFileTypes: true })) {
-        if (entry.isDirectory()) candidateDirPaths.push(path.join(groupDirPath, entry.name));
-      }
+      stats = fs.lstatSync(groupDirPath);
     } catch (error) {
-      // Only a missing workspace group is benign; an unreadable one (e.g. EACCES) could hide a
-      // Worker and must fail the run loudly instead of silently passing verification.
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    // A plain file or symlink named packages/apps is not a workspace group (wbfy's workspace
+    // discovery does not follow symlinks either); an unreadable REAL directory still throws below
+    // and fails the run loudly, since it could hide a Worker.
+    if (!stats.isDirectory()) continue;
+    for (const entry of fs.readdirSync(groupDirPath, { withFileTypes: true })) {
+      if (entry.isDirectory()) candidateDirPaths.push(path.join(groupDirPath, entry.name));
     }
   }
   return candidateDirPaths.some((dirPath) =>
