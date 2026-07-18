@@ -1,0 +1,42 @@
+// Makes the CI checkout digestible for npm, which semantic-release's npm plugin shells out to
+// for `npm version`/`npm publish`:
+// 1. npm cannot parse `workspace:` specifiers (crashing with "Cannot read properties of null
+//    (reading 'matches')"), while Bun REQUIRES the protocol so a cold install links the workspace
+//    instead of shadowing it with a registry copy — so rewrite the ranges to `*` here; the
+//    affected manifests are private/unpublished, so nothing ships with the rewritten range.
+// 2. npm's arborist cannot walk Bun's ISOLATED node_modules layout (the `.bun` symlink farm;
+//    crashing with "Cannot read properties of null (reading 'isDescendantOf')"), so reinstall
+//    with the hoisted linker for the release job only. Verified: `npm version` and
+//    `npm publish --dry-run` succeed on the hoisted layout and crash on the isolated one.
+// Both mutations stay on the CI checkout; nothing is committed.
+import { execSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const packageJsonPaths = [
+  'package.json',
+  ...fs
+    .readdirSync('packages', { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join('packages', entry.name, 'package.json'))
+    .filter((packageJsonPath) => fs.existsSync(packageJsonPath)),
+];
+for (const packageJsonPath of packageJsonPaths) {
+  const original = fs.readFileSync(packageJsonPath, 'utf8');
+  const rewritten = original.replaceAll(/"workspace:[^"]*"/gu, '"*"');
+  if (rewritten !== original) {
+    fs.writeFileSync(packageJsonPath, rewritten);
+    console.info(`Rewrote workspace: ranges in ${packageJsonPath} for npm-based release tooling.`);
+  }
+}
+
+const bunfigPath = 'bunfig.toml';
+const bunfig = fs.readFileSync(bunfigPath, 'utf8');
+const hoistedBunfig = bunfig
+  .replace('linker = "isolated"', 'linker = "hoisted"')
+  .replace(/^globalStore = true\n/mu, '');
+if (hoistedBunfig !== bunfig) {
+  fs.writeFileSync(bunfigPath, hoistedBunfig);
+  console.info('Reinstalling with the hoisted linker so npm can walk node_modules...');
+  execSync('bun install', { stdio: 'inherit' });
+}

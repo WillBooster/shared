@@ -19,7 +19,7 @@
     "lint": "bun wb lint",
     "lint-fix": "bun wb lint --fix",
     "prepare": "lefthook install || true && bun run --cwd 'packages/wb' build",
-    "release": "node scripts/stripWorkspaceProtocol.mjs && bun multi-semantic-release --debug",
+    "release": "node scripts/prepareNpmCompatibleRelease.mjs && bun multi-semantic-release --debug",
     "test": "bun wb test",
     "typecheck": "bun wb typecheck",
     "verify": "bun wb verify",
