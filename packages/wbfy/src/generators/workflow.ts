@@ -493,7 +493,9 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 /** The worker directory of a wb-driven Cloudflare deploy script, or undefined when there is none. */
 function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath' | 'packageJson'>): string | undefined {
   const deployScript = rootConfig.packageJson?.scripts?.deploy;
-  if (typeof deployScript !== 'string' || !deployScript.includes('wb deploy')) return;
+  // Global yargs options may precede the command (`wb -w packages/api deploy`), so require only
+  // a `wb … deploy` invocation within one shell command segment.
+  if (typeof deployScript !== 'string' || !/\bwb\b[^&|;]*\bdeploy\b/u.test(deployScript)) return;
   // wb declares --working-dir with alias -w (yargs also accepts `=` separators and quoted values).
   const workerDirPath =
     /(?:^|\s)(?:--working-dir|-w)(?:\s+|=)(?:"([^"]+)"|'([^']+)'|(\S+))/u
@@ -518,14 +520,19 @@ function readProductionCustomDomain(rootDirPath: string, workerDirPath: string):
       continue;
     }
     const wranglerConfig = jsoncUtil.parseObjectIgnoringError<{
-      env?: { production?: { routes?: unknown } };
+      env?: { production?: { route?: unknown; routes?: unknown } };
+      route?: unknown;
       routes?: unknown;
     }>(content);
     if (!wranglerConfig) continue;
-    // wb deploy resolves the production target from env.production when that section exists,
-    // falling back to the top-level config — mirror that precedence.
-    const routes = wranglerConfig.env?.production?.routes ?? wranglerConfig.routes;
-    if (!Array.isArray(routes)) continue;
+    // Routes are non-inheritable in wrangler: when an env.production section exists it is
+    // authoritative (no fallback to top-level), mirroring wb deploy's resolution. Both the
+    // plural `routes` and the singular `route` spellings are accepted.
+    const production = wranglerConfig.env?.production;
+    const rawRoutes = production
+      ? (production.routes ?? production.route)
+      : (wranglerConfig.routes ?? wranglerConfig.route);
+    const routes = Array.isArray(rawRoutes) ? rawRoutes : rawRoutes ? [rawRoutes] : [];
     for (const route of routes) {
       if (
         route &&

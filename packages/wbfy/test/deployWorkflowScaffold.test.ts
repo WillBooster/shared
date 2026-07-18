@@ -31,10 +31,30 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun wb deploy --working-dir packages/api',
       'bun wb deploy -w=packages/api',
       'bun wb deploy -w "packages/api"',
+      'bun wb -w packages/api deploy',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');
     }
+    // A singular `route` object works too.
+    await fs.promises.writeFile(
+      path.join(workerDirPath, 'wrangler.jsonc'),
+      '{ "route": { "pattern": "single.example.com", "custom_domain": true } }'
+    );
+    expect(
+      generateCloudflareDeployWorkflow(createConfig(dirPath, 'bun wb deploy -w packages/api') as PackageConfig)?.jobs
+        .deploy?.with?.server_url
+    ).toBe('https://single.example.com/');
+    // An env.production section is authoritative (routes are non-inheritable): with the section
+    // present but declaring no routes, the top-level route must NOT leak into server_url.
+    await fs.promises.writeFile(
+      path.join(workerDirPath, 'wrangler.jsonc'),
+      '{ "routes": [{ "pattern": "base.example.com", "custom_domain": true }], "env": { "production": { "vars": {} } } }'
+    );
+    expect(
+      generateCloudflareDeployWorkflow(createConfig(dirPath, 'bun wb deploy -w packages/api') as PackageConfig)?.jobs
+        .deploy?.with?.server_url
+    ).toBeUndefined();
     // env.production routes take precedence over top-level routes, matching wb deploy.
     await fs.promises.writeFile(
       path.join(workerDirPath, 'wrangler.jsonc'),

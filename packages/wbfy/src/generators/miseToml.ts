@@ -40,8 +40,11 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     }
     // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
     // unpinned Node would come from whatever happens to be on PATH.
-    tools.node = liftOutdatedNodeVersion(
-      pinConcreteToolVersion('node', tools.node ?? readNodeVersionFile(config.dirPath), config.dirPath),
+    // Lift-then-pin: the lift only touches exact pins and the pin only touches selectors, so
+    // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
+    tools.node = pinConcreteToolVersion(
+      'node',
+      liftOutdatedNodeVersion(tools.node ?? readNodeVersionFile(config.dirPath), config.dirPath),
       config.dirPath
     );
     tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
