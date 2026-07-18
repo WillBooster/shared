@@ -100,7 +100,10 @@ const wbfyJsonSchema = z.object({
     .optional(),
 });
 
-export async function getPackageConfig(dirPath: string): Promise<PackageConfig | undefined> {
+export async function getPackageConfig(
+  dirPath: string,
+  options?: { isRoot?: boolean }
+): Promise<PackageConfig | undefined> {
   const packageJsonPath = path.resolve(dirPath, 'package.json');
   try {
     const doesContainPackageJson = fs.existsSync(packageJsonPath);
@@ -132,9 +135,13 @@ export async function getPackageConfig(dirPath: string): Promise<PackageConfig |
       // do nothing
     }
 
+    // The caller may classify explicitly (index.ts passes false for every discovered workspace,
+    // including non-packages/* layouts such as apps/*); the packages/* heuristic remains the
+    // fallback for direct calls.
     const isRoot =
-      path.basename(path.resolve(dirPath, '..')) !== 'packages' ||
-      !fs.existsSync(path.resolve(dirPath, '..', '..', 'package.json'));
+      options?.isRoot ??
+      (path.basename(path.resolve(dirPath, '..')) !== 'packages' ||
+        !fs.existsSync(path.resolve(dirPath, '..', '..', 'package.json')));
 
     let repoInfo: Record<string, unknown> | undefined;
     if (isRoot) {

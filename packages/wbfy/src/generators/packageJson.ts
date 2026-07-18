@@ -1432,6 +1432,24 @@ function getDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): st
 
 const workspacePackageDirsCache = new Map<string, Map<string, string>>();
 
+/** The subset of PackageConfig that workspace discovery needs, so it can run before configs exist. */
+type WorkspaceRootLike = Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>;
+
+/**
+ * Every declared workspace directory (absolute, deduplicated) of the monorepo root, covering
+ * non-packages/* layouts such as apps/*. Uncached because index.ts calls it before wbfy mutates
+ * the root package.json (the per-name map below caches the post-mutation state).
+ */
+export function getWorkspaceSubDirPaths(rootLike: WorkspaceRootLike): string[] {
+  return [
+    ...new Set(
+      getWorkspacePackageJsonPaths(rootLike).map((packageJsonPath) =>
+        path.resolve(rootLike.dirPath, path.posix.dirname(packageJsonPath))
+      )
+    ),
+  ].toSorted();
+}
+
 /** Map from each workspace package's name to its directory (relative to the monorepo root). */
 export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, string> {
   const cached = workspacePackageDirsCache.get(rootConfig.dirPath);
@@ -1458,7 +1476,7 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
  * Every workspace package.json path (relative to the monorepo root), including manifests without
  * a `name` field — wbfy names those later, so dependency scans must not skip them.
  */
-function getWorkspacePackageJsonPaths(rootConfig: PackageConfig): string[] {
+function getWorkspacePackageJsonPaths(rootConfig: WorkspaceRootLike): string[] {
   // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
   // not have written the root package.json yet, so mirror that normalization here.
   const workspacePatterns = [
