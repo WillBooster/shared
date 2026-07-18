@@ -222,7 +222,7 @@ export function readFnoxEnvironmentVariables(
 ): [Record<string, string>, string[]] {
   if (!hasProjectFnoxConfig(cwd)) return [{}, []];
 
-  const secrets = runFnoxExport(cwd, cascade, false);
+  const secrets = runFnoxExport(cwd, cascade, { quiet: false });
   if (!secrets) return [{}, []];
   // `[profiles.<cascade>.secrets]` is the fnox analogue of `.env.<cascade>`: when the caller
   // forces a mode off CI, profile-specific values must override inherited shell variables just
@@ -233,7 +233,7 @@ export function readFnoxEnvironmentVariables(
   // subprocess (including age decryption) to every forced-mode invocation for nothing.
   let cachedBaseSecrets: Record<string, unknown> | undefined | false = false;
   const getBaseSecrets = (): Record<string, unknown> | undefined => {
-    if (cachedBaseSecrets === false) cachedBaseSecrets = runFnoxExport(cwd, undefined, true);
+    if (cachedBaseSecrets === false) cachedBaseSecrets = runFnoxExport(cwd, undefined, { quiet: true });
     return cachedBaseSecrets;
   };
 
@@ -256,23 +256,33 @@ export function readFnoxEnvironmentVariables(
   return [envVars, keys];
 }
 
-function runFnoxExport(cwd: string, cascade: string | undefined, quiet: boolean): Record<string, unknown> | undefined {
+function runFnoxExport(
+  cwd: string,
+  cascade: string | undefined,
+  options: { quiet: boolean }
+): Record<string, unknown> | undefined {
   // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve
   // (e.g. a missing age key), which would be indistinguishable from undeclared secrets.
   // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
   const args = ['export', '--format', 'json', '--no-color', '--if-missing', 'error', '--non-interactive'];
+  const env = { ...process.env };
   if (cascade) {
     args.push('--profile', cascade);
+  } else {
+    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base export must read the BASE
+    // secrets (it adjudicates profile-specificity), so an inherited profile selection is cleared.
+    delete env.FNOX_PROFILE;
   }
   const result = childProcess.spawnSync('fnox', args, {
     cwd,
+    env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (result.error || result.status !== 0 || !result.stdout?.trim()) {
     // The repository declares fnox-managed secrets (fnox.toml exists), so a failing export must be
     // surfaced: swallowing it would make declared secrets indistinguishable from undeclared ones.
-    if (!quiet) {
+    if (!options.quiet) {
       console.warn(
         `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
       );

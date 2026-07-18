@@ -112,12 +112,6 @@ export function wrapWithDrizzleConfigDir(project: Project, command: string): str
     : command;
 }
 
-// Markers indicating the drizzle config manages a (Cloudflare D1 compatible) SQLite database:
-// `dialect: 'sqlite'` covers d1-http and plain SQLite configs, `driver: 'd1-http'` and
-// `driver: 'durable-sqlite'` are the explicit D1/Durable Object drivers.
-const drizzleSqliteConfigPattern =
-  /['"`]?dialect['"`]?\s*:\s*['"`]sqlite['"`]|['"`]?driver['"`]?\s*:\s*['"`](?:d1-http|durable-sqlite)['"`]/;
-
 /**
  * Whether drizzle-kit is the project's D1 migration mechanism. A drizzle-orm dependency alone is
  * not a reliable marker: a Worker may use D1 only for caching while its drizzle config targets an
@@ -143,10 +137,78 @@ export function usesDrizzleKitForD1(project: Project): boolean {
       .map((marker) => content.indexOf(marker))
       .filter((index) => index !== -1);
     const exportedContent = exportIndices.length > 0 ? content.slice(Math.min(...exportIndices)) : content;
-    return drizzleSqliteConfigPattern.test(extractFirstBalancedObject(exportedContent) ?? exportedContent);
+    return declaresSqliteTarget(extractFirstBalancedObject(exportedContent) ?? exportedContent);
   } catch {
     return false;
   }
+}
+
+/**
+ * String-aware scan for the markers indicating the config manages a (Cloudflare D1 compatible)
+ * SQLite database — a `dialect: 'sqlite'`, `driver: 'd1-http'`, or `driver: 'durable-sqlite'`
+ * PROPERTY (plain or quoted key). Keys are only recognized in code position, so marker-like text
+ * embedded in unrelated string values (e.g. a schema path) cannot match.
+ */
+function declaresSqliteTarget(content: string): boolean {
+  const tokens = tokenizeStrings(content);
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index]!;
+    let key: string | undefined;
+    let valueTokenIndex: number | undefined;
+    if (token.type === 'code') {
+      const match = /(?:^|[\s{,(])(dialect|driver)\s*:\s*$/.exec(token.value);
+      if (match) {
+        key = match[1];
+        valueTokenIndex = index + 1;
+      }
+    } else if (token.value === 'dialect' || token.value === 'driver') {
+      // A quoted key: the surrounding code tokens must form a property position (`{`/`,` before,
+      // `:` after).
+      const previousToken = tokens[index - 1];
+      const nextToken = tokens[index + 1];
+      if (
+        previousToken?.type === 'code' &&
+        /[{,(]\s*$/.test(previousToken.value) &&
+        nextToken?.type === 'code' &&
+        /^\s*:\s*$/.test(nextToken.value)
+      ) {
+        key = token.value;
+        valueTokenIndex = index + 2;
+      }
+    }
+    if (key === undefined || valueTokenIndex === undefined) continue;
+
+    const valueToken = tokens[valueTokenIndex];
+    if (valueToken?.type !== 'string') continue;
+    if (key === 'dialect' && valueToken.value === 'sqlite') return true;
+    if (key === 'driver' && (valueToken.value === 'd1-http' || valueToken.value === 'durable-sqlite')) return true;
+  }
+  return false;
+}
+
+/** Split into alternating code and string-literal-content tokens (quotes excluded). */
+function tokenizeStrings(content: string): { type: 'code' | 'string'; value: string }[] {
+  const tokens: { type: 'code' | 'string'; value: string }[] = [];
+  let code = '';
+  for (let index = 0; index < content.length; index++) {
+    const char = content[index]!;
+    if (char === "'" || char === '"' || char === '`') {
+      tokens.push({ type: 'code', value: code });
+      code = '';
+      let value = '';
+      index++;
+      while (index < content.length && content[index] !== char) {
+        if (content[index] === '\\') index++;
+        value += content[index] ?? '';
+        index++;
+      }
+      tokens.push({ type: 'string', value });
+      continue;
+    }
+    code += char;
+  }
+  tokens.push({ type: 'code', value: code });
+  return tokens;
 }
 
 /** The first `{ ... }` span (string-aware brace matching), or undefined when none exists. */

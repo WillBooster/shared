@@ -55,9 +55,18 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   for (const signal of guardedSignals) process.on(signal, signalHandler);
 
   let exitCode = 0;
+  let releaseRanSuccessfully = false;
   try {
     await prepareNpmCompatibleLayout(project, argv, modifiedFiles);
+    // A signal targeted at this process alone (not the terminal group) leaves the prepare
+    // children untouched, so it must be checked explicitly before anything publishes.
+    if (receivedSignal) {
+      throw new Error(`Aborted by ${receivedSignal} before running the release.`);
+    }
     exitCode = runSemanticRelease(project, argv);
+    // Recorded separately from receivedSignal: a signal arriving AFTER a successful publish must
+    // not demote the restore to byte-for-byte (that would revert the published version bumps).
+    releaseRanSuccessfully = exitCode === 0;
   } catch (error) {
     // Errors must unwind through this try (never `process.exit` inside it): the restore below is
     // the only thing that undoes the bunfig/package.json mutations.
@@ -67,9 +76,8 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
     // On failure or interruption, restore byte-for-byte: semantic-release may have left PARTIAL
     // edits (e.g. a version bump without a publish), which must not survive. The semantic
     // workspace-range restore is reserved for a successful release.
-    const releaseSucceeded = exitCode === 0 && receivedSignal === undefined;
     for (const [filePath, content] of modifiedFiles) {
-      restoreModifiedFile(filePath, content, releaseSucceeded);
+      restoreModifiedFile(filePath, content, releaseRanSuccessfully);
     }
     if (modifiedFiles.size > 0) {
       console.info(

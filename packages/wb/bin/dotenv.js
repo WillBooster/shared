@@ -145,11 +145,17 @@ function runFnoxExport(cwd, cascade, quiet) {
   // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve.
   // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
   const args = ['export', '--format', 'json', '--no-color', '--if-missing', 'error', '--non-interactive'];
+  const env = { ...process.env };
   if (cascade) {
     args.push('--profile', cascade);
+  } else {
+    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base export must read the BASE
+    // secrets (it adjudicates profile-specificity), so an inherited profile selection is cleared.
+    delete env.FNOX_PROFILE;
   }
   const result = childProcess.spawnSync('fnox', args, {
     cwd,
+    env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
