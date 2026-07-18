@@ -252,10 +252,22 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // deploy wiring (maintainers add push/release triggers themselves once ready). The gate is
     // the wrangler config at the deploy script's worker directory, NOT isCloudflare — that
     // heuristic also reads workflow files, which are exactly what is missing here.
-    if (
-      resolveCloudflareDeployTarget(rootConfig) &&
-      ![...fileNamesByKind.keys()].some((kind) => kind.startsWith('deploy'))
-    ) {
+    // "Already has a deploy workflow" is judged by CONTENT as well as filename: a caller of the
+    // reusable deploy workflow may live under any filename (e.g. cloudflare.yml), and a
+    // deploy-prefixed file that never calls it (e.g. deploy-docs.yml) still suppresses the
+    // scaffold only via the conservative filename check.
+    const hasDeployWorkflow =
+      [...fileNamesByKind.keys()].some((kind) => kind.startsWith('deploy')) ||
+      [...fileNamesByKind.values()].some((fileName) => {
+        try {
+          return /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/u.test(
+            fs.readFileSync(path.join(workflowsPath, fileName), 'utf8')
+          );
+        } catch {
+          return false;
+        }
+      });
+    if (resolveCloudflareDeployTarget(rootConfig) && !hasDeployWorkflow) {
       fileNamesByKind.set('deploy', 'deploy.yml');
     }
     if (fileNamesByKind.has('sync')) {
@@ -493,15 +505,24 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 /** The worker directory of a wb-driven Cloudflare deploy script, or undefined when there is none. */
 function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath' | 'packageJson'>): string | undefined {
   const deployScript = rootConfig.packageJson?.scripts?.deploy;
-  // Global yargs options may precede the command (`wb -w packages/api deploy`), so require only
-  // a `wb … deploy` invocation within one shell command segment.
-  if (typeof deployScript !== 'string' || !/\bwb\b[^&|;]*\bdeploy\b/u.test(deployScript)) return;
+  if (typeof deployScript !== 'string') return;
+  // Global yargs options may precede the command (`wb -w packages/api deploy`), and compound
+  // scripts (`bun run build && wb deploy -w …`) may carry unrelated options in other segments —
+  // so isolate the shell segment containing the `wb … deploy` invocation and parse only it.
+  const deploySegment = deployScript
+    .split(/\s*(?:&&|\|\||[;&|])\s*/u)
+    .find((segment) => /\bwb\b.*\bdeploy\b/u.test(segment));
+  if (!deploySegment) return;
   // wb declares --working-dir with alias -w (yargs also accepts `=` separators and quoted values).
   const workerDirPath =
     /(?:^|\s)(?:--working-dir|-w)(?:\s+|=)(?:"([^"]+)"|'([^']+)'|(\S+))/u
-      .exec(deployScript)
+      .exec(deploySegment)
       ?.slice(1)
       .find((group) => group !== undefined) ?? '.';
+  // Restrict scaffolding to the layouts wbfy's secret verification also understands (the repo
+  // root and direct packages/*, apps/* workspaces) so a generated workflow never references a
+  // CLOUDFLARE_API_TOKEN that `wbfy --env` would not verify.
+  if (!/^(?:\.|(?:packages|apps)\/[^/]+)$/u.test(workerDirPath)) return;
   // wb deploy supports wrangler.jsonc/wrangler.json only (no TOML), so a TOML-only target would
   // scaffold a workflow that always fails.
   const hasWranglerConfig = ['wrangler.jsonc', 'wrangler.json'].some((fileName) =>

@@ -32,6 +32,7 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun wb deploy -w=packages/api',
       'bun wb deploy -w "packages/api"',
       'bun wb -w packages/api deploy',
+      'bun run --filter web build -w ignored && bun wb deploy -w packages/api',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');
@@ -92,6 +93,14 @@ test('scaffolds a root-level worker without a custom domain and skips non-wb dep
     expect(workflow?.jobs.deploy?.with).toEqual({ environment: 'production', file_path_1: '.env.cloudflare' });
 
     expect(generateCloudflareDeployWorkflow(createConfig(dirPath, 'railway up') as PackageConfig)).toBeUndefined();
+    // A worker outside the root/packages/apps layouts is not scaffolded (secret verification
+    // would not cover its CLOUDFLARE_API_TOKEN).
+    const nestedDirPath = path.join(dirPath, 'services', 'worker');
+    await fs.promises.mkdir(nestedDirPath, { recursive: true });
+    await fs.promises.writeFile(path.join(nestedDirPath, 'wrangler.json'), '{ "name": "app" }');
+    expect(
+      generateCloudflareDeployWorkflow(createConfig(dirPath, 'wb deploy -w services/worker') as PackageConfig)
+    ).toBeUndefined();
     expect(generateCloudflareDeployWorkflow(createConfig(dirPath, undefined) as PackageConfig)).toBeUndefined();
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
