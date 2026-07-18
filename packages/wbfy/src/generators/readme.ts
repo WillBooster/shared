@@ -4,6 +4,7 @@ import path from 'node:path';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
 const semanticReleaseBadge =
@@ -30,6 +31,10 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       if (!repository) continue;
       const badge = `[![${badgeName}](https://github.com/${repository}/actions/workflows/${fileName}/badge.svg)](https://github.com/${repository}/actions/workflows/${fileName})`;
       if (fs.existsSync(path.resolve(config.dirPath, `.github/workflows/${fileName}`))) {
+        // GitHub's badge endpoint returns 404 until the workflow has at least one run, so a badge
+        // for a dispatch-only deploy workflow that has never run renders as a broken image.
+        // Test workflows run on every PR, so only deploy badges need the guard.
+        if (fileName.startsWith('deploy') && !(await hasAnyWorkflowRun(repository, fileName))) continue;
         newContent = removeGitHubActionsBadge(newContent, badgeName, fileName);
         newContent = insertBadge(newContent, badge);
       }
@@ -37,6 +42,24 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
 
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
+}
+
+async function hasAnyWorkflowRun(repository: string, workflowFileName: string): Promise<boolean> {
+  const [owner, repo] = repository.split('/');
+  if (!owner || !repo) return true;
+  try {
+    const response = await getOctokit(owner).request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', {
+      owner,
+      repo,
+      workflow_id: workflowFileName,
+      per_page: 1,
+    });
+    return response.data.total_count > 0;
+  } catch {
+    // Keep the pre-guard behavior (insert the badge) when the check itself cannot run,
+    // e.g. offline or without a GitHub token.
+    return true;
+  }
 }
 
 export function insertBadge(readme: string, badge: string): string {
