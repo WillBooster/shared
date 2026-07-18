@@ -258,10 +258,12 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // scaffold only via the conservative filename check.
     const hasDeployWorkflow =
       [...fileNamesByKind.keys()].some((kind) => kind.startsWith('deploy')) ||
-      [...fileNamesByKind.values()].some((fileName) => {
+      // Scan every workflow file (not fileNamesByKind, which collapses same-stem .yml/.yaml twins).
+      entries.some((entry) => {
+        if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name)) return false;
         try {
           return /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/u.test(
-            fs.readFileSync(path.join(workflowsPath, fileName), 'utf8')
+            fs.readFileSync(path.join(workflowsPath, entry.name), 'utf8')
           );
         } catch {
           return false;
@@ -506,19 +508,27 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath' | 'packageJson'>): string | undefined {
   const deployScript = rootConfig.packageJson?.scripts?.deploy;
   if (typeof deployScript !== 'string') return;
-  // Global yargs options may precede the command (`wb -w packages/api deploy`), and compound
-  // scripts (`bun run build && wb deploy -w …`) may carry unrelated options in other segments —
-  // so isolate the shell segment containing the `wb … deploy` invocation and parse only it.
-  const deploySegment = deployScript
-    .split(/\s*(?:&&|\|\||[;&|])\s*/u)
-    .find((segment) => /\bwb\b.*\bdeploy\b/u.test(segment));
+  // Compound scripts (`bun run build && wb deploy -w …`) may carry unrelated options in other
+  // segments, so isolate the shell segment that actually INVOKES wb (as a command token — not a
+  // word inside `echo wb deploy` or an env value) and parse only it. Env assignments and package
+  // runners may precede the wb token; global yargs options may precede the deploy command.
+  const deploySegment = deployScript.split(/\s*(?:&&|\|\||[;&|])\s*/u).find((segment) => {
+    const tokens = segment.split(/\s+/u).filter((token) => token !== '');
+    let index = 0;
+    while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
+    while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
+      index++;
+    return tokens[index] === 'wb' && tokens.slice(index + 1).includes('deploy');
+  });
   if (!deploySegment) return;
   // wb declares --working-dir with alias -w (yargs also accepts `=` separators and quoted values).
-  const workerDirPath =
+  const rawWorkerDirPath =
     /(?:^|\s)(?:--working-dir|-w)(?:\s+|=)(?:"([^"]+)"|'([^']+)'|(\S+))/u
       .exec(deploySegment)
       ?.slice(1)
       .find((group) => group !== undefined) ?? '.';
+  // Normalize spellings such as `./packages/api` and `packages/api/` before the layout check.
+  const workerDirPath = path.posix.normalize(rawWorkerDirPath).replace(/\/+$/u, '') || '.';
   // Restrict scaffolding to the layouts wbfy's secret verification also understands (the repo
   // root and direct packages/*, apps/* workspaces) so a generated workflow never references a
   // CLOUDFLARE_API_TOKEN that `wbfy --env` would not verify.
@@ -532,37 +542,40 @@ function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath'
 }
 
 function readProductionCustomDomain(rootDirPath: string, workerDirPath: string): string | undefined {
-  for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
-    const configPath = path.resolve(rootDirPath, workerDirPath, fileName);
-    let content: string;
-    try {
-      content = fs.readFileSync(configPath, 'utf8');
-    } catch {
-      continue;
-    }
-    const wranglerConfig = jsoncUtil.parseObjectIgnoringError<{
-      env?: { production?: { route?: unknown; routes?: unknown } };
-      route?: unknown;
-      routes?: unknown;
-    }>(content);
-    if (!wranglerConfig) continue;
-    // Routes are non-inheritable in wrangler: when an env.production section exists it is
-    // authoritative (no fallback to top-level), mirroring wb deploy's resolution. Both the
-    // plural `routes` and the singular `route` spellings are accepted.
-    const production = wranglerConfig.env?.production;
-    const rawRoutes = production
-      ? (production.routes ?? production.route)
-      : (wranglerConfig.routes ?? wranglerConfig.route);
-    const routes = Array.isArray(rawRoutes) ? rawRoutes : rawRoutes ? [rawRoutes] : [];
-    for (const route of routes) {
-      if (
-        route &&
-        typeof route === 'object' &&
-        (route as { custom_domain?: unknown }).custom_domain === true &&
-        typeof (route as { pattern?: unknown }).pattern === 'string'
-      ) {
-        return `https://${(route as { pattern: string }).pattern}/`;
-      }
+  // Parse ONLY the config wb deploy selects (wrangler.jsonc wins over wrangler.json): a stale
+  // sibling config must not contribute a server_url the deploy never serves.
+  const configPath = ['wrangler.jsonc', 'wrangler.json']
+    .map((fileName) => path.resolve(rootDirPath, workerDirPath, fileName))
+    .find((candidatePath) => fs.existsSync(candidatePath));
+  if (!configPath) return undefined;
+  let content: string;
+  try {
+    content = fs.readFileSync(configPath, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const wranglerConfig = jsoncUtil.parseObjectIgnoringError<{
+    env?: { production?: { route?: unknown; routes?: unknown } };
+    route?: unknown;
+    routes?: unknown;
+  }>(content);
+  if (!wranglerConfig) return undefined;
+  // Routes are non-inheritable in wrangler: when an env.production section exists it is
+  // authoritative (no fallback to top-level), mirroring wb deploy's resolution. Both the
+  // plural `routes` and the singular `route` spellings are accepted.
+  const production = wranglerConfig.env?.production;
+  const rawRoutes = production
+    ? (production.routes ?? production.route)
+    : (wranglerConfig.routes ?? wranglerConfig.route);
+  const routes = Array.isArray(rawRoutes) ? rawRoutes : rawRoutes ? [rawRoutes] : [];
+  for (const route of routes) {
+    if (
+      route &&
+      typeof route === 'object' &&
+      (route as { custom_domain?: unknown }).custom_domain === true &&
+      typeof (route as { pattern?: unknown }).pattern === 'string'
+    ) {
+      return `https://${(route as { pattern: string }).pattern}/`;
     }
   }
   return undefined;

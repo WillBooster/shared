@@ -33,10 +33,23 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun wb deploy -w "packages/api"',
       'bun wb -w packages/api deploy',
       'bun run --filter web build -w ignored && bun wb deploy -w packages/api',
+      'bun wb deploy -w ./packages/api/',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');
     }
+    // Only the config wb deploy selects contributes server_url: a stale wrangler.json sibling
+    // must not leak its route past a route-less wrangler.jsonc.
+    await fs.promises.writeFile(
+      path.join(workerDirPath, 'wrangler.json'),
+      '{ "routes": [{ "pattern": "stale.example.com", "custom_domain": true }] }'
+    );
+    await fs.promises.writeFile(path.join(workerDirPath, 'wrangler.jsonc'), '{ "name": "app" }');
+    expect(
+      generateCloudflareDeployWorkflow(createConfig(dirPath, 'bun wb deploy -w packages/api') as PackageConfig)?.jobs
+        .deploy?.with?.server_url
+    ).toBeUndefined();
+    await fs.promises.rm(path.join(workerDirPath, 'wrangler.json'));
     // A singular `route` object works too.
     await fs.promises.writeFile(
       path.join(workerDirPath, 'wrangler.jsonc'),
@@ -93,6 +106,13 @@ test('scaffolds a root-level worker without a custom domain and skips non-wb dep
     expect(workflow?.jobs.deploy?.with).toEqual({ environment: 'production', file_path_1: '.env.cloudflare' });
 
     expect(generateCloudflareDeployWorkflow(createConfig(dirPath, 'railway up') as PackageConfig)).toBeUndefined();
+    // `wb` must be an actual command token, not a word inside another command's arguments.
+    expect(generateCloudflareDeployWorkflow(createConfig(dirPath, 'echo wb deploy') as PackageConfig)).toBeUndefined();
+    expect(
+      generateCloudflareDeployWorkflow(
+        createConfig(dirPath, 'cross-env NOTE=wb node scripts/deploy.js --label deploy') as PackageConfig
+      )
+    ).toBeUndefined();
     // A worker outside the root/packages/apps layouts is not scaffolded (secret verification
     // would not cover its CLOUDFLARE_API_TOKEN).
     const nestedDirPath = path.join(dirPath, 'services', 'worker');
