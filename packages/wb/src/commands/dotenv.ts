@@ -7,6 +7,7 @@ import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { prependNodeModulesBinToPath } from '../utils/binPath.js';
+import { isCI } from '../utils/ci.js';
 
 interface ParsedDotenvArgs {
   command: string[];
@@ -100,19 +101,37 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
 }
 
 function readAndApplyEnvironmentVariables(cwd: string): void {
+  const modeVars = process.env.WB_ENV
+    ? (config({ path: path.join(cwd, `.env.${process.env.WB_ENV}`), processEnv: {}, quiet: true }).parsed ?? {})
+    : {};
   const dotenvVars = {
     ...config({ path: path.join(cwd, '.env'), processEnv: {}, quiet: true }).parsed,
-    ...(process.env.WB_ENV
-      ? (config({ path: path.join(cwd, `.env.${process.env.WB_ENV}`), processEnv: {}, quiet: true }).parsed ?? {})
-      : {}),
+    ...modeVars,
   };
   // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
   const [fnoxVars] = readFnoxEnvironmentVariables(cwd, process.env.WB_ENV, dotenvVars);
   const parsed = { ...fnoxVars, ...dotenvVars };
   const envVars = expand({ parsed, processEnv: {} }).parsed ?? parsed;
+  // WB_ENV in process.env means the mode is explicitly forced, so the mode file's own values win
+  // over variables inherited from the parent shell — except on CI, where injected env vars must
+  // keep overriding committed files (see https://github.com/WillBooster/shared/issues/930).
+  const modeFileOverridesProcessEnv = !isCI(process.env.CI);
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;
+      continue;
+    }
+    if (!(key in modeVars) || process.env[key] === value) continue;
+
+    if (modeFileOverridesProcessEnv) {
+      console.warn(
+        `Warning: ${key} in .env.${process.env.WB_ENV} overrides the value inherited from the parent environment because WB_ENV is explicitly set.`
+      );
+      process.env[key] = value;
+    } else {
+      console.warn(
+        `Warning: the inherited environment variable ${key} shadows the value defined in .env.${process.env.WB_ENV}.`
+      );
     }
   }
 }

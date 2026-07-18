@@ -102,15 +102,40 @@ export function readEnvironmentVariables(
     console.info('Reading env files:', envPaths.join(', '));
   }
 
+  // When the caller explicitly forces a mode (--cascade-env / an exported WB_ENV), values that the
+  // mode's own env files define must win over variables inherited from the parent shell: a stale
+  // `export DATABASE_URL=...` from a development shell must not leak into `wb test`'s test mode
+  // (cf. https://github.com/WillBooster/shared/issues/930). On CI the inherited variables keep
+  // winning — workflows deliberately inject env vars that override the committed files.
+  const modeIsForced = Boolean(argv.cascadeEnv ?? (argv.autoCascadeEnv ? runtimeEnv.WB_ENV : undefined));
+  const modeFileOverridesProcessEnv = modeIsForced && !isCIEnvironment(runtimeEnv.CI);
+
   const envPathAndLoadedEnvVarNames: [string, string[]][] = [];
   const envVars: Record<string, string> = {};
   for (const envPath of envPaths) {
+    const isModeSpecificEnvFile =
+      typeof cascade === 'string' &&
+      cascade.length > 0 &&
+      (envPath.endsWith(`.${cascade}`) || envPath.endsWith(`.${cascade}.local`));
     const keys: string[] = [];
     for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
-      if (!(key in envVars) && (options?.ignoreProcessEnv || !(key in process.env))) {
-        envVars[key] = value;
-        keys.push(key);
+      if (key in envVars) continue;
+
+      const inheritedValue = process.env[key];
+      const shadowedByProcessEnv = !options?.ignoreProcessEnv && key in process.env;
+      if (shadowedByProcessEnv && !(isModeSpecificEnvFile && modeFileOverridesProcessEnv)) {
+        if (isModeSpecificEnvFile && modeIsForced && inheritedValue !== value && !shouldSuppressOutput) {
+          console.warn(`Warning: the inherited environment variable ${key} shadows the value defined in ${envPath}.`);
+        }
+        continue;
       }
+      if (shadowedByProcessEnv && inheritedValue !== value && !shouldSuppressOutput) {
+        console.warn(
+          `Warning: ${key} in ${envPath} overrides the value inherited from the parent environment because the ${cascade} environment is explicitly forced.`
+        );
+      }
+      envVars[key] = value;
+      keys.push(key);
     }
     envPathAndLoadedEnvVarNames.push([envPath, keys]);
     if (argv.verbose && !shouldSuppressOutput && keys.length > 0) {
@@ -299,6 +324,10 @@ function miseEnvironmentSourceName(cascade: string | undefined): string {
   return cascade ? `mise env --env ${cascade}` : 'mise env';
 }
 
+function isCIEnvironment(ciEnv: string | undefined): boolean {
+  return !!ciEnv && ciEnv !== '0' && ciEnv !== 'false';
+}
+
 export function shouldSuppressEnvironmentOutput(argv: EnvReaderOptions): boolean {
   const outputOptions = argv as EnvReaderOptions & { quietEnv?: boolean; silent?: boolean };
   return outputOptions.quietEnv === true || (outputOptions.quietEnv !== false && outputOptions.silent === true);
@@ -313,6 +342,9 @@ export function readAndApplyEnvironmentVariables(
 ): Record<string, string | undefined> {
   const [envVars] = readEnvironmentVariables(argv, cwd);
   for (const [key, value] of Object.entries(envVars)) {
+    // Existing process.env keys are kept: envVars may deliberately contain differing values that
+    // must win only in the returned record (mise cascade-profile values, forced-mode overrides
+    // consumed via `project.env`), never clobber the caller's own process environment.
     if (!(key in process.env)) {
       process.env[key] = value;
     }

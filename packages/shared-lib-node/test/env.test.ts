@@ -137,6 +137,34 @@ describe('readEnvironmentVariables()', () => {
     expect(process.env.NAME).toBe('override');
   });
 
+  it('should let mode-specific env file values override inherited process.env when the mode is forced (non-CI)', () => {
+    delete process.env.CI;
+    process.env.WB_ENV = 'test';
+    process.env.PORT = '9999';
+    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
+    // .env.test defines PORT=3002; the forced test mode must win over the inherited shell value.
+    expect(envVars.PORT).toBe('3002');
+    expect(envVars.ENV).toBe('test1');
+  });
+
+  it('should keep inherited process.env values on CI even when the mode is forced', () => {
+    process.env.CI = 'true';
+    process.env.WB_ENV = 'test';
+    process.env.PORT = '9999';
+    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
+    expect(envVars.PORT).toBeUndefined();
+    expect(process.env.PORT).toBe('9999');
+  });
+
+  it('should not override inherited process.env values that only the base .env defines even when the mode is forced', () => {
+    delete process.env.CI;
+    process.env.WB_ENV = 'test';
+    process.env.NAME = 'override';
+    const [envVars] = readEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app1');
+    expect(envVars.NAME).toBeUndefined();
+    expect(process.env.NAME).toBe('override');
+  });
+
   it('should expand references to exported variables literally', () => {
     // Values referencing exported keys must resolve to the effective value without the
     // exported content being recursively re-expanded (pa$word must stay pa$word).
