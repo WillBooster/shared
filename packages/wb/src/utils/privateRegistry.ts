@@ -211,16 +211,20 @@ function encodePackageName(packageName: string): string {
   return packageName.replace('/', '%2F');
 }
 
-/** Whether the specifier is an exact version-like string (not a range, tag, or git URL). */
+// Anchored: numeric-looking dist-tags such as `1.2.3latest` must NOT count as versions
+// (resolveVersion treats them as tags), only complete SemVer with optional prerelease/build.
+const exactSemverPattern = /^\d+\.\d+\.\d+(?:-[\w.-]+)?(?:\+[\w.-]+)?$/;
+
+/** Whether the specifier is an exact SemVer version (not a range, tag, or git URL). */
 export function isExactVersion(specifier: string | undefined): boolean {
-  return !!specifier && /^\d+\.\d+\.\d+/.test(specifier);
+  return !!specifier && exactSemverPattern.test(specifier);
 }
 
 /** The version the specifier resolves to under the degrade-ranges rule, or undefined for tags/git. */
 export function toBaseVersion(specifier: string | undefined): string | undefined {
   if (!specifier) return;
   const base = specifier.replace(/^[\^~]/, '');
-  return /^\d+\.\d+\.\d+/.test(base) ? base : undefined;
+  return exactSemverPattern.test(base) ? base : undefined;
 }
 
 /**
@@ -254,7 +258,9 @@ export function rangeAdmits(range: string, version: string): boolean {
 }
 
 function parseVersion(version: string): [number, number, number] | undefined {
-  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  // Anchored: callers strip build metadata and reject prereleases beforehand, so anything beyond
+  // x.y.z marks a non-version (e.g. a numeric-looking dist-tag).
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
 }
 

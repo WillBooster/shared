@@ -137,7 +137,11 @@ export function usesDrizzleKitForD1(project: Project): boolean {
       .map((marker) => content.indexOf(marker))
       .filter((index) => index !== -1);
     const exportedContent = exportIndices.length > 0 ? content.slice(Math.min(...exportIndices)) : content;
-    return declaresSqliteTarget(extractFirstBalancedObject(exportedContent) ?? exportedContent);
+    // When the export references an identifier (`const config = {...}; export default config;`),
+    // no object literal follows the marker; scan the WHOLE file then, so such configs are still
+    // detected (the string-aware property scanner keeps string noise from matching).
+    const objectSpan = extractFirstBalancedObject(exportedContent);
+    return declaresSqliteTarget(objectSpan ?? content);
   } catch {
     return false;
   }

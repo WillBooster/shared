@@ -86,12 +86,18 @@ function readAndApplyEnvironmentVariables(cwd) {
   // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
   const fnoxVars = readFnoxEnvironmentVariables(cwd, mode, dotenvVars, modeFileOverridesProcessEnv);
   const parsed = { ...fnoxVars, ...dotenvVars };
-  // Expand ${...} references against exported variables NOT loaded from files, so a reference to
-  // a shell-only variable resolves to its effective value instead of an empty string.
+  // Expand ${...} references against exported variables whose FILE value loses to the shell
+  // (mirroring readEnvironmentVariables' effective-value semantics): a reference must resolve to
+  // the value the child will actually see, so a shell-shadowed key expands to the shell value
+  // while a winning file/override value expands to the file value.
+  const fileValueWins = (key) =>
+    !(key in process.env) || (modeFileOverridesProcessEnv && (key in modeVars || key in fnoxVars));
   const referenceEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     // Escape dollar signs so exported values substitute literally (pa$word stays pa$word).
-    if (value !== undefined && !(key in parsed)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+    if (value !== undefined && !(key in parsed && fileValueWins(key))) {
+      referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+    }
   }
   const envVars = expand({ parsed, processEnv: referenceEnv }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
@@ -117,14 +123,16 @@ function readAndApplyEnvironmentVariables(cwd) {
 function readFnoxEnvironmentVariables(cwd, cascade, currentEnvVars, modeFileOverridesProcessEnv) {
   if (!hasProjectFnoxConfig(cwd)) return {};
 
-  const secrets = runFnoxExport(cwd, cascade, false);
+  const secrets = runFnoxExport(cwd, cascade, { quiet: false });
   if (!secrets) return {};
   // A key is profile-specific (and may override process.env off CI) when the profile export's
   // value differs from the base export's; when the base export fails, no override is applied.
   // The base export runs lazily, only when a process.env collision needs adjudicating.
   let cachedBaseSecrets = false;
   const getBaseSecrets = () => {
-    if (cachedBaseSecrets === false) cachedBaseSecrets = runFnoxExport(cwd, undefined, true);
+    if (cachedBaseSecrets === false) {
+      cachedBaseSecrets = runFnoxExport(cwd, undefined, { quiet: true, ignoreProfileEnvVar: true });
+    }
     return cachedBaseSecrets;
   };
 
@@ -141,16 +149,19 @@ function readFnoxEnvironmentVariables(cwd, cascade, currentEnvVars, modeFileOver
   return envVars;
 }
 
-function runFnoxExport(cwd, cascade, quiet) {
+function runFnoxExport(cwd, cascade, options) {
   // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve.
   // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
   const args = ['export', '--format', 'json', '--no-color', '--if-missing', 'error', '--non-interactive'];
   const env = { ...process.env };
   if (cascade) {
     args.push('--profile', cascade);
-  } else {
-    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base export must read the BASE
-    // secrets (it adjudicates profile-specificity), so an inherited profile selection is cleared.
+  }
+  if (options.ignoreProfileEnvVar) {
+    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must
+    // read the BASE secrets, so the inherited profile selection is cleared for it — and only for
+    // it: a profile-less PRIMARY export (e.g. `wb dotenv` without WB_ENV) keeps honoring
+    // FNOX_PROFILE.
     delete env.FNOX_PROFILE;
   }
   const result = childProcess.spawnSync('fnox', args, {
@@ -160,7 +171,7 @@ function runFnoxExport(cwd, cascade, quiet) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (result.error || result.status !== 0 || !result.stdout?.trim()) {
-    if (!quiet) {
+    if (!options.quiet) {
       console.warn(
         `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
       );

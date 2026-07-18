@@ -158,12 +158,16 @@ async function prepareNpmCompatibleLayout(
     if (!fs.existsSync(packageJsonPath)) continue;
 
     const original = fs.readFileSync(packageJsonPath, 'utf8');
+    // Snapshot EVERY manifest (not only rewritten ones): semantic-release also edits manifests
+    // without workspace: ranges (version bumps), and a failed release must restore those too.
+    if (!argv.dryRun) {
+      modifiedFiles.set(packageJsonPath, Buffer.from(original, 'utf8'));
+    }
     const rewritten = rewriteWorkspaceRanges(original);
     if (rewritten === original) continue;
 
     console.info(chalk.cyan(`Rewriting workspace: ranges in ${path.relative(project.dirPath, packageJsonPath)}...`));
     if (!argv.dryRun) {
-      modifiedFiles.set(packageJsonPath, Buffer.from(original, 'utf8'));
       fs.writeFileSync(packageJsonPath, rewritten, 'utf8');
     }
   }

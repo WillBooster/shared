@@ -233,7 +233,9 @@ export function readFnoxEnvironmentVariables(
   // subprocess (including age decryption) to every forced-mode invocation for nothing.
   let cachedBaseSecrets: Record<string, unknown> | undefined | false = false;
   const getBaseSecrets = (): Record<string, unknown> | undefined => {
-    if (cachedBaseSecrets === false) cachedBaseSecrets = runFnoxExport(cwd, undefined, { quiet: true });
+    if (cachedBaseSecrets === false) {
+      cachedBaseSecrets = runFnoxExport(cwd, undefined, { quiet: true, ignoreProfileEnvVar: true });
+    }
     return cachedBaseSecrets;
   };
 
@@ -259,7 +261,7 @@ export function readFnoxEnvironmentVariables(
 function runFnoxExport(
   cwd: string,
   cascade: string | undefined,
-  options: { quiet: boolean }
+  options: { quiet: boolean; ignoreProfileEnvVar?: boolean }
 ): Record<string, unknown> | undefined {
   // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve
   // (e.g. a missing age key), which would be indistinguishable from undeclared secrets.
@@ -268,9 +270,12 @@ function runFnoxExport(
   const env = { ...process.env };
   if (cascade) {
     args.push('--profile', cascade);
-  } else {
-    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base export must read the BASE
-    // secrets (it adjudicates profile-specificity), so an inherited profile selection is cleared.
+  }
+  if (options.ignoreProfileEnvVar) {
+    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must
+    // read the BASE secrets, so the inherited profile selection is cleared for it — and only for
+    // it: a profile-less PRIMARY export (e.g. `wb dotenv` without WB_ENV) keeps honoring
+    // FNOX_PROFILE.
     delete env.FNOX_PROFILE;
   }
   const result = childProcess.spawnSync('fnox', args, {

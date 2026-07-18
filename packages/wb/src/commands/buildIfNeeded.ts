@@ -251,8 +251,12 @@ async function updateHashWithDiffResult(
     // Build OUTPUTS must never count as build inputs: hashing e.g. an untracked dist/ file would
     // change the hash on every build and disable the cache permanently.
     const projectRelativeDirPath = path.relative(project.rootDirPath, project.dirPath);
-    const outputPaths = (getExplicitOutputPaths(argv) ?? defaultOutputCandidates).map((outputPath) =>
-      path.join(projectRelativeDirPath, outputPath)
+    // The UNION of defaults and explicit paths: an `--output` naming a single file must not stop
+    // sibling artifacts in dist/build/.next/out from being excluded, or every build would change
+    // the hash and permanently disable the cache. (The cache-validity existence check in
+    // canSkipBuild deliberately narrows to the explicit paths instead.)
+    const outputPaths = [...new Set([...defaultOutputCandidates, ...(getExplicitOutputPaths(argv) ?? [])])].map(
+      (outputPath) => path.join(projectRelativeDirPath, outputPath)
     );
     const filteredEntries = normalizedEntries.filter(({ filePath, hashPath }) => {
       const directorySegments = hashPath.split('/').slice(0, -1);

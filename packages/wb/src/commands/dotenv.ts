@@ -121,14 +121,18 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
   // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
   const [fnoxVars] = readFnoxEnvironmentVariables(cwd, mode, dotenvVars, { modeFileOverridesProcessEnv });
   const parsed = { ...fnoxVars, ...dotenvVars };
-  // Expand ${...} references against exported variables NOT loaded from files (mirroring
-  // readEnvironmentVariables): with an empty processEnv a reference to a shell-only variable
-  // would expand to '', and the forced-mode override below would then replace a correct
-  // inherited value with a broken one.
+  // Expand ${...} references against exported variables whose FILE value loses to the shell
+  // (mirroring readEnvironmentVariables' effective-value semantics): a reference must resolve to
+  // the value the child will actually see, so a shell-shadowed key expands to the shell value
+  // while a winning file/override value expands to the file value.
+  const fileValueWins = (key: string): boolean =>
+    !(key in process.env) || (modeFileOverridesProcessEnv && (key in modeVars || key in fnoxVars));
   const referenceEnv: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     // Escape dollar signs so exported values substitute literally (pa$word stays pa$word).
-    if (value !== undefined && !(key in parsed)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+    if (value !== undefined && !(key in parsed && fileValueWins(key))) {
+      referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+    }
   }
   const envVars = expand({ parsed, processEnv: referenceEnv }).parsed ?? parsed;
   for (const [key, value] of Object.entries(envVars)) {
