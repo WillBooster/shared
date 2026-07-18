@@ -130,14 +130,15 @@ export function usesDrizzleKitForD1(project: Project): boolean {
     const content = stripJsComments(fs.readFileSync(path.join(config.dirPath, config.fileName), 'utf8'));
     // Scan only the exported config's object literal: drizzle-kit consumes the default export,
     // and matching other text (an unused sqlite-shaped constant above the export, or marker-like
-    // string content in statements after it) would select the wrong migration mechanism. Configs
-    // whose export references an earlier object fall back to scanning from the export marker;
-    // wb deploy warns when no mechanism is detected.
+    // string content in statements after it) would select the wrong migration mechanism.
+    // POSITIONS (export markers, declarations) are located on a string-masked view of the same
+    // length, so `export default` inside a string literal cannot mislead the search.
+    const maskedContent = maskStringContents(content);
     const exportIndices = ['export default', 'module.exports']
-      .map((marker) => content.indexOf(marker))
+      .map((marker) => maskedContent.indexOf(marker))
       .filter((index) => index !== -1);
-    const exportedContent = exportIndices.length > 0 ? content.slice(Math.min(...exportIndices)) : content;
-    const objectSpan = extractExportedConfigObject(content, exportedContent);
+    const exportStartIndex = exportIndices.length > 0 ? Math.min(...exportIndices) : 0;
+    const objectSpan = extractExportedConfigObject(content, maskedContent, exportStartIndex);
     return objectSpan !== undefined && declaresSqliteTarget(objectSpan);
   } catch {
     return false;
@@ -151,14 +152,23 @@ export function usesDrizzleKitForD1(project: Project): boolean {
  * file, since an unrelated object (e.g. an unused sqlite-shaped constant) must not be selected.
  * Undefined when the expression cannot be resolved; wb deploy's unmanaged-D1 warning covers that.
  */
-function extractExportedConfigObject(content: string, exportedContent: string): string | undefined {
-  const exportedExpression = exportedContent
+function extractExportedConfigObject(
+  content: string,
+  maskedContent: string,
+  exportStartIndex: number
+): string | undefined {
+  const exportedExpression = maskedContent
+    .slice(exportStartIndex)
     .replace(/^(?:export\s+default|module\.exports\s*=)\s*/, '')
     // Drop a TypeScript type postfix (`config satisfies Config;` / `config as Config;`) so the
     // identifier branch below still recognizes the export.
     .replace(/^([A-Za-z_$][\w$]*)\s+(?:satisfies|as)\b[^;\n{]*/, '$1');
   const identifierMatch = /^([A-Za-z_$][\w$]*)\s*(?:;|\n|$)/.exec(exportedExpression);
-  if (!identifierMatch) return extractFirstBalancedObject(exportedContent);
+  if (!identifierMatch) {
+    const braceOffset = maskedContent.slice(exportStartIndex).indexOf('{');
+    if (braceOffset === -1) return;
+    return extractFirstBalancedObject(content.slice(exportStartIndex + braceOffset));
+  }
 
   // `$` is legal in identifiers but a regex anchor, so it must be escaped before interpolation;
   // `(?![\w$])` (not `\b`) ends the match because `\b` never fires after a trailing `$`.
@@ -168,11 +178,45 @@ function extractExportedConfigObject(content: string, exportedContent: string): 
   const declarationMatch = new RegExp(
     String.raw`^(?:export\s+)?(?:const|let|var)\s+${escapedIdentifier}(?![\w$])`,
     'm'
-  ).exec(content);
+  ).exec(maskedContent);
   if (!declarationMatch) return;
-  const assignmentIndex = content.indexOf('=', declarationMatch.index);
-  if (assignmentIndex === -1) return;
+  // The initializer must belong to THIS declaration (a type annotation may precede the `=`); an
+  // uninitialized `let config;` stays unresolved instead of grabbing a later statement's `=`.
+  const afterDeclaration = maskedContent.slice(declarationMatch.index + declarationMatch[0].length);
+  const assignmentMatch = /^\s*(?::[^=;\n]*)?=/.exec(afterDeclaration);
+  if (!assignmentMatch) return;
+  const assignmentIndex = declarationMatch.index + declarationMatch[0].length + assignmentMatch[0].length;
   return extractFirstBalancedObject(content.slice(assignmentIndex));
+}
+
+/**
+ * Replace the CONTENTS of string literals with spaces (same length, newlines kept), so position
+ * searches over the result cannot match text inside strings while all indexes still map 1:1 to
+ * the original content.
+ */
+function maskStringContents(content: string): string {
+  let result = '';
+  let stringDelimiter: string | undefined;
+  for (let index = 0; index < content.length; index++) {
+    const char = content[index]!;
+    if (stringDelimiter) {
+      if (char === '\\') {
+        result += '  ';
+        index++;
+        continue;
+      }
+      if (char === stringDelimiter || (stringDelimiter !== '`' && char === '\n')) {
+        stringDelimiter = undefined;
+        result += char;
+        continue;
+      }
+      result += char === '\n' ? '\n' : ' ';
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`') stringDelimiter = char;
+    result += char;
+  }
+  return result;
 }
 
 /**
