@@ -33,25 +33,146 @@ const ENCRYPTED_VERDACCIO_TOKEN =
   'YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBud2p2dXFLV2N1NEFaR1MvSnBMVG9WcTY3V3RNd0wwZG9NRStiMXRDV2pRCnlEQ21BRDF6QWhzandFQWhJZlZGTWdKZGhJcDNEK1E3czJPUkpUblg1YVEKLT4gbHgpWy1ncmVhc2UgQFxVb1EgNWJEYDl5ayA+bAphc1hoTHAydmc4akFxMnNBWWp1YWhlV0I1aytMOFB6YUloZ0tuaFdqNGcKLS0tIGZVOW1zQ2xveDREOC95RkFnTEFPdmFXc0FkV212bUNnV2Y3cWcxb3hWRFkKR8rA6Rshr0v84bWEG2Mnr9H04HcBZylYGEp7U19Dp1sqwQ1yKls8Rz5QtzY5SjYY/kEfMfp4JMgBexxFTnbI7nl79u5FSOrPce+xrYZFMnZhv06zB8shZgiidqkTdcwU+rGB2ei72VTItox9CqmvpGgeonuTuhOP5+9wOPb2E6IC8FpeZLGHczSYxmuIOPMdt80IrjBfqECcv0u6cWDAOHuzwx4j9tyxl49YgU56lA9XOMA2+mSfeq/dBkTFf9Hap8eLcXzGE25TT/xMWkf6cDIn+z8JpzNuyBQUKggggtztooJ7k7ulkr1JaSyFlVCPIrPNBdo/FDbSy9aG';
 const require = createRequire(import.meta.url);
 
+// Secret management is deliberately ASYMMETRIC between the two organizations:
+// - WillBooster (paid plan): CLOUDFLARE_API_TOKEN / FNOX_AGE_KEY / VERDACCIO_TOKEN are
+//   ORGANIZATION secrets registered manually by an org admin, with per-repository visibility.
+//   wbfy must never create, update, or delete them (neither at the org level nor as
+//   repository-level copies) — it only verifies availability and reports what the admin must do.
+// - WillBoosterLab (free plan): GitHub Free cannot share organization secrets with private
+//   repositories, so wbfy --env keeps provisioning FNOX_AGE_KEY / VERDACCIO_TOKEN as repository
+//   secrets automatically.
+const ORG_MANAGED_SECRET_NAMES = ['CLOUDFLARE_API_TOKEN', 'FNOX_AGE_KEY', 'VERDACCIO_TOKEN'];
+
 export async function setupSecrets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupSecrets', async () => {
     const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
-    // Deliberately WillBoosterLab-only (including VERDACCIO_TOKEN): WillBooster-org repositories
-    // are provisioned manually. The VERDACCIO_TOKEN reference injected into their workflows is
-    // harmless meanwhile — the reusable workflows skip .npmrc generation when the secret is empty.
-    if (!owner || !repo || owner !== 'WillBoosterLab') return;
-    if (!hasGitHubToken(owner) || !options.doesUploadEnvVars) return;
+    if (!owner || !repo || (owner !== 'WillBooster' && owner !== 'WillBoosterLab')) return;
+    if (!options.doesUploadEnvVars) return;
+    // --env explicitly requested secret handling, so a missing credential is a failure, not a
+    // silent skip that would report success without verifying or uploading anything.
+    if (!hasGitHubToken(owner)) {
+      console.error(
+        `--env was requested but no GitHub credential for ${owner} is available (set the org PAT environment variable or authenticate \`gh\`). Secrets were neither verified nor uploaded.`
+      );
+      process.exitCode = 1;
+      return;
+    }
 
-    // The user explicitly requested a secret upload (--env), so any failure — including
+    // The user explicitly requested secret handling (--env), so any failure — including
     // filesystem/validation errors before the GitHub requests — must fail the run instead of
     // being swallowed by functionIgnoringException.
     try {
-      await uploadSecrets(config, owner, repo);
+      await (owner === 'WillBooster'
+        ? verifyOrgManagedSecrets(config, owner, repo)
+        : uploadSecrets(config, owner, repo));
     } catch (error) {
-      console.error('Failed to upload secrets due to:', (error as Error | undefined)?.stack ?? error);
+      console.error('Failed to handle secrets due to:', (error as Error | undefined)?.stack ?? error);
       process.exitCode = 1;
     }
   });
+}
+
+// Verifies that every org-managed secret this WillBooster-org repository needs is visible to it
+// as an ORGANIZATION secret, without mutating anything: registration and repository visibility
+// are manual org-admin operations by policy.
+async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
+  const octokit = getOctokit(owner);
+  const requiredNames = ['VERDACCIO_TOKEN'];
+  // Both requirement checks are deliberately based on the LOCAL working tree: workflow generation
+  // keys FNOX_AGE_KEY injection on the local root fnox.toml too, and a config added on a feature
+  // branch will need its secret as soon as it merges — surfacing the missing org secret before
+  // the change lands is the point of this verification. Only a ROOT fnox.toml counts (nested
+  // fixtures without an age provider neither need nor own the key).
+  if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) requiredNames.push('FNOX_AGE_KEY');
+  if (containsWranglerConfig(config.dirPath)) requiredNames.push('CLOUDFLARE_API_TOKEN');
+
+  // GitHub allows far more than one page of secrets, so paginate instead of trusting page one
+  // (this Octokit instance carries no paginate plugin, hence the manual loops).
+  const assignedOrgNames: string[] = [];
+  for (let page = 1; ; page++) {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/actions/organization-secrets', {
+      owner,
+      repo,
+      per_page: 100,
+      page,
+    });
+    for (const secret of response.data.secrets) assignedOrgNames.push(secret.name);
+    if (response.data.secrets.length < 100) break;
+  }
+  // A workflow run can use only the first 100 organization secrets sorted alphabetically, so an
+  // assigned-but-beyond-limit secret is NOT usable and must not pass verification (nor justify
+  // deleting a repository-level fallback that is the only working source).
+  const usableOrgNames = new Set([...assignedOrgNames].toSorted().slice(0, 100));
+  const assignedButUnusableNames = new Set(assignedOrgNames.filter((name) => !usableOrgNames.has(name)));
+  const repoLevelNames = new Set<string>();
+  for (let page = 1; ; page++) {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/actions/secrets', {
+      owner,
+      repo,
+      per_page: 100,
+      page,
+    });
+    for (const secret of response.data.secrets) repoLevelNames.add(secret.name);
+    if (response.data.secrets.length < 100) break;
+  }
+
+  // process.exitCode is process-global and may already be 1 from an earlier repository in the
+  // same wbfy invocation, so gate this repository's success message on a local flag.
+  let verified = true;
+  for (const name of requiredNames) {
+    if (!usableOrgNames.has(name)) {
+      console.error(
+        assignedButUnusableNames.has(name)
+          ? `The organization secret ${name} is assigned to ${owner}/${repo} but falls beyond the 100-organization-secret limit a workflow run can use (only the alphabetically first 100 are usable). Ask a WillBooster org admin to prune the assigned organization secrets.`
+          : `The organization secret ${name} is not visible to ${owner}/${repo}. Ask a WillBooster org admin to register it as an organization secret (or extend its repository access to this repository) — do NOT create a repository-level copy.${repoLevelNames.has(name) ? ` A repository-level ${name} currently keeps CI working, but it violates the org-secret policy and must be deleted once the organization secret is visible.` : ''}`
+      );
+      verified = false;
+    }
+  }
+  // A repository secret silently overrides a same-named organization secret, so a stale
+  // repository-level copy would keep winning even after the admin rotates the org value. Only a
+  // genuinely workflow-usable organization secret justifies deleting the repository fallback.
+  for (const name of ORG_MANAGED_SECRET_NAMES) {
+    if (usableOrgNames.has(name) && repoLevelNames.has(name)) {
+      console.error(
+        `The repository-level secret ${name} in ${owner}/${repo} shadows the organization secret of the same name. After confirming the organization value is current, delete the repository-level copy manually (e.g. \`gh secret delete ${name} --repo ${owner}/${repo}\`); wbfy deliberately never deletes it.`
+      );
+      verified = false;
+    }
+  }
+  if (verified) {
+    console.info(
+      `Confirmed the organization secrets required by ${owner}/${repo} are visible: ${requiredNames.join(', ')}.`
+    );
+  } else {
+    process.exitCode = 1;
+  }
+}
+
+// Detects a Cloudflare Workers deployment (root or a directly nested workspace) to decide whether
+// CLOUDFLARE_API_TOKEN is required; deeper layouts are out of wbfy's supported structure.
+function containsWranglerConfig(rootDirPath: string): boolean {
+  const candidateDirPaths = [rootDirPath];
+  for (const groupDirName of ['packages', 'apps']) {
+    const groupDirPath = path.join(rootDirPath, groupDirName);
+    let stats;
+    try {
+      stats = fs.lstatSync(groupDirPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+    // A plain file or symlink named packages/apps is not a workspace group (wbfy's workspace
+    // discovery does not follow symlinks either); an unreadable REAL directory still throws below
+    // and fails the run loudly, since it could hide a Worker.
+    if (!stats.isDirectory()) continue;
+    for (const entry of fs.readdirSync(groupDirPath, { withFileTypes: true })) {
+      if (entry.isDirectory()) candidateDirPaths.push(path.join(groupDirPath, entry.name));
+    }
+  }
+  return candidateDirPaths.some((dirPath) =>
+    ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) => fs.existsSync(path.join(dirPath, fileName)))
+  );
 }
 
 async function uploadSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
