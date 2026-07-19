@@ -1586,6 +1586,7 @@ test('routes a root-owned colon global script invoked from a child workspace', a
       scripts: {
         after: 'yarn :root-cache && cd dist && echo done',
         deep: 'cd src && yarn :root-cache',
+        semi: 'echo setup; cd src; yarn :root-cache',
         warm: 'yarn :root-cache',
       },
     };
@@ -1611,6 +1612,8 @@ test('routes a root-owned colon global script invoked from a child workspace', a
     expect(generated.scripts?.warm).toBe("bun run --cwd '../..' :root-cache");
     // A cd before the invocation would break the package-relative --cwd at runtime.
     expect(generated.scripts?.deep).toBe('cd src && yarn :root-cache');
+    // The guard covers separators beyond && (e.g. `;`) too.
+    expect(generated.scripts?.semi).toBe('echo setup; cd src; yarn :root-cache');
     // A cd after the invocation cannot affect it and must not prevent the conversion.
     expect(generated.scripts?.after).toBe("bun run --cwd '../..' :root-cache && cd dist && echo done");
   } finally {

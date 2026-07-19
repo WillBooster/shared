@@ -66,7 +66,9 @@ const unparsableYarnrc = Symbol('unparsableYarnrc');
  * interpolated into a double-quoted TOML string without escaping.
  */
 export function isLiteralNpmPackageName(value: string): boolean {
-  return /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/u.test(value);
+  // The name part of a SCOPED package may begin with an underscore (npm's naming rules forbid
+  // leading `.`/`_` only for unscoped names), so e.g. `@scope/_private` must be accepted.
+  return /^(?:@[a-z0-9~-][a-z0-9._~-]*\/[_a-z0-9~-][a-z0-9._~-]*|[a-z0-9~-][a-z0-9._~-]*)$/u.test(value);
 }
 
 /**

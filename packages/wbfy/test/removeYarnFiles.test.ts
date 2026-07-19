@@ -25,6 +25,7 @@ npmPreapprovedPackages:
   - '@willbooster/*'
   - 'is-number@npm:7.0.0'
   - 'bad"name'
+  - '@scope/_private'
   - one-way-git-sync
   - my-repo-specific-package
 
@@ -130,9 +131,10 @@ test('reads release-age settings, dropping globs and descriptors Bun would match
     fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), orgStandardYarnrc);
     // The glob, the versioned descriptor, and the TOML-unsafe name are dropped: only plain
     // (optionally scoped) npm package names are usable Bun exclude entries.
+    // A scoped name whose name part starts with an underscore is a valid npm package name.
     expect(readYarnrcReleaseAgeSettings(tempDirPath)).toEqual({
       minimumReleaseAgeSeconds: 432_000,
-      minimumReleaseAgeExcludes: ['one-way-git-sync', 'my-repo-specific-package'],
+      minimumReleaseAgeExcludes: ['@scope/_private', 'one-way-git-sync', 'my-repo-specific-package'],
     });
   });
 });

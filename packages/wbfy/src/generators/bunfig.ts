@@ -273,13 +273,17 @@ function readRepoSpecificExcludes(content: string | undefined): string[] {
     // themselves survive regeneration).
     if (trimmed.startsWith(']')) break;
     if (!trimmed || trimmed.startsWith('#')) continue;
-    const matched = /^\s*(?:"([^"]+)"|'([^']+)')\s*,?\s*(?:#.*)?$/u.exec(line);
-    // A line this parser cannot read could hide further entries, so stop instead of guessing.
-    if (!matched) break;
-    const entry = matched[1] ?? matched[2];
-    // Hand-edited entries pass the same strict name gate as migrated ones: anything else would
-    // be dead configuration for Bun and could even break the generated TOML when interpolated.
-    if (entry && isLiteralNpmPackageName(entry)) excludes.push(entry);
+    // A line may carry several comma-separated quoted entries plus an optional quote-free
+    // trailing comment; a line this parser cannot read could hide further entries, so stop
+    // instead of guessing.
+    const withoutComment = line.replace(/\s#[^"']*$/u, '');
+    if (!/^\s*(?:(?:"[^"]+"|'[^']+')\s*,?\s*)+$/u.test(withoutComment)) break;
+    for (const matched of withoutComment.matchAll(/"([^"]+)"|'([^']+)'/gu)) {
+      const entry = matched[1] ?? matched[2];
+      // Hand-edited entries pass the same strict name gate as migrated ones: anything else would
+      // be dead configuration for Bun and could even break the generated TOML when interpolated.
+      if (entry && isLiteralNpmPackageName(entry)) excludes.push(entry);
+    }
   }
   return excludes;
 }

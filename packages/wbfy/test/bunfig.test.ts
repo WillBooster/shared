@@ -82,6 +82,7 @@ minimumReleaseAgeExcludes = [
     # a hand-added comment must not truncate the repository-policy list
     'single-quoted-package', # inline comment
     'not@a@name',
+    "one-line-a", "one-line-b",
 ]
 `
     );
@@ -93,6 +94,9 @@ minimumReleaseAgeExcludes = [
     expect(content).toContain('"single-quoted-package",');
     // A marker entry that is not a plain npm package name is dead configuration and is dropped.
     expect(content).not.toContain('not@a@name');
+    // Several comma-separated entries on one line are all preserved.
+    expect(content).toContain('"one-line-a",');
+    expect(content).toContain('"one-line-b",');
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

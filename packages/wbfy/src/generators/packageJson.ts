@@ -408,7 +408,7 @@ function convertYarnCommandsToBun(
     // A `cd` BEFORE this invocation would make the package-relative --cwd resolve from the wrong
     // directory at runtime, so such invocations fall back instead of getting a silently broken
     // route; a cd after the invocation cannot affect it and must not prevent the conversion.
-    if (scriptChangesWorkingDirectory(currentScript.slice(0, offset))) return fallback();
+    if (prefixMayChangeWorkingDirectory(currentScript.slice(0, offset))) return fallback();
     const relativeDirPath = path.relative(config.dirPath, owner.dirPath) || '.';
     return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}' ${scriptName}`;
   };
@@ -447,6 +447,16 @@ function convertYarnCommandsToBun(
       // A bare `yarn` (at the end or before a command separator) is an install.
       .replaceAll(/\byarn\b(?=\s*(?:$|&&|\|\||[;|]))/gu, 'bun install');
   }
+}
+
+/**
+ * Whether the script prefix may change the working directory before the command that follows it.
+ * scriptChangesWorkingDirectory models `&&` chains only, so a conservative token scan also
+ * catches `cd` after `;`, `|`, `||`, newlines, or subshell openers: a wrongly-suppressed --cwd
+ * route merely surfaces in review, while a wrongly-emitted one breaks at runtime.
+ */
+function prefixMayChangeWorkingDirectory(prefix: string): boolean {
+  return scriptChangesWorkingDirectory(prefix) || /(?:^|[;&|()]|\n)\s*cd(?:\s|$)/u.test(prefix);
 }
 
 interface ColonScriptOwner {
