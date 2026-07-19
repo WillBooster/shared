@@ -55,15 +55,29 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       process.exit(1);
     }
 
-    // Every containment/overlap check below compares canonicalized paths: a symlink component
-    // (e.g. `escape -> node_modules`) would otherwise smuggle the recursive deletes past the
-    // lexical guards and destroy the symlink's target.
+    // Output paths are recursively DELETED before being recreated, so none of them may contain a
+    // symlink component: a symlink (e.g. `escape -> node_modules`, or `@willbooster-private`
+    // itself linking elsewhere) would either smuggle the delete past the lexical overlap guards
+    // or destroy the symlink's target. Rejecting canonical/lexical mismatches keeps every
+    // destructive operation on the intended lexical location.
     const rootDirPath = canonicalizePath(projects.root.dirPath);
-    const outDirPath = canonicalizePath(path.resolve(rootDirPath, argv.outDir));
+    const resolveOutputDirPath = (relativeOrAbsolutePath: string, label: string): string => {
+      const lexicalPath = path.resolve(rootDirPath, relativeOrAbsolutePath);
+      const canonicalPath = canonicalizePath(lexicalPath);
+      if (canonicalPath !== lexicalPath) {
+        console.error(chalk.red(`${label} must not contain symlinks (${lexicalPath} resolves to ${canonicalPath}).`));
+        process.exit(1);
+      }
+      return lexicalPath;
+    };
+    const outDirPath = resolveOutputDirPath(argv.outDir, '--out-dir');
     assertSubdirectory(rootDirPath, outDirPath);
     // Registry packages always materialize at the repository root: `wb optimizeForDockerBuild`
     // resolves them from `<root>/@willbooster-private` regardless of `--out-dir`.
-    const registryOutDirPath = canonicalizePath(path.join(rootDirPath, PRIVATE_REGISTRY_SCOPE));
+    const registryOutDirPath = resolveOutputDirPath(
+      PRIVATE_REGISTRY_SCOPE,
+      `The ${PRIVATE_REGISTRY_SCOPE} output directory`
+    );
     if (pathsOverlap(outDirPath, registryOutDirPath)) {
       // e.g. `--out-dir @willbooster-private` or `--out-dir @willbooster-private/sub`: the
       // registry step recursively deletes registryOutDirPath, which would destroy the git
@@ -71,7 +85,10 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       console.error(chalk.red(`--out-dir must not overlap the ${PRIVATE_REGISTRY_SCOPE} registry output directory.`));
       process.exit(1);
     }
-    const stagingDirPath = canonicalizePath(path.join(rootDirPath, '.tmp', 'wb-private-registry-staging'));
+    const stagingDirPath = resolveOutputDirPath(
+      path.join('.tmp', 'wb-private-registry-staging'),
+      'The staging directory'
+    );
     if (pathsOverlap(outDirPath, canonicalizePath(path.join(rootDirPath, 'node_modules')))) {
       // The recursive delete of outDirPath would destroy the installed sources the copies read.
       console.error(chalk.red('--out-dir must not overlap node_modules.'));

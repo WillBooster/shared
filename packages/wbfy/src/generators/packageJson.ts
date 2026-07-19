@@ -862,7 +862,14 @@ function forEachCommandPositionToken(
   }[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
-      if (caseContext === 'body' && token.text.startsWith(';;')) {
+      // All three case-clause terminators return to pattern context: `;;`, `;;&` (whose `&`
+      // arrives as a separate token startsWith(';;') already covers), and `;&`, which tokenizes
+      // as `;` plus an ADJACENT `&` (same-char runs are one token each).
+      if (
+        caseContext === 'body' &&
+        (token.text.startsWith(';;') ||
+          (token.text === ';' && tokens[index + 1]?.text === '&' && tokens[index + 1]?.start === token.end))
+      ) {
         caseContext = 'pattern';
         redirectionOperandFollows = false;
         previousSeparatorChar = undefined;

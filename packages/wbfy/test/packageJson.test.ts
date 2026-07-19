@@ -1509,6 +1509,8 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'array-subst': 'args=($(yarn list-args))',
       'case-pat': 'case "$r" in (yarn) yarn compile;; esac',
       'case-subst': 'case $(yarn kind) in x) echo matched;; esac',
+      'case-fallthrough': 'case x in x) yarn one ;& yarn|npm) yarn compile;; esac',
+      'case-testnext': 'case x in x) yarn one ;;& yarn) yarn two;; esac',
       'nested-case': 'case x in x) case y in y) yarn inner;; esac;; yarn) yarn compile;; esac',
       'proc-subst-array': 'args=(<(yarn list-args)); echo done',
       'proc-subst-case': 'case <(yarn kind) in x) echo matched;; esac',
@@ -1598,6 +1600,9 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'proc-subst-case': 'case <(bun run kind) in x) echo matched;; esac',
     // An inner `esac` restores the ENCLOSING case context: the outer `yarn)` is still a pattern.
     'nested-case': 'case x in x) case y in y) bun run inner;; esac;; yarn) bun run compile;; esac',
+    // `;&` and `;;&` also terminate a case clause: what follows is a pattern, not a command.
+    'case-fallthrough': 'case x in x) bun run one ;& yarn|npm) bun run compile;; esac',
+    'case-testnext': 'case x in x) bun run one ;;& yarn) bun run two;; esac',
     // `<<` inside an arithmetic expansion is a left shift, not a heredoc.
     shift: 'echo $((1 << 2)) && bun run compile',
     // Only a real unquoted heredoc operator suppresses conversion, not quoted `<<` data.
