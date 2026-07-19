@@ -221,8 +221,10 @@ function removeStaleManagedWorkspaceEntries(
     //   matches it;
     // - each current include, as a path, against a wildcard-shaped entry (a negation like
     //   `!apps/excluded/*`) when the includes are concrete (expanded from Bun-only glob syntax);
-    // - each discovered workspace directory against the entry, catching overlapping wildcard
-    //   layouts (e.g. old `!apps/*b` vs new `apps/a*`).
+    // - each discovered workspace directory against a workspace-layout-shaped entry (no `**`
+    //   segment, same depth as the matched directory), catching overlapping wildcard layouts
+    //   (e.g. old `!apps/*b` vs new `apps/a*`) — the shape gate keeps hygiene globs such as
+    //   `**/e2e` from being deleted just because a workspace directory basename matches them.
     return !(
       (!/[*?]/u.test(entry) &&
         workspaceDirPaths.some(
@@ -230,7 +232,12 @@ function removeStaleManagedWorkspaceEntries(
         ) &&
         isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns)) ||
       workspaceIncludePatterns.some((includePattern) => isCoveredByWorkspaceDirPattern(includePattern, [entry])) ||
-      workspaceDirPaths.some((workspaceDirPath) => isCoveredByWorkspaceDirPattern(workspaceDirPath, [entry]))
+      workspaceDirPaths.some(
+        (workspaceDirPath) =>
+          !entry.split('/').includes('**') &&
+          entry.split('/').length === workspaceDirPath.split('/').length &&
+          isCoveredByWorkspaceDirPattern(workspaceDirPath, [entry])
+      )
     );
   });
 }

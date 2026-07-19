@@ -153,7 +153,17 @@ export function hasImplicitWorkspaceBaseline(workspaces: PackageJson['workspaces
     workspacePatterns.some((workspacePattern) => {
       // Normalize first: Bun ignores trailing slashes, so `!apps/*/` seeds the baseline too.
       const lastSegment = path.posix.normalize(workspacePattern.slice(1)).replace(/\/+$/u, '').split('/').at(-1);
-      return lastSegment === '*' || lastSegment === '**';
+      // Bun activates the baseline when the last segment is a STANDALONE glob construct
+      // (measured with Bun 1.3.14: `*`, `**`, `***`, `?`, `{a,b}`, and `[ab]` seed it, while
+      // mixed literal segments such as `*d`, `a*`, `??`, and `{a,b}c` link zero workspaces).
+      // Remaining sequential-evaluation quirks are tracked in #1005.
+      return (
+        lastSegment !== undefined &&
+        (/^\*+$/u.test(lastSegment) ||
+          lastSegment === '?' ||
+          /^\{[^}]*\}$/u.test(lastSegment) ||
+          /^\[[^\]]*\]$/u.test(lastSegment))
+      );
     })
   );
 }
