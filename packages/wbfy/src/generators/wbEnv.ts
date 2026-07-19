@@ -83,7 +83,9 @@ async function warnOnMismatchedDotenvWbEnvValues(dirPath: string, needsNextPubli
     const localKeys = dotenv.parse(localContent);
     for (const keyName of keyNames) {
       const value = localKeys[keyName];
-      if (typeof value === 'string' && !value.includes('$')) {
+      // Empty values count as unset (wb supplies the fallback), and dynamic values cannot be
+      // evaluated statically.
+      if (typeof value === 'string' && value !== '' && !value.includes('$')) {
         console.warn(
           `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb fails fast when it mismatches the selected mode).`
         );
@@ -189,7 +191,8 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
  * field) — encrypted fnox entries are `{ provider, value }` objects whose `default` is absent.
  */
 function warnOnUnexpectedWbEnvValue(keyName: string, value: unknown, mode: WbEnvMode, sourceLabel: string): void {
-  if (typeof value !== 'string' || value === mode) return;
+  // An EMPTY value counts as unset (wb supplies the fallback mode), not as a mismatching mode.
+  if (typeof value !== 'string' || value === '' || value === mode) return;
   // A dynamic value (e.g. `WB_ENV=${MODE}`) may legitimately resolve to the mode through wb's
   // dotenv expansion, which this static check cannot evaluate — skip instead of misfiring.
   if (value.includes('$')) return;

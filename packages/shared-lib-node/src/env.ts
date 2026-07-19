@@ -236,8 +236,11 @@ export function readEnvironmentVariables(
   const orderedEnvVars: Record<string, string> = {};
   for (const key of [...miseEnvVarNames, ...fnoxEnvVarNames]) orderedEnvVars[key] = envVars[key]!;
   Object.assign(orderedEnvVars, envVars);
-  // expand() mutates its parsed input, so keep the pre-expansion values for the re-expansion below.
+  // expand() mutates BOTH its parsed input AND processEnv (dotenv-expand writes every parsed
+  // result into processEnv), so snapshot both for the re-expansion below — the retry must not
+  // see the first pass's stale dependent values.
   const preExpansionEnvVars = { ...orderedEnvVars };
+  const pristineReferenceEnv = { ...referenceEnv };
   let expandedEnvVars = expand({ parsed: orderedEnvVars, processEnv: referenceEnv }).parsed ?? orderedEnvVars;
   // A value referencing ${WB_ENV} must expand to what the child will actually see: when the
   // EFFECTIVE WB_ENV ends up empty — whether it was never defined, defined empty, or emptied by
@@ -249,8 +252,8 @@ export function readEnvironmentVariables(
   if (options?.expandFallbackWbEnv && !expandedEnvVars.WB_ENV && !runtimeEnv.WB_ENV) {
     const reExpansionInput = { ...preExpansionEnvVars };
     delete reExpansionInput.WB_ENV;
-    referenceEnv.WB_ENV = resolveFallbackWbEnv(argv);
-    expandedEnvVars = expand({ parsed: reExpansionInput, processEnv: referenceEnv }).parsed ?? reExpansionInput;
+    const retryReferenceEnv = { ...pristineReferenceEnv, WB_ENV: resolveFallbackWbEnv(argv) };
+    expandedEnvVars = expand({ parsed: reExpansionInput, processEnv: retryReferenceEnv }).parsed ?? reExpansionInput;
   }
   return [expandedEnvVars, envPathAndLoadedEnvVarNames];
 }
