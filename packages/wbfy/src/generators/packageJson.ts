@@ -213,12 +213,35 @@ async function updateScripts(
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   for (const [key, value] of Object.entries(scripts)) {
-    if (typeof value !== 'string') continue;
+    if (typeof value !== 'string' || !value.includes('yarn')) continue;
     // Fresh repos still require standalone `yarn install`; only remove legacy install prefixes before another command.
-    if (!value.includes('git clone')) {
-      scripts[key] = value.replaceAll(/yarn\s*(?:install\s*)?&&\s*/gu, '');
-    }
+    // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
+    if (value.includes('git clone') || value.includes('<<')) continue;
+    scripts[key] = removeLegacyYarnInstallPrefixes(value);
   }
+}
+
+/**
+ * Removes each `yarn && ` / `yarn install && ` prefix that precedes another command. The scan is
+ * quote- and command-position-aware (sharing convertYarnInvocationsToBun's tokenizer walk), so
+ * quoted data such as `echo 'yarn install && deploy now'` stays untouched.
+ */
+function removeLegacyYarnInstallPrefixes(script: string): string {
+  const removalRanges: [number, number][] = [];
+  forEachCommandPositionToken(tokenizeShellCommand(script), (token, index, tokens) => {
+    if (token.text !== 'yarn') return;
+    const next = tokens[index + 1];
+    const separatorToken = next?.text === 'install' ? tokens[index + 2] : next;
+    if (separatorToken?.text !== '&&') return;
+    let end = separatorToken.end;
+    while (end < script.length && /\s/u.test(script[end] ?? '')) end++;
+    removalRanges.push([token.start, end]);
+  });
+  let result = script;
+  for (const [start, end] of removalRanges.toReversed()) {
+    result = result.slice(0, start) + result.slice(end);
+  }
+  return result;
 }
 
 function updatePostinstallScript(
@@ -384,28 +407,30 @@ function convertYarnCommandsToBun(
   // has no such concept, so the invocation must be routed to the defining workspace explicitly.
   // Resolved lazily: most scripts have no colon invocations.
   let colonScriptOwners: Map<string, ColonScriptOwner | undefined> | undefined;
+  // Returns the `bun run ...` runner prefix to put before the (raw) script-name token, or
+  // undefined to keep the yarn form.
   const resolveColonScriptInvocation = (scriptName: string, prefix: string): string | undefined => {
-    if (typeof scripts[scriptName] === 'string') return `bun run ${scriptName}`;
+    if (typeof scripts[scriptName] === 'string') return 'bun run';
     colonScriptOwners ??= collectColonScriptOwners(rootConfig);
     const owner = colonScriptOwners.get(scriptName);
     const fallback = (): string | undefined =>
       // A missing or ambiguous leading-colon script cannot run locally either, so its yarn form
       // is kept (undefined) to surface in review; other unresolved colon names keep the plain
       // conversion (e.g. `cd sub && yarn build:sub` targeting a non-workspace directory).
-      scriptName.startsWith(':') ? undefined : `bun run ${scriptName}`;
+      scriptName.startsWith(':') ? undefined : 'bun run';
     if (!owner) return fallback();
     // Bun's --filter never matches the workspace root, and its path filters resolve against the
     // invoking cwd (both verified on Bun 1.3.14), so the root package and unnamed workspaces are
     // addressed with --cwd relative to the invoking package instead.
     if (owner.packageName && owner.dirPath !== path.resolve(rootConfig.dirPath)) {
-      return `bun run --filter ${owner.packageName} ${scriptName}`;
+      return `bun run --filter ${owner.packageName}`;
     }
     // A `cd` BEFORE this invocation would make the package-relative --cwd resolve from the wrong
     // directory at runtime, so such invocations fall back instead of getting a silently broken
     // route; a cd after the invocation cannot affect it and must not prevent the conversion.
     if (prefixMayChangeWorkingDirectory(prefix)) return fallback();
     const relativeDirPath = path.relative(config.dirPath, owner.dirPath) || '.';
-    return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}' ${scriptName}`;
+    return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}'`;
   };
   // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
   // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
@@ -418,11 +443,13 @@ function convertYarnCommandsToBun(
 /**
  * Rewrites the actual `yarn ...` command invocations in a script to their bun equivalents.
  *
- * The scan is quote-aware in both directions (reusing removeBunRuntimeFlag's shell tokenizer
- * instead of bare regexes): `yarn` inside a quoted token (e.g. `echo 'yarn build:cache'`) is data
- * and stays untouched, while a quoted argument token (e.g. `yarn ':build-cache'`) is unquoted
- * before colon-owner resolution. Anything unconvertible keeps its yarn form verbatim to surface
- * during review instead of being mis-rewritten.
+ * The scan is quote- and command-position-aware (reusing removeBunRuntimeFlag's shell tokenizer
+ * walk instead of bare regexes): `yarn` appearing as data — inside a quoted token (e.g.
+ * `echo 'yarn build:cache'`) or as an argument of another command (e.g. `git commit -m yarn`) —
+ * stays untouched, while a quoted argument token (e.g. `yarn ':build-cache'`) is decoded before
+ * colon-owner resolution and re-emitted verbatim so its shell semantics never change. Anything
+ * unconvertible keeps its yarn form verbatim to surface during review instead of being
+ * mis-rewritten.
  */
 function convertYarnInvocationsToBun(
   script: string,
@@ -430,13 +457,10 @@ function convertYarnInvocationsToBun(
 ): string {
   // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
   if (script.includes('<<')) return script;
-  const tokens = tokenizeShellCommand(script);
   const replacements: ShellReplacement[] = [];
-  for (const [index, token] of tokens.entries()) {
-    // Only a bare unquoted `yarn` word starts an invocation; a quoted occurrence is data.
-    if (token.text !== 'yarn') continue;
-    // A `yarn` token consumed by a previous invocation's rewrite is not an invocation of its own.
-    if (token.start < (replacements.at(-1)?.end ?? 0)) continue;
+  forEachCommandPositionToken(tokenizeShellCommand(script), (token, index, tokens) => {
+    // Only a bare unquoted `yarn` word at command position starts an invocation.
+    if (token.text !== 'yarn') return;
     const remainingTokens = tokens.slice(index + 1);
     const terminatorIndex = remainingTokens.findIndex((argToken) => isShellSeparator(argToken.text));
     const args = terminatorIndex === -1 ? remainingTokens : remainingTokens.slice(0, terminatorIndex);
@@ -448,11 +472,11 @@ function convertYarnInvocationsToBun(
       if (terminatorText === undefined || /^(?:&&|\|{1,2}|;|\n)/u.test(terminatorText)) {
         replacements.push({ start: token.start, end: token.end, text: 'bun install' });
       }
-      continue;
+      return;
     }
     const replacement = convertSingleYarnInvocation(token, args, script, resolveColonScriptInvocation);
     if (replacement) replacements.push(replacement);
-  }
+  });
   let result = script;
   for (const { start, end, text } of replacements.toReversed()) {
     result = result.slice(0, start) + text + result.slice(end);
@@ -466,6 +490,19 @@ interface ShellReplacement {
   text: string;
 }
 
+// `yarn workspaces foreach` flags that neither restrict which workspaces are selected nor
+// suppress execution, so `bun run --filter '*'` preserves their fan-out. Anything else (--since,
+// --from, --include, --exclude, --no-private, --dry-run, ...) changes the selection or effect and
+// keeps the yarn form to surface during review.
+const selectionNeutralForeachFlags = new Set([
+  '--all',
+  '--interlaced',
+  '--parallel',
+  '--topological',
+  '--topological-dev',
+  '--verbose',
+]);
+
 /**
  * Converts one `yarn <args...>` invocation (args already cut at the next command separator) into
  * the text replacing it, or undefined to keep the yarn form untouched.
@@ -476,10 +513,15 @@ function convertSingleYarnInvocation(
   script: string,
   resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
 ): ShellReplacement | undefined {
+  // Decoded (literal) argument values drive the matching, while emitted rewrites always reuse the
+  // raw token text (rawArg) so quoting and expansion semantics survive the conversion unchanged
+  // (e.g. `yarn 'build:$target'` keeps its single quotes). A shell-ambiguous token decodes to
+  // undefined, which keeps the invocation in its yarn form.
   const argText = (argIndex: number): string | undefined => {
     const arg = args[argIndex];
-    return arg && unquoteShellToken(arg.text);
+    return arg && decodeSimpleShellWord(arg.text);
   };
+  const rawArg = (argIndex: number): string => args[argIndex]?.text ?? '';
   const replaceThroughArg = (argIndex: number, text: string): ShellReplacement => ({
     start: yarnToken.start,
     end: (args[argIndex] as ShellToken).end,
@@ -487,11 +529,23 @@ function convertSingleYarnInvocation(
   });
   const first = argText(0);
   const second = argText(1);
-  // `yarn workspaces foreach [flags] run <script>` fans a script out to every workspace.
+  // `yarn workspaces foreach <selection-neutral flags> run <script>` fans a script out to every
+  // workspace; a selection-restricting or execution-suppressing flag keeps the yarn form.
   if (first === 'workspaces' && second === 'foreach') {
-    const runIndex = args.findIndex((arg, index) => index >= 2 && unquoteShellToken(arg.text) === 'run');
+    let runIndex = -1;
+    for (let index = 2; index < args.length; index++) {
+      const flag = argText(index);
+      if (flag === 'run') {
+        runIndex = index;
+        break;
+      }
+      if (flag === undefined || !(selectionNeutralForeachFlags.has(flag) || /^-[Aiptv]+$/u.test(flag)))
+        return undefined;
+    }
     const scriptName = runIndex === -1 ? undefined : argText(runIndex + 1);
-    return scriptName === undefined ? undefined : replaceThroughArg(runIndex + 1, `bun run --filter '*' ${scriptName}`);
+    return scriptName === undefined || scriptName.startsWith('-')
+      ? undefined
+      : replaceThroughArg(runIndex + 1, `bun run --filter '*' ${rawArg(runIndex + 1)}`);
   }
   if (first === 'dlx') return replaceThroughArg(0, 'bunx');
   if (first === 'workspace') {
@@ -504,36 +558,55 @@ function convertSingleYarnInvocation(
       command !== undefined &&
       /^[\w.:/-]+$/u.test(command) &&
       (hasRun || !yarnBuiltinSubcommands.has(command))
-      ? replaceThroughArg(commandIndex, `bun run --filter ${second} ${command}`)
+      ? replaceThroughArg(commandIndex, `bun run --filter ${rawArg(1)} ${rawArg(commandIndex)}`)
       : undefined;
   }
-  // A colon-containing script name (after optional `run`) needs workspace-global resolution. The
-  // name may contain any non-metacharacter (e.g. `build:@scope`), not just \w./:-. Only a leading
-  // `-` (a yarn flag) is excluded: Yarn's global lookup has no first-character restriction, so
-  // names like `.build:cache` must resolve too.
-  const scriptNameIndex = first === 'run' ? 1 : 0;
+  // A colon-containing script name (after `run` and its flags, if any) needs workspace-global
+  // resolution. The name may contain any non-metacharacter (e.g. `build:@scope`), not just
+  // \w./:-. Only a leading `-` (a yarn flag) is excluded: Yarn's global lookup has no
+  // first-character restriction, so names like `.build:cache` must resolve too.
+  let scriptNameIndex = 0;
+  if (first === 'run') {
+    scriptNameIndex = 1;
+    while (argText(scriptNameIndex)?.startsWith('-')) scriptNameIndex++;
+  }
   const scriptName = argText(scriptNameIndex);
-  if (
-    scriptName !== undefined &&
-    !scriptName.startsWith('-') &&
-    scriptName.includes(':') &&
-    /^[^\s;&|<>()'"`]+$/u.test(scriptName)
-  ) {
-    const replacement = resolveColonScriptInvocation(scriptName, script.slice(0, yarnToken.start));
-    return replacement === undefined ? undefined : replaceThroughArg(scriptNameIndex, replacement);
+  if (scriptName !== undefined && scriptName.includes(':') && /^[^\s;&|<>()'"`]+$/u.test(scriptName)) {
+    const runnerPrefix = resolveColonScriptInvocation(scriptName, script.slice(0, yarnToken.start));
+    if (runnerPrefix === undefined) return undefined;
+    // With flags between `run` and the target (e.g. `yarn run --inspect-brk build:remote`), only
+    // a plain local `bun run` provably keeps their meaning; where flags would have to travel into
+    // a --filter/--cwd route, the yarn form is kept to surface in review.
+    if (scriptNameIndex > 1) {
+      return runnerPrefix === 'bun run' ? replaceThroughArg(0, 'bun run') : undefined;
+    }
+    return replaceThroughArg(scriptNameIndex, `${runnerPrefix} ${rawArg(scriptNameIndex)}`);
   }
   if (first === 'run') {
-    // An unresolvable `yarn run :name` keeps its yarn form (the colon rule above already
+    // An unresolvable `yarn run [flags] :name` keeps its yarn form (the colon rule above already
     // converted every resolvable one); otherwise `bun run` accepts the same flags and target.
-    return scriptName?.startsWith(':') ? undefined : replaceThroughArg(0, 'bun run');
+    return scriptName?.startsWith(':') || args[scriptNameIndex]?.text.startsWith(':')
+      ? undefined
+      : replaceThroughArg(0, 'bun run');
   }
   if (first === 'install') return replaceThroughArg(0, 'bun install');
   // A bare `yarn <name>` invokes the package script; Yarn built-ins, flag forms
   // (e.g. `yarn --cwd ...`), and still-unconverted `:` global scripts have no direct Bun
   // equivalent and are intentionally left untouched to surface during review.
   return first !== undefined && /^(?![-.:])[\w.:/-]+$/u.test(first) && !yarnBuiltinSubcommands.has(first)
-    ? replaceThroughArg(0, `bun run ${first}`)
+    ? replaceThroughArg(0, `bun run ${rawArg(0)}`)
     : undefined;
+}
+
+/**
+ * The literal value of a shell word that is either fully unquoted or wholly wrapped in one simple
+ * quote pair, or undefined for anything shell-ambiguous (embedded or mixed quotes, backslashes,
+ * expansions inside double quotes), whose invocation must then stay in its yarn form.
+ */
+function decodeSimpleShellWord(text: string): string | undefined {
+  if (!/['"\\]/u.test(text)) return text;
+  const quoted = /^'([^'\\]*)'$/u.exec(text) ?? /^"([^"'\\$`]*)"$/u.exec(text);
+  return quoted?.[1];
 }
 
 /**
@@ -597,26 +670,14 @@ function removeBunRuntimeFlag(script: string, scriptNames: ReadonlySet<string>):
   // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
   // merely ending in `bun` (`my-bun`), quoted targets with spaces, and Bun runtime flags between
   // `--bun` and the script file are all classified correctly.
-  const tokens = tokenizeShellCommand(script);
   const removalRanges: [number, number][] = [];
-  let atCommandPosition = true;
-  for (const [index, token] of tokens.entries()) {
-    if (isShellSeparator(token.text)) {
-      atCommandPosition = true;
-      continue;
-    }
-    if (!atCommandPosition) continue;
-    const tokenText = unquoteShellToken(token.text);
-    // `KEY=VALUE` prefixes and shell prefix words (`exec`, `env`, `command`, `!`) keep the next
-    // token in command position.
-    if (/^[A-Za-z_]\w*=/u.test(tokenText) || ['exec', 'env', 'command', '!'].includes(tokenText)) continue;
-    atCommandPosition = false;
-    if (tokenText !== 'bun') continue;
+  forEachCommandPositionToken(tokenizeShellCommand(script), (token, index, tokens) => {
+    if (unquoteShellToken(token.text) !== 'bun') return;
     const flagToken = tokens[index + 1];
-    if (!flagToken || unquoteShellToken(flagToken.text) !== '--bun') continue;
-    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2), scriptNames)) continue;
+    if (!flagToken || unquoteShellToken(flagToken.text) !== '--bun') return;
+    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2), scriptNames)) return;
     removalRanges.push([flagToken.start, flagToken.end]);
-  }
+  });
 
   let result = script;
   for (const [start, end] of removalRanges.toReversed()) {
@@ -668,6 +729,34 @@ interface ShellToken {
   end: number;
 }
 
+// Prefix words that run the command that follows them, so the next token stays in command
+// position. cross-env is included because `cross-env KEY=VALUE <command> ...` is the common
+// pre-Bun way to set environment variables portably in package scripts.
+const commandPositionTransparentWords = new Set(['!', 'command', 'cross-env', 'env', 'exec']);
+
+/**
+ * Invokes the callback for every token in shell command position. Separators start a new command;
+ * `KEY=VALUE` prefixes and transparent prefix words (`exec`, `env`, ...) keep the next token in
+ * command position.
+ */
+function forEachCommandPositionToken(
+  tokens: readonly ShellToken[],
+  callback: (token: ShellToken, index: number, tokens: readonly ShellToken[]) => void
+): void {
+  let atCommandPosition = true;
+  for (const [index, token] of tokens.entries()) {
+    if (isShellSeparator(token.text)) {
+      atCommandPosition = true;
+      continue;
+    }
+    if (!atCommandPosition) continue;
+    const tokenText = unquoteShellToken(token.text);
+    if (/^[A-Za-z_]\w*=/u.test(tokenText) || commandPositionTransparentWords.has(tokenText)) continue;
+    atCommandPosition = false;
+    callback(token, index, tokens);
+  }
+}
+
 function tokenizeShellCommand(script: string): ShellToken[] {
   const tokens: ShellToken[] = [];
   let index = 0;
@@ -685,6 +774,16 @@ function tokenizeShellCommand(script: string): ShellToken[] {
       index = end;
       continue;
     }
+    // An unquoted redirection operator ends the preceding word even without whitespace
+    // (`yarn build>log` redirects `yarn build`), so it forms its own token; heredocs (`<<`) never
+    // reach this tokenizer — every caller skips scripts containing them.
+    if (char === '<' || char === '>') {
+      let end = index + 1;
+      while (end < script.length && (script[end] === '<' || script[end] === '>')) end++;
+      tokens.push({ text: script.slice(index, end), start: index, end });
+      index = end;
+      continue;
+    }
     let end = index;
     let quote: string | undefined;
     while (end < script.length) {
@@ -696,7 +795,7 @@ function tokenizeShellCommand(script: string): ShellToken[] {
         quote = current;
       } else if (current === '\\') {
         end++;
-      } else if (/\s/u.test(current) || isShellSeparator(current)) {
+      } else if (/\s/u.test(current) || isShellSeparator(current) || current === '<' || current === '>') {
         break;
       }
       end++;
