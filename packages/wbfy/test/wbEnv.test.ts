@@ -114,10 +114,13 @@ test('ensureWbEnvDefinitions updates existing legacy mode files only', async () 
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-wbenv-'));
   try {
     fs.writeFileSync(path.join(tempDirPath, '.env'), 'PORT=3000\n');
+    fs.writeFileSync(path.join(tempDirPath, '.env.development'), 'DEBUG=1\n');
     fs.writeFileSync(path.join(tempDirPath, '.env.test'), '');
     const rootConfig = createConfig({ dirPath: tempDirPath, isRoot: true });
     await ensureWbEnvDefinitions(rootConfig, [rootConfig]);
-    expect(fs.readFileSync(path.join(tempDirPath, '.env'), 'utf8')).toBe('PORT=3000\nWB_ENV=development\n');
+    // The shared `.env` loads in EVERY cascade, so wbfy never writes a mode value into it.
+    expect(fs.readFileSync(path.join(tempDirPath, '.env'), 'utf8')).toBe('PORT=3000\n');
+    expect(fs.readFileSync(path.join(tempDirPath, '.env.development'), 'utf8')).toBe('DEBUG=1\nWB_ENV=development\n');
     expect(fs.readFileSync(path.join(tempDirPath, '.env.test'), 'utf8')).toBe('WB_ENV=test\n');
     expect(fs.existsSync(path.join(tempDirPath, '.env.production'))).toBe(false);
     expect(fs.existsSync(path.join(tempDirPath, '.env.staging'))).toBe(false);

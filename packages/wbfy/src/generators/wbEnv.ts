@@ -54,7 +54,10 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
     for (const config of allConfigs) {
       const needsNextPublicHere = config === rootConfig ? needsNextPublic : requiresNextPublicWbEnv(config);
       for (const mode of wbEnvModes) {
-        const envFilePath = path.resolve(config.dirPath, mode === 'development' ? '.env' : `.env.${mode}`);
+        // MODE-SPECIFIC files only — never the shared `.env`: the loader reads `.env` in EVERY
+        // cascade, so a `WB_ENV=development` written there would mask e.g. the test cascade in a
+        // repository without `.env.test` and make `wb test` fail fast on the mismatch.
+        const envFilePath = path.resolve(config.dirPath, `.env.${mode}`);
         const envContent = await fsUtil.readFileConfinedIfExists(envFilePath);
         // Only existing mode files are completed: creating .env.production (never committed by
         // convention) or a whole legacy layout from nothing is not wbfy's call.
@@ -94,18 +97,37 @@ async function warnOnMismatchedDotenvWbEnvValues(dirPath: string, needsNextPubli
       }
     }
   }
+  const baseContent = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, '.env'));
+  const baseKeys = baseContent === undefined ? {} : dotenv.parse(baseContent);
   for (const mode of wbEnvModes) {
     const inspectedFileNames =
       mode === 'development'
         ? ['.env', '.env.development', '.env.development.local']
         : [`.env.${mode}`, `.env.${mode}.local`];
+    let modeDefinesWbEnv = false;
     for (const fileName of inspectedFileNames) {
       const content = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, fileName));
       if (content === undefined) continue;
       const definedKeys = dotenv.parse(content);
+      if (fileName !== '.env' && definedKeys.WB_ENV) modeDefinesWbEnv = true;
       for (const keyName of keyNames) {
         warnOnUnexpectedWbEnvValue(keyName, definedKeys[keyName], mode, fileName);
       }
+    }
+    // The shared `.env` loads in EVERY cascade, so without a higher-precedence mode definition
+    // its WB_ENV leaks into this cascade and wb fails fast on the mismatch.
+    const baseWbEnv = baseKeys.WB_ENV;
+    if (
+      mode !== 'development' &&
+      !modeDefinesWbEnv &&
+      typeof baseWbEnv === 'string' &&
+      baseWbEnv !== '' &&
+      baseWbEnv !== mode &&
+      !baseWbEnv.includes('$')
+    ) {
+      console.warn(
+        `WB_ENV in .env is "${baseWbEnv}" and no .env.${mode} defines WB_ENV, so the ${mode} cascade would resolve "${baseWbEnv}" and wb fails fast; define WB_ENV=${mode} in .env.${mode} or remove WB_ENV from .env.`
+      );
     }
   }
 }
