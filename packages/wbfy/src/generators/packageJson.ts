@@ -481,18 +481,17 @@ async function applyPackageJsonConventions(
       // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
       // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
       // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
-      // monorepo must not get a never-matching pattern appended to its declaration. When the
-      // declaration is negative-only, appending a positive pattern would disable Bun's implicit
-      // `*/*` baseline and silently drop the other workspaces, so declare the baseline explicitly.
+      // monorepo must not get a never-matching pattern appended to its declaration. A
+      // negative-only declaration needs no forced pattern at all, because Bun's implicit `*/*`
+      // baseline already covers packages/*. The forced pattern is PREPENDED: Bun evaluates
+      // workspace patterns sequentially, so a positive pattern placed after a user negation
+      // would re-include the negated packages.
       const forcedPatterns =
+        !hasOnlyNegativeDeclaredWorkspacePatterns(jsonObj.workspaces) &&
         fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
-          ? hasOnlyNegativeDeclaredWorkspacePatterns(jsonObj.workspaces)
-            ? // `*/*` already covers every packages/<name>, so appending `packages/*` too would
-              // just persist dead configuration.
-              ['*/*']
-            : ['packages/*']
+          ? ['packages/*']
           : [];
-      jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), forcedPatterns], {
+      jsonObj.workspaces = merge.all([forcedPatterns, getDeclaredWorkspacePatterns(jsonObj.workspaces)], {
         arrayMerge: combineMerge,
       });
       // Both inputs can be empty (e.g. packages/package.json without any packages/*/package.json

@@ -238,6 +238,8 @@ function isCoveredByWorkspaceDirPattern(dirPath: string, workspacePatterns: stri
     const globStarPlaceholder = '\u0000';
     const regexSource = workspacePattern
       .split('/')
+      // Adjacent globstars are one globstar (`**/**/foo` matches root-level `foo` too).
+      .filter((segment, index, segments) => segment !== '**' || segments[index - 1] !== '**')
       .map((segment) =>
         segment === '**'
           ? globStarPlaceholder

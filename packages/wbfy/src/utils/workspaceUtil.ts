@@ -154,12 +154,20 @@ export function hasOnlyNegativeDeclaredWorkspacePatterns(workspaces: PackageJson
  * must not make the repository root itself a discovered workspace.
  */
 export function getMeaningfulDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): string[] {
-  return getDeclaredWorkspacePatterns(workspaces).filter((workspacePattern) => {
-    const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
-    // Normalize so spellings like `./`, `./.`, and `!./` are recognized as the same no-ops
-    // (path.posix.normalize('') === '.', so the empty pattern is covered too).
-    return path.posix.normalize(patternBody).replace(/\/+$/u, '') !== '.';
-  });
+  return getDeclaredWorkspacePatterns(workspaces)
+    .map((workspacePattern) => {
+      // Bun applies leading-bang PARITY (verified with Bun 1.3.14): `!!p` is the positive `p`
+      // and `!!!p` the negation `!p`, so canonicalize to at most one bang.
+      const bangCount = /^!*/u.exec(workspacePattern)![0].length;
+      const patternBody = workspacePattern.slice(bangCount);
+      return bangCount % 2 === 1 ? `!${patternBody}` : patternBody;
+    })
+    .filter((workspacePattern) => {
+      const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
+      // Normalize so spellings like `./`, `./.`, and `!./` are recognized as the same no-ops
+      // (path.posix.normalize('') === '.', so the empty pattern is covered too).
+      return path.posix.normalize(patternBody).replace(/\/+$/u, '') !== '.';
+    });
 }
 
 /** Workspace patterns from either the array form or Yarn v1's `{ packages: […] }` object form. */
