@@ -5,6 +5,7 @@ import { parse } from 'smol-toml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { isLiteralNpmPackageName, type YarnReleaseAgeSettings } from './removeYarnFiles.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -13,8 +14,13 @@ interface BunfigToml {
   install?: {
     exact?: boolean;
     linker?: string;
+    minimumReleaseAge?: number;
   };
 }
+
+// Everything after this marker inside minimumReleaseAgeExcludes is repository policy (e.g.
+// migrated from .yarnrc.yml npmPreapprovedPackages) and is preserved across regenerations.
+const repoSpecificExcludesMarker = '    # ---------- repository-specific entries ----------';
 
 export const bunMinimumReleaseAgeSeconds = 432_000;
 
@@ -175,24 +181,62 @@ export function readBunLinker(rootDirPath: string): BunLinker | undefined {
   return linker === 'isolated' || linker === 'hoisted' ? linker : undefined;
 }
 
-export async function generateBunfigToml(config: PackageConfig, linker: BunLinker = 'isolated'): Promise<void> {
+export async function generateBunfigToml(
+  config: PackageConfig,
+  linker: BunLinker = 'isolated',
+  yarnReleaseAgeSettings?: YarnReleaseAgeSettings
+): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, linker, config);
+    const content = newContent(existingContent, linker, config, yarnReleaseAgeSettings);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
 
-const newContent = (existingContent: string | undefined, linker: BunLinker, config: PackageConfig): string => {
+const newContent = (
+  existingContent: string | undefined,
+  linker: BunLinker,
+  config: PackageConfig,
+  yarnReleaseAgeSettings?: YarnReleaseAgeSettings
+): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // Only Java repositories still depend on @willbooster/prettier-config (wbfy installs it with
   // prettier-plugin-java); everywhere else oxfmt replaced Prettier, so the exclusion is dead
   // weight in the generated file. The exported list keeps the entry because packageJson.ts's
   // version age gate matters only where wbfy actually pins the package (i.e. Java repositories).
-  const minimumReleaseAgeExcludes = doesContainJava(config)
+  const managedExcludes = doesContainJava(config)
     ? bunMinimumReleaseAgeExcludes
     : bunMinimumReleaseAgeExcludes.filter((packageName) => packageName !== '@willbooster/prettier-config');
+  // The repository's own release-age policy must survive every run, not just the migration one:
+  // repo-specific npmPreapprovedPackages entries (pre-filtered to literal names — Bun matches
+  // these literally) AND the entries under the repository-specific marker of the existing
+  // bunfig.toml are merged after the managed list, and a custom npmMinimalAgeGate (or an
+  // already-customized minimumReleaseAge) is carried over. Only marker-tagged entries count as
+  // repo-specific — provenance stays explicit in the file itself, so entries an older wbfy
+  // version managed and later retired can never masquerade as repository policy. An explicit
+  // repository preapproval that ALSO appears in the managed list is emitted once, under the
+  // marker: the effective exclusion set is identical, but the repository-policy provenance
+  // survives even if wbfy later retires that managed entry.
+  const repoSpecificExcludes = [
+    ...new Set([
+      ...(yarnReleaseAgeSettings?.minimumReleaseAgeExcludes ?? []),
+      ...readRepoSpecificExcludes(existingContent),
+    ]),
+  ].toSorted();
+  const repoSpecificExcludeSet = new Set(repoSpecificExcludes);
+  const minimumReleaseAgeExcludes = [
+    ...managedExcludes
+      .filter((packageName) => !repoSpecificExcludeSet.has(packageName))
+      .map((packageName) => `    "${packageName}",`),
+    ...(repoSpecificExcludes.length > 0
+      ? [repoSpecificExcludesMarker, ...repoSpecificExcludes.map((packageName) => `    "${packageName}",`)]
+      : []),
+  ];
+  const minimumReleaseAgeSeconds =
+    yarnReleaseAgeSettings?.minimumReleaseAgeSeconds ??
+    bunfigToml?.install?.minimumReleaseAge ??
+    bunMinimumReleaseAgeSeconds;
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
@@ -210,12 +254,55 @@ ${
       'globalStore = true\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
     : 'linker = "hoisted"'
 }
-minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 5 days
+minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
 minimumReleaseAgeExcludes = [
-${minimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
+${minimumReleaseAgeExcludes.join('\n')}
 ]
 `;
 };
+
+function readRepoSpecificExcludes(content: string | undefined): string[] {
+  if (!content) return [];
+  const lines = content.split('\n');
+  const markerIndex = lines.findIndex((line) => line.trim() === repoSpecificExcludesMarker.trim());
+  if (markerIndex === -1) return [];
+  const excludes: string[] = [];
+  for (const line of lines.slice(markerIndex + 1)) {
+    const trimmed = line.trim();
+    // The section ends at the array's closing bracket; hand-added comments and blank lines
+    // between entries must not truncate the repository-policy list (though only the entries
+    // themselves survive regeneration).
+    if (trimmed.startsWith(']')) break;
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    // A line may carry several comma-separated quoted entries plus an optional trailing comment;
+    // a line this parser cannot read could hide further entries, so stop instead of guessing.
+    const withoutComment = stripTomlLineComment(line);
+    if (!/^\s*(?:(?:"[^"]+"|'[^']+')\s*,?\s*)+$/u.test(withoutComment)) break;
+    for (const matched of withoutComment.matchAll(/"([^"]+)"|'([^']+)'/gu)) {
+      const entry = matched[1] ?? matched[2];
+      // Hand-edited entries pass the same strict name gate as migrated ones: anything else would
+      // be dead configuration for Bun and could even break the generated TOML when interpolated.
+      if (entry && isLiteralNpmPackageName(entry)) excludes.push(entry);
+    }
+  }
+  return excludes;
+}
+
+/** Removes a trailing `#` comment quote-awarely, so comment prose containing quotes cannot confuse the entry parser. */
+function stripTomlLineComment(line: string): string {
+  let quote: string | undefined;
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index];
+    if (quote) {
+      if (character === quote) quote = undefined;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '#') {
+      return line.slice(0, index);
+    }
+  }
+  return line;
+}
 
 /**
  * Preserve the project's `[test]` sections (e.g. preload scripts swapping a Cloudflare D1 client

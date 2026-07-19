@@ -61,7 +61,9 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
     if (config.doesContainPackageJson) {
       names.push('node');
     }
-    if (config.doesContainPomXml) {
+    // Recursive detection (not just a root pom.xml): a multi-language repository keeps its Maven
+    // modules in subdirectories, and dropping the maven template would let target/ get tracked.
+    if (config.doesContainPomXmlAnywhere) {
       names.push('maven');
       headUserContent += `.idea/google-java-format.xml
 `;
@@ -79,8 +81,10 @@ ios/.bundle
 packaged.yaml
 `;
     }
-    // Because .venv should be ignored on root directory
-    if (config.doesContainPoetryLock || config.doesContainUvLock) {
+    // Because .venv should be ignored on root directory. Recursive detection (not just a root
+    // lockfile): a multi-language repository keeps Python directories in subdirectories, and
+    // dropping the python template would let __pycache__/ and .venv/ get tracked.
+    if (config.doesContainPythonLockAnywhere) {
       names.push('python');
       headUserContent += `.venv/
 `;
@@ -187,7 +191,7 @@ src-tauri/gen/schemas/
     if (!(await ignoreFileUtil.isBerryZeroInstallEnabled(filePath))) {
       generated = generated.replace('!.yarn/cache', '# !.yarn/cache').replace('# .pnp.*', '.pnp.*');
     }
-    if (config.doesContainPomXml || config.doesContainPubspecYaml) {
+    if (config.doesContainPomXmlAnywhere || config.doesContainPubspecYaml) {
       generated = generated
         .replaceAll(/^# .idea\/artifacts$/gm, '.idea/artifacts')
         .replaceAll(/^# .idea\/compiler.xml$/gm, '.idea/compiler.xml')

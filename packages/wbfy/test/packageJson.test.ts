@@ -1519,6 +1519,122 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
   });
 });
 
+test('routes yarn colon global scripts to the workspace defining them', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      workspaces: ['packages/*'],
+      scripts: {
+        ':local-cache': 'echo local',
+        at: 'yarn build:@scope',
+        'cache-all': 'yarn build:cache',
+        dot: 'yarn .build:cache',
+        local: 'yarn :local-cache',
+        missing: 'yarn :unknown-script && yarn run :unknown-script',
+        'test/ci-setup': 'build-ts run scripts/rename.ts && yarn :build-caches && sh scripts/install.sh',
+        tools: 'yarn :tool-cache',
+      },
+    },
+    { isRoot: true, doesContainSubPackageJsons: true },
+    {
+      files: {
+        'packages/server/package.json': JSON.stringify({
+          name: '@judge/server',
+          scripts: {
+            ':build-caches': 'echo build',
+            '.build:cache': 'echo dot',
+            'build:@scope': 'echo at',
+            'build:cache': 'echo mid-colon',
+          },
+        }),
+        'packages/tools/package.json': JSON.stringify({
+          scripts: { ':tool-cache': 'echo tool' },
+        }),
+      },
+    }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    // Script names are whole shell words, not just \w./:- characters.
+    at: 'bun run --filter @judge/server build:@scope',
+    // Yarn treats ANY colon-containing name as global, not only leading-colon ones.
+    'cache-all': 'bun run --filter @judge/server build:cache',
+    // Yarn's lookup has no first-character restriction, so dot-prefixed names resolve too.
+    dot: 'bun run --filter @judge/server .build:cache',
+    // A colon script defined in the invoking package stays a local bun run.
+    local: 'bun run :local-cache',
+    // A leading-colon script no workspace defines keeps its yarn form to surface in review.
+    missing: 'yarn :unknown-script && yarn run :unknown-script',
+    // A colon script defined in another workspace is routed there: bun has no global scripts.
+    'test/ci-setup':
+      'build-ts run scripts/rename.ts && bun run --filter @judge/server :build-caches && sh scripts/install.sh',
+    // An unnamed workspace cannot be addressed with --filter (path filters resolve against the
+    // invoking cwd), so its scripts run via --cwd relative to the invoking package.
+    tools: "bun run --cwd 'packages/tools' :tool-cache",
+  });
+});
+
+test('routes a root-owned colon global script invoked from a child workspace', async () => {
+  const dirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-colon-root-')));
+  try {
+    const rootPackageJson = {
+      name: 'root-pkg',
+      workspaces: ['packages/*'],
+      scripts: { ':root-cache': 'echo root' },
+    };
+    const childPackageJson = {
+      name: '@x/child',
+      scripts: {
+        after: 'yarn :root-cache && cd dist && echo done',
+        deep: 'cd src && yarn :root-cache',
+        group: '{ cd src; yarn :root-cache; }',
+        semi: 'echo setup; cd src; yarn :root-cache',
+        warm: 'yarn :root-cache',
+      },
+    };
+    await fs.writeFile(path.join(dirPath, 'package.json'), JSON.stringify(rootPackageJson));
+    await fs.mkdir(path.join(dirPath, 'packages', 'child'), { recursive: true });
+    const childPackageJsonPath = path.join(dirPath, 'packages', 'child', 'package.json');
+    await fs.writeFile(childPackageJsonPath, JSON.stringify(childPackageJson));
+
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      packageJson: rootPackageJson,
+    });
+    const childConfig = createConfig({
+      dirPath: path.join(dirPath, 'packages', 'child'),
+      packageJson: childPackageJson,
+    });
+    await generatePackageJson(childConfig, rootConfig, true);
+
+    const generated = JSON.parse(await fs.readFile(childPackageJsonPath, 'utf8')) as GeneratedPackageJson;
+    // Bun's --filter never matches the workspace root, so root-owned scripts run via --cwd.
+    expect(generated.scripts?.warm).toBe("bun run --cwd '../..' :root-cache");
+    // A cd before the invocation would break the package-relative --cwd at runtime.
+    expect(generated.scripts?.deep).toBe('cd src && yarn :root-cache');
+    // The guard covers separators beyond && (e.g. `;`) and grouped commands too.
+    expect(generated.scripts?.semi).toBe('echo setup; cd src; yarn :root-cache');
+    expect(generated.scripts?.group).toBe('{ cd src; yarn :root-cache; }');
+    // A cd after the invocation cannot affect it and must not prevent the conversion.
+    expect(generated.scripts?.after).toBe("bun run --cwd '../..' :root-cache && cd dist && echo done");
+  } finally {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('preserves an already-pinned git commit of a private package instead of bumping it', async () => {
+  const pinnedSpecifier = 'git@github.com:WillBoosterLab/llm-proxy.git#4ef9b35e2d1d94adba17e167b7ae18a2e299f7f6';
+  const packageJson = await generatePackageJsonFrom({
+    devDependencies: { '@willbooster/llm-proxy': pinnedSpecifier },
+    scripts: {},
+  });
+
+  // The pinned ref survives; only the dependency section is normalized.
+  expect(packageJson.dependencies?.['@willbooster/llm-proxy']).toBe(pinnedSpecifier);
+  expect(packageJson.devDependencies?.['@willbooster/llm-proxy']).toBeUndefined();
+});
+
 test('preserves a leading MISE_ENV prefix on a mise bridge script', async () => {
   const packageJson = await generatePackageJsonFrom(
     {

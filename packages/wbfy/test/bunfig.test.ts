@@ -1,6 +1,12 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 import { expect, test } from 'vitest';
 
-import { extractRawTestSections } from '../src/generators/bunfig.js';
+import { extractRawTestSections, generateBunfigToml } from '../src/generators/bunfig.js';
+import { promisePool } from '../src/utils/promisePool.js';
+import { createConfig } from './testConfig.js';
 
 test('preserves [test] sections with their comments and drops other sections', () => {
   const existingContent = `env = false
@@ -29,4 +35,74 @@ preload = ["./test/unit/preloadDbClient.ts"]
 test('returns an empty string when there is no [test] section', () => {
   expect(extractRawTestSections(undefined)).toBe('');
   expect(extractRawTestSections('env = false\n\n[install]\nexact = true\n')).toBe('');
+});
+
+test('keeps the migrated .yarnrc.yml release-age-gate behavior in the generated bunfig.toml', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-bunfig-')));
+  try {
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), 'isolated', {
+      minimumReleaseAgeSeconds: 172_800,
+      minimumReleaseAgeExcludes: ['@willbooster/prettier-config', 'my-repo-specific-package', 'react'],
+    });
+    await promisePool.promiseAll();
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(content).toContain('minimumReleaseAge = 172800');
+    expect(content).toContain('"my-repo-specific-package",');
+    // An entry that overlaps the managed list is emitted exactly once — under the marker, so its
+    // repository-policy provenance survives even if the managed list later retires it.
+    expect(content.match(/^\s+"react",$/gmu)).toHaveLength(1);
+    expect(content.indexOf('"react",')).toBeGreaterThan(content.indexOf('# ---------- repository-specific entries'));
+    // An explicit preapproval the managed list omits for this (non-Java) repository is
+    // repository policy too and must survive under the marker.
+    expect(content).toContain('"@willbooster/prettier-config",');
+
+    // A later run has no .yarnrc.yml to read anymore (removeYarnFiles deleted it), so the
+    // repo-specific policy must survive via the existing bunfig.toml.
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }));
+    await promisePool.promiseAll();
+    const regenerated = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(regenerated).toContain('minimumReleaseAge = 172800');
+    expect(regenerated).toContain('"my-repo-specific-package",');
+    expect(regenerated.match(/^\s+"react",$/gmu)).toHaveLength(1);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
+test('drops managed exclude entries retired from the managed list instead of keeping them as repo policy', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfig-retired-')));
+  try {
+    // An entry an older wbfy version managed (e.g. @next/eslint-plugin-next) sits ABOVE the
+    // repository-specific marker, so a regeneration must not preserve it.
+    fs.writeFileSync(
+      path.join(tempDirPath, 'bunfig.toml'),
+      `[install]
+minimumReleaseAge = 432000 # 5 days
+minimumReleaseAgeExcludes = [
+    "@next/eslint-plugin-next",
+    "react",
+    # ---------- repository-specific entries ----------
+    "my-repo-specific-package",
+
+    # a hand-added comment must not truncate the repository-policy list
+    'single-quoted-package', # an inline comment with a quote mustn't drop the rest
+    'not@a@name',
+    "one-line-a", "one-line-b",
+]
+`
+    );
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }));
+    await promisePool.promiseAll();
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(content).not.toContain('@next/eslint-plugin-next');
+    expect(content).toContain('"my-repo-specific-package",');
+    expect(content).toContain('"single-quoted-package",');
+    // A marker entry that is not a plain npm package name is dead configuration and is dropped.
+    expect(content).not.toContain('not@a@name');
+    // Several comma-separated entries on one line are all preserved.
+    expect(content).toContain('"one-line-a",');
+    expect(content).toContain('"one-line-b",');
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
 });

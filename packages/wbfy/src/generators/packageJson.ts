@@ -149,7 +149,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   const jsonObj = await readPackageJson(filePath);
 
   await removeDeprecatedStuff(config, jsonObj);
-  await updateScripts(config, jsonObj);
+  await updateScripts(config, rootConfig, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
@@ -190,7 +190,11 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   return jsonObj as WritablePackageJson;
 }
 
-async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
+async function updateScripts(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  jsonObj: WritablePackageJson
+): Promise<void> {
   removeLegacyInstallCommands(jsonObj.scripts);
 
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
@@ -203,7 +207,7 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
   if (legacyOxfmtFormatCodeScripts.has(jsonObj.scripts['format-code'] ?? '')) {
     delete jsonObj.scripts['format-code'];
   }
-  convertYarnCommandsToBun(jsonObj.scripts);
+  convertYarnCommandsToBun(jsonObj.scripts, config, rootConfig);
   removeBunRuntimeFlagFromScripts(jsonObj.scripts);
 }
 
@@ -369,7 +373,45 @@ const yarnBuiltinSubcommands = new Set([
   'workspaces',
 ]);
 
-function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
+function convertYarnCommandsToBun(
+  scripts: PackageJson.Scripts,
+  config: PackageConfig,
+  rootConfig: PackageConfig
+): void {
+  // Yarn Berry treats ANY script name containing `:` as a potential "global" script: when the
+  // invoking workspace does not define it, Yarn runs the single workspace (root included) that
+  // does (plugin-essentials run.ts skips the lookup when several workspaces share the name). Bun
+  // has no such concept, so the invocation must be routed to the defining workspace explicitly.
+  // Resolved lazily: most scripts have no colon invocations.
+  let colonScriptOwners: Map<string, ColonScriptOwner | undefined> | undefined;
+  const convertColonScriptInvocation = (
+    match: string,
+    scriptName: string,
+    offset: number,
+    currentScript: string
+  ): string => {
+    if (typeof scripts[scriptName] === 'string') return `bun run ${scriptName}`;
+    colonScriptOwners ??= collectColonScriptOwners(rootConfig);
+    const owner = colonScriptOwners.get(scriptName);
+    const fallback = (): string =>
+      // A missing or ambiguous leading-colon script cannot run locally either, so its yarn form
+      // is kept to surface in review; other unresolved colon names keep the plain conversion
+      // (e.g. `cd sub && yarn build:sub` targeting a non-workspace directory).
+      scriptName.startsWith(':') ? match : `bun run ${scriptName}`;
+    if (!owner) return fallback();
+    // Bun's --filter never matches the workspace root, and its path filters resolve against the
+    // invoking cwd (both verified on Bun 1.3.14), so the root package and unnamed workspaces are
+    // addressed with --cwd relative to the invoking package instead.
+    if (owner.packageName && owner.dirPath !== path.resolve(rootConfig.dirPath)) {
+      return `bun run --filter ${owner.packageName} ${scriptName}`;
+    }
+    // A `cd` BEFORE this invocation would make the package-relative --cwd resolve from the wrong
+    // directory at runtime, so such invocations fall back instead of getting a silently broken
+    // route; a cd after the invocation cannot affect it and must not prevent the conversion.
+    if (prefixMayChangeWorkingDirectory(currentScript.slice(0, offset))) return fallback();
+    const relativeDirPath = path.relative(config.dirPath, owner.dirPath) || '.';
+    return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}' ${scriptName}`;
+  };
   // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
   // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
   for (const [key, value] of Object.entries(scripts)) {
@@ -387,17 +429,67 @@ function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
           // action, not a script; Bun's --filter only executes package scripts.
           run || !yarnBuiltinSubcommands.has(command) ? `bun run --filter ${packageName} ${command}` : match
       )
-      .replaceAll(/\byarn\s+run\b/gu, 'bun run')
+      // The token may contain any non-metacharacter (e.g. `build:@scope`), not just \w./:-,
+      // so the whole shell word is captured and the colon requirement is a lookahead. Only a
+      // leading `-` (a yarn flag) is excluded: Yarn's global lookup has no first-character
+      // restriction, so names like `.build:cache` must resolve too.
+      .replaceAll(/\byarn\s+(?:run\s+)?(?!-)((?=[^\s:;&|<>()'"`]*:)[^\s;&|<>()'"`]+)/gu, convertColonScriptInvocation)
+      // The `(?!\s+:)` guard keeps an unresolvable `yarn run :name` in its yarn form (the colon
+      // rule above already converted every resolvable one).
+      .replaceAll(/\byarn\s+run\b(?!\s+:)/gu, 'bun run')
       .replaceAll(/\byarn\s+install\b/gu, 'bun install')
-      // A bare `yarn <name>` invokes the package script; Yarn built-ins and flag forms
-      // (e.g. `yarn --cwd ...`) have no direct Bun equivalent and are intentionally left
-      // untouched to surface during review.
-      .replaceAll(/\byarn\s+(?![-.])([\w.:/-]+)/gu, (match, scriptName: string) =>
+      // A bare `yarn <name>` invokes the package script; Yarn built-ins, flag forms
+      // (e.g. `yarn --cwd ...`), and still-unconverted `:` global scripts have no direct Bun
+      // equivalent and are intentionally left untouched to surface during review.
+      .replaceAll(/\byarn\s+(?![-.:])([\w.:/-]+)/gu, (match, scriptName: string) =>
         yarnBuiltinSubcommands.has(scriptName) ? match : `bun run ${scriptName}`
       )
       // A bare `yarn` (at the end or before a command separator) is an install.
       .replaceAll(/\byarn\b(?=\s*(?:$|&&|\|\||[;|]))/gu, 'bun install');
   }
+}
+
+/**
+ * Whether the script prefix may change the working directory before the command that follows it.
+ * Any standalone `cd` (or `pushd`) token counts, wherever it appears — after separators, group
+ * braces, or shell keywords like `then`/`do` — because a wrongly-suppressed --cwd route merely
+ * surfaces in review, while a wrongly-emitted one breaks at runtime; false positives from `cd`
+ * appearing as data are an acceptable cost of that asymmetry.
+ */
+function prefixMayChangeWorkingDirectory(prefix: string): boolean {
+  return /(?<![\w./~-])(?:cd|pushd)(?![\w./~-])/u.test(prefix);
+}
+
+interface ColonScriptOwner {
+  dirPath: string;
+  packageName?: string;
+}
+
+/**
+ * Maps each colon-containing (workspace-global) script name to the single workspace defining it,
+ * or to undefined when several workspaces define it (Yarn refuses to run such an ambiguous
+ * global script anyway).
+ */
+function collectColonScriptOwners(rootConfig: PackageConfig): Map<string, ColonScriptOwner | undefined> {
+  const owners = new Map<string, ColonScriptOwner | undefined>();
+  // The root manifest participates too: Yarn treats the root as a workspace, so a child may
+  // invoke a root-owned global script. Unnamed manifests count as well — Yarn searches every
+  // workspace's scripts regardless of its name.
+  for (const packageJsonPath of new Set(['package.json', ...getWorkspacePackageJsonPaths(rootConfig)])) {
+    try {
+      const packageJson = JSON.parse(
+        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
+      ) as PackageJson;
+      const dirPath = path.dirname(path.resolve(rootConfig.dirPath, packageJsonPath));
+      for (const scriptName of Object.keys(packageJson.scripts ?? {})) {
+        if (!scriptName.includes(':')) continue;
+        owners.set(scriptName, owners.has(scriptName) ? undefined : { dirPath, packageName: packageJson.name });
+      }
+    } catch {
+      // An unreadable manifest only leaves its own global scripts unresolved.
+    }
+  }
+  return owners;
 }
 
 function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
@@ -1883,12 +1975,26 @@ async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void
     privatePackages.map(async ({ packageName, repo, target }) => {
       if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
 
+      const existingSpecifier = jsonObj.dependencies[packageName] ?? jsonObj.devDependencies[packageName];
       const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
       // The lint rule disallows `delete` with computed package names; Reflect has the same deletion semantics here.
       Reflect.deleteProperty(jsonObj[otherTarget], packageName);
-      jsonObj[target][packageName] = await getLatestPrivatePackageSpecifier(repo);
+      jsonObj[target][packageName] = isPinnedPrivatePackageSpecifier(existingSpecifier, repo)
+        ? existingSpecifier
+        : await getLatestPrivatePackageSpecifier(repo);
     })
   );
+}
+
+/**
+ * Whether the existing specifier already pins a git ref of the expected private repository.
+ * wbfy must not bump such pins: a run intended as configuration/package-manager maintenance
+ * would otherwise change the dependency's version as a side effect (updating pins is Renovate's
+ * job), possibly to a commit whose prebuilt artifacts are missing.
+ */
+function isPinnedPrivatePackageSpecifier(specifier: string | undefined, repo: string): specifier is string {
+  if (!specifier) return false;
+  return new RegExp(String.raw`(?:^|[:/])WillBoosterLab/${repo}(?:\.git)?#\S+$`, 'u').test(specifier);
 }
 
 async function getLatestPrivatePackageSpecifier(repo: string): Promise<string> {
