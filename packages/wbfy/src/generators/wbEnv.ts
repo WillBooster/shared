@@ -82,19 +82,17 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
 async function warnOnMismatchedDotenvWbEnvValues(dirPath: string, needsNextPublic: boolean): Promise<void> {
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
   const localContent = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, '.env.local'));
-  if (localContent !== undefined) {
-    const localKeys = dotenv.parse(localContent);
-    for (const keyName of keyNames) {
-      const value = localKeys[keyName];
-      // Empty values count as unset (wb supplies the fallback), and dynamic values cannot be
-      // evaluated statically.
-      if (typeof value === 'string' && value !== '' && !value.includes('$')) {
-        console.warn(
-          keyName === 'WB_ENV'
-            ? `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb fails fast when it mismatches the selected mode).`
-            : `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb overrides it with WB_ENV, but a direct framework build would inline this value).`
-        );
-      }
+  const localKeys = localContent === undefined ? {} : dotenv.parse(localContent);
+  for (const keyName of keyNames) {
+    const value = localKeys[keyName];
+    // Empty values count as unset (wb supplies the fallback), and dynamic values cannot be
+    // evaluated statically.
+    if (typeof value === 'string' && value !== '' && !value.includes('$')) {
+      console.warn(
+        keyName === 'WB_ENV'
+          ? `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb fails fast when it mismatches the selected mode).`
+          : `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb overrides it with WB_ENV, but a direct framework build would inline this value).`
+      );
     }
   }
   const baseContent = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, '.env'));
@@ -104,29 +102,38 @@ async function warnOnMismatchedDotenvWbEnvValues(dirPath: string, needsNextPubli
       mode === 'development'
         ? ['.env', '.env.development', '.env.development.local']
         : [`.env.${mode}`, `.env.${mode}.local`];
-    let modeDefinesWbEnv = false;
+    // Presence per KEY, by definition (`!== undefined`): even an EMPTY higher-precedence
+    // definition masks the base `.env` value in the loader, and `.env.local` masks it for every
+    // cascade.
+    const maskedKeys = new Set(keyNames.filter((keyName) => localKeys[keyName] !== undefined));
     for (const fileName of inspectedFileNames) {
       const content = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, fileName));
       if (content === undefined) continue;
       const definedKeys = dotenv.parse(content);
-      if (fileName !== '.env' && definedKeys.WB_ENV) modeDefinesWbEnv = true;
       for (const keyName of keyNames) {
+        if (fileName !== '.env' && definedKeys[keyName] !== undefined) maskedKeys.add(keyName);
         warnOnUnexpectedWbEnvValue(keyName, definedKeys[keyName], mode, fileName);
       }
     }
-    // The shared `.env` loads in EVERY cascade, so without a higher-precedence mode definition
-    // its WB_ENV leaks into this cascade and wb fails fast on the mismatch.
-    const baseWbEnv = baseKeys.WB_ENV;
-    if (
-      mode !== 'development' &&
-      !modeDefinesWbEnv &&
-      typeof baseWbEnv === 'string' &&
-      baseWbEnv !== '' &&
-      baseWbEnv !== mode &&
-      !baseWbEnv.includes('$')
-    ) {
+    if (mode === 'development') continue;
+    // The shared `.env` loads in EVERY cascade, so without a higher-precedence definition its
+    // values leak into this cascade: a leaked WB_ENV makes wb fail fast on the mismatch, and a
+    // leaked NEXT_PUBLIC_WB_ENV would be inlined by a direct framework build.
+    for (const keyName of keyNames) {
+      const baseValue = baseKeys[keyName];
+      if (
+        maskedKeys.has(keyName) ||
+        typeof baseValue !== 'string' ||
+        baseValue === '' ||
+        baseValue === mode ||
+        baseValue.includes('$')
+      ) {
+        continue;
+      }
       console.warn(
-        `WB_ENV in .env is "${baseWbEnv}" and no .env.${mode} defines WB_ENV, so the ${mode} cascade would resolve "${baseWbEnv}" and wb fails fast; define WB_ENV=${mode} in .env.${mode} or remove WB_ENV from .env.`
+        keyName === 'WB_ENV'
+          ? `WB_ENV in .env is "${baseValue}" and no .env.${mode} defines WB_ENV, so the ${mode} cascade would resolve "${baseValue}" and wb fails fast; define WB_ENV=${mode} in .env.${mode} or remove WB_ENV from .env.`
+          : `NEXT_PUBLIC_WB_ENV in .env is "${baseValue}" and no .env.${mode} defines NEXT_PUBLIC_WB_ENV, so a direct framework ${mode} build would inline "${baseValue}"; define NEXT_PUBLIC_WB_ENV=${mode} in .env.${mode} (wb itself overrides it with WB_ENV).`
       );
     }
   }
