@@ -32,6 +32,7 @@ import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
+import { getDeclaredWorkspacePatterns, getWorkspacePackageJsonPaths } from '../utils/workspaceUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
@@ -475,9 +476,20 @@ async function applyPackageJsonConventions(
     if (config.doesContainSubPackageJsons) {
       // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
       // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
-      jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), ['packages/*']], {
+      // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
+      // monorepo must not get a never-matching pattern appended to its declaration.
+      const forcedPatterns =
+        fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
+          ? ['packages/*']
+          : [];
+      jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), forcedPatterns], {
         arrayMerge: combineMerge,
       });
+      // Both inputs can be empty (e.g. packages/package.json without any packages/*/package.json
+      // and no declared workspaces); do not persist a meaningless `workspaces: []`.
+      if (Array.isArray(jsonObj.workspaces) && jsonObj.workspaces.length === 0) {
+        delete jsonObj.workspaces;
+      }
     } else if (Array.isArray(jsonObj.workspaces)) {
       jsonObj.workspaces = jsonObj.workspaces.filter(
         (workspace) =>
@@ -1424,12 +1436,6 @@ function doesProductCodeImportMicromatch(dirPath: string): boolean {
   });
 }
 
-/** Workspace patterns from either the array form or Yarn v1's `{ packages: […] }` object form. */
-function getDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): string[] {
-  if (Array.isArray(workspaces)) return workspaces;
-  return Array.isArray(workspaces?.packages) ? workspaces.packages : [];
-}
-
 const workspacePackageDirsCache = new Map<string, Map<string, string>>();
 
 /** Map from each workspace package's name to its directory (relative to the monorepo root). */
@@ -1452,44 +1458,6 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
   }
   workspacePackageDirsCache.set(rootConfig.dirPath, workspaceDirsByName);
   return workspaceDirsByName;
-}
-
-/**
- * Every workspace package.json path (relative to the monorepo root), including manifests without
- * a `name` field — wbfy names those later, so dependency scans must not skip them.
- */
-function getWorkspacePackageJsonPaths(rootConfig: PackageConfig): string[] {
-  // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
-  // not have written the root package.json yet, so mirror that normalization here.
-  const workspacePatterns = [
-    ...new Set([
-      ...getDeclaredWorkspacePatterns(rootConfig.packageJson?.workspaces),
-      ...(rootConfig.doesContainSubPackageJsons ? ['packages/*'] : []),
-    ]),
-  ];
-  // Expand all patterns in one glob call so Bun-supported negative patterns (e.g.
-  // `!packages/excluded`) actually exclude their matches. Do not apply globIgnore here: workspace
-  // membership is defined solely by the declared patterns, and source-scanning ignores such as
-  // `build` or `dist` would hide legitimately named workspace directories.
-  const packageJsonGlobs = workspacePatterns
-    // Workspace directories must stay inside the repository: absolute or `..`-traversing patterns
-    // would make consumers such as removeNodeModules operate on another repository's files.
-    .filter((workspacePattern) => {
-      const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
-      return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
-    })
-    .map((workspacePattern) =>
-      workspacePattern.startsWith('!')
-        ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
-        : path.posix.join(workspacePattern, 'package.json')
-    );
-  // followSymbolicLinks: false — a workspace symlink pointing outside the repository must not be
-  // treated as a workspace directory (removeNodeModules would delete through it).
-  return fg.globSync(packageJsonGlobs, {
-    cwd: rootConfig.dirPath,
-    followSymbolicLinks: false,
-    ignore: ['**/node_modules/**'],
-  });
 }
 
 function shouldUpdateExistingManagedDependency(
@@ -1611,25 +1579,47 @@ function applyDatabaseScripts(
 ): void {
   if (!config.depending.prisma && !config.depending.drizzle) return;
 
-  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`);
-  applyDatabaseScript(scripts, oldScripts, 'db-migrate', `${wbDbCommand} migrate --check-idempotency`);
-  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`);
+  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`, /migrate-dev/u);
+  applyDatabaseScript(
+    scripts,
+    oldScripts,
+    'db-migrate',
+    `${wbDbCommand} migrate --check-idempotency`,
+    /migrate(?:[ \t]+--check-idempotency)?/u
+  );
+  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`, /studio/u);
 }
 
 function applyDatabaseScript(
   scripts: Record<string, string>,
   oldScripts: PackageJson.Scripts,
   name: string,
-  generatedScript: string
+  generatedScript: string,
+  generatedArgsPattern: RegExp
 ): void {
   const oldScript = oldScripts[name];
   // Some repositories wrap migration commands to prepare SQLite directories,
   // fan out over tenants, or perform cleanup that wb cannot infer generically.
-  scripts[name] = oldScript && !isGeneratedDatabaseScript(oldScript) ? oldScript : generatedScript;
+  scripts[name] =
+    oldScript && !isGeneratedDatabaseScript(oldScript, generatedArgsPattern) ? oldScript : generatedScript;
 }
 
-function isGeneratedDatabaseScript(script: string): boolean {
-  return /\bwb\s+(?:db|prisma)\b/u.test(script);
+/**
+ * Whether a script body is one of the KNOWN generated `wb db`/`wb prisma` invocations FOR THE
+ * GIVEN managed script (allowing legacy runner prefixes, including the historical `bun --bun`,
+ * and that script's historical argument variants such as `migrate` without `--check-idempotency`).
+ * Anchored on the WHOLE body AND on the exact generated argument list so a custom wrapper that
+ * merely contains a wb call (`prepare-sqlite && WB_ENV=… wb db studio`), carries extra flags
+ * (`wb prisma studio --port 5556`), or reuses another managed script's command
+ * (`"db-migrate": "wb db migrate-dev"`) is preserved instead of being replaced wholesale.
+ */
+function isGeneratedDatabaseScript(script: string, generatedArgsPattern: RegExp): boolean {
+  // Horizontal whitespace only ([ \t]) — a newline is a shell command separator, so a
+  // newline-containing body is a multi-command wrapper that must be preserved.
+  return new RegExp(
+    String.raw`^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+(?:db|prisma)[ \t]+(?:${generatedArgsPattern.source})$`,
+    'u'
+  ).test(script.trim());
 }
 
 function getWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' {

@@ -32,6 +32,7 @@ __generated__/
 .tokensave/
 .wb/
 @willbooster/
+@willbooster-private/
 */mount/*.hash
 CLAUDE.local.md
 dist/

@@ -14,6 +14,7 @@ import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
+import { getWorkspacePackageJsonPaths } from './utils/workspaceUtil.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -100,7 +101,10 @@ const wbfyJsonSchema = z.object({
     .optional(),
 });
 
-export async function getPackageConfig(dirPath: string): Promise<PackageConfig | undefined> {
+export async function getPackageConfig(
+  dirPath: string,
+  options?: { isRoot?: boolean }
+): Promise<PackageConfig | undefined> {
   const packageJsonPath = path.resolve(dirPath, 'package.json');
   try {
     const doesContainPackageJson = fs.existsSync(packageJsonPath);
@@ -132,9 +136,11 @@ export async function getPackageConfig(dirPath: string): Promise<PackageConfig |
       // do nothing
     }
 
-    const isRoot =
-      path.basename(path.resolve(dirPath, '..')) !== 'packages' ||
-      !fs.existsSync(path.resolve(dirPath, '..', '..', 'package.json'));
+    // The caller may classify explicitly (index.ts passes false for every discovered workspace,
+    // including non-packages/* layouts such as apps/*); the heuristic classifies the CLI entry
+    // path itself, so `wbfy <repo>/packages/<app>` and `wbfy <repo>/apps/<app>` keep their child
+    // classification.
+    const isRoot = options?.isRoot ?? !isWorkspaceOfEnclosingRoot(dirPath);
 
     let repoInfo: Record<string, unknown> | undefined;
     if (isRoot) {
@@ -191,7 +197,12 @@ export async function getPackageConfig(dirPath: string): Promise<PackageConfig |
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
-      doesContainSubPackageJsons: containsAny('packages/**/package.json', dirPath),
+      // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
+      // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in
+      // generatePackageJson and skip monorepo-only conventions such as root `private: true`.
+      doesContainSubPackageJsons:
+        containsAny('packages/**/package.json', dirPath) ||
+        getWorkspacePackageJsonPaths({ dirPath, packageJson, doesContainSubPackageJsons: false }).length > 0,
       doesContainDockerfile: !!dockerfile || fs.existsSync(path.resolve(dirPath, 'docker-compose.yml')),
       doesContainGemfile: fs.existsSync(path.resolve(dirPath, 'Gemfile')),
       doesContainGoMod: fs.existsSync(path.resolve(dirPath, 'go.mod')),
@@ -632,6 +643,49 @@ function readMiseTaskCommand(value: unknown): string {
   if (Array.isArray(value)) return value.filter((command): command is string => typeof command === 'string').join('\n');
   if (value && typeof value === 'object') return readMiseTaskCommand((value as { run?: unknown }).run);
   return '';
+}
+
+/**
+ * Whether dirPath is a child workspace of an enclosing monorepo root: either the conventional
+ * `<root>/packages/<name>` layout, or a directory matching a workspace pattern declared by an
+ * ancestor package.json (patterns may be arbitrarily deep, e.g. `examples/**`). The walk stops
+ * at the first git repository boundary so an unrelated enclosing repository's workspaces can
+ * never reclassify an independent repository as a child.
+ */
+function isWorkspaceOfEnclosingRoot(dirPath: string): boolean {
+  const resolvedDirPath = path.resolve(dirPath);
+  // A directory with its own .git is a repository in its own right, never a child workspace —
+  // checked FIRST so an independent repository under some `packages/` directory stays a root.
+  if (fs.existsSync(path.resolve(resolvedDirPath, '.git'))) return false;
+  if (
+    path.basename(path.resolve(resolvedDirPath, '..')) === 'packages' &&
+    fs.existsSync(path.resolve(resolvedDirPath, '..', '..', 'package.json'))
+  ) {
+    return true;
+  }
+  for (
+    let candidateRootDirPath = path.dirname(resolvedDirPath);
+    ;
+    candidateRootDirPath = path.dirname(candidateRootDirPath)
+  ) {
+    try {
+      const rootPackageJson = JSON.parse(
+        fs.readFileSync(path.resolve(candidateRootDirPath, 'package.json'), 'utf8')
+      ) as PackageJson;
+      const relativeDirPath = path.relative(candidateRootDirPath, resolvedDirPath).replaceAll('\\', '/');
+      const workspaceDirPaths = getWorkspacePackageJsonPaths({
+        dirPath: candidateRootDirPath,
+        packageJson: rootPackageJson,
+        doesContainSubPackageJsons: false,
+      }).map((packageJsonPath) => path.posix.dirname(packageJsonPath));
+      if (workspaceDirPaths.includes(relativeDirPath)) return true;
+    } catch {
+      // No or unparsable manifest at this ancestor: keep walking.
+    }
+    const isRepoBoundary = fs.existsSync(path.resolve(candidateRootDirPath, '.git'));
+    const isFilesystemRoot = candidateRootDirPath === path.dirname(candidateRootDirPath);
+    if (isRepoBoundary || isFilesystemRoot) return false;
+  }
 }
 
 function containsAny(pattern: string, dirPath: string): boolean {

@@ -445,22 +445,31 @@ function readCiAgeSecretKey(): string | undefined {
   // would let a personal identity copied to this path leak to every repository's CI.
   const ciPublicKey = FNOX_AGE_RECIPIENTS.find((recipient) => recipient.name === 'ci')?.publicKey ?? '';
   // Compare the whole trimmed comment value, not a substring match: a personal identity whose
-  // comment merely mentions the CI key must not pass.
+  // comment merely mentions the CI key must not pass. Check EVERY `# public key:` comment, not
+  // just the first: a legitimate multi-identity file (key rotation) contains one comment per
+  // identity and only one of them matches the single registered CI key, in either order.
   const lines = content.split('\n');
-  const publicKeyLine = lines.find((line) => line.includes('public key:'));
-  const commentedPublicKey = publicKeyLine?.split('public key:')[1]?.trim();
-  if (!ciPublicKey || commentedPublicKey !== ciPublicKey) {
+  const commentedPublicKeys = lines
+    .filter((line) => line.includes('public key:'))
+    .map((line) => line.split('public key:')[1]?.trim());
+  if (!ciPublicKey || !commentedPublicKeys.includes(ciPublicKey)) {
     console.error(
       `Failed to upload secrets because the \`# public key:\` comment in ${identityPath} is missing or differs from the CI age public key (${ciPublicKey}), so the file does not hold the CI-dedicated identity.`
     );
     return undefined;
   }
-  const keyLine = lines.find((line) => line.trim().startsWith('AGE-SECRET-KEY-'));
-  if (!keyLine) {
+  // Keep EVERY identity line: fnox parses FNOX_AGE_KEY as age identity-file content and tries all
+  // identities, so truncating a multi-identity file (key rotation, multiple recipients) to the
+  // first key would make CI silently skip every secret encrypted to the other identities.
+  // Identities beyond the verified CI one are deliberately NOT rejected: during rotation the
+  // outgoing CI key is no longer in FNOX_AGE_RECIPIENTS yet must still decrypt on CI, and this
+  // CI-dedicated path is operator-managed (the personal identity lives in age.txt, not here).
+  const keyLines = lines.map((line) => line.trim()).filter((line) => line.startsWith('AGE-SECRET-KEY-'));
+  if (keyLines.length === 0) {
     console.error(`Failed to upload secrets because ${identityPath} contains no AGE-SECRET-KEY line.`);
     return undefined;
   }
-  return keyLine.trim();
+  return keyLines.join('\n');
 }
 
 // Decrypts ENCRYPTED_VERDACCIO_TOKEN with the CI age identity by running `fnox get` on a minimal

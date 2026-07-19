@@ -1444,6 +1444,40 @@ test('keeps custom database scripts for drizzle projects', async () => {
   });
 });
 
+test('preserves custom wrapper bodies of managed db scripts that contain a wb db call', async () => {
+  const wrapperScripts = {
+    'db-create-migration': 'prepare-sqlite && wb db migrate-dev',
+    'db-migrate': 'for t in a b; do DATABASE_URL=$t wb prisma migrate; done',
+    // oxlint-disable-next-line no-template-curly-in-string -- the shell-default form under test
+    'db-view': 'prepare-sqlite && WB_ENV=${WB_ENV:-development} wb db studio',
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: wrapperScripts },
+    { depending: { ...createConfig().depending, prisma: true } }
+  );
+
+  expect(packageJson.scripts).toMatchObject(wrapperScripts);
+});
+
+test('replaces plain generated db script bodies (with or without runner prefixes)', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'db-create-migration': 'yarn wb prisma migrate-dev',
+        'db-migrate': 'bun wb prisma migrate',
+        'db-view': 'wb prisma studio',
+      },
+    },
+    { depending: { ...createConfig().depending, prisma: true } }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'db-create-migration': 'bun wb prisma migrate-dev',
+    'db-migrate': 'bun wb prisma migrate --check-idempotency',
+    'db-view': 'bun wb prisma studio',
+  });
+});
+
 test('uses bun runner for generated Python scripts in bun projects', async () => {
   const packageJson = await generatePackageJsonFrom(
     { scripts: {} },

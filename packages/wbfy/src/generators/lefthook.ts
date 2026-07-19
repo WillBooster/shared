@@ -98,13 +98,16 @@ run_if_changed() {
 `.trim(),
 };
 
-export async function generateLefthookUpdatingPackageJson(config: PackageConfig): Promise<void> {
+export async function generateLefthookUpdatingPackageJson(
+  config: PackageConfig,
+  allConfigs: PackageConfig[] = [config]
+): Promise<void> {
   return logger.functionIgnoringException('generateLefthookUpdatingPackageJson', async () => {
-    await core(config);
+    await core(config, allConfigs);
   });
 }
 
-async function core(config: PackageConfig): Promise<void> {
+async function core(config: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   const dirPath = path.resolve(config.dirPath, '.lefthook');
   const huskyDirPath = path.resolve(config.dirPath, '.husky');
   const hasHuskyDir = fs.existsSync(huskyDirPath);
@@ -146,7 +149,7 @@ async function core(config: PackageConfig): Promise<void> {
       mode: 0o755,
     });
   }
-  const postMergeCommand = `${scripts.postMerge}\n\n${generatePostMergeCommands(config).join('\n')}\n`;
+  const postMergeCommand = `${scripts.postMerge}\n\n${generatePostMergeCommands(config, allConfigs).join('\n')}\n`;
   fs.mkdirSync(path.join(dirPath, 'post-merge'), { recursive: true });
   await fs.promises.writeFile(path.resolve(dirPath, 'post-merge', 'prepare.sh'), postMergeCommand, {
     mode: 0o755,
@@ -297,7 +300,7 @@ function hasLocalWbWorkspace(config: PackageConfig): boolean {
   }
 }
 
-function generatePostMergeCommands(config: PackageConfig): string[] {
+function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageConfig[]): string[] {
   const postMergeCommands: string[] = [];
   // Always emit the mise hook: every managed repository receives mise.toml from generateMiseToml
   // in the same run, and gating on a pre-run hasVersionSettings snapshot would omit the hook on
@@ -307,16 +310,38 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
   const installCommand = 'bun install';
   // Do NOT add `.vinext` here: it holds only vinext's content-hashed font cache and the dev
   // server's lock file (deleting the lock disables the duplicate-dev-server guard for a running
-  // server). vinext's build output goes to `dist/`, and Vite's dependency cache in
-  // `node_modules/.vite` self-invalidates on lockfile / patches / config / NODE_ENV changes
-  // (see Vite's dep pre-bundling docs) - the residual install-layout case (bunfig.toml/.npmrc
-  // changes alone don't touch the lockfile, so Vite's cache survives) is tracked in #983.
-  const rmNextDirectory = config.depending.blitz || config.depending.next ? ' && rm -Rf .next' : '';
+  // server). vinext's build output goes to `dist/`, and Vite's dependency cache is handled by
+  // the separate install-layout hook below.
+  // Scan every workspace config (not just the root): in a monorepo the app usually lives in
+  // packages/<app> or apps/<app>, and the cache directories are workspace-relative.
+  const nextCacheDirPaths = collectWorkspaceRelativeDirPaths(
+    config,
+    allConfigs,
+    (workspaceConfig) => workspaceConfig.depending.blitz || workspaceConfig.depending.next,
+    '.next'
+  );
+  const rmNextDirectories =
+    nextCacheDirPaths.length > 0 ? ` && rm -Rf -- ${nextCacheDirPaths.map(quoteForEvaluatedShell).join(' ')}` : '';
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
   postMergeCommands.push(
-    String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|\.npmrc|patches/)" "${installCommand}${rmNextDirectory}"`
+    String.raw`run_if_changed "(package\.json|bun\.lock|bunfig\.toml|\.npmrc|patches/)" "${installCommand}${rmNextDirectories}"`
   );
+  // Vite's dependency cache in node_modules/.vite self-invalidates on lockfile / patches /
+  // config / NODE_ENV changes (see Vite's dep pre-bundling docs), so the residual stale case is
+  // install-layout changes (bunfig.toml linker, .npmrc): they change the installed tree without
+  // touching the lockfile, and they are absent from Vite's cache key.
+  const rmViteCacheDirectories = collectWorkspaceRelativeDirPaths(
+    config,
+    allConfigs,
+    (workspaceConfig) => workspaceConfig.depending.vinext || workspaceConfig.depending.vite,
+    'node_modules/.vite'
+  );
+  if (rmViteCacheDirectories.length > 0) {
+    postMergeCommands.push(
+      String.raw`run_if_changed "(bunfig\.toml|\.npmrc)" "rm -Rf -- ${rmViteCacheDirectories.map(quoteForEvaluatedShell).join(' ')}"`
+    );
+  }
   if (config.doesContainPoetryLock) {
     postMergeCommands.push(String.raw`run_if_changed "poetry\.lock" "poetry install"`);
   }
@@ -341,6 +366,39 @@ function generatePostMergeCommands(config: PackageConfig): string[] {
     postMergeCommands.push(String.raw`run_if_changed "(^|/)i18n/.*\.json$" "${genI18nTsCommand}"`);
   }
   return postMergeCommands;
+}
+
+// The generated command passes through TWO shell parsing stages: the prepare.sh line parses it as
+// a double-quoted argument (processing \, `, $ and " immediately), and run_if_changed then eval's
+// it (word-splitting and globbing). An unquoted path containing spaces (e.g. `apps/my app/.next`)
+// would word-split into unrelated rm targets, and `$`/backtick would expand at the first stage.
+// So: single-quote for the eval stage, then backslash-escape the double-quote-context specials.
+function quoteForEvaluatedShell(filePath: string): string {
+  const evalQuoted = `'${filePath.replaceAll("'", String.raw`'\''`)}'`;
+  return evalQuoted.replaceAll(/[\\`$"]/gu, String.raw`\$&`);
+}
+
+/**
+ * The workspace-relative directories (root first, deduplicated, `<subDirName>` appended) of every
+ * workspace whose config matches the predicate. The hook script runs at the repository root, so
+ * paths are relative to the root config's directory.
+ */
+function collectWorkspaceRelativeDirPaths(
+  rootConfig: PackageConfig,
+  allConfigs: PackageConfig[],
+  predicate: (config: PackageConfig) => boolean,
+  subDirName: string
+): string[] {
+  return [
+    ...new Set(
+      allConfigs
+        .filter((config) => predicate(config))
+        .map((config) => {
+          const relativeDirPath = path.relative(rootConfig.dirPath, config.dirPath).replaceAll('\\', '/');
+          return relativeDirPath ? path.posix.join(relativeDirPath, subDirName) : subDirName;
+        })
+    ),
+  ].toSorted();
 }
 
 function hasPythonPackageManager(config: PackageConfig): boolean {

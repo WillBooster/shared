@@ -12,6 +12,7 @@ import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
 import { fixWbDbCommand } from './fixers/wbDbCommand.js';
+import { untrackCloudflareEnv } from './fixers/cloudflareEnv.js';
 import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import type { BunLinker } from './generators/bunfig.js';
@@ -38,6 +39,7 @@ import { generateRenovateJson } from './generators/renovateJson.js';
 import { installAgentSkills } from './generators/skills.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { generateVscodeSettings } from './generators/vscodeSettings.js';
+import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
 import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
 import { findUnmigratableYarnSettings, removeYarnFiles } from './generators/removeYarnFiles.js';
@@ -55,6 +57,7 @@ import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
+import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -141,7 +144,26 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
     const packagesDirPath = path.join(rootDirPath, 'packages');
     const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
-    const subDirPaths = dirents.filter((d) => d.isDirectory()).map((d) => path.join(packagesDirPath, d.name));
+    const packagesSubDirPaths = dirents
+      .filter((d) => d.isDirectory())
+      .map((d) => path.resolve(packagesDirPath, d.name));
+    // Also cover workspaces declared outside packages/* (e.g. apps/*): they receive the same
+    // managed configs (tsconfig.json, package.json conventions, …) as packages/* children.
+    const rootPackageJson =
+      ignoreError(
+        () =>
+          JSON.parse(fs.readFileSync(path.resolve(rootDirPath, 'package.json'), 'utf8')) as PackageConfig['packageJson']
+      ) ?? {};
+    const workspaceSubDirPaths = getWorkspaceSubDirPaths({
+      dirPath: rootDirPath,
+      packageJson: rootPackageJson,
+      doesContainSubPackageJsons: packagesSubDirPaths.some((subDirPath) =>
+        fs.existsSync(path.resolve(subDirPath, 'package.json'))
+      ),
+    });
+    const subDirPaths = [...new Set([...packagesSubDirPaths, ...workspaceSubDirPaths])].filter(
+      (subDirPath) => subDirPath !== path.resolve(rootDirPath)
+    );
 
     // Refused writes on core managed files would leave the migration half-applied (e.g. Yarn state
     // removed but bunfig.toml unchanged, or a test directory renamed without its script), so skip
@@ -165,6 +187,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
     await fixTestDirectoriesUpdatingPackageJson([rootDirPath, ...subDirPaths]);
 
+    // Let getPackageConfig derive isRoot for the entry path: `wbfy <repo>/packages/<app>` is a
+    // supported invocation whose target must keep its child classification, so forcing
+    // `isRoot: true` here would apply root-only processing (lefthook install, root tsconfig,
+    // AGENTS.md, …) to a subpackage.
     const rootConfig = await getPackageConfig(rootDirPath);
     if (options.isVerbose) {
       console.log('rootConfig:', rootConfig);
@@ -176,7 +202,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     }
     const abbreviationPromise = fixTypos(rootConfig);
 
-    const nullableSubPackageConfigs = await Promise.all(subDirPaths.map((subDirPath) => getPackageConfig(subDirPath)));
+    // Every discovered workspace (including non-packages/* layouts such as apps/*) is a child
+    // package; the packages/* heuristic inside getPackageConfig would misclassify apps/* as roots.
+    const nullableSubPackageConfigs = await Promise.all(
+      subDirPaths.map((subDirPath) => getPackageConfig(subDirPath, { isRoot: false }))
+    );
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
 
@@ -197,6 +227,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     // Must finish before setupSecrets below: it rewrites the age recipients in fnox.toml and
     // re-encrypts the secrets that FNOX_AGE_KEY (uploaded by setupSecrets) must be able to decrypt.
     await generateFnoxToml(rootConfig);
+    // After generateFnoxToml so the insertion can never race the transactional recipient
+    // migration (which snapshots and may restore every fnox.toml).
+    await ensureWbEnvDefinitions(rootConfig, allPackageConfigs);
     // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
     // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
     await promisePool.promiseAll();
@@ -235,7 +268,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       setupRepositoryRulesets(rootConfig),
       setupSecrets(rootConfig),
       setupGitHubSettings(rootConfig),
-      generateLefthookUpdatingPackageJson(rootConfig),
+      // Git hooks are repository-level state: when the CLI entry is a child workspace
+      // (`wbfy <repo>/apps/<app>`), installing Lefthook there would delete the child's .husky,
+      // write a child lefthook.yml, and unset the ENCLOSING repository's core.hooksPath.
+      ...(rootConfig.isRoot ? [generateLefthookUpdatingPackageJson(rootConfig, allPackageConfigs)] : []),
       generateLintstagedrc(rootConfig),
     ]);
     await promisePool.promiseAll();
@@ -264,6 +300,12 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       // partial run is possible) would delete the declaration with nothing recreating it on fresh checkouts.
       if (generatesWorkerTypes(config)) {
         await untrackWorkerTypes(config);
+      }
+      // Same barrier reasoning as untrackWorkerTypes: the pooled .gitignore write (which carries
+      // the managed .env.cloudflare rule) completed above, and the fixer re-verifies the rule via
+      // `git check-ignore` before untracking.
+      if (config.isCloudflare || rootConfig.isCloudflare) {
+        await untrackCloudflareEnv(config);
       }
 
       promises.push(generateLintstagedrc(config));
