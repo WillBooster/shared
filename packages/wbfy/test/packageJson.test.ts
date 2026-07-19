@@ -1525,9 +1525,11 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
       workspaces: ['packages/*'],
       scripts: {
         ':local-cache': 'echo local',
+        'cache-all': 'yarn build:cache',
         local: 'yarn :local-cache',
         missing: 'yarn :unknown-script && yarn run :unknown-script',
         'test/ci-setup': 'build-ts run scripts/rename.ts && yarn :build-caches && sh scripts/install.sh',
+        tools: 'yarn :tool-cache',
       },
     },
     { isRoot: true, doesContainSubPackageJsons: true },
@@ -1535,20 +1537,28 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
       files: {
         'packages/server/package.json': JSON.stringify({
           name: '@judge/server',
-          scripts: { ':build-caches': 'echo build' },
+          scripts: { ':build-caches': 'echo build', 'build:cache': 'echo mid-colon' },
+        }),
+        'packages/tools/package.json': JSON.stringify({
+          scripts: { ':tool-cache': 'echo tool' },
         }),
       },
     }
   );
 
   expect(packageJson.scripts).toMatchObject({
+    // Yarn treats ANY colon-containing name as global, not only leading-colon ones.
+    'cache-all': 'bun run --filter @judge/server build:cache',
     // A colon script defined in the invoking package stays a local bun run.
     local: 'bun run :local-cache',
-    // A colon script no workspace defines keeps its yarn form to surface in review.
+    // A leading-colon script no workspace defines keeps its yarn form to surface in review.
     missing: 'yarn :unknown-script && yarn run :unknown-script',
     // A colon script defined in another workspace is routed there: bun has no global scripts.
     'test/ci-setup':
       'build-ts run scripts/rename.ts && bun run --filter @judge/server :build-caches && sh scripts/install.sh',
+    // An unnamed workspace cannot be addressed with --filter (path filters resolve against the
+    // invoking cwd), so its scripts run via --cwd relative to the invoking package.
+    tools: "bun run --cwd 'packages/tools' :tool-cache",
   });
 });
 
@@ -1579,7 +1589,8 @@ test('routes a root-owned colon global script invoked from a child workspace', a
     await generatePackageJson(childConfig, rootConfig, true);
 
     const generated = JSON.parse(await fs.readFile(childPackageJsonPath, 'utf8')) as GeneratedPackageJson;
-    expect(generated.scripts?.warm).toBe('bun run --filter root-pkg :root-cache');
+    // Bun's --filter never matches the workspace root, so root-owned scripts run via --cwd.
+    expect(generated.scripts?.warm).toBe("bun run --cwd '../..' :root-cache");
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }

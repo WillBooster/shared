@@ -1,11 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import fg from 'fast-glob';
 import { load as loadYaml } from 'js-yaml';
+import type { PackageJson } from 'type-fest';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { promisePool } from '../utils/promisePool.js';
+import { getWorkspacePackageJsonPaths } from '../utils/workspaceUtil.js';
 
 // Yarn settings wbfy can safely drop when migrating to Bun: tooling and cosmetics that do not
 // change what gets installed, plus the org-standard release-age-gate settings that have a Bun
@@ -81,14 +84,42 @@ export function findUnmigratableYarnSettings(dirPath: string): string | undefine
   if (fs.existsSync(path.resolve(dirPath, '.yarn', 'patches'))) {
     reasons.push('.yarn/patches exists');
   }
-  try {
-    if (fs.readFileSync(path.resolve(dirPath, 'package.json'), 'utf8').includes('"patch:')) {
-      reasons.push('package.json uses the patch: protocol');
-    }
-  } catch {
-    // A missing package.json is reported by getPackageConfig later.
+  for (const manifestPath of findPatchProtocolManifests(dirPath)) {
+    reasons.push(`${manifestPath} uses the patch: protocol`);
   }
   return reasons.length > 0 ? reasons.join('; ') : undefined;
+}
+
+/**
+ * Workspace manifests can declare `patch:` dependencies too, and the migration later rewrites
+ * every workspace manifest, so the preflight must inspect the same manifest set as the main flow.
+ * @return The root-relative paths of every manifest using the patch: protocol.
+ */
+function findPatchProtocolManifests(dirPath: string): string[] {
+  const manifestPaths = new Set(['package.json']);
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.resolve(dirPath, 'package.json'), 'utf8')) as PackageJson;
+    for (const packageJsonPath of getWorkspacePackageJsonPaths({
+      dirPath,
+      packageJson,
+      doesContainSubPackageJsons: fg.globSync('packages/*/package.json', { cwd: dirPath }).length > 0,
+    })) {
+      manifestPaths.add(packageJsonPath);
+    }
+  } catch {
+    // A missing or unparsable root package.json is reported by getPackageConfig later.
+  }
+  const offendingPaths: string[] = [];
+  for (const manifestPath of manifestPaths) {
+    try {
+      if (fs.readFileSync(path.resolve(dirPath, manifestPath), 'utf8').includes('"patch:')) {
+        offendingPaths.push(manifestPath);
+      }
+    } catch {
+      // An unreadable workspace manifest cannot prove a patch: dependency.
+    }
+  }
+  return offendingPaths;
 }
 
 function isMigratableYarnrcSetting(key: string, value: unknown): boolean {

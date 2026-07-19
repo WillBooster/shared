@@ -207,7 +207,7 @@ async function updateScripts(
   if (legacyOxfmtFormatCodeScripts.has(jsonObj.scripts['format-code'] ?? '')) {
     delete jsonObj.scripts['format-code'];
   }
-  convertYarnCommandsToBun(jsonObj.scripts, rootConfig);
+  convertYarnCommandsToBun(jsonObj.scripts, config, rootConfig);
   removeBunRuntimeFlagFromScripts(jsonObj.scripts);
 }
 
@@ -373,18 +373,35 @@ const yarnBuiltinSubcommands = new Set([
   'workspaces',
 ]);
 
-function convertYarnCommandsToBun(scripts: PackageJson.Scripts, rootConfig: PackageConfig): void {
-  // Yarn Berry runs a `:`-prefixed script of ANOTHER workspace when the invoking package does not
-  // define it (a "global" script, required to be unique across workspaces); Bun has no such
-  // concept, so the invocation must be routed to the defining workspace explicitly. Resolved
-  // lazily: most repositories have no colon scripts.
-  let colonScriptOwners: Map<string, string | undefined> | undefined;
+function convertYarnCommandsToBun(
+  scripts: PackageJson.Scripts,
+  config: PackageConfig,
+  rootConfig: PackageConfig
+): void {
+  // Yarn Berry treats ANY script name containing `:` as a potential "global" script: when the
+  // invoking workspace does not define it, Yarn runs the single workspace (root included) that
+  // does (plugin-essentials run.ts skips the lookup when several workspaces share the name). Bun
+  // has no such concept, so the invocation must be routed to the defining workspace explicitly.
+  // Resolved lazily: most scripts have no colon invocations.
+  let colonScriptOwners: Map<string, ColonScriptOwner | undefined> | undefined;
   const convertColonScriptInvocation = (match: string, scriptName: string): string => {
     if (typeof scripts[scriptName] === 'string') return `bun run ${scriptName}`;
     colonScriptOwners ??= collectColonScriptOwners(rootConfig);
     const owner = colonScriptOwners.get(scriptName);
-    // An unresolvable (missing or ambiguous) global script keeps its yarn form to surface in review.
-    return owner ? `bun run --filter ${owner} ${scriptName}` : match;
+    if (!owner) {
+      // A missing or ambiguous leading-colon script cannot run locally either, so its yarn form
+      // is kept to surface in review; other unresolved colon names keep the plain conversion
+      // (e.g. `cd sub && yarn build:sub` targeting a non-workspace directory).
+      return scriptName.startsWith(':') ? match : `bun run ${scriptName}`;
+    }
+    // Bun's --filter never matches the workspace root, and its path filters resolve against the
+    // invoking cwd (both verified on Bun 1.3.14), so the root package and unnamed workspaces are
+    // addressed with --cwd relative to the invoking package instead.
+    if (owner.packageName && owner.dirPath !== path.resolve(rootConfig.dirPath)) {
+      return `bun run --filter ${owner.packageName} ${scriptName}`;
+    }
+    const relativeDirPath = path.relative(config.dirPath, owner.dirPath) || '.';
+    return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}' ${scriptName}`;
   };
   // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
   // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
@@ -403,7 +420,7 @@ function convertYarnCommandsToBun(scripts: PackageJson.Scripts, rootConfig: Pack
           // action, not a script; Bun's --filter only executes package scripts.
           run || !yarnBuiltinSubcommands.has(command) ? `bun run --filter ${packageName} ${command}` : match
       )
-      .replaceAll(/\byarn\s+(?:run\s+)?(:[\w./:-]+)/gu, convertColonScriptInvocation)
+      .replaceAll(/\byarn\s+(?:run\s+)?(?![-.])((?=[\w./-]*:)[\w.:/-]+)/gu, convertColonScriptInvocation)
       // The `(?!\s+:)` guard keeps an unresolvable `yarn run :name` in its yarn form (the colon
       // rule above already converted every resolvable one).
       .replaceAll(/\byarn\s+run\b(?!\s+:)/gu, 'bun run')
@@ -419,24 +436,30 @@ function convertYarnCommandsToBun(scripts: PackageJson.Scripts, rootConfig: Pack
   }
 }
 
+interface ColonScriptOwner {
+  dirPath: string;
+  packageName?: string;
+}
+
 /**
- * Maps each `:`-prefixed (workspace-global) script name to the name of the single workspace
- * package defining it, or to undefined when several packages define it (Yarn would refuse to run
- * such an ambiguous global script anyway).
+ * Maps each colon-containing (workspace-global) script name to the single workspace defining it,
+ * or to undefined when several workspaces define it (Yarn refuses to run such an ambiguous
+ * global script anyway).
  */
-function collectColonScriptOwners(rootConfig: PackageConfig): Map<string, string | undefined> {
-  const owners = new Map<string, string | undefined>();
+function collectColonScriptOwners(rootConfig: PackageConfig): Map<string, ColonScriptOwner | undefined> {
+  const owners = new Map<string, ColonScriptOwner | undefined>();
   // The root manifest participates too: Yarn treats the root as a workspace, so a child may
-  // invoke a root-owned global script.
+  // invoke a root-owned global script. Unnamed manifests count as well — Yarn searches every
+  // workspace's scripts regardless of its name.
   for (const packageJsonPath of new Set(['package.json', ...getWorkspacePackageJsonPaths(rootConfig)])) {
     try {
       const packageJson = JSON.parse(
         fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
       ) as PackageJson;
-      if (!packageJson.name) continue;
+      const dirPath = path.dirname(path.resolve(rootConfig.dirPath, packageJsonPath));
       for (const scriptName of Object.keys(packageJson.scripts ?? {})) {
-        if (!scriptName.startsWith(':')) continue;
-        owners.set(scriptName, owners.has(scriptName) ? undefined : packageJson.name);
+        if (!scriptName.includes(':')) continue;
+        owners.set(scriptName, owners.has(scriptName) ? undefined : { dirPath, packageName: packageJson.name });
       }
     } catch {
       // An unreadable manifest only leaves its own global scripts unresolved.

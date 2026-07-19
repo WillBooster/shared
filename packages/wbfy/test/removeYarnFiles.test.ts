@@ -60,6 +60,18 @@ test('reports every blocker at once instead of only the first one', async () => 
   });
 });
 
+test('detects patch: dependencies declared in workspace manifests, not only the root one', async () => {
+  await withTempDir(async (tempDirPath) => {
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));
+    fs.mkdirSync(path.join(tempDirPath, 'packages', 'app'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDirPath, 'packages', 'app', 'package.json'),
+      JSON.stringify({ dependencies: { foo: 'patch:foo@npm%3A1.0.0#./foo.patch' } })
+    );
+    expect(findUnmigratableYarnSettings(tempDirPath)).toBe('packages/app/package.json uses the patch: protocol');
+  });
+});
+
 test('reads release-age settings, dropping glob patterns Bun would match literally', async () => {
   await withTempDir(async (tempDirPath) => {
     fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), orgStandardYarnrc);
