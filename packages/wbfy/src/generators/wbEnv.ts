@@ -184,7 +184,7 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
       const defined = definedKeys?.[keyName];
       const definedValue =
         typeof defined === 'string' ? defined : (defined as { default?: unknown } | undefined)?.default;
-      warnOnUnexpectedWbEnvValue(keyName, definedValue, mode, 'fnox.toml');
+      warnOnUnexpectedWbEnvValue(keyName, definedValue, mode, 'fnox.toml', { isFnoxSource: true });
     }
     const missingLines = keyNames
       .filter((keyName) => definedKeys?.[keyName] === undefined)
@@ -226,13 +226,20 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
  * possible signal. The passed value is always plaintext (a dotenv value or a fnox `default`
  * field) — encrypted fnox entries are `{ provider, value }` objects whose `default` is absent.
  */
-function warnOnUnexpectedWbEnvValue(keyName: string, value: unknown, mode: WbEnvMode, sourceLabel: string): void {
+function warnOnUnexpectedWbEnvValue(
+  keyName: string,
+  value: unknown,
+  mode: WbEnvMode,
+  sourceLabel: string,
+  options?: { isFnoxSource?: boolean }
+): void {
   // An EMPTY value counts as unset (wb supplies the fallback mode), not as a mismatching mode.
   if (typeof value !== 'string' || value === '' || value === mode) return;
   // A dynamic value (e.g. `NEXT_PUBLIC_WB_ENV=${WB_ENV}`) may legitimately resolve to the mode
-  // through dotenv expansion (Next.js expands $VARIABLE references in .env* files too), which
-  // this static check cannot evaluate — skip instead of misfiring.
-  if (value.includes('$')) return;
+  // through expansion, which this static check cannot evaluate — skip instead of misfiring.
+  // The dynamic form depends on the source: fnox expands only `${...}` (a bare `$UNSET` stays
+  // literal), while dotenv/Next.js expansion also resolves bare `$VARIABLE` references.
+  if (options?.isFnoxSource ? value.includes('${') : value.includes('$')) return;
   if (keyName === 'NEXT_PUBLIC_WB_ENV') {
     console.warn(
       `${keyName} in ${sourceLabel} is "${value}" but should be "${mode}" for the ${mode} mode; wb overrides it with WB_ENV, but a direct framework build would inline this value.`
