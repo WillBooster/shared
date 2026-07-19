@@ -75,7 +75,7 @@ describe('HttpServerScripts.testE2E', () => {
         '--success',
         'first',
         'echo "no build" && node dist/index.js && exit 1',
-        `wait-on -t 600000 -i 2000 http-get://127.0.0.1:3000 && ${buildShellCommand([
+        `wait-on -t 600000 -i 2000 http-get://localhost:3000 && ${buildShellCommand([
           'YARN',
           'vitest',
           'run',

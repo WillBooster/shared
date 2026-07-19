@@ -45,7 +45,7 @@ export class HttpServerScripts extends BaseScripts {
       '--success',
       'first',
       `${startCommand} && exit 1`,
-      `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && ${testCommand}${suffix}`,
+      `wait-on -t 600000 -i 2000 http-get://localhost:${port} && ${testCommand}${suffix}`,
     ]);
   }
 }

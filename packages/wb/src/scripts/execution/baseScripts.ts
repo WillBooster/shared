@@ -201,7 +201,7 @@ export abstract class BaseScripts {
       '--success',
       'first',
       `${startCommand} && exit 1`,
-      `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
+      `wait-on -t 600000 -i 2000 http-get://localhost:${port}
         && ${playwrightCommand}${suffix}`,
     ]);
   }
@@ -234,20 +234,23 @@ export abstract class BaseScripts {
 
   protected waitApp(project: Project): string {
     const port = project.env.PORT;
-    return `wait-on -t 10000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 500 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 1000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 2000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 20000 -i 4000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 60000 -i 5000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 90000 -i 10000 http-get://127.0.0.1:${port}`;
+    // `localhost` (not `127.0.0.1`) lets Node's Happy Eyeballs try both address families: on macOS,
+    // dev servers without an explicit host (e.g. vinext/Vite) can bind IPv6-only (`::1`), so an
+    // IPv4-only poll would hang until timeout even though the server is up.
+    return `wait-on -t 10000 http-get://localhost:${port} 2> /dev/null
+      || wait-on -t 10000 -i 500 http-get://localhost:${port} 2> /dev/null
+      || wait-on -t 10000 -i 1000 http-get://localhost:${port} 2> /dev/null
+      || wait-on -t 10000 -i 2000 http-get://localhost:${port} 2> /dev/null
+      || wait-on -t 20000 -i 4000 http-get://localhost:${port} 2> /dev/null
+      || wait-on -t 60000 -i 5000 http-get://localhost:${port} 2> /dev/null
+      || wait-on -t 90000 -i 10000 http-get://localhost:${port}`;
   }
 
   protected waitAndOpenApp(project: Project): string {
     const port = project.env.PORT;
     return `${this.waitApp(
       project
-    )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
+    )} || wait-on http-get://localhost:${port} && open-cli http://\${HOST:-localhost}:${port}`;
   }
 }
 
