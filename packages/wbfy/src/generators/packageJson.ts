@@ -487,7 +487,9 @@ async function applyPackageJsonConventions(
       const forcedPatterns =
         fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
           ? hasOnlyNegativeDeclaredWorkspacePatterns(jsonObj.workspaces)
-            ? ['*/*', 'packages/*']
+            ? // `*/*` already covers every packages/<name>, so appending `packages/*` too would
+              // just persist dead configuration.
+              ['*/*']
             : ['packages/*']
           : [];
       jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), forcedPatterns], {

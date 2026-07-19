@@ -12,7 +12,11 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { getTsconfigExtends } from '../utils/tsconfigBase.js';
-import { getMeaningfulDeclaredWorkspacePatterns, getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
+import {
+  getMeaningfulDeclaredWorkspacePatterns,
+  getWorkspaceDirPatterns,
+  getWorkspaceSubDirPaths,
+} from '../utils/workspaceUtil.js';
 
 const subJsonObj = {
   compilerOptions: {
@@ -194,6 +198,13 @@ function removeStaleManagedWorkspaceEntries(
   if (!Array.isArray(oldSettings.exclude)) return;
   const generatedExclude = new Set(newSettings.exclude);
   const workspaceIncludePatterns = config.doesContainSubPackageJsons ? getWorkspaceDirPatterns(config).includes : [];
+  // Concrete discovered workspace directories (relative), for detecting overlap between old and
+  // new wildcard layouts that pattern-vs-pattern string comparison cannot see.
+  const workspaceDirPaths = config.doesContainSubPackageJsons
+    ? getWorkspaceSubDirPaths(config).map((workspaceDirPath) =>
+        path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
+      )
+    : [];
   oldSettings.exclude = oldSettings.exclude.filter((entry) => {
     if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
     if (entry.endsWith('/test/fixtures')) {
@@ -202,12 +213,18 @@ function removeStaleManagedWorkspaceEntries(
     // A negation-derived exclude whose `!pattern` was removed from `workspaces`: the directory is
     // covered by a positive workspace pattern again and must re-enter the root project. A user
     // who wants such a directory excluded permanently should keep the workspace negation, which
-    // regenerates the entry on every run. The check runs in both directions because either side
-    // can be the pattern: the entry may be wildcard-shaped (a negation like `!apps/excluded/*`)
-    // while the current includes are concrete (expanded from Bun-only glob syntax), or vice versa.
+    // regenerates the entry on every run. Three checks, because either side can be the pattern:
+    // - a CONCRETE entry (a negation like `!apps/excluded`) against the current include patterns
+    //   — gated on concreteness so a user glob such as `**/node_modules` is never treated as a
+    //   path that a `*/*` include pattern textually matches;
+    // - each current include, as a path, against a wildcard-shaped entry (a negation like
+    //   `!apps/excluded/*`) when the includes are concrete (expanded from Bun-only glob syntax);
+    // - each discovered workspace directory against the entry, catching overlapping wildcard
+    //   layouts (e.g. old `!apps/*b` vs new `apps/a*`).
     return !(
-      isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns) ||
-      workspaceIncludePatterns.some((includePattern) => isCoveredByWorkspaceDirPattern(includePattern, [entry]))
+      (!/[*?]/u.test(entry) && isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns)) ||
+      workspaceIncludePatterns.some((includePattern) => isCoveredByWorkspaceDirPattern(includePattern, [entry])) ||
+      workspaceDirPaths.some((workspaceDirPath) => isCoveredByWorkspaceDirPattern(workspaceDirPath, [entry]))
     );
   });
 }

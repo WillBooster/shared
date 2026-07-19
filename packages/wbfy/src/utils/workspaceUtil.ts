@@ -156,7 +156,9 @@ export function hasOnlyNegativeDeclaredWorkspacePatterns(workspaces: PackageJson
 export function getMeaningfulDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): string[] {
   return getDeclaredWorkspacePatterns(workspaces).filter((workspacePattern) => {
     const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
-    return patternBody !== '' && patternBody !== '.';
+    // Normalize so spellings like `./`, `./.`, and `!./` are recognized as the same no-ops
+    // (path.posix.normalize('') === '.', so the empty pattern is covered too).
+    return path.posix.normalize(patternBody).replace(/\/+$/u, '') !== '.';
   });
 }
 
