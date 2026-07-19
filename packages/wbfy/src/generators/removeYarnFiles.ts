@@ -119,7 +119,7 @@ function findPatchProtocolManifests(dirPath: string): string[] {
   const offendingPaths: string[] = [];
   for (const manifestPath of manifestPaths) {
     try {
-      if (fs.readFileSync(path.resolve(dirPath, manifestPath), 'utf8').includes('"patch:')) {
+      if (manifestUsesPatchProtocol(fs.readFileSync(path.resolve(dirPath, manifestPath), 'utf8'))) {
         offendingPaths.push(manifestPath);
       }
     } catch {
@@ -128,6 +128,32 @@ function findPatchProtocolManifests(dirPath: string): string[] {
   }
   // Sorted for a deterministic report (fast-glob's result order is not guaranteed).
   return offendingPaths.toSorted();
+}
+
+/**
+ * Only dependency-specifier fields count: a bare substring check would also match prose such as
+ * a description or an echo in a script and needlessly block a migratable repository.
+ */
+function manifestUsesPatchProtocol(manifestText: string): boolean {
+  let manifest: PackageJson & { resolutions?: Record<string, unknown> };
+  try {
+    manifest = JSON.parse(manifestText) as PackageJson & { resolutions?: Record<string, unknown> };
+  } catch {
+    // An unparsable manifest cannot be inspected precisely; stay conservative.
+    return manifestText.includes('"patch:');
+  }
+  const sections = [
+    manifest.dependencies,
+    manifest.devDependencies,
+    manifest.optionalDependencies,
+    manifest.peerDependencies,
+    manifest.resolutions,
+  ];
+  return sections.some(
+    (section) =>
+      section &&
+      Object.values(section).some((specifier) => typeof specifier === 'string' && specifier.startsWith('patch:'))
+  );
 }
 
 function isMigratableYarnrcSetting(key: string, value: unknown): boolean {

@@ -60,6 +60,19 @@ test('reports every blocker at once instead of only the first one', async () => 
   });
 });
 
+test('ignores patch: text outside dependency-specifier fields', async () => {
+  await withTempDir(async (tempDirPath) => {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({
+        description: 'patch: release notes',
+        scripts: { 'document-patch': 'echo patch:fix-applied' },
+      })
+    );
+    expect(findUnmigratableYarnSettings(tempDirPath)).toBeUndefined();
+  });
+});
+
 test('blocks on an npmMinimalAgeGate value the translation cannot parse literally', async () => {
   await withTempDir(async (tempDirPath) => {
     // Yarn expands ${ENV_VAR:-fallback} at read time; wbfy sees the raw expression, and silently

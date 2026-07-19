@@ -1525,6 +1525,7 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
       workspaces: ['packages/*'],
       scripts: {
         ':local-cache': 'echo local',
+        at: 'yarn build:@scope',
         'cache-all': 'yarn build:cache',
         local: 'yarn :local-cache',
         missing: 'yarn :unknown-script && yarn run :unknown-script',
@@ -1537,7 +1538,7 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
       files: {
         'packages/server/package.json': JSON.stringify({
           name: '@judge/server',
-          scripts: { ':build-caches': 'echo build', 'build:cache': 'echo mid-colon' },
+          scripts: { ':build-caches': 'echo build', 'build:@scope': 'echo at', 'build:cache': 'echo mid-colon' },
         }),
         'packages/tools/package.json': JSON.stringify({
           scripts: { ':tool-cache': 'echo tool' },
@@ -1547,6 +1548,8 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
   );
 
   expect(packageJson.scripts).toMatchObject({
+    // Script names are whole shell words, not just \w./:- characters.
+    at: 'bun run --filter @judge/server build:@scope',
     // Yarn treats ANY colon-containing name as global, not only leading-colon ones.
     'cache-all': 'bun run --filter @judge/server build:cache',
     // A colon script defined in the invoking package stays a local bun run.
@@ -1570,7 +1573,10 @@ test('routes a root-owned colon global script invoked from a child workspace', a
       workspaces: ['packages/*'],
       scripts: { ':root-cache': 'echo root' },
     };
-    const childPackageJson = { name: '@x/child', scripts: { warm: 'yarn :root-cache' } };
+    const childPackageJson = {
+      name: '@x/child',
+      scripts: { deep: 'cd src && yarn :root-cache', warm: 'yarn :root-cache' },
+    };
     await fs.writeFile(path.join(dirPath, 'package.json'), JSON.stringify(rootPackageJson));
     await fs.mkdir(path.join(dirPath, 'packages', 'child'), { recursive: true });
     const childPackageJsonPath = path.join(dirPath, 'packages', 'child', 'package.json');
@@ -1591,6 +1597,8 @@ test('routes a root-owned colon global script invoked from a child workspace', a
     const generated = JSON.parse(await fs.readFile(childPackageJsonPath, 'utf8')) as GeneratedPackageJson;
     // Bun's --filter never matches the workspace root, so root-owned scripts run via --cwd.
     expect(generated.scripts?.warm).toBe("bun run --cwd '../..' :root-cache");
+    // A cd before the invocation would break the package-relative --cwd at runtime.
+    expect(generated.scripts?.deep).toBe('cd src && yarn :root-cache');
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
