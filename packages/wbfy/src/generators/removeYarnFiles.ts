@@ -8,10 +8,15 @@ import type { PackageConfig } from '../packageConfig.js';
 import { promisePool } from '../utils/promisePool.js';
 
 // Yarn settings wbfy can safely drop when migrating to Bun: tooling and cosmetics that do not
-// change what gets installed. Anything else (registries, auth, scopes, packageExtensions,
-// patchFolder, enableScripts, proxies, supportedArchitectures, ...) affects dependency
-// resolution or install behavior and requires manual migration.
+// change what gets installed, plus the org-standard release-age-gate settings that have a Bun
+// translation (npmMinimalAgeGate / npmPreapprovedPackages are reflected into the generated
+// bunfig.toml's minimumReleaseAge / minimumReleaseAgeExcludes, and approvedGitRepositories has
+// no Bun counterpart because Bun does not restrict git dependencies, so dropping it cannot
+// change the install graph). Anything else (registries, auth, scopes, packageExtensions,
+// patchFolder, proxies, supportedArchitectures, ...) affects dependency resolution or install
+// behavior and requires manual migration.
 const safeYarnrcSettings = new Set([
+  'approvedGitRepositories',
   'checksumBehavior',
   'compressionLevel',
   'defaultSemverRangePrefix',
@@ -29,50 +34,126 @@ const safeYarnrcSettings = new Set([
   'logFilters',
   'nmMode',
   'nodeLinker',
+  'npmMinimalAgeGate',
+  'npmPreapprovedPackages',
   'plugins',
   'preferInteractive',
   'progressBarStyle',
   'yarnPath',
 ]);
 
+// Yarn parses npmMinimalAgeGate with miscUtils.parseDuration: `<number><ms|s|m|h|d|w>`,
+// where a bare number means the setting's declared unit (minutes for npmMinimalAgeGate).
+const yarnDurationUnitsInSeconds: Record<string, number> = {
+  ms: 0.001,
+  s: 1,
+  m: 60,
+  h: 3600,
+  d: 86_400,
+  w: 604_800,
+};
+
+const unparsableYarnrc = Symbol('unparsableYarnrc');
+
 /**
  * Detects Yarn configuration that has no automatic Bun translation. Must run as a read-only
  * preflight BEFORE any fixer mutates the repository: deleting such configuration (or migrating
  * everything around it) would break installs or silently drop patched dependency behavior.
+ * All blockers are reported together so a manual migration needs one pass instead of a
+ * fix-one-rerun loop.
  * @return A human-readable reason when the repository needs manual migration, otherwise undefined.
  */
 export function findUnmigratableYarnSettings(dirPath: string): string | undefined {
+  const reasons: string[] = [];
+  const parsedYarnrc = readYarnrcYml(dirPath);
+  if (parsedYarnrc === unparsableYarnrc) {
+    reasons.push('.yarnrc.yml is unparsable');
+  } else if (parsedYarnrc) {
+    const unsafeSettings = Object.entries(parsedYarnrc)
+      .filter(([key, value]) => !isMigratableYarnrcSetting(key, value))
+      .map(([key]) => key);
+    if (unsafeSettings.length > 0) {
+      reasons.push(`.yarnrc.yml declares behavior-affecting settings [${unsafeSettings.join(', ')}]`);
+    }
+  }
+  if (fs.existsSync(path.resolve(dirPath, '.yarn', 'patches'))) {
+    reasons.push('.yarn/patches exists');
+  }
+  try {
+    if (fs.readFileSync(path.resolve(dirPath, 'package.json'), 'utf8').includes('"patch:')) {
+      reasons.push('package.json uses the patch: protocol');
+    }
+  } catch {
+    // A missing package.json is reported by getPackageConfig later.
+  }
+  return reasons.length > 0 ? reasons.join('; ') : undefined;
+}
+
+function isMigratableYarnrcSetting(key: string, value: unknown): boolean {
+  // `enableScripts: false` matches Bun's default (dependency lifecycle scripts run only for
+  // trustedDependencies), so it can be dropped; an explicit `enableScripts: true` has no
+  // automatic translation because Bun cannot enable all lifecycle scripts wholesale.
+  if (key === 'enableScripts') return value === false;
+  return safeYarnrcSettings.has(key);
+}
+
+export interface YarnReleaseAgeSettings {
+  /** Undefined when .yarnrc.yml declares no (parsable) npmMinimalAgeGate. */
+  minimumReleaseAgeSeconds?: number;
+  minimumReleaseAgeExcludes: string[];
+}
+
+/**
+ * Reads the release-age-gate settings from .yarnrc.yml so the generated bunfig.toml can keep
+ * their behavior (minimumReleaseAge / minimumReleaseAgeExcludes). Must run BEFORE removeYarnFiles
+ * deletes .yarnrc.yml.
+ */
+export function readYarnrcReleaseAgeSettings(dirPath: string): YarnReleaseAgeSettings {
+  const settings: YarnReleaseAgeSettings = { minimumReleaseAgeExcludes: [] };
+  const parsed = readYarnrcYml(dirPath);
+  if (!parsed || parsed === unparsableYarnrc) return settings;
+
+  const { npmMinimalAgeGate, npmPreapprovedPackages } = parsed as {
+    npmMinimalAgeGate?: unknown;
+    npmPreapprovedPackages?: unknown;
+  };
+  settings.minimumReleaseAgeSeconds = parseYarnDurationAsSeconds(npmMinimalAgeGate);
+  if (Array.isArray(npmPreapprovedPackages)) {
+    settings.minimumReleaseAgeExcludes = npmPreapprovedPackages.filter(
+      // Bun matches minimumReleaseAgeExcludes entries literally, so Yarn glob patterns
+      // (e.g. `@willbooster/*`) would be dead configuration and are dropped.
+      (entry): entry is string => typeof entry === 'string' && !/[*?{[\]]/u.test(entry)
+    );
+  }
+  return settings;
+}
+
+function parseYarnDurationAsSeconds(value: unknown): number | undefined {
+  if (typeof value === 'number') return Math.round(value * 60);
+  if (typeof value !== 'string') return undefined;
+  const match = /^(?<num>\d*\.?\d+)(?<unit>[a-z]*)$/u.exec(value.trim());
+  const num = match?.groups?.num;
+  if (num === undefined) return undefined;
+  const multiplier = match?.groups?.unit ? yarnDurationUnitsInSeconds[match.groups.unit] : 60;
+  if (multiplier === undefined) return undefined;
+  return Math.round(Number.parseFloat(num) * multiplier);
+}
+
+function readYarnrcYml(dirPath: string): Record<string, unknown> | typeof unparsableYarnrc | undefined {
   let yarnrcYml = '';
   try {
     yarnrcYml = fs.readFileSync(path.resolve(dirPath, '.yarnrc.yml'), 'utf8');
   } catch {
     // No .yarnrc.yml means there is no Yarn-specific configuration to preserve.
+    return undefined;
   }
-  if (yarnrcYml) {
-    let parsed: unknown;
-    try {
-      parsed = loadYaml(yarnrcYml);
-    } catch {
-      return '.yarnrc.yml is unparsable';
-    }
-    if (parsed && typeof parsed === 'object') {
-      const unsafeSettings = Object.keys(parsed).filter((key) => !safeYarnrcSettings.has(key));
-      if (unsafeSettings.length > 0) {
-        return `.yarnrc.yml declares behavior-affecting settings [${unsafeSettings.join(', ')}]`;
-      }
-    }
-  }
-  if (fs.existsSync(path.resolve(dirPath, '.yarn', 'patches'))) {
-    return '.yarn/patches exists';
-  }
+  if (!yarnrcYml) return undefined;
   try {
-    if (fs.readFileSync(path.resolve(dirPath, 'package.json'), 'utf8').includes('"patch:')) {
-      return 'package.json uses the patch: protocol';
-    }
+    const parsed = loadYaml(yarnrcYml);
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : undefined;
   } catch {
-    // A missing package.json is reported by getPackageConfig later.
+    return unparsableYarnrc;
   }
-  return undefined;
 }
 
 /**

@@ -5,6 +5,7 @@ import { parse } from 'smol-toml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import type { YarnReleaseAgeSettings } from './removeYarnFiles.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -175,24 +176,43 @@ export function readBunLinker(rootDirPath: string): BunLinker | undefined {
   return linker === 'isolated' || linker === 'hoisted' ? linker : undefined;
 }
 
-export async function generateBunfigToml(config: PackageConfig, linker: BunLinker = 'isolated'): Promise<void> {
+export async function generateBunfigToml(
+  config: PackageConfig,
+  linker: BunLinker = 'isolated',
+  yarnReleaseAgeSettings?: YarnReleaseAgeSettings
+): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, linker, config);
+    const content = newContent(existingContent, linker, config, yarnReleaseAgeSettings);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
 
-const newContent = (existingContent: string | undefined, linker: BunLinker, config: PackageConfig): string => {
+const newContent = (
+  existingContent: string | undefined,
+  linker: BunLinker,
+  config: PackageConfig,
+  yarnReleaseAgeSettings?: YarnReleaseAgeSettings
+): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // Only Java repositories still depend on @willbooster/prettier-config (wbfy installs it with
   // prettier-plugin-java); everywhere else oxfmt replaced Prettier, so the exclusion is dead
   // weight in the generated file. The exported list keeps the entry because packageJson.ts's
   // version age gate matters only where wbfy actually pins the package (i.e. Java repositories).
-  const minimumReleaseAgeExcludes = doesContainJava(config)
+  const managedExcludes = doesContainJava(config)
     ? bunMinimumReleaseAgeExcludes
     : bunMinimumReleaseAgeExcludes.filter((packageName) => packageName !== '@willbooster/prettier-config');
+  // A Yarn->Bun migration must not tighten the repository's own release-age policy: repo-specific
+  // npmPreapprovedPackages entries (pre-filtered to literal names — Bun matches these literally)
+  // are merged after the managed list, and a custom npmMinimalAgeGate is carried over.
+  const minimumReleaseAgeExcludes = [
+    ...managedExcludes,
+    ...(yarnReleaseAgeSettings?.minimumReleaseAgeExcludes ?? [])
+      .filter((packageName) => !managedExcludes.includes(packageName))
+      .toSorted(),
+  ];
+  const minimumReleaseAgeSeconds = yarnReleaseAgeSettings?.minimumReleaseAgeSeconds ?? bunMinimumReleaseAgeSeconds;
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
@@ -210,7 +230,7 @@ ${
       'globalStore = true\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
     : 'linker = "hoisted"'
 }
-minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 5 days
+minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ' # migrated from .yarnrc.yml npmMinimalAgeGate'}
 minimumReleaseAgeExcludes = [
 ${minimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
 ]
