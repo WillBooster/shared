@@ -214,20 +214,21 @@ const newContent = (
   // bunfig.toml are merged after the managed list, and a custom npmMinimalAgeGate (or an
   // already-customized minimumReleaseAge) is carried over. Only marker-tagged entries count as
   // repo-specific — provenance stays explicit in the file itself, so entries an older wbfy
-  // version managed and later retired can never masquerade as repository policy. Deduplication
-  // is against the EFFECTIVE managed list only: an explicit repository preapproval that the
-  // managed list happens to omit for this repository (e.g. @willbooster/prettier-config in a
-  // non-Java repository) must still be emitted under the marker.
+  // version managed and later retired can never masquerade as repository policy. An explicit
+  // repository preapproval that ALSO appears in the managed list is emitted once, under the
+  // marker: the effective exclusion set is identical, but the repository-policy provenance
+  // survives even if wbfy later retires that managed entry.
   const repoSpecificExcludes = [
     ...new Set([
       ...(yarnReleaseAgeSettings?.minimumReleaseAgeExcludes ?? []),
       ...readRepoSpecificExcludes(existingContent),
     ]),
-  ]
-    .filter((packageName) => !managedExcludes.includes(packageName))
-    .toSorted();
+  ].toSorted();
+  const repoSpecificExcludeSet = new Set(repoSpecificExcludes);
   const minimumReleaseAgeExcludes = [
-    ...managedExcludes.map((packageName) => `    "${packageName}",`),
+    ...managedExcludes
+      .filter((packageName) => !repoSpecificExcludeSet.has(packageName))
+      .map((packageName) => `    "${packageName}",`),
     ...(repoSpecificExcludes.length > 0
       ? [repoSpecificExcludesMarker, ...repoSpecificExcludes.map((packageName) => `    "${packageName}",`)]
       : []),

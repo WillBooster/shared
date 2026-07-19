@@ -48,10 +48,12 @@ test('keeps the migrated .yarnrc.yml release-age-gate behavior in the generated 
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).toContain('minimumReleaseAge = 172800');
     expect(content).toContain('"my-repo-specific-package",');
-    // Entries already in the EFFECTIVE managed list must not be duplicated...
+    // An entry that overlaps the managed list is emitted exactly once — under the marker, so its
+    // repository-policy provenance survives even if the managed list later retires it.
     expect(content.match(/^\s+"react",$/gmu)).toHaveLength(1);
-    // ...but an explicit preapproval the managed list omits for this (non-Java) repository is
-    // still repository policy and must survive under the marker.
+    expect(content.indexOf('"react",')).toBeGreaterThan(content.indexOf('# ---------- repository-specific entries'));
+    // An explicit preapproval the managed list omits for this (non-Java) repository is
+    // repository policy too and must survive under the marker.
     expect(content).toContain('"@willbooster/prettier-config",');
 
     // A later run has no .yarnrc.yml to read anymore (removeYarnFiles deleted it), so the
