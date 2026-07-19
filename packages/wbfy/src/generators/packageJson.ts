@@ -231,7 +231,8 @@ function removeLegacyYarnInstallPrefixes(script: string): string {
   forEachCommandPositionToken(tokenizeShellCommand(script), (token, index, tokens) => {
     if (token.text !== 'yarn') return;
     const next = tokens[index + 1];
-    const separatorToken = next?.text === 'install' ? tokens[index + 2] : next;
+    // decodeSimpleShellWord: shell quoting makes `yarn 'install'` equivalent to `yarn install`.
+    const separatorToken = next && decodeSimpleShellWord(next.text) === 'install' ? tokens[index + 2] : next;
     if (separatorToken?.text !== '&&') return;
     let end = separatorToken.end;
     while (end < script.length && /\s/u.test(script[end] ?? '')) end++;
@@ -496,18 +497,13 @@ function convertYarnInvocationsToBun(
   return result;
 }
 
-// `yarn workspaces foreach` flags that neither restrict which workspaces are selected nor
-// suppress execution, so `bun run --filter '*'` preserves their fan-out. Anything else (--since,
-// --from, --include, --exclude, --no-private, --dry-run, ...) changes the selection or effect and
-// keeps the yarn form to surface during review.
-const selectionNeutralForeachFlags = new Set([
-  '--all',
-  '--interlaced',
-  '--parallel',
-  '--topological',
-  '--topological-dev',
-  '--verbose',
-]);
+// `yarn workspaces foreach` flags under which `bun run --filter '*'` (which runs every workspace
+// respecting dependency order) is an accepted equivalent of the fan-out. Anything else keeps the
+// yarn form to surface during review: selection flags (--since, --from, --include, ...) restrict
+// the workspaces, --dry-run suppresses execution, and parallelism flags (--parallel,
+// --interlaced, --jobs) start dependent scripts concurrently — under Bun's dependency-ordered
+// concurrency a long-running dependency would block its dependents forever.
+const selectionNeutralForeachFlags = new Set(['--all', '--topological', '--topological-dev', '--verbose']);
 
 /**
  * Converts one `yarn <args...>` invocation (args already cut at the next command separator) into
@@ -545,8 +541,7 @@ function convertSingleYarnInvocation(
         runIndex = index;
         break;
       }
-      if (flag === undefined || !(selectionNeutralForeachFlags.has(flag) || /^-[Aiptv]+$/u.test(flag)))
-        return undefined;
+      if (flag === undefined || !(selectionNeutralForeachFlags.has(flag) || /^-[Atv]+$/u.test(flag))) return undefined;
     }
     const scriptName = runIndex === -1 ? undefined : argText(runIndex + 1);
     return scriptName === undefined || scriptName.startsWith('-')
@@ -590,8 +585,11 @@ function convertSingleYarnInvocation(
   }
   if (first === 'run') {
     // An unresolvable `yarn run [flags] :name` keeps its yarn form (the colon rule above already
-    // converted every resolvable one); otherwise `bun run` accepts the same flags and target.
-    return scriptName?.startsWith(':') || args[scriptNameIndex]?.text.startsWith(':')
+    // converted every resolvable one), and so does an undecodable (dynamic or ambiguous) target:
+    // its expanded name could need Yarn's global routing. Otherwise `bun run` accepts the same
+    // flags and target.
+    const target = args[scriptNameIndex];
+    return target && (scriptName === undefined || scriptName.startsWith(':') || target.text.startsWith(':'))
       ? undefined
       : replaceThroughArg(0, 'bun run');
   }
@@ -606,11 +604,14 @@ function convertSingleYarnInvocation(
 
 /**
  * The literal value of a shell word that is either fully unquoted or wholly wrapped in one simple
- * quote pair, or undefined for anything shell-ambiguous (embedded or mixed quotes, backslashes,
- * expansions inside double quotes), whose invocation must then stay in its yarn form.
+ * quote pair, or undefined for anything shell-dynamic or ambiguous (unquoted expansions and
+ * globs, embedded or mixed quotes, backslashes, expansions inside double quotes), whose
+ * invocation must then stay in its yarn form.
  */
 function decodeSimpleShellWord(text: string): string | undefined {
-  if (!/['"\\]/u.test(text)) return text;
+  // An unquoted `$var`, backtick, glob, or brace expansion resolves at runtime, so its literal
+  // spelling must not drive script-name matching or colon-owner routing.
+  if (!/['"\\]/u.test(text)) return /[$`*?[\]{}]|^~/u.test(text) ? undefined : text;
   const quoted = /^'([^'\\]*)'$/u.exec(text) ?? /^"([^"'\\$`]*)"$/u.exec(text);
   return quoted?.[1];
 }
@@ -762,12 +763,25 @@ function forEachCommandPositionToken(
   callback: (token: ShellToken, index: number, tokens: readonly ShellToken[]) => void
 ): void {
   let atCommandPosition = true;
+  let redirectionOperandFollows = false;
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
       atCommandPosition = true;
+      redirectionOperandFollows = false;
+      continue;
+    }
+    if (redirectionOperandFollows) {
+      redirectionOperandFollows = false;
       continue;
     }
     if (!atCommandPosition) continue;
+    // A redirection may precede the command (`>out.log yarn build`, `2>err.log yarn build`); the
+    // operator and its operand (and a detached file-descriptor digit) leave the position intact.
+    if (/^[<>]+$/u.test(token.text)) {
+      redirectionOperandFollows = true;
+      continue;
+    }
+    if (/^\d+$/u.test(token.text) && /^[<>]/u.test(tokens[index + 1]?.text ?? '')) continue;
     const tokenText = unquoteShellToken(token.text);
     if (/^[A-Za-z_]\w*=/u.test(tokenText) || commandPositionTransparentWords.has(tokenText)) continue;
     atCommandPosition = false;

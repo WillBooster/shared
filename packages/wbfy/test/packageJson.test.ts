@@ -1501,14 +1501,18 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'clean-all': 'yarn workspaces foreach --all exec rimraf dist',
       'deps-up': 'yarn up -R typescript',
       dollar: "yarn 'build:$target'",
+      dynamic: 'yarn build:$target && yarn run "build:$target"',
       'fan-out': 'yarn workspaces foreach --all run build',
       'gen:sub': 'cd sub && yarn build:sub',
       guarded: 'if [ -f .env ]; then yarn compile; fi && { yarn compile; }',
       hint: "echo 'run yarn build before deploying'",
       'install-note': "echo 'yarn install && deploy now'",
       mention: 'git commit -m yarn && echo yarn build',
+      'parallel-dev': 'yarn workspaces foreach --all --parallel run dev',
       publish2: 'yarn npm publish --tolerate-republish',
+      'quoted-install': "yarn 'install' && yarn compile",
       redirect: 'yarn build>out.log',
+      'redirect-first': '>build.log yarn compile',
       'setup-all': 'yarn install && yarn compile',
       'since-build': 'yarn workspaces foreach --since run build',
       'ws-add': 'yarn workspace components add -D react',
@@ -1527,6 +1531,11 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     hint: "echo 'run yarn build before deploying'",
     'install-note': "echo 'yarn install && deploy now'",
     mention: 'git commit -m yarn && echo yarn build',
+    // An unquoted expansion is dynamic: its runtime value could need Yarn's global routing.
+    dynamic: 'yarn build:$target && yarn run "build:$target"',
+    // A parallelism foreach flag keeps the yarn form: Bun's dependency-ordered concurrency could
+    // block dependent long-running scripts forever.
+    'parallel-dev': 'yarn workspaces foreach --all --parallel run dev',
     // A selection-restricting foreach flag keeps the yarn form: --filter '*' would widen it.
     'since-build': 'yarn workspaces foreach --since run build',
     // Script invocations are converted; quoted arguments are re-emitted verbatim so quoting and
@@ -1537,7 +1546,10 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     // Shell keywords and grouping braces keep the following word in command position.
     guarded: 'if [ -f .env ]; then bun run compile; fi && { bun run compile; }',
     redirect: 'bun run build>out.log',
-    // The legacy `yarn install && ` prefix is removed before conversion.
+    // A redirection before the command leaves it in command position.
+    'redirect-first': '>build.log bun run compile',
+    // The legacy `yarn install && ` prefix is removed before conversion, quoted or not.
+    'quoted-install': 'bun run compile',
     'setup-all': 'bun run compile',
     'ws-run': 'bun run --filter components gen',
     wrapped: 'cross-env NODE_ENV=production bun run build',
