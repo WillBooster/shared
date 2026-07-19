@@ -551,19 +551,24 @@ export async function findWorkspacePackageDirs(
       path.join(project.dirPath, path.posix.dirname(packageJsonPath))
     );
   }
-  // Yarn v1 resolves the declared patterns (array or `{ packages: […] }` form) as plain globs and
-  // links only directories carrying a package.json, so glob for the manifests themselves —
-  // globby's `onlyDirectories` would return a literal directory pattern's CHILDREN instead of the
-  // directory. Without any positive pattern nothing can match (globby would instead return
-  // everything a lone negation does not exclude). The realpath containment mirrors
-  // resolveWorkspacePackageJsonPaths: a workspace symlink escaping the repository must not let
-  // consumers touch another checkout.
-  const patterns = getDeclaredWorkspacePatterns(project.packageJson.workspaces);
-  if (!patterns.some((pattern) => !pattern.startsWith('!'))) return [];
-  const manifestPatterns = patterns.map((pattern) =>
-    pattern.startsWith('!') ? `!${pattern.slice(1)}/package.json` : `${pattern}/package.json`
+  // Yarn 1.22.22 resolves each declared pattern (array or `{ packages: […] }` form) independently
+  // and unions the results, so a leading-`!` pattern is not an exclusion — `["packages/*",
+  // "!packages/a"]` still links packages/a. Yarn additionally ignores manifests missing a name or
+  // version ("Missing version in workspace …, ignoring."), but that is deliberately NOT mirrored:
+  // wb's descendant discovery exists to run commands (lint, test, typecheck, …) in sub-packages,
+  // and version-less private packages must stay discovered — the long-standing behavior wb's
+  // monorepo fixtures encode. Glob for the manifests themselves: globby's `onlyDirectories`
+  // would return a literal directory pattern's CHILDREN instead of the directory. The realpath
+  // containment mirrors resolveWorkspacePackageJsonPaths: a workspace symlink escaping the
+  // repository must not let consumers touch another checkout.
+  const positivePatterns = getDeclaredWorkspacePatterns(project.packageJson.workspaces).filter(
+    (pattern) => !pattern.startsWith('!')
   );
-  const manifestPaths = await globby(manifestPatterns, { cwd: project.dirPath, ignore: ['**/node_modules/**'] });
+  if (positivePatterns.length === 0) return [];
+  const manifestPaths = await globby(
+    positivePatterns.map((pattern) => `${pattern}/package.json`),
+    { cwd: project.dirPath, ignore: ['**/node_modules/**'] }
+  );
   const realRootDirPath = fs.realpathSync(project.dirPath);
   const workspaceDirPaths = manifestPaths
     // A `**` pattern reaches the root's own manifest and installed packages, but neither is a

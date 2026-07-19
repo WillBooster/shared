@@ -32,13 +32,16 @@ describe('project', () => {
     5 * 60 * 1000
   );
 
-  it('excludes the root manifest and node_modules from Yarn workspace discovery', async () => {
+  it('mirrors Yarn v1 workspace discovery: unions patterns and ignores the root manifest and node_modules', async () => {
     const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-yarn-workspaces-'));
     try {
       for (const [relativePath, content] of [
-        ['package.json', { name: 'root', workspaces: ['**'] }],
-        ['packages/a/package.json', { name: 'a' }],
-        ['node_modules/dep/package.json', { name: 'dep' }],
+        // Yarn 1.22.22 resolves each pattern independently and unions the results, so the
+        // `!packages/a` "negation" is not an exclusion, and `**` must reach neither the root
+        // manifest nor node_modules.
+        ['package.json', { name: 'root', workspaces: ['**', '!packages/a'] }],
+        ['packages/a/package.json', { name: 'a', version: '1.0.0' }],
+        ['node_modules/dep/package.json', { name: 'dep', version: '1.0.0' }],
       ] as const) {
         await fs.promises.mkdir(path.join(dirPath, path.dirname(relativePath)), { recursive: true });
         await fs.promises.writeFile(path.join(dirPath, relativePath), JSON.stringify(content), 'utf8');
