@@ -1502,9 +1502,12 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'deps-up': 'yarn up -R typescript',
       dollar: "yarn 'build:$target'",
       dynamic: 'yarn build:$target && yarn run "build:$target"',
+      'amp-redirect': 'node report.js &>logs/yarn.log yarn compile',
       arith: 'echo $((yarn && 1))',
       'array-lit': 'args=(yarn compile); echo done',
+      'array-subst': 'args=($(yarn list-args))',
       'case-pat': 'case "$r" in (yarn) yarn compile;; esac',
+      'case-subst': 'case $(yarn kind) in x) echo matched;; esac',
       clobber: 'echo hi >| yarn && yarn compile',
       commented: 'echo ready # note; yarn compile',
       'env-opt': 'env -i yarn compile && 2>&1 yarn compile',
@@ -1546,6 +1549,7 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     // `yarn` inside a quoted token, in argument position, after a value-taking wrapper option,
     // after a command substitution, inside an arithmetic expansion, as a redirection operand, as
     // a quoted command word's argument, or inside a comment is data, not a command.
+    'amp-redirect': 'node report.js &>logs/yarn.log yarn compile',
     arith: 'echo $((yarn && 1))',
     'array-lit': 'args=(yarn compile); echo done',
     commented: 'echo ready # note; yarn compile',
@@ -1582,6 +1586,9 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'in-subst': 'echo $(bun run compile)',
     // `case` patterns (parenthesized or not) are data, while the branch bodies convert.
     'case-pat': 'case "$r" in (yarn) bun run compile;; esac',
+    // A `$(...)` substitution EXECUTES even inside data contexts (case subjects, array literals).
+    'array-subst': 'args=($(bun run list-args))',
+    'case-subst': 'case $(bun run kind) in x) echo matched;; esac',
     // `<<` inside an arithmetic expansion is a left shift, not a heredoc.
     shift: 'echo $((1 << 2)) && bun run compile',
     // Only a real unquoted heredoc operator suppresses conversion, not quoted `<<` data.

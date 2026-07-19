@@ -847,10 +847,16 @@ function forEachCommandPositionToken(
   let functionNameFollows = false;
   // Between `case <subject> in` (or after `;;`) and the pattern's closing `)`, words are patterns
   // and a leading `(` is a delimiter, not a subshell.
-  let caseContext: 'none' | 'awaitingIn' | 'pattern' | 'body' = 'none';
+  type CaseContext = 'none' | 'awaitingIn' | 'pattern' | 'body';
+  let caseContext: CaseContext = 'none';
   // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER state must be
   // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
-  const outerStates: { atCommandPosition: boolean; inDataParens: boolean; functionCandidate: boolean }[] = [];
+  const outerStates: {
+    atCommandPosition: boolean;
+    inDataParens: boolean;
+    functionCandidate: boolean;
+    caseContext: CaseContext;
+  }[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
       if (caseContext === 'body' && token.text.startsWith(';;')) {
@@ -862,7 +868,14 @@ function forEachCommandPositionToken(
       // Separator tokens are ASCII, so index-based iteration is safe.
       for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
         const char = token.text[charIndex] ?? '';
-        if (caseContext === 'awaitingIn' || caseContext === 'pattern') {
+        // An ADJACENT `$(` opens a command substitution, whose content EXECUTES even where the
+        // surrounding context is data (a case subject/pattern, an array literal).
+        const opensSubstitution =
+          char === '(' &&
+          lastWordToken !== undefined &&
+          lastWordToken.text.endsWith('$') &&
+          lastWordToken.end === token.start + charIndex;
+        if ((caseContext === 'awaitingIn' || caseContext === 'pattern') && !opensSubstitution) {
           // Inside a pattern, `(` and `|` delimit alternatives and `)` starts the branch body.
           if (caseContext === 'pattern' && char === ')') {
             caseContext = 'body';
@@ -877,6 +890,7 @@ function forEachCommandPositionToken(
             inDataParens,
             // A word ending in `$` opens a substitution, never a function definition.
             functionCandidate: lastWordToken !== undefined && !lastWordToken.text.endsWith('$'),
+            caseContext,
           });
           // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
           // arithmetic, and an ADJACENT `name=(` opens an array literal; a spaced `( (` is a
@@ -885,15 +899,19 @@ function forEachCommandPositionToken(
             charIndex > 0 ||
             (lastWordToken !== undefined &&
               lastWordToken.text.endsWith('=') &&
-              lastWordToken.end === token.start &&
+              lastWordToken.end === token.start + charIndex &&
               /^[A-Za-z_][+\w]*=$/u.test(lastWordToken.text))
           ) {
             inDataParens = true;
+          } else if (opensSubstitution) {
+            inDataParens = false;
           }
+          caseContext = 'none';
           atCommandPosition = true;
         } else if (char === ')') {
           const outerState = outerStates.pop();
           inDataParens = outerState?.inDataParens ?? false;
+          caseContext = outerState?.caseContext ?? 'none';
           // An empty `()` pair after a plain word is a function definition: its body follows in
           // command position, and its yarn invocations really run when the function is called.
           atCommandPosition =
@@ -986,7 +1004,9 @@ function tokenizeShellCommand(script: string): ShellToken[] {
       index++;
       continue;
     }
-    if (isShellSeparator(char)) {
+    // `&<` / `&>` starts a compound redirection, so the redirect branch below must win over the
+    // separator branch: isShellSeparator('&') is true.
+    if (isShellSeparator(char) && !(char === '&' && /^[<>]$/u.test(script[index + 1] ?? ''))) {
       let end = index + 1;
       while (end < script.length && script[end] === char) end++;
       tokens.push({ text: script.slice(index, end), start: index, end });
