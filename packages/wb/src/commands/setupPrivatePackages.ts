@@ -28,6 +28,8 @@ interface PrivatePackage {
   sourceDirPath: string | undefined;
   targetDirPath: string;
   versionSpecifier: string | undefined;
+  /** The materialized version once an installed copy is selected or a download is extracted. */
+  resolvedVersion: string | undefined;
 }
 
 const dependencyKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
@@ -63,6 +65,18 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       // registry step recursively deletes registryOutDirPath, which would destroy the git
       // packages copied into an equal or NESTED directory moments earlier.
       console.error(chalk.red(`--out-dir must not overlap the ${PRIVATE_REGISTRY_SCOPE} registry output directory.`));
+      process.exit(1);
+    }
+    const stagingDirPath = path.join(projects.root.dirPath, '.tmp', 'wb-private-registry-staging');
+    if (pathsOverlap(outDirPath, path.join(projects.root.dirPath, 'node_modules'))) {
+      // The recursive delete of outDirPath would destroy the installed sources the copies read.
+      console.error(chalk.red('--out-dir must not overlap node_modules.'));
+      process.exit(1);
+    }
+    if (pathsOverlap(outDirPath, stagingDirPath)) {
+      // The registry step recreates the staging directory, silently discarding anything copied
+      // into an equal or nested --out-dir moments earlier.
+      console.error(chalk.red(`--out-dir must not overlap the staging directory (${stagingDirPath}).`));
       process.exit(1);
     }
     if (path.relative(projects.root.dirPath, outDirPath) !== '@willbooster') {
@@ -115,7 +129,6 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     if (registryPackages.length > 0) {
       // Download into a staging directory and swap it in only after every download succeeded, so
       // a failing registry/token/extraction cannot destroy the last usable materialization.
-      const stagingDirPath = path.join(projects.root.dirPath, '.tmp', 'wb-private-registry-staging');
       const toStagedPath = (targetDirPath: string): string =>
         path.join(stagingDirPath, path.relative(registryOutDirPath, targetDirPath));
       await fs.promises.rm(stagingDirPath, { recursive: true, force: true });
@@ -135,6 +148,10 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
               privatePackage.name,
               privatePackage.versionSpecifier ?? 'latest',
               toStagedPath(privatePackage.targetDirPath)
+            );
+            privatePackage.resolvedVersion = readInstalledVersion(
+              toStagedPath(privatePackage.targetDirPath),
+              privatePackage.name
             );
             console.info(
               `Downloaded ${privatePackage.name} to ${path.relative(projects.root.dirPath, privatePackage.targetDirPath)}`
@@ -189,10 +206,13 @@ async function collectPrivatePackages(
     if (!privatePackage) continue;
     if (privatePackages.has(privatePackage.name)) continue;
 
-    privatePackage.sourceDirPath =
-      privatePackage.kind === 'git'
-        ? findInstalledPackageDir(rootDirPath, privatePackage.name)
-        : findInstalledRegistryPackageDir(rootDirPath, privatePackage);
+    if (privatePackage.kind === 'git') {
+      privatePackage.sourceDirPath = findInstalledPackageDir(rootDirPath, privatePackage.name);
+    } else {
+      const installed = findInstalledRegistryPackage(rootDirPath, privatePackage);
+      privatePackage.sourceDirPath = installed?.dirPath;
+      privatePackage.resolvedVersion = installed?.version;
+    }
     // Nested private dependencies of an installed package are discoverable right away; registry
     // packages without a usable installed copy are inspected after download instead
     // (collectNestedPrivatePackages).
@@ -201,11 +221,23 @@ async function collectPrivatePackages(
         const packageJson = await readPackageJson(packageJsonPath);
         for (const nested of findPrivateDependencies(packageJson, outDirPath, registryOutDirPath)) {
           const queued = queuedPackages.get(nested.name);
-          if (queued) {
-            assertNoVersionConflict(queued, nested, privatePackage.name);
-          } else {
+          if (!queued) {
             queuedPackages.set(nested.name, nested);
             packagesToProcess.push(nested);
+            continue;
+          }
+          if (privatePackages.has(nested.name)) {
+            // Already materialized (or selected): the requirement must admit that selection.
+            assertNoVersionConflict(queued, nested, privatePackage.name);
+          } else {
+            // Still queued: keep the NARROWER compatible requirement so discovery order cannot
+            // turn compatible constraints (e.g. `^1.0.0` and `1.2.3`) into a spurious conflict.
+            const narrower = narrowerCompatibleRequirement(queued, nested);
+            if (narrower === undefined) {
+              assertNoVersionConflict(queued, nested, privatePackage.name);
+            } else {
+              queued.versionSpecifier = narrower.versionSpecifier;
+            }
           }
         }
       }
@@ -253,7 +285,9 @@ async function collectNestedPrivatePackages(
         nested.sourceDirPath = findInstalledPackageDir(rootDirPath, nested.name);
         await copyInstalledPackage(rootDirPath, nested, nested.targetDirPath);
       } else {
-        nested.sourceDirPath = findInstalledRegistryPackageDir(rootDirPath, nested);
+        const installed = findInstalledRegistryPackage(rootDirPath, nested);
+        nested.sourceDirPath = installed?.dirPath;
+        nested.resolvedVersion = installed?.version;
         if (nested.sourceDirPath) {
           await copyInstalledPackage(rootDirPath, nested, toStagedPath(nested.targetDirPath));
         } else {
@@ -263,6 +297,7 @@ async function collectNestedPrivatePackages(
             nested.versionSpecifier ?? 'latest',
             toStagedPath(nested.targetDirPath)
           );
+          nested.resolvedVersion = readInstalledVersion(toStagedPath(nested.targetDirPath), nested.name);
           console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
         }
       }
@@ -347,6 +382,16 @@ function assertNoVersionConflict(existing: PrivatePackage, requested: PrivatePac
   if (existing.kind === requested.kind) {
     if (existing.versionSpecifier === requested.versionSpecifier) return;
     if (specifierSubset(existing.versionSpecifier, requested.versionSpecifier)) return;
+    // Once the concrete materialized version is known (installed copy or extracted download), a
+    // requirement it satisfies is compatible even when the original specifiers are not subsets
+    // (e.g. `^1.0.0` resolved to 1.2.3 also satisfies a later exact `1.2.3`).
+    if (
+      existing.resolvedVersion !== undefined &&
+      requested.versionSpecifier !== undefined &&
+      installedVersionSatisfies(requested.versionSpecifier, existing.resolvedVersion)
+    ) {
+      return;
+    }
   }
 
   throw new Error(
@@ -414,32 +459,37 @@ function findInstalledPackageDir(rootDirPath: string, packageName: string): stri
  * deliberately receive no Verdaccio token) reuse it instead of downloading. Returns undefined
  * (falling back to a download) when no unambiguously correct installed copy exists.
  */
-function findInstalledRegistryPackageDir(rootDirPath: string, privatePackage: PrivatePackage): string | undefined {
+function findInstalledRegistryPackage(
+  rootDirPath: string,
+  privatePackage: PrivatePackage
+): { dirPath: string; version: string } | undefined {
   const specifier = privatePackage.versionSpecifier ?? 'latest';
   const relativeDirPath = path.join('node_modules', ...privatePackage.name.split('/'));
-  const addCandidate = (candidateDirPaths: Set<string>, dirPath: string): void => {
+  const addCandidate = (candidates: Map<string, string>, dirPath: string): void => {
     const version = readInstalledVersion(dirPath, privatePackage.name);
-    if (version && installedVersionSatisfies(specifier, version)) candidateDirPaths.add(fs.realpathSync(dirPath));
+    if (version && installedVersionSatisfies(specifier, version)) candidates.set(fs.realpathSync(dirPath), version);
   };
   // A root-level installation is THE lockfile resolution for the root dependency; the .bun store
   // is consulted only for transitive-only packages, where multiple satisfying resolutions may
   // coexist and picking one arbitrarily could materialize the wrong content.
-  const directCandidateDirPaths = new Set<string>();
-  addCandidate(directCandidateDirPaths, path.join(rootDirPath, relativeDirPath));
-  if (directCandidateDirPaths.size === 1) return [...directCandidateDirPaths][0];
+  const directCandidates = new Map<string, string>();
+  addCandidate(directCandidates, path.join(rootDirPath, relativeDirPath));
+  if (directCandidates.size === 1) return toSingleCandidate(directCandidates);
 
-  const storeCandidateDirPaths = new Set<string>();
+  const storeCandidates = new Map<string, string>();
   try {
     for (const dirent of fs.readdirSync(path.join(rootDirPath, 'node_modules', '.bun'), { withFileTypes: true })) {
-      addCandidate(
-        storeCandidateDirPaths,
-        path.join(rootDirPath, 'node_modules', '.bun', dirent.name, relativeDirPath)
-      );
+      addCandidate(storeCandidates, path.join(rootDirPath, 'node_modules', '.bun', dirent.name, relativeDirPath));
     }
   } catch {
     // No .bun store (hoisted install); fall back to downloading.
   }
-  return storeCandidateDirPaths.size === 1 ? [...storeCandidateDirPaths][0] : undefined;
+  return toSingleCandidate(storeCandidates);
+}
+
+function toSingleCandidate(candidates: Map<string, string>): { dirPath: string; version: string } | undefined {
+  const [entry] = candidates;
+  return candidates.size === 1 && entry ? { dirPath: entry[0], version: entry[1] } : undefined;
 }
 
 function readInstalledVersion(dirPath: string, packageName: string): string | undefined {
@@ -480,6 +530,7 @@ function findPrivateDependencies(
         name,
         kind: isGit ? 'git' : 'registry',
         sourceDirPath: undefined,
+        resolvedVersion: undefined,
         targetDirPath: path.join(isGit ? outDirPath : registryOutDirPath, unscopedName),
         // The full git specifier is preserved so divergent URLs/revisions (#abc vs #def) are
         // detected as conflicts instead of silently collapsing into one copied package.
@@ -499,15 +550,27 @@ function findPrivateDependencies(
  * range) — and fail loudly when the requirements genuinely diverge.
  */
 function mergeSameManifestRequirement(existing: PrivatePackage, requested: PrivatePackage): PrivatePackage {
-  if (existing.kind === requested.kind) {
-    if (existing.versionSpecifier === requested.versionSpecifier) return existing;
-    if (specifierSubset(existing.versionSpecifier, requested.versionSpecifier)) return existing;
-    if (specifierSubset(requested.versionSpecifier, existing.versionSpecifier)) return requested;
-  }
+  const narrower = narrowerCompatibleRequirement(existing, requested);
+  if (narrower) return narrower;
   throw new Error(
     `Conflicting requirements for ${existing.name} within one manifest: ` +
       `${existing.versionSpecifier ?? existing.kind} vs ${requested.versionSpecifier ?? requested.kind}.`
   );
+}
+
+/**
+ * The requirement whose max-satisfying resolution is guaranteed to satisfy the other (an exact
+ * pin is the narrowest range), or undefined when neither subsumes the other.
+ */
+function narrowerCompatibleRequirement(
+  existing: PrivatePackage,
+  requested: PrivatePackage
+): PrivatePackage | undefined {
+  if (existing.kind !== requested.kind) return undefined;
+  if (existing.versionSpecifier === requested.versionSpecifier) return existing;
+  if (specifierSubset(existing.versionSpecifier, requested.versionSpecifier)) return existing;
+  if (specifierSubset(requested.versionSpecifier, existing.versionSpecifier)) return requested;
+  return undefined;
 }
 
 async function replacePrivateDependencies(

@@ -1509,6 +1509,9 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'array-subst': 'args=($(yarn list-args))',
       'case-pat': 'case "$r" in (yarn) yarn compile;; esac',
       'case-subst': 'case $(yarn kind) in x) echo matched;; esac',
+      'nested-case': 'case x in x) case y in y) yarn inner;; esac;; yarn) yarn compile;; esac',
+      'proc-subst-array': 'args=(<(yarn list-args)); echo done',
+      'proc-subst-case': 'case <(yarn kind) in x) echo matched;; esac',
       clobber: 'echo hi >| yarn && yarn compile',
       commented: 'echo ready # note; yarn compile',
       'env-opt': 'env -i yarn compile && 2>&1 yarn compile',
@@ -1587,9 +1590,14 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'in-subst': 'echo $(bun run compile)',
     // `case` patterns (parenthesized or not) are data, while the branch bodies convert.
     'case-pat': 'case "$r" in (yarn) bun run compile;; esac',
-    // A `$(...)` substitution EXECUTES even inside data contexts (case subjects, array literals).
+    // A `$(...)` substitution EXECUTES even inside data contexts (case subjects, array literals),
+    // and so do `<(...)`/`>(...)` process substitutions.
     'array-subst': 'args=($(bun run list-args))',
     'case-subst': 'case $(bun run kind) in x) echo matched;; esac',
+    'proc-subst-array': 'args=(<(bun run list-args)); echo done',
+    'proc-subst-case': 'case <(bun run kind) in x) echo matched;; esac',
+    // An inner `esac` restores the ENCLOSING case context: the outer `yarn)` is still a pattern.
+    'nested-case': 'case x in x) case y in y) bun run inner;; esac;; yarn) bun run compile;; esac',
     // `<<` inside an arithmetic expansion is a left shift, not a heredoc.
     shift: 'echo $((1 << 2)) && bun run compile',
     // Only a real unquoted heredoc operator suppresses conversion, not quoted `<<` data.

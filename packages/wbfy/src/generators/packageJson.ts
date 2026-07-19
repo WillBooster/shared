@@ -849,6 +849,9 @@ function forEachCommandPositionToken(
   // and a leading `(` is a delimiter, not a subshell.
   type CaseContext = 'none' | 'awaitingIn' | 'pattern' | 'body';
   let caseContext: CaseContext = 'none';
+  // `case` statements nest (a branch body may contain another `case`); each `esac` must restore
+  // the ENCLOSING statement's context, or a later outer pattern would be scanned as executable.
+  const enclosingCaseContexts: CaseContext[] = [];
   // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER state must be
   // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
   const outerStates: {
@@ -868,13 +871,15 @@ function forEachCommandPositionToken(
       // Separator tokens are ASCII, so index-based iteration is safe.
       for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
         const char = token.text[charIndex] ?? '';
-        // An ADJACENT `$(` opens a command substitution, whose content EXECUTES even where the
-        // surrounding context is data (a case subject/pattern, an array literal).
+        // An ADJACENT `$(` opens a command substitution and an ADJACENT `<(`/`>(` opens a process
+        // substitution; both EXECUTE their content even where the surrounding context is data (a
+        // case subject/pattern, an array literal). Redirect operators become lastWordToken too,
+        // so `<`/`>` adjacency is checked the same way.
         const opensSubstitution =
           char === '(' &&
           lastWordToken !== undefined &&
-          lastWordToken.text.endsWith('$') &&
-          lastWordToken.end === token.start + charIndex;
+          lastWordToken.end === token.start + charIndex &&
+          (lastWordToken.text.endsWith('$') || lastWordToken.text === '<' || lastWordToken.text === '>');
         if ((caseContext === 'awaitingIn' || caseContext === 'pattern') && !opensSubstitution) {
           // Inside a pattern, `(` and `|` delimit alternatives and `)` starts the branch body.
           if (caseContext === 'pattern' && char === ')') {
@@ -888,8 +893,8 @@ function forEachCommandPositionToken(
           outerStates.push({
             atCommandPosition,
             inDataParens,
-            // A word ending in `$` opens a substitution, never a function definition.
-            functionCandidate: lastWordToken !== undefined && !lastWordToken.text.endsWith('$'),
+            // A word opening a command or process substitution never declares a function.
+            functionCandidate: lastWordToken !== undefined && !opensSubstitution,
             caseContext,
           });
           // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
@@ -936,7 +941,7 @@ function forEachCommandPositionToken(
     }
     if (caseContext === 'pattern') {
       // A branch-less `esac` (e.g. right after `;;`) ends the case statement.
-      if (token.text === 'esac') caseContext = 'none';
+      if (token.text === 'esac') caseContext = enclosingCaseContexts.pop() ?? 'none';
       continue;
     }
     if (inDataParens) continue;
@@ -955,11 +960,12 @@ function forEachCommandPositionToken(
       continue;
     }
     if (token.text === 'case') {
+      enclosingCaseContexts.push(caseContext);
       caseContext = 'awaitingIn';
       continue;
     }
     if (caseContext === 'body' && token.text === 'esac') {
-      caseContext = 'none';
+      caseContext = enclosingCaseContexts.pop() ?? 'none';
       atCommandPosition = false;
       continue;
     }
