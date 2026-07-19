@@ -729,10 +729,28 @@ function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: Re
   return !nodeBasedTools.has(first);
 }
 
-// Prefix words that run the command that follows them, so the next token stays in command
-// position. cross-env is included because `cross-env KEY=VALUE <command> ...` is the common
-// pre-Bun way to set environment variables portably in package scripts.
-const commandPositionTransparentWords = new Set(['!', 'command', 'cross-env', 'env', 'exec']);
+// Words after which the next token is still in command position: prefix words that run the
+// command following them (cross-env is included because `cross-env KEY=VALUE <command> ...` is
+// the common pre-Bun way to set environment variables portably in package scripts), shell
+// keywords introducing a compound command's body (`if cmd`, `then cmd`, ...), and the `{ ... }`
+// grouping braces.
+const commandPositionTransparentWords = new Set([
+  '!',
+  'command',
+  'cross-env',
+  'env',
+  'exec',
+  'time',
+  'if',
+  'elif',
+  'then',
+  'else',
+  'while',
+  'until',
+  'do',
+  '{',
+  '}',
+]);
 
 /**
  * Invokes the callback for every token in shell command position. Separators start a new command;

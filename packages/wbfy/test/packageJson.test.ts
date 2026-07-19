@@ -1503,6 +1503,7 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       dollar: "yarn 'build:$target'",
       'fan-out': 'yarn workspaces foreach --all run build',
       'gen:sub': 'cd sub && yarn build:sub',
+      guarded: 'if [ -f .env ]; then yarn compile; fi && { yarn compile; }',
       hint: "echo 'run yarn build before deploying'",
       'install-note': "echo 'yarn install && deploy now'",
       mention: 'git commit -m yarn && echo yarn build',
@@ -1533,6 +1534,8 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     dollar: "bun run 'build:$target'",
     'fan-out': "bun run --filter '*' build",
     'gen:sub': 'cd sub && bun run build:sub',
+    // Shell keywords and grouping braces keep the following word in command position.
+    guarded: 'if [ -f .env ]; then bun run compile; fi && { bun run compile; }',
     redirect: 'bun run build>out.log',
     // The legacy `yarn install && ` prefix is removed before conversion.
     'setup-all': 'bun run compile',
