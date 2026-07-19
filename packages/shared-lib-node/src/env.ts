@@ -229,18 +229,6 @@ export function readEnvironmentVariables(
     // recursively re-expanding them (an exported `pa$word` must stay `pa$word`).
     if (value !== undefined && !(key in envVars)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
   }
-  // A value referencing ${WB_ENV} must expand to what the child will actually see: when nothing
-  // defines WB_ENV, wb's Project.env later fills it with the fallback mode, so expose that
-  // fallback here instead of expanding the reference to an empty string. Opt-in via the option:
-  // a direct readEnvironmentVariables/readAndApplyEnvironmentVariables caller never receives the
-  // completed WB_ENV, and expanding references against a value that is not actually applied
-  // would make the pair inconsistent.
-  if (options?.expandFallbackWbEnv && !envVars.WB_ENV && !runtimeEnv.WB_ENV) {
-    // An EMPTY definition counts as unset too (Project.completeAndValidateWbEnv treats it so):
-    // drop it so references resolve to the fallback the completed environment will carry.
-    delete envVars.WB_ENV;
-    referenceEnv.WB_ENV = resolveFallbackWbEnv(argv);
-  }
   // dotenv-expand resolves references in key-insertion order, so a .env value referencing a
   // fnox/mise-provided key would see an empty string if the fnox/mise entries stayed appended
   // after the .env entries. Rebuild the expansion input with the lower-priority sources first;
@@ -248,10 +236,23 @@ export function readEnvironmentVariables(
   const orderedEnvVars: Record<string, string> = {};
   for (const key of [...miseEnvVarNames, ...fnoxEnvVarNames]) orderedEnvVars[key] = envVars[key]!;
   Object.assign(orderedEnvVars, envVars);
-  return [
-    expand({ parsed: orderedEnvVars, processEnv: referenceEnv }).parsed ?? orderedEnvVars,
-    envPathAndLoadedEnvVarNames,
-  ];
+  // expand() mutates its parsed input, so keep the pre-expansion values for the re-expansion below.
+  const preExpansionEnvVars = { ...orderedEnvVars };
+  let expandedEnvVars = expand({ parsed: orderedEnvVars, processEnv: referenceEnv }).parsed ?? orderedEnvVars;
+  // A value referencing ${WB_ENV} must expand to what the child will actually see: when the
+  // EFFECTIVE WB_ENV ends up empty — whether it was never defined, defined empty, or emptied by
+  // the expansion itself (e.g. `WB_ENV=${MISSING_MODE}`) — wb's Project.env later fills it with
+  // the fallback mode, so re-expand from the original values with that fallback available.
+  // Opt-in via the option: a direct readEnvironmentVariables/readAndApplyEnvironmentVariables
+  // caller never receives the completed WB_ENV, and expanding references against a value that is
+  // not actually applied would make the pair inconsistent.
+  if (options?.expandFallbackWbEnv && !expandedEnvVars.WB_ENV && !runtimeEnv.WB_ENV) {
+    const reExpansionInput = { ...preExpansionEnvVars };
+    delete reExpansionInput.WB_ENV;
+    referenceEnv.WB_ENV = resolveFallbackWbEnv(argv);
+    expandedEnvVars = expand({ parsed: reExpansionInput, processEnv: referenceEnv }).parsed ?? reExpansionInput;
+  }
+  return [expandedEnvVars, envPathAndLoadedEnvVarNames];
 }
 
 /**

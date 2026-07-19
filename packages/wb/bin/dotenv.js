@@ -84,7 +84,6 @@ function validateStandardWbEnv(value, fixTarget) {
 // Mirrors src/commands/dotenv.ts (readAndApplyEnvironmentVariables) for this startup fast path.
 function readAndApplyEnvironmentVariables(cwd) {
   const mode = process.env.WB_ENV;
-  validateStandardWbEnv(mode, 'the exported variable');
   // Mode-specific sources drive the forced-mode override below.
   const modeVars = mode
     ? { ...readEnvFile(path.join(cwd, `.env.${mode}`)), ...readEnvFile(path.join(cwd, `.env.${mode}.local`)) }
@@ -135,8 +134,10 @@ function readAndApplyEnvironmentVariables(cwd) {
     }
     // On CI, inherited variables intentionally win; no warning is emitted.
   }
-  // Validate the FINAL value the child will see: the env sources themselves may define a broken
-  // WB_ENV, and with a forced mode the mode files may even override a VALID exported value.
+  // Validate only AFTER applying the sources, so a WB_SKIP_ENV_CHECK defined in an env FILE is
+  // honored: both the captured exported mode (it selected the cascade) and the FINAL value the
+  // child will see.
+  validateStandardWbEnv(mode, 'the exported variable');
   validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
 }
 

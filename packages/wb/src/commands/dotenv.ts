@@ -119,7 +119,6 @@ function validateStandardWbEnv(value: string | undefined, fixTarget: string): vo
 // though — a typo like `prodcution` would otherwise silently select the base (development) values.
 function readAndApplyEnvironmentVariables(cwd: string): void {
   const mode = process.env.WB_ENV;
-  validateStandardWbEnv(mode, 'the exported variable');
   const readEnvFile = (fileName: string): Record<string, string> =>
     config({ path: path.join(cwd, fileName), processEnv: {}, quiet: true }).parsed ?? {};
   // Mode-specific sources drive the forced-mode override below.
@@ -171,8 +170,10 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
     // On CI, inherited variables intentionally win (workflows deliberately inject env vars that
     // override the committed files); this is the designed behavior, so no warning is emitted.
   }
-  // Validate the FINAL value the child will see: the env sources themselves may define a broken
-  // WB_ENV (e.g. `.env` with `WB_ENV=prodcution`), and with a forced mode the mode files may even
-  // override a VALID exported value with a broken one.
+  // Validate only AFTER applying the sources, so a WB_SKIP_ENV_CHECK defined in an env FILE is
+  // honored: both the captured exported mode (it selected the cascade) and the FINAL value the
+  // child will see — the env sources may define a broken WB_ENV (e.g. `.env` with
+  // `WB_ENV=prodcution`), and a forced mode's files may even override a VALID exported value.
+  validateStandardWbEnv(mode, 'the exported variable');
   validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
 }
