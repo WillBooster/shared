@@ -1502,12 +1502,18 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'deps-up': 'yarn up -R typescript',
       dollar: "yarn 'build:$target'",
       dynamic: 'yarn build:$target && yarn run "build:$target"',
+      'amp-input': 'true &</dev/null yarn compile',
       'amp-redirect': 'node report.js &>logs/yarn.log yarn compile',
       arith: 'echo $((yarn && 1))',
       'array-lit': 'args=(yarn compile); echo done',
       'array-subst': 'args=($(yarn list-args))',
       'case-pat': 'case "$r" in (yarn) yarn compile;; esac',
       'case-subst': 'case $(yarn kind) in x) echo matched;; esac',
+      'case-fallthrough': 'case x in x) yarn one ;& yarn|npm) yarn compile;; esac',
+      'case-testnext': 'case x in x) yarn one ;;& yarn) yarn two;; esac',
+      'nested-case': 'case x in x) case y in y) yarn inner;; esac;; yarn) yarn compile;; esac',
+      'proc-subst-array': 'args=(<(yarn list-args)); echo done',
+      'proc-subst-case': 'case <(yarn kind) in x) echo matched;; esac',
       clobber: 'echo hi >| yarn && yarn compile',
       commented: 'echo ready # note; yarn compile',
       'env-opt': 'env -i yarn compile && 2>&1 yarn compile',
@@ -1586,9 +1592,17 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'in-subst': 'echo $(bun run compile)',
     // `case` patterns (parenthesized or not) are data, while the branch bodies convert.
     'case-pat': 'case "$r" in (yarn) bun run compile;; esac',
-    // A `$(...)` substitution EXECUTES even inside data contexts (case subjects, array literals).
+    // A `$(...)` substitution EXECUTES even inside data contexts (case subjects, array literals),
+    // and so do `<(...)`/`>(...)` process substitutions.
     'array-subst': 'args=($(bun run list-args))',
     'case-subst': 'case $(bun run kind) in x) echo matched;; esac',
+    'proc-subst-array': 'args=(<(bun run list-args)); echo done',
+    'proc-subst-case': 'case <(bun run kind) in x) echo matched;; esac',
+    // An inner `esac` restores the ENCLOSING case context: the outer `yarn)` is still a pattern.
+    'nested-case': 'case x in x) case y in y) bun run inner;; esac;; yarn) bun run compile;; esac',
+    // `;&` and `;;&` also terminate a case clause: what follows is a pattern, not a command.
+    'case-fallthrough': 'case x in x) bun run one ;& yarn|npm) bun run compile;; esac',
+    'case-testnext': 'case x in x) bun run one ;;& yarn) bun run two;; esac',
     // `<<` inside an arithmetic expansion is a left shift, not a heredoc.
     shift: 'echo $((1 << 2)) && bun run compile',
     // Only a real unquoted heredoc operator suppresses conversion, not quoted `<<` data.
@@ -1596,6 +1610,8 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     redirect: 'bun run build>out.log',
     // A redirection before the command leaves it in command position.
     'redirect-first': '>build.log bun run compile',
+    // `&<` is not a compound redirection: it parses as `&` (background) followed by `<`.
+    'amp-input': 'true &</dev/null bun run compile',
     // The legacy `yarn install && ` prefix is removed before conversion, quoted or not.
     'quoted-install': 'bun run compile',
     'setup-all': 'bun run compile',

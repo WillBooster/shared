@@ -17,6 +17,8 @@ import { fsUtil } from '../utils/fsUtil.js';
 // ~/.config/fnox/ci-age.txt and the FNOX_AGE_KEY repository secrets.
 export const FNOX_AGE_RECIPIENTS = [
   { name: 'exkazuu', publicKey: 'age1j2354xhvm3fv9y77t5g6y3q8mexgk2mf00tgrkzgp73tynrvz55s8auayw' },
+  { name: 'ponharu1', publicKey: 'age18rugldf9htc6um5eplpx27k53ep4zn0lhzwffgnxzhrq0c7zgvyq3zccdy' },
+  { name: 'ponharu2', publicKey: 'age1nz2n99crjr7np9xjglwfffc3dud45dhewqzqfzpztkdwu4hj74gq6el533' },
   { name: 'ci', publicKey: 'age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak' },
 ];
 

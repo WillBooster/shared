@@ -849,6 +849,9 @@ function forEachCommandPositionToken(
   // and a leading `(` is a delimiter, not a subshell.
   type CaseContext = 'none' | 'awaitingIn' | 'pattern' | 'body';
   let caseContext: CaseContext = 'none';
+  // `case` statements nest (a branch body may contain another `case`); each `esac` must restore
+  // the ENCLOSING statement's context, or a later outer pattern would be scanned as executable.
+  const enclosingCaseContexts: CaseContext[] = [];
   // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER state must be
   // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
   const outerStates: {
@@ -859,7 +862,14 @@ function forEachCommandPositionToken(
   }[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
-      if (caseContext === 'body' && token.text.startsWith(';;')) {
+      // All three case-clause terminators return to pattern context: `;;`, `;;&` (whose `&`
+      // arrives as a separate token startsWith(';;') already covers), and `;&`, which tokenizes
+      // as `;` plus an ADJACENT `&` (same-char runs are one token each).
+      if (
+        caseContext === 'body' &&
+        (token.text.startsWith(';;') ||
+          (token.text === ';' && tokens[index + 1]?.text === '&' && tokens[index + 1]?.start === token.end))
+      ) {
         caseContext = 'pattern';
         redirectionOperandFollows = false;
         previousSeparatorChar = undefined;
@@ -868,13 +878,15 @@ function forEachCommandPositionToken(
       // Separator tokens are ASCII, so index-based iteration is safe.
       for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
         const char = token.text[charIndex] ?? '';
-        // An ADJACENT `$(` opens a command substitution, whose content EXECUTES even where the
-        // surrounding context is data (a case subject/pattern, an array literal).
+        // An ADJACENT `$(` opens a command substitution and an ADJACENT `<(`/`>(` opens a process
+        // substitution; both EXECUTE their content even where the surrounding context is data (a
+        // case subject/pattern, an array literal). Redirect operators become lastWordToken too,
+        // so `<`/`>` adjacency is checked the same way.
         const opensSubstitution =
           char === '(' &&
           lastWordToken !== undefined &&
-          lastWordToken.text.endsWith('$') &&
-          lastWordToken.end === token.start + charIndex;
+          lastWordToken.end === token.start + charIndex &&
+          (lastWordToken.text.endsWith('$') || lastWordToken.text === '<' || lastWordToken.text === '>');
         if ((caseContext === 'awaitingIn' || caseContext === 'pattern') && !opensSubstitution) {
           // Inside a pattern, `(` and `|` delimit alternatives and `)` starts the branch body.
           if (caseContext === 'pattern' && char === ')') {
@@ -888,8 +900,8 @@ function forEachCommandPositionToken(
           outerStates.push({
             atCommandPosition,
             inDataParens,
-            // A word ending in `$` opens a substitution, never a function definition.
-            functionCandidate: lastWordToken !== undefined && !lastWordToken.text.endsWith('$'),
+            // A word opening a command or process substitution never declares a function.
+            functionCandidate: lastWordToken !== undefined && !opensSubstitution,
             caseContext,
           });
           // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
@@ -936,7 +948,7 @@ function forEachCommandPositionToken(
     }
     if (caseContext === 'pattern') {
       // A branch-less `esac` (e.g. right after `;;`) ends the case statement.
-      if (token.text === 'esac') caseContext = 'none';
+      if (token.text === 'esac') caseContext = enclosingCaseContexts.pop() ?? 'none';
       continue;
     }
     if (inDataParens) continue;
@@ -955,11 +967,12 @@ function forEachCommandPositionToken(
       continue;
     }
     if (token.text === 'case') {
+      enclosingCaseContexts.push(caseContext);
       caseContext = 'awaitingIn';
       continue;
     }
     if (caseContext === 'body' && token.text === 'esac') {
-      caseContext = 'none';
+      caseContext = enclosingCaseContexts.pop() ?? 'none';
       atCommandPosition = false;
       continue;
     }
@@ -1004,9 +1017,10 @@ function tokenizeShellCommand(script: string): ShellToken[] {
       index++;
       continue;
     }
-    // `&<` / `&>` starts a compound redirection, so the redirect branch below must win over the
-    // separator branch: isShellSeparator('&') is true.
-    if (isShellSeparator(char) && !(char === '&' && /^[<>]$/u.test(script[index + 1] ?? ''))) {
+    // `&>` starts a compound redirection (`&<` does not exist: shells parse it as `&` then `<`),
+    // so the redirect branch below must win over the separator branch: isShellSeparator('&') is
+    // true.
+    if (isShellSeparator(char) && !(char === '&' && script[index + 1] === '>')) {
       let end = index + 1;
       while (end < script.length && script[end] === char) end++;
       tokens.push({ text: script.slice(index, end), start: index, end });
@@ -1026,7 +1040,7 @@ function tokenizeShellCommand(script: string): ShellToken[] {
     // token streams are rejected by every caller before interpretation. Compound forms — the
     // `&>file` both-streams shorthand, the `>|` clobber operator, and `>&`/`>&1`-style
     // duplications — belong to the operator token, or their `&`/`|` would read as a separator.
-    if (char === '<' || char === '>' || (char === '&' && /^[<>]$/u.test(script[index + 1] ?? ''))) {
+    if (char === '<' || char === '>' || (char === '&' && script[index + 1] === '>')) {
       let end = char === '&' ? index + 1 : index;
       while (end < script.length && (script[end] === '<' || script[end] === '>')) end++;
       if (script[end] === '&') {

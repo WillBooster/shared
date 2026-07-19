@@ -25,7 +25,12 @@ Commands:
   wb retry [command] [args...]  Retry the given command until it succeeds
   wb setup                      Setup development environment. .env files are
                                 ignored.
-  wb setup-private-packages     Copy private git dependencies for Docker builds
+  wb setup-private-packages     Materialize private git and registry
+                                dependencies for Docker builds (installed
+                                registry packages satisfying an exact version
+                                or semver range are reused; dist-tag
+                                specifiers and missing packages are
+                                downloaded)
   wb start [args..]             Start app
   wb test [targets...]          Test project. If you pass no arguments, it will
                                 run all tests.

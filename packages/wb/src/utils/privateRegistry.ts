@@ -242,6 +242,12 @@ export function isExactVersion(specifier: string | undefined): boolean {
  */
 export function specifierSubset(specifier: string | undefined, requirement: string | undefined): boolean {
   if (specifier === undefined || requirement === undefined) return false;
+  // `*` resolves through the `latest` dist-tag (selectVersionFromPackument), not as a range, so
+  // it is not statically comparable in either position.
+  if (specifier === '*' || requirement === '*') return false;
+  // Build metadata distinguishes registry artifacts (resolveVersion fetches an exact specifier
+  // verbatim) but semver comparisons ignore it, so two exact versions must match as strings.
+  if (isExactVersion(specifier) && isExactVersion(requirement)) return specifier === requirement;
   if (!semver.validRange(specifier) || !semver.validRange(requirement)) return false;
   return semver.subset(specifier, requirement);
 }
@@ -251,6 +257,25 @@ export function specifierSubset(specifier: string | undefined, requirement: stri
  * Dist-tags (invalid ranges) are not statically checkable and pass.
  */
 export function materializedVersionSatisfies(specifier: string, version: string): boolean {
+  // Build metadata distinguishes registry artifacts, so an exact specifier admits only the
+  // identical version string.
+  if (isExactVersion(specifier)) return specifier === version;
   if (!semver.validRange(specifier)) return true;
   return semver.satisfies(version, specifier);
+}
+
+/**
+ * Whether the installed `version` is statically KNOWN to satisfy the registry `specifier`.
+ * Dist-tags (invalid ranges) are not statically checkable and return false — unlike
+ * materializedVersionSatisfies, callers use this to decide whether an installed copy can replace
+ * a registry download, so uncertainty must fall back to downloading.
+ */
+export function installedVersionSatisfies(specifier: string, version: string): boolean {
+  // `*` resolves through the `latest` dist-tag (selectVersionFromPackument), so like any other
+  // dist-tag it is not statically checkable against an installed version.
+  if (specifier === '*') return false;
+  // resolveVersion fetches an exact specifier verbatim (build metadata included), so an installed
+  // copy may replace the download only when the version strings match exactly.
+  if (isExactVersion(specifier)) return specifier === version;
+  return !!semver.validRange(specifier) && semver.satisfies(version, specifier);
 }
