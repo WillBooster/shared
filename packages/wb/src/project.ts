@@ -4,12 +4,12 @@ import path from 'node:path';
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import {
   readEnvironmentVariables,
+  resolveBunWorkspacePackageJsonPaths,
   resolveFallbackWbEnv,
   shouldSuppressEnvironmentOutput,
 } from '@willbooster/shared-lib-node/src';
 import { memoizeOne } from 'at-decorators';
 import chalk from 'chalk';
-import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
@@ -488,7 +488,7 @@ export async function findDescendantProjects(
     ...rootAndSelfProjects,
     descendants:
       rootAndSelfProjects.root === rootAndSelfProjects.self
-        ? await getAllDescendantProjects(argv, rootAndSelfProjects.root, loadEnv)
+        ? getAllDescendantProjects(argv, rootAndSelfProjects.root, loadEnv)
         : [rootAndSelfProjects.self],
   };
 }
@@ -520,30 +520,18 @@ function testFileContent(filePath: string, pattern: RegExp): boolean {
   }
 }
 
-async function getAllDescendantProjects(
-  argv: EnvReaderOptions,
-  rootProject: Project,
-  loadEnv: boolean
-): Promise<Project[]> {
-  const projects = [rootProject];
-
-  const workspace = rootProject.packageJson.workspaces;
-  if (!Array.isArray(workspace)) return projects;
-
-  const globPattern: string[] = [];
-  const packageDirs: string[] = [];
-  for (const workspacePath of workspace.map((ws: string) => path.join(rootProject.dirPath, ws))) {
-    if (fs.existsSync(workspacePath)) {
-      packageDirs.push(workspacePath);
-    } else {
-      globPattern.push(workspacePath);
-    }
-  }
-  packageDirs.push(...(await globby(globPattern, { dot: true, onlyDirectories: true })));
-  for (const subPackageDirPath of packageDirs) {
-    if (!fs.existsSync(path.join(subPackageDirPath, 'package.json'))) continue;
-
-    projects.push(new Project(subPackageDirPath, argv, loadEnv));
-  }
-  return projects;
+/**
+ * The root project followed by one Project per workspace Bun would link, discovered with the
+ * shared Bun-exact resolver so every wb command sees the same workspaces as `bun install`
+ * (negations, Yarn v1's object form, pinned positives, and baseline-seeding negations included;
+ * issue #1008).
+ */
+function getAllDescendantProjects(argv: EnvReaderOptions, rootProject: Project, loadEnv: boolean): Project[] {
+  return [
+    rootProject,
+    ...resolveBunWorkspacePackageJsonPaths(rootProject.packageJson.workspaces, rootProject.dirPath).map(
+      (packageJsonPath) =>
+        new Project(path.join(rootProject.dirPath, path.posix.dirname(packageJsonPath)), argv, loadEnv)
+    ),
+  ];
 }

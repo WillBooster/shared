@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import fg from 'fast-glob';
@@ -47,9 +48,25 @@ export function resolveBunWorkspacePackageJsonPaths(workspaces: WorkspacesDeclar
  * directories.
  */
 export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], rootDirPath: string): string[] {
-  // followSymbolicLinks: false — a workspace symlink pointing outside the repository must not be
-  // treated as a workspace directory (consumers such as node_modules cleanup would operate
-  // through it).
+  // followSymbolicLinks: false stops GLOB traversal through symlinks, but a non-glob pattern
+  // naming a symlinked directory (e.g. `linked` with `linked -> ../other-repo`) still matches —
+  // fast-glob resolves static patterns with direct fs checks, and Bun does link such a workspace.
+  // Deliberately diverge from Bun there: consumers such as node_modules cleanup and manifest
+  // rewriting would otherwise delete and rewrite files in ANOTHER repository through the symlink,
+  // so keep only manifests whose real path stays inside the repository's real root. Scanning each
+  // pattern separately (no cross-pattern caching) is deliberate: declarations hold a handful of
+  // patterns, so a cache would complicate this shared code without measurable gain.
+  let realRootDirPath: string | undefined;
+  const isInsideRealRoot = (packageJsonPath: string): boolean => {
+    try {
+      realRootDirPath ??= fs.realpathSync(rootDirPath);
+      const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(rootDirPath, packageJsonPath)));
+      return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+    } catch {
+      // A manifest that vanished between the glob and the realpath call is not a workspace.
+      return false;
+    }
+  };
   const globManifestPaths = (pattern: string): string[] =>
     fg
       .globSync(path.posix.join(pattern, 'package.json'), {
@@ -59,7 +76,7 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
       })
       // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
       // monorepo root as its own workspace.
-      .filter((packageJsonPath) => packageJsonPath !== 'package.json');
+      .filter((packageJsonPath) => packageJsonPath !== 'package.json' && isInsideRealRoot(packageJsonPath));
   const accumulatedPaths = new Set<string>();
   const pinnedPaths = new Set<string>();
   for (const workspacePattern of workspacePatterns) {

@@ -94,6 +94,28 @@ test('drops no-op patterns, applies bang parity, and ignores repository-escaping
   });
 });
 
+test('drops a workspace whose symlink escapes the repository but keeps internal symlinks', () => {
+  const outerDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'bun-workspaces-symlink-'));
+  try {
+    const rootDirPath = path.join(outerDirPath, 'repo');
+    fs.mkdirSync(path.join(rootDirPath, 'real-pkg'), { recursive: true });
+    fs.mkdirSync(path.join(outerDirPath, 'outside'));
+    fs.writeFileSync(path.join(rootDirPath, 'package.json'), JSON.stringify({ name: 'root' }));
+    fs.writeFileSync(path.join(rootDirPath, 'real-pkg', 'package.json'), JSON.stringify({}));
+    fs.writeFileSync(path.join(outerDirPath, 'outside', 'package.json'), JSON.stringify({}));
+    // Bun links both, but the resolver must keep only the internal one: consumers (node_modules
+    // cleanup, manifest rewriting) would otherwise operate on another repository via the symlink.
+    fs.symlinkSync(path.join('..', 'outside'), path.join(rootDirPath, 'escaping'));
+    fs.symlinkSync('real-pkg', path.join(rootDirPath, 'internal'));
+    expect(resolveBunWorkspacePackageJsonPaths(['escaping', 'internal', 'real-pkg'], rootDirPath)).toEqual([
+      'internal/package.json',
+      'real-pkg/package.json',
+    ]);
+  } finally {
+    fs.rmSync(outerDirPath, { recursive: true, force: true });
+  }
+});
+
 test('detects the implicit workspace baseline only for seeding negation shapes', () => {
   expect(hasImplicitWorkspaceBaseline(['!other/*'])).toBe(true);
   expect(hasImplicitWorkspaceBaseline(['apps/*', '!other/**'])).toBe(true);
