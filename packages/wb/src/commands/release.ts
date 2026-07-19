@@ -3,11 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import chalk from 'chalk';
-import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
-import { treeKill } from '@willbooster/shared-lib-node/src';
+import { resolveBunWorkspacePackageJsonPaths, treeKill } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
 import { findRootAndSelfProjects } from '../project.js';
@@ -178,7 +177,7 @@ export async function releasePublishesToNpm(project: Pick<Project, 'dirPath' | '
   // Without an explicit root plugin list, semantic-release's default list (npm included) applies.
   if (!Array.isArray(rootPlugins) || pluginsIncludeNpm(rootPlugins)) return true;
 
-  for (const packageDirPath of await findWorkspacePackageDirs(project)) {
+  for (const packageDirPath of findWorkspacePackageDirs(project)) {
     const plugins = readExplicitSemanticReleasePlugins(packageDirPath, undefined);
     // A workspace package without its own plugin list inherits the root's (npm-free) decision.
     if (plugins === 'unknown' || (Array.isArray(plugins) && pluginsIncludeNpm(plugins))) return true;
@@ -285,7 +284,7 @@ async function prepareNpmCompatibleLayout(
         modifiedFiles.set(lockFilePath, fs.existsSync(lockFilePath) ? fs.readFileSync(lockFilePath) : undefined);
       }
       fs.writeFileSync(bunfigPath, hoistedBunfig ?? '', 'utf8');
-      const nodeModulesDirPaths = [project.dirPath, ...(await findWorkspacePackageDirs(project))].map((dirPath) =>
+      const nodeModulesDirPaths = [project.dirPath, ...findWorkspacePackageDirs(project)].map((dirPath) =>
         path.join(dirPath, 'node_modules')
       );
       for (const nodeModulesDirPath of nodeModulesDirPaths) {
@@ -323,7 +322,7 @@ async function prepareNpmCompatibleLayout(
     }
   }
 
-  const workspacePackageDirs = await findWorkspacePackageDirs(project);
+  const workspacePackageDirs = findWorkspacePackageDirs(project);
   for (const packageJsonPath of [
     project.packageJsonPath,
     ...workspacePackageDirs.map((dirPath) => path.join(dirPath, 'package.json')),
@@ -525,11 +524,14 @@ async function runSemanticRelease(project: Project, argv: ReleaseArgv, activeChi
   });
 }
 
-async function findWorkspacePackageDirs(project: Pick<Project, 'dirPath' | 'packageJson'>): Promise<string[]> {
-  const workspaces = project.packageJson.workspaces;
-  const patterns = Array.isArray(workspaces) ? workspaces : (workspaces?.packages ?? []);
-  if (patterns.length === 0) return [];
-
-  const dirPaths = await globby(patterns, { cwd: project.dirPath, onlyDirectories: true });
-  return dirPaths.map((dirPath) => path.join(project.dirPath, dirPath));
+/**
+ * The absolute directory of every workspace Bun would link, resolved with the shared Bun-exact
+ * resolver so exotic patterns (pinned positives after a matching negation, baseline-seeding
+ * negations, …) match `bun install`'s view — globby's negation/baseline semantics diverge
+ * (issue #1008).
+ */
+function findWorkspacePackageDirs(project: Pick<Project, 'dirPath' | 'packageJson'>): string[] {
+  return resolveBunWorkspacePackageJsonPaths(project.packageJson.workspaces, project.dirPath).map((packageJsonPath) =>
+    path.join(project.dirPath, path.posix.dirname(packageJsonPath))
+  );
 }

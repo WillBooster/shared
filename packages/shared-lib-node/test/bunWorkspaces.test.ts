@@ -1,0 +1,107 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { expect, test } from 'vitest';
+
+import {
+  getMeaningfulDeclaredWorkspacePatterns,
+  hasImplicitWorkspaceBaseline,
+  resolveBunWorkspacePackageJsonPaths,
+} from '../src/bunWorkspaces.js';
+
+/** Creates a temp monorepo whose given directories each contain a package.json. */
+function withPackageDirs(packageDirPaths: string[], testBody: (rootDirPath: string) => void): void {
+  const rootDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'bun-workspaces-'));
+  try {
+    fs.writeFileSync(path.join(rootDirPath, 'package.json'), JSON.stringify({ name: 'root' }));
+    for (const packageDirPath of packageDirPaths) {
+      fs.mkdirSync(path.join(rootDirPath, packageDirPath), { recursive: true });
+      fs.writeFileSync(path.join(rootDirPath, packageDirPath, 'package.json'), JSON.stringify({}));
+    }
+    testBody(rootDirPath);
+  } finally {
+    fs.rmSync(rootDirPath, { recursive: true, force: true });
+  }
+}
+
+test('evaluates patterns sequentially: a later positive re-adds what an earlier negation removed', () => {
+  withPackageDirs(['apps/web', 'apps/excluded'], (rootDirPath) => {
+    expect(resolveBunWorkspacePackageJsonPaths(['apps/*', '!apps/excluded'], rootDirPath)).toEqual([
+      'apps/web/package.json',
+    ]);
+    expect(resolveBunWorkspacePackageJsonPaths(['!apps/excluded', 'apps/*'], rootDirPath)).toEqual([
+      'apps/excluded/package.json',
+      'apps/web/package.json',
+    ]);
+  });
+});
+
+test('a non-glob positive pattern pins its directory regardless of negation order (issue #1008)', () => {
+  withPackageDirs(['packages/a', 'packages/lib'], (rootDirPath) => {
+    for (const workspaces of [
+      ['packages/*', 'packages/lib', '!packages/lib'],
+      ['packages/*', '!packages/lib', 'packages/lib'],
+      ['packages/lib', '!packages/lib'],
+    ]) {
+      expect(resolveBunWorkspacePackageJsonPaths(workspaces, rootDirPath), workspaces.join(',')).toContain(
+        'packages/lib/package.json'
+      );
+    }
+  });
+});
+
+test('a two-segment star-run negation seeds the implicit baseline before deleting its matches', () => {
+  withPackageDirs(['apps/web', 'other/x', 'deep/nested/pkg'], (rootDirPath) => {
+    // `!other/*` seeds `*/*` (depth 2 only), then removes other/x.
+    expect(resolveBunWorkspacePackageJsonPaths(['!other/*'], rootDirPath)).toEqual(['apps/web/package.json']);
+    // `!other/**` seeds `**` (any depth), then removes other/x.
+    expect(resolveBunWorkspacePackageJsonPaths(['!other/**'], rootDirPath)).toEqual([
+      'apps/web/package.json',
+      'deep/nested/pkg/package.json',
+    ]);
+    // Seeding also happens alongside positive patterns.
+    expect(resolveBunWorkspacePackageJsonPaths(['deep/nested/pkg', '!other/*'], rootDirPath)).toEqual([
+      'apps/web/package.json',
+      'deep/nested/pkg/package.json',
+    ]);
+    // Non-seeding negation shapes link nothing on their own.
+    for (const workspaces of [['!*'], ['!**'], ['!*/*'], ['!apps/excluded'], ['!apps/*d'], ['!a/b/*']]) {
+      expect(resolveBunWorkspacePackageJsonPaths(workspaces, rootDirPath), workspaces.join(',')).toEqual([]);
+    }
+  });
+});
+
+test('`**` matches zero segments but never turns the monorepo root into a workspace', () => {
+  withPackageDirs(['apps'], (rootDirPath) => {
+    expect(resolveBunWorkspacePackageJsonPaths(['apps/**'], rootDirPath)).toEqual(['apps/package.json']);
+    expect(resolveBunWorkspacePackageJsonPaths(['**'], rootDirPath)).toEqual(['apps/package.json']);
+  });
+});
+
+test('drops no-op patterns, applies bang parity, and ignores repository-escaping patterns', () => {
+  expect(getMeaningfulDeclaredWorkspacePatterns(['', '!', '.', './', 'apps/*', '!!a', '!!!b'])).toEqual([
+    'apps/*',
+    'a',
+    '!b',
+  ]);
+  expect(getMeaningfulDeclaredWorkspacePatterns({ packages: ['packages/*'] })).toEqual(['packages/*']);
+  expect(getMeaningfulDeclaredWorkspacePatterns(undefined)).toEqual([]);
+  withPackageDirs(['apps/web'], (rootDirPath) => {
+    expect(resolveBunWorkspacePackageJsonPaths(['/abs/*', '../outside/*', 'apps/*'], rootDirPath)).toEqual([
+      'apps/web/package.json',
+    ]);
+  });
+});
+
+test('detects the implicit workspace baseline only for seeding negation shapes', () => {
+  expect(hasImplicitWorkspaceBaseline(['!other/*'])).toBe(true);
+  expect(hasImplicitWorkspaceBaseline(['apps/*', '!other/**'])).toBe(true);
+  expect(hasImplicitWorkspaceBaseline(['!other/***'])).toBe(true);
+  expect(hasImplicitWorkspaceBaseline(['apps/*'])).toBe(false);
+  expect(hasImplicitWorkspaceBaseline(['!*'])).toBe(false);
+  expect(hasImplicitWorkspaceBaseline(['!**/*'])).toBe(false);
+  expect(hasImplicitWorkspaceBaseline(['!apps/excluded'])).toBe(false);
+  expect(hasImplicitWorkspaceBaseline(['!'])).toBe(false);
+  expect(hasImplicitWorkspaceBaseline(undefined)).toBe(false);
+});

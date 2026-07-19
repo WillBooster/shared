@@ -147,6 +147,40 @@ describe('releasePublishesToNpm', () => {
     await expect(releasePublishesToNpm(project)).resolves.toBe(true);
   });
 
+  it('sees a pinned workspace (positive kept despite a matching negation) like Bun does', async () => {
+    // globby dropped the pinned packages/lib entirely (issue #1008); Bun keeps it, so its
+    // npm-configuring .releaserc.json must trigger the npm preparation.
+    const project = await createProject({
+      'package.json': { name: 'root', workspaces: ['packages/lib', '!packages/lib'] },
+      '.releaserc.json': { plugins: ['@semantic-release/github'] },
+      'packages/lib/package.json': { name: 'lib' },
+      'packages/lib/.releaserc.json': { plugins: ['@semantic-release/npm'] },
+    });
+    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+  });
+
+  it('sees workspaces linked by a baseline-seeding negation like Bun does', async () => {
+    // `!other/*` seeds Bun's implicit `*/*` baseline, so packages/lib is a workspace even though
+    // no positive pattern is declared (issue #1008).
+    const project = await createProject({
+      'package.json': { name: 'root', workspaces: ['!other/*'] },
+      '.releaserc.json': { plugins: ['@semantic-release/github'] },
+      'other/x/package.json': { name: 'x' },
+      'other/x/.releaserc.json': { plugins: ['@semantic-release/npm'] },
+      'packages/lib/package.json': { name: 'lib' },
+      'packages/lib/.releaserc.json': { plugins: ['@semantic-release/npm'] },
+    });
+    await expect(releasePublishesToNpm(project)).resolves.toBe(true);
+    // …and the negated other/x alone must NOT trigger it: it is not a workspace to Bun.
+    const negatedOnlyProject = await createProject({
+      'package.json': { name: 'root', workspaces: ['!other/*'] },
+      '.releaserc.json': { plugins: ['@semantic-release/github'] },
+      'other/x/package.json': { name: 'x' },
+      'other/x/.releaserc.json': { plugins: ['@semantic-release/npm'] },
+    });
+    await expect(releasePublishesToNpm(negatedOnlyProject)).resolves.toBe(false);
+  });
+
   it('skips when the root and every workspace package configure npm-free plugins', async () => {
     const project = await createProject({
       'package.json': { name: 'root', workspaces: ['packages/*'] },

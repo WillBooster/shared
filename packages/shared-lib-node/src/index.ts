@@ -1,4 +1,15 @@
 export {
+  getDeclaredWorkspacePatterns,
+  getMeaningfulDeclaredWorkspacePatterns,
+  getSeededBaselineGlob,
+  hasImplicitWorkspaceBaseline,
+  isInRepositoryWorkspacePattern,
+  normalizeWorkspacePatternBody,
+  resolveBunWorkspacePackageJsonPaths,
+  resolveWorkspacePackageJsonPaths,
+} from './bunWorkspaces.js';
+export type { WorkspacesDeclaration } from './bunWorkspaces.js';
+export {
   hasProjectFnoxConfig,
   readEnvironmentVariables,
   readAndApplyEnvironmentVariables,

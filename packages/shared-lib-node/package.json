@@ -44,7 +44,8 @@
   "dependencies": {
     "@types/yargs": "17.0.35",
     "dotenv": "17.4.2",
-    "dotenv-expand": "13.0.0"
+    "dotenv-expand": "13.0.0",
+    "fast-glob": "3.3.3"
   },
   "devDependencies": {
     "@tsconfig/bun": "1.0.10",
