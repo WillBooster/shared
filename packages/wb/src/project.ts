@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import {
   getDeclaredWorkspacePatterns,
+  isInRepositoryWorkspacePattern,
   readEnvironmentVariables,
   resolveBunWorkspacePackageJsonPaths,
   resolveFallbackWbEnv,
@@ -562,7 +563,7 @@ export async function findWorkspacePackageDirs(
   // containment mirrors resolveWorkspacePackageJsonPaths: a workspace symlink escaping the
   // repository must not let consumers touch another checkout.
   const positivePatterns = getDeclaredWorkspacePatterns(project.packageJson.workspaces).filter(
-    (pattern) => !pattern.startsWith('!')
+    (pattern) => !pattern.startsWith('!') && isInRepositoryWorkspacePattern(pattern)
   );
   if (positivePatterns.length === 0) return [];
   // expandDirectories: false — globby would otherwise expand a literal directory pattern to its
