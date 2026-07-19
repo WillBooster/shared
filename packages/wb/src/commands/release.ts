@@ -3,14 +3,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import chalk from 'chalk';
-import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { treeKill } from '@willbooster/shared-lib-node/src';
 
 import type { Project } from '../project.js';
-import { findRootAndSelfProjects } from '../project.js';
+import { findRootAndSelfProjects, findWorkspacePackageDirs } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { prependNodeModulesBinToPath } from '../utils/binPath.js';
 import { isCI } from '../utils/ci.js';
@@ -173,7 +172,9 @@ async function spawnAndWait(
  * missing plugin list, a non-JSON config file, or an `extends` preset conservatively keeps the
  * npm preparation.
  */
-export async function releasePublishesToNpm(project: Pick<Project, 'dirPath' | 'packageJson'>): Promise<boolean> {
+export async function releasePublishesToNpm(
+  project: Pick<Project, 'dirPath' | 'packageJson' | 'usesBunPackageManager'>
+): Promise<boolean> {
   const rootPlugins = readExplicitSemanticReleasePlugins(project.dirPath, project.packageJson);
   // Without an explicit root plugin list, semantic-release's default list (npm included) applies.
   if (!Array.isArray(rootPlugins) || pluginsIncludeNpm(rootPlugins)) return true;
@@ -523,13 +524,4 @@ async function runSemanticRelease(project: Project, argv: ReleaseArgv, activeChi
     env,
     stdio: 'inherit',
   });
-}
-
-async function findWorkspacePackageDirs(project: Pick<Project, 'dirPath' | 'packageJson'>): Promise<string[]> {
-  const workspaces = project.packageJson.workspaces;
-  const patterns = Array.isArray(workspaces) ? workspaces : (workspaces?.packages ?? []);
-  if (patterns.length === 0) return [];
-
-  const dirPaths = await globby(patterns, { cwd: project.dirPath, onlyDirectories: true });
-  return dirPaths.map((dirPath) => path.join(project.dirPath, dirPath));
 }

@@ -3,7 +3,10 @@ import path from 'node:path';
 
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import {
+  getDeclaredWorkspacePatterns,
+  isInRepositoryWorkspacePattern,
   readEnvironmentVariables,
+  resolveBunWorkspacePackageJsonPaths,
   resolveFallbackWbEnv,
   shouldSuppressEnvironmentOutput,
 } from '@willbooster/shared-lib-node/src';
@@ -520,30 +523,88 @@ function testFileContent(filePath: string, pattern: RegExp): boolean {
   }
 }
 
+/**
+ * The root project followed by one Project per workspace directory the target repository's
+ * package manager would link (issue #1008): Bun repos use the shared Bun-exact resolver
+ * (negations, pinned positives, and baseline-seeding negations included), while Yarn repos keep
+ * glob semantics — Bun-only rules such as the implicit baseline would invent workspaces Yarn
+ * never links.
+ */
 async function getAllDescendantProjects(
   argv: EnvReaderOptions,
   rootProject: Project,
   loadEnv: boolean
 ): Promise<Project[]> {
-  const projects = [rootProject];
+  const workspaceDirPaths = await findWorkspacePackageDirs(rootProject);
+  return [rootProject, ...workspaceDirPaths.map((workspaceDirPath) => new Project(workspaceDirPath, argv, loadEnv))];
+}
 
-  const workspace = rootProject.packageJson.workspaces;
-  if (!Array.isArray(workspace)) return projects;
-
-  const globPattern: string[] = [];
-  const packageDirs: string[] = [];
-  for (const workspacePath of workspace.map((ws: string) => path.join(rootProject.dirPath, ws))) {
-    if (fs.existsSync(workspacePath)) {
-      packageDirs.push(workspacePath);
-    } else {
-      globPattern.push(workspacePath);
+/**
+ * The absolute directory of every workspace the target repository's package manager would link,
+ * matching the manager the way getAllDescendantProjects describes. Exported for wb release, whose
+ * plugin inspection, node_modules cleanup, and manifest rewriting must see the same workspace set.
+ */
+export async function findWorkspacePackageDirs(
+  project: Pick<Project, 'dirPath' | 'packageJson' | 'usesBunPackageManager'>
+): Promise<string[]> {
+  if (project.usesBunPackageManager) {
+    return resolveBunWorkspacePackageJsonPaths(project.packageJson.workspaces, project.dirPath).map((packageJsonPath) =>
+      path.join(project.dirPath, path.posix.dirname(packageJsonPath))
+    );
+  }
+  // Yarn 1.22.22 resolves each declared pattern (array or `{ packages: […] }` form) independently
+  // and unions the results, so a leading-`!` pattern is not an exclusion — `["packages/*",
+  // "!packages/a"]` still links packages/a. Yarn additionally ignores manifests missing a name or
+  // version ("Missing version in workspace …, ignoring."), but that is deliberately NOT mirrored:
+  // wb's descendant discovery exists to run commands (lint, test, typecheck, …) in sub-packages,
+  // and version-less private packages must stay discovered — the long-standing behavior wb's
+  // monorepo fixtures encode. Glob for the manifests themselves: globby's `onlyDirectories`
+  // would return a literal directory pattern's CHILDREN instead of the directory. The realpath
+  // containment mirrors resolveWorkspacePackageJsonPaths: a workspace symlink escaping the
+  // repository must not let consumers touch another checkout.
+  const positivePatterns = getDeclaredWorkspacePatterns(project.packageJson.workspaces).filter(
+    (pattern) => !pattern.startsWith('!') && isInRepositoryWorkspacePattern(pattern)
+  );
+  if (positivePatterns.length === 0) return [];
+  // expandDirectories: false — globby would otherwise expand a literal directory pattern to its
+  // CHILDREN, turning e.g. `packages` into matches for every packages/* subdirectory.
+  const globbyOptions = {
+    cwd: project.dirPath,
+    expandDirectories: false,
+    followSymbolicLinks: false,
+    ignore: ['**/node_modules/**'],
+  };
+  // fast-glob (globby's engine) returns no matches for file globs with a lone-`?` segment (e.g.
+  // `packages/?/package.json`) although Yarn links such workspaces; for `?`-carrying patterns
+  // only (a directory glob for e.g. `**` would scan every directory in the repository), globbing
+  // the directories (where `?` works) and checking their manifests complements the manifest glob.
+  const globbedManifestPaths = await globby(
+    positivePatterns.map((pattern) => path.posix.join(pattern, 'package.json')),
+    globbyOptions
+  );
+  const manifestPathSet = new Set(globbedManifestPaths);
+  const questionMarkPatterns = positivePatterns.filter((pattern) => pattern.includes('?'));
+  if (questionMarkPatterns.length > 0) {
+    for (const dirPath of await globby(questionMarkPatterns, { ...globbyOptions, onlyDirectories: true })) {
+      const manifestPath = path.posix.join(dirPath, 'package.json');
+      if (fs.existsSync(path.join(project.dirPath, manifestPath))) manifestPathSet.add(manifestPath);
     }
   }
-  packageDirs.push(...(await globby(globPattern, { dot: true, onlyDirectories: true })));
-  for (const subPackageDirPath of packageDirs) {
-    if (!fs.existsSync(path.join(subPackageDirPath, 'package.json'))) continue;
-
-    projects.push(new Project(subPackageDirPath, argv, loadEnv));
-  }
-  return projects;
+  const manifestPaths = [...manifestPathSet];
+  const realRootDirPath = fs.realpathSync(project.dirPath);
+  const workspaceDirPaths = manifestPaths
+    // A `**` pattern reaches the root's own manifest and installed packages, but neither is a
+    // workspace to Yarn (which never descends into node_modules).
+    .filter((manifestPath) => {
+      if (manifestPath === 'package.json') return false;
+      try {
+        const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(project.dirPath, manifestPath)));
+        return relativePath !== '..' && !relativePath.startsWith('../') && !path.isAbsolute(relativePath);
+      } catch {
+        // The manifest vanished between the glob and the realpath call: not a workspace.
+        return false;
+      }
+    })
+    .map((manifestPath) => path.join(project.dirPath, path.posix.dirname(manifestPath)));
+  return [...new Set(workspaceDirPaths)].toSorted();
 }
