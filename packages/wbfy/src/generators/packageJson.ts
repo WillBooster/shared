@@ -474,8 +474,10 @@ function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: Re
   const [first, second] = positionals;
   if (first === undefined) return true;
   if (first === 'run') {
-    // `bun run <name>` is a package-script alias only when the name actually exists in scripts;
-    // otherwise Bun may execute a file (even an extensionless one) of that name directly.
+    // `bun run` also resolves package bins, so a known Node-based tool is unambiguous here too.
+    if (second !== undefined && nodeBasedTools.has(second)) return false;
+    // Otherwise `bun run <name>` is a package-script alias only when the name actually exists in
+    // scripts; Bun may execute a file (even an extensionless one) of that name directly.
     return second === undefined || /[./$]/u.test(second) || !scriptNames.has(second);
   }
   return !nodeBasedTools.has(first);
