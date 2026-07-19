@@ -202,8 +202,13 @@ function removeStaleManagedWorkspaceEntries(
     // A negation-derived exclude whose `!pattern` was removed from `workspaces`: the directory is
     // covered by a positive workspace pattern again and must re-enter the root project. A user
     // who wants such a directory excluded permanently should keep the workspace negation, which
-    // regenerates the entry on every run.
-    return !isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns);
+    // regenerates the entry on every run. The check runs in both directions because either side
+    // can be the pattern: the entry may be wildcard-shaped (a negation like `!apps/excluded/*`)
+    // while the current includes are concrete (expanded from Bun-only glob syntax), or vice versa.
+    return !(
+      isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns) ||
+      workspaceIncludePatterns.some((includePattern) => isCoveredByWorkspaceDirPattern(includePattern, [entry]))
+    );
   });
 }
 

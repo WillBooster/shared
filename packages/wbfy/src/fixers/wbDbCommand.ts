@@ -40,10 +40,11 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
     // A pass must not rewrite files owned by another (possibly nested) package: each package has
     // its own pass with its own resolved command, and overlapping passes would race
     // read-modify-write on the same files. Concrete directories of the actually processed
-    // packages are used instead of workspace patterns, so a directory a pattern matches without a
-    // manifest (or one removed by a negation) — which gets no pass of its own — stays covered by
-    // the enclosing pass. The literal packages/** keeps shielding legacy packages/* layouts that
-    // predate a `workspaces` declaration.
+    // packages are used instead of workspace patterns or a blanket packages/** glob, so a
+    // directory a pattern matches without a manifest, a negation-removed directory, or an
+    // ORM-free package — none of which get a rewrite pass of their own — stays covered by the
+    // enclosing pass. Legacy packages/* layouts need no extra shielding either: workspace
+    // discovery's unconditional packages/* fallback gives each of them its own config.
     const configDirPath = path.resolve(config.dirPath);
     const nestedPackageIgnores = packageConfigs
       .filter(
@@ -61,7 +62,7 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
       absolute: true,
       cwd: config.dirPath,
       dot: true,
-      ignore: ['**/.git/**', ...(config.isRoot ? ['packages/**'] : []), ...nestedPackageIgnores, ...globIgnore],
+      ignore: ['**/.git/**', ...nestedPackageIgnores, ...globIgnore],
       onlyFiles: true,
     });
     for (const filePath of filePaths) {
