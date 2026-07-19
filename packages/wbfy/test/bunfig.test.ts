@@ -50,6 +50,15 @@ test('keeps the migrated .yarnrc.yml release-age-gate behavior in the generated 
     expect(content).toContain('"my-repo-specific-package",');
     // Entries already in the managed list must not be duplicated.
     expect(content.match(/^\s+"react",$/gmu)).toHaveLength(1);
+
+    // A later run has no .yarnrc.yml to read anymore (removeYarnFiles deleted it), so the
+    // repo-specific policy must survive via the existing bunfig.toml.
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }));
+    await promisePool.promiseAll();
+    const regenerated = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(regenerated).toContain('minimumReleaseAge = 172800');
+    expect(regenerated).toContain('"my-repo-specific-package",');
+    expect(regenerated.match(/^\s+"react",$/gmu)).toHaveLength(1);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

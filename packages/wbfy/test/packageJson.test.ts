@@ -1552,6 +1552,39 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
   });
 });
 
+test('routes a root-owned colon global script invoked from a child workspace', async () => {
+  const dirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-colon-root-')));
+  try {
+    const rootPackageJson = {
+      name: 'root-pkg',
+      workspaces: ['packages/*'],
+      scripts: { ':root-cache': 'echo root' },
+    };
+    const childPackageJson = { name: '@x/child', scripts: { warm: 'yarn :root-cache' } };
+    await fs.writeFile(path.join(dirPath, 'package.json'), JSON.stringify(rootPackageJson));
+    await fs.mkdir(path.join(dirPath, 'packages', 'child'), { recursive: true });
+    const childPackageJsonPath = path.join(dirPath, 'packages', 'child', 'package.json');
+    await fs.writeFile(childPackageJsonPath, JSON.stringify(childPackageJson));
+
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      packageJson: rootPackageJson,
+    });
+    const childConfig = createConfig({
+      dirPath: path.join(dirPath, 'packages', 'child'),
+      packageJson: childPackageJson,
+    });
+    await generatePackageJson(childConfig, rootConfig, true);
+
+    const generated = JSON.parse(await fs.readFile(childPackageJsonPath, 'utf8')) as GeneratedPackageJson;
+    expect(generated.scripts?.warm).toBe('bun run --filter root-pkg :root-cache');
+  } finally {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
 test('preserves an already-pinned git commit of a private package instead of bumping it', async () => {
   const pinnedSpecifier = 'git@github.com:WillBoosterLab/llm-proxy.git#4ef9b35e2d1d94adba17e167b7ae18a2e299f7f6';
   const packageJson = await generatePackageJsonFrom({

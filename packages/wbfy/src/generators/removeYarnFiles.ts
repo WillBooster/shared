@@ -12,7 +12,9 @@ import { promisePool } from '../utils/promisePool.js';
 // translation (npmMinimalAgeGate / npmPreapprovedPackages are reflected into the generated
 // bunfig.toml's minimumReleaseAge / minimumReleaseAgeExcludes, and approvedGitRepositories has
 // no Bun counterpart because Bun does not restrict git dependencies, so dropping it cannot
-// change the install graph). Anything else (registries, auth, scopes, packageExtensions,
+// change the install graph — org-level git-dependency policy is instead enforced on every wbfy
+// run by assertSafeDependencySources, the trade-off explicitly chosen in #1014). Anything else
+// (registries, auth, scopes, packageExtensions,
 // patchFolder, proxies, supportedArchitectures, ...) affects dependency resolution or install
 // behavior and requires manual migration.
 const safeYarnrcSettings = new Set([
@@ -90,8 +92,11 @@ export function findUnmigratableYarnSettings(dirPath: string): string | undefine
 }
 
 function isMigratableYarnrcSetting(key: string, value: unknown): boolean {
-  // `enableScripts: false` matches Bun's default (dependency lifecycle scripts run only for
-  // trustedDependencies), so it can be dropped; an explicit `enableScripts: true` has no
+  // `enableScripts: false` is dropped deliberately even though Bun's default differs slightly
+  // (Bun runs lifecycle scripts of its built-in default allow-list of popular packages): wbfy's
+  // ensureTrustedDependencies fully owns trustedDependencies and deliberately restores Bun's
+  // default allow-list (the ownership policy chosen in #975), so adopting that org baseline is
+  // the intended outcome of the migration (#1014). An explicit `enableScripts: true` has no
   // automatic translation because Bun cannot enable all lifecycle scripts wholesale.
   if (key === 'enableScripts') return value === false;
   return safeYarnrcSettings.has(key);
@@ -121,7 +126,10 @@ export function readYarnrcReleaseAgeSettings(dirPath: string): YarnReleaseAgeSet
   if (Array.isArray(npmPreapprovedPackages)) {
     settings.minimumReleaseAgeExcludes = npmPreapprovedPackages.filter(
       // Bun matches minimumReleaseAgeExcludes entries literally, so Yarn glob patterns
-      // (e.g. `@willbooster/*`) would be dead configuration and are dropped.
+      // (e.g. `@willbooster/*`) would be dead configuration and are dropped. Dropping is
+      // fail-safe (an uncovered package becomes age-gated, which surfaces at install time
+      // instead of weakening the gate), and the org-standard globs are already covered
+      // literally by bunMinimumReleaseAgeExcludes.
       (entry): entry is string => typeof entry === 'string' && !/[*?{[\]]/u.test(entry)
     );
   }

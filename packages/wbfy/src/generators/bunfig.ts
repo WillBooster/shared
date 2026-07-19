@@ -14,6 +14,8 @@ interface BunfigToml {
   install?: {
     exact?: boolean;
     linker?: string;
+    minimumReleaseAge?: number;
+    minimumReleaseAgeExcludes?: string[];
   };
 }
 
@@ -203,16 +205,27 @@ const newContent = (
   const managedExcludes = doesContainJava(config)
     ? bunMinimumReleaseAgeExcludes
     : bunMinimumReleaseAgeExcludes.filter((packageName) => packageName !== '@willbooster/prettier-config');
-  // A Yarn->Bun migration must not tighten the repository's own release-age policy: repo-specific
-  // npmPreapprovedPackages entries (pre-filtered to literal names — Bun matches these literally)
-  // are merged after the managed list, and a custom npmMinimalAgeGate is carried over.
-  const minimumReleaseAgeExcludes = [
-    ...managedExcludes,
-    ...(yarnReleaseAgeSettings?.minimumReleaseAgeExcludes ?? [])
-      .filter((packageName) => !managedExcludes.includes(packageName))
-      .toSorted(),
-  ];
-  const minimumReleaseAgeSeconds = yarnReleaseAgeSettings?.minimumReleaseAgeSeconds ?? bunMinimumReleaseAgeSeconds;
+  // The repository's own release-age policy must survive every run, not just the migration one:
+  // repo-specific npmPreapprovedPackages entries (pre-filtered to literal names — Bun matches
+  // these literally) AND repo-specific entries already present in the existing bunfig.toml are
+  // merged after the managed list, and a custom npmMinimalAgeGate (or an already-customized
+  // minimumReleaseAge) is carried over. Entries of the FULL managed list are never treated as
+  // repo-specific, so wbfy can still drop a managed entry (e.g. @willbooster/prettier-config in
+  // non-Java repositories) without it resurfacing.
+  const knownManagedExcludes = new Set(bunMinimumReleaseAgeExcludes);
+  const repoSpecificExcludes = [
+    ...new Set([
+      ...(yarnReleaseAgeSettings?.minimumReleaseAgeExcludes ?? []),
+      ...(bunfigToml?.install?.minimumReleaseAgeExcludes ?? []),
+    ]),
+  ]
+    .filter((packageName) => !knownManagedExcludes.has(packageName))
+    .toSorted();
+  const minimumReleaseAgeExcludes = [...managedExcludes, ...repoSpecificExcludes];
+  const minimumReleaseAgeSeconds =
+    yarnReleaseAgeSettings?.minimumReleaseAgeSeconds ??
+    bunfigToml?.install?.minimumReleaseAge ??
+    bunMinimumReleaseAgeSeconds;
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
@@ -230,7 +243,7 @@ ${
       'globalStore = true\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
     : 'linker = "hoisted"'
 }
-minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ' # migrated from .yarnrc.yml npmMinimalAgeGate'}
+minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
 minimumReleaseAgeExcludes = [
 ${minimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
 ]

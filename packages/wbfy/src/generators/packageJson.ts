@@ -426,7 +426,9 @@ function convertYarnCommandsToBun(scripts: PackageJson.Scripts, rootConfig: Pack
  */
 function collectColonScriptOwners(rootConfig: PackageConfig): Map<string, string | undefined> {
   const owners = new Map<string, string | undefined>();
-  for (const packageJsonPath of getWorkspacePackageJsonPaths(rootConfig)) {
+  // The root manifest participates too: Yarn treats the root as a workspace, so a child may
+  // invoke a root-owned global script.
+  for (const packageJsonPath of new Set(['package.json', ...getWorkspacePackageJsonPaths(rootConfig)])) {
     try {
       const packageJson = JSON.parse(
         fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
