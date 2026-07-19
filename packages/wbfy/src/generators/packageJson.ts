@@ -396,6 +396,18 @@ const yarnBuiltinSubcommands = new Set([
   'workspaces',
 ]);
 
+interface ShellToken {
+  text: string;
+  start: number;
+  end: number;
+}
+
+interface ShellReplacement {
+  start: number;
+  end: number;
+  text: string;
+}
+
 function convertYarnCommandsToBun(
   scripts: PackageJson.Scripts,
   config: PackageConfig,
@@ -482,12 +494,6 @@ function convertYarnInvocationsToBun(
     result = result.slice(0, start) + text + result.slice(end);
   }
   return result;
-}
-
-interface ShellReplacement {
-  start: number;
-  end: number;
-  text: string;
 }
 
 // `yarn workspaces foreach` flags that neither restrict which workspaces are selected nor
@@ -721,12 +727,6 @@ function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: Re
     return second === undefined || /[./$]/u.test(second) || !scriptNames.has(second);
   }
   return !nodeBasedTools.has(first);
-}
-
-interface ShellToken {
-  text: string;
-  start: number;
-  end: number;
 }
 
 // Prefix words that run the command that follows them, so the next token stays in command
