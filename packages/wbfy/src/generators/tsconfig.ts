@@ -215,14 +215,20 @@ function removeStaleManagedWorkspaceEntries(
     // who wants such a directory excluded permanently should keep the workspace negation, which
     // regenerates the entry on every run. Three checks, because either side can be the pattern:
     // - a CONCRETE entry (a negation like `!apps/excluded`) against the current include patterns
-    //   — gated on concreteness so a user glob such as `**/node_modules` is never treated as a
-    //   path that a `*/*` include pattern textually matches;
+    //   — gated on concreteness AND on the entry covering a discovered workspace directory, so a
+    //   user glob such as `**/node_modules` or a hygiene exclude such as `dist` is never dropped
+    //   just because a wildcard-leading include pattern (e.g. the `*/*` baseline) textually
+    //   matches it;
     // - each current include, as a path, against a wildcard-shaped entry (a negation like
     //   `!apps/excluded/*`) when the includes are concrete (expanded from Bun-only glob syntax);
     // - each discovered workspace directory against the entry, catching overlapping wildcard
     //   layouts (e.g. old `!apps/*b` vs new `apps/a*`).
     return !(
-      (!/[*?]/u.test(entry) && isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns)) ||
+      (!/[*?]/u.test(entry) &&
+        workspaceDirPaths.some(
+          (workspaceDirPath) => workspaceDirPath === entry || workspaceDirPath.startsWith(`${entry}/`)
+        ) &&
+        isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns)) ||
       workspaceIncludePatterns.some((includePattern) => isCoveredByWorkspaceDirPattern(includePattern, [entry])) ||
       workspaceDirPaths.some((workspaceDirPath) => isCoveredByWorkspaceDirPattern(workspaceDirPath, [entry]))
     );
