@@ -78,6 +78,9 @@ minimumReleaseAgeExcludes = [
     "react",
     # ---------- repository-specific entries ----------
     "my-repo-specific-package",
+
+    # a hand-added comment must not truncate the repository-policy list
+    'single-quoted-package', # inline comment
 ]
 `
     );
@@ -86,6 +89,7 @@ minimumReleaseAgeExcludes = [
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).not.toContain('@next/eslint-plugin-next');
     expect(content).toContain('"my-repo-specific-package",');
+    expect(content).toContain('"single-quoted-package",');
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

@@ -136,7 +136,7 @@ function findPatchProtocolManifests(dirPath: string): string[] {
       // An unreadable workspace manifest cannot prove a patch: dependency.
     }
   }
-  // Sorted for a deterministic report (fast-glob's result order is not guaranteed).
+  // Sorted for a deterministic report (readdir and workspace-resolution orders are not guaranteed).
   return offendingPaths.toSorted();
 }
 
@@ -205,12 +205,12 @@ export function readYarnrcReleaseAgeSettings(dirPath: string): YarnReleaseAgeSet
   settings.minimumReleaseAgeSeconds = parseYarnDurationAsSeconds(npmMinimalAgeGate);
   if (Array.isArray(npmPreapprovedPackages)) {
     settings.minimumReleaseAgeExcludes = npmPreapprovedPackages.filter(
-      // Bun matches minimumReleaseAgeExcludes entries literally, so Yarn glob patterns
-      // (e.g. `@willbooster/*`) would be dead configuration and are dropped. Dropping is
-      // fail-safe (an uncovered package becomes age-gated, which surfaces at install time
-      // instead of weakening the gate), and the org-standard globs are already covered
-      // literally by bunMinimumReleaseAgeExcludes.
-      (entry): entry is string => typeof entry === 'string' && !/[*?{[\]]/u.test(entry)
+      // Bun matches minimumReleaseAgeExcludes entries literally as package NAMES, so Yarn glob
+      // patterns (e.g. `@willbooster/*`) and package descriptors (e.g. `is-number@npm:7.0.0`)
+      // would be dead configuration and are dropped. Dropping is fail-safe (an uncovered package
+      // becomes age-gated, which surfaces at install time instead of weakening the gate), and
+      // the org-standard globs are already covered literally by bunMinimumReleaseAgeExcludes.
+      (entry): entry is string => typeof entry === 'string' && /^(?:@[^\s@/*?{}[\]]+\/)?[^\s@/*?{}[\]]+$/u.test(entry)
     );
   }
   return settings;

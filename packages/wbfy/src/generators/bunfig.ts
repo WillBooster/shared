@@ -267,9 +267,17 @@ function readRepoSpecificExcludes(content: string | undefined): string[] {
   if (markerIndex === -1) return [];
   const excludes: string[] = [];
   for (const line of lines.slice(markerIndex + 1)) {
-    const matched = /^\s*"(.+)",?\s*$/u.exec(line);
-    if (!matched?.[1]) break;
-    excludes.push(matched[1]);
+    const trimmed = line.trim();
+    // The section ends at the array's closing bracket; hand-added comments and blank lines
+    // between entries must not truncate the repository-policy list (though only the entries
+    // themselves survive regeneration).
+    if (trimmed.startsWith(']')) break;
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const matched = /^\s*(?:"([^"]+)"|'([^']+)')\s*,?\s*(?:#.*)?$/u.exec(line);
+    // A line this parser cannot read could hide further entries, so stop instead of guessing.
+    if (!matched) break;
+    const entry = matched[1] ?? matched[2];
+    if (entry) excludes.push(entry);
   }
   return excludes;
 }
