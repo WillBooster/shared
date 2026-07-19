@@ -75,6 +75,9 @@ export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): WorkspaceD
   // applyPackageJsonConventions, which forces `packages/*` only when a manifest actually matches.
   const hasPackagesLayout =
     rootLike.doesContainSubPackageJsons &&
+    // Mirror applyPackageJsonConventions' baseline gate too: with the implicit `*/*` baseline
+    // active, `packages/*` entries would be dead globs subsumed by the `*/*` ones.
+    !hasImplicitWorkspaceBaseline(rootLike.packageJson?.workspaces) &&
     fg.globSync('packages/*/package.json', {
       cwd: rootLike.dirPath,
       followSymbolicLinks: false,
@@ -140,10 +143,12 @@ function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
 
 /**
  * Whether Bun applies its implicit `*\/*` workspace baseline: the declaration (ignoring no-op
- * patterns) contains ONLY negative patterns AND at least one of them ends in a `*` or `**`
- * segment. Verified with Bun 1.3.14: `["!excluded/*"]` and `["!apps/**"]` seed the baseline
- * (every other two-level package.json becomes a workspace), while `["!apps/excluded"]` and
- * `["!apps/*d"]` link ZERO workspaces.
+ * patterns) contains ONLY negative patterns AND at least one of them ends in a standalone
+ * star-run segment (`*`, `**`, `***`, ...). Measured with Bun 1.3.14: those forms consistently
+ * seed the baseline, while concrete or mixed-literal last segments (`!apps/excluded`,
+ * `!apps/*d`, `??`) link ZERO workspaces. `?`, brace, and character-class last segments behaved
+ * inconsistently across fixtures (sometimes dropping even unrelated sibling workspaces), so they
+ * are conservatively treated as not seeding; see #1005.
  */
 export function hasImplicitWorkspaceBaseline(workspaces: PackageJson['workspaces']): boolean {
   const workspacePatterns = getMeaningfulDeclaredWorkspacePatterns(workspaces);
@@ -153,17 +158,7 @@ export function hasImplicitWorkspaceBaseline(workspaces: PackageJson['workspaces
     workspacePatterns.some((workspacePattern) => {
       // Normalize first: Bun ignores trailing slashes, so `!apps/*/` seeds the baseline too.
       const lastSegment = path.posix.normalize(workspacePattern.slice(1)).replace(/\/+$/u, '').split('/').at(-1);
-      // Bun activates the baseline when the last segment is a STANDALONE glob construct
-      // (measured with Bun 1.3.14: `*`, `**`, `***`, `?`, `{a,b}`, and `[ab]` seed it, while
-      // mixed literal segments such as `*d`, `a*`, `??`, and `{a,b}c` link zero workspaces).
-      // Remaining sequential-evaluation quirks are tracked in #1005.
-      return (
-        lastSegment !== undefined &&
-        (/^\*+$/u.test(lastSegment) ||
-          lastSegment === '?' ||
-          /^\{[^}]*\}$/u.test(lastSegment) ||
-          /^\[[^\]]*\]$/u.test(lastSegment))
-      );
+      return lastSegment !== undefined && /^\*+$/u.test(lastSegment);
     })
   );
 }

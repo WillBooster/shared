@@ -219,8 +219,10 @@ function removeStaleManagedWorkspaceEntries(
     //   user glob such as `**/node_modules` or a hygiene exclude such as `dist` is never dropped
     //   just because a wildcard-leading include pattern (e.g. the `*/*` baseline) textually
     //   matches it;
-    // - each current include, as a path, against a wildcard-shaped entry (a negation like
-    //   `!apps/excluded/*`) when the includes are concrete (expanded from Bun-only glob syntax);
+    // - each CONCRETE current include (expanded from Bun-only glob syntax), as a path, against a
+    //   wildcard-shaped entry (a negation like `!apps/excluded/*`) — gated on the include being
+    //   concrete (a wildcard include's literal `*` character could satisfy the entry's `?`) and
+    //   on the entry containing no `**` segment (hygiene globs such as `**/e2e` must survive);
     // - each discovered workspace directory against a workspace-layout-shaped entry (no `**`
     //   segment, same depth as the matched directory), catching overlapping wildcard layouts
     //   (e.g. old `!apps/*b` vs new `apps/a*`) — the shape gate keeps hygiene globs such as
@@ -231,7 +233,12 @@ function removeStaleManagedWorkspaceEntries(
           (workspaceDirPath) => workspaceDirPath === entry || workspaceDirPath.startsWith(`${entry}/`)
         ) &&
         isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns)) ||
-      workspaceIncludePatterns.some((includePattern) => isCoveredByWorkspaceDirPattern(includePattern, [entry])) ||
+      workspaceIncludePatterns.some(
+        (includePattern) =>
+          !/[!()*?[\]{}]/u.test(includePattern) &&
+          !entry.split('/').includes('**') &&
+          isCoveredByWorkspaceDirPattern(includePattern, [entry])
+      ) ||
       workspaceDirPaths.some(
         (workspaceDirPath) =>
           !entry.split('/').includes('**') &&
