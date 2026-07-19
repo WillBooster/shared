@@ -74,7 +74,18 @@ export async function release(argv: ReleaseArgv, projectPathForTesting?: string)
   let exitCode = 0;
   let releaseRanSuccessfully = false;
   try {
-    await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
+    if (await releasePublishesToNpm(project)) {
+      await prepareNpmCompatibleLayout(project, argv, modifiedFiles, activeChild);
+    } else {
+      // The hoisted reinstall and workspace-range rewrite exist solely so npm (which the
+      // @semantic-release/npm plugin shells out to) can digest the checkout; without that plugin
+      // the release runs directly on the isolated layout (issue #1000).
+      console.info(
+        chalk.cyan(
+          'Skipping the hoisted reinstall because the semantic-release configuration does not include @semantic-release/npm.'
+        )
+      );
+    }
     // A signal may have arrived between children (nothing to forward to at that instant), so it
     // must be checked explicitly before anything publishes.
     if (receivedSignal) {
@@ -155,6 +166,77 @@ async function spawnAndWait(
 }
 
 /**
+ * Whether the release can publish to npm. True unless a plugin list is explicitly configured
+ * (in a JSON-parseable source) and omits `@semantic-release/npm` everywhere in scope — the root
+ * and, for multi-semantic-release monorepos, each workspace package (a package-level plugin list
+ * overrides the root's). semantic-release's DEFAULT plugin list includes the npm plugin, so a
+ * missing plugin list, a non-JSON config file, or an `extends` preset conservatively keeps the
+ * npm preparation.
+ */
+export async function releasePublishesToNpm(project: Pick<Project, 'dirPath' | 'packageJson'>): Promise<boolean> {
+  const rootPlugins = readExplicitSemanticReleasePlugins(project.dirPath, project.packageJson);
+  // Without an explicit root plugin list, semantic-release's default list (npm included) applies.
+  if (!Array.isArray(rootPlugins) || pluginsIncludeNpm(rootPlugins)) return true;
+
+  for (const packageDirPath of await findWorkspacePackageDirs(project)) {
+    const plugins = readExplicitSemanticReleasePlugins(packageDirPath, undefined);
+    // A workspace package without its own plugin list inherits the root's (npm-free) decision.
+    if (plugins === 'unknown' || (Array.isArray(plugins) && pluginsIncludeNpm(plugins))) return true;
+  }
+  return false;
+}
+
+function pluginsIncludeNpm(plugins: readonly unknown[]): boolean {
+  return plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm');
+}
+
+// The JS/YAML config files semantic-release also supports cannot be inspected statically;
+// their presence makes the plugin list 'unknown'.
+const nonJsonReleaseConfigFileNames = [
+  '.releaserc.yaml',
+  '.releaserc.yml',
+  '.releaserc.js',
+  '.releaserc.cjs',
+  '.releaserc.mjs',
+  'release.config.js',
+  'release.config.cjs',
+  'release.config.mjs',
+];
+
+function readExplicitSemanticReleasePlugins(
+  dirPath: string,
+  packageJson: PackageJson | undefined
+): readonly unknown[] | undefined | 'unknown' {
+  if (nonJsonReleaseConfigFileNames.some((fileName) => fs.existsSync(path.join(dirPath, fileName)))) return 'unknown';
+
+  let config: { plugins?: unknown; extends?: unknown } | undefined;
+  for (const fileName of ['.releaserc', '.releaserc.json']) {
+    const configPath = path.join(dirPath, fileName);
+    if (!fs.existsSync(configPath)) continue;
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as typeof config;
+    } catch {
+      return 'unknown';
+    }
+    break;
+  }
+  if (!config) {
+    if (packageJson === undefined) {
+      try {
+        packageJson = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')) as PackageJson;
+      } catch {
+        return undefined;
+      }
+    }
+    config = (packageJson as { release?: unknown }).release as typeof config;
+  }
+  if (!config || typeof config !== 'object') return undefined;
+  if (Array.isArray(config.plugins)) return config.plugins;
+  // An `extends` preset may contribute its own plugin list, which cannot be resolved statically.
+  return config.extends === undefined ? undefined : 'unknown';
+}
+
+/**
  * Make the checkout digestible for npm, which semantic-release's npm plugin shells out to for
  * `npm version` / `npm publish`:
  * 1. npm's arborist cannot walk Bun's ISOLATED node_modules layout (the `.bun` symlink farm), so
@@ -187,10 +269,17 @@ async function prepareNpmCompatibleLayout(
         modifiedFiles.set(lockFilePath, fs.existsSync(lockFilePath) ? fs.readFileSync(lockFilePath) : undefined);
       }
       fs.writeFileSync(bunfigPath, hoistedBunfig ?? '', 'utf8');
-      for (const packageDirPath of [project.dirPath, ...(await findWorkspacePackageDirs(project))]) {
-        fs.rmSync(path.join(packageDirPath, 'node_modules'), { force: true, recursive: true });
+      const nodeModulesDirPaths = [project.dirPath, ...(await findWorkspacePackageDirs(project))].map((dirPath) =>
+        path.join(dirPath, 'node_modules')
+      );
+      for (const nodeModulesDirPath of nodeModulesDirPaths) {
+        fs.rmSync(nodeModulesDirPath, { force: true, recursive: true });
       }
-      const installStatus = await spawnAndWait(activeChild, 'bun', ['install'], {
+      // Resolve and download with lifecycle scripts DISABLED while the release credentials
+      // (VERDACCIO_TOKEN, NPM_TOKEN, GITHUB_TOKEN, fnox-exported secrets, ...) are in the
+      // environment, so repository- or dependency-defined preinstall/postinstall can never read
+      // them — mirroring reusable-workflows' two-step release install (issue #1003).
+      const installStatus = await spawnAndWait(activeChild, 'bun', ['install', '--ignore-scripts'], {
         cwd: project.dirPath,
         env: project.env,
         stdio: 'inherit',
@@ -199,6 +288,21 @@ async function prepareNpmCompatibleLayout(
         // Throwing (instead of process.exit, which would skip the caller's finally) lets the
         // restore run before the process terminates.
         throw new Error('bun install failed while preparing the release.');
+      }
+      // Replay the skipped lifecycle scripts in a credential-scrubbed environment. A repeated
+      // `bun install` is a no-op that does not replay them, so node_modules is wiped again;
+      // every package is already in bun's cache from the credentialed step, so this re-link
+      // needs no registry credentials.
+      for (const nodeModulesDirPath of nodeModulesDirPaths) {
+        fs.rmSync(nodeModulesDirPath, { force: true, recursive: true });
+      }
+      const replayStatus = await spawnAndWait(activeChild, 'bun', ['install'], {
+        cwd: project.dirPath,
+        env: buildCredentialFreeEnv(project.env),
+        stdio: 'inherit',
+      });
+      if (replayStatus !== 0) {
+        throw new Error('bun install failed while replaying lifecycle scripts for the release.');
       }
     }
   }
@@ -224,6 +328,33 @@ async function prepareNpmCompatibleLayout(
       fs.writeFileSync(packageJsonPath, rewritten, 'utf8');
     }
   }
+}
+
+// The credentials the release workflow injects (cf. reusable-workflows' release.yml secrets and
+// npm's own token variables). The release command loads the project with loadEnv: false, so no
+// wb-loader-injected keys exist to scrub beyond these.
+const credentialEnvVarNames = [
+  'VERDACCIO_TOKEN',
+  'NPM_TOKEN',
+  'NODE_AUTH_TOKEN',
+  'GITHUB_TOKEN',
+  'GH_TOKEN',
+  'GH_PACKAGES_TOKEN',
+  'GH_PKG_READ_TOKEN',
+  'FNOX_AGE_KEY',
+];
+
+/**
+ * A copy of `env` safe to expose to dependency lifecycle scripts. Credential variables are
+ * EMPTIED rather than deleted so `${VERDACCIO_TOKEN}`-style references in .npmrc keep expanding
+ * to '' instead of crashing the install (the pattern reusable-workflows relies on).
+ */
+export function buildCredentialFreeEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const scrubbedEnv = { ...env };
+  for (const name of credentialEnvVarNames) {
+    if (name in scrubbedEnv) scrubbedEnv[name] = '';
+  }
+  return scrubbedEnv;
 }
 
 /**
@@ -372,7 +503,7 @@ async function runSemanticRelease(project: Project, argv: ReleaseArgv, activeChi
   });
 }
 
-async function findWorkspacePackageDirs(project: Project): Promise<string[]> {
+async function findWorkspacePackageDirs(project: Pick<Project, 'dirPath' | 'packageJson'>): Promise<string[]> {
   const workspaces = project.packageJson.workspaces;
   const patterns = Array.isArray(workspaces) ? workspaces : (workspaces?.packages ?? []);
   if (patterns.length === 0) return [];
