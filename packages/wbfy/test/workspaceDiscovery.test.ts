@@ -47,6 +47,43 @@ test('discovers and manages workspaces declared outside packages/* (e.g. apps/*)
   }
 });
 
+test('derives root signals and root tsconfig coverage from an apps/*-only monorepo', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['apps/*'] })
+    );
+    const appDirPath = path.join(tempDirPath, 'apps', 'web');
+    fs.mkdirSync(path.join(appDirPath, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(appDirPath, 'package.json'), JSON.stringify({ name: 'web' }));
+    fs.writeFileSync(path.join(appDirPath, 'src', 'App.tsx'), 'export {};\n');
+
+    // isRoot: false skips the network-touching repository lookup; the signals below are computed
+    // the same way for roots.
+    const config = await getPackageConfig(tempDirPath, { isRoot: false });
+    if (!config) throw new Error('unreachable');
+    expect(config.doesContainSubPackageJsons).toBe(true);
+    expect(config.doesContainTypeScriptInPackages).toBe(true);
+    expect(config.doesContainJsxOrTsxInPackages).toBe(true);
+    expect(config.doesContainJavaScriptInPackages).toBe(false);
+
+    config.isRoot = true;
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+      exclude?: string[];
+      include?: string[];
+    };
+    expect(tsconfig.include).toEqual(
+      expect.arrayContaining(['apps/*/*.config.ts', 'apps/*/scripts/**/*', 'apps/*/src/**/*', 'apps/*/test/**/*'])
+    );
+    expect(tsconfig.exclude).toEqual(expect.arrayContaining(['apps/*/test/fixtures', 'test/fixtures']));
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('ignores workspace patterns escaping the repository', () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
   try {

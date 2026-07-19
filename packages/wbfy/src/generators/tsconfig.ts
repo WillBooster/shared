@@ -12,29 +12,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { getTsconfigExtends } from '../utils/tsconfigBase.js';
-
-const rootJsonObj = {
-  compilerOptions: {
-    alwaysStrict: true,
-    noUncheckedIndexedAccess: true, // for @typescript-eslint/prefer-nullish-coalescing
-    allowSyntheticDefaultImports: true, // allow `import React from 'react'`
-    esModuleInterop: true, // allow default import from CommonJS/AMD/UMD modules
-    resolveJsonModule: true, // allow to import JSON files
-    importHelpers: false,
-    noEmit: true,
-  },
-  exclude: ['packages/*/test/fixtures', 'test/fixtures'],
-  include: [
-    '*.config.ts',
-    'packages/*/*.config.ts',
-    'packages/*/scripts/**/*',
-    'packages/*/src/**/*',
-    'packages/*/test/**/*',
-    'scripts/**/*',
-    'src/**/*',
-    'test/**/*',
-  ],
-};
+import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 const subJsonObj = {
   compilerOptions: {
@@ -59,7 +37,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       return;
     }
 
-    let newSettings = structuredClone(config.isRoot ? rootJsonObj : subJsonObj) as TsConfigJson;
+    let newSettings = (config.isRoot ? buildRootJsonObj(config) : structuredClone(subJsonObj)) as TsConfigJson;
     const generatedTypes = getGeneratedTypes(config);
     newSettings.extends = getTsconfigExtends(config);
     newSettings.compilerOptions ??= {};
@@ -69,10 +47,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     }
     if (!config.doesContainJsxOrTsx && !config.doesContainJsxOrTsxInPackages) {
       delete newSettings.compilerOptions?.jsx;
-    }
-    if (config.isRoot && !config.doesContainSubPackageJsons) {
-      newSettings.include = newSettings.include?.filter((dirPath: string) => !dirPath.startsWith('packages/*/'));
-      newSettings.exclude = newSettings.exclude?.filter((dirPath: string) => !dirPath.startsWith('packages/*/'));
     }
     if (config.depending.prisma) {
       // Prisma seeds and migration helper scripts often live outside src, but
@@ -141,6 +115,30 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     const newContent = JSON.stringify(newSettings, undefined, 2);
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
+}
+
+/**
+ * The monorepo-root tsconfig, whose include/exclude cover every DECLARED workspace layout (e.g.
+ * `apps/*` alongside `packages/*`) so type-aware linting run from the root sees all workspace
+ * sources, not just the conventional packages/* directory.
+ */
+function buildRootJsonObj(config: PackageConfig): TsConfigJson {
+  const workspacePatterns = config.doesContainSubPackageJsons ? getWorkspaceDirPatterns(config) : [];
+  const settings = structuredClone(subJsonObj) as TsConfigJson;
+  settings.exclude = [
+    ...workspacePatterns.map((workspacePattern) => `${workspacePattern}/test/fixtures`),
+    ...(settings.exclude ?? []),
+  ];
+  settings.include = [
+    ...(settings.include ?? []),
+    ...workspacePatterns.flatMap((workspacePattern) => [
+      `${workspacePattern}/*.config.ts`,
+      `${workspacePattern}/scripts/**/*`,
+      `${workspacePattern}/src/**/*`,
+      `${workspacePattern}/test/**/*`,
+    ]),
+  ];
+  return settings;
 }
 
 async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promise<void> {
