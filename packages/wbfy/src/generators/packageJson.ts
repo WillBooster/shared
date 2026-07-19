@@ -812,7 +812,9 @@ function forEachCommandPositionToken(
   const outerStates: { atCommandPosition: boolean; inArithmetic: boolean }[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
-      for (const [charIndex, char] of [...token.text].entries()) {
+      // Separator tokens are ASCII, so index-based iteration is safe.
+      for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
+        const char = token.text[charIndex] ?? '';
         if (char === '(') {
           outerStates.push({ atCommandPosition, inArithmetic });
           // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
