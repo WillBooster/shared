@@ -26,19 +26,23 @@ type WbEnvMode = (typeof wbEnvModes)[number];
 export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('ensureWbEnvDefinitions', async () => {
     const needsNextPublic = allConfigs.some((config) => requiresNextPublicWbEnv(config));
-    // Warning-only dotenv inspection for EVERY repository flavor, before any mutation: dotenv
-    // values win over fnox at load time, so a leftover mismatched .env* silently overrides even
-    // a correct fnox profile.
-    for (const config of allConfigs) {
-      const needsNextPublicHere = config === rootConfig ? needsNextPublic : requiresNextPublicWbEnv(config);
-      await warnOnMismatchedDotenvWbEnvValues(config.dirPath, needsNextPublicHere);
-    }
+    // Warning-only dotenv inspection runs for EVERY repository flavor: dotenv values win over
+    // fnox at load time, so a leftover mismatched .env* silently overrides even a correct fnox
+    // profile. In legacy repositories it runs AFTER the mode-file completion below, so a gap the
+    // same run fixes is not reported as a stale fail-fast warning.
+    const warnOnDotenvMismatches = async (): Promise<void> => {
+      for (const config of allConfigs) {
+        const needsNextPublicHere = config === rootConfig ? needsNextPublic : requiresNextPublicWbEnv(config);
+        await warnOnMismatchedDotenvWbEnvValues(config.dirPath, needsNextPublicHere);
+      }
+    };
     const fnoxTomlPath = path.resolve(rootConfig.dirPath, 'fnox.toml');
     // lstat, not existsSync: existsSync is false for a DANGLING fnox.toml symlink, which would
     // wrongly select the legacy .env branch and mutate the wrong configuration family while the
     // fnox synchronization is failing. Any fnox.toml directory entry marks a fnox repository;
     // a refused/dangling one aborts instead of falling back.
     if (await fs.promises.lstat(fnoxTomlPath).catch(() => {})) {
+      await warnOnDotenvMismatches();
       const content = await fsUtil.readFileConfinedIfExists(fnoxTomlPath);
       if (content === undefined) return;
       const updatedContent = insertWbEnvIntoFnoxToml(content, needsNextPublic);
@@ -70,6 +74,7 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
         }
       }
     }
+    await warnOnDotenvMismatches();
   });
 }
 
