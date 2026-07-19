@@ -482,10 +482,10 @@ async function applyPackageJsonConventions(
       // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
       // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
       // monorepo must not get a never-matching pattern appended to its declaration. A
-      // baseline-active declaration needs no forced pattern at all (the implicit `*/*` already
-      // covers packages/*), and adding one would disable the baseline. The forced pattern is
-      // PREPENDED: Bun evaluates workspace patterns sequentially, so a positive pattern placed
-      // after a user negation would re-include the negated packages.
+      // baseline-seeding declaration needs no forced pattern at all — the seeded baseline
+      // (`*/*` or `**`) already covers packages/*. The forced pattern is PREPENDED: Bun
+      // evaluates workspace patterns sequentially, so a positive pattern placed after a user
+      // negation would re-include the negated packages.
       const forcedPatterns =
         !hasImplicitWorkspaceBaseline(jsonObj.workspaces) &&
         fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0

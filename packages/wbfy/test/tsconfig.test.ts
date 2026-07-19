@@ -142,6 +142,45 @@ test('merges settings from a tsconfig with a UTF-8 BOM instead of skipping it', 
   expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
 });
 
+test('keeps a nested workspace in the root project when its ancestor package is negated', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
+  try {
+    // Bun 1.3.14 links only apps/web here (the package AT apps is negated), so the root tsconfig
+    // must exclude apps' own sources without dropping apps/web/src (#1004).
+    const workspaces = ['apps/**', '!apps'];
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces })
+    );
+    for (const workspaceDirName of ['apps', 'apps/web']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(path.join(workspaceDirPath, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+      fs.writeFileSync(path.join(workspaceDirPath, 'src', 'index.ts'), 'export {};\n');
+    }
+    const config = createConfig({
+      dirPath: tempDirPath,
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      doesContainTypeScript: true,
+      packageJson: { name: 'root', workspaces },
+    });
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+      exclude?: string[];
+      include?: string[];
+    };
+    expect(tsconfig.include).toContain('apps/**/src/**/*');
+    expect(tsconfig.exclude).not.toContain('apps');
+    for (const excludeEntry of ['apps/*.config.ts', 'apps/scripts', 'apps/src', 'apps/test']) {
+      expect(tsconfig.exclude).toContain(excludeEntry);
+    }
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('keeps a commented Next tsconfig byte-identical when no cleanup is needed', async () => {
   const commentedContent = `{
   "compilerOptions": {
