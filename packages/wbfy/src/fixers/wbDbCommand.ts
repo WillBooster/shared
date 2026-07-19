@@ -44,9 +44,19 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
     // manifest (or one removed by a negation) — which gets no pass of its own — stays covered by
     // the enclosing pass. The literal packages/** keeps shielding legacy packages/* layouts that
     // predate a `workspaces` declaration.
+    const configDirPath = path.resolve(config.dirPath);
     const nestedPackageIgnores = packageConfigs
-      .filter((other) => other !== config && other.dirPath.startsWith(`${config.dirPath}${path.sep}`))
-      .map((other) => `${path.relative(config.dirPath, other.dirPath).replaceAll('\\', '/')}/**`);
+      .filter(
+        (other) =>
+          other !== config &&
+          // Only packages that get a rewrite pass of their own are shielded: an ORM-free package
+          // has no pass, so the enclosing pass must keep covering its files.
+          selectWbDatabaseCommand(other) !== undefined &&
+          // dirPath may be relative for the root config (the verbatim CLI argument) and absolute
+          // for workspaces, so resolve both sides before the containment check.
+          path.resolve(other.dirPath).startsWith(`${configDirPath}${path.sep}`)
+      )
+      .map((other) => `${path.relative(configDirPath, path.resolve(other.dirPath)).replaceAll('\\', '/')}/**`);
     const filePaths = await fg(migrationTargets, {
       absolute: true,
       cwd: config.dirPath,

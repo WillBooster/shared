@@ -118,9 +118,16 @@ function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
   // yet, so mirror that normalization here. Discovery callers pass the fallback unconditionally
   // for monorepos — a never-matching pattern contributes no paths there — while pattern-shaped
   // callers (getWorkspaceDirPatterns) gate it on an actual match.
+  const declaredPatterns = getDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces);
+  // Bun applies an implicit `*/*` baseline when the declaration contains only negative patterns
+  // (verified with Bun 1.3.14: `workspaces: ["!excluded/*"]` makes every other two-level
+  // package.json a workspace, while depth-1 and depth-3 manifests stay out).
+  const hasOnlyNegativePatterns =
+    declaredPatterns.length > 0 && declaredPatterns.every((workspacePattern) => workspacePattern.startsWith('!'));
   const workspacePatterns = [
     ...new Set([
-      ...getDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces),
+      ...(hasOnlyNegativePatterns ? ['*/*'] : []),
+      ...declaredPatterns,
       ...(rootLike.doesContainSubPackageJsons ? ['packages/*'] : []),
     ]),
   ];

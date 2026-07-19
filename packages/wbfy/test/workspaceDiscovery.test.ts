@@ -184,6 +184,61 @@ test('honors negative workspace patterns in root-level source signals', async ()
   }
 });
 
+test('applies Bun implicit */* baseline for negative-only workspace declarations', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of ['apps/web', 'excluded/nope']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(workspaceDirPath, { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+    }
+    const workspaces = ['!excluded/*'];
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
+    const rootLike = { dirPath: tempDirPath, doesContainSubPackageJsons: false, packageJson: { workspaces } };
+    expect(getWorkspaceSubDirPaths(rootLike)).toEqual([path.join(tempDirPath, 'apps', 'web')]);
+    expect(getWorkspaceDirPatterns(rootLike)).toEqual({ excludes: ['excluded/*'], includes: ['*/*'] });
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('drops a negation-derived exclude after the workspace negation is removed', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of ['apps/web', 'apps/excluded']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(path.join(workspaceDirPath, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+      fs.writeFileSync(path.join(workspaceDirPath, 'src', 'index.ts'), 'export {};\n');
+    }
+    const generate = async (): Promise<{ exclude?: string[] }> => {
+      const config = await getPackageConfig(tempDirPath, { isRoot: false });
+      if (!config) throw new Error('unreachable');
+      config.isRoot = true;
+      await generateTsconfig(config);
+      await promisePool.promiseAll();
+      return JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as { exclude?: string[] };
+    };
+
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['apps/*', '!apps/excluded'] })
+    );
+    const negatedTsconfig = await generate();
+    expect(negatedTsconfig.exclude).toContain('apps/excluded');
+
+    // Removing the negation must let the workspace re-enter the root project.
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['apps/*'] })
+    );
+    const regeneratedTsconfig = await generate();
+    expect(regeneratedTsconfig.exclude).not.toContain('apps/excluded');
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('ignores workspace patterns escaping the repository', () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
   try {

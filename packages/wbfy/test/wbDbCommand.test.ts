@@ -110,6 +110,54 @@ test('root pass covers pattern-matched directories without a manifest but not pr
   }
 });
 
+test('shields nested packages with a relative root path and covers ORM-free packages', async () => {
+  // realpath so process.cwd() (which resolves macOS's /var -> /private/var symlink) and the
+  // workspace paths below stay consistent, as they are in production.
+  const dirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-wb-db-command-')));
+  const drizzlePackagePath = path.join(dirPath, 'apps', 'web');
+  const ormFreePackagePath = path.join(dirPath, 'apps', 'docs');
+
+  await fs.mkdir(drizzlePackagePath, { recursive: true });
+  await fs.mkdir(ormFreePackagePath, { recursive: true });
+  await fs.writeFile(
+    path.join(drizzlePackagePath, 'package.json'),
+    JSON.stringify({ scripts: { migrate: 'wb db push' } })
+  );
+  // An ORM-free package gets no pass of its own, so the root pass must migrate its files.
+  await fs.writeFile(path.join(ormFreePackagePath, 'package.json'), JSON.stringify({}));
+  await fs.writeFile(path.join(ormFreePackagePath, 'README.md'), 'Run `wb db push`.\n');
+
+  const previousCwd = process.cwd();
+  process.chdir(dirPath);
+  try {
+    // The CLI stores the verbatim (possibly relative) argument as the root dirPath while
+    // workspace dirPaths are absolute; the containment check must handle the mix.
+    const rootConfig = createConfig({
+      dirPath: '.',
+      isRoot: true,
+      depending: { ...createConfig().depending, prisma: true },
+      repoAuthor: 'WillBoosterLab',
+      repoName: 'example',
+    });
+    const drizzleConfig = createConfig({
+      dirPath: drizzlePackagePath,
+      depending: { ...createConfig().depending, drizzle: true },
+    });
+    const ormFreeConfig = createConfig({ dirPath: ormFreePackagePath });
+    await fixWbDbCommand(rootConfig, [rootConfig, drizzleConfig, ormFreeConfig]);
+
+    await expect(fs.readFile(path.join(drizzlePackagePath, 'package.json'), 'utf8')).resolves.toBe(
+      JSON.stringify({ scripts: { migrate: 'wb db push' } })
+    );
+    await expect(fs.readFile(path.join(ormFreePackagePath, 'README.md'), 'utf8')).resolves.toBe(
+      'Run `wb prisma push`.\n'
+    );
+  } finally {
+    process.chdir(previousCwd);
+    await fs.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
 test('normalizes monorepo packages independently', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-wb-db-command-'));
   const prismaPackagePath = path.join(dirPath, 'packages', 'prisma-app');

@@ -77,7 +77,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
       if (config.isRoot) {
-        removeStaleManagedWorkspaceEntries(oldSettings, newSettings);
+        removeStaleManagedWorkspaceEntries(config, oldSettings, newSettings);
       }
       newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
       newSettings.include = newSettings.include?.filter(
@@ -164,35 +164,65 @@ const managedWorkspaceIncludeSuffixes = ['*.config.ts', 'scripts/**/*', 'src/**/
  * counts as wbfy-managed only when the COMPLETE generated include set for it is present and no
  * longer generated — a user-authored entry such as a lone `tools/*\/src/**\/*` never qualifies.
  */
-function removeStaleManagedWorkspaceEntries(oldSettings: TsConfigJson, newSettings: TsConfigJson): void {
-  if (!Array.isArray(oldSettings.include)) return;
-  const oldInclude = oldSettings.include.filter((entry): entry is string => typeof entry === 'string');
-  const generatedInclude = new Set(newSettings.include);
+function removeStaleManagedWorkspaceEntries(
+  config: PackageConfig,
+  oldSettings: TsConfigJson,
+  newSettings: TsConfigJson
+): void {
   const stalePrefixes = new Set<string>();
-  for (const entry of oldInclude) {
-    const workspacePrefix = getManagedWorkspacePrefix(entry);
-    if (workspacePrefix === undefined || stalePrefixes.has(workspacePrefix)) continue;
-    const isComplete = managedWorkspaceIncludeSuffixes.every((suffix) =>
-      oldInclude.includes(`${workspacePrefix}/${suffix}`)
-    );
-    const isStillGenerated = managedWorkspaceIncludeSuffixes.some((suffix) =>
-      generatedInclude.has(`${workspacePrefix}/${suffix}`)
-    );
-    if (isComplete && !isStillGenerated) stalePrefixes.add(workspacePrefix);
+  if (Array.isArray(oldSettings.include)) {
+    const oldInclude = oldSettings.include.filter((entry): entry is string => typeof entry === 'string');
+    const generatedInclude = new Set(newSettings.include);
+    for (const entry of oldInclude) {
+      const workspacePrefix = getManagedWorkspacePrefix(entry);
+      if (workspacePrefix === undefined || stalePrefixes.has(workspacePrefix)) continue;
+      const isComplete = managedWorkspaceIncludeSuffixes.every((suffix) =>
+        oldInclude.includes(`${workspacePrefix}/${suffix}`)
+      );
+      const isStillGenerated = managedWorkspaceIncludeSuffixes.some((suffix) =>
+        generatedInclude.has(`${workspacePrefix}/${suffix}`)
+      );
+      if (isComplete && !isStillGenerated) stalePrefixes.add(workspacePrefix);
+    }
+    if (stalePrefixes.size > 0) {
+      oldSettings.include = oldSettings.include.filter((entry) => {
+        const workspacePrefix = typeof entry === 'string' ? getManagedWorkspacePrefix(entry) : undefined;
+        return workspacePrefix === undefined || !stalePrefixes.has(workspacePrefix);
+      });
+    }
   }
-  if (stalePrefixes.size === 0) return;
-  oldSettings.include = oldSettings.include.filter((entry) => {
-    const workspacePrefix = typeof entry === 'string' ? getManagedWorkspacePrefix(entry) : undefined;
-    return workspacePrefix === undefined || !stalePrefixes.has(workspacePrefix);
+  if (!Array.isArray(oldSettings.exclude)) return;
+  const generatedExclude = new Set(newSettings.exclude);
+  const workspaceIncludePatterns = config.doesContainSubPackageJsons ? getWorkspaceDirPatterns(config).includes : [];
+  oldSettings.exclude = oldSettings.exclude.filter((entry) => {
+    if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
+    if (entry.endsWith('/test/fixtures')) {
+      return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
+    }
+    // A negation-derived exclude whose `!pattern` was removed from `workspaces`: the directory is
+    // covered by a positive workspace pattern again and must re-enter the root project. A user
+    // who wants such a directory excluded permanently should keep the workspace negation, which
+    // regenerates the entry on every run.
+    return !isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns);
   });
-  if (Array.isArray(oldSettings.exclude)) {
-    oldSettings.exclude = oldSettings.exclude.filter(
-      (entry) =>
-        typeof entry !== 'string' ||
-        !entry.endsWith('/test/fixtures') ||
-        !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length))
-    );
-  }
+}
+
+/** Matches a concrete directory path against tsconfig-safe workspace dir patterns (`*`, `?`, `**`). */
+function isCoveredByWorkspaceDirPattern(dirPath: string, workspacePatterns: string[]): boolean {
+  return workspacePatterns.some((workspacePattern) => {
+    const regexSource = workspacePattern
+      .split('/')
+      .map((segment) =>
+        segment === '**'
+          ? String.raw`[^/]+(?:/[^/]+)*`
+          : segment
+              .replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`)
+              .replaceAll('*', '[^/]*')
+              .replaceAll('?', '[^/]')
+      )
+      .join('/');
+    return new RegExp(`^${regexSource}$`, 'u').test(dirPath);
+  });
 }
 
 function getManagedWorkspacePrefix(entry: string): string | undefined {
