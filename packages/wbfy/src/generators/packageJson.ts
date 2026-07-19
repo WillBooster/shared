@@ -476,7 +476,13 @@ async function applyPackageJsonConventions(
     if (config.doesContainSubPackageJsons) {
       // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
       // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
-      jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), ['packages/*']], {
+      // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
+      // monorepo must not get a never-matching pattern appended to its declaration.
+      const forcedPatterns =
+        fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
+          ? ['packages/*']
+          : [];
+      jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), forcedPatterns], {
         arrayMerge: combineMerge,
       });
     } else if (Array.isArray(jsonObj.workspaces)) {
@@ -1568,35 +1574,45 @@ function applyDatabaseScripts(
 ): void {
   if (!config.depending.prisma && !config.depending.drizzle) return;
 
-  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`);
-  applyDatabaseScript(scripts, oldScripts, 'db-migrate', `${wbDbCommand} migrate --check-idempotency`);
-  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`);
+  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`, /migrate-dev/u);
+  applyDatabaseScript(
+    scripts,
+    oldScripts,
+    'db-migrate',
+    `${wbDbCommand} migrate --check-idempotency`,
+    /migrate(?:\s+--check-idempotency)?/u
+  );
+  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`, /studio/u);
 }
 
 function applyDatabaseScript(
   scripts: Record<string, string>,
   oldScripts: PackageJson.Scripts,
   name: string,
-  generatedScript: string
+  generatedScript: string,
+  generatedArgsPattern: RegExp
 ): void {
   const oldScript = oldScripts[name];
   // Some repositories wrap migration commands to prepare SQLite directories,
   // fan out over tenants, or perform cleanup that wb cannot infer generically.
-  scripts[name] = oldScript && !isGeneratedDatabaseScript(oldScript) ? oldScript : generatedScript;
+  scripts[name] =
+    oldScript && !isGeneratedDatabaseScript(oldScript, generatedArgsPattern) ? oldScript : generatedScript;
 }
 
 /**
- * Whether a script body is one of the KNOWN generated `wb db`/`wb prisma` invocations (allowing
- * legacy runner prefixes, including the historical `bun --bun`, and the historical argument
- * variants such as `migrate` without `--check-idempotency`). Anchored on the WHOLE body AND on the
- * exact generated argument lists so a custom wrapper that merely contains a wb call
- * (`prepare-sqlite && WB_ENV=… wb db studio`) or carries extra flags (`wb prisma studio
- * --port 5556`) is preserved instead of being replaced wholesale.
+ * Whether a script body is one of the KNOWN generated `wb db`/`wb prisma` invocations FOR THE
+ * GIVEN managed script (allowing legacy runner prefixes, including the historical `bun --bun`,
+ * and that script's historical argument variants such as `migrate` without `--check-idempotency`).
+ * Anchored on the WHOLE body AND on the exact generated argument list so a custom wrapper that
+ * merely contains a wb call (`prepare-sqlite && WB_ENV=… wb db studio`), carries extra flags
+ * (`wb prisma studio --port 5556`), or reuses another managed script's command
+ * (`"db-migrate": "wb db migrate-dev"`) is preserved instead of being replaced wholesale.
  */
-function isGeneratedDatabaseScript(script: string): boolean {
-  return /^(?:(?:bun(?:\s+--bun)?|yarn|npx)\s+)?wb\s+(?:db|prisma)\s+(?:migrate-dev|migrate(?:\s+--check-idempotency)?|studio)$/u.test(
-    script.trim()
-  );
+function isGeneratedDatabaseScript(script: string, generatedArgsPattern: RegExp): boolean {
+  return new RegExp(
+    String.raw`^(?:(?:bun(?:\s+--bun)?|yarn|npx)\s+)?wb\s+(?:db|prisma)\s+(?:${generatedArgsPattern.source})$`,
+    'u'
+  ).test(script.trim());
 }
 
 function getWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' {

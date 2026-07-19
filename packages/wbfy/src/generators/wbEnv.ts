@@ -25,7 +25,7 @@ type WbEnvMode = (typeof wbEnvModes)[number];
  */
 export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('ensureWbEnvDefinitions', async () => {
-    const needsNextPublic = allConfigs.some((config) => config.depending.next || config.depending.vinext);
+    const needsNextPublic = allConfigs.some((config) => requiresNextPublicWbEnv(config));
     const fnoxTomlPath = path.resolve(rootConfig.dirPath, 'fnox.toml');
     if (fs.existsSync(fnoxTomlPath)) {
       const content = await fsUtil.readFileConfinedIfExists(fnoxTomlPath);
@@ -41,8 +41,7 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
     // e.g. apps/web/.env without WB_ENV. NEXT_PUBLIC_WB_ENV follows each workspace's own
     // framework dependency (the root keeps the repository-wide signal for shared tooling).
     for (const config of allConfigs) {
-      const needsNextPublicHere =
-        config === rootConfig ? needsNextPublic : config.depending.next || config.depending.vinext;
+      const needsNextPublicHere = config === rootConfig ? needsNextPublic : requiresNextPublicWbEnv(config);
       for (const mode of wbEnvModes) {
         const envFilePath = path.resolve(config.dirPath, mode === 'development' ? '.env' : `.env.${mode}`);
         const envContent = await fsUtil.readFileConfinedIfExists(envFilePath);
@@ -57,6 +56,18 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
         }
       }
     }
+  });
+}
+
+/**
+ * Mirrors wb's requiresNextPublicWbEnv contract (packages/wb/src/project.ts): the framework may
+ * be declared in ANY of the four dependency sections (e.g. `next` as a devDependency in a shared
+ * component library), while wbfy's `depending.next` looks only at regular dependencies.
+ */
+function requiresNextPublicWbEnv(config: PackageConfig): boolean {
+  return ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'].some((section) => {
+    const dependencies = config.packageJson?.[section as 'dependencies'];
+    return !!dependencies?.['next'] || !!dependencies?.['vinext'];
   });
 }
 

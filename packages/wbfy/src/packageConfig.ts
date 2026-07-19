@@ -648,7 +648,9 @@ function readMiseTaskCommand(value: unknown): string {
 /**
  * Whether dirPath is a child workspace of an enclosing monorepo root: either the conventional
  * `<root>/packages/<name>` layout, or a directory matching a workspace pattern declared by an
- * enclosing package.json (checked one and two levels up, covering `apps/<name>`-style layouts).
+ * ancestor package.json (patterns may be arbitrarily deep, e.g. `examples/**`). The walk stops
+ * at the first git repository boundary so an unrelated enclosing repository's workspaces can
+ * never reclassify an independent repository as a child.
  */
 function isWorkspaceOfEnclosingRoot(dirPath: string): boolean {
   const resolvedDirPath = path.resolve(dirPath);
@@ -658,25 +660,31 @@ function isWorkspaceOfEnclosingRoot(dirPath: string): boolean {
   ) {
     return true;
   }
-  for (const candidateRootDirPath of [path.resolve(resolvedDirPath, '..'), path.resolve(resolvedDirPath, '..', '..')]) {
-    if (candidateRootDirPath === resolvedDirPath) continue;
-    let rootPackageJson: PackageJson;
+  // A directory with its own .git is a repository in its own right, never a child workspace.
+  if (fs.existsSync(path.resolve(resolvedDirPath, '.git'))) return false;
+  for (
+    let candidateRootDirPath = path.dirname(resolvedDirPath);
+    ;
+    candidateRootDirPath = path.dirname(candidateRootDirPath)
+  ) {
     try {
-      rootPackageJson = JSON.parse(
+      const rootPackageJson = JSON.parse(
         fs.readFileSync(path.resolve(candidateRootDirPath, 'package.json'), 'utf8')
       ) as PackageJson;
+      const relativeDirPath = path.relative(candidateRootDirPath, resolvedDirPath).replaceAll('\\', '/');
+      const workspaceDirPaths = getWorkspacePackageJsonPaths({
+        dirPath: candidateRootDirPath,
+        packageJson: rootPackageJson,
+        doesContainSubPackageJsons: false,
+      }).map((packageJsonPath) => path.posix.dirname(packageJsonPath));
+      if (workspaceDirPaths.includes(relativeDirPath)) return true;
     } catch {
-      continue;
+      // No or unparsable manifest at this ancestor: keep walking.
     }
-    const relativeDirPath = path.relative(candidateRootDirPath, resolvedDirPath).replaceAll('\\', '/');
-    const workspaceDirPaths = getWorkspacePackageJsonPaths({
-      dirPath: candidateRootDirPath,
-      packageJson: rootPackageJson,
-      doesContainSubPackageJsons: false,
-    }).map((packageJsonPath) => path.posix.dirname(packageJsonPath));
-    if (workspaceDirPaths.includes(relativeDirPath)) return true;
+    const isRepoBoundary = fs.existsSync(path.resolve(candidateRootDirPath, '.git'));
+    const isFilesystemRoot = candidateRootDirPath === path.dirname(candidateRootDirPath);
+    if (isRepoBoundary || isFilesystemRoot) return false;
   }
-  return false;
 }
 
 function containsAny(pattern: string, dirPath: string): boolean {

@@ -57,6 +57,9 @@ export async function untrackCloudflareEnv(config: PackageConfig): Promise<void>
       console.error(
         `Failed to untrack ${path.resolve(config.dirPath, cloudflareEnvFileName)} (git rm --cached exited with ${rmStatus}); it is STILL TRACKED and holds a CLOUDFLARE_API_TOKEN. Resolve the staged state (e.g. commit or unstage pending changes) and re-run wbfy, then rotate the token.`
       );
+      // Automation must not treat the run as successful while the security remediation is
+      // unapplied; keep processing the batch but fail the process.
+      process.exitCode = 1;
       return;
     }
     console.error(
