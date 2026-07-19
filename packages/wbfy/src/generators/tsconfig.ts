@@ -215,17 +215,24 @@ function removeStaleManagedWorkspaceEntries(
 /** Matches a concrete directory path against tsconfig-safe workspace dir patterns (`*`, `?`, `**`). */
 function isCoveredByWorkspaceDirPattern(dirPath: string, workspacePatterns: string[]): boolean {
   return workspacePatterns.some((workspacePattern) => {
+    // `**` matches ZERO or more path segments (`apps/**` covers `apps` itself), matching the
+    // fast-glob/Bun semantics workspace discovery uses; the placeholder dance makes the adjacent
+    // separator optional.
+    const globStarPlaceholder = '\u0000';
     const regexSource = workspacePattern
       .split('/')
       .map((segment) =>
         segment === '**'
-          ? String.raw`[^/]+(?:/[^/]+)*`
+          ? globStarPlaceholder
           : segment
               .replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`)
               .replaceAll('*', '[^/]*')
               .replaceAll('?', '[^/]')
       )
-      .join('/');
+      .join('/')
+      .replaceAll(`/${globStarPlaceholder}`, '(?:/.+)?')
+      .replaceAll(`${globStarPlaceholder}/`, '(?:.+/)?')
+      .replaceAll(globStarPlaceholder, '.*');
     return new RegExp(`^${regexSource}$`, 'u').test(dirPath);
   });
 }

@@ -60,7 +60,10 @@ export interface WorkspaceDirPatterns {
  * workspace package is added or removed. Every returned pattern is valid tsconfig glob syntax.
  * A pattern can match a sibling directory without a package.json (not a workspace to Bun); that
  * is deliberate, mirroring the long-standing `packages/*` entries' behavior in favor of stable
- * generated output.
+ * generated output. Known limitation (#1004): a negation whose directory is an ANCESTOR of
+ * another workspace (e.g. `["apps/**", "!apps"]`) excludes the whole subtree here, although Bun
+ * excludes only the package at that directory; such nested workspace layouts do not occur in
+ * WillBooster repositories.
  */
 export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): WorkspaceDirPatterns {
   // Unlike discovery, generated output must not contain a never-matching `packages/*` fallback:
