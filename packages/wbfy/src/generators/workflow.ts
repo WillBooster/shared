@@ -437,7 +437,8 @@ async function writeWorkflowYaml(
   if (kind === 'test-rust') {
     // Migrate hand-written Rust workflows (e.g. an inline cargo-check job) to the reusable workflow.
     for (const [jobName, job] of Object.entries(newSettings.jobs)) {
-      if (!job.uses?.includes('/reusable-workflows/')) {
+      // A job written as `jobName:` with no body parses as null.
+      if (!job?.uses?.includes('/reusable-workflows/')) {
         delete newSettings.jobs[jobName];
       }
     }
@@ -473,10 +474,11 @@ async function writeWorkflowYaml(
 
   let isReusableWorkflow = false;
   for (const job of Object.values(newSettings.jobs)) {
-    // Ignore non-reusable workflows and other organizations' reusable workflows: a same-named
-    // `reusable-workflows` repository elsewhere follows a different contract, and normalizing its
-    // callers (secret injection/removal, permissions) could break them.
-    if (!parseOrgReusableWorkflowCall(job.uses)) continue;
+    // Ignore empty jobs (a bare `jobName:` parses as null), non-reusable workflows, and other
+    // organizations' reusable workflows: a same-named `reusable-workflows` repository elsewhere
+    // follows a different contract, and normalizing its callers (secret injection/removal,
+    // permissions) could break them.
+    if (!job || !parseOrgReusableWorkflowCall(job.uses)) continue;
 
     normalizeJob(config, job, kind);
     isReusableWorkflow = true;
@@ -492,6 +494,7 @@ async function writeWorkflowYaml(
   // because arbitrary package scripts may push commits.
   if (!newSettings.permissions) {
     for (const job of Object.values(newSettings.jobs)) {
+      if (!job) continue;
       const call = parseOrgReusableWorkflowCall(job.uses);
       if (!job.permissions && call?.workflowName === 'deploy' && call.ref === 'main') {
         job.permissions = { contents: 'read' };
@@ -742,10 +745,12 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     }
   }
 
-  if (config.repository?.startsWith('github:WillBooster/')) {
-    job.uses = job.uses?.replace('WillBoosterLab/', 'WillBooster/');
-  } else if (config.repository?.startsWith('github:WillBoosterLab/')) {
-    job.uses = job.uses?.replace('WillBooster/', 'WillBoosterLab/');
+  // Reconstruct from the parsed call so a differently cased owner (GitHub is case-insensitive
+  // there) is also normalized to the repository's own organization / mirror.
+  if (orgWorkflowCall && config.repository?.startsWith('github:WillBooster/')) {
+    job.uses = `WillBooster/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.yml@${orgWorkflowCall.ref}`;
+  } else if (orgWorkflowCall && config.repository?.startsWith('github:WillBoosterLab/')) {
+    job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.yml@${orgWorkflowCall.ref}`;
   }
 
   // Remove redundant parameters

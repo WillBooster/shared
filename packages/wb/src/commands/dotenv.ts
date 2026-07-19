@@ -97,24 +97,29 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
   return { command: separatorIndex === -1 ? args : args.slice(separatorIndex + 1) };
 }
 
+function validateStandardWbEnv(value: string | undefined, fixTarget: string): void {
+  if (
+    !value ||
+    ['development', 'test', 'staging', 'production'].includes(value) ||
+    process.env.WB_SKIP_ENV_CHECK === '1' ||
+    process.env.WB_SKIP_ENV_CHECK === 'true'
+  ) {
+    return;
+  }
+  console.error(
+    `WB_ENV must be one of development, test, staging, or production, but is "${value}". ` +
+      `Fix ${fixTarget}, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+  );
+  process.exit(1);
+}
+
 // NOTE: `wb dotenv` deliberately skips Project.env's full validation: it is a generic runner also
 // used before env sources exist (bootstrap) and must not fail fast for repositories that have not
 // adopted the org env standard. A NON-EMPTY WB_ENV is still validated against the standard modes,
 // though — a typo like `prodcution` would otherwise silently select the base (development) values.
 function readAndApplyEnvironmentVariables(cwd: string): void {
   const mode = process.env.WB_ENV;
-  if (
-    mode &&
-    !['development', 'test', 'staging', 'production'].includes(mode) &&
-    process.env.WB_SKIP_ENV_CHECK !== '1' &&
-    process.env.WB_SKIP_ENV_CHECK !== 'true'
-  ) {
-    console.error(
-      `WB_ENV must be one of development, test, staging, or production, but is "${mode}". ` +
-        'Fix the exported variable, or set WB_SKIP_ENV_CHECK=1 to skip this check.'
-    );
-    process.exit(1);
-  }
+  validateStandardWbEnv(mode, 'the exported variable');
   const readEnvFile = (fileName: string): Record<string, string> =>
     config({ path: path.join(cwd, fileName), processEnv: {}, quiet: true }).parsed ?? {};
   // Mode-specific sources drive the forced-mode override below.
@@ -148,6 +153,12 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
     }
   }
   const envVars = expand({ parsed, processEnv: referenceEnv }).parsed ?? parsed;
+  // The env sources themselves may define a broken WB_ENV (e.g. `.env` with `WB_ENV=prodcution`),
+  // which would silently select the base values — validate the EFFECTIVE value the child sees.
+  validateStandardWbEnv(
+    mode ?? (typeof envVars.WB_ENV === 'string' ? envVars.WB_ENV : undefined),
+    'the env source or the exported variable'
+  );
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;

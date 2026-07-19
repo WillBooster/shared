@@ -46,6 +46,21 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
     // framework dependency (the root keeps the repository-wide signal for shared tooling).
     for (const config of allConfigs) {
       const needsNextPublicHere = config === rootConfig ? needsNextPublic : requiresNextPublicWbEnv(config);
+      // `.env.local` outranks every canonical `.env.<mode>` file in EVERY cascade, so a static
+      // WB_ENV-family definition there breaks each non-matching mode (wb fails fast on the
+      // mismatch); warn regardless of the value.
+      const localContent = await fsUtil.readFileConfinedIfExists(path.resolve(config.dirPath, '.env.local'));
+      if (localContent !== undefined) {
+        const localKeys = dotenv.parse(localContent);
+        for (const keyName of ['WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
+          const value = localKeys[keyName];
+          if (typeof value === 'string' && !value.includes('$')) {
+            console.warn(
+              `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb fails fast when it mismatches the selected mode).`
+            );
+          }
+        }
+      }
       for (const mode of wbEnvModes) {
         // Warn-only inspection of the HIGHER-precedence cascade variants the loader also reads
         // (`.env.development` for the development cascade, `.env.<mode>.local` for every mode):

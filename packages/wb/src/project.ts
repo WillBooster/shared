@@ -222,10 +222,21 @@ export class Project {
     // committed `.env` would run the tests against development values, and an exported
     // WB_ENV=production overridden to development by `.env.production` would build/deploy the
     // wrong environment while looking successful.
-    const forcedMode = this.argv.cascadeEnv ?? (this.argv.cascadeNodeEnv ? undefined : process.env.WB_ENV || undefined);
+    // --cascade-node-env forces <NODE_ENV || development> (per its own documentation), read from
+    // the AMBIENT environment like the cascade selection. Only a STANDARD forced mode is enforced:
+    // a non-standard one (e.g. NODE_ENV=qa) already had its fallback clamped to development above,
+    // and erroring on that clamp would contradict it.
+    const forcedMode =
+      this.argv.cascadeEnv ??
+      (this.argv.cascadeNodeEnv ? process.env.NODE_ENV || 'development' : process.env.WB_ENV || undefined);
     // The command-level default is a legitimate second expectation: `wb test --cascade-env=staging`
     // loads the staging files while the fallback correctly fills WB_ENV=test.
-    if (forcedMode && env.WB_ENV !== forcedMode && env.WB_ENV !== this.argv.commandDefaultWbEnv) {
+    if (
+      forcedMode &&
+      Project.standardWbEnvModes.has(forcedMode) &&
+      env.WB_ENV !== forcedMode &&
+      env.WB_ENV !== this.argv.commandDefaultWbEnv
+    ) {
       console.error(
         chalk.red(
           `WB_ENV resolves to "${env.WB_ENV}" although the "${forcedMode}" environment was selected. ` +

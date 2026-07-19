@@ -235,7 +235,10 @@ export function readEnvironmentVariables(
   // a direct readEnvironmentVariables/readAndApplyEnvironmentVariables caller never receives the
   // completed WB_ENV, and expanding references against a value that is not actually applied
   // would make the pair inconsistent.
-  if (options?.expandFallbackWbEnv && !('WB_ENV' in envVars) && runtimeEnv.WB_ENV === undefined) {
+  if (options?.expandFallbackWbEnv && !envVars.WB_ENV && !runtimeEnv.WB_ENV) {
+    // An EMPTY definition counts as unset too (Project.completeAndValidateWbEnv treats it so):
+    // drop it so references resolve to the fallback the completed environment will carry.
+    delete envVars.WB_ENV;
     referenceEnv.WB_ENV = resolveFallbackWbEnv(argv);
   }
   // dotenv-expand resolves references in key-insertion order, so a .env value referencing a
