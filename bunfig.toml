@@ -17,7 +17,6 @@ minimumReleaseAgeExcludes = [
   "@willbooster/monaco-react",
   "@willbooster/oxfmt-config",
   "@willbooster/oxlint-config",
-  "@willbooster/prettier-config",
   "@willbooster/react-frame-component",
   "@willbooster/renovate-config",
   "@willbooster/shared-lib",

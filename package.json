@@ -1,7 +1,6 @@
 {
   "name": "willbooster-shared",
   "version": "0.0.0-semantically-released",
-  "private": true,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/WillBooster/shared.git"
@@ -51,5 +50,8 @@
   },
   "engines": {
     "node": ">= 22.18.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

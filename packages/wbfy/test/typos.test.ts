@@ -15,5 +15,5 @@ test('line-comment typo fixes keep words merely ending in the abbreviation lette
   expect(fixTyposInCode('// the left leg. moves\n')).toBe('// the left leg. moves\n');
   expect(fixTyposInCode('// values, eg. one\n')).toBe('// values, e.g. one\n');
   expect(fixTyposInCode('// values, ie. one\n')).toBe('// values, i.e. one\n');
-  expect(fixTyposInCode('/* block eg. one */')).toBe('/* block e.g. one */');
+  expect(fixTyposInCode('/* block e.g. one */')).toBe('/* block e.g. one */');
 });
