@@ -151,7 +151,8 @@ export function hasImplicitWorkspaceBaseline(workspaces: PackageJson['workspaces
     workspacePatterns.length > 0 &&
     workspacePatterns.every((workspacePattern) => workspacePattern.startsWith('!')) &&
     workspacePatterns.some((workspacePattern) => {
-      const lastSegment = workspacePattern.slice(1).split('/').at(-1);
+      // Normalize first: Bun ignores trailing slashes, so `!apps/*/` seeds the baseline too.
+      const lastSegment = path.posix.normalize(workspacePattern.slice(1)).replace(/\/+$/u, '').split('/').at(-1);
       return lastSegment === '*' || lastSegment === '**';
     })
   );

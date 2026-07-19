@@ -192,7 +192,7 @@ test('applies Bun implicit */* baseline for negative-only workspace declarations
       fs.mkdirSync(workspaceDirPath, { recursive: true });
       fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
     }
-    const workspaces = ['!excluded/*'];
+    const workspaces = ['!excluded/*/'];
     fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
     const rootLike = { dirPath: tempDirPath, doesContainSubPackageJsons: false, packageJson: { workspaces } };
     expect(getWorkspaceSubDirPaths(rootLike)).toEqual([path.join(tempDirPath, 'apps', 'web')]);
