@@ -213,12 +213,37 @@ async function updateScripts(
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   for (const [key, value] of Object.entries(scripts)) {
-    if (typeof value !== 'string') continue;
+    if (typeof value !== 'string' || !value.includes('yarn')) continue;
     // Fresh repos still require standalone `yarn install`; only remove legacy install prefixes before another command.
-    if (!value.includes('git clone')) {
-      scripts[key] = value.replaceAll(/yarn\s*(?:install\s*)?&&\s*/gu, '');
-    }
+    if (value.includes('git clone')) continue;
+    scripts[key] = removeLegacyYarnInstallPrefixes(value);
   }
+}
+
+/**
+ * Removes each `yarn && ` / `yarn install && ` prefix that precedes another command. The scan is
+ * quote- and command-position-aware (sharing convertYarnInvocationsToBun's tokenizer walk), so
+ * quoted data such as `echo 'yarn install && deploy now'` stays untouched.
+ */
+function removeLegacyYarnInstallPrefixes(script: string): string {
+  const tokens = tokenizeShellCommand(script);
+  if (containsHeredocOperator(tokens)) return script;
+  const removalRanges: [number, number][] = [];
+  forEachCommandPositionToken(tokens, (token, index) => {
+    if (token.text !== 'yarn') return;
+    const next = tokens[index + 1];
+    // decodeSimpleShellWord: shell quoting makes `yarn 'install'` equivalent to `yarn install`.
+    const separatorToken = next && decodeSimpleShellWord(next.text) === 'install' ? tokens[index + 2] : next;
+    if (separatorToken?.text !== '&&') return;
+    let end = separatorToken.end;
+    while (end < script.length && /\s/u.test(script[end] ?? '')) end++;
+    removalRanges.push([token.start, end]);
+  });
+  let result = script;
+  for (const [start, end] of removalRanges.toReversed()) {
+    result = result.slice(0, start) + result.slice(end);
+  }
+  return result;
 }
 
 function updatePostinstallScript(
@@ -373,6 +398,18 @@ const yarnBuiltinSubcommands = new Set([
   'workspaces',
 ]);
 
+interface ShellToken {
+  text: string;
+  start: number;
+  end: number;
+}
+
+interface ShellReplacement {
+  start: number;
+  end: number;
+  text: string;
+}
+
 function convertYarnCommandsToBun(
   scripts: PackageJson.Scripts,
   config: PackageConfig,
@@ -384,69 +421,239 @@ function convertYarnCommandsToBun(
   // has no such concept, so the invocation must be routed to the defining workspace explicitly.
   // Resolved lazily: most scripts have no colon invocations.
   let colonScriptOwners: Map<string, ColonScriptOwner | undefined> | undefined;
-  const convertColonScriptInvocation = (
-    match: string,
-    scriptName: string,
-    offset: number,
-    currentScript: string
-  ): string => {
-    if (typeof scripts[scriptName] === 'string') return `bun run ${scriptName}`;
+  // Returns the `bun run ...` runner prefix to put before the (raw) script-name token, or
+  // undefined to keep the yarn form.
+  const resolveColonScriptInvocation = (scriptName: string, prefix: string): string | undefined => {
+    if (typeof scripts[scriptName] === 'string') return 'bun run';
     colonScriptOwners ??= collectColonScriptOwners(rootConfig);
     const owner = colonScriptOwners.get(scriptName);
-    const fallback = (): string =>
+    const fallback = (): string | undefined =>
       // A missing or ambiguous leading-colon script cannot run locally either, so its yarn form
-      // is kept to surface in review; other unresolved colon names keep the plain conversion
-      // (e.g. `cd sub && yarn build:sub` targeting a non-workspace directory).
-      scriptName.startsWith(':') ? match : `bun run ${scriptName}`;
+      // is kept (undefined) to surface in review; other unresolved colon names keep the plain
+      // conversion (e.g. `cd sub && yarn build:sub` targeting a non-workspace directory).
+      scriptName.startsWith(':') ? undefined : 'bun run';
     if (!owner) return fallback();
     // Bun's --filter never matches the workspace root, and its path filters resolve against the
     // invoking cwd (both verified on Bun 1.3.14), so the root package and unnamed workspaces are
     // addressed with --cwd relative to the invoking package instead.
     if (owner.packageName && owner.dirPath !== path.resolve(rootConfig.dirPath)) {
-      return `bun run --filter ${owner.packageName} ${scriptName}`;
+      return `bun run --filter ${owner.packageName}`;
     }
     // A `cd` BEFORE this invocation would make the package-relative --cwd resolve from the wrong
     // directory at runtime, so such invocations fall back instead of getting a silently broken
     // route; a cd after the invocation cannot affect it and must not prevent the conversion.
-    if (prefixMayChangeWorkingDirectory(currentScript.slice(0, offset))) return fallback();
+    if (prefixMayChangeWorkingDirectory(prefix)) return fallback();
     const relativeDirPath = path.relative(config.dirPath, owner.dirPath) || '.';
-    return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}' ${scriptName}`;
+    return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}'`;
   };
   // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
   // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
   for (const [key, value] of Object.entries(scripts)) {
     if (typeof value !== 'string' || !/\byarn\b/u.test(value)) continue;
-    scripts[key] = value
-      .replaceAll(
-        /yarn workspaces foreach\b[^&|;]*?\brun\s+(\S+)/gu,
-        (_, scriptName: string) => `bun run --filter '*' ${scriptName}`
-      )
-      .replaceAll(/\byarn\s+dlx\b/gu, 'bunx')
-      .replaceAll(
-        /\byarn\s+workspace\s+(\S+)\s+(run\s+)?([\w.:/-]+)/gu,
-        (match, packageName: string, run: string | undefined, command: string) =>
-          // Without an explicit `run`, a built-in like `yarn workspace pkg add -D x` is a Yarn CLI
-          // action, not a script; Bun's --filter only executes package scripts.
-          run || !yarnBuiltinSubcommands.has(command) ? `bun run --filter ${packageName} ${command}` : match
-      )
-      // The token may contain any non-metacharacter (e.g. `build:@scope`), not just \w./:-,
-      // so the whole shell word is captured and the colon requirement is a lookahead. Only a
-      // leading `-` (a yarn flag) is excluded: Yarn's global lookup has no first-character
-      // restriction, so names like `.build:cache` must resolve too.
-      .replaceAll(/\byarn\s+(?:run\s+)?(?!-)((?=[^\s:;&|<>()'"`]*:)[^\s;&|<>()'"`]+)/gu, convertColonScriptInvocation)
-      // The `(?!\s+:)` guard keeps an unresolvable `yarn run :name` in its yarn form (the colon
-      // rule above already converted every resolvable one).
-      .replaceAll(/\byarn\s+run\b(?!\s+:)/gu, 'bun run')
-      .replaceAll(/\byarn\s+install\b/gu, 'bun install')
-      // A bare `yarn <name>` invokes the package script; Yarn built-ins, flag forms
-      // (e.g. `yarn --cwd ...`), and still-unconverted `:` global scripts have no direct Bun
-      // equivalent and are intentionally left untouched to surface during review.
-      .replaceAll(/\byarn\s+(?![-.:])([\w.:/-]+)/gu, (match, scriptName: string) =>
-        yarnBuiltinSubcommands.has(scriptName) ? match : `bun run ${scriptName}`
-      )
-      // A bare `yarn` (at the end or before a command separator) is an install.
-      .replaceAll(/\byarn\b(?=\s*(?:$|&&|\|\||[;|]))/gu, 'bun install');
+    scripts[key] = convertYarnInvocationsToBun(value, resolveColonScriptInvocation);
   }
+}
+
+/**
+ * Rewrites the actual `yarn ...` command invocations in a script to their bun equivalents.
+ *
+ * The scan is quote- and command-position-aware (reusing removeBunRuntimeFlag's shell tokenizer
+ * walk instead of bare regexes): `yarn` appearing as data — inside a quoted token (e.g.
+ * `echo 'yarn build:cache'`) or as an argument of another command (e.g. `git commit -m yarn`) —
+ * stays untouched, while a quoted argument token (e.g. `yarn ':build-cache'`) is decoded before
+ * colon-owner resolution and re-emitted verbatim so its shell semantics never change. Anything
+ * unconvertible keeps its yarn form verbatim to surface during review instead of being
+ * mis-rewritten.
+ *
+ * Substitutions nested inside double quotes or backticks (`echo "$(yarn compile)"`) and quoted
+ * script names containing whitespace (`yarn 'build docs'`) are deliberately NOT modeled: they
+ * only produce conservative misses that keep the yarn form and surface during review (like the
+ * regex-based predecessor), and covering them would require a full shell parser.
+ */
+function convertYarnInvocationsToBun(
+  script: string,
+  resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
+): string {
+  const tokens = tokenizeShellCommand(script);
+  // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs. Only
+  // a real unquoted operator counts — `echo '<<' && yarn compile` still converts.
+  if (containsHeredocOperator(tokens)) return script;
+  const replacements: ShellReplacement[] = [];
+  forEachCommandPositionToken(tokens, (token, index) => {
+    // Only a bare unquoted `yarn` word at command position starts an invocation.
+    if (token.text !== 'yarn') return;
+    const remainingTokens = tokens.slice(index + 1);
+    const terminatorIndex = remainingTokens.findIndex((argToken) => isShellSeparator(argToken.text));
+    const args = terminatorIndex === -1 ? remainingTokens : remainingTokens.slice(0, terminatorIndex);
+    if (args.length === 0) {
+      // A bare `yarn` (at the end or before a command separator) is an install. A control
+      // operator that does not simply chain commands (a backgrounding `&`, a subshell
+      // parenthesis) keeps the yarn form to surface in review.
+      const terminatorText = terminatorIndex === -1 ? undefined : remainingTokens[terminatorIndex]?.text;
+      if (terminatorText === undefined || /^(?:&&|\|{1,2}|;|\n)/u.test(terminatorText)) {
+        replacements.push({ start: token.start, end: token.end, text: 'bun install' });
+      }
+      return;
+    }
+    const replacement = convertSingleYarnInvocation(token, args, script, resolveColonScriptInvocation);
+    if (replacement) replacements.push(replacement);
+  });
+  let result = script;
+  for (const { start, end, text } of replacements.toReversed()) {
+    result = result.slice(0, start) + text + result.slice(end);
+  }
+  return result;
+}
+
+// `yarn workspaces foreach` flags under which `bun run --filter '*'` (which runs every workspace
+// respecting dependency order) is an accepted equivalent of the fan-out. Anything else keeps the
+// yarn form to surface during review: selection flags (--since, --from, --include, ...) restrict
+// the workspaces, --dry-run suppresses execution, and parallelism flags (--parallel,
+// --interlaced, --jobs) start dependent scripts concurrently — under Bun's dependency-ordered
+// concurrency a long-running dependency would block its dependents forever.
+const selectionNeutralForeachFlags = new Set(['--all', '--topological', '--topological-dev', '--verbose']);
+
+/**
+ * Converts one `yarn <args...>` invocation (args already cut at the next command separator) into
+ * the text replacing it, or undefined to keep the yarn form untouched.
+ */
+function convertSingleYarnInvocation(
+  yarnToken: ShellToken,
+  args: readonly ShellToken[],
+  script: string,
+  resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
+): ShellReplacement | undefined {
+  // Redirections may appear anywhere in a simple command without affecting which strings the
+  // command receives (`yarn run >out.log build:cache` passes `run build:cache`), so the rules
+  // below operate on the logical (non-redirection) arguments only.
+  const logicalArgs: { token: ShellToken; rawIndex: number }[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const token = args[index] as ShellToken;
+    if (/^&?[<>]/u.test(token.text)) {
+      // The operator consumes its operand unless a `>&1`-style duplication is self-contained.
+      if (!/&(?:\d+|-)$/u.test(token.text)) index++;
+      continue;
+    }
+    if (
+      /^\d+$/u.test(token.text) &&
+      args[index + 1]?.start === token.end &&
+      /^[<>]/u.test(args[index + 1]?.text ?? '')
+    ) {
+      continue;
+    }
+    logicalArgs.push({ token, rawIndex: index });
+  }
+  // Decoded (literal) argument values drive the matching, while emitted rewrites always reuse the
+  // raw token text (rawArg) so quoting and expansion semantics survive the conversion unchanged
+  // (e.g. `yarn 'build:$target'` keeps its single quotes). A shell-ambiguous token decodes to
+  // undefined, which keeps the invocation in its yarn form.
+  const argText = (argIndex: number): string | undefined => {
+    const arg = logicalArgs[argIndex];
+    return arg && decodeSimpleShellWord(arg.token.text);
+  };
+  const rawArg = (argIndex: number): string => logicalArgs[argIndex]?.token.text ?? '';
+  const replaceThroughArg = (argIndex: number, text: string): ShellReplacement | undefined => {
+    const arg = logicalArgs[argIndex] as { token: ShellToken; rawIndex: number };
+    // A redirection inside the replaced span would be deleted by the rewrite, so such an
+    // invocation keeps its yarn form to surface in review.
+    if (args.slice(0, arg.rawIndex).some((argToken) => /^&?[<>]/u.test(argToken.text))) return undefined;
+    return { start: yarnToken.start, end: arg.token.end, text };
+  };
+  const first = argText(0);
+  const second = argText(1);
+  // `yarn workspaces foreach <selection-neutral flags> run <script>` fans a script out to every
+  // workspace; a selection-restricting or execution-suppressing flag keeps the yarn form.
+  if (first === 'workspaces' && second === 'foreach') {
+    let runIndex = -1;
+    // `--filter '*'` widens the fan-out to every workspace, so an explicit --all/-A selection is
+    // required: an unflagged foreach is either scoped (Yarn <4.1) or an error (Yarn >=4.1).
+    let selectsAllWorkspaces = false;
+    for (let index = 2; index < logicalArgs.length; index++) {
+      const flag = argText(index);
+      if (flag === 'run') {
+        runIndex = index;
+        break;
+      }
+      if (flag === undefined || !(selectionNeutralForeachFlags.has(flag) || /^-[Atv]+$/u.test(flag))) return undefined;
+      if (flag === '--all' || (flag.startsWith('-') && !flag.startsWith('--') && flag.includes('A'))) {
+        selectsAllWorkspaces = true;
+      }
+    }
+    const scriptName = runIndex === -1 || !selectsAllWorkspaces ? undefined : argText(runIndex + 1);
+    return scriptName === undefined || scriptName.startsWith('-')
+      ? undefined
+      : replaceThroughArg(runIndex + 1, `bun run --filter '*' ${rawArg(runIndex + 1)}`);
+  }
+  if (first === 'dlx') return replaceThroughArg(0, 'bunx');
+  if (first === 'workspace') {
+    const hasRun = argText(2) === 'run';
+    const commandIndex = hasRun ? 3 : 2;
+    const command = argText(commandIndex);
+    // Without an explicit `run`, a built-in like `yarn workspace pkg add -D x` is a Yarn CLI
+    // action, not a script; Bun's --filter only executes package scripts.
+    return second !== undefined &&
+      command !== undefined &&
+      /^[\w.:/-]+$/u.test(command) &&
+      (hasRun || !yarnBuiltinSubcommands.has(command))
+      ? replaceThroughArg(commandIndex, `bun run --filter ${rawArg(1)} ${rawArg(commandIndex)}`)
+      : undefined;
+  }
+  // A colon-containing script name (after `run` and its flags, if any) needs workspace-global
+  // resolution. The name may contain any non-metacharacter (e.g. `build:@scope`), not just
+  // \w./:-. Only a leading `-` (a yarn flag) is excluded: Yarn's global lookup has no
+  // first-character restriction, so names like `.build:cache` must resolve too.
+  let scriptNameIndex = 0;
+  if (first === 'run') {
+    scriptNameIndex = 1;
+    while (argText(scriptNameIndex)?.startsWith('-')) {
+      // `--require <path>` is the one `yarn run` flag taking a separate value; its value must not
+      // be mistaken for the script name (`--require=<path>` needs no special casing).
+      scriptNameIndex += argText(scriptNameIndex) === '--require' ? 2 : 1;
+    }
+  }
+  const scriptName = argText(scriptNameIndex);
+  if (scriptName !== undefined && scriptName.includes(':') && /^[^\s;&|<>()'"`]+$/u.test(scriptName)) {
+    const runnerPrefix = resolveColonScriptInvocation(scriptName, script.slice(0, yarnToken.start));
+    if (runnerPrefix === undefined) return undefined;
+    // With flags between `run` and the target (e.g. `yarn run --inspect-brk build:remote`), only
+    // a plain local `bun run` provably keeps their meaning; where flags would have to travel into
+    // a --filter/--cwd route, the yarn form is kept to surface in review.
+    if (scriptNameIndex > 1) {
+      return runnerPrefix === 'bun run' ? replaceThroughArg(0, 'bun run') : undefined;
+    }
+    return replaceThroughArg(scriptNameIndex, `${runnerPrefix} ${rawArg(scriptNameIndex)}`);
+  }
+  if (first === 'run') {
+    // An unresolvable `yarn run [flags] :name` keeps its yarn form (the colon rule above already
+    // converted every resolvable one), and so does an undecodable (dynamic or ambiguous) target:
+    // its expanded name could need Yarn's global routing. Otherwise `bun run` accepts the same
+    // flags and target.
+    const target = logicalArgs[scriptNameIndex];
+    return target && (scriptName === undefined || scriptName.startsWith(':') || target.token.text.startsWith(':'))
+      ? undefined
+      : replaceThroughArg(0, 'bun run');
+  }
+  if (first === 'install') return replaceThroughArg(0, 'bun install');
+  // A bare `yarn <name>` invokes the package script; Yarn built-ins, flag forms
+  // (e.g. `yarn --cwd ...`), and still-unconverted `:` global scripts have no direct Bun
+  // equivalent and are intentionally left untouched to surface during review.
+  return first !== undefined && /^(?![-.:])[\w.:/-]+$/u.test(first) && !yarnBuiltinSubcommands.has(first)
+    ? replaceThroughArg(0, `bun run ${rawArg(0)}`)
+    : undefined;
+}
+
+/**
+ * The literal value of a shell word that is either fully unquoted or wholly wrapped in one simple
+ * quote pair, or undefined for anything shell-dynamic or ambiguous (unquoted expansions and
+ * globs, embedded or mixed quotes, backslashes, expansions inside double quotes), whose
+ * invocation must then stay in its yarn form.
+ */
+function decodeSimpleShellWord(text: string): string | undefined {
+  // An unquoted `$var`, backtick, glob, or brace expansion resolves at runtime, so its literal
+  // spelling must not drive script-name matching or colon-owner routing.
+  if (!/['"\\]/u.test(text)) return /[$`*?[\]{}]|^~/u.test(text) ? undefined : text;
+  const quoted = /^'([^'\\]*)'$/u.exec(text) ?? /^"([^"'\\$`]*)"$/u.exec(text);
+  return quoted?.[1];
 }
 
 /**
@@ -505,31 +712,20 @@ function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
 }
 
 function removeBunRuntimeFlag(script: string, scriptNames: ReadonlySet<string>): string {
+  const tokens = tokenizeShellCommand(script);
   // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
-  if (script.includes('<<')) return script;
+  if (containsHeredocOperator(tokens)) return script;
   // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
   // merely ending in `bun` (`my-bun`), quoted targets with spaces, and Bun runtime flags between
   // `--bun` and the script file are all classified correctly.
-  const tokens = tokenizeShellCommand(script);
   const removalRanges: [number, number][] = [];
-  let atCommandPosition = true;
-  for (const [index, token] of tokens.entries()) {
-    if (isShellSeparator(token.text)) {
-      atCommandPosition = true;
-      continue;
-    }
-    if (!atCommandPosition) continue;
-    const tokenText = unquoteShellToken(token.text);
-    // `KEY=VALUE` prefixes and shell prefix words (`exec`, `env`, `command`, `!`) keep the next
-    // token in command position.
-    if (/^[A-Za-z_]\w*=/u.test(tokenText) || ['exec', 'env', 'command', '!'].includes(tokenText)) continue;
-    atCommandPosition = false;
-    if (tokenText !== 'bun') continue;
+  forEachCommandPositionToken(tokens, (token, index) => {
+    if (unquoteShellToken(token.text) !== 'bun') return;
     const flagToken = tokens[index + 1];
-    if (!flagToken || unquoteShellToken(flagToken.text) !== '--bun') continue;
-    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2), scriptNames)) continue;
+    if (!flagToken || unquoteShellToken(flagToken.text) !== '--bun') return;
+    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2), scriptNames)) return;
     removalRanges.push([flagToken.start, flagToken.end]);
-  }
+  });
 
   let result = script;
   for (const [start, end] of removalRanges.toReversed()) {
@@ -575,10 +771,209 @@ function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: Re
   return !nodeBasedTools.has(first);
 }
 
-interface ShellToken {
-  text: string;
-  start: number;
-  end: number;
+// Words after which the next token is still in command position: prefix words that run the
+// command following them (cross-env is included because `cross-env KEY=VALUE <command> ...` is
+// the common pre-Bun way to set environment variables portably in package scripts), shell
+// keywords introducing a compound command's body (`if cmd`, `then cmd`, ...), and the `{ ... }`
+// grouping braces.
+// Options of the transparent wrapper words below that never consume a following argument
+// (`env -i`/`--ignore-environment`, `command -p`, `time -p`).
+const valuelessWrapperOptions = new Set(['-i', '-p', '--ignore-environment']);
+
+const commandPositionTransparentWords = new Set([
+  '!',
+  'command',
+  'cross-env',
+  'env',
+  'exec',
+  'time',
+  'if',
+  'elif',
+  'then',
+  'else',
+  'while',
+  'until',
+  'do',
+  '{',
+  '}',
+]);
+
+/**
+ * Whether the token stream contains an unquoted heredoc or herestring operator (`<<`, `<<<`).
+ * `<<` inside an arithmetic context (`echo $((1 << 2))`) is a left shift, not a heredoc.
+ */
+function containsHeredocOperator(tokens: readonly ShellToken[]): boolean {
+  let inArithmetic = false;
+  const outerArithmeticStates: boolean[] = [];
+  for (const token of tokens) {
+    if (isShellSeparator(token.text)) {
+      for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
+        const char = token.text[charIndex];
+        if (char === '(') {
+          outerArithmeticStates.push(inArithmetic);
+          if (charIndex > 0) inArithmetic = true;
+        } else if (char === ')') {
+          inArithmetic = outerArithmeticStates.pop() ?? false;
+        }
+      }
+      continue;
+    }
+    if (!inArithmetic && /^&?[<>]/u.test(token.text) && token.text.includes('<<')) return true;
+  }
+  return false;
+}
+
+/**
+ * Invokes the callback for every token in shell command position. Separators start a new command;
+ * `KEY=VALUE` prefixes and transparent prefix words (`exec`, `env`, ...) keep the next token in
+ * command position.
+ */
+function forEachCommandPositionToken(
+  tokens: readonly ShellToken[],
+  callback: (token: ShellToken, index: number, tokens: readonly ShellToken[]) => void
+): void {
+  let atCommandPosition = true;
+  let redirectionOperandFollows = false;
+  // A muted paren context contains data, not commands: `((` arithmetic (`echo $((yarn && 1))`)
+  // and array literals (`args=(yarn compile)`).
+  let inDataParens = false;
+  let previousSeparatorChar: string | undefined;
+  // The word before a `(` decides whether an empty `()` pair is a function definition
+  // (`build_all() { ... }`) or an empty command substitution (`echo $() yarn`), and whether the
+  // parens hold an array literal.
+  let lastWordToken: ShellToken | undefined;
+  // `function f { ... }` declares f without parentheses: the name is consumed, and the `{` body
+  // that follows is in command position.
+  let functionNameFollows = false;
+  // Between `case <subject> in` (or after `;;`) and the pattern's closing `)`, words are patterns
+  // and a leading `(` is a delimiter, not a subshell.
+  let caseContext: 'none' | 'awaitingIn' | 'pattern' | 'body' = 'none';
+  // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER state must be
+  // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
+  const outerStates: { atCommandPosition: boolean; inDataParens: boolean; functionCandidate: boolean }[] = [];
+  for (const [index, token] of tokens.entries()) {
+    if (isShellSeparator(token.text)) {
+      if (caseContext === 'body' && token.text.startsWith(';;')) {
+        caseContext = 'pattern';
+        redirectionOperandFollows = false;
+        previousSeparatorChar = undefined;
+        continue;
+      }
+      // Separator tokens are ASCII, so index-based iteration is safe.
+      for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
+        const char = token.text[charIndex] ?? '';
+        if (caseContext === 'awaitingIn' || caseContext === 'pattern') {
+          // Inside a pattern, `(` and `|` delimit alternatives and `)` starts the branch body.
+          if (caseContext === 'pattern' && char === ')') {
+            caseContext = 'body';
+            atCommandPosition = true;
+          }
+          previousSeparatorChar = char;
+          continue;
+        }
+        if (char === '(') {
+          outerStates.push({
+            atCommandPosition,
+            inDataParens,
+            // A word ending in `$` opens a substitution, never a function definition.
+            functionCandidate: lastWordToken !== undefined && !lastWordToken.text.endsWith('$'),
+          });
+          // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
+          // arithmetic, and an ADJACENT `name=(` opens an array literal; a spaced `( (` is a
+          // nested subshell.
+          if (
+            charIndex > 0 ||
+            (lastWordToken !== undefined &&
+              lastWordToken.text.endsWith('=') &&
+              lastWordToken.end === token.start &&
+              /^[A-Za-z_][+\w]*=$/u.test(lastWordToken.text))
+          ) {
+            inDataParens = true;
+          }
+          atCommandPosition = true;
+        } else if (char === ')') {
+          const outerState = outerStates.pop();
+          inDataParens = outerState?.inDataParens ?? false;
+          // An empty `()` pair after a plain word is a function definition: its body follows in
+          // command position, and its yarn invocations really run when the function is called.
+          atCommandPosition =
+            previousSeparatorChar === '(' && outerState?.functionCandidate
+              ? true
+              : (outerState?.atCommandPosition ?? true);
+        } else {
+          atCommandPosition = true;
+          lastWordToken = undefined;
+          functionNameFollows = false;
+        }
+        previousSeparatorChar = char;
+      }
+      redirectionOperandFollows = false;
+      continue;
+    }
+    previousSeparatorChar = undefined;
+    lastWordToken = token;
+    if (caseContext === 'awaitingIn') {
+      if (token.text === 'in') caseContext = 'pattern';
+      continue;
+    }
+    if (caseContext === 'pattern') {
+      // A branch-less `esac` (e.g. right after `;;`) ends the case statement.
+      if (token.text === 'esac') caseContext = 'none';
+      continue;
+    }
+    if (inDataParens) continue;
+    if (functionNameFollows) {
+      // The declared function name is not a command; the `{` body follows in command position.
+      functionNameFollows = false;
+      continue;
+    }
+    if (redirectionOperandFollows) {
+      redirectionOperandFollows = false;
+      continue;
+    }
+    if (!atCommandPosition) continue;
+    if (token.text === 'function') {
+      functionNameFollows = true;
+      continue;
+    }
+    if (token.text === 'case') {
+      caseContext = 'awaitingIn';
+      continue;
+    }
+    if (caseContext === 'body' && token.text === 'esac') {
+      caseContext = 'none';
+      atCommandPosition = false;
+      continue;
+    }
+    // A redirection may precede the command (`>out.log yarn build`, `2>&1 yarn build`); the
+    // operator (with its operand, unless a `>&1`-style duplication makes it self-contained) and
+    // an ADJACENT file-descriptor digit (`2>` splits into two tokens; a detached `2 >out` is not
+    // a descriptor) leave the position intact.
+    if (/^&?[<>]/u.test(token.text)) {
+      redirectionOperandFollows = !/&(?:\d+|-)$/u.test(token.text);
+      continue;
+    }
+    if (
+      /^\d+$/u.test(token.text) &&
+      tokens[index + 1]?.start === token.end &&
+      /^[<>]/u.test(tokens[index + 1]?.text ?? '')
+    ) {
+      continue;
+    }
+    // The raw token text drives the assignment and keyword checks: shell quoting turns them into
+    // ordinary command words (`"FOO=bar" yarn build` runs the command `FOO=bar`).
+    if (/^[A-Za-z_]\w*=/u.test(token.text) || commandPositionTransparentWords.has(token.text)) continue;
+    // At command position a `-`-leading token can only be an option of a preceding transparent
+    // wrapper (`env -i yarn build`); a real command never starts with `-`. Only known valueless
+    // options stay transparent — an unmodeled option may consume the next word as its value
+    // (`env -u yarn build`), so discovery for this command stops conservatively instead.
+    if (token.text.startsWith('-')) {
+      if (!valuelessWrapperOptions.has(token.text)) atCommandPosition = false;
+      continue;
+    }
+    atCommandPosition = false;
+    callback(token, index, tokens);
+  }
 }
 
 function tokenizeShellCommand(script: string): ShellToken[] {
@@ -598,6 +993,33 @@ function tokenizeShellCommand(script: string): ShellToken[] {
       index = end;
       continue;
     }
+    // An unquoted `#` starting a word begins a comment: the shell ignores it through the next
+    // newline, so no tokens (in particular no separators) may come out of it.
+    if (char === '#') {
+      let end = index + 1;
+      while (end < script.length && script[end] !== '\n') end++;
+      index = end;
+      continue;
+    }
+    // An unquoted redirection operator ends the preceding word even without whitespace
+    // (`yarn build>log` redirects `yarn build`), so it forms its own token; heredoc-containing
+    // token streams are rejected by every caller before interpretation. Compound forms — the
+    // `&>file` both-streams shorthand, the `>|` clobber operator, and `>&`/`>&1`-style
+    // duplications — belong to the operator token, or their `&`/`|` would read as a separator.
+    if (char === '<' || char === '>' || (char === '&' && /^[<>]$/u.test(script[index + 1] ?? ''))) {
+      let end = char === '&' ? index + 1 : index;
+      while (end < script.length && (script[end] === '<' || script[end] === '>')) end++;
+      if (script[end] === '&') {
+        end++;
+        if (script[end] === '-') end++;
+        else while (end < script.length && /\d/u.test(script[end] ?? '')) end++;
+      } else if (script[end] === '|') {
+        end++;
+      }
+      tokens.push({ text: script.slice(index, end), start: index, end });
+      index = end;
+      continue;
+    }
     let end = index;
     let quote: string | undefined;
     while (end < script.length) {
@@ -609,7 +1031,7 @@ function tokenizeShellCommand(script: string): ShellToken[] {
         quote = current;
       } else if (current === '\\') {
         end++;
-      } else if (/\s/u.test(current) || isShellSeparator(current)) {
+      } else if (/\s/u.test(current) || isShellSeparator(current) || current === '<' || current === '>') {
         break;
       }
       end++;
