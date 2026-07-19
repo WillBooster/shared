@@ -1500,7 +1500,9 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     scripts: {
       'clean-all': 'yarn workspaces foreach --all exec rimraf dist',
       'deps-up': 'yarn up -R typescript',
+      'fan-out': 'yarn workspaces foreach --all run build',
       'gen:sub': 'cd sub && yarn build:sub',
+      hint: "echo 'run yarn build before deploying'",
       publish2: 'yarn npm publish --tolerate-republish',
       'ws-add': 'yarn workspace components add -D react',
       'ws-run': 'yarn workspace components run gen',
@@ -1513,7 +1515,10 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'deps-up': 'yarn up -R typescript',
     publish2: 'yarn npm publish --tolerate-republish',
     'ws-add': 'yarn workspace components add -D react',
+    // `yarn` inside a quoted token is data, not a command, so it stays untouched.
+    hint: "echo 'run yarn build before deploying'",
     // Script invocations are converted.
+    'fan-out': "bun run --filter '*' build",
     'gen:sub': 'cd sub && bun run build:sub',
     'ws-run': 'bun run --filter components gen',
   });
@@ -1528,8 +1533,10 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
         at: 'yarn build:@scope',
         'cache-all': 'yarn build:cache',
         dot: 'yarn .build:cache',
+        echoed: 'echo \'yarn build:cache\' && node warn.js "prefer yarn :build-caches"',
         local: 'yarn :local-cache',
         missing: 'yarn :unknown-script && yarn run :unknown-script',
+        quoted: `yarn ':build-caches' && yarn run ":build-caches"`,
         'test/ci-setup': 'build-ts run scripts/rename.ts && yarn :build-caches && sh scripts/install.sh',
         tools: 'yarn :tool-cache',
       },
@@ -1560,10 +1567,15 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
     'cache-all': 'bun run --filter @judge/server build:cache',
     // Yarn's lookup has no first-character restriction, so dot-prefixed names resolve too.
     dot: 'bun run --filter @judge/server .build:cache',
+    // `yarn ...` inside a quoted token is data, not a command; rewriting it would change the
+    // script's output (or worse, inject a --filter route into a string literal).
+    echoed: 'echo \'yarn build:cache\' && node warn.js "prefer yarn :build-caches"',
     // A colon script defined in the invoking package stays a local bun run.
     local: 'bun run :local-cache',
     // A leading-colon script no workspace defines keeps its yarn form to surface in review.
     missing: 'yarn :unknown-script && yarn run :unknown-script',
+    // A quoted script-name token is unquoted before colon-owner resolution.
+    quoted: 'bun run --filter @judge/server :build-caches && bun run --filter @judge/server :build-caches',
     // A colon script defined in another workspace is routed there: bun has no global scripts.
     'test/ci-setup':
       'build-ts run scripts/rename.ts && bun run --filter @judge/server :build-caches && sh scripts/install.sh',
