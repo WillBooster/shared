@@ -10,6 +10,7 @@ import type { PrivateRegistryAuth } from '../utils/privateRegistry.js';
 import {
   PRIVATE_REGISTRY_SCOPE,
   downloadAndExtractRegistryPackage,
+  installedVersionSatisfies,
   isPrivateGitDependency,
   isPrivateRegistryDependency,
   resolvePrivateRegistryAuth,
@@ -19,7 +20,11 @@ import {
 interface PrivatePackage {
   name: string;
   kind: 'git' | 'registry';
-  /** Undefined for registry packages, which are downloaded instead of copied. */
+  /**
+   * Undefined for registry packages that must be downloaded; set for git packages and for
+   * registry packages whose installed copy in node_modules already satisfies the specifier
+   * (so CI steps without registry credentials can still materialize them).
+   */
   sourceDirPath: string | undefined;
   targetDirPath: string;
   versionSpecifier: string | undefined;
@@ -82,13 +87,18 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
 
     const copiedPackages = [...privatePackages.values()].filter((p) => p.kind === 'git');
     const registryPackages = [...privatePackages.values()].filter((p) => p.kind === 'registry');
+    // Registry packages whose installed copy satisfies the specifier are copied from
+    // node_modules; only the rest are downloaded, so registry credentials are needed only when a
+    // download actually happens (CI test steps deliberately receive no Verdaccio token).
+    const downloadedPackages = registryPackages.filter((p) => !p.sourceDirPath);
     // Resolve required configuration BEFORE deleting the existing materializations, so a missing
     // registry configuration cannot destroy a previously usable output tree.
-    const auth = registryPackages.length > 0 ? resolvePrivateRegistryAuth(projects.root.dirPath) : undefined;
-    if (registryPackages.length > 0 && !auth) {
+    const auth = downloadedPackages.length > 0 ? resolvePrivateRegistryAuth(projects.root.dirPath) : undefined;
+    if (downloadedPackages.length > 0 && !auth) {
       console.error(
         chalk.red(
-          `No registry configured for the ${PRIVATE_REGISTRY_SCOPE} scope; add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to .npmrc or ~/.npmrc.`
+          `Cannot download ${downloadedPackages.map((p) => p.name).join(', ')}: no registry configured for the ${PRIVATE_REGISTRY_SCOPE} scope; ` +
+            `add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to .npmrc or ~/.npmrc (or run \`bun install\` first so the installed copies can be reused).`
         )
       );
       process.exit(1);
@@ -99,10 +109,10 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     // and a missing source path fails the build.
     await fs.promises.mkdir(outDirPath, { recursive: true });
     for (const privatePackage of copiedPackages) {
-      await copyGitPackage(projects.root.dirPath, privatePackage);
+      await copyInstalledPackage(projects.root.dirPath, privatePackage, privatePackage.targetDirPath);
     }
 
-    if (auth) {
+    if (registryPackages.length > 0) {
       // Download into a staging directory and swap it in only after every download succeeded, so
       // a failing registry/token/extraction cannot destroy the last usable materialization.
       const stagingDirPath = path.join(projects.root.dirPath, '.tmp', 'wb-private-registry-staging');
@@ -112,26 +122,38 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       await fs.promises.mkdir(stagingDirPath, { recursive: true });
       try {
         for (const privatePackage of registryPackages) {
-          await downloadAndExtractRegistryPackage(
-            auth,
-            privatePackage.name,
-            privatePackage.versionSpecifier ?? 'latest',
-            toStagedPath(privatePackage.targetDirPath)
-          );
-          console.info(
-            `Downloaded ${privatePackage.name} to ${path.relative(projects.root.dirPath, privatePackage.targetDirPath)}`
-          );
+          if (privatePackage.sourceDirPath) {
+            await copyInstalledPackage(
+              projects.root.dirPath,
+              privatePackage,
+              toStagedPath(privatePackage.targetDirPath)
+            );
+          } else {
+            await downloadAndExtractRegistryPackage(
+              // downloadedPackages is non-empty on this path, so the auth check above passed.
+              auth!,
+              privatePackage.name,
+              privatePackage.versionSpecifier ?? 'latest',
+              toStagedPath(privatePackage.targetDirPath)
+            );
+            console.info(
+              `Downloaded ${privatePackage.name} to ${path.relative(projects.root.dirPath, privatePackage.targetDirPath)}`
+            );
+          }
           // A downloaded package may itself depend on private packages that were not visible
-          // before extraction; materialize them too.
-          await collectNestedPrivatePackages(
-            projects.root.dirPath,
-            auth,
-            privatePackage,
-            privatePackages,
-            outDirPath,
-            registryOutDirPath,
-            toStagedPath
-          );
+          // before extraction; materialize them too. Installed copies were already deep-scanned
+          // by collectPrivatePackages.
+          if (!privatePackage.sourceDirPath) {
+            await collectNestedPrivatePackages(
+              projects.root.dirPath,
+              auth!,
+              privatePackage,
+              privatePackages,
+              outDirPath,
+              registryOutDirPath,
+              toStagedPath
+            );
+          }
         }
         await fs.promises.rm(registryOutDirPath, { recursive: true, force: true });
         await fs.promises.rename(stagingDirPath, registryOutDirPath);
@@ -167,10 +189,14 @@ async function collectPrivatePackages(
     if (!privatePackage) continue;
     if (privatePackages.has(privatePackage.name)) continue;
 
-    if (privatePackage.kind === 'git') {
-      privatePackage.sourceDirPath = findInstalledPackageDir(rootDirPath, privatePackage.name);
-      // Nested private dependencies of an installed git package are discoverable right away;
-      // registry packages are inspected after download instead (collectNestedPrivatePackages).
+    privatePackage.sourceDirPath =
+      privatePackage.kind === 'git'
+        ? findInstalledPackageDir(rootDirPath, privatePackage.name)
+        : findInstalledRegistryPackageDir(rootDirPath, privatePackage);
+    // Nested private dependencies of an installed package are discoverable right away; registry
+    // packages without a usable installed copy are inspected after download instead
+    // (collectNestedPrivatePackages).
+    if (privatePackage.sourceDirPath) {
       for (const packageJsonPath of await findPackageJsonPaths(privatePackage.sourceDirPath)) {
         const packageJson = await readPackageJson(packageJsonPath);
         for (const nested of findPrivateDependencies(packageJson, outDirPath, registryOutDirPath)) {
@@ -225,15 +251,20 @@ async function collectNestedPrivatePackages(
 
       if (nested.kind === 'git') {
         nested.sourceDirPath = findInstalledPackageDir(rootDirPath, nested.name);
-        await copyGitPackage(rootDirPath, nested);
+        await copyInstalledPackage(rootDirPath, nested, nested.targetDirPath);
       } else {
-        await downloadAndExtractRegistryPackage(
-          auth,
-          nested.name,
-          nested.versionSpecifier ?? 'latest',
-          toStagedPath(nested.targetDirPath)
-        );
-        console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
+        nested.sourceDirPath = findInstalledRegistryPackageDir(rootDirPath, nested);
+        if (nested.sourceDirPath) {
+          await copyInstalledPackage(rootDirPath, nested, toStagedPath(nested.targetDirPath));
+        } else {
+          await downloadAndExtractRegistryPackage(
+            auth,
+            nested.name,
+            nested.versionSpecifier ?? 'latest',
+            toStagedPath(nested.targetDirPath)
+          );
+          console.info(`Downloaded ${nested.name} (nested dependency) to ${nested.targetDirPath}`);
+        }
       }
       privatePackages.set(nested.name, nested);
       await collectNestedPrivatePackages(
@@ -249,8 +280,13 @@ async function collectNestedPrivatePackages(
   }
 }
 
-async function copyGitPackage(rootDirPath: string, privatePackage: PrivatePackage): Promise<void> {
-  await fs.promises.cp(privatePackage.sourceDirPath!, privatePackage.targetDirPath, {
+/** `destinationDirPath` may differ from `targetDirPath` while registry packages stage. */
+async function copyInstalledPackage(
+  rootDirPath: string,
+  privatePackage: PrivatePackage,
+  destinationDirPath: string
+): Promise<void> {
+  await fs.promises.cp(privatePackage.sourceDirPath!, destinationDirPath, {
     recursive: true,
     force: true,
     // Bun's isolated linker exposes installed packages through symlinks; the materialized tree
@@ -335,6 +371,51 @@ function findInstalledPackageDir(rootDirPath: string, packageName: string): stri
     );
   }
   throw new Error(`Private package is not installed: ${packageName} (${directDirPath})`);
+}
+
+/**
+ * The installed materialization of a registry package, when its version is statically known to
+ * satisfy the specifier — steps without registry credentials (e.g. CI test steps, which
+ * deliberately receive no Verdaccio token) reuse it instead of downloading. Returns undefined
+ * (falling back to a download) when no unambiguously correct installed copy exists.
+ */
+function findInstalledRegistryPackageDir(rootDirPath: string, privatePackage: PrivatePackage): string | undefined {
+  const specifier = privatePackage.versionSpecifier ?? 'latest';
+  const relativeDirPath = path.join('node_modules', ...privatePackage.name.split('/'));
+  const addCandidate = (candidateDirPaths: Set<string>, dirPath: string): void => {
+    const version = readInstalledVersion(dirPath, privatePackage.name);
+    if (version && installedVersionSatisfies(specifier, version)) candidateDirPaths.add(fs.realpathSync(dirPath));
+  };
+  // A root-level installation is THE lockfile resolution for the root dependency; the .bun store
+  // is consulted only for transitive-only packages, where multiple satisfying resolutions may
+  // coexist and picking one arbitrarily could materialize the wrong content.
+  const directCandidateDirPaths = new Set<string>();
+  addCandidate(directCandidateDirPaths, path.join(rootDirPath, relativeDirPath));
+  if (directCandidateDirPaths.size === 1) return [...directCandidateDirPaths][0];
+
+  const storeCandidateDirPaths = new Set<string>();
+  try {
+    for (const dirent of fs.readdirSync(path.join(rootDirPath, 'node_modules', '.bun'), { withFileTypes: true })) {
+      addCandidate(
+        storeCandidateDirPaths,
+        path.join(rootDirPath, 'node_modules', '.bun', dirent.name, relativeDirPath)
+      );
+    }
+  } catch {
+    // No .bun store (hoisted install); fall back to downloading.
+  }
+  return storeCandidateDirPaths.size === 1 ? [...storeCandidateDirPaths][0] : undefined;
+}
+
+function readInstalledVersion(dirPath: string, packageName: string): string | undefined {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')) as PackageJson;
+    return packageJson.name === packageName && typeof packageJson.version === 'string'
+      ? packageJson.version
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function findPrivateDependencies(
@@ -462,9 +543,11 @@ function printDryRunResult(outDirPath: string, privatePackages: Map<string, Priv
   console.info(`[dry-run] Would recreate ${outDirPath}`);
   for (const privatePackage of privatePackages.values()) {
     console.info(
-      privatePackage.kind === 'git'
-        ? `[dry-run] Would copy ${privatePackage.name}: ${privatePackage.sourceDirPath ?? '(installed under node_modules)'}`
-        : `[dry-run] Would download ${privatePackage.name}@${privatePackage.versionSpecifier} to ${privatePackage.targetDirPath}`
+      privatePackage.sourceDirPath
+        ? `[dry-run] Would copy ${privatePackage.name}: ${privatePackage.sourceDirPath}`
+        : privatePackage.kind === 'git'
+          ? `[dry-run] Would copy ${privatePackage.name}: (installed under node_modules)`
+          : `[dry-run] Would download ${privatePackage.name}@${privatePackage.versionSpecifier} to ${privatePackage.targetDirPath}`
     );
   }
   console.info(`[dry-run] Would rewrite copied private dependencies to file:../<name>`);

@@ -254,3 +254,13 @@ export function materializedVersionSatisfies(specifier: string, version: string)
   if (!semver.validRange(specifier)) return true;
   return semver.satisfies(version, specifier);
 }
+
+/**
+ * Whether the installed `version` is statically KNOWN to satisfy the registry `specifier`.
+ * Dist-tags (invalid ranges) are not statically checkable and return false — unlike
+ * materializedVersionSatisfies, callers use this to decide whether an installed copy can replace
+ * a registry download, so uncertainty must fall back to downloading.
+ */
+export function installedVersionSatisfies(specifier: string, version: string): boolean {
+  return !!semver.validRange(specifier) && semver.satisfies(version, specifier);
+}
