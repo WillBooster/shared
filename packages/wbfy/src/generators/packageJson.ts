@@ -204,6 +204,7 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
     delete jsonObj.scripts['format-code'];
   }
   convertYarnCommandsToBun(jsonObj.scripts);
+  removeBunRuntimeFlagFromScripts(jsonObj.scripts);
 }
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
@@ -396,6 +397,19 @@ function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
       )
       // A bare `yarn` (at the end or before a command separator) is an install.
       .replaceAll(/\byarn\b(?=\s*(?:$|&&|\|\||[;|]))/gu, 'bun install');
+  }
+}
+
+function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
+  // `bun --bun` prepends a node->bun PATH shim that leaks into every child process and breaks
+  // tools requiring real Node.js (Playwright, wrangler, vinext), and wb 15 warns on every run when
+  // it detects the shim. Only direct script-file executions (e.g. `exec bun --bun src/index.ts`),
+  // where the shim is an intentional Bun-runtime opt-in for spawned children, are preserved.
+  for (const [key, value] of Object.entries(scripts)) {
+    if (typeof value !== 'string' || !value.includes('--bun')) continue;
+    scripts[key] = value.replaceAll(/\bbun[ \t]+--bun[ \t]+(\S+)/gu, (match, target: string) =>
+      /\.[cm]?[jt]sx?$/u.test(target) ? match : `bun ${target}`
+    );
   }
 }
 

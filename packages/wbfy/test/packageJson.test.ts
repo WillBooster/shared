@@ -1740,6 +1740,42 @@ test('removes stale private from a monorepo root with a publishConfig', async ()
   expect(packageJson.private).toBeUndefined();
 });
 
+test('strips `bun --bun` from user-authored scripts invoking Node-based tools', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        build: 'bun --bun next build',
+        dev: 'bun --bun next dev',
+        start: 'bun --bun next start && bun --bun wrangler tail',
+        'run-alias': 'bun --bun run build',
+      },
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    build: 'bun next build',
+    dev: 'bun next dev',
+    start: 'bun next start && bun wrangler tail',
+    'run-alias': 'bun run build',
+  });
+});
+
+test('keeps `bun --bun` on direct script-file executions', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        start: 'exec bun --bun src/index.ts',
+      },
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    start: 'exec bun --bun src/index.ts',
+  });
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},
