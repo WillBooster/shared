@@ -45,7 +45,7 @@ const builder = {
 export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, InferredOptionTypes<typeof builder>> = {
   command: 'setup-private-packages',
   describe:
-    'Materialize private dependencies for Docker builds: copy git dependencies, reuse installed @willbooster-private/* registry packages from node_modules, and download only the missing ones (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN on CI; not needed when every registry package is installed). ' +
+    'Materialize private dependencies for Docker builds: copy git dependencies, reuse installed @willbooster-private/* registry packages whose exact-version or semver-range specifier the installed copy satisfies, and download the rest (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN on CI; dist-tag specifiers such as `latest` always download). ' +
     'The Dockerfile must COPY the generated directories (e.g. `COPY @willbooster/ @willbooster/` and `COPY @willbooster-private/ @willbooster-private/`) so the in-image install resolves the rewritten file: paths.',
   builder,
   async handler(argv) {
@@ -112,7 +112,8 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       console.error(
         chalk.red(
           `Cannot download ${downloadedPackages.map((p) => p.name).join(', ')}: no registry configured for the ${PRIVATE_REGISTRY_SCOPE} scope; ` +
-            `add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to .npmrc or ~/.npmrc (or run \`bun install\` first so the installed copies can be reused).`
+            `add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to .npmrc or ~/.npmrc. Only installed copies satisfying an exact version or ` +
+            'semver range are reused without registry access; dist-tag specifiers (e.g. `latest`) always require it.'
         )
       );
       process.exit(1);
@@ -275,9 +276,21 @@ async function collectNestedPrivatePackages(
     )) {
       const existing = privatePackages.get(nested.name);
       if (existing) {
-        // Collapsing different requested versions into one materialization would silently violate
-        // the dependent's requirement, so conflicts must fail loudly.
-        assertNoVersionConflict(existing, nested, extractedPackage.name);
+        if (existing.kind === 'registry' && !existing.sourceDirPath && existing.resolvedVersion === undefined) {
+          // Still awaiting its download (no installed copy selected, nothing extracted yet): keep
+          // the NARROWER compatible requirement, exactly as collectPrivatePackages does for
+          // queued packages, so late-discovered nested constraints cannot fabricate conflicts.
+          const narrower = narrowerCompatibleRequirement(existing, nested);
+          if (narrower === undefined) {
+            assertNoVersionConflict(existing, nested, extractedPackage.name);
+          } else {
+            existing.versionSpecifier = narrower.versionSpecifier;
+          }
+        } else {
+          // Collapsing different requested versions into one materialization would silently
+          // violate the dependent's requirement, so conflicts must fail loudly.
+          assertNoVersionConflict(existing, nested, extractedPackage.name);
+        }
         continue;
       }
 

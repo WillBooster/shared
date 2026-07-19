@@ -27,8 +27,10 @@ Commands:
                                 ignored.
   wb setup-private-packages     Materialize private git and registry
                                 dependencies for Docker builds (installed
-                                registry packages are reused; only missing
-                                ones are downloaded)
+                                registry packages satisfying an exact version
+                                or semver range are reused; dist-tag
+                                specifiers and missing packages are
+                                downloaded)
   wb start [args..]             Start app
   wb test [targets...]          Test project. If you pass no arguments, it will
                                 run all tests.
