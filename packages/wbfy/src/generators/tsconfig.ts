@@ -12,7 +12,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { getTsconfigExtends } from '../utils/tsconfigBase.js';
-import { getDeclaredWorkspacePatterns, getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
+import { getMeaningfulDeclaredWorkspacePatterns, getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 const subJsonObj = {
   compilerOptions: {
@@ -367,7 +367,8 @@ function getRootDir(config: PackageConfig): string {
       rootDirPath ??= ancestorDirPath;
       try {
         const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as PackageJson;
-        if (getDeclaredWorkspacePatterns(manifest.workspaces).length > 0) {
+        // Bun no-op patterns (e.g. `workspaces: [""]`) do not make a manifest a workspace root.
+        if (getMeaningfulDeclaredWorkspacePatterns(manifest.workspaces).length > 0) {
           rootDirPath = ancestorDirPath;
           break;
         }

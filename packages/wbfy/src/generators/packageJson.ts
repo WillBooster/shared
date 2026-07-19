@@ -32,7 +32,11 @@ import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
-import { getDeclaredWorkspacePatterns, getWorkspacePackageJsonPaths } from '../utils/workspaceUtil.js';
+import {
+  getDeclaredWorkspacePatterns,
+  getWorkspacePackageJsonPaths,
+  hasOnlyNegativeDeclaredWorkspacePatterns,
+} from '../utils/workspaceUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
@@ -477,10 +481,14 @@ async function applyPackageJsonConventions(
       // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
       // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
       // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
-      // monorepo must not get a never-matching pattern appended to its declaration.
+      // monorepo must not get a never-matching pattern appended to its declaration. When the
+      // declaration is negative-only, appending a positive pattern would disable Bun's implicit
+      // `*/*` baseline and silently drop the other workspaces, so declare the baseline explicitly.
       const forcedPatterns =
         fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
-          ? ['packages/*']
+          ? hasOnlyNegativeDeclaredWorkspacePatterns(jsonObj.workspaces)
+            ? ['*/*', 'packages/*']
+            : ['packages/*']
           : [];
       jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), forcedPatterns], {
         arrayMerge: combineMerge,

@@ -121,28 +121,42 @@ function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
   // yet, so mirror that normalization here. Discovery callers pass the fallback unconditionally
   // for monorepos — a never-matching pattern contributes no paths there — while pattern-shaped
   // callers (getWorkspaceDirPatterns) gate it on an actual match.
-  // Bun ignores empty patterns (`""` and a lone `"!"`), so they must not count as declarations —
-  // a lone `"!"` would otherwise trigger the negative-only implicit baseline below, and `""`
-  // would make the repository root itself a discovered workspace.
-  const declaredPatterns = getDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces).filter((workspacePattern) => {
-    const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
-    return patternBody !== '' && patternBody !== '.';
-  });
-  // Bun applies an implicit `*/*` baseline when the declaration contains only negative patterns
-  // (verified with Bun 1.3.14: `workspaces: ["!excluded/*"]` makes every other two-level
-  // package.json a workspace, while depth-1 and depth-3 manifests stay out).
-  const hasOnlyNegativePatterns =
-    declaredPatterns.length > 0 && declaredPatterns.every((workspacePattern) => workspacePattern.startsWith('!'));
   const workspacePatterns = [
     ...new Set([
-      ...(hasOnlyNegativePatterns ? ['*/*'] : []),
-      ...declaredPatterns,
+      ...(hasOnlyNegativeDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces) ? ['*/*'] : []),
+      ...getMeaningfulDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces),
       ...(rootLike.doesContainSubPackageJsons ? ['packages/*'] : []),
     ]),
   ];
   return workspacePatterns.filter((workspacePattern) => {
     const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
     return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
+  });
+}
+
+/**
+ * Whether the declaration (ignoring Bun no-op patterns) contains ONLY negative patterns, which
+ * activates Bun's implicit `*\/*` baseline (verified with Bun 1.3.14: `workspaces:
+ * ["!excluded/*"]` makes every other two-level package.json a workspace, while depth-1 and
+ * depth-3 manifests stay out). Appending a positive pattern to such a declaration would disable
+ * the baseline, so generators must mirror it explicitly first.
+ */
+export function hasOnlyNegativeDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): boolean {
+  const workspacePatterns = getMeaningfulDeclaredWorkspacePatterns(workspaces);
+  return (
+    workspacePatterns.length > 0 && workspacePatterns.every((workspacePattern) => workspacePattern.startsWith('!'))
+  );
+}
+
+/**
+ * Declared workspace patterns without Bun's no-op ones (`""`, a lone `"!"`, and `"."`), which Bun
+ * ignores entirely — a lone `"!"` must not activate the negative-only implicit baseline, and `""`
+ * must not make the repository root itself a discovered workspace.
+ */
+export function getMeaningfulDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): string[] {
+  return getDeclaredWorkspacePatterns(workspaces).filter((workspacePattern) => {
+    const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
+    return patternBody !== '' && patternBody !== '.';
   });
 }
 
