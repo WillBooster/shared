@@ -268,7 +268,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       setupRepositoryRulesets(rootConfig),
       setupSecrets(rootConfig),
       setupGitHubSettings(rootConfig),
-      generateLefthookUpdatingPackageJson(rootConfig, allPackageConfigs),
+      // Git hooks are repository-level state: when the CLI entry is a child workspace
+      // (`wbfy <repo>/apps/<app>`), installing Lefthook there would delete the child's .husky,
+      // write a child lefthook.yml, and unset the ENCLOSING repository's core.hooksPath.
+      ...(rootConfig.isRoot ? [generateLefthookUpdatingPackageJson(rootConfig, allPackageConfigs)] : []),
       generateLintstagedrc(rootConfig),
     ]);
     await promisePool.promiseAll();

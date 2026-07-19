@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import { spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
+import { spawnSyncAndReturnRawStdout, spawnSyncAndReturnStatus } from '../utils/spawnUtil.js';
 
 const cloudflareEnvFileName = '.env.cloudflare';
 
@@ -20,8 +20,9 @@ export async function untrackCloudflareEnv(config: PackageConfig): Promise<void>
     // unanchored and therefore also covers nested files (e.g. workers/api/.env.cloudflare), so
     // scan every tracked path, not just the repository root.
     // -z + core.quotePath=false: git C-quotes non-ASCII paths by default, which would make the
-    // suffix filter below silently miss e.g. a tracked `アプリ/.env.cloudflare`.
-    const trackedPaths = spawnSyncAndReturnStdout(
+    // suffix filter below silently miss e.g. a tracked `アプリ/.env.cloudflare`. Raw (untrimmed)
+    // stdout, because a leading whitespace byte belongs to the first file name.
+    const trackedPaths = spawnSyncAndReturnRawStdout(
       'git',
       ['-c', 'core.quotePath=false', 'ls-files', '-z', '--', cloudflareEnvFileName, `*/${cloudflareEnvFileName}`],
       config.dirPath
