@@ -63,3 +63,30 @@ test('keeps the migrated .yarnrc.yml release-age-gate behavior in the generated 
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
+
+test('drops managed exclude entries retired from the managed list instead of keeping them as repo policy', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfig-retired-')));
+  try {
+    // An entry an older wbfy version managed (e.g. @next/eslint-plugin-next) sits ABOVE the
+    // repository-specific marker, so a regeneration must not preserve it.
+    fs.writeFileSync(
+      path.join(tempDirPath, 'bunfig.toml'),
+      `[install]
+minimumReleaseAge = 432000 # 5 days
+minimumReleaseAgeExcludes = [
+    "@next/eslint-plugin-next",
+    "react",
+    # ---------- repository-specific entries ----------
+    "my-repo-specific-package",
+]
+`
+    );
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }));
+    await promisePool.promiseAll();
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(content).not.toContain('@next/eslint-plugin-next');
+    expect(content).toContain('"my-repo-specific-package",');
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});

@@ -217,14 +217,24 @@ export function readYarnrcReleaseAgeSettings(dirPath: string): YarnReleaseAgeSet
 }
 
 function parseYarnDurationAsSeconds(value: unknown): number | undefined {
-  if (typeof value === 'number') return Math.round(value * 60);
-  if (typeof value !== 'string') return undefined;
-  const match = /^(?<num>\d*\.?\d+)(?<unit>[a-z]*)$/u.exec(value.trim());
-  const num = match?.groups?.num;
-  if (num === undefined) return undefined;
-  const multiplier = match?.groups?.unit ? yarnDurationUnitsInSeconds[match.groups.unit] : 60;
-  if (multiplier === undefined) return undefined;
-  return Math.round(Number.parseFloat(num) * multiplier);
+  let seconds: number | undefined;
+  if (typeof value === 'number') {
+    seconds = value * 60;
+  } else if (typeof value === 'string') {
+    const match = /^(?<num>\d*\.?\d+)(?<unit>[a-z]*)$/u.exec(value.trim());
+    const num = match?.groups?.num;
+    if (num === undefined) return undefined;
+    const multiplier = match?.groups?.unit ? yarnDurationUnitsInSeconds[match.groups.unit] : 60;
+    if (multiplier === undefined) return undefined;
+    seconds = Number.parseFloat(num) * multiplier;
+  }
+  // Yarn accepts only non-negative decimal durations, and YAML can still smuggle in negative or
+  // non-finite numbers, which Bun's minimumReleaseAge rejects — treat them as unparsable so the
+  // preflight blocks instead of writing a broken (or silently defaulted) configuration.
+  // Fractional seconds round UP so a tiny gate (e.g. `1ms`) stays a gate instead of being
+  // disabled by rounding to zero.
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) return undefined;
+  return Math.ceil(seconds);
 }
 
 function readYarnrcYml(dirPath: string): Record<string, unknown> | typeof unparsableYarnrc | undefined {

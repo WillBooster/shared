@@ -15,9 +15,12 @@ interface BunfigToml {
     exact?: boolean;
     linker?: string;
     minimumReleaseAge?: number;
-    minimumReleaseAgeExcludes?: string[];
   };
 }
+
+// Everything after this marker inside minimumReleaseAgeExcludes is repository policy (e.g.
+// migrated from .yarnrc.yml npmPreapprovedPackages) and is preserved across regenerations.
+const repoSpecificExcludesMarker = '    # ---------- repository-specific entries ----------';
 
 export const bunMinimumReleaseAgeSeconds = 432_000;
 
@@ -207,21 +210,28 @@ const newContent = (
     : bunMinimumReleaseAgeExcludes.filter((packageName) => packageName !== '@willbooster/prettier-config');
   // The repository's own release-age policy must survive every run, not just the migration one:
   // repo-specific npmPreapprovedPackages entries (pre-filtered to literal names — Bun matches
-  // these literally) AND repo-specific entries already present in the existing bunfig.toml are
-  // merged after the managed list, and a custom npmMinimalAgeGate (or an already-customized
-  // minimumReleaseAge) is carried over. Entries of the FULL managed list are never treated as
-  // repo-specific, so wbfy can still drop a managed entry (e.g. @willbooster/prettier-config in
-  // non-Java repositories) without it resurfacing.
+  // these literally) AND the entries under the repository-specific marker of the existing
+  // bunfig.toml are merged after the managed list, and a custom npmMinimalAgeGate (or an
+  // already-customized minimumReleaseAge) is carried over. Only marker-tagged entries count as
+  // repo-specific — provenance stays explicit in the file itself, so entries an older wbfy
+  // version managed and later retired can never masquerade as repository policy — and entries
+  // of the FULL managed list are filtered out so wbfy can still drop a managed entry (e.g.
+  // @willbooster/prettier-config in non-Java repositories) without it resurfacing.
   const knownManagedExcludes = new Set(bunMinimumReleaseAgeExcludes);
   const repoSpecificExcludes = [
     ...new Set([
       ...(yarnReleaseAgeSettings?.minimumReleaseAgeExcludes ?? []),
-      ...(bunfigToml?.install?.minimumReleaseAgeExcludes ?? []),
+      ...readRepoSpecificExcludes(existingContent),
     ]),
   ]
     .filter((packageName) => !knownManagedExcludes.has(packageName))
     .toSorted();
-  const minimumReleaseAgeExcludes = [...managedExcludes, ...repoSpecificExcludes];
+  const minimumReleaseAgeExcludes = [
+    ...managedExcludes.map((packageName) => `    "${packageName}",`),
+    ...(repoSpecificExcludes.length > 0
+      ? [repoSpecificExcludesMarker, ...repoSpecificExcludes.map((packageName) => `    "${packageName}",`)]
+      : []),
+  ];
   const minimumReleaseAgeSeconds =
     yarnReleaseAgeSettings?.minimumReleaseAgeSeconds ??
     bunfigToml?.install?.minimumReleaseAge ??
@@ -245,10 +255,24 @@ ${
 }
 minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
 minimumReleaseAgeExcludes = [
-${minimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
+${minimumReleaseAgeExcludes.join('\n')}
 ]
 `;
 };
+
+function readRepoSpecificExcludes(content: string | undefined): string[] {
+  if (!content) return [];
+  const lines = content.split('\n');
+  const markerIndex = lines.findIndex((line) => line.trim() === repoSpecificExcludesMarker.trim());
+  if (markerIndex === -1) return [];
+  const excludes: string[] = [];
+  for (const line of lines.slice(markerIndex + 1)) {
+    const matched = /^\s*"(.+)",?\s*$/u.exec(line);
+    if (!matched?.[1]) break;
+    excludes.push(matched[1]);
+  }
+  return excludes;
+}
 
 /**
  * Preserve the project's `[test]` sections (e.g. preload scripts swapping a Cloudflare D1 client

@@ -140,6 +140,19 @@ test('parses Yarn duration variants (bare numbers mean minutes)', async () => {
 
     fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), 'npmMinimalAgeGate: 30\n');
     expect(readYarnrcReleaseAgeSettings(tempDirPath).minimumReleaseAgeSeconds).toBe(1800);
+
+    // Fractional seconds round up so a tiny gate stays a gate instead of becoming 0 (disabled).
+    fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), 'npmMinimalAgeGate: 1ms\n');
+    expect(readYarnrcReleaseAgeSettings(tempDirPath).minimumReleaseAgeSeconds).toBe(1);
+  });
+});
+
+test('blocks on a negative npmMinimalAgeGate, which Bun would reject', async () => {
+  await withTempDir(async (tempDirPath) => {
+    fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), 'npmMinimalAgeGate: -5\n');
+    expect(findUnmigratableYarnSettings(tempDirPath)).toBe(
+      '.yarnrc.yml declares behavior-affecting settings [npmMinimalAgeGate]'
+    );
   });
 });
 
