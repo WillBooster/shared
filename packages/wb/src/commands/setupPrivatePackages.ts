@@ -43,7 +43,7 @@ const builder = {
 export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, InferredOptionTypes<typeof builder>> = {
   command: 'setup-private-packages',
   describe:
-    'Materialize private dependencies for Docker builds: copy git dependencies and download @willbooster-private/* registry packages (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN on CI). ' +
+    'Materialize private dependencies for Docker builds: copy git dependencies, reuse installed @willbooster-private/* registry packages from node_modules, and download only the missing ones (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN on CI; not needed when every registry package is installed). ' +
     'The Dockerfile must COPY the generated directories (e.g. `COPY @willbooster/ @willbooster/` and `COPY @willbooster-private/ @willbooster-private/`) so the in-image install resolves the rewritten file: paths.',
   builder,
   async handler(argv) {
@@ -286,6 +286,12 @@ async function copyInstalledPackage(
   privatePackage: PrivatePackage,
   destinationDirPath: string
 ): Promise<void> {
+  // A registry package's tarball may legitimately contain node_modules/ content via
+  // bundledDependencies; those files are part of the artifact and must survive the copy. Git
+  // checkouts (and non-bundled names) still exclude node_modules, which holds locally installed
+  // dependencies there.
+  const bundledDependencyNames =
+    privatePackage.kind === 'registry' ? readBundledDependencyNames(privatePackage.sourceDirPath!) : [];
   await fs.promises.cp(privatePackage.sourceDirPath!, destinationDirPath, {
     recursive: true,
     force: true,
@@ -295,10 +301,39 @@ async function copyInstalledPackage(
     dereference: true,
     filter: (src) => {
       const segments = path.relative(privatePackage.sourceDirPath!, src).split(path.sep);
-      return !segments.includes('node_modules') && !segments.includes('.git');
+      if (segments.includes('.git')) return false;
+      const nodeModulesIndex = segments.indexOf('node_modules');
+      if (nodeModulesIndex === -1) return true;
+      if (bundledDependencyNames === true) return true;
+      if (bundledDependencyNames.length === 0) return false;
+      // The node_modules (and @scope) directories themselves must copy so bundled subtrees can;
+      // only the first node_modules level filters — anything inside a bundled subtree belongs to
+      // the artifact, including its own nested node_modules.
+      const [first, second] = segments.slice(nodeModulesIndex + 1);
+      if (first === undefined) return true;
+      if (first.startsWith('@') && second === undefined) {
+        return bundledDependencyNames.some((name) => name.startsWith(`${first}/`));
+      }
+      const packageName = first.startsWith('@') ? `${first}/${second}` : first;
+      return bundledDependencyNames.includes(packageName);
     },
   });
   console.info(`Copied ${privatePackage.name} to ${path.relative(rootDirPath, privatePackage.targetDirPath)}`);
+}
+
+/** Declared bundled dependency names of the installed package; `true` bundles every dependency. */
+function readBundledDependencyNames(sourceDirPath: string): string[] | true {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(sourceDirPath, 'package.json'), 'utf8')) as {
+      bundleDependencies?: string[] | boolean;
+      bundledDependencies?: string[] | boolean;
+    };
+    const bundled = packageJson.bundleDependencies ?? packageJson.bundledDependencies;
+    if (bundled === true) return true;
+    return Array.isArray(bundled) ? bundled.filter((name) => typeof name === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 /**

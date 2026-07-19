@@ -1502,6 +1502,7 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'deps-up': 'yarn up -R typescript',
       dollar: "yarn 'build:$target'",
       dynamic: 'yarn build:$target && yarn run "build:$target"',
+      'amp-input': 'true &</dev/null yarn compile',
       'amp-redirect': 'node report.js &>logs/yarn.log yarn compile',
       arith: 'echo $((yarn && 1))',
       'array-lit': 'args=(yarn compile); echo done',
@@ -1596,6 +1597,8 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     redirect: 'bun run build>out.log',
     // A redirection before the command leaves it in command position.
     'redirect-first': '>build.log bun run compile',
+    // `&<` is not a compound redirection: it parses as `&` (background) followed by `<`.
+    'amp-input': 'true &</dev/null bun run compile',
     // The legacy `yarn install && ` prefix is removed before conversion, quoted or not.
     'quoted-install': 'bun run compile',
     'setup-all': 'bun run compile',

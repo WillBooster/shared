@@ -1004,9 +1004,10 @@ function tokenizeShellCommand(script: string): ShellToken[] {
       index++;
       continue;
     }
-    // `&<` / `&>` starts a compound redirection, so the redirect branch below must win over the
-    // separator branch: isShellSeparator('&') is true.
-    if (isShellSeparator(char) && !(char === '&' && /^[<>]$/u.test(script[index + 1] ?? ''))) {
+    // `&>` starts a compound redirection (`&<` does not exist: shells parse it as `&` then `<`),
+    // so the redirect branch below must win over the separator branch: isShellSeparator('&') is
+    // true.
+    if (isShellSeparator(char) && !(char === '&' && script[index + 1] === '>')) {
       let end = index + 1;
       while (end < script.length && script[end] === char) end++;
       tokens.push({ text: script.slice(index, end), start: index, end });
@@ -1026,7 +1027,7 @@ function tokenizeShellCommand(script: string): ShellToken[] {
     // token streams are rejected by every caller before interpretation. Compound forms — the
     // `&>file` both-streams shorthand, the `>|` clobber operator, and `>&`/`>&1`-style
     // duplications — belong to the operator token, or their `&`/`|` would read as a separator.
-    if (char === '<' || char === '>' || (char === '&' && /^[<>]$/u.test(script[index + 1] ?? ''))) {
+    if (char === '<' || char === '>' || (char === '&' && script[index + 1] === '>')) {
       let end = char === '&' ? index + 1 : index;
       while (end < script.length && (script[end] === '<' || script[end] === '>')) end++;
       if (script[end] === '&') {
