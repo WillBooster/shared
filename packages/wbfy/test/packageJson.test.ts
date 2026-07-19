@@ -1509,8 +1509,12 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'func-def': 'build_all() { yarn compile; }; build_all',
       'quoted-assign': '"FOO=bar" yarn compile',
       'quoted-heredoc': "echo '<<' && yarn compile",
+      'empty-subst': 'echo $() yarn && echo deploy',
       'env-unset': 'env -u yarn compile && time -f yarn compile',
+      'foreach-bare': 'yarn workspaces foreach run build',
+      'func-kw': 'function f { yarn compile; }; f',
       'in-subst': 'echo $(yarn compile)',
+      shift: 'echo $((1 << 2)) && yarn compile',
       subst: 'echo $(date) yarn compile',
       'fan-out': 'yarn workspaces foreach --all run build',
       'gen:sub': 'cd sub && yarn build:sub',
@@ -1543,11 +1547,14 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     arith: 'echo $((yarn && 1))',
     commented: 'echo ready # note; yarn compile',
     'quoted-assign': '"FOO=bar" yarn compile',
+    'empty-subst': 'echo $() yarn && echo deploy',
     'env-unset': 'env -u yarn compile && time -f yarn compile',
     hint: "echo 'run yarn build before deploying'",
     'install-note': "echo 'yarn install && deploy now'",
     mention: 'git commit -m yarn && echo yarn build',
     subst: 'echo $(date) yarn compile',
+    // Without an explicit --all/-A selection, `--filter '*'` would widen the fan-out.
+    'foreach-bare': 'yarn workspaces foreach run build',
     // An unquoted expansion is dynamic: its runtime value could need Yarn's global routing.
     dynamic: 'yarn build:$target && yarn run "build:$target"',
     // A parallelism foreach flag keeps the yarn form: Bun's dependency-ordered concurrency could
@@ -1568,7 +1575,10 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     // `>|` operand stays data while the chained invocation after it converts.
     clobber: 'echo hi >| yarn && bun run compile',
     'func-def': 'build_all() { bun run compile; }; build_all',
+    'func-kw': 'function f { bun run compile; }; f',
     'in-subst': 'echo $(bun run compile)',
+    // `<<` inside an arithmetic expansion is a left shift, not a heredoc.
+    shift: 'echo $((1 << 2)) && bun run compile',
     // Only a real unquoted heredoc operator suppresses conversion, not quoted `<<` data.
     'quoted-heredoc': "echo '<<' && bun run compile",
     redirect: 'bun run build>out.log',
@@ -1594,6 +1604,7 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
         echoed: 'echo \'yarn build:cache\' && node warn.js "prefer yarn :build-caches"',
         flagged: 'yarn run --inspect-brk build:cache',
         'redir-target': 'yarn run >out.log build:cache',
+        'require-flag': 'yarn run --require ./hook.cjs build:cache',
         local: 'yarn :local-cache',
         'local-flag': 'yarn run --silent :local-cache',
         missing: 'yarn :unknown-script && yarn run :unknown-script',
@@ -1643,6 +1654,8 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
     // A redirection between `run` and a routed target would be swallowed by the rewrite, so the
     // invocation keeps its yarn form.
     'redir-target': 'yarn run >out.log build:cache',
+    // The value consumed by `--require` is not the target; the routed target keeps the yarn form.
+    'require-flag': 'yarn run --require ./hook.cjs build:cache',
     // A quoted script-name token is unquoted before colon-owner resolution, and re-emitted with
     // its original quoting so shell semantics never change.
     quoted: `bun run --filter @judge/server ':build-caches' && bun run --filter @judge/server ":build-caches"`,

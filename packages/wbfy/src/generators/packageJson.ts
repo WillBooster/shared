@@ -565,6 +565,9 @@ function convertSingleYarnInvocation(
   // workspace; a selection-restricting or execution-suppressing flag keeps the yarn form.
   if (first === 'workspaces' && second === 'foreach') {
     let runIndex = -1;
+    // `--filter '*'` widens the fan-out to every workspace, so an explicit --all/-A selection is
+    // required: an unflagged foreach is either scoped (Yarn <4.1) or an error (Yarn >=4.1).
+    let selectsAllWorkspaces = false;
     for (let index = 2; index < logicalArgs.length; index++) {
       const flag = argText(index);
       if (flag === 'run') {
@@ -572,8 +575,11 @@ function convertSingleYarnInvocation(
         break;
       }
       if (flag === undefined || !(selectionNeutralForeachFlags.has(flag) || /^-[Atv]+$/u.test(flag))) return undefined;
+      if (flag === '--all' || (flag.startsWith('-') && !flag.startsWith('--') && flag.includes('A'))) {
+        selectsAllWorkspaces = true;
+      }
     }
-    const scriptName = runIndex === -1 ? undefined : argText(runIndex + 1);
+    const scriptName = runIndex === -1 || !selectsAllWorkspaces ? undefined : argText(runIndex + 1);
     return scriptName === undefined || scriptName.startsWith('-')
       ? undefined
       : replaceThroughArg(runIndex + 1, `bun run --filter '*' ${rawArg(runIndex + 1)}`);
@@ -599,7 +605,11 @@ function convertSingleYarnInvocation(
   let scriptNameIndex = 0;
   if (first === 'run') {
     scriptNameIndex = 1;
-    while (argText(scriptNameIndex)?.startsWith('-')) scriptNameIndex++;
+    while (argText(scriptNameIndex)?.startsWith('-')) {
+      // `--require <path>` is the one `yarn run` flag taking a separate value; its value must not
+      // be mistaken for the script name (`--require=<path>` needs no special casing).
+      scriptNameIndex += argText(scriptNameIndex) === '--require' ? 2 : 1;
+    }
   }
   const scriptName = argText(scriptNameIndex);
   if (scriptName !== undefined && scriptName.includes(':') && /^[^\s;&|<>()'"`]+$/u.test(scriptName)) {
@@ -788,9 +798,29 @@ const commandPositionTransparentWords = new Set([
   '}',
 ]);
 
-/** Whether the token stream contains an unquoted heredoc or herestring operator (`<<`, `<<<`). */
+/**
+ * Whether the token stream contains an unquoted heredoc or herestring operator (`<<`, `<<<`).
+ * `<<` inside an arithmetic context (`echo $((1 << 2))`) is a left shift, not a heredoc.
+ */
 function containsHeredocOperator(tokens: readonly ShellToken[]): boolean {
-  return tokens.some((token) => /^&?[<>]/u.test(token.text) && token.text.includes('<<'));
+  let inArithmetic = false;
+  const outerArithmeticStates: boolean[] = [];
+  for (const token of tokens) {
+    if (isShellSeparator(token.text)) {
+      for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
+        const char = token.text[charIndex];
+        if (char === '(') {
+          outerArithmeticStates.push(inArithmetic);
+          if (charIndex > 0) inArithmetic = true;
+        } else if (char === ')') {
+          inArithmetic = outerArithmeticStates.pop() ?? false;
+        }
+      }
+      continue;
+    }
+    if (!inArithmetic && /^&?[<>]/u.test(token.text) && token.text.includes('<<')) return true;
+  }
+  return false;
 }
 
 /**
@@ -807,16 +837,27 @@ function forEachCommandPositionToken(
   // `((` opens an arithmetic context: nothing inside is a command (`echo $((yarn && 1))`).
   let inArithmetic = false;
   let previousSeparatorChar: string | undefined;
+  // The word before a `(` decides whether an empty `()` pair is a function definition
+  // (`build_all() { ... }`) or an empty command substitution (`echo $() yarn`).
+  let lastWordToken: ShellToken | undefined;
+  // `function f { ... }` declares f without parentheses: the name is consumed, and the `{` body
+  // that follows is in command position.
+  let functionNameFollows = false;
   // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER state must be
   // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
-  const outerStates: { atCommandPosition: boolean; inArithmetic: boolean }[] = [];
+  const outerStates: { atCommandPosition: boolean; inArithmetic: boolean; functionCandidate: boolean }[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
       // Separator tokens are ASCII, so index-based iteration is safe.
       for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
         const char = token.text[charIndex] ?? '';
         if (char === '(') {
-          outerStates.push({ atCommandPosition, inArithmetic });
+          outerStates.push({
+            atCommandPosition,
+            inArithmetic,
+            // A word ending in `$` opens a substitution, never a function definition.
+            functionCandidate: lastWordToken !== undefined && !lastWordToken.text.endsWith('$'),
+          });
           // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
           // arithmetic; a spaced `( (` is a nested subshell.
           if (charIndex > 0) inArithmetic = true;
@@ -824,11 +865,16 @@ function forEachCommandPositionToken(
         } else if (char === ')') {
           const outerState = outerStates.pop();
           inArithmetic = outerState?.inArithmetic ?? false;
-          // An empty `()` pair is a function definition: its body follows in command position,
-          // and its yarn invocations really run when the function is called.
-          atCommandPosition = previousSeparatorChar === '(' ? true : (outerState?.atCommandPosition ?? true);
+          // An empty `()` pair after a plain word is a function definition: its body follows in
+          // command position, and its yarn invocations really run when the function is called.
+          atCommandPosition =
+            previousSeparatorChar === '(' && outerState?.functionCandidate
+              ? true
+              : (outerState?.atCommandPosition ?? true);
         } else {
           atCommandPosition = true;
+          lastWordToken = undefined;
+          functionNameFollows = false;
         }
         previousSeparatorChar = char;
       }
@@ -836,12 +882,22 @@ function forEachCommandPositionToken(
       continue;
     }
     previousSeparatorChar = undefined;
+    lastWordToken = token;
     if (inArithmetic) continue;
+    if (functionNameFollows) {
+      // The declared function name is not a command; the `{` body follows in command position.
+      functionNameFollows = false;
+      continue;
+    }
     if (redirectionOperandFollows) {
       redirectionOperandFollows = false;
       continue;
     }
     if (!atCommandPosition) continue;
+    if (token.text === 'function') {
+      functionNameFollows = true;
+      continue;
+    }
     // A redirection may precede the command (`>out.log yarn build`, `2>&1 yarn build`); the
     // operator (with its operand, unless a `>&1`-style duplication makes it self-contained) and
     // an ADJACENT file-descriptor digit (`2>` splits into two tokens; a detached `2 >out` is not
