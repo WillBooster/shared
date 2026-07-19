@@ -149,7 +149,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   const jsonObj = await readPackageJson(filePath);
 
   await removeDeprecatedStuff(config, jsonObj);
-  await updateScripts(config, jsonObj);
+  await updateScripts(config, rootConfig, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
@@ -190,7 +190,11 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   return jsonObj as WritablePackageJson;
 }
 
-async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
+async function updateScripts(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  jsonObj: WritablePackageJson
+): Promise<void> {
   removeLegacyInstallCommands(jsonObj.scripts);
 
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
@@ -203,7 +207,7 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
   if (legacyOxfmtFormatCodeScripts.has(jsonObj.scripts['format-code'] ?? '')) {
     delete jsonObj.scripts['format-code'];
   }
-  convertYarnCommandsToBun(jsonObj.scripts);
+  convertYarnCommandsToBun(jsonObj.scripts, rootConfig);
   removeBunRuntimeFlagFromScripts(jsonObj.scripts);
 }
 
@@ -369,7 +373,19 @@ const yarnBuiltinSubcommands = new Set([
   'workspaces',
 ]);
 
-function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
+function convertYarnCommandsToBun(scripts: PackageJson.Scripts, rootConfig: PackageConfig): void {
+  // Yarn Berry runs a `:`-prefixed script of ANOTHER workspace when the invoking package does not
+  // define it (a "global" script, required to be unique across workspaces); Bun has no such
+  // concept, so the invocation must be routed to the defining workspace explicitly. Resolved
+  // lazily: most repositories have no colon scripts.
+  let colonScriptOwners: Map<string, string | undefined> | undefined;
+  const convertColonScriptInvocation = (match: string, scriptName: string): string => {
+    if (typeof scripts[scriptName] === 'string') return `bun run ${scriptName}`;
+    colonScriptOwners ??= collectColonScriptOwners(rootConfig);
+    const owner = colonScriptOwners.get(scriptName);
+    // An unresolvable (missing or ambiguous) global script keeps its yarn form to surface in review.
+    return owner ? `bun run --filter ${owner} ${scriptName}` : match;
+  };
   // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
   // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
   for (const [key, value] of Object.entries(scripts)) {
@@ -387,17 +403,44 @@ function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
           // action, not a script; Bun's --filter only executes package scripts.
           run || !yarnBuiltinSubcommands.has(command) ? `bun run --filter ${packageName} ${command}` : match
       )
-      .replaceAll(/\byarn\s+run\b/gu, 'bun run')
+      .replaceAll(/\byarn\s+(?:run\s+)?(:[\w./:-]+)/gu, convertColonScriptInvocation)
+      // The `(?!\s+:)` guard keeps an unresolvable `yarn run :name` in its yarn form (the colon
+      // rule above already converted every resolvable one).
+      .replaceAll(/\byarn\s+run\b(?!\s+:)/gu, 'bun run')
       .replaceAll(/\byarn\s+install\b/gu, 'bun install')
-      // A bare `yarn <name>` invokes the package script; Yarn built-ins and flag forms
-      // (e.g. `yarn --cwd ...`) have no direct Bun equivalent and are intentionally left
-      // untouched to surface during review.
-      .replaceAll(/\byarn\s+(?![-.])([\w.:/-]+)/gu, (match, scriptName: string) =>
+      // A bare `yarn <name>` invokes the package script; Yarn built-ins, flag forms
+      // (e.g. `yarn --cwd ...`), and still-unconverted `:` global scripts have no direct Bun
+      // equivalent and are intentionally left untouched to surface during review.
+      .replaceAll(/\byarn\s+(?![-.:])([\w.:/-]+)/gu, (match, scriptName: string) =>
         yarnBuiltinSubcommands.has(scriptName) ? match : `bun run ${scriptName}`
       )
       // A bare `yarn` (at the end or before a command separator) is an install.
       .replaceAll(/\byarn\b(?=\s*(?:$|&&|\|\||[;|]))/gu, 'bun install');
   }
+}
+
+/**
+ * Maps each `:`-prefixed (workspace-global) script name to the name of the single workspace
+ * package defining it, or to undefined when several packages define it (Yarn would refuse to run
+ * such an ambiguous global script anyway).
+ */
+function collectColonScriptOwners(rootConfig: PackageConfig): Map<string, string | undefined> {
+  const owners = new Map<string, string | undefined>();
+  for (const packageJsonPath of getWorkspacePackageJsonPaths(rootConfig)) {
+    try {
+      const packageJson = JSON.parse(
+        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
+      ) as PackageJson;
+      if (!packageJson.name) continue;
+      for (const scriptName of Object.keys(packageJson.scripts ?? {})) {
+        if (!scriptName.startsWith(':')) continue;
+        owners.set(scriptName, owners.has(scriptName) ? undefined : packageJson.name);
+      }
+    } catch {
+      // An unreadable manifest only leaves its own global scripts unresolved.
+    }
+  }
+  return owners;
 }
 
 function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
@@ -1883,12 +1926,26 @@ async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void
     privatePackages.map(async ({ packageName, repo, target }) => {
       if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
 
+      const existingSpecifier = jsonObj.dependencies[packageName] ?? jsonObj.devDependencies[packageName];
       const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
       // The lint rule disallows `delete` with computed package names; Reflect has the same deletion semantics here.
       Reflect.deleteProperty(jsonObj[otherTarget], packageName);
-      jsonObj[target][packageName] = await getLatestPrivatePackageSpecifier(repo);
+      jsonObj[target][packageName] = isPinnedPrivatePackageSpecifier(existingSpecifier, repo)
+        ? existingSpecifier
+        : await getLatestPrivatePackageSpecifier(repo);
     })
   );
+}
+
+/**
+ * Whether the existing specifier already pins a git ref of the expected private repository.
+ * wbfy must not bump such pins: a run intended as configuration/package-manager maintenance
+ * would otherwise change the dependency's version as a side effect (updating pins is Renovate's
+ * job), possibly to a commit whose prebuilt artifacts are missing.
+ */
+function isPinnedPrivatePackageSpecifier(specifier: string | undefined, repo: string): specifier is string {
+  if (!specifier) return false;
+  return new RegExp(String.raw`(?:^|[:/])WillBoosterLab/${repo}(?:\.git)?#\S+$`, 'u').test(specifier);
 }
 
 async function getLatestPrivatePackageSpecifier(repo: string): Promise<string> {

@@ -45,7 +45,11 @@ export interface PackageConfig {
   doesContainPackageJson: boolean;
   doesContainPoetryLock: boolean;
   doesContainUvLock: boolean;
+  /** Whether a Python lockfile (poetry.lock / uv.lock) exists anywhere in the directory tree. */
+  doesContainPythonLockAnywhere: boolean;
   doesContainPomXml: boolean;
+  /** Whether a Maven pom.xml exists anywhere in the directory tree. */
+  doesContainPomXmlAnywhere: boolean;
   doesContainPubspecYaml: boolean;
   doesContainTauriConfig: boolean;
   doesContainTauriConfigInPackages: boolean;
@@ -320,7 +324,11 @@ export async function getPackageConfig(
       doesContainPackageJson: fs.existsSync(path.resolve(dirPath, 'package.json')),
       doesContainPoetryLock: fs.existsSync(path.resolve(dirPath, 'poetry.lock')),
       doesContainUvLock: fs.existsSync(path.resolve(dirPath, 'uv.lock')),
+      // Recursive like doesContainJava: multi-language repositories keep language directories
+      // (e.g. Python tooling or Maven modules) outside the root and outside declared workspaces.
+      doesContainPythonLockAnywhere: containsAny('**/{poetry.lock,uv.lock}', dirPath),
       doesContainPomXml: fs.existsSync(path.resolve(dirPath, 'pom.xml')),
+      doesContainPomXmlAnywhere: containsAny('**/pom.xml', dirPath),
       doesContainPubspecYaml: fs.existsSync(path.resolve(dirPath, 'pubspec.yaml')),
       doesContainTauriConfig,
       doesContainTauriConfigInPackages: containsAnyInWorkspaces(

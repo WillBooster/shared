@@ -1519,6 +1519,51 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
   });
 });
 
+test('routes yarn colon global scripts to the workspace defining them', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      workspaces: ['packages/*'],
+      scripts: {
+        ':local-cache': 'echo local',
+        local: 'yarn :local-cache',
+        missing: 'yarn :unknown-script && yarn run :unknown-script',
+        'test/ci-setup': 'build-ts run scripts/rename.ts && yarn :build-caches && sh scripts/install.sh',
+      },
+    },
+    { isRoot: true, doesContainSubPackageJsons: true },
+    {
+      files: {
+        'packages/server/package.json': JSON.stringify({
+          name: '@judge/server',
+          scripts: { ':build-caches': 'echo build' },
+        }),
+      },
+    }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    // A colon script defined in the invoking package stays a local bun run.
+    local: 'bun run :local-cache',
+    // A colon script no workspace defines keeps its yarn form to surface in review.
+    missing: 'yarn :unknown-script && yarn run :unknown-script',
+    // A colon script defined in another workspace is routed there: bun has no global scripts.
+    'test/ci-setup':
+      'build-ts run scripts/rename.ts && bun run --filter @judge/server :build-caches && sh scripts/install.sh',
+  });
+});
+
+test('preserves an already-pinned git commit of a private package instead of bumping it', async () => {
+  const pinnedSpecifier = 'git@github.com:WillBoosterLab/llm-proxy.git#4ef9b35e2d1d94adba17e167b7ae18a2e299f7f6';
+  const packageJson = await generatePackageJsonFrom({
+    devDependencies: { '@willbooster/llm-proxy': pinnedSpecifier },
+    scripts: {},
+  });
+
+  // The pinned ref survives; only the dependency section is normalized.
+  expect(packageJson.dependencies?.['@willbooster/llm-proxy']).toBe(pinnedSpecifier);
+  expect(packageJson.devDependencies?.['@willbooster/llm-proxy']).toBeUndefined();
+});
+
 test('preserves a leading MISE_ENV prefix on a mise bridge script', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
