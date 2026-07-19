@@ -309,7 +309,9 @@ export function warnIfPlaywrightSpecsAreUndiscoverable(
 
 export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {
   if (argv.env?.length || argv.cascadeEnv || argv.cascadeNodeEnv || argv.autoCascadeEnv === false) {
-    return argv;
+    // Explicit env flags keep their file-selection semantics, but the spawned tests must still
+    // run as `test` when those files define no WB_ENV (the pre-15 `||= 'test'` behavior).
+    return { ...argv, commandDefaultWbEnv: 'test' };
   }
   return { ...argv, cascadeEnv: 'test' };
 }

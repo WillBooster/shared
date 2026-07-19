@@ -2,7 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
-import { readEnvironmentVariables, shouldSuppressEnvironmentOutput } from '@willbooster/shared-lib-node/src';
+import {
+  readEnvironmentVariables,
+  resolveFallbackWbEnv,
+  shouldSuppressEnvironmentOutput,
+} from '@willbooster/shared-lib-node/src';
 import { memoizeOne } from 'at-decorators';
 import chalk from 'chalk';
 import { globby } from 'globby';
@@ -175,26 +179,25 @@ export class Project {
     if (!env) return;
     if (env.WB_SKIP_ENV_CHECK === '1' || env.WB_SKIP_ENV_CHECK === 'true') return;
 
+    // On CI, WB_ENV must be EXPORTED by the workflow — checked against process.env, not the
+    // merged environment: a committed base default (e.g. fnox's development entry) would
+    // otherwise satisfy the check and silently run CI in development mode.
+    if (isCI(env.CI) && !process.env.WB_ENV && hasEnvironmentSources) {
+      console.error(
+        chalk.red(
+          'WB_ENV is not exported on CI. Export WB_ENV explicitly (the reusable workflows pass it via the "environment" input), ' +
+            'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+        )
+      );
+      process.exit(1);
+    }
     if (!env.WB_ENV) {
-      if (isCI(env.CI) && hasEnvironmentSources) {
-        console.error(
-          chalk.red(
-            'WB_ENV is not defined on CI. Export WB_ENV explicitly (the reusable workflows pass it via the "environment" input), ' +
-              'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
-          )
-        );
-        process.exit(1);
-      }
-      // Resolve the fallback from the selected cascade mode (not a bare 'development'): a command
-      // forcing a mode (e.g. `wb test` forces the test cascade) must fall back to that mode, and
-      // an ambient NODE_ENV drives the auto cascade exactly as in readEnvironmentVariables.
-      // A NON-STANDARD NODE_ENV (e.g. qa) still selects the cascade suffix but is clamped to
-      // 'development' here: the user never set WB_ENV, so failing the standard-mode validation
-      // below with a message blaming WB_ENV would be a misleading hard stop. An explicit
-      // --cascade-env keeps its value and is validated like any other WB_ENV.
-      const derived =
-        this.argv.cascadeNodeEnv || this.argv.autoCascadeEnv !== false ? env.NODE_ENV || 'development' : 'development';
-      const mode = this.argv.cascadeEnv ?? (Project.standardWbEnvModes.has(derived) ? derived : 'development');
+      // The shared resolver keeps this fallback consistent with the cascade selection AND with
+      // the ${WB_ENV} expansion readEnvironmentVariables already performed: the forced cascade
+      // (e.g. `wb test`), then the command-level default, then the AMBIENT-NODE_ENV-driven auto
+      // cascade clamped to a standard mode (an explicit --cascade-env keeps its value and is
+      // validated below like any other WB_ENV).
+      const mode = resolveFallbackWbEnv(this.argv);
       env.WB_ENV = mode;
       if (hasEnvironmentSources && !shouldSuppressEnvironmentOutput(this.argv)) {
         console.info(`WB_ENV is not defined; defaulting to "${mode}".`);

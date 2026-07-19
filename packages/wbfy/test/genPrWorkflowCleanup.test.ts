@@ -37,6 +37,18 @@ jobs:
   expect(isObsoleteGenPrWorkflow(workflowsPath, 'ai.yml')).toBe(true);
 });
 
+test('detects a caller with differently cased owner/repository (GitHub is case-insensitive there)', () => {
+  writeWorkflow(
+    'cased.yml',
+    `on: issues
+jobs:
+  gen-pr:
+    uses: willbooster/Reusable-Workflows/.github/workflows/gen-pr.yml@main
+`
+  );
+  expect(isObsoleteGenPrWorkflow(workflowsPath, 'cased.yml')).toBe(true);
+});
+
 test('detects a WillBoosterLab mirror caller', () => {
   writeWorkflow(
     'lab.yml',

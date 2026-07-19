@@ -147,6 +147,9 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
  */
 function warnOnUnexpectedWbEnvValue(keyName: string, value: unknown, mode: WbEnvMode, sourceLabel: string): void {
   if (typeof value !== 'string' || value === mode) return;
+  // A dynamic value (e.g. `WB_ENV=${MODE}`) may legitimately resolve to the mode through wb's
+  // dotenv expansion, which this static check cannot evaluate — skip instead of misfiring.
+  if (value.includes('$')) return;
   console.warn(
     `${keyName} in ${sourceLabel} is "${value}" but should be "${mode}" for the ${mode} mode; wb rejects values outside development/test/staging/production.`
   );

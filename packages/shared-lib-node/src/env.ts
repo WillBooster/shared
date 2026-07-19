@@ -47,7 +47,33 @@ export const yargsOptionsBuilderForEnv = {
   },
 } as const;
 
-export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof yargsOptionsBuilderForEnv>>>;
+export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof yargsOptionsBuilderForEnv>>> & {
+  /**
+   * Command-level fallback for an unset WB_ENV (e.g. `wb test` supplies 'test' when explicit env
+   * flags suppress its default test cascade). Not a CLI flag.
+   */
+  commandDefaultWbEnv?: string;
+};
+
+const standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
+
+/**
+ * Resolves the WB_ENV value wb falls back to when no env source and no exported variable defines
+ * it: the forced cascade if any, then the command-level default, then the ambient-NODE_ENV-driven
+ * auto cascade clamped to a standard mode (a non-standard NODE_ENV such as `qa` still selects the
+ * cascade suffix, but must not produce a non-standard WB_ENV).
+ */
+export function resolveFallbackWbEnv(argv: EnvReaderOptions): string {
+  if (argv.cascadeEnv) return argv.cascadeEnv;
+  if (argv.commandDefaultWbEnv) return argv.commandDefaultWbEnv;
+  // Read NODE_ENV through the alias for the same bundler-inlining reason as in
+  // readEnvironmentVariables, and from the AMBIENT environment (not loaded files) because the
+  // cascade selection below uses the ambient value as well.
+  const runtimeEnv = process.env;
+  const derived =
+    argv.cascadeNodeEnv || argv.autoCascadeEnv !== false ? runtimeEnv.NODE_ENV || 'development' : 'development';
+  return standardWbEnvModes.has(derived) ? derived : 'development';
+}
 
 /**
  * This function reads environment variables from `.env` files.
@@ -195,6 +221,12 @@ export function readEnvironmentVariables(
     // Escape dollar signs so dotenv-expand substitutes exported values literally instead of
     // recursively re-expanding them (an exported `pa$word` must stay `pa$word`).
     if (value !== undefined && !(key in envVars)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
+  }
+  // A value referencing ${WB_ENV} must expand to what the child will actually see: when nothing
+  // defines WB_ENV, wb later fills it with the fallback mode, so expose that fallback here
+  // instead of expanding the reference to an empty string.
+  if (!('WB_ENV' in envVars) && runtimeEnv.WB_ENV === undefined) {
+    referenceEnv.WB_ENV = resolveFallbackWbEnv(argv);
   }
   // dotenv-expand resolves references in key-insertion order, so a .env value referencing a
   // fnox/mise-provided key would see an empty string if the fnox/mise entries stayed appended

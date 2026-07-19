@@ -99,21 +99,26 @@ describe('withDefaultTestCascadeEnv', () => {
     });
   });
 
-  it('keeps explicit cascade env', () => {
-    const argv = { cascadeEnv: 'staging' } as TestCommandArgv;
-
-    expect(withDefaultTestCascadeEnv(argv)).toBe(argv);
+  // Explicit env flags keep their file/cascade selection, but the command-level WB_ENV default
+  // must still make the spawned tests run as `test` when nothing defines WB_ENV.
+  it('keeps explicit cascade env and adds the command default', () => {
+    expect(withDefaultTestCascadeEnv({ cascadeEnv: 'staging' } as TestCommandArgv)).toEqual({
+      cascadeEnv: 'staging',
+      commandDefaultWbEnv: 'test',
+    });
   });
 
-  it('keeps explicit env files', () => {
-    const argv = { env: ['.env.custom'] } as unknown as TestCommandArgv;
-
-    expect(withDefaultTestCascadeEnv(argv)).toBe(argv);
+  it('keeps explicit env files and adds the command default', () => {
+    expect(withDefaultTestCascadeEnv({ env: ['.env.custom'] } as unknown as TestCommandArgv)).toEqual({
+      env: ['.env.custom'],
+      commandDefaultWbEnv: 'test',
+    });
   });
 
-  it('keeps disabled auto cascade env', () => {
-    const argv = { autoCascadeEnv: false } as TestCommandArgv;
-
-    expect(withDefaultTestCascadeEnv(argv)).toBe(argv);
+  it('keeps disabled auto cascade env and adds the command default', () => {
+    expect(withDefaultTestCascadeEnv({ autoCascadeEnv: false } as TestCommandArgv)).toEqual({
+      autoCascadeEnv: false,
+      commandDefaultWbEnv: 'test',
+    });
   });
 });

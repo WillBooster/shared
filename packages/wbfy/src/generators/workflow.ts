@@ -211,6 +211,23 @@ const workflows = {
 
 type KnownKind = keyof typeof workflows | 'deploy' | 'autofix';
 
+/**
+ * Parses a `uses:` value calling one of WillBooster's own reusable workflows (or the
+ * WillBoosterLab sync mirror) into the workflow name (without extension) and git ref. Only those
+ * follow the contract wbfy enforces — callers of another organization's same-named repository are
+ * left alone. GitHub treats owner/repository names case-insensitively, so the comparison does
+ * too, while the workflow path and ref stay case-sensitive.
+ */
+function parseOrgReusableWorkflowCall(uses: string | undefined): { workflowName: string; ref: string } | undefined {
+  const match = /^([^/]+)\/([^/]+)\/\.github\/workflows\/([^/@]+?)\.ya?ml@(.+)$/u.exec(uses ?? '');
+  if (!match) return undefined;
+  const owner = match[1]!.toLowerCase();
+  if ((owner !== 'willbooster' && owner !== 'willboosterlab') || match[2]!.toLowerCase() !== 'reusable-workflows') {
+    return undefined;
+  }
+  return { workflowName: match[3]!, ref: match[4]! };
+}
+
 export async function generateWorkflows(rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateWorkflow', async () => {
     if (isReusableWorkflowsRepo(rootConfig.repository)) {
@@ -354,12 +371,13 @@ export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string)
   }
   // Owner-restricted: only WillBooster's own reusable gen-pr workflow was retired, so a caller of
   // some other organization's same-named workflow must not be deleted.
-  const genPrCallPattern = /^(?:WillBooster|WillBoosterLab)\/reusable-workflows\/\.github\/workflows\/gen-pr\.ya?ml@/u;
+  const isGenPrCall = (uses: unknown): boolean =>
+    typeof uses === 'string' && parseOrgReusableWorkflowCall(uses)?.workflowName === 'gen-pr';
   try {
     const workflow = yaml.load(content) as Workflow | undefined;
     if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
       const jobs = Object.values(workflow.jobs);
-      return jobs.length > 0 && jobs.every((job) => typeof job?.uses === 'string' && genPrCallPattern.test(job.uses));
+      return jobs.length > 0 && jobs.every((job) => isGenPrCall(job?.uses));
     }
   } catch {
     // Fall through to the filename-only decision above.
@@ -455,8 +473,10 @@ async function writeWorkflowYaml(
 
   let isReusableWorkflow = false;
   for (const job of Object.values(newSettings.jobs)) {
-    // Ignore non-reusable workflows
-    if (!job.uses?.includes('/reusable-workflows/')) continue;
+    // Ignore non-reusable workflows and other organizations' reusable workflows: a same-named
+    // `reusable-workflows` repository elsewhere follows a different contract, and normalizing its
+    // callers (secret injection/removal, permissions) could break them.
+    if (!parseOrgReusableWorkflowCall(job.uses)) continue;
 
     normalizeJob(config, job, kind);
     isReusableWorkflow = true;
@@ -472,7 +492,8 @@ async function writeWorkflowYaml(
   // because arbitrary package scripts may push commits.
   if (!newSettings.permissions) {
     for (const job of Object.values(newSettings.jobs)) {
-      if (!job.permissions && /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@main$/u.test(job.uses ?? '')) {
+      const call = parseOrgReusableWorkflowCall(job.uses);
+      if (!job.permissions && call?.workflowName === 'deploy' && call.ref === 'main') {
         job.permissions = { contents: 'read' };
       }
     }
@@ -675,9 +696,8 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // older tag or SHA may still declare NPM_TOKEN (and not VERDACCIO_TOKEN), and GitHub rejects a
   // caller whose secrets do not match the selected revision's declarations, so pinned callers keep
   // their secrets untouched.
-  const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@main$/u.exec(
-    job.uses ?? ''
-  )?.[1];
+  const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
+  const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee generates the workspace .npmrc for @willbooster-private/* from VERDACCIO_TOKEN
     // before installing dependencies, which every repository needs regardless of its fnox

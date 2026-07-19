@@ -4,6 +4,7 @@ export {
   readAndApplyEnvironmentVariables,
   readFnoxEnvironmentVariables,
   removeNpmAndYarnEnvironmentVariables,
+  resolveFallbackWbEnv,
   shouldSuppressEnvironmentOutput,
   yargsOptionsBuilderForEnv,
 } from './env.js';
