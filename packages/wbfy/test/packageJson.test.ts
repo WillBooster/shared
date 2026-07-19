@@ -1726,6 +1726,20 @@ test('does not force private on a monorepo root with a publishConfig', async () 
   expect(packageJson.private).toBeUndefined();
 });
 
+test('removes stale private from a monorepo root with a publishConfig', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      name: 'published-monorepo',
+      private: true,
+      workspaces: ['packages/*'],
+      publishConfig: { registry: 'https://npm.example.com' },
+    },
+    { isRoot: true, doesContainSubPackageJsons: true }
+  );
+
+  expect(packageJson.private).toBeUndefined();
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},

@@ -796,12 +796,15 @@ async function normalizePackageMetadata(
   // `publishConfig`) must not be forced private: `@semantic-release/npm` silently skips private
   // packages, so forcing `private: true` would stop releases without any error (e.g.
   // WillBoosterLab/llm-proxy publishing @willbooster-private/llm-proxy).
-  if (config.doesContainSubPackageJsons && config.release.npmPublishesRoot) {
-    // Older wbfy forced `private: true` on every monorepo root; when the user has EXPLICITLY
-    // configured `@semantic-release/npm` to publish the root itself, that stale flag silently
-    // suppresses publishing, so migrate it away. Roots relying on the plugin-less default list
-    // keep their `private` value untouched: `private: true` there can be a deliberate opt-out,
-    // which `@semantic-release/npm` honors by defaulting npmPublish to false.
+  if (config.doesContainSubPackageJsons && (config.release.npmPublishesRoot || jsonObj.publishConfig)) {
+    // Older wbfy forced `private: true` on every monorepo root (and never added a publishConfig
+    // to one, since it only does that for non-private manifests — so a root-level publishConfig
+    // is user-authored publishing intent); when the user has EXPLICITLY configured
+    // `@semantic-release/npm` to publish the root itself, or declared a `publishConfig`, that
+    // stale flag silently suppresses publishing, so migrate it away. Roots relying on the
+    // plugin-less default list keep their `private` value untouched: `private: true` there can
+    // be a deliberate opt-out, which `@semantic-release/npm` honors by defaulting npmPublish to
+    // false.
     delete jsonObj.private;
   } else if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
     jsonObj.private = true;
