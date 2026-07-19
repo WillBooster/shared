@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import fg from 'fast-glob';
@@ -105,22 +106,29 @@ export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): WorkspaceD
 /**
  * tsconfig exclude entries for one negation. Pattern-shaped when the negation excludes exactly
  * what it matches (stable output); per-directory otherwise: a directory that is a workspace
- * despite the negation is not excluded at all, and neither is a descendant of a workspace
- * directory — negating a non-package directory is a no-op for Bun, and the enclosing workspace
- * stays active (e.g. `['apps/**', '!apps/**', 'apps/web']` re-includes apps/web, whose src must
- * keep type-checking; a tsconfig exclude would override the include). A directory that is an
+ * despite the negation is not excluded at all, and neither is a PLAIN (package.json-less)
+ * descendant of a workspace directory — negating a non-package directory is a no-op for Bun,
+ * and the enclosing workspace stays active (e.g. `['apps/**', '!apps/**', 'apps/web']`
+ * re-includes apps/web, whose src must keep type-checking; a tsconfig exclude would override
+ * the include). A descendant with its own manifest that the negation keeps out of the workspace
+ * set is an excluded nested package and stays excluded. A directory that is an
  * ancestor of a workspace directory gets only its package-owned subpaths excluded, because Bun
  * excludes only the package AT that directory while keeping descendant workspaces (#1004).
  */
 function toExcludeEntries(negationBody: string, workspaceDirPaths: Set<string>, rootDirPath: string): string[] {
   const isWorkspaceAncestor = (dirPath: string): boolean =>
     [...workspaceDirPaths].some((workspaceDirPath) => workspaceDirPath.startsWith(`${dirPath}/`));
-  const isWorkspaceDescendant = (dirPath: string): boolean =>
-    [...workspaceDirPaths].some((workspaceDirPath) => dirPath.startsWith(`${workspaceDirPath}/`));
+  // Only PLAIN directories (no package.json of their own) are protected by the enclosing
+  // workspace: a matched directory that carries its own manifest yet is absent from the final
+  // workspace set is an excluded nested package, and its exclusion must survive.
+  const isProtectedWorkspaceDescendant = (dirPath: string): boolean =>
+    [...workspaceDirPaths].some((workspaceDirPath) => dirPath.startsWith(`${workspaceDirPath}/`)) &&
+    !fs.existsSync(path.join(rootDirPath, dirPath, 'package.json'));
   const matchedDirPaths = getMatchedDirPaths(negationBody, rootDirPath);
   if (
     !matchedDirPaths.some(
-      (dirPath) => workspaceDirPaths.has(dirPath) || isWorkspaceAncestor(dirPath) || isWorkspaceDescendant(dirPath)
+      (dirPath) =>
+        workspaceDirPaths.has(dirPath) || isWorkspaceAncestor(dirPath) || isProtectedWorkspaceDescendant(dirPath)
     )
   ) {
     return toTsconfigCompatibleDirPatterns(negationBody, rootDirPath);
@@ -129,7 +137,7 @@ function toExcludeEntries(negationBody: string, workspaceDirPaths: Set<string>, 
     // The descendant check precedes the ancestor one: a directory inside one workspace but above
     // a nested one (e.g. apps/web/plugins between workspaces apps/web and apps/web/plugins/x)
     // still belongs to the enclosing active workspace, so nothing of it may be excluded.
-    if (workspaceDirPaths.has(dirPath) || isWorkspaceDescendant(dirPath)) return [];
+    if (workspaceDirPaths.has(dirPath) || isProtectedWorkspaceDescendant(dirPath)) return [];
     if (isWorkspaceAncestor(dirPath)) {
       return [`${dirPath}/*.config.ts`, `${dirPath}/scripts`, `${dirPath}/src`, `${dirPath}/test`];
     }
@@ -285,7 +293,13 @@ function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
 export function hasDeclaredPackagesStarPattern(workspaces: PackageJson['workspaces']): boolean {
   return getMeaningfulDeclaredWorkspacePatterns(workspaces).some(
     (workspacePattern) =>
-      !workspacePattern.startsWith('!') && normalizeWorkspacePatternBody(workspacePattern) === 'packages/*'
+      !workspacePattern.startsWith('!') &&
+      // A `..`-traversing or absolute spelling (e.g. `x/../packages/*`) is discarded by
+      // getSanitizedWorkspacePatterns, so it must not count as covering packages/* — that would
+      // suppress the fallback AND lose the pattern, leaving no discovered workspaces.
+      !path.posix.isAbsolute(workspacePattern) &&
+      !workspacePattern.split('/').includes('..') &&
+      normalizeWorkspacePatternBody(workspacePattern) === 'packages/*'
   );
 }
 

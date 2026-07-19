@@ -190,45 +190,61 @@ function pluginsIncludeNpm(plugins: readonly unknown[]): boolean {
   return plugins.some((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) === '@semantic-release/npm');
 }
 
-// The JS/YAML config files semantic-release also supports cannot be inspected statically;
-// their presence makes the plugin list 'unknown'.
-const nonJsonReleaseConfigFileNames = [
-  '.releaserc.yaml',
-  '.releaserc.yml',
-  '.releaserc.js',
-  '.releaserc.cjs',
-  '.releaserc.mjs',
-  'release.config.js',
-  'release.config.cjs',
-  'release.config.mjs',
+/**
+ * cosmiconfig 9's default searchPlaces order for module "release" (what semantic-release 25
+ * delegates to), minus the leading package.json entry, which the caller checks first. The FIRST
+ * existing place wins; places whose format JSON.parse cannot read make the effective plugin
+ * list 'unknown'.
+ */
+const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: boolean }[] = [
+  { fileName: '.releaserc', jsonParseable: true },
+  { fileName: '.releaserc.json', jsonParseable: true },
+  { fileName: '.releaserc.yaml', jsonParseable: false },
+  { fileName: '.releaserc.yml', jsonParseable: false },
+  { fileName: '.releaserc.js', jsonParseable: false },
+  { fileName: '.releaserc.ts', jsonParseable: false },
+  { fileName: '.releaserc.mjs', jsonParseable: false },
+  { fileName: '.releaserc.cjs', jsonParseable: false },
+  { fileName: '.config/releaserc', jsonParseable: true },
+  { fileName: '.config/releaserc.json', jsonParseable: true },
+  { fileName: '.config/releaserc.yaml', jsonParseable: false },
+  { fileName: '.config/releaserc.yml', jsonParseable: false },
+  { fileName: '.config/releaserc.js', jsonParseable: false },
+  { fileName: '.config/releaserc.ts', jsonParseable: false },
+  { fileName: '.config/releaserc.mjs', jsonParseable: false },
+  { fileName: '.config/releaserc.cjs', jsonParseable: false },
+  { fileName: 'release.config.js', jsonParseable: false },
+  { fileName: 'release.config.ts', jsonParseable: false },
+  { fileName: 'release.config.mjs', jsonParseable: false },
+  { fileName: 'release.config.cjs', jsonParseable: false },
 ];
 
 function readExplicitSemanticReleasePlugins(
   dirPath: string,
   packageJson: PackageJson | undefined
 ): readonly unknown[] | undefined | 'unknown' {
-  if (nonJsonReleaseConfigFileNames.some((fileName) => fs.existsSync(path.join(dirPath, fileName)))) return 'unknown';
-
-  let config: { plugins?: unknown; extends?: unknown } | undefined;
-  for (const fileName of ['.releaserc', '.releaserc.json']) {
-    const configPath = path.join(dirPath, fileName);
-    if (!fs.existsSync(configPath)) continue;
+  // cosmiconfig searches package.json's `release` key BEFORE any rc/config file; a missing or
+  // unreadable package.json just falls through to the file search places.
+  if (packageJson === undefined) {
     try {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as typeof config;
+      packageJson = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')) as PackageJson;
     } catch {
-      return 'unknown';
+      packageJson = undefined;
     }
-    break;
   }
-  if (!config) {
-    if (packageJson === undefined) {
+  let config = (packageJson as { release?: { plugins?: unknown; extends?: unknown } } | undefined)?.release;
+  if (config === undefined) {
+    for (const { fileName, jsonParseable } of semanticReleaseConfigSearchPlaces) {
+      const configPath = path.join(dirPath, fileName);
+      if (!fs.existsSync(configPath)) continue;
+      if (!jsonParseable) return 'unknown';
       try {
-        packageJson = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')) as PackageJson;
+        config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as typeof config;
       } catch {
-        return undefined;
+        return 'unknown';
       }
+      break;
     }
-    config = (packageJson as { release?: unknown }).release as typeof config;
   }
   if (!config || typeof config !== 'object') return undefined;
   if (Array.isArray(config.plugins)) return config.plugins;
