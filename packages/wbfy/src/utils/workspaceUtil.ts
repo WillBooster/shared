@@ -256,13 +256,25 @@ function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
   // never-matching pattern contributes no paths there — while pattern-shaped callers
   // (getWorkspaceDirPatterns) gate it on an actual match.
   const workspacePatterns =
-    rootLike.doesContainSubPackageJsons && !declaredPatterns.includes('packages/*')
+    rootLike.doesContainSubPackageJsons && !hasDeclaredPackagesStarPattern(rootLike.packageJson?.workspaces)
       ? ['packages/*', ...declaredPatterns]
       : declaredPatterns;
   return workspacePatterns.filter((workspacePattern) => {
     const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
     return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
   });
+}
+
+/**
+ * Whether a declared positive pattern already covers `packages/*` under path normalization
+ * (e.g. `./packages/*` or a trailing-slash spelling): forcing a textual `packages/*` next to
+ * such a spelling would persist duplicate equivalent patterns and re-scan the same directories.
+ */
+export function hasDeclaredPackagesStarPattern(workspaces: PackageJson['workspaces']): boolean {
+  return getMeaningfulDeclaredWorkspacePatterns(workspaces).some(
+    (workspacePattern) =>
+      !workspacePattern.startsWith('!') && normalizeWorkspacePatternBody(workspacePattern) === 'packages/*'
+  );
 }
 
 /**

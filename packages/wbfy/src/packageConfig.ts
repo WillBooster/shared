@@ -125,19 +125,40 @@ export async function getPackageConfig(
     }
 
     let releaseBranches: string[] = [];
-    let releasePlugins: string[] = [];
+    let releasePlugins: (string | object)[] = [];
+    // JS/YAML semantic-release configs and `extends` presets cannot be inspected statically
+    // (mirrors readExplicitSemanticReleasePlugins in wb's release.ts). Treating their plugin
+    // list as unknown keeps `release.npm` conservatively true, so applyPackageJsonConventions
+    // never forces `private: true` on a monorepo that actually publishes to npm.
+    let releasePluginsAreUnknown = [
+      '.releaserc.yaml',
+      '.releaserc.yml',
+      '.releaserc.js',
+      '.releaserc.cjs',
+      '.releaserc.mjs',
+      'release.config.js',
+      'release.config.cjs',
+      'release.config.mjs',
+    ].some((fileName) => fs.existsSync(path.resolve(dirPath, fileName)));
     try {
-      const releasercJsonPath = path.resolve(dirPath, '.releaserc.json');
-      const json = JSON.parse(await fsp.readFile(releasercJsonPath, 'utf8')) as
-        | {
-            branches: string[];
-            plugins?: string[][];
-          }
-        | undefined;
-      releaseBranches = json?.branches ?? [];
-      releasePlugins = json?.plugins?.flat() ?? [];
+      type ReleaseConfig = { branches?: string[]; plugins?: (string | object)[][]; extends?: unknown } | undefined;
+      let releaseConfig: ReleaseConfig;
+      for (const fileName of ['.releaserc', '.releaserc.json']) {
+        const releasercPath = path.resolve(dirPath, fileName);
+        if (!fs.existsSync(releasercPath)) continue;
+        // `.releaserc` may also hold YAML; a JSON.parse failure lands in the catch below and
+        // marks the plugin list unknown instead of silently reporting "no plugins".
+        releaseConfig = JSON.parse(await fsp.readFile(releasercPath, 'utf8')) as ReleaseConfig;
+        break;
+      }
+      releaseConfig ??= (packageJson as { release?: ReleaseConfig }).release;
+      releaseBranches = releaseConfig?.branches ?? [];
+      releasePlugins = releaseConfig?.plugins?.flat() ?? [];
+      if (releaseConfig && !Array.isArray(releaseConfig.plugins) && releaseConfig.extends !== undefined) {
+        releasePluginsAreUnknown = true;
+      }
     } catch {
-      // do nothing
+      releasePluginsAreUnknown = true;
     }
 
     // The caller may classify explicitly (index.ts passes false for every discovered workspace,
@@ -260,7 +281,8 @@ export async function getPackageConfig(
         semanticRelease: !!(
           devDependencies['semantic-release'] ||
           releaseBranches.length > 0 ||
-          releasePlugins.length > 0
+          releasePlugins.length > 0 ||
+          releasePluginsAreUnknown
         ),
         storybook: !!devDependencies['@storybook/react'],
         tauri:
@@ -276,7 +298,7 @@ export async function getPackageConfig(
       release: {
         branches: releaseBranches,
         github: releasePlugins.includes('@semantic-release/github'),
-        npm: releasePlugins.includes('@semantic-release/npm'),
+        npm: releasePlugins.includes('@semantic-release/npm') || releasePluginsAreUnknown,
       },
       miseTasks: await readMiseTasks(dirPath),
       packageJson,

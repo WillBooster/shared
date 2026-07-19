@@ -35,6 +35,7 @@ import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfig
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
+  hasDeclaredPackagesStarPattern,
   hasImplicitWorkspaceBaseline,
 } from '../utils/workspaceUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
@@ -485,9 +486,12 @@ async function applyPackageJsonConventions(
       // baseline-seeding declaration needs no forced pattern at all — the seeded baseline
       // (`*/*` or `**`) already covers packages/*. The forced pattern is PREPENDED: Bun
       // evaluates workspace patterns sequentially, so a positive pattern placed after a user
-      // negation would re-include the negated packages.
+      // negation would re-include the negated packages. A declaration that already covers
+      // packages/* under normalization (e.g. `./packages/*`) is kept verbatim: forcing a textual
+      // `packages/*` next to it would persist a duplicate equivalent pattern.
       const forcedPatterns =
         !hasImplicitWorkspaceBaseline(jsonObj.workspaces) &&
+        !hasDeclaredPackagesStarPattern(jsonObj.workspaces) &&
         fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
           ? ['packages/*']
           : [];
@@ -786,8 +790,10 @@ async function normalizePackageMetadata(
     jsonObj.name = path.basename(config.dirPath);
   }
 
-  // A monorepo root configured for npm publishing (a `.releaserc.json` with `@semantic-release/npm`
-  // or an explicit `publishConfig`) must not be forced private: `@semantic-release/npm` silently
+  // A monorepo root configured for npm publishing (a semantic-release config with
+  // `@semantic-release/npm` — or one packageConfig cannot inspect statically, such as a JS/YAML
+  // config or an `extends` preset — or an explicit `publishConfig`) must not be forced private:
+  // `@semantic-release/npm` silently
   // skips private packages, so forcing `private: true` would stop releases without any error
   // (e.g. WillBoosterLab/llm-proxy publishing @willbooster-private/llm-proxy).
   if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
