@@ -106,9 +106,11 @@ async function warnOnMismatchedDotenvWbEnvValues(dirPath: string, needsNextPubli
     // definition masks the base `.env` value in the loader, and `.env.local` masks it for every
     // cascade.
     const maskedKeys = new Set(keyNames.filter((keyName) => localKeys[keyName] !== undefined));
+    let modeFileExists = false;
     for (const fileName of inspectedFileNames) {
       const content = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, fileName));
       if (content === undefined) continue;
+      if (fileName !== '.env') modeFileExists = true;
       const definedKeys = dotenv.parse(content);
       for (const keyName of keyNames) {
         if (fileName !== '.env' && definedKeys[keyName] !== undefined) maskedKeys.add(keyName);
@@ -116,6 +118,9 @@ async function warnOnMismatchedDotenvWbEnvValues(dirPath: string, needsNextPubli
       }
     }
     if (mode === 'development') continue;
+    // Staging is optional (see wbEnvModes): a repository without any staging file must not be
+    // told to create one just to silence a leak warning.
+    if (mode === 'staging' && !modeFileExists) continue;
     // The shared `.env` loads in EVERY cascade, so without a higher-precedence definition its
     // values leak into this cascade: a leaked WB_ENV makes wb fail fast on the mismatch, and a
     // leaked NEXT_PUBLIC_WB_ENV would be inlined by a direct framework build.
