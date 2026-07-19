@@ -215,8 +215,7 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
   for (const [key, value] of Object.entries(scripts)) {
     if (typeof value !== 'string' || !value.includes('yarn')) continue;
     // Fresh repos still require standalone `yarn install`; only remove legacy install prefixes before another command.
-    // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
-    if (value.includes('git clone') || value.includes('<<')) continue;
+    if (value.includes('git clone')) continue;
     scripts[key] = removeLegacyYarnInstallPrefixes(value);
   }
 }
@@ -227,8 +226,10 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
  * quoted data such as `echo 'yarn install && deploy now'` stays untouched.
  */
 function removeLegacyYarnInstallPrefixes(script: string): string {
+  const tokens = tokenizeShellCommand(script);
+  if (containsHeredocOperator(tokens)) return script;
   const removalRanges: [number, number][] = [];
-  forEachCommandPositionToken(tokenizeShellCommand(script), (token, index, tokens) => {
+  forEachCommandPositionToken(tokens, (token, index) => {
     if (token.text !== 'yarn') return;
     const next = tokens[index + 1];
     // decodeSimpleShellWord: shell quoting makes `yarn 'install'` equivalent to `yarn install`.
@@ -463,15 +464,22 @@ function convertYarnCommandsToBun(
  * colon-owner resolution and re-emitted verbatim so its shell semantics never change. Anything
  * unconvertible keeps its yarn form verbatim to surface during review instead of being
  * mis-rewritten.
+ *
+ * Substitutions nested inside double quotes or backticks (`echo "$(yarn compile)"`) and quoted
+ * script names containing whitespace (`yarn 'build docs'`) are deliberately NOT modeled: they
+ * only produce conservative misses that keep the yarn form and surface during review (like the
+ * regex-based predecessor), and covering them would require a full shell parser.
  */
 function convertYarnInvocationsToBun(
   script: string,
   resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
 ): string {
-  // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
-  if (script.includes('<<')) return script;
+  const tokens = tokenizeShellCommand(script);
+  // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs. Only
+  // a real unquoted operator counts — `echo '<<' && yarn compile` still converts.
+  if (containsHeredocOperator(tokens)) return script;
   const replacements: ShellReplacement[] = [];
-  forEachCommandPositionToken(tokenizeShellCommand(script), (token, index, tokens) => {
+  forEachCommandPositionToken(tokens, (token, index) => {
     // Only a bare unquoted `yarn` word at command position starts an invocation.
     if (token.text !== 'yarn') return;
     const remainingTokens = tokens.slice(index + 1);
@@ -521,9 +529,9 @@ function convertSingleYarnInvocation(
   const logicalArgs: { token: ShellToken; rawIndex: number }[] = [];
   for (let index = 0; index < args.length; index++) {
     const token = args[index] as ShellToken;
-    if (/^[<>]/u.test(token.text)) {
-      // A plain operator consumes its operand; a `>&1`-style duplication is self-contained.
-      if (/^[<>]+$/u.test(token.text)) index++;
+    if (/^&?[<>]/u.test(token.text)) {
+      // The operator consumes its operand unless a `>&1`-style duplication is self-contained.
+      if (!/&(?:\d+|-)$/u.test(token.text)) index++;
       continue;
     }
     if (
@@ -548,7 +556,7 @@ function convertSingleYarnInvocation(
     const arg = logicalArgs[argIndex] as { token: ShellToken; rawIndex: number };
     // A redirection inside the replaced span would be deleted by the rewrite, so such an
     // invocation keeps its yarn form to surface in review.
-    if (args.slice(0, arg.rawIndex).some((argToken) => /^[<>]/u.test(argToken.text))) return undefined;
+    if (args.slice(0, arg.rawIndex).some((argToken) => /^&?[<>]/u.test(argToken.text))) return undefined;
     return { start: yarnToken.start, end: arg.token.end, text };
   };
   const first = argText(0);
@@ -694,13 +702,14 @@ function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
 }
 
 function removeBunRuntimeFlag(script: string, scriptNames: ReadonlySet<string>): string {
+  const tokens = tokenizeShellCommand(script);
   // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
-  if (script.includes('<<')) return script;
+  if (containsHeredocOperator(tokens)) return script;
   // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
   // merely ending in `bun` (`my-bun`), quoted targets with spaces, and Bun runtime flags between
   // `--bun` and the script file are all classified correctly.
   const removalRanges: [number, number][] = [];
-  forEachCommandPositionToken(tokenizeShellCommand(script), (token, index, tokens) => {
+  forEachCommandPositionToken(tokens, (token, index) => {
     if (unquoteShellToken(token.text) !== 'bun') return;
     const flagToken = tokens[index + 1];
     if (!flagToken || unquoteShellToken(flagToken.text) !== '--bun') return;
@@ -779,6 +788,11 @@ const commandPositionTransparentWords = new Set([
   '}',
 ]);
 
+/** Whether the token stream contains an unquoted heredoc or herestring operator (`<<`, `<<<`). */
+function containsHeredocOperator(tokens: readonly ShellToken[]): boolean {
+  return tokens.some((token) => /^&?[<>]/u.test(token.text) && token.text.includes('<<'));
+}
+
 /**
  * Invokes the callback for every token in shell command position. Separators start a new command;
  * `KEY=VALUE` prefixes and transparent prefix words (`exec`, `env`, ...) keep the next token in
@@ -790,24 +804,37 @@ function forEachCommandPositionToken(
 ): void {
   let atCommandPosition = true;
   let redirectionOperandFollows = false;
-  // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER position must be
+  // `((` opens an arithmetic context: nothing inside is a command (`echo $((yarn && 1))`).
+  let inArithmetic = false;
+  let previousSeparatorChar: string | undefined;
+  // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER state must be
   // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
-  const outerCommandPositions: boolean[] = [];
+  const outerStates: { atCommandPosition: boolean; inArithmetic: boolean }[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
-      for (const char of token.text) {
+      for (const [charIndex, char] of [...token.text].entries()) {
         if (char === '(') {
-          outerCommandPositions.push(atCommandPosition);
+          outerStates.push({ atCommandPosition, inArithmetic });
+          // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
+          // arithmetic; a spaced `( (` is a nested subshell.
+          if (charIndex > 0) inArithmetic = true;
           atCommandPosition = true;
         } else if (char === ')') {
-          atCommandPosition = outerCommandPositions.pop() ?? true;
+          const outerState = outerStates.pop();
+          inArithmetic = outerState?.inArithmetic ?? false;
+          // An empty `()` pair is a function definition: its body follows in command position,
+          // and its yarn invocations really run when the function is called.
+          atCommandPosition = previousSeparatorChar === '(' ? true : (outerState?.atCommandPosition ?? true);
         } else {
           atCommandPosition = true;
         }
+        previousSeparatorChar = char;
       }
       redirectionOperandFollows = false;
       continue;
     }
+    previousSeparatorChar = undefined;
+    if (inArithmetic) continue;
     if (redirectionOperandFollows) {
       redirectionOperandFollows = false;
       continue;
@@ -817,8 +844,8 @@ function forEachCommandPositionToken(
     // operator (with its operand, unless a `>&1`-style duplication makes it self-contained) and
     // an ADJACENT file-descriptor digit (`2>` splits into two tokens; a detached `2 >out` is not
     // a descriptor) leave the position intact.
-    if (/^[<>]/u.test(token.text)) {
-      redirectionOperandFollows = /^[<>]+$/u.test(token.text);
+    if (/^&?[<>]/u.test(token.text)) {
+      redirectionOperandFollows = !/&(?:\d+|-)$/u.test(token.text);
       continue;
     }
     if (
@@ -828,14 +855,15 @@ function forEachCommandPositionToken(
     ) {
       continue;
     }
-    const tokenText = unquoteShellToken(token.text);
-    if (/^[A-Za-z_]\w*=/u.test(tokenText) || commandPositionTransparentWords.has(tokenText)) continue;
+    // The raw token text drives the assignment and keyword checks: shell quoting turns them into
+    // ordinary command words (`"FOO=bar" yarn build` runs the command `FOO=bar`).
+    if (/^[A-Za-z_]\w*=/u.test(token.text) || commandPositionTransparentWords.has(token.text)) continue;
     // At command position a `-`-leading token can only be an option of a preceding transparent
     // wrapper (`env -i yarn build`); a real command never starts with `-`. Only known valueless
     // options stay transparent — an unmodeled option may consume the next word as its value
     // (`env -u yarn build`), so discovery for this command stops conservatively instead.
-    if (tokenText.startsWith('-')) {
-      if (!valuelessWrapperOptions.has(tokenText)) atCommandPosition = false;
+    if (token.text.startsWith('-')) {
+      if (!valuelessWrapperOptions.has(token.text)) atCommandPosition = false;
       continue;
     }
     atCommandPosition = false;
@@ -869,15 +897,19 @@ function tokenizeShellCommand(script: string): ShellToken[] {
       continue;
     }
     // An unquoted redirection operator ends the preceding word even without whitespace
-    // (`yarn build>log` redirects `yarn build`), so it forms its own token; heredocs (`<<`) never
-    // reach this tokenizer — every caller skips scripts containing them. A duplication suffix
-    // (`>&1`, `2>&1`, `>&-`) belongs to the operator token, or its `&` would read as a separator.
-    if (char === '<' || char === '>') {
-      let end = index + 1;
+    // (`yarn build>log` redirects `yarn build`), so it forms its own token; heredoc-containing
+    // token streams are rejected by every caller before interpretation. Compound forms — the
+    // `&>file` both-streams shorthand, the `>|` clobber operator, and `>&`/`>&1`-style
+    // duplications — belong to the operator token, or their `&`/`|` would read as a separator.
+    if (char === '<' || char === '>' || (char === '&' && /^[<>]$/u.test(script[index + 1] ?? ''))) {
+      let end = char === '&' ? index + 1 : index;
       while (end < script.length && (script[end] === '<' || script[end] === '>')) end++;
-      if (script[end] === '&' && /^[\d-]$/u.test(script[end + 1] ?? '')) {
-        end += 2;
-        while (end < script.length && /\d/u.test(script[end] ?? '')) end++;
+      if (script[end] === '&') {
+        end++;
+        if (script[end] === '-') end++;
+        else while (end < script.length && /\d/u.test(script[end] ?? '')) end++;
+      } else if (script[end] === '|') {
+        end++;
       }
       tokens.push({ text: script.slice(index, end), start: index, end });
       index = end;

@@ -1502,8 +1502,13 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'deps-up': 'yarn up -R typescript',
       dollar: "yarn 'build:$target'",
       dynamic: 'yarn build:$target && yarn run "build:$target"',
+      arith: 'echo $((yarn && 1))',
+      clobber: 'echo hi >| yarn && yarn compile',
       commented: 'echo ready # note; yarn compile',
       'env-opt': 'env -i yarn compile && 2>&1 yarn compile',
+      'func-def': 'build_all() { yarn compile; }; build_all',
+      'quoted-assign': '"FOO=bar" yarn compile',
+      'quoted-heredoc': "echo '<<' && yarn compile",
       'env-unset': 'env -u yarn compile && time -f yarn compile',
       'in-subst': 'echo $(yarn compile)',
       subst: 'echo $(date) yarn compile',
@@ -1533,8 +1538,11 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     publish2: 'yarn npm publish --tolerate-republish',
     'ws-add': 'yarn workspace components add -D react',
     // `yarn` inside a quoted token, in argument position, after a value-taking wrapper option,
-    // after a command substitution, or inside a comment is data, not a command.
+    // after a command substitution, inside an arithmetic expansion, as a redirection operand, as
+    // a quoted command word's argument, or inside a comment is data, not a command.
+    arith: 'echo $((yarn && 1))',
     commented: 'echo ready # note; yarn compile',
+    'quoted-assign': '"FOO=bar" yarn compile',
     'env-unset': 'env -u yarn compile && time -f yarn compile',
     hint: "echo 'run yarn build before deploying'",
     'install-note': "echo 'yarn install && deploy now'",
@@ -1556,8 +1564,13 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     guarded: 'if [ -f .env ]; then bun run compile; fi && { bun run compile; }',
     // Wrapper options and file-descriptor duplications before the command are stepped over.
     'env-opt': 'env -i bun run compile && 2>&1 bun run compile',
-    // A yarn invocation inside a command substitution really runs.
+    // A yarn invocation inside a command substitution or a function body really runs, and a
+    // `>|` operand stays data while the chained invocation after it converts.
+    clobber: 'echo hi >| yarn && bun run compile',
+    'func-def': 'build_all() { bun run compile; }; build_all',
     'in-subst': 'echo $(bun run compile)',
+    // Only a real unquoted heredoc operator suppresses conversion, not quoted `<<` data.
+    'quoted-heredoc': "echo '<<' && bun run compile",
     redirect: 'bun run build>out.log',
     // A redirection before the command leaves it in command position.
     'redirect-first': '>build.log bun run compile',
