@@ -47,7 +47,35 @@ export const yargsOptionsBuilderForEnv = {
   },
 } as const;
 
-export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof yargsOptionsBuilderForEnv>>>;
+export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<typeof yargsOptionsBuilderForEnv>>> & {
+  /**
+   * Command-level fallback for an unset WB_ENV (e.g. `wb test` supplies 'test' when explicit env
+   * flags suppress its default test cascade). Not a CLI flag.
+   */
+  commandDefaultWbEnv?: string;
+};
+
+const standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
+
+/**
+ * Resolves the WB_ENV value wb falls back to when no env source and no exported variable defines
+ * it: the command-level default first (`wb test --cascade-env=staging` loads the staging files
+ * but its tests must still run as `test`, mirroring the pre-15 `||= 'test'` behavior), then the
+ * forced cascade, then the ambient-NODE_ENV-driven auto cascade clamped to a standard mode (a
+ * non-standard NODE_ENV such as `qa` still selects the cascade suffix, but must not produce a
+ * non-standard WB_ENV).
+ */
+export function resolveFallbackWbEnv(argv: EnvReaderOptions): string {
+  if (argv.commandDefaultWbEnv) return argv.commandDefaultWbEnv;
+  if (argv.cascadeEnv) return argv.cascadeEnv;
+  // Read NODE_ENV through the alias for the same bundler-inlining reason as in
+  // readEnvironmentVariables, and from the AMBIENT environment (not loaded files) because the
+  // cascade selection below uses the ambient value as well.
+  const runtimeEnv = process.env;
+  const derived =
+    argv.cascadeNodeEnv || argv.autoCascadeEnv !== false ? runtimeEnv.NODE_ENV || 'development' : 'development';
+  return standardWbEnvModes.has(derived) ? derived : 'development';
+}
 
 /**
  * This function reads environment variables from `.env` files.
@@ -64,6 +92,11 @@ export function readEnvironmentVariables(
      * and the file-defined variables themselves are needed (e.g. `wb gen-dev-vars`).
      */
     ignoreProcessEnv?: boolean;
+    /**
+     * Expand `${WB_ENV}` references against the fallback mode when nothing defines WB_ENV.
+     * Only for callers that subsequently COMPLETE WB_ENV with that fallback (wb's Project.env).
+     */
+    expandFallbackWbEnv?: boolean;
   }
 ): [Record<string, string>, [string, string[]][]] {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
@@ -203,10 +236,30 @@ export function readEnvironmentVariables(
   const orderedEnvVars: Record<string, string> = {};
   for (const key of [...miseEnvVarNames, ...fnoxEnvVarNames]) orderedEnvVars[key] = envVars[key]!;
   Object.assign(orderedEnvVars, envVars);
-  return [
-    expand({ parsed: orderedEnvVars, processEnv: referenceEnv }).parsed ?? orderedEnvVars,
-    envPathAndLoadedEnvVarNames,
-  ];
+  // expand() mutates BOTH its parsed input AND processEnv (dotenv-expand writes every parsed
+  // result into processEnv), so snapshot both for the re-expansion below — the retry must not
+  // see the first pass's stale dependent values.
+  const preExpansionEnvVars = { ...orderedEnvVars };
+  const pristineReferenceEnv = { ...referenceEnv };
+  let expandedEnvVars = expand({ parsed: orderedEnvVars, processEnv: referenceEnv }).parsed ?? orderedEnvVars;
+  // A value referencing ${WB_ENV} must expand to what the child will actually see: when the
+  // EFFECTIVE WB_ENV ends up empty — whether it was never defined, defined empty, or emptied by
+  // the expansion itself (e.g. `WB_ENV=${MISSING_MODE}`) — wb's Project.env later fills it with
+  // the fallback mode, so re-expand from the original values with that fallback available.
+  // Opt-in via the option: a direct readEnvironmentVariables/readAndApplyEnvironmentVariables
+  // caller never receives the completed WB_ENV, and expanding references against a value that is
+  // not actually applied would make the pair inconsistent.
+  // The loaded key masks the ambient value, so a loaded-but-emptied WB_ENV needs the retry even
+  // when an exported WB_ENV exists (a forced mode file overrides the export locally): retry with
+  // the value the merged environment will ultimately retain.
+  const effectiveWbEnv = expandedEnvVars.WB_ENV ?? runtimeEnv.WB_ENV;
+  if (options?.expandFallbackWbEnv && !effectiveWbEnv) {
+    const reExpansionInput = { ...preExpansionEnvVars };
+    delete reExpansionInput.WB_ENV;
+    const retryReferenceEnv = { ...pristineReferenceEnv, WB_ENV: runtimeEnv.WB_ENV || resolveFallbackWbEnv(argv) };
+    expandedEnvVars = expand({ parsed: reExpansionInput, processEnv: retryReferenceEnv }).parsed ?? reExpansionInput;
+  }
+  return [expandedEnvVars, envPathAndLoadedEnvVarNames];
 }
 
 /**

@@ -64,6 +64,23 @@ export function runDotenvCommand(args) {
   });
 }
 
+// Mirrors src/commands/dotenv.ts (validateStandardWbEnv) for this startup fast path.
+function validateStandardWbEnv(value, fixTarget) {
+  if (
+    !value ||
+    ['development', 'test', 'staging', 'production'].includes(value) ||
+    process.env.WB_SKIP_ENV_CHECK === '1' ||
+    process.env.WB_SKIP_ENV_CHECK === 'true'
+  ) {
+    return;
+  }
+  console.error(
+    `WB_ENV must be one of development, test, staging, or production, but is "${value}". ` +
+      `Fix ${fixTarget}, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+  );
+  process.exit(1);
+}
+
 // Mirrors src/commands/dotenv.ts (readAndApplyEnvironmentVariables) for this startup fast path.
 function readAndApplyEnvironmentVariables(cwd) {
   const mode = process.env.WB_ENV;
@@ -116,6 +133,26 @@ function readAndApplyEnvironmentVariables(cwd) {
       process.env[key] = value;
     }
     // On CI, inherited variables intentionally win; no warning is emitted.
+  }
+  // Validate only AFTER applying the sources, so a WB_SKIP_ENV_CHECK defined in an env FILE is
+  // honored: both the captured exported mode (it selected the cascade) and the FINAL value the
+  // child will see.
+  validateStandardWbEnv(mode, 'the exported variable');
+  validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
+  // The exported mode selected the cascade, so a mode file silently replacing it with a DIFFERENT
+  // valid mode (e.g. `.env.production` containing `WB_ENV=development`) must be rejected as well.
+  if (
+    mode &&
+    process.env.WB_ENV &&
+    process.env.WB_ENV !== mode &&
+    process.env.WB_SKIP_ENV_CHECK !== '1' &&
+    process.env.WB_SKIP_ENV_CHECK !== 'true'
+  ) {
+    console.error(
+      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${mode}" environment was selected. ` +
+        `Fix the WB_ENV defined in the mode's env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+    );
+    process.exit(1);
   }
 }
 
