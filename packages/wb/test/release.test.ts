@@ -67,7 +67,10 @@ describe('releasePublishesToNpm', () => {
     }
   });
 
-  async function createProject(files: Record<string, object>): Promise<{ dirPath: string; packageJson: PackageJson }> {
+  async function createProject(
+    files: Record<string, object>,
+    usesBunPackageManager = true
+  ): Promise<{ dirPath: string; packageJson: PackageJson; usesBunPackageManager: boolean }> {
     const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-release-test-'));
     temporaryDirPaths.push(dirPath);
     for (const [relativePath, content] of Object.entries(files)) {
@@ -78,7 +81,7 @@ describe('releasePublishesToNpm', () => {
     const packageJson = JSON.parse(
       await fs.promises.readFile(path.join(dirPath, 'package.json'), 'utf8')
     ) as PackageJson;
-    return { dirPath, packageJson };
+    return { dirPath, packageJson, usesBunPackageManager };
   }
 
   it('keeps the npm preparation when no plugin list is configured (default plugins include npm)', async () => {
@@ -179,6 +182,20 @@ describe('releasePublishesToNpm', () => {
       'other/x/.releaserc.json': { plugins: ['@semantic-release/npm'] },
     });
     await expect(releasePublishesToNpm(negatedOnlyProject)).resolves.toBe(false);
+  });
+
+  it('does not apply Bun-only baseline seeding to a Yarn project', async () => {
+    // Yarn v1 links no workspaces for `["!other/*"]`, so packages/lib's npm plugin must not count.
+    const project = await createProject(
+      {
+        'package.json': { name: 'root', workspaces: ['!other/*'] },
+        '.releaserc.json': { plugins: ['@semantic-release/github'] },
+        'packages/lib/package.json': { name: 'lib' },
+        'packages/lib/.releaserc.json': { plugins: ['@semantic-release/npm'] },
+      },
+      false
+    );
+    await expect(releasePublishesToNpm(project)).resolves.toBe(false);
   });
 
   it('skips when the root and every workspace package configure npm-free plugins', async () => {

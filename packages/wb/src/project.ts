@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import {
+  getDeclaredWorkspacePatterns,
   readEnvironmentVariables,
   resolveBunWorkspacePackageJsonPaths,
   resolveFallbackWbEnv,
@@ -10,6 +11,7 @@ import {
 } from '@willbooster/shared-lib-node/src';
 import { memoizeOne } from 'at-decorators';
 import chalk from 'chalk';
+import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
@@ -488,7 +490,7 @@ export async function findDescendantProjects(
     ...rootAndSelfProjects,
     descendants:
       rootAndSelfProjects.root === rootAndSelfProjects.self
-        ? getAllDescendantProjects(argv, rootAndSelfProjects.root, loadEnv)
+        ? await getAllDescendantProjects(argv, rootAndSelfProjects.root, loadEnv)
         : [rootAndSelfProjects.self],
   };
 }
@@ -521,17 +523,58 @@ function testFileContent(filePath: string, pattern: RegExp): boolean {
 }
 
 /**
- * The root project followed by one Project per workspace Bun would link, discovered with the
- * shared Bun-exact resolver so every wb command sees the same workspaces as `bun install`
- * (negations, Yarn v1's object form, pinned positives, and baseline-seeding negations included;
- * issue #1008).
+ * The root project followed by one Project per workspace directory the target repository's
+ * package manager would link (issue #1008): Bun repos use the shared Bun-exact resolver
+ * (negations, pinned positives, and baseline-seeding negations included), while Yarn repos keep
+ * glob semantics — Bun-only rules such as the implicit baseline would invent workspaces Yarn
+ * never links.
  */
-function getAllDescendantProjects(argv: EnvReaderOptions, rootProject: Project, loadEnv: boolean): Project[] {
-  return [
-    rootProject,
-    ...resolveBunWorkspacePackageJsonPaths(rootProject.packageJson.workspaces, rootProject.dirPath).map(
-      (packageJsonPath) =>
-        new Project(path.join(rootProject.dirPath, path.posix.dirname(packageJsonPath)), argv, loadEnv)
-    ),
-  ];
+async function getAllDescendantProjects(
+  argv: EnvReaderOptions,
+  rootProject: Project,
+  loadEnv: boolean
+): Promise<Project[]> {
+  const workspaceDirPaths = await findWorkspacePackageDirs(rootProject);
+  return [rootProject, ...workspaceDirPaths.map((workspaceDirPath) => new Project(workspaceDirPath, argv, loadEnv))];
+}
+
+/**
+ * The absolute directory of every workspace the target repository's package manager would link,
+ * matching the manager the way getAllDescendantProjects describes. Exported for wb release, whose
+ * plugin inspection, node_modules cleanup, and manifest rewriting must see the same workspace set.
+ */
+export async function findWorkspacePackageDirs(
+  project: Pick<Project, 'dirPath' | 'packageJson' | 'usesBunPackageManager'>
+): Promise<string[]> {
+  if (project.usesBunPackageManager) {
+    return resolveBunWorkspacePackageJsonPaths(project.packageJson.workspaces, project.dirPath).map((packageJsonPath) =>
+      path.join(project.dirPath, path.posix.dirname(packageJsonPath))
+    );
+  }
+  // Yarn v1 resolves the declared patterns (array or `{ packages: […] }` form) as plain globs and
+  // links only directories carrying a package.json, so glob for the manifests themselves —
+  // globby's `onlyDirectories` would return a literal directory pattern's CHILDREN instead of the
+  // directory. Without any positive pattern nothing can match (globby would instead return
+  // everything a lone negation does not exclude). The realpath containment mirrors
+  // resolveWorkspacePackageJsonPaths: a workspace symlink escaping the repository must not let
+  // consumers touch another checkout.
+  const patterns = getDeclaredWorkspacePatterns(project.packageJson.workspaces);
+  if (!patterns.some((pattern) => !pattern.startsWith('!'))) return [];
+  const manifestPatterns = patterns.map((pattern) =>
+    pattern.startsWith('!') ? `!${pattern.slice(1)}/package.json` : `${pattern}/package.json`
+  );
+  const manifestPaths = await globby(manifestPatterns, { cwd: project.dirPath });
+  const realRootDirPath = fs.realpathSync(project.dirPath);
+  return manifestPaths
+    .filter((manifestPath) => {
+      try {
+        const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(project.dirPath, manifestPath)));
+        return relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
+      } catch {
+        // The manifest vanished between the glob and the realpath call: not a workspace.
+        return false;
+      }
+    })
+    .map((manifestPath) => path.join(project.dirPath, path.posix.dirname(manifestPath)))
+    .toSorted();
 }

@@ -61,7 +61,9 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
     try {
       realRootDirPath ??= fs.realpathSync(rootDirPath);
       const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(rootDirPath, packageJsonPath)));
-      return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+      // Compare whole segments, not a `..` prefix: a directory literally named e.g. `..pkg` is
+      // inside the root, while a plain startsWith('..') would misread it as parent traversal.
+      return relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
     } catch {
       // A manifest that vanished between the glob and the realpath call is not a workspace.
       return false;
@@ -114,39 +116,6 @@ export function hasImplicitWorkspaceBaseline(workspaces: WorkspacesDeclaration):
   );
 }
 
-/** The implicit baseline glob a negation seeds under Bun's rule 2 above, or undefined if none. */
-export function getSeededBaselineGlob(negationBody: string): string | undefined {
-  const segments = negationBody.split('/');
-  if (segments.length !== 2) return undefined;
-  const [firstSegment, lastSegment] = segments as [string, string];
-  if (!/^\*+$/u.test(lastSegment) || /^\*+$/u.test(firstSegment)) return undefined;
-  return lastSegment === '**' ? '**' : '*/*';
-}
-
-/**
- * Collapses `//`, resolves `./`, and strips trailing slashes, mirroring Bun's path handling.
- * A pure star-run segment of three or more stars behaves like `*` under Bun (`!other/***`
- * matches other/x) but not under fast-glob, so canonicalize it to `*`.
- */
-export function normalizeWorkspacePatternBody(patternBody: string): string {
-  return path.posix
-    .normalize(patternBody)
-    .replace(/\/+$/u, '')
-    .split('/')
-    .map((segment) => (/^\*{3,}$/u.test(segment) ? '*' : segment))
-    .join('/');
-}
-
-/**
- * Whether a declared workspace pattern (negative ones included) stays inside the repository:
- * absolute or `..`-traversing patterns would make consumers such as node_modules cleanup operate
- * on another repository's files.
- */
-export function isInRepositoryWorkspacePattern(workspacePattern: string): boolean {
-  const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
-  return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
-}
-
 /**
  * Declared workspace patterns without Bun's no-op ones (`""`, a lone `"!"`, and `"."`), which Bun
  * ignores entirely — a lone `"!"` must not activate the negative-only implicit baseline, and `""`
@@ -170,8 +139,41 @@ export function getMeaningfulDeclaredWorkspacePatterns(workspaces: WorkspacesDec
     });
 }
 
+/**
+ * Collapses `//`, resolves `./`, and strips trailing slashes, mirroring Bun's path handling.
+ * A pure star-run segment of three or more stars behaves like `*` under Bun (`!other/***`
+ * matches other/x) but not under fast-glob, so canonicalize it to `*`.
+ */
+export function normalizeWorkspacePatternBody(patternBody: string): string {
+  return path.posix
+    .normalize(patternBody)
+    .replace(/\/+$/u, '')
+    .split('/')
+    .map((segment) => (/^\*{3,}$/u.test(segment) ? '*' : segment))
+    .join('/');
+}
+
+/** The implicit baseline glob a negation seeds under Bun's rule 2 above, or undefined if none. */
+export function getSeededBaselineGlob(negationBody: string): string | undefined {
+  const segments = negationBody.split('/');
+  if (segments.length !== 2) return undefined;
+  const [firstSegment, lastSegment] = segments as [string, string];
+  if (!/^\*+$/u.test(lastSegment) || /^\*+$/u.test(firstSegment)) return undefined;
+  return lastSegment === '**' ? '**' : '*/*';
+}
+
 /** Workspace patterns from either the array form or Yarn v1's `{ packages: […] }` object form. */
 export function getDeclaredWorkspacePatterns(workspaces: WorkspacesDeclaration): string[] {
   if (Array.isArray(workspaces)) return workspaces;
   return Array.isArray(workspaces?.packages) ? workspaces.packages : [];
+}
+
+/**
+ * Whether a declared workspace pattern (negative ones included) stays inside the repository:
+ * absolute or `..`-traversing patterns would make consumers such as node_modules cleanup operate
+ * on another repository's files.
+ */
+export function isInRepositoryWorkspacePattern(workspacePattern: string): boolean {
+  const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
+  return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
 }

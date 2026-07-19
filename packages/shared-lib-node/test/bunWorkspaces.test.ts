@@ -94,6 +94,12 @@ test('drops no-op patterns, applies bang parity, and ignores repository-escaping
   });
 });
 
+test('keeps a workspace directory whose name merely starts with ".." inside the repository', () => {
+  withPackageDirs(['..pkg'], (rootDirPath) => {
+    expect(resolveBunWorkspacePackageJsonPaths(['..pkg'], rootDirPath)).toEqual(['..pkg/package.json']);
+  });
+});
+
 test('drops a workspace whose symlink escapes the repository but keeps internal symlinks', () => {
   const outerDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'bun-workspaces-symlink-'));
   try {
