@@ -188,11 +188,13 @@ export class Project {
       // Resolve the fallback from the selected cascade mode (not a bare 'development'): a command
       // forcing a mode (e.g. `wb test` forces the test cascade) must fall back to that mode, and
       // an ambient NODE_ENV drives the auto cascade exactly as in readEnvironmentVariables.
-      const mode =
-        this.argv.cascadeEnv ??
-        (this.argv.cascadeNodeEnv || this.argv.autoCascadeEnv !== false
-          ? env.NODE_ENV || 'development'
-          : 'development');
+      // A NON-STANDARD NODE_ENV (e.g. qa) still selects the cascade suffix but is clamped to
+      // 'development' here: the user never set WB_ENV, so failing the standard-mode validation
+      // below with a message blaming WB_ENV would be a misleading hard stop. An explicit
+      // --cascade-env keeps its value and is validated like any other WB_ENV.
+      const derived =
+        this.argv.cascadeNodeEnv || this.argv.autoCascadeEnv !== false ? env.NODE_ENV || 'development' : 'development';
+      const mode = this.argv.cascadeEnv ?? (Project.standardWbEnvModes.has(derived) ? derived : 'development');
       env.WB_ENV = mode;
       if (hasEnvironmentSources && !shouldSuppressEnvironmentOutput(this.argv)) {
         console.info(`WB_ENV is not defined; defaulting to "${mode}".`);

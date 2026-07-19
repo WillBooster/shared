@@ -109,8 +109,11 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
 
   for (const project of projects.descendants) {
-    // project.env already resolves WB_ENV to 'test' here: withDefaultTestCascadeEnv forces the
-    // test cascade, and Project.completeAndValidateWbEnv falls back to the cascade mode.
+    // Resolve the environment eagerly: withDefaultTestCascadeEnv forces the test cascade and
+    // Project.completeAndValidateWbEnv falls back WB_ENV to that mode — but the env getter is
+    // lazy, so a project with no runnable tests would otherwise skip the validation entirely.
+    void project.env;
+
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;
