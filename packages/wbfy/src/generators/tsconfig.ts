@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import type { TsConfigJson } from 'type-fest';
+import type { PackageJson, TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -12,7 +12,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { getTsconfigExtends } from '../utils/tsconfigBase.js';
-import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
+import { getDeclaredWorkspacePatterns, getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 const subJsonObj = {
   compilerOptions: {
@@ -76,6 +76,9 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
+      if (config.isRoot) {
+        removeStaleManagedWorkspaceEntries(oldSettings, newSettings);
+      }
       newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
       newSettings.include = newSettings.include?.filter(
         (dirPath: string) =>
@@ -150,6 +153,38 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
     ]),
   ];
   return settings;
+}
+
+/**
+ * Root include/exclude entries wbfy generated for an earlier workspace layout (e.g. `packages/*`
+ * globs in a repo that now declares only `apps/*`) must not survive the merge with the existing
+ * tsconfig, or the obsolete directories would keep entering root type checking forever. Only
+ * pattern-shaped prefixes (containing `*`) are treated as wbfy-managed, so concrete user-authored
+ * entries are preserved.
+ */
+function removeStaleManagedWorkspaceEntries(oldSettings: TsConfigJson, newSettings: TsConfigJson): void {
+  const generatedInclude = new Set(newSettings.include);
+  const generatedExclude = new Set(newSettings.exclude);
+  if (Array.isArray(oldSettings.include)) {
+    oldSettings.include = oldSettings.include.filter(
+      (entry) =>
+        generatedInclude.has(entry) ||
+        !isManagedWorkspaceEntry(entry, ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'])
+    );
+  }
+  if (Array.isArray(oldSettings.exclude)) {
+    oldSettings.exclude = oldSettings.exclude.filter(
+      (entry) => generatedExclude.has(entry) || !isManagedWorkspaceEntry(entry, ['test/fixtures'])
+    );
+  }
+}
+
+function isManagedWorkspaceEntry(entry: string, managedSuffixes: string[]): boolean {
+  if (typeof entry !== 'string') return false;
+  const matchedSuffix = managedSuffixes.find((suffix) => entry.endsWith(`/${suffix}`));
+  if (!matchedSuffix) return false;
+  const workspacePrefix = entry.slice(0, -(matchedSuffix.length + 1));
+  return workspacePrefix.includes('*');
 }
 
 async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promise<void> {
@@ -256,7 +291,34 @@ function normalizePathAliasTargets(targets: string[]): string[] {
 
 function getRootDir(config: PackageConfig): string {
   if (config.isRoot) return '.';
-  return fs.existsSync(path.resolve(config.dirPath, '..', '..', 'package.json')) ? '../..' : '.';
+  // The undici-types path mapping must reach the monorepo root's node_modules (bunfig.toml's
+  // publicHoistPattern hoists the package there), and workspace patterns may be arbitrarily deep
+  // (e.g. `examples/**`), so a fixed two-level probe is not enough. Prefer the nearest ancestor
+  // manifest that declares workspaces (the monorepo root); otherwise fall back to the nearest
+  // ancestor manifest. Stop at the first git repository boundary so an unrelated enclosing
+  // repository's manifest can never be chosen.
+  const dirPath = path.resolve(config.dirPath);
+  let rootDirPath: string | undefined;
+  for (let ancestorDirPath = path.dirname(dirPath); ; ancestorDirPath = path.dirname(ancestorDirPath)) {
+    const manifestPath = path.resolve(ancestorDirPath, 'package.json');
+    if (fs.existsSync(manifestPath)) {
+      rootDirPath ??= ancestorDirPath;
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as PackageJson;
+        if (getDeclaredWorkspacePatterns(manifest.workspaces).length > 0) {
+          rootDirPath = ancestorDirPath;
+          break;
+        }
+      } catch {
+        // An unparsable manifest still marks a project directory; keep climbing for a workspace root.
+      }
+    }
+    const isRepoBoundary = fs.existsSync(path.resolve(ancestorDirPath, '.git'));
+    const isFilesystemRoot = ancestorDirPath === path.dirname(ancestorDirPath);
+    if (isRepoBoundary || isFilesystemRoot) break;
+  }
+  if (!rootDirPath) return '.';
+  return path.relative(dirPath, rootDirPath).replaceAll('\\', '/') || '.';
 }
 
 function mergeTsconfigExtends(

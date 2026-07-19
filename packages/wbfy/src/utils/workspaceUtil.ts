@@ -58,6 +58,9 @@ export interface WorkspaceDirPatterns {
  * need pattern-shaped globs covering every workspace layout — e.g. the root tsconfig's `apps/*`
  * include entries — instead of concrete directories, which would churn generated files whenever a
  * workspace package is added or removed. Every returned pattern is valid tsconfig glob syntax.
+ * A pattern can match a sibling directory without a package.json (not a workspace to Bun); that
+ * is deliberate, mirroring the long-standing `packages/*` entries' behavior in favor of stable
+ * generated output.
  */
 export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): WorkspaceDirPatterns {
   // Unlike discovery, generated output must not contain a never-matching `packages/*` fallback:

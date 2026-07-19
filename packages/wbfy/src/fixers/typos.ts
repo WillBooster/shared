@@ -9,6 +9,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixTypos', async () => {
@@ -32,10 +33,15 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
       });
     }
 
+    // fixTypos runs once on the root config, so this glob set must cover every declared workspace
+    // layout (e.g. apps/*), not just the conventional packages/* directory.
     const tsFiles = await fg.glob(
       [
         '{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx,cts,mts,ts,tsx}',
         'packages/**/{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx,cts,mts,ts,tsx}',
+        ...getWorkspaceDirPatterns(packageConfig).includes.map(
+          (dirPattern) => `${dirPattern}/**/{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx,cts,mts,ts,tsx}`
+        ),
       ],
       { dot: true, cwd: dirPath, ignore: globIgnore }
     );

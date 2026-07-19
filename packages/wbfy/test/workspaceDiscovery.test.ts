@@ -112,6 +112,65 @@ test('translates Bun-only workspace glob syntax and negations into tsconfig-safe
   }
 });
 
+test('removes stale wbfy-managed packages/* entries from an existing root tsconfig', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['apps/*'] })
+    );
+    const appDirPath = path.join(tempDirPath, 'apps', 'web');
+    fs.mkdirSync(path.join(appDirPath, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(appDirPath, 'package.json'), JSON.stringify({ name: 'web' }));
+    fs.writeFileSync(path.join(appDirPath, 'src', 'index.ts'), 'export {};\n');
+    // The upgrade path for #995: an apps/*-only repo whose root tsconfig still carries the
+    // packages/* entries an older wbfy generated, plus a concrete user-authored entry.
+    fs.writeFileSync(
+      path.join(tempDirPath, 'tsconfig.json'),
+      JSON.stringify({
+        exclude: ['packages/*/test/fixtures', 'test/fixtures'],
+        include: ['*.config.ts', 'packages/*/src/**/*', 'tools/generator/src/**/*', 'src/**/*'],
+      })
+    );
+
+    const config = await getPackageConfig(tempDirPath, { isRoot: false });
+    if (!config) throw new Error('unreachable');
+    config.isRoot = true;
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+      exclude?: string[];
+      include?: string[];
+    };
+    expect(tsconfig.include).not.toContain('packages/*/src/**/*');
+    expect(tsconfig.exclude).not.toContain('packages/*/test/fixtures');
+    expect(tsconfig.include).toContain('apps/*/src/**/*');
+    // Concrete (non-pattern) user entries are not wbfy-managed and must survive.
+    expect(tsconfig.include).toContain('tools/generator/src/**/*');
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('honors negative workspace patterns in root-level source signals', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['packages/*', '!packages/excluded'] })
+    );
+    const excludedDirPath = path.join(tempDirPath, 'packages', 'excluded');
+    fs.mkdirSync(path.join(excludedDirPath, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(excludedDirPath, 'package.json'), JSON.stringify({ name: 'excluded' }));
+    fs.writeFileSync(path.join(excludedDirPath, 'src', 'index.ts'), 'export {};\n');
+
+    const config = await getPackageConfig(tempDirPath, { isRoot: false });
+    expect(config?.doesContainTypeScriptInPackages).toBe(false);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('ignores workspace patterns escaping the repository', () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
   try {

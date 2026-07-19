@@ -14,7 +14,11 @@ import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
-import { getWorkspacePackageJsonPaths, getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
+import {
+  getDeclaredWorkspacePatterns,
+  getWorkspacePackageJsonPaths,
+  getWorkspaceSubDirPaths,
+} from './utils/workspaceUtil.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -180,13 +184,20 @@ export async function getPackageConfig(
       fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
     );
     // Root-level "InPackages" signals must see every DECLARED workspace layout (e.g. apps/*), not
-    // just the conventional packages/* directory, so scan each discovered workspace directory too.
-    // The packages/** fallback stays for repositories whose packages/* layout predates a
-    // `workspaces` declaration (wbfy adds the declaration only on a later generator pass).
-    const workspaceSubDirPaths = getWorkspaceSubDirPaths({ dirPath, packageJson, doesContainSubPackageJsons: false });
+    // just the conventional packages/* directory, so scan each discovered workspace directory.
+    // The packages/* fallback is routed through discovery's combined glob so declared negations
+    // (e.g. `!packages/excluded`) exclude a package from the signals too; the broad packages/**
+    // scan remains only for legacy repos with no `workspaces` declaration at all (wbfy adds the
+    // declaration only on a later generator pass), where discovery has nothing to honor.
+    const declaredWorkspacePatterns = getDeclaredWorkspacePatterns(packageJson.workspaces);
+    const workspaceSubDirPaths = getWorkspaceSubDirPaths({
+      dirPath,
+      packageJson,
+      doesContainSubPackageJsons: containsAny('packages/*/package.json', dirPath),
+    });
     const containsAnyInWorkspaces = (pattern: string): boolean =>
-      containsAny(`packages/**/${pattern}`, dirPath) ||
-      workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath));
+      workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath)) ||
+      (declaredWorkspacePatterns.length === 0 && containsAny(`packages/**/${pattern}`, dirPath));
     const config: PackageConfig = {
       dirPath,
       dockerfile,

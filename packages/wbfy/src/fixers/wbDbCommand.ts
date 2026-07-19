@@ -6,6 +6,7 @@ import { PromisePool } from 'minimal-promise-pool';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
+import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 const wbDatabaseCommandRegex = /\bwb\s+(?:db|prisma)\b/gu;
 const maxTextFileBytes = 1024 * 1024;
@@ -40,7 +41,16 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
       absolute: true,
       cwd: config.dirPath,
       dot: true,
-      ignore: ['**/.git/**', ...(config.isRoot ? ['packages/**'] : []), ...globIgnore],
+      // The root pass must not rewrite files owned by workspace packages, whatever layout the
+      // workspaces declare (e.g. apps/*): each workspace has its own pass with its own resolved
+      // command, and overlapping passes would race read-modify-write on the same files.
+      ignore: [
+        '**/.git/**',
+        ...(config.isRoot
+          ? ['packages/**', ...getWorkspaceDirPatterns(config).includes.map((dirPattern) => `${dirPattern}/**`)]
+          : []),
+        ...globIgnore,
+      ],
       onlyFiles: true,
     });
     for (const filePath of filePaths) {
