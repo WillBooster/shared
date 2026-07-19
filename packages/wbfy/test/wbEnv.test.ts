@@ -103,6 +103,23 @@ test('rewrites the outdated precedence comment written by earlier wbfy versions'
   expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
 });
 
+test('rewrites the outdated precedence comment variant without a trailing period, keeping following lines', () => {
+  // Some repositories (e.g. ai-growbench, ai-game-builder) carry a period-less variant, optionally
+  // followed by an unrelated explanatory line that must survive the migration.
+  const withOutdatedVariant = (insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '').replace(
+    /# CI sets WB_ENV.*$/mu,
+    "# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally\n# (wb's required-keys check treats every .env.example key, including WB_ENV, as required)."
+  );
+  const migrated = insertWbEnvIntoFnoxToml(withOutdatedVariant, false) ?? '';
+  expect(migrated).not.toContain('these defaults only fill it locally');
+  expect(migrated).toContain('bare fnox run/export uses the fnox value, so pass -P <profile>');
+  expect(migrated).toContain(
+    "# (wb's required-keys check treats every .env.example key, including WB_ENV, as required)."
+  );
+  expect(migrated.split('# CI sets WB_ENV').length - 1).toBe(1);
+  expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
+});
+
 test('refuses to edit an unparsable fnox.toml', () => {
   expect(insertWbEnvIntoFnoxToml('[secrets\nbroken', false)).toBeUndefined();
 });
