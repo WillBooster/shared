@@ -101,6 +101,12 @@ ${generateAgentCodingStyle(allConfigs)}
 }
 
 export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
+  // Tauri desktop apps ship Windows builds, so the macOS/Linux-only rule must not ban the
+  // Windows-specific code they require.
+  const hasDesktopApp = allConfigs.some((c) => c.depending.tauri || c.doesContainTauriConfigInPackages);
+  const osCompatibilityInstruction = hasDesktopApp
+    ? '- Server and CLI code targets macOS and Linux; the Tauri desktop app additionally supports Windows, so keep its Windows-specific code working.'
+    : '- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.';
   // Keep top-down ordering guidance function-only because classes are not hoisted and can fail when inheritance or top-level instantiation depends on declaration order.
   return `
 ## Coding Style
@@ -115,7 +121,7 @@ export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
 - Build prompts as a single template literal instead of \`join()\` on a pre-computable array of strings.
 - Assume all environment variables are defined; if validation is needed, \`assert\` at startup to fail fast.
 - Assume local tools such as \`git\`, \`gh\`, and \`ghq\` are installed and authenticated.
-- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.
+${osCompatibilityInstruction}
 ${
   allConfigs.some((c) => c.depending.genI18nTs)
     ? `- When adding string literals in React components, register them in the \`i18n\` resource files (e.g., \`i18n/ja-JP.json\`) and reference them via the \`i18n\` utility (e.g., \`i18n.pages.home.title()\` for \`{ "pages": { "home": { "title": "My App" } } }\`).`

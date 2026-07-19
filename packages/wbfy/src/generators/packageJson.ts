@@ -204,6 +204,7 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
     delete jsonObj.scripts['format-code'];
   }
   convertYarnCommandsToBun(jsonObj.scripts);
+  removeBunRuntimeFlagFromScripts(jsonObj.scripts);
 }
 
 function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
@@ -397,6 +398,142 @@ function convertYarnCommandsToBun(scripts: PackageJson.Scripts): void {
       // A bare `yarn` (at the end or before a command separator) is an install.
       .replaceAll(/\byarn\b(?=\s*(?:$|&&|\|\||[;|]))/gu, 'bun install');
   }
+}
+
+function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
+  // `bun --bun` prepends a node->bun PATH shim that leaks into every child process and breaks
+  // tools requiring real Node.js (Playwright, wrangler, vinext), and wb 15 warns on every run when
+  // it detects the shim. Only direct script-file executions (e.g. `exec bun --bun src/index.ts`),
+  // where the shim is an intentional Bun-runtime opt-in for spawned children, are preserved.
+  const scriptNames = new Set(Object.keys(scripts));
+  for (const [key, value] of Object.entries(scripts)) {
+    if (typeof value !== 'string' || !value.includes('--bun')) continue;
+    scripts[key] = removeBunRuntimeFlag(value, scriptNames);
+  }
+}
+
+function removeBunRuntimeFlag(script: string, scriptNames: ReadonlySet<string>): string {
+  // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
+  if (script.includes('<<')) return script;
+  // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
+  // merely ending in `bun` (`my-bun`), quoted targets with spaces, and Bun runtime flags between
+  // `--bun` and the script file are all classified correctly.
+  const tokens = tokenizeShellCommand(script);
+  const removalRanges: [number, number][] = [];
+  let atCommandPosition = true;
+  for (const [index, token] of tokens.entries()) {
+    if (isShellSeparator(token.text)) {
+      atCommandPosition = true;
+      continue;
+    }
+    if (!atCommandPosition) continue;
+    const tokenText = unquoteShellToken(token.text);
+    // `KEY=VALUE` prefixes and shell prefix words (`exec`, `env`, `command`, `!`) keep the next
+    // token in command position.
+    if (/^[A-Za-z_]\w*=/u.test(tokenText) || ['exec', 'env', 'command', '!'].includes(tokenText)) continue;
+    atCommandPosition = false;
+    if (tokenText !== 'bun') continue;
+    const flagToken = tokens[index + 1];
+    if (!flagToken || unquoteShellToken(flagToken.text) !== '--bun') continue;
+    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2), scriptNames)) continue;
+    removalRanges.push([flagToken.start, flagToken.end]);
+  }
+
+  let result = script;
+  for (const [start, end] of removalRanges.toReversed()) {
+    let whitespaceStart = start;
+    while (whitespaceStart > 0 && /[ \t]/u.test(result[whitespaceStart - 1] ?? '')) whitespaceStart--;
+    result = result.slice(0, whitespaceStart) + result.slice(end);
+  }
+  return result;
+}
+
+// Node-based tools the WillBooster stack invokes from package scripts; running them (or their
+// children) under the bun-node shim breaks them, so `bun --bun <tool>` is unambiguously wrong.
+const nodeBasedTools = new Set(['next', 'vite', 'vinext', 'wrangler', 'playwright']);
+
+/**
+ * Whether the tokens following `bun --bun` describe an invocation whose shim must survive. Only
+ * unambiguous cases are stripped — a known Node-based tool, or a `bun run <package-script>` alias:
+ * wrongly removing an intentional shim changes the runtime seen by child processes (Bun also
+ * executes bare extensionless files directly), while wrongly keeping it only leaves wb's startup
+ * warning.
+ */
+function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: ReadonlySet<string>): boolean {
+  const positionals: string[] = [];
+  for (const token of followingTokens) {
+    if (isShellSeparator(token.text)) break;
+    const tokenText = unquoteShellToken(token.text);
+    // A flag may take a separate value (e.g. `--preload ./setup.ts`), so the real entrypoint is
+    // unknowable without modeling the full option arity of Bun (and of `bun run`) — keep the flag.
+    if (tokenText.startsWith('-')) return true;
+    positionals.push(tokenText);
+    // `bun run <file>` also executes script files directly, so its target decides too.
+    if (positionals[0] !== 'run' || positionals.length === 2) break;
+  }
+  const [first, second] = positionals;
+  if (first === undefined) return true;
+  if (first === 'run') {
+    // `bun run` also resolves package bins, so a known Node-based tool is unambiguous here too.
+    if (second !== undefined && nodeBasedTools.has(second)) return false;
+    // Otherwise `bun run <name>` is a package-script alias only when the name actually exists in
+    // scripts; Bun may execute a file (even an extensionless one) of that name directly.
+    return second === undefined || /[./$]/u.test(second) || !scriptNames.has(second);
+  }
+  return !nodeBasedTools.has(first);
+}
+
+interface ShellToken {
+  text: string;
+  start: number;
+  end: number;
+}
+
+function tokenizeShellCommand(script: string): ShellToken[] {
+  const tokens: ShellToken[] = [];
+  let index = 0;
+  while (index < script.length) {
+    const char = script[index] ?? '';
+    // An unquoted newline separates commands like `;`, so it must produce a separator token.
+    if (/[^\S\n]/u.test(char)) {
+      index++;
+      continue;
+    }
+    if (isShellSeparator(char)) {
+      let end = index + 1;
+      while (end < script.length && script[end] === char) end++;
+      tokens.push({ text: script.slice(index, end), start: index, end });
+      index = end;
+      continue;
+    }
+    let end = index;
+    let quote: string | undefined;
+    while (end < script.length) {
+      const current = script[end] ?? '';
+      if (quote) {
+        if (current === quote) quote = undefined;
+        else if (current === '\\' && quote === '"') end++;
+      } else if (current === '"' || current === "'") {
+        quote = current;
+      } else if (current === '\\') {
+        end++;
+      } else if (/\s/u.test(current) || isShellSeparator(current)) {
+        break;
+      }
+      end++;
+    }
+    tokens.push({ text: script.slice(index, end), start: index, end });
+    index = end;
+  }
+  return tokens;
+}
+
+function isShellSeparator(text: string): boolean {
+  return /^[;|&()\n]+$/u.test(text);
+}
+
+function unquoteShellToken(text: string): string {
+  return text.replaceAll(/["']/gu, '');
 }
 
 async function applyPackageJsonConventions(

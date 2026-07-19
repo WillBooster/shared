@@ -5,7 +5,7 @@ import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
-import { BaseScripts, type TestE2EOptions } from './baseScripts.js';
+import { BaseScripts, buildWaitOnLoopbackCommand, type TestE2EOptions } from './baseScripts.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
@@ -45,7 +45,7 @@ export class HttpServerScripts extends BaseScripts {
       '--success',
       'first',
       `${startCommand} && exit 1`,
-      `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port} && ${testCommand}${suffix}`,
+      `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')} && ${testCommand}${suffix}`,
     ]);
   }
 }

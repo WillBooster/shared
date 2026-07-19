@@ -201,7 +201,7 @@ export abstract class BaseScripts {
       '--success',
       'first',
       `${startCommand} && exit 1`,
-      `wait-on -t 600000 -i 2000 http-get://127.0.0.1:${port}
+      `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')}
         && ${playwrightCommand}${suffix}`,
     ]);
   }
@@ -234,21 +234,33 @@ export abstract class BaseScripts {
 
   protected waitApp(project: Project): string {
     const port = project.env.PORT;
-    return `wait-on -t 10000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 500 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 1000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 10000 -i 2000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 20000 -i 4000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 60000 -i 5000 http-get://127.0.0.1:${port} 2> /dev/null
-      || wait-on -t 90000 -i 10000 http-get://127.0.0.1:${port}`;
+    return `${buildWaitOnLoopbackCommand(port, '-t 10000')} 2> /dev/null
+      || ${buildWaitOnLoopbackCommand(port, '-t 10000 -i 500')} 2> /dev/null
+      || ${buildWaitOnLoopbackCommand(port, '-t 10000 -i 1000')} 2> /dev/null
+      || ${buildWaitOnLoopbackCommand(port, '-t 10000 -i 2000')} 2> /dev/null
+      || ${buildWaitOnLoopbackCommand(port, '-t 20000 -i 4000')} 2> /dev/null
+      || ${buildWaitOnLoopbackCommand(port, '-t 60000 -i 5000')} 2> /dev/null
+      || ${buildWaitOnLoopbackCommand(port, '-t 90000 -i 10000')}`;
   }
 
   protected waitAndOpenApp(project: Project): string {
     const port = project.env.PORT;
     return `${this.waitApp(
       project
-    )} || wait-on http-get://127.0.0.1:${port} && open-cli http://\${HOST:-localhost}:${port}`;
+    )} || ${buildWaitOnLoopbackCommand(port)} && open-cli http://\${HOST:-localhost}:${port}`;
   }
+}
+
+/**
+ * Builds a wait-on boot check polling `http-get://localhost:<port>`. `localhost` (not `127.0.0.1`)
+ * lets Node's Happy Eyeballs try both address families: on macOS, dev servers without an explicit
+ * host (e.g. vinext/Vite) can bind IPv6-only (`::1`), so an IPv4-only poll would hang until timeout
+ * even though the server is up. The `NO_PROXY`/`no_proxy` prefix keeps the loopback poll off HTTP
+ * proxies: wait-on's axios applies `HTTP(S)_PROXY` env vars unless `NO_PROXY` matches the polled
+ * host, and existing `NO_PROXY` conventions may list `127.0.0.1` without `localhost`.
+ */
+export function buildWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
+  return `NO_PROXY=localhost no_proxy=localhost wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}http-get://localhost:${port}`;
 }
 
 function findCustomProductionStartScriptPath(project: Project): string | undefined {
