@@ -368,11 +368,6 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   return postMergeCommands;
 }
 
-/**
- * The workspace-relative directories (root first, deduplicated, `<subDirName>` appended) of every
- * workspace whose config matches the predicate. The hook script runs at the repository root, so
- * paths are relative to the root config's directory.
- */
 // The generated command passes through TWO shell parsing stages: the prepare.sh line parses it as
 // a double-quoted argument (processing \, `, $ and " immediately), and run_if_changed then eval's
 // it (word-splitting and globbing). An unquoted path containing spaces (e.g. `apps/my app/.next`)
@@ -383,6 +378,11 @@ function quoteForEvaluatedShell(filePath: string): string {
   return evalQuoted.replaceAll(/[\\`$"]/gu, String.raw`\$&`);
 }
 
+/**
+ * The workspace-relative directories (root first, deduplicated, `<subDirName>` appended) of every
+ * workspace whose config matches the predicate. The hook script runs at the repository root, so
+ * paths are relative to the root config's directory.
+ */
 function collectWorkspaceRelativeDirPaths(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],

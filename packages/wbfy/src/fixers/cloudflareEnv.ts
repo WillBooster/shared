@@ -19,8 +19,14 @@ export async function untrackCloudflareEnv(config: PackageConfig): Promise<void>
     // fully committable despite holding a live CLOUDFLARE_API_TOKEN. The managed ignore rule is
     // unanchored and therefore also covers nested files (e.g. workers/api/.env.cloudflare), so
     // scan every tracked path, not just the repository root.
-    const trackedPaths = spawnSyncAndReturnStdout('git', ['ls-files'], config.dirPath)
-      .split('\n')
+    // -z + core.quotePath=false: git C-quotes non-ASCII paths by default, which would make the
+    // suffix filter below silently miss e.g. a tracked `アプリ/.env.cloudflare`.
+    const trackedPaths = spawnSyncAndReturnStdout(
+      'git',
+      ['-c', 'core.quotePath=false', 'ls-files', '-z', '--', cloudflareEnvFileName, `*/${cloudflareEnvFileName}`],
+      config.dirPath
+    )
+      .split('\0')
       .filter((filePath) => filePath === cloudflareEnvFileName || filePath.endsWith(`/${cloudflareEnvFileName}`));
     if (trackedPaths.length === 0) return;
 

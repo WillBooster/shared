@@ -485,6 +485,11 @@ async function applyPackageJsonConventions(
       jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), forcedPatterns], {
         arrayMerge: combineMerge,
       });
+      // Both inputs can be empty (e.g. packages/package.json without any packages/*/package.json
+      // and no declared workspaces); do not persist a meaningless `workspaces: []`.
+      if (Array.isArray(jsonObj.workspaces) && jsonObj.workspaces.length === 0) {
+        delete jsonObj.workspaces;
+      }
     } else if (Array.isArray(jsonObj.workspaces)) {
       jsonObj.workspaces = jsonObj.workspaces.filter(
         (workspace) =>
@@ -1580,7 +1585,7 @@ function applyDatabaseScripts(
     oldScripts,
     'db-migrate',
     `${wbDbCommand} migrate --check-idempotency`,
-    /migrate(?:\s+--check-idempotency)?/u
+    /migrate(?:[ \t]+--check-idempotency)?/u
   );
   applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`, /studio/u);
 }
@@ -1609,8 +1614,10 @@ function applyDatabaseScript(
  * (`"db-migrate": "wb db migrate-dev"`) is preserved instead of being replaced wholesale.
  */
 function isGeneratedDatabaseScript(script: string, generatedArgsPattern: RegExp): boolean {
+  // Horizontal whitespace only ([ \t]) — a newline is a shell command separator, so a
+  // newline-containing body is a multi-command wrapper that must be preserved.
   return new RegExp(
-    String.raw`^(?:(?:bun(?:\s+--bun)?|yarn|npx)\s+)?wb\s+(?:db|prisma)\s+(?:${generatedArgsPattern.source})$`,
+    String.raw`^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+(?:db|prisma)[ \t]+(?:${generatedArgsPattern.source})$`,
     'u'
   ).test(script.trim());
 }
