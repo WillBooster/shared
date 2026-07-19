@@ -1503,6 +1503,8 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       dollar: "yarn 'build:$target'",
       dynamic: 'yarn build:$target && yarn run "build:$target"',
       arith: 'echo $((yarn && 1))',
+      'array-lit': 'args=(yarn compile); echo done',
+      'case-pat': 'case "$r" in (yarn) yarn compile;; esac',
       clobber: 'echo hi >| yarn && yarn compile',
       commented: 'echo ready # note; yarn compile',
       'env-opt': 'env -i yarn compile && 2>&1 yarn compile',
@@ -1545,6 +1547,7 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     // after a command substitution, inside an arithmetic expansion, as a redirection operand, as
     // a quoted command word's argument, or inside a comment is data, not a command.
     arith: 'echo $((yarn && 1))',
+    'array-lit': 'args=(yarn compile); echo done',
     commented: 'echo ready # note; yarn compile',
     'quoted-assign': '"FOO=bar" yarn compile',
     'empty-subst': 'echo $() yarn && echo deploy',
@@ -1577,6 +1580,8 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'func-def': 'build_all() { bun run compile; }; build_all',
     'func-kw': 'function f { bun run compile; }; f',
     'in-subst': 'echo $(bun run compile)',
+    // `case` patterns (parenthesized or not) are data, while the branch bodies convert.
+    'case-pat': 'case "$r" in (yarn) bun run compile;; esac',
     // `<<` inside an arithmetic expansion is a left shift, not a heredoc.
     shift: 'echo $((1 << 2)) && bun run compile',
     // Only a real unquoted heredoc operator suppresses conversion, not quoted `<<` data.

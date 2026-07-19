@@ -834,37 +834,66 @@ function forEachCommandPositionToken(
 ): void {
   let atCommandPosition = true;
   let redirectionOperandFollows = false;
-  // `((` opens an arithmetic context: nothing inside is a command (`echo $((yarn && 1))`).
-  let inArithmetic = false;
+  // A muted paren context contains data, not commands: `((` arithmetic (`echo $((yarn && 1))`)
+  // and array literals (`args=(yarn compile)`).
+  let inDataParens = false;
   let previousSeparatorChar: string | undefined;
   // The word before a `(` decides whether an empty `()` pair is a function definition
-  // (`build_all() { ... }`) or an empty command substitution (`echo $() yarn`).
+  // (`build_all() { ... }`) or an empty command substitution (`echo $() yarn`), and whether the
+  // parens hold an array literal.
   let lastWordToken: ShellToken | undefined;
   // `function f { ... }` declares f without parentheses: the name is consumed, and the `{` body
   // that follows is in command position.
   let functionNameFollows = false;
+  // Between `case <subject> in` (or after `;;`) and the pattern's closing `)`, words are patterns
+  // and a leading `(` is a delimiter, not a subshell.
+  let caseContext: 'none' | 'awaitingIn' | 'pattern' | 'body' = 'none';
   // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER state must be
   // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
-  const outerStates: { atCommandPosition: boolean; inArithmetic: boolean; functionCandidate: boolean }[] = [];
+  const outerStates: { atCommandPosition: boolean; inDataParens: boolean; functionCandidate: boolean }[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
+      if (caseContext === 'body' && token.text.startsWith(';;')) {
+        caseContext = 'pattern';
+        redirectionOperandFollows = false;
+        previousSeparatorChar = undefined;
+        continue;
+      }
       // Separator tokens are ASCII, so index-based iteration is safe.
       for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
         const char = token.text[charIndex] ?? '';
+        if (caseContext === 'awaitingIn' || caseContext === 'pattern') {
+          // Inside a pattern, `(` and `|` delimit alternatives and `)` starts the branch body.
+          if (caseContext === 'pattern' && char === ')') {
+            caseContext = 'body';
+            atCommandPosition = true;
+          }
+          previousSeparatorChar = char;
+          continue;
+        }
         if (char === '(') {
           outerStates.push({
             atCommandPosition,
-            inArithmetic,
+            inDataParens,
             // A word ending in `$` opens a substitution, never a function definition.
             functionCandidate: lastWordToken !== undefined && !lastWordToken.text.endsWith('$'),
           });
           // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
-          // arithmetic; a spaced `( (` is a nested subshell.
-          if (charIndex > 0) inArithmetic = true;
+          // arithmetic, and an ADJACENT `name=(` opens an array literal; a spaced `( (` is a
+          // nested subshell.
+          if (
+            charIndex > 0 ||
+            (lastWordToken !== undefined &&
+              lastWordToken.text.endsWith('=') &&
+              lastWordToken.end === token.start &&
+              /^[A-Za-z_][+\w]*=$/u.test(lastWordToken.text))
+          ) {
+            inDataParens = true;
+          }
           atCommandPosition = true;
         } else if (char === ')') {
           const outerState = outerStates.pop();
-          inArithmetic = outerState?.inArithmetic ?? false;
+          inDataParens = outerState?.inDataParens ?? false;
           // An empty `()` pair after a plain word is a function definition: its body follows in
           // command position, and its yarn invocations really run when the function is called.
           atCommandPosition =
@@ -883,7 +912,16 @@ function forEachCommandPositionToken(
     }
     previousSeparatorChar = undefined;
     lastWordToken = token;
-    if (inArithmetic) continue;
+    if (caseContext === 'awaitingIn') {
+      if (token.text === 'in') caseContext = 'pattern';
+      continue;
+    }
+    if (caseContext === 'pattern') {
+      // A branch-less `esac` (e.g. right after `;;`) ends the case statement.
+      if (token.text === 'esac') caseContext = 'none';
+      continue;
+    }
+    if (inDataParens) continue;
     if (functionNameFollows) {
       // The declared function name is not a command; the `{` body follows in command position.
       functionNameFollows = false;
@@ -896,6 +934,15 @@ function forEachCommandPositionToken(
     if (!atCommandPosition) continue;
     if (token.text === 'function') {
       functionNameFollows = true;
+      continue;
+    }
+    if (token.text === 'case') {
+      caseContext = 'awaitingIn';
+      continue;
+    }
+    if (caseContext === 'body' && token.text === 'esac') {
+      caseContext = 'none';
+      atCommandPosition = false;
       continue;
     }
     // A redirection may precede the command (`>out.log yarn build`, `2>&1 yarn build`); the
