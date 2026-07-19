@@ -114,8 +114,9 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
       }
       for (const packageJsonPath of globManifestPaths(patternBody)) accumulatedPaths.delete(packageJsonPath);
     } else {
+      const targetPaths = fg.isDynamicPattern(patternBody) ? accumulatedPaths : pinnedPaths;
       for (const packageJsonPath of globManifestPaths(patternBody)) {
-        (fg.isDynamicPattern(patternBody) ? accumulatedPaths : pinnedPaths).add(packageJsonPath);
+        targetPaths.add(packageJsonPath);
       }
     }
   }
