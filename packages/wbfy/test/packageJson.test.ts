@@ -1766,6 +1766,8 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
     {
       scripts: {
         start: 'exec bun --bun src/index.ts',
+        'start-chained': 'bun --bun src/index.ts;echo done',
+        'start-quoted': 'bun --bun "src/index.ts"',
       },
     },
     { isRoot: true }
@@ -1773,6 +1775,25 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
 
   expect(packageJson.scripts).toMatchObject({
     start: 'exec bun --bun src/index.ts',
+    'start-chained': 'bun --bun src/index.ts;echo done',
+    'start-quoted': 'bun --bun "src/index.ts"',
+  });
+});
+
+test('does not rewrite `bun --bun` outside a command position', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'echo-literal': 'echo "bun --bun next build"',
+        'other-tool': 'my-bun --bun next build',
+      },
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'echo-literal': 'echo "bun --bun next build"',
+    'other-tool': 'my-bun --bun next build',
   });
 });
 

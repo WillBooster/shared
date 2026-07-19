@@ -405,11 +405,16 @@ function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
   // tools requiring real Node.js (Playwright, wrangler, vinext), and wb 15 warns on every run when
   // it detects the shim. Only direct script-file executions (e.g. `exec bun --bun src/index.ts`),
   // where the shim is an intentional Bun-runtime opt-in for spawned children, are preserved.
+  // The lookbehind requires `bun` at a command position so quoted literals (`echo "bun --bun ..."`)
+  // and executables merely ending in `bun` (`my-bun`) stay untouched, and only the `bun --bun`
+  // prefix is rewritten so the target token (which the lookahead inspects, ignoring surrounding
+  // quotes and anything from a glued shell operator such as `;` onward) is never altered.
   for (const [key, value] of Object.entries(scripts)) {
     if (typeof value !== 'string' || !value.includes('--bun')) continue;
-    scripts[key] = value.replaceAll(/\bbun[ \t]+--bun[ \t]+(\S+)/gu, (match, target: string) =>
-      /\.[cm]?[jt]sx?$/u.test(target) ? match : `bun ${target}`
-    );
+    scripts[key] = value.replaceAll(/(?<=^|[\s;&|(])bun[ \t]+--bun(?=[ \t]+(\S+))/gu, (match, target: string) => {
+      const normalizedTarget = target.replace(/^["']+/u, '').replace(/[;&|)"'<>].*$/su, '');
+      return /\.[cm]?[jt]sx?$/u.test(normalizedTarget) ? match : 'bun';
+    });
   }
 }
 
