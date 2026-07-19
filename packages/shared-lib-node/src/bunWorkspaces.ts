@@ -66,7 +66,7 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
       const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(rootDirPath, packageJsonPath)));
       // Compare whole segments, not a `..` prefix: a directory literally named e.g. `..pkg` is
       // inside the root, while a plain startsWith('..') would misread it as parent traversal.
-      return relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
+      return relativePath !== '..' && !relativePath.startsWith('../') && !path.isAbsolute(relativePath);
     } catch {
       // A manifest that vanished between the glob and the realpath call is not a workspace.
       return false;

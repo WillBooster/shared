@@ -592,7 +592,7 @@ export async function findWorkspacePackageDirs(
       if (manifestPath === 'package.json') return false;
       try {
         const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(project.dirPath, manifestPath)));
-        return relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
+        return relativePath !== '..' && !relativePath.startsWith('../') && !path.isAbsolute(relativePath);
       } catch {
         // The manifest vanished between the glob and the realpath call: not a workspace.
         return false;
