@@ -99,6 +99,18 @@ test('detects patch: dependencies in packages/* manifests excluded by a workspac
   });
 });
 
+test('detects patch: dependencies in dot-prefixed packages/* directories like the main flow does', async () => {
+  await withTempDir(async (tempDirPath) => {
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));
+    fs.mkdirSync(path.join(tempDirPath, 'packages', '.legacy'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDirPath, 'packages', '.legacy', 'package.json'),
+      JSON.stringify({ dependencies: { foo: 'patch:foo@npm%3A1.0.0#./foo.patch' } })
+    );
+    expect(findUnmigratableYarnSettings(tempDirPath)).toBe('packages/.legacy/package.json uses the patch: protocol');
+  });
+});
+
 test('detects patch: dependencies declared in workspace manifests, not only the root one', async () => {
   await withTempDir(async (tempDirPath) => {
     fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));

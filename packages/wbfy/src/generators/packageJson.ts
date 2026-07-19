@@ -426,9 +426,11 @@ function convertYarnCommandsToBun(
           run || !yarnBuiltinSubcommands.has(command) ? `bun run --filter ${packageName} ${command}` : match
       )
       // The token may contain any non-metacharacter (e.g. `build:@scope`), not just \w./:-,
-      // so the whole shell word is captured and the colon requirement is a lookahead.
+      // so the whole shell word is captured and the colon requirement is a lookahead. Only a
+      // leading `-` (a yarn flag) is excluded: Yarn's global lookup has no first-character
+      // restriction, so names like `.build:cache` must resolve too.
       .replaceAll(
-        /\byarn\s+(?:run\s+)?(?![-.])((?=[^\s:;&|<>()'"`]*:)[^\s;&|<>()'"`]+)/gu,
+        /\byarn\s+(?:run\s+)?(?!-)((?=[^\s:;&|<>()'"`]*:)[^\s;&|<>()'"`]+)/gu,
         makeColonScriptConverter(value)
       )
       // The `(?!\s+:)` guard keeps an unresolvable `yarn run :name` in its yarn form (the colon

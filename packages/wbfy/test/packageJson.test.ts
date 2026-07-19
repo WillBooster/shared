@@ -1527,6 +1527,7 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
         ':local-cache': 'echo local',
         at: 'yarn build:@scope',
         'cache-all': 'yarn build:cache',
+        dot: 'yarn .build:cache',
         local: 'yarn :local-cache',
         missing: 'yarn :unknown-script && yarn run :unknown-script',
         'test/ci-setup': 'build-ts run scripts/rename.ts && yarn :build-caches && sh scripts/install.sh',
@@ -1538,7 +1539,12 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
       files: {
         'packages/server/package.json': JSON.stringify({
           name: '@judge/server',
-          scripts: { ':build-caches': 'echo build', 'build:@scope': 'echo at', 'build:cache': 'echo mid-colon' },
+          scripts: {
+            ':build-caches': 'echo build',
+            '.build:cache': 'echo dot',
+            'build:@scope': 'echo at',
+            'build:cache': 'echo mid-colon',
+          },
         }),
         'packages/tools/package.json': JSON.stringify({
           scripts: { ':tool-cache': 'echo tool' },
@@ -1552,6 +1558,8 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
     at: 'bun run --filter @judge/server build:@scope',
     // Yarn treats ANY colon-containing name as global, not only leading-colon ones.
     'cache-all': 'bun run --filter @judge/server build:cache',
+    // Yarn's lookup has no first-character restriction, so dot-prefixed names resolve too.
+    dot: 'bun run --filter @judge/server .build:cache',
     // A colon script defined in the invoking package stays a local bun run.
     local: 'bun run :local-cache',
     // A leading-colon script no workspace defines keeps its yarn form to surface in review.

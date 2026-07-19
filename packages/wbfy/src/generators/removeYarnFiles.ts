@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import fg from 'fast-glob';
 import { load as loadYaml } from 'js-yaml';
 import type { PackageJson } from 'type-fest';
 
@@ -99,8 +98,19 @@ function findPatchProtocolManifests(dirPath: string): string[] {
   const manifestPaths = new Set(['package.json']);
   // The main flow processes EVERY immediate packages/* directory (index.ts), even ones a
   // workspace negation excludes, so the preflight must inspect them all regardless of the
-  // declared workspace patterns.
-  const packagesManifestPaths = fg.globSync('packages/*/package.json', { cwd: dirPath });
+  // declared workspace patterns — enumerated with the same readdir/isDirectory rules as
+  // index.ts (real directories only, dot-directories included, symlinks excluded) so the two
+  // passes can never disagree on the manifest set.
+  let packagesManifestPaths: string[] = [];
+  try {
+    packagesManifestPaths = fs
+      .readdirSync(path.resolve(dirPath, 'packages'), { withFileTypes: true })
+      .filter((dirent) => dirent.isDirectory())
+      .map((dirent) => path.posix.join('packages', dirent.name, 'package.json'))
+      .filter((manifestPath) => fs.existsSync(path.resolve(dirPath, manifestPath)));
+  } catch {
+    // No packages/ directory.
+  }
   for (const manifestPath of packagesManifestPaths) {
     manifestPaths.add(manifestPath);
   }
