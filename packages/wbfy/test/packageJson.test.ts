@@ -1502,6 +1502,7 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'deps-up': 'yarn up -R typescript',
       dollar: "yarn 'build:$target'",
       dynamic: 'yarn build:$target && yarn run "build:$target"',
+      'env-opt': 'env -i yarn compile && 2>&1 yarn compile',
       'fan-out': 'yarn workspaces foreach --all run build',
       'gen:sub': 'cd sub && yarn build:sub',
       guarded: 'if [ -f .env ]; then yarn compile; fi && { yarn compile; }',
@@ -1545,6 +1546,8 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'gen:sub': 'cd sub && bun run build:sub',
     // Shell keywords and grouping braces keep the following word in command position.
     guarded: 'if [ -f .env ]; then bun run compile; fi && { bun run compile; }',
+    // Wrapper options and file-descriptor duplications before the command are stepped over.
+    'env-opt': 'env -i bun run compile && 2>&1 bun run compile',
     redirect: 'bun run build>out.log',
     // A redirection before the command leaves it in command position.
     'redirect-first': '>build.log bun run compile',
@@ -1567,6 +1570,7 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
         dot: 'yarn .build:cache',
         echoed: 'echo \'yarn build:cache\' && node warn.js "prefer yarn :build-caches"',
         flagged: 'yarn run --inspect-brk build:cache',
+        'redir-target': 'yarn run >out.log build:cache',
         local: 'yarn :local-cache',
         'local-flag': 'yarn run --silent :local-cache',
         missing: 'yarn :unknown-script && yarn run :unknown-script',
@@ -1613,6 +1617,9 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
     'local-flag': 'bun run --silent :local-cache',
     // A leading-colon script no workspace defines keeps its yarn form to surface in review.
     missing: 'yarn :unknown-script && yarn run :unknown-script',
+    // A redirection between `run` and a routed target would be swallowed by the rewrite, so the
+    // invocation keeps its yarn form.
+    'redir-target': 'yarn run >out.log build:cache',
     // A quoted script-name token is unquoted before colon-owner resolution, and re-emitted with
     // its original quoting so shell semantics never change.
     quoted: `bun run --filter @judge/server ':build-caches' && bun run --filter @judge/server ":build-caches"`,

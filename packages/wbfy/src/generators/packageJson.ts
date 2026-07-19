@@ -515,27 +515,49 @@ function convertSingleYarnInvocation(
   script: string,
   resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
 ): ShellReplacement | undefined {
+  // Redirections may appear anywhere in a simple command without affecting which strings the
+  // command receives (`yarn run >out.log build:cache` passes `run build:cache`), so the rules
+  // below operate on the logical (non-redirection) arguments only.
+  const logicalArgs: { token: ShellToken; rawIndex: number }[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const token = args[index] as ShellToken;
+    if (/^[<>]/u.test(token.text)) {
+      // A plain operator consumes its operand; a `>&1`-style duplication is self-contained.
+      if (/^[<>]+$/u.test(token.text)) index++;
+      continue;
+    }
+    if (
+      /^\d+$/u.test(token.text) &&
+      args[index + 1]?.start === token.end &&
+      /^[<>]/u.test(args[index + 1]?.text ?? '')
+    ) {
+      continue;
+    }
+    logicalArgs.push({ token, rawIndex: index });
+  }
   // Decoded (literal) argument values drive the matching, while emitted rewrites always reuse the
   // raw token text (rawArg) so quoting and expansion semantics survive the conversion unchanged
   // (e.g. `yarn 'build:$target'` keeps its single quotes). A shell-ambiguous token decodes to
   // undefined, which keeps the invocation in its yarn form.
   const argText = (argIndex: number): string | undefined => {
-    const arg = args[argIndex];
-    return arg && decodeSimpleShellWord(arg.text);
+    const arg = logicalArgs[argIndex];
+    return arg && decodeSimpleShellWord(arg.token.text);
   };
-  const rawArg = (argIndex: number): string => args[argIndex]?.text ?? '';
-  const replaceThroughArg = (argIndex: number, text: string): ShellReplacement => ({
-    start: yarnToken.start,
-    end: (args[argIndex] as ShellToken).end,
-    text,
-  });
+  const rawArg = (argIndex: number): string => logicalArgs[argIndex]?.token.text ?? '';
+  const replaceThroughArg = (argIndex: number, text: string): ShellReplacement | undefined => {
+    const arg = logicalArgs[argIndex] as { token: ShellToken; rawIndex: number };
+    // A redirection inside the replaced span would be deleted by the rewrite, so such an
+    // invocation keeps its yarn form to surface in review.
+    if (args.slice(0, arg.rawIndex).some((argToken) => /^[<>]/u.test(argToken.text))) return undefined;
+    return { start: yarnToken.start, end: arg.token.end, text };
+  };
   const first = argText(0);
   const second = argText(1);
   // `yarn workspaces foreach <selection-neutral flags> run <script>` fans a script out to every
   // workspace; a selection-restricting or execution-suppressing flag keeps the yarn form.
   if (first === 'workspaces' && second === 'foreach') {
     let runIndex = -1;
-    for (let index = 2; index < args.length; index++) {
+    for (let index = 2; index < logicalArgs.length; index++) {
       const flag = argText(index);
       if (flag === 'run') {
         runIndex = index;
@@ -588,8 +610,8 @@ function convertSingleYarnInvocation(
     // converted every resolvable one), and so does an undecodable (dynamic or ambiguous) target:
     // its expanded name could need Yarn's global routing. Otherwise `bun run` accepts the same
     // flags and target.
-    const target = args[scriptNameIndex];
-    return target && (scriptName === undefined || scriptName.startsWith(':') || target.text.startsWith(':'))
+    const target = logicalArgs[scriptNameIndex];
+    return target && (scriptName === undefined || scriptName.startsWith(':') || target.token.text.startsWith(':'))
       ? undefined
       : replaceThroughArg(0, 'bun run');
   }
@@ -775,15 +797,26 @@ function forEachCommandPositionToken(
       continue;
     }
     if (!atCommandPosition) continue;
-    // A redirection may precede the command (`>out.log yarn build`, `2>err.log yarn build`); the
-    // operator and its operand (and a detached file-descriptor digit) leave the position intact.
-    if (/^[<>]+$/u.test(token.text)) {
-      redirectionOperandFollows = true;
+    // A redirection may precede the command (`>out.log yarn build`, `2>&1 yarn build`); the
+    // operator (with its operand, unless a `>&1`-style duplication makes it self-contained) and
+    // an ADJACENT file-descriptor digit (`2>` splits into two tokens; a detached `2 >out` is not
+    // a descriptor) leave the position intact.
+    if (/^[<>]/u.test(token.text)) {
+      redirectionOperandFollows = /^[<>]+$/u.test(token.text);
       continue;
     }
-    if (/^\d+$/u.test(token.text) && /^[<>]/u.test(tokens[index + 1]?.text ?? '')) continue;
+    if (
+      /^\d+$/u.test(token.text) &&
+      tokens[index + 1]?.start === token.end &&
+      /^[<>]/u.test(tokens[index + 1]?.text ?? '')
+    ) {
+      continue;
+    }
     const tokenText = unquoteShellToken(token.text);
     if (/^[A-Za-z_]\w*=/u.test(tokenText) || commandPositionTransparentWords.has(tokenText)) continue;
+    // At command position a `-`-leading token can only be an option of a preceding transparent
+    // wrapper (`env -i yarn build`); a real command never starts with `-`.
+    if (tokenText.startsWith('-')) continue;
     atCommandPosition = false;
     callback(token, index, tokens);
   }
@@ -808,10 +841,15 @@ function tokenizeShellCommand(script: string): ShellToken[] {
     }
     // An unquoted redirection operator ends the preceding word even without whitespace
     // (`yarn build>log` redirects `yarn build`), so it forms its own token; heredocs (`<<`) never
-    // reach this tokenizer — every caller skips scripts containing them.
+    // reach this tokenizer — every caller skips scripts containing them. A duplication suffix
+    // (`>&1`, `2>&1`, `>&-`) belongs to the operator token, or its `&` would read as a separator.
     if (char === '<' || char === '>') {
       let end = index + 1;
       while (end < script.length && (script[end] === '<' || script[end] === '>')) end++;
+      if (script[end] === '&' && /^[\d-]$/u.test(script[end + 1] ?? '')) {
+        end += 2;
+        while (end < script.length && /\d/u.test(script[end] ?? '')) end++;
+      }
       tokens.push({ text: script.slice(index, end), start: index, end });
       index = end;
       continue;
