@@ -21,6 +21,11 @@ export async function generateIdeaSettings(config: PackageConfig): Promise<void>
       await (doesContainJsOrTs(config) || doesContainJava(config)
         ? promisePool.run(() => fsUtil.generateFile(filePath, getWatcherTasksContent(config)))
         : promisePool.run(() => fs.promises.rm(filePath, { force: true })));
+      // Only Java repositories keep Prettier (via prettier-plugin-java); everywhere else a
+      // leftover prettier.xml is a stale artifact of the pre-oxfmt setup.
+      if (!doesContainJava(config)) {
+        await promisePool.run(() => fs.promises.rm(path.resolve(dirPath, 'prettier.xml'), { force: true }));
+      }
     }
   });
 }

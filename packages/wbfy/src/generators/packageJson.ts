@@ -786,7 +786,11 @@ async function normalizePackageMetadata(
     jsonObj.name = path.basename(config.dirPath);
   }
 
-  if (config.doesContainSubPackageJsons) {
+  // A monorepo root configured for npm publishing (a `.releaserc.json` with `@semantic-release/npm`
+  // or an explicit `publishConfig`) must not be forced private: `@semantic-release/npm` silently
+  // skips private packages, so forcing `private: true` would stop releases without any error
+  // (e.g. WillBoosterLab/llm-proxy publishing @willbooster-private/llm-proxy).
+  if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
     jsonObj.private = true;
   }
   if (!jsonObj.license) {
