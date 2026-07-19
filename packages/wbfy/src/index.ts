@@ -38,7 +38,7 @@ import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJson } from './generators/renovateJson.js';
 import { installAgentSkills } from './generators/skills.js';
 import { generateTsconfig } from './generators/tsconfig.js';
-import { generateVscodeSettings } from './generators/vscodeSettings.js';
+import { fixVscodeExtensions, generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
 import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
@@ -311,6 +311,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       promises.push(generateLintstagedrc(config));
       if (config.doesContainVscodeSettingsJson && config.doesContainPackageJson) {
         promises.push(generateVscodeSettings(config));
+      }
+      if (config.doesContainPackageJson) {
+        promises.push(fixVscodeExtensions(config));
       }
       if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
         promises.push(generateTsconfig(config));

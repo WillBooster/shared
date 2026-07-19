@@ -6,6 +6,7 @@ import { parse } from 'smol-toml';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { doesContainJava } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 interface BunfigToml {
@@ -178,13 +179,20 @@ export async function generateBunfigToml(config: PackageConfig, linker: BunLinke
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, linker);
+    const content = newContent(existingContent, linker, config);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
 
-const newContent = (existingContent: string | undefined, linker: BunLinker): string => {
+const newContent = (existingContent: string | undefined, linker: BunLinker, config: PackageConfig): string => {
   const bunfigToml = parseBunfigToml(existingContent);
+  // Only Java repositories still depend on @willbooster/prettier-config (wbfy installs it with
+  // prettier-plugin-java); everywhere else oxfmt replaced Prettier, so the exclusion is dead
+  // weight in the generated file. The exported list keeps the entry because packageJson.ts's
+  // version age gate matters only where wbfy actually pins the package (i.e. Java repositories).
+  const minimumReleaseAgeExcludes = doesContainJava(config)
+    ? bunMinimumReleaseAgeExcludes
+    : bunMinimumReleaseAgeExcludes.filter((packageName) => packageName !== '@willbooster/prettier-config');
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
@@ -204,7 +212,7 @@ ${
 }
 minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 5 days
 minimumReleaseAgeExcludes = [
-${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
+${minimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
 ]
 `;
 };
