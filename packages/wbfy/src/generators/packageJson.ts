@@ -35,7 +35,7 @@ import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfig
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
-  hasOnlyNegativeDeclaredWorkspacePatterns,
+  hasImplicitWorkspaceBaseline,
 } from '../utils/workspaceUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
 
@@ -482,12 +482,12 @@ async function applyPackageJsonConventions(
       // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
       // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
       // monorepo must not get a never-matching pattern appended to its declaration. A
-      // negative-only declaration needs no forced pattern at all, because Bun's implicit `*/*`
-      // baseline already covers packages/*. The forced pattern is PREPENDED: Bun evaluates
-      // workspace patterns sequentially, so a positive pattern placed after a user negation
-      // would re-include the negated packages.
+      // baseline-active declaration needs no forced pattern at all (the implicit `*/*` already
+      // covers packages/*), and adding one would disable the baseline. The forced pattern is
+      // PREPENDED: Bun evaluates workspace patterns sequentially, so a positive pattern placed
+      // after a user negation would re-include the negated packages.
       const forcedPatterns =
-        !hasOnlyNegativeDeclaredWorkspacePatterns(jsonObj.workspaces) &&
+        !hasImplicitWorkspaceBaseline(jsonObj.workspaces) &&
         fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
           ? ['packages/*']
           : [];

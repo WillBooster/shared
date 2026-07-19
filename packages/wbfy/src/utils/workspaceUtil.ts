@@ -29,9 +29,13 @@ export function getWorkspaceSubDirPaths(rootLike: WorkspaceRootLike): string[] {
  */
 export function getWorkspacePackageJsonPaths(rootConfig: WorkspaceRootLike): string[] {
   // Expand all patterns in one glob call so Bun-supported negative patterns (e.g.
-  // `!packages/excluded`) actually exclude their matches. Do not apply globIgnore here: workspace
-  // membership is defined solely by the declared patterns, and source-scanning ignores such as
-  // `build` or `dist` would hide legitimately named workspace directories.
+  // `!packages/excluded`) actually exclude their matches. Known limitation (#1005): Bun evaluates
+  // patterns sequentially (a positive pattern after a negation re-includes its matches), while
+  // fast-glob treats negations as order-independent global ignores; declarations relying on
+  // positional re-inclusion do not occur in WillBooster repositories and are unsupported.
+  // Do not apply globIgnore here: workspace membership is defined solely by the declared
+  // patterns, and source-scanning ignores such as `build` or `dist` would hide legitimately
+  // named workspace directories.
   const packageJsonGlobs = getSanitizedWorkspacePatterns(rootConfig).map((workspacePattern) =>
     workspacePattern.startsWith('!')
       ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
@@ -123,7 +127,7 @@ function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
   // callers (getWorkspaceDirPatterns) gate it on an actual match.
   const workspacePatterns = [
     ...new Set([
-      ...(hasOnlyNegativeDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces) ? ['*/*'] : []),
+      ...(hasImplicitWorkspaceBaseline(rootLike.packageJson?.workspaces) ? ['*/*'] : []),
       ...getMeaningfulDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces),
       ...(rootLike.doesContainSubPackageJsons ? ['packages/*'] : []),
     ]),
@@ -135,16 +139,21 @@ function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
 }
 
 /**
- * Whether the declaration (ignoring Bun no-op patterns) contains ONLY negative patterns, which
- * activates Bun's implicit `*\/*` baseline (verified with Bun 1.3.14: `workspaces:
- * ["!excluded/*"]` makes every other two-level package.json a workspace, while depth-1 and
- * depth-3 manifests stay out). Appending a positive pattern to such a declaration would disable
- * the baseline, so generators must mirror it explicitly first.
+ * Whether Bun applies its implicit `*\/*` workspace baseline: the declaration (ignoring no-op
+ * patterns) contains ONLY negative patterns AND at least one of them ends in a `*` or `**`
+ * segment. Verified with Bun 1.3.14: `["!excluded/*"]` and `["!apps/**"]` seed the baseline
+ * (every other two-level package.json becomes a workspace), while `["!apps/excluded"]` and
+ * `["!apps/*d"]` link ZERO workspaces.
  */
-export function hasOnlyNegativeDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): boolean {
+export function hasImplicitWorkspaceBaseline(workspaces: PackageJson['workspaces']): boolean {
   const workspacePatterns = getMeaningfulDeclaredWorkspacePatterns(workspaces);
   return (
-    workspacePatterns.length > 0 && workspacePatterns.every((workspacePattern) => workspacePattern.startsWith('!'))
+    workspacePatterns.length > 0 &&
+    workspacePatterns.every((workspacePattern) => workspacePattern.startsWith('!')) &&
+    workspacePatterns.some((workspacePattern) => {
+      const lastSegment = workspacePattern.slice(1).split('/').at(-1);
+      return lastSegment === '*' || lastSegment === '**';
+    })
   );
 }
 
