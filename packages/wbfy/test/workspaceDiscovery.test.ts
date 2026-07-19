@@ -239,6 +239,24 @@ test('drops a negation-derived exclude after the workspace negation is removed',
   }
 });
 
+test('ignores empty workspace patterns as Bun does', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    const appDirPath = path.join(tempDirPath, 'apps', 'web');
+    fs.mkdirSync(appDirPath, { recursive: true });
+    fs.writeFileSync(path.join(appDirPath, 'package.json'), JSON.stringify({}));
+    for (const workspaces of [[''], ['!']]) {
+      fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
+      const rootLike = { dirPath: tempDirPath, doesContainSubPackageJsons: false, packageJson: { workspaces } };
+      // Bun treats '' and a lone '!' as no-ops: no workspaces, no implicit baseline.
+      expect(getWorkspaceSubDirPaths(rootLike)).toEqual([]);
+      expect(getWorkspaceDirPatterns(rootLike)).toEqual({ excludes: [], includes: [] });
+    }
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('ignores workspace patterns escaping the repository', () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
   try {
