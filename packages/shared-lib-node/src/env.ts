@@ -249,10 +249,14 @@ export function readEnvironmentVariables(
   // Opt-in via the option: a direct readEnvironmentVariables/readAndApplyEnvironmentVariables
   // caller never receives the completed WB_ENV, and expanding references against a value that is
   // not actually applied would make the pair inconsistent.
-  if (options?.expandFallbackWbEnv && !expandedEnvVars.WB_ENV && !runtimeEnv.WB_ENV) {
+  // The loaded key masks the ambient value, so a loaded-but-emptied WB_ENV needs the retry even
+  // when an exported WB_ENV exists (a forced mode file overrides the export locally): retry with
+  // the value the merged environment will ultimately retain.
+  const effectiveWbEnv = expandedEnvVars.WB_ENV ?? runtimeEnv.WB_ENV;
+  if (options?.expandFallbackWbEnv && !effectiveWbEnv) {
     const reExpansionInput = { ...preExpansionEnvVars };
     delete reExpansionInput.WB_ENV;
-    const retryReferenceEnv = { ...pristineReferenceEnv, WB_ENV: resolveFallbackWbEnv(argv) };
+    const retryReferenceEnv = { ...pristineReferenceEnv, WB_ENV: runtimeEnv.WB_ENV || resolveFallbackWbEnv(argv) };
     expandedEnvVars = expand({ parsed: reExpansionInput, processEnv: retryReferenceEnv }).parsed ?? reExpansionInput;
   }
   return [expandedEnvVars, envPathAndLoadedEnvVarNames];

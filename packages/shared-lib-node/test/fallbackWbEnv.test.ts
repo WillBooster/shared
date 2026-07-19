@@ -70,4 +70,33 @@ describe('readEnvironmentVariables with expandFallbackWbEnv', () => {
       fs.rmSync(tempDirPath, { recursive: true, force: true });
     }
   });
+
+  it('re-expands with the exported value when a forced mode file empties WB_ENV', () => {
+    // A forced mode's files override the export locally, so the loaded key masks the ambient
+    // value even when it expands to empty; CI is cleared because that override is local-only.
+    const originalCi = process.env.CI;
+    process.env.WB_ENV = 'test';
+    delete process.env.CI;
+    const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-lib-node-wbenv-'));
+    try {
+      fs.writeFileSync(
+        path.join(tempDirPath, '.env.test'),
+        'WB_ENV=${MISSING_MODE}\nDEPENDENT=prefix-${WB_ENV}\n' // eslint-disable-line no-template-curly-in-string
+      );
+      const [envVars] = readEnvironmentVariables(
+        { env: ['.env'], cascadeEnv: 'test', includeRootEnv: false },
+        tempDirPath,
+        { expandFallbackWbEnv: true }
+      );
+      expect(envVars.WB_ENV).toBeUndefined();
+      expect(envVars.DEPENDENT).toBe('prefix-test');
+    } finally {
+      if (originalCi === undefined) {
+        delete process.env.CI;
+      } else {
+        process.env.CI = originalCi;
+      }
+      fs.rmSync(tempDirPath, { recursive: true, force: true });
+    }
+  });
 });
