@@ -27,6 +27,7 @@ interface Workflow {
 interface Concurrency {
   group: string;
   'cancel-in-progress': boolean;
+  queue?: 'single' | 'max';
 }
 
 interface On {
@@ -145,15 +146,17 @@ const workflows = {
         branches: [],
       },
     },
-    // The reusable release workflow's job already declares
-    // `concurrency: { group: release-${{ github.repository }}, cancel-in-progress: false, queue: max }`,
-    // which provides the per-repository serialization and keeps every queued release (#974).
-    // The caller-level group must NOT reuse that name: workflow-level and job-level groups share
-    // one repository-wide namespace, and identical names deadlock the run ("Canceling since a
+    // `queue: max` here too (#974): GitHub's default queue (`single`) cancels an already-PENDING
+    // caller run when another one queues — before its job (and the reusable workflow's own
+    // job-level `queue: max`) ever starts — silently dropping that release trigger.
+    // The caller-level group must NOT reuse the reusable workflow's job-level group name
+    // (`release-${{ github.repository }}`): workflow-level and job-level groups share one
+    // repository-wide namespace, and identical names deadlock the run ("Canceling since a
     // deadlock for concurrency group ... was detected between 'top level workflow' and '<job>'").
     concurrency: {
       group: '${{ github.workflow }}',
       'cancel-in-progress': false,
+      queue: 'max',
     },
     permissions: {
       // https://docs.npmjs.com/trusted-publishers#step-2-configure-your-cicd-workflow
@@ -392,6 +395,9 @@ async function writeWorkflowYaml(
   if (kind.startsWith('deploy')) {
     newSettings = {
       ...newSettings,
+      // Unlike the release caller, the default queue (`single`) is intentional here: a pending
+      // deploy that is cancelled and replaced by a newer one loses nothing — the newer deploy
+      // converges the environment to the latest state anyway.
       concurrency: {
         group: '${{ github.workflow }}',
         'cancel-in-progress': false,

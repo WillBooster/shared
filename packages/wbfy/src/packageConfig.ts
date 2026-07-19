@@ -137,12 +137,10 @@ export async function getPackageConfig(
     }
 
     // The caller may classify explicitly (index.ts passes false for every discovered workspace,
-    // including non-packages/* layouts such as apps/*); the packages/* heuristic classifies the
-    // CLI entry path itself, so `wbfy <repo>/packages/<app>` keeps its child classification.
-    const isRoot =
-      options?.isRoot ??
-      (path.basename(path.resolve(dirPath, '..')) !== 'packages' ||
-        !fs.existsSync(path.resolve(dirPath, '..', '..', 'package.json')));
+    // including non-packages/* layouts such as apps/*); the heuristic classifies the CLI entry
+    // path itself, so `wbfy <repo>/packages/<app>` and `wbfy <repo>/apps/<app>` keep their child
+    // classification.
+    const isRoot = options?.isRoot ?? !isWorkspaceOfEnclosingRoot(dirPath);
 
     let repoInfo: Record<string, unknown> | undefined;
     if (isRoot) {
@@ -645,6 +643,40 @@ function readMiseTaskCommand(value: unknown): string {
   if (Array.isArray(value)) return value.filter((command): command is string => typeof command === 'string').join('\n');
   if (value && typeof value === 'object') return readMiseTaskCommand((value as { run?: unknown }).run);
   return '';
+}
+
+/**
+ * Whether dirPath is a child workspace of an enclosing monorepo root: either the conventional
+ * `<root>/packages/<name>` layout, or a directory matching a workspace pattern declared by an
+ * enclosing package.json (checked one and two levels up, covering `apps/<name>`-style layouts).
+ */
+function isWorkspaceOfEnclosingRoot(dirPath: string): boolean {
+  const resolvedDirPath = path.resolve(dirPath);
+  if (
+    path.basename(path.resolve(resolvedDirPath, '..')) === 'packages' &&
+    fs.existsSync(path.resolve(resolvedDirPath, '..', '..', 'package.json'))
+  ) {
+    return true;
+  }
+  for (const candidateRootDirPath of [path.resolve(resolvedDirPath, '..'), path.resolve(resolvedDirPath, '..', '..')]) {
+    if (candidateRootDirPath === resolvedDirPath) continue;
+    let rootPackageJson: PackageJson;
+    try {
+      rootPackageJson = JSON.parse(
+        fs.readFileSync(path.resolve(candidateRootDirPath, 'package.json'), 'utf8')
+      ) as PackageJson;
+    } catch {
+      continue;
+    }
+    const relativeDirPath = path.relative(candidateRootDirPath, resolvedDirPath).replaceAll('\\', '/');
+    const workspaceDirPaths = getWorkspacePackageJsonPaths({
+      dirPath: candidateRootDirPath,
+      packageJson: rootPackageJson,
+      doesContainSubPackageJsons: false,
+    }).map((packageJsonPath) => path.posix.dirname(packageJsonPath));
+    if (workspaceDirPaths.includes(relativeDirPath)) return true;
+  }
+  return false;
 }
 
 function containsAny(pattern: string, dirPath: string): boolean {

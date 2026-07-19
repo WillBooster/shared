@@ -1586,14 +1586,17 @@ function applyDatabaseScript(
 }
 
 /**
- * Whether a script body is one of the generated `wb db`/`wb prisma` invocations (allowing legacy
- * runner prefixes and extra subcommand/flag tokens). Anchored on the WHOLE body so a custom
- * wrapper that merely CONTAINS a wb call (`prepare-sqlite && WB_ENV=… wb db studio`) is preserved
- * instead of being replaced wholesale; any shell operator or env-assignment prefix marks the
- * script as custom.
+ * Whether a script body is one of the KNOWN generated `wb db`/`wb prisma` invocations (allowing
+ * legacy runner prefixes, including the historical `bun --bun`, and the historical argument
+ * variants such as `migrate` without `--check-idempotency`). Anchored on the WHOLE body AND on the
+ * exact generated argument lists so a custom wrapper that merely contains a wb call
+ * (`prepare-sqlite && WB_ENV=… wb db studio`) or carries extra flags (`wb prisma studio
+ * --port 5556`) is preserved instead of being replaced wholesale.
  */
 function isGeneratedDatabaseScript(script: string): boolean {
-  return /^(?:(?:bun|yarn|npx)\s+)?wb\s+(?:db|prisma)(?:\s+[\w./=@:-]+)*$/u.test(script.trim());
+  return /^(?:(?:bun(?:\s+--bun)?|yarn|npx)\s+)?wb\s+(?:db|prisma)\s+(?:migrate-dev|migrate(?:\s+--check-idempotency)?|studio)$/u.test(
+    script.trim()
+  );
 }
 
 function getWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' {

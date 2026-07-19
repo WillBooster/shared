@@ -23,7 +23,7 @@ test('generateFile refuses to write through a symlinked parent directory', async
   }
 });
 
-test('readFileConfinedIfExists rejects symlink sources and sources outside the repository', async () => {
+test('readFileConfinedIfExists rejects sources resolving outside the repository but reads in-repo symlinks', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fsutil-'));
   try {
     const repoDirPath = path.join(tempDirPath, 'repo');
@@ -34,11 +34,17 @@ test('readFileConfinedIfExists rejects symlink sources and sources outside the r
     fs.symlinkSync(path.join(outsideDirPath, 'secret.txt'), path.join(repoDirPath, '.renovaterc.json'));
     fs.symlinkSync(outsideDirPath, path.join(repoDirPath, 'linked'));
     fs.writeFileSync(path.join(repoDirPath, 'regular.txt'), 'regular');
+    fs.writeFileSync(path.join(repoDirPath, '.nvmrc'), '22.11.0');
+    fs.symlinkSync(path.join(repoDirPath, '.nvmrc'), path.join(repoDirPath, '.node-version'));
+    fs.symlinkSync(path.join(repoDirPath, 'nonexistent.txt'), path.join(repoDirPath, 'dangling.txt'));
     fsUtil.setRootDirPath(repoDirPath);
     expect(await fsUtil.readFileConfinedIfExists(path.join(repoDirPath, '.renovaterc.json'))).toBeUndefined();
     expect(await fsUtil.readFileConfinedIfExists(path.join(repoDirPath, 'linked', 'secret.txt'))).toBeUndefined();
     expect(await fsUtil.readFileConfinedIfExists(path.join(repoDirPath, 'missing.txt'))).toBeUndefined();
+    expect(await fsUtil.readFileConfinedIfExists(path.join(repoDirPath, 'dangling.txt'))).toBeUndefined();
     expect(await fsUtil.readFileConfinedIfExists(path.join(repoDirPath, 'regular.txt'))).toBe('regular');
+    // A symlink whose target stays inside the repository is a legitimate source and is read.
+    expect(await fsUtil.readFileConfinedIfExists(path.join(repoDirPath, '.node-version'))).toBe('22.11.0');
   } finally {
     fsUtil.setRootDirPath(undefined);
     fs.rmSync(tempDirPath, { recursive: true, force: true });

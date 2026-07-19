@@ -373,11 +373,14 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
  * workspace whose config matches the predicate. The hook script runs at the repository root, so
  * paths are relative to the root config's directory.
  */
-// The generated command string is eval'd by run_if_changed, so an unquoted path containing
-// spaces or glob characters (e.g. `apps/my app/.next`) would word-split into unrelated rm
-// targets. Single quotes survive the surrounding double-quoted argument and the eval.
+// The generated command passes through TWO shell parsing stages: the prepare.sh line parses it as
+// a double-quoted argument (processing \, `, $ and " immediately), and run_if_changed then eval's
+// it (word-splitting and globbing). An unquoted path containing spaces (e.g. `apps/my app/.next`)
+// would word-split into unrelated rm targets, and `$`/backtick would expand at the first stage.
+// So: single-quote for the eval stage, then backslash-escape the double-quote-context specials.
 function quoteForEvaluatedShell(filePath: string): string {
-  return `'${filePath.replaceAll("'", String.raw`'\''`)}'`;
+  const evalQuoted = `'${filePath.replaceAll("'", String.raw`'\''`)}'`;
+  return evalQuoted.replaceAll(/[\\`$"]/gu, String.raw`\$&`);
 }
 
 function collectWorkspaceRelativeDirPaths(

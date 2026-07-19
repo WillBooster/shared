@@ -130,10 +130,11 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     await promisePool.run(() =>
       fsUtil.removeConfined(path.resolve(config.dirPath, '.dependabot'), { recursive: true })
     );
-    // Keep a symlinked legacy config: the confined read above rejected it, so its settings were
-    // never migrated and deleting the link would silently drop them.
+    // Remove the legacy config once its settings were migrated above (for a symlink this deletes
+    // only the link entry). An unread symlinked legacy next to a pre-existing renovate.json is
+    // kept: its settings were never migrated, so deleting the link would silently drop them.
     const legacyStats = await fs.promises.lstat(legacyFilePath).catch(() => {});
-    if (legacyStats && !legacyStats.isSymbolicLink()) {
+    if (legacyStats && (legacyContent !== undefined || !legacyStats.isSymbolicLink())) {
       await promisePool.run(() => fsUtil.removeConfined(legacyFilePath));
     }
   });

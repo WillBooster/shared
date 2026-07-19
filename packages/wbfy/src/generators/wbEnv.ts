@@ -36,17 +36,25 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
       }
       return;
     }
-    for (const mode of wbEnvModes) {
-      const envFilePath = path.resolve(rootConfig.dirPath, mode === 'development' ? '.env' : `.env.${mode}`);
-      const envContent = await fsUtil.readFileConfinedIfExists(envFilePath);
-      // Only existing mode files are completed: creating .env.production (never committed by
-      // convention) or a whole legacy layout from nothing is not wbfy's call.
-      if (envContent === undefined) continue;
-      const updatedEnvContent = insertWbEnvIntoEnvFile(envContent, mode, needsNextPublic);
-      // Log only when the confined write actually happened; writeFileConfined refuses symlinks
-      // and paths resolving outside the repository (with its own warning).
-      if (updatedEnvContent !== envContent && (await fsUtil.writeFileConfined(envFilePath, updatedEnvContent))) {
-        console.log(`Generated/Updated ${envFilePath}`);
+    // Complete the mode files of every workspace, not just the root: Next.js and Vite load .env*
+    // relative to the application's own project directory, so a root-only insertion would leave
+    // e.g. apps/web/.env without WB_ENV. NEXT_PUBLIC_WB_ENV follows each workspace's own
+    // framework dependency (the root keeps the repository-wide signal for shared tooling).
+    for (const config of allConfigs) {
+      const needsNextPublicHere =
+        config === rootConfig ? needsNextPublic : config.depending.next || config.depending.vinext;
+      for (const mode of wbEnvModes) {
+        const envFilePath = path.resolve(config.dirPath, mode === 'development' ? '.env' : `.env.${mode}`);
+        const envContent = await fsUtil.readFileConfinedIfExists(envFilePath);
+        // Only existing mode files are completed: creating .env.production (never committed by
+        // convention) or a whole legacy layout from nothing is not wbfy's call.
+        if (envContent === undefined) continue;
+        const updatedEnvContent = insertWbEnvIntoEnvFile(envContent, mode, needsNextPublicHere);
+        // Log only when the confined write actually happened; writeFileConfined refuses symlinks
+        // and paths resolving outside the repository (with its own warning).
+        if (updatedEnvContent !== envContent && (await fsUtil.writeFileConfined(envFilePath, updatedEnvContent))) {
+          console.log(`Generated/Updated ${envFilePath}`);
+        }
       }
     }
   });

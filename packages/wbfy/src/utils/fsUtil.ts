@@ -25,16 +25,31 @@ export const fsUtil = {
     return await isConfinedWritablePath(filePath);
   },
   /**
-   * Reads a migration source, returning undefined when the file does not exist OR when it is a
-   * symlink / resolves outside the repository — a committed symlink pointing outside the
-   * repository must not get its target's content copied into a tracked file.
+   * Reads a migration source, returning undefined when the file does not exist OR when it
+   * resolves outside the repository — a committed symlink pointing outside the repository must
+   * not get its target's content copied into a tracked file. A symlink whose resolved target
+   * stays inside the repository is legitimate (e.g. `.node-version -> .nvmrc`) and is read.
    */
   async readFileConfinedIfExists(filePath: string): Promise<string | undefined> {
     const stats = await fs.promises.lstat(filePath).catch(() => {});
     if (!stats) return undefined;
     if (stats.isSymbolicLink()) {
-      console.warn(`Skipped reading ${filePath} because it is a symbolic link.`);
-      return undefined;
+      let realFilePath: string;
+      try {
+        realFilePath = await fs.promises.realpath(filePath);
+      } catch {
+        console.warn(`Skipped reading ${filePath} because it is a dangling symbolic link.`);
+        return undefined;
+      }
+      if (
+        realRootDirPath !== undefined &&
+        realFilePath !== realRootDirPath &&
+        !realFilePath.startsWith(realRootDirPath + path.sep)
+      ) {
+        console.warn(`Skipped reading ${filePath} because it resolves outside the repository.`);
+        return undefined;
+      }
+      return await fsUtil.readFileIfExists(filePath);
     }
     if (!(await hasConfinedParent(filePath))) {
       console.warn(`Skipped reading ${filePath} because it resolves outside the repository.`);

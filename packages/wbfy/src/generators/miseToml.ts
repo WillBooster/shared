@@ -68,10 +68,10 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     // (e.g. a symlinked mise.toml) must not destroy the only tool configuration.
     if (await fsUtil.generateFile(miseTomlPath, stringify(settings))) {
       const toolVersionsPath = path.resolve(config.dirPath, '.tool-versions');
-      const stats = await fs.promises.lstat(toolVersionsPath).catch(() => {});
-      // Keep a symlinked source: the confined read above rejected it, so its entries were never
-      // migrated and deleting the link would silently drop the only tool pins.
-      if (stats && !stats.isSymbolicLink()) {
+      // The source-refusal guard at the top guarantees that an existing .tool-versions was
+      // safely read and migrated, so removing it (for a symlink: the link entry only) is safe —
+      // keeping it would leave an active duplicate configuration source that mise still reads.
+      if (await fs.promises.lstat(toolVersionsPath).catch(() => {})) {
         await promisePool.run(() => fsUtil.removeConfined(toolVersionsPath));
       }
     }
