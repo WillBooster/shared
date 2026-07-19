@@ -19,8 +19,7 @@ import {
   PRIVATE_REGISTRY_SCOPE,
   isPrivateGitDependency,
   isPrivateRegistryDependency,
-  rangeAdmits,
-  toBaseVersion,
+  materializedVersionSatisfies,
 } from '../utils/privateRegistry.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -135,17 +134,10 @@ function rewritePrivateGitHubDependenciesForDir(
           );
           continue;
         }
-        // The materialized version is stale when it neither equals the specifier's degraded base
-        // (`wb setup-private-packages` degrades ^/~ to the base version) nor is admitted by the
-        // ^/~ range — setup may legitimately materialize a NEWER admitted version selected by an
-        // exact pin elsewhere in the manifest. Dist-tag specifiers (no x.y.z base, e.g.
-        // `2026-stable`) skip the staleness check.
-        const requestedBaseVersion = toBaseVersion(value);
-        if (
-          requestedBaseVersion !== undefined &&
-          materializedVersion !== requestedBaseVersion &&
-          !rangeAdmits(value, materializedVersion)
-        ) {
+        // The materialized version is stale when the specifier (an exact version or any semver
+        // range `wb setup-private-packages` resolves max-satisfying against the registry) does
+        // not admit it. Dist-tag specifiers (e.g. `2026-stable`) skip the staleness check.
+        if (!materializedVersionSatisfies(value, materializedVersion)) {
           console.error(
             chalk.red(
               `Materialized ${name} is ${materializedVersion} but package.json requires ${value}; rerun \`wb setup-private-packages\`.`

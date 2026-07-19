@@ -50,6 +50,29 @@ test('detects a nested Tauri application from a parent package', async () => {
   }
 });
 
+test('detects @semantic-release/npm in both string and tuple plugin forms', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    // The packages/root layout keeps getPackageConfig from looking up a GitHub repository.
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    fs.mkdirSync(packageDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(packageDirPath, 'package.json'), '{}');
+    fs.writeFileSync(
+      path.join(packageDirPath, '.releaserc.json'),
+      JSON.stringify({
+        branches: ['main'],
+        plugins: ['@semantic-release/commit-analyzer', ['@semantic-release/npm', { pkgRoot: '.' }]],
+      })
+    );
+    const config = await getPackageConfig(packageDirPath);
+    expect(config?.release.npm).toBe(true);
+    expect(config?.depending.semanticRelease).toBe(true);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 async function detectTauri(setup: { packageJson?: object; srcTauriFileName?: string }): Promise<boolean> {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {

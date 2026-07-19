@@ -178,9 +178,15 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
   }
 
   const wbEnvComment =
-    '# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally.';
+    '# CI sets WB_ENV as a process env var, which wins over fnox when loaded through wb; bare fnox run/export uses the fnox value, so pass -P <profile>.';
+  // Earlier wbfy versions wrote a comment overstating the precedence (bare `fnox run/export` lets
+  // the fnox value win over an inherited process env var), in several wording variants (with or
+  // without a trailing period); rewrite any of them in place so target repositories converge on
+  // the corrected wording instead of keeping the stale claim forever.
+  const outdatedWbEnvCommentPattern =
+    /^# CI sets WB_ENV as a process env var, which wins over fnox;(?! when loaded through wb).*$/mu;
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
-  let updatedContent = content;
+  let updatedContent = content.replace(outdatedWbEnvCommentPattern, wbEnvComment);
   for (const mode of wbEnvModes) {
     // The staging mode is optional: complete it only when the repository already declares the profile.
     if (mode === 'staging' && !settings.profiles?.staging) continue;

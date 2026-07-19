@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { logger } from '../logger.js';
@@ -47,6 +48,9 @@ function generateAgentInstruction(
 ): string {
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
+  const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
+    ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -- <command>\` instead of expecting \`.env\` files.`
+    : '';
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway
     ? '\n- Railway project information is in the deploy workflows under `.github/workflows`.'
@@ -79,7 +83,7 @@ function generateAgentInstruction(
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
-- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${railwayInstruction}${playwrightTestServerInstruction}
+- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${fnoxInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
 ${generateAgentCodingStyle(allConfigs)}
 `
@@ -110,6 +114,8 @@ export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
 - Prefer \`undefined\` over \`null\` unless required by APIs or libraries.
 - Build prompts as a single template literal instead of \`join()\` on a pre-computable array of strings.
 - Assume all environment variables are defined; if validation is needed, \`assert\` at startup to fail fast.
+- Assume local tools such as \`git\`, \`gh\`, and \`ghq\` are installed and authenticated.
+- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.
 ${
   allConfigs.some((c) => c.depending.genI18nTs)
     ? `- When adding string literals in React components, register them in the \`i18n\` resource files (e.g., \`i18n/ja-JP.json\`) and reference them via the \`i18n\` utility (e.g., \`i18n.pages.home.title()\` for \`{ "pages": { "home": { "title": "My App" } } }\`).`

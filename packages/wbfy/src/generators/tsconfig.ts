@@ -141,8 +141,10 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
   settings.exclude = [
     ...new Set([
       ...workspacePatterns.includes.map((workspacePattern) => `${workspacePattern}/test/fixtures`),
-      // Negative workspace patterns (e.g. `!packages/excluded`) opt whole workspace subtrees out
-      // of the monorepo, so their sources must not enter the root type-check project either.
+      // Negative workspace patterns (e.g. `!packages/excluded`) opt workspace subtrees out of the
+      // monorepo, so their sources must not enter the root type-check project either. A negation
+      // whose directory is an ancestor of a workspace yields package-owned subpath entries
+      // instead of the whole subtree (see getWorkspaceDirPatterns).
       ...workspacePatterns.excludes,
       ...(settings.exclude ?? []),
     ]),

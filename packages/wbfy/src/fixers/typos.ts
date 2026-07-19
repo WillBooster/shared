@@ -101,12 +101,16 @@ export function fixTyposInText(content: string): string {
     .replaceAll(/\bie\.(?=\s)/g, 'i.e.');
 }
 
-function fixTyposInCode(content: string): string {
-  return content
-    .replaceAll(/\/\*[\s\S]*?\*\//g, (comment) => fixTyposInText(comment))
-    .replaceAll(/(^|\s)\/\/(.*?)c\.f\./g, '$1//$2cf.')
-    .replaceAll(/(^|\s)\/\/(.*?)eg\./g, '$1//$2e.g.')
-    .replaceAll(/(^|\s)\/\/(.*?)ie\./g, '$1//$2i.e.');
+export function fixTyposInCode(content: string): string {
+  return (
+    content
+      .replaceAll(/\/\*[\s\S]*?\*\//g, (comment) => fixTyposInText(comment))
+      // The word boundary and trailing-whitespace guard keep words merely ending in the
+      // abbreviation letters (e.g. "cookie.", "leg.") intact.
+      .replaceAll(/(^|\s)\/\/(.*?)\bc\.f\.(?=\s|$)/g, '$1//$2cf.')
+      .replaceAll(/(^|\s)\/\/(.*?)\beg\.(?=\s|$)/g, '$1//$2e.g.')
+      .replaceAll(/(^|\s)\/\/(.*?)\bie\.(?=\s|$)/g, '$1//$2i.e.')
+  );
 }
 
 function replaceWithConfig(newContent: string, packageConfig: PackageConfig, propName: 'doc' | 'ts' | 'text'): string {

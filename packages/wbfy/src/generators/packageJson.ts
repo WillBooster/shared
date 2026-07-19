@@ -35,6 +35,7 @@ import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfig
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
+  hasDeclaredPackagesStarPattern,
   hasImplicitWorkspaceBaseline,
 } from '../utils/workspaceUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
@@ -482,12 +483,15 @@ async function applyPackageJsonConventions(
       // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
       // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
       // monorepo must not get a never-matching pattern appended to its declaration. A
-      // baseline-active declaration needs no forced pattern at all (the implicit `*/*` already
-      // covers packages/*), and adding one would disable the baseline. The forced pattern is
-      // PREPENDED: Bun evaluates workspace patterns sequentially, so a positive pattern placed
-      // after a user negation would re-include the negated packages.
+      // baseline-seeding declaration needs no forced pattern at all — the seeded baseline
+      // (`*/*` or `**`) already covers packages/*. The forced pattern is PREPENDED: Bun
+      // evaluates workspace patterns sequentially, so a positive pattern placed after a user
+      // negation would re-include the negated packages. A declaration that already covers
+      // packages/* under normalization (e.g. `./packages/*`) is kept verbatim: forcing a textual
+      // `packages/*` next to it would persist a duplicate equivalent pattern.
       const forcedPatterns =
         !hasImplicitWorkspaceBaseline(jsonObj.workspaces) &&
+        !hasDeclaredPackagesStarPattern(jsonObj.workspaces) &&
         fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
           ? ['packages/*']
           : [];
@@ -786,7 +790,23 @@ async function normalizePackageMetadata(
     jsonObj.name = path.basename(config.dirPath);
   }
 
-  if (config.doesContainSubPackageJsons) {
+  // A monorepo root configured for npm publishing (semantic-release with `@semantic-release/npm`
+  // — via an explicit plugin entry, the plugin-less default list, or a config packageConfig
+  // cannot inspect statically such as JS/YAML or an `extends` preset — or an explicit
+  // `publishConfig`) must not be forced private: `@semantic-release/npm` silently skips private
+  // packages, so forcing `private: true` would stop releases without any error (e.g.
+  // WillBoosterLab/llm-proxy publishing @willbooster-private/llm-proxy).
+  if (config.doesContainSubPackageJsons && (config.release.npmPublishesRoot || jsonObj.publishConfig)) {
+    // Older wbfy forced `private: true` on every monorepo root (and never added a publishConfig
+    // to one, since it only does that for non-private manifests — so a root-level publishConfig
+    // is user-authored publishing intent); when the user has EXPLICITLY configured
+    // `@semantic-release/npm` to publish the root itself, or declared a `publishConfig`, that
+    // stale flag silently suppresses publishing, so migrate it away. Roots relying on the
+    // plugin-less default list keep their `private` value untouched: `private: true` there can
+    // be a deliberate opt-out, which `@semantic-release/npm` honors by defaulting npmPublish to
+    // false.
+    delete jsonObj.private;
+  } else if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
     jsonObj.private = true;
   }
   if (!jsonObj.license) {

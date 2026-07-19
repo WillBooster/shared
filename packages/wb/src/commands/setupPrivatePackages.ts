@@ -10,12 +10,10 @@ import type { PrivateRegistryAuth } from '../utils/privateRegistry.js';
 import {
   PRIVATE_REGISTRY_SCOPE,
   downloadAndExtractRegistryPackage,
-  isExactVersion,
   isPrivateGitDependency,
   isPrivateRegistryDependency,
-  rangeAdmits,
   resolvePrivateRegistryAuth,
-  toBaseVersion,
+  specifierSubset,
 } from '../utils/privateRegistry.js';
 
 interface PrivatePackage {
@@ -40,7 +38,8 @@ const builder = {
 export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, InferredOptionTypes<typeof builder>> = {
   command: 'setup-private-packages',
   describe:
-    'Materialize private dependencies for Docker builds: copy git dependencies and download @willbooster-private/* registry packages (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN on CI)',
+    'Materialize private dependencies for Docker builds: copy git dependencies and download @willbooster-private/* registry packages (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN on CI). ' +
+    'The Dockerfile must COPY the generated directories (e.g. `COPY @willbooster/ @willbooster/` and `COPY @willbooster-private/ @willbooster-private/`) so the in-image install resolves the rewritten file: paths.',
   builder,
   async handler(argv) {
     const projects = findRootAndSelfProjects(argv, false);
@@ -146,6 +145,9 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     }
 
     await replacePrivateDependencies(projects.root.dirPath, privatePackages);
+    console.info(
+      `Ensure the Dockerfile COPYs ${path.relative(projects.root.dirPath, outDirPath)}/ and ${PRIVATE_REGISTRY_SCOPE}/ into the image before installing dependencies.`
+    );
   },
 };
 
@@ -264,19 +266,16 @@ async function copyGitPackage(rootDirPath: string, privatePackage: PrivatePackag
 }
 
 /**
- * The materialization for `existing` is already selected (its `^`/`~` range degraded to the base
- * version — see downloadAndExtractRegistryPackage), so accept `requested` only when that selected
- * version satisfies it: an exact request must equal it, a `^`/`~` request must admit it, and
- * non-numeric specifiers (dist-tags, git URLs/revisions) must match exactly.
+ * The materialization for `existing` is already selected (a range resolves max-satisfying against
+ * the registry — see downloadAndExtractRegistryPackage), so accept `requested` only when it is
+ * guaranteed satisfied: `existing` must be a subset of it (every possible resolution of `existing`
+ * then satisfies `requested`). Non-range specifiers (dist-tags, git URLs/revisions) must match
+ * exactly.
  */
 function assertNoVersionConflict(existing: PrivatePackage, requested: PrivatePackage, dependentName: string): void {
   if (existing.kind === requested.kind) {
     if (existing.versionSpecifier === requested.versionSpecifier) return;
-    const selectedVersion = toBaseVersion(existing.versionSpecifier);
-    if (selectedVersion !== undefined && requested.versionSpecifier !== undefined) {
-      if (isExactVersion(requested.versionSpecifier) && requested.versionSpecifier === selectedVersion) return;
-      if (rangeAdmits(requested.versionSpecifier, selectedVersion)) return;
-    }
+    if (specifierSubset(existing.versionSpecifier, requested.versionSpecifier)) return;
   }
 
   throw new Error(
@@ -379,26 +378,15 @@ function findPrivateDependencies(
 
 /**
  * A manifest may legitimately request one package from several dependency sections (e.g. an exact
- * devDependencies pin alongside a peerDependencies range). Prefer the exact pin when the other
- * side is a range admitting it (that pin becomes the materialized version); fail loudly when the
- * requirements genuinely diverge.
+ * devDependencies pin alongside a peerDependencies range). Keep the NARROWER requirement — its
+ * max-satisfying resolution satisfies the wider one by definition (an exact pin is the narrowest
+ * range) — and fail loudly when the requirements genuinely diverge.
  */
 function mergeSameManifestRequirement(existing: PrivatePackage, requested: PrivatePackage): PrivatePackage {
   if (existing.kind === requested.kind) {
     if (existing.versionSpecifier === requested.versionSpecifier) return existing;
-    const [exact, other] = isExactVersion(existing.versionSpecifier) ? [existing, requested] : [requested, existing];
-    if (
-      isExactVersion(exact.versionSpecifier) &&
-      other.versionSpecifier !== undefined &&
-      (other.versionSpecifier === exact.versionSpecifier ||
-        rangeAdmits(other.versionSpecifier, exact.versionSpecifier!) ||
-        toBaseVersion(other.versionSpecifier) === exact.versionSpecifier)
-    ) {
-      return exact;
-    }
-    // Two ranges degrading to the same base version select the same materialization.
-    const baseVersion = toBaseVersion(existing.versionSpecifier);
-    if (baseVersion !== undefined && baseVersion === toBaseVersion(requested.versionSpecifier)) return existing;
+    if (specifierSubset(existing.versionSpecifier, requested.versionSpecifier)) return existing;
+    if (specifierSubset(requested.versionSpecifier, existing.versionSpecifier)) return requested;
   }
   throw new Error(
     `Conflicting requirements for ${existing.name} within one manifest: ` +

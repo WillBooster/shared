@@ -86,6 +86,11 @@ export interface PackageConfig {
     branches: string[];
     github: boolean;
     npm: boolean;
+    /**
+     * An explicit `@semantic-release/npm` plugin entry publishes the root manifest itself
+     * (no pkgRoot redirection and npmPublish not disabled).
+     */
+    npmPublishesRoot: boolean;
   };
   miseTasks: Record<string, string>;
   packageJson?: PackageJson;
@@ -104,6 +109,34 @@ const wbfyJsonSchema = z.object({
     })
     .optional(),
 });
+
+/**
+ * cosmiconfig 9's default searchPlaces order for module "release" (what semantic-release 25
+ * delegates to), minus the leading package.json entry, which the caller checks first. Places
+ * whose format JSON.parse cannot read are statically uninspectable.
+ */
+const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: boolean }[] = [
+  { fileName: '.releaserc', jsonParseable: true },
+  { fileName: '.releaserc.json', jsonParseable: true },
+  { fileName: '.releaserc.yaml', jsonParseable: false },
+  { fileName: '.releaserc.yml', jsonParseable: false },
+  { fileName: '.releaserc.js', jsonParseable: false },
+  { fileName: '.releaserc.ts', jsonParseable: false },
+  { fileName: '.releaserc.mjs', jsonParseable: false },
+  { fileName: '.releaserc.cjs', jsonParseable: false },
+  { fileName: '.config/releaserc', jsonParseable: true },
+  { fileName: '.config/releaserc.json', jsonParseable: true },
+  { fileName: '.config/releaserc.yaml', jsonParseable: false },
+  { fileName: '.config/releaserc.yml', jsonParseable: false },
+  { fileName: '.config/releaserc.js', jsonParseable: false },
+  { fileName: '.config/releaserc.ts', jsonParseable: false },
+  { fileName: '.config/releaserc.mjs', jsonParseable: false },
+  { fileName: '.config/releaserc.cjs', jsonParseable: false },
+  { fileName: 'release.config.js', jsonParseable: false },
+  { fileName: 'release.config.ts', jsonParseable: false },
+  { fileName: 'release.config.mjs', jsonParseable: false },
+  { fileName: 'release.config.cjs', jsonParseable: false },
+];
 
 export async function getPackageConfig(
   dirPath: string,
@@ -126,19 +159,80 @@ export async function getPackageConfig(
 
     let releaseBranches: string[] = [];
     let releasePlugins: string[] = [];
+    let releasePluginsAreExplicit = false;
+    let releaseNpmPluginPublishesRoot = false;
+    // The FIRST existing search place wins (cosmiconfig short-circuits), so a JS/YAML/TS config
+    // or an `extends` preset makes the effective plugin list statically uninspectable (mirrors
+    // readExplicitSemanticReleasePlugins in wb's release.ts). Treating it as unknown keeps
+    // `release.npm` conservatively true, so applyPackageJsonConventions never forces
+    // `private: true` on a monorepo that actually publishes to npm.
+    let releasePluginsAreUnknown = false;
     try {
-      const releasercJsonPath = path.resolve(dirPath, '.releaserc.json');
-      const json = JSON.parse(await fsp.readFile(releasercJsonPath, 'utf8')) as
+      type ReleaseConfig =
         | {
-            branches: string[];
-            plugins?: string[][];
+            branches?: unknown;
+            plugins?: (string | [string, Record<string, unknown>])[];
+            extends?: unknown;
           }
         | undefined;
-      releaseBranches = json?.branches ?? [];
-      releasePlugins = json?.plugins?.flat() ?? [];
+      // cosmiconfig searches package.json's `release` key BEFORE any rc/config file
+      // (semantic-release 25 delegates to cosmiconfig 9's default searchPlaces).
+      let releaseConfig = (packageJson as { release?: ReleaseConfig }).release;
+      if (releaseConfig === undefined) {
+        for (const { fileName, jsonParseable } of semanticReleaseConfigSearchPlaces) {
+          const releasercPath = path.resolve(dirPath, fileName);
+          if (!fs.existsSync(releasercPath)) continue;
+          if (!jsonParseable) {
+            releasePluginsAreUnknown = true;
+            break;
+          }
+          // `.releaserc` and `.config/releaserc` may also hold YAML; a JSON.parse failure lands
+          // in the catch below and marks the plugin list unknown instead of silently reporting
+          // "no plugins".
+          releaseConfig = JSON.parse(await fsp.readFile(releasercPath, 'utf8')) as ReleaseConfig;
+          break;
+        }
+      }
+      // semantic-release accepts a scalar branch or branch objects ({ name, prerelease, ... });
+      // normalize to plain branch names for consumers such as the workflow generator.
+      const rawBranches = releaseConfig?.branches;
+      releaseBranches = (Array.isArray(rawBranches) ? rawBranches : rawBranches === undefined ? [] : [rawBranches])
+        .map((branch: unknown) =>
+          typeof branch === 'string' ? branch : (branch as { name?: unknown } | undefined)?.name
+        )
+        .filter((branchName): branchName is string => typeof branchName === 'string');
+      if (Array.isArray(releaseConfig?.plugins)) {
+        releasePluginsAreExplicit = true;
+        for (const pluginEntry of releaseConfig.plugins) {
+          const [pluginName, pluginOptions] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry, undefined];
+          if (typeof pluginName !== 'string') continue;
+          releasePlugins.push(pluginName);
+          if (pluginName !== '@semantic-release/npm') continue;
+          // With pkgRoot the plugin publishes another manifest (it resolves pkgRoot against the
+          // repo root, so `.` and `./` both mean the root itself), and npmPublish: false
+          // disables publishing entirely; only the remaining shape proves the ROOT is published.
+          const pkgRoot = pluginOptions?.pkgRoot;
+          const publishesRoot =
+            pluginOptions?.npmPublish !== false &&
+            (pkgRoot === undefined ||
+              (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)));
+          releaseNpmPluginPublishesRoot ||= publishesRoot;
+        }
+      } else if (releaseConfig && releaseConfig.extends !== undefined) {
+        releasePluginsAreUnknown = true;
+      }
     } catch {
-      // do nothing
+      releasePluginsAreUnknown = true;
     }
+    // Without an explicit plugin list, semantic-release's default list applies, which includes
+    // @semantic-release/npm and @semantic-release/github (mirrors releasePublishesToNpm in wb's
+    // release.ts).
+    const usesSemanticRelease = !!(
+      devDependencies['semantic-release'] ||
+      releaseBranches.length > 0 ||
+      releasePlugins.length > 0 ||
+      releasePluginsAreUnknown
+    );
 
     // The caller may classify explicitly (index.ts passes false for every discovered workspace,
     // including non-packages/* layouts such as apps/*); the heuristic classifies the CLI entry
@@ -257,11 +351,7 @@ export async function getPackageConfig(
         prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
         pyright: !!devDependencies.pyright,
         reactNative: !!dependencies['react-native'],
-        semanticRelease: !!(
-          devDependencies['semantic-release'] ||
-          releaseBranches.length > 0 ||
-          releasePlugins.length > 0
-        ),
+        semanticRelease: usesSemanticRelease,
         storybook: !!devDependencies['@storybook/react'],
         tauri:
           !!dependencies['@tauri-apps/api'] ||
@@ -275,8 +365,13 @@ export async function getPackageConfig(
       },
       release: {
         branches: releaseBranches,
-        github: releasePlugins.includes('@semantic-release/github'),
-        npm: releasePlugins.includes('@semantic-release/npm'),
+        github: releasePluginsAreExplicit
+          ? releasePlugins.includes('@semantic-release/github') || releasePluginsAreUnknown
+          : usesSemanticRelease,
+        npm: releasePluginsAreExplicit
+          ? releasePlugins.includes('@semantic-release/npm') || releasePluginsAreUnknown
+          : usesSemanticRelease,
+        npmPublishesRoot: releaseNpmPluginPublishesRoot,
       },
       miseTasks: await readMiseTasks(dirPath),
       packageJson,
