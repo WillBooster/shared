@@ -26,6 +26,13 @@ type WbEnvMode = (typeof wbEnvModes)[number];
 export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('ensureWbEnvDefinitions', async () => {
     const needsNextPublic = allConfigs.some((config) => requiresNextPublicWbEnv(config));
+    // Warning-only dotenv inspection for EVERY repository flavor, before any mutation: dotenv
+    // values win over fnox at load time, so a leftover mismatched .env* silently overrides even
+    // a correct fnox profile.
+    for (const config of allConfigs) {
+      const needsNextPublicHere = config === rootConfig ? needsNextPublic : requiresNextPublicWbEnv(config);
+      await warnOnMismatchedDotenvWbEnvValues(config.dirPath, needsNextPublicHere);
+    }
     const fnoxTomlPath = path.resolve(rootConfig.dirPath, 'fnox.toml');
     // lstat, not existsSync: existsSync is false for a DANGLING fnox.toml symlink, which would
     // wrongly select the legacy .env branch and mutate the wrong configuration family while the
@@ -46,37 +53,7 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
     // framework dependency (the root keeps the repository-wide signal for shared tooling).
     for (const config of allConfigs) {
       const needsNextPublicHere = config === rootConfig ? needsNextPublic : requiresNextPublicWbEnv(config);
-      // `.env.local` outranks every canonical `.env.<mode>` file in EVERY cascade, so a static
-      // WB_ENV-family definition there breaks each non-matching mode (wb fails fast on the
-      // mismatch); warn regardless of the value.
-      const localContent = await fsUtil.readFileConfinedIfExists(path.resolve(config.dirPath, '.env.local'));
-      if (localContent !== undefined) {
-        const localKeys = dotenv.parse(localContent);
-        for (const keyName of ['WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
-          const value = localKeys[keyName];
-          if (typeof value === 'string' && !value.includes('$')) {
-            console.warn(
-              `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb fails fast when it mismatches the selected mode).`
-            );
-          }
-        }
-      }
       for (const mode of wbEnvModes) {
-        // Warn-only inspection of the HIGHER-precedence cascade variants the loader also reads
-        // (`.env.development` for the development cascade, `.env.<mode>.local` for every mode):
-        // a mismatched WB_ENV there overrides the canonical file's correct value, so checking
-        // the canonical file alone could even report a broken repository as correct.
-        const keyNames = needsNextPublicHere ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
-        const variantFileNames =
-          mode === 'development' ? ['.env.development', '.env.development.local'] : [`.env.${mode}.local`];
-        for (const variantFileName of variantFileNames) {
-          const variantContent = await fsUtil.readFileConfinedIfExists(path.resolve(config.dirPath, variantFileName));
-          if (variantContent === undefined) continue;
-          const definedVariantKeys = dotenv.parse(variantContent);
-          for (const keyName of keyNames) {
-            warnOnUnexpectedWbEnvValue(keyName, definedVariantKeys[keyName], mode, variantFileName);
-          }
-        }
         const envFilePath = path.resolve(config.dirPath, mode === 'development' ? '.env' : `.env.${mode}`);
         const envContent = await fsUtil.readFileConfinedIfExists(envFilePath);
         // Only existing mode files are completed: creating .env.production (never committed by
@@ -91,6 +68,42 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
       }
     }
   });
+}
+
+/**
+ * Warns on WB_ENV-family definitions in the dotenv cascade that would mislead the selected mode:
+ * `.env.local` overrides EVERY cascade (warn on any static definition), and a mode's own files
+ * (`.env` / `.env.<mode>` plus the higher-precedence `.env.development` and `.env.<mode>.local`
+ * variants) must not name a different mode. Read-only — mutation stays with the callers.
+ */
+async function warnOnMismatchedDotenvWbEnvValues(dirPath: string, needsNextPublic: boolean): Promise<void> {
+  const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
+  const localContent = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, '.env.local'));
+  if (localContent !== undefined) {
+    const localKeys = dotenv.parse(localContent);
+    for (const keyName of keyNames) {
+      const value = localKeys[keyName];
+      if (typeof value === 'string' && !value.includes('$')) {
+        console.warn(
+          `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb fails fast when it mismatches the selected mode).`
+        );
+      }
+    }
+  }
+  for (const mode of wbEnvModes) {
+    const inspectedFileNames =
+      mode === 'development'
+        ? ['.env', '.env.development', '.env.development.local']
+        : [`.env.${mode}`, `.env.${mode}.local`];
+    for (const fileName of inspectedFileNames) {
+      const content = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, fileName));
+      if (content === undefined) continue;
+      const definedKeys = dotenv.parse(content);
+      for (const keyName of keyNames) {
+        warnOnUnexpectedWbEnvValue(keyName, definedKeys[keyName], mode, fileName);
+      }
+    }
+  }
 }
 
 /**
@@ -211,10 +224,9 @@ export function insertWbEnvIntoEnvFile(content: string, mode: WbEnvMode, needsNe
   // Detect existing keys with dotenv's parser, not a per-line regex: a quoted multiline value may
   // contain a `WB_ENV=...` LINE without defining the key, which a raw line match would treat as an
   // existing definition and skip the insertion.
+  // Mismatch WARNINGS for the dotenv cascade live in warnOnMismatchedDotenvWbEnvValues, which
+  // runs for every repository flavor; this function only completes missing definitions.
   const definedKeys = dotenv.parse(content);
-  for (const keyName of keyNames) {
-    warnOnUnexpectedWbEnvValue(keyName, definedKeys[keyName], mode, mode === 'development' ? '.env' : `.env.${mode}`);
-  }
   const missingLines = keyNames
     .filter((keyName) => definedKeys[keyName] === undefined)
     .map((keyName) => `${keyName}=${mode}`);

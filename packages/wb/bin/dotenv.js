@@ -64,9 +64,27 @@ export function runDotenvCommand(args) {
   });
 }
 
+// Mirrors src/commands/dotenv.ts (validateStandardWbEnv) for this startup fast path.
+function validateStandardWbEnv(value, fixTarget) {
+  if (
+    !value ||
+    ['development', 'test', 'staging', 'production'].includes(value) ||
+    process.env.WB_SKIP_ENV_CHECK === '1' ||
+    process.env.WB_SKIP_ENV_CHECK === 'true'
+  ) {
+    return;
+  }
+  console.error(
+    `WB_ENV must be one of development, test, staging, or production, but is "${value}". ` +
+      `Fix ${fixTarget}, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+  );
+  process.exit(1);
+}
+
 // Mirrors src/commands/dotenv.ts (readAndApplyEnvironmentVariables) for this startup fast path.
 function readAndApplyEnvironmentVariables(cwd) {
   const mode = process.env.WB_ENV;
+  validateStandardWbEnv(mode, 'the exported variable');
   // Mode-specific sources drive the forced-mode override below.
   const modeVars = mode
     ? { ...readEnvFile(path.join(cwd, `.env.${mode}`)), ...readEnvFile(path.join(cwd, `.env.${mode}.local`)) }
@@ -117,6 +135,9 @@ function readAndApplyEnvironmentVariables(cwd) {
     }
     // On CI, inherited variables intentionally win; no warning is emitted.
   }
+  // Validate the FINAL value the child will see: the env sources themselves may define a broken
+  // WB_ENV, and with a forced mode the mode files may even override a VALID exported value.
+  validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
 }
 
 // Mirrors readFnoxEnvironmentVariables in @willbooster/shared-lib-node for this startup fast path.

@@ -153,12 +153,6 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
     }
   }
   const envVars = expand({ parsed, processEnv: referenceEnv }).parsed ?? parsed;
-  // The env sources themselves may define a broken WB_ENV (e.g. `.env` with `WB_ENV=prodcution`),
-  // which would silently select the base values — validate the EFFECTIVE value the child sees.
-  validateStandardWbEnv(
-    mode ?? (typeof envVars.WB_ENV === 'string' ? envVars.WB_ENV : undefined),
-    'the env source or the exported variable'
-  );
   for (const [key, value] of Object.entries(envVars)) {
     if (!(key in process.env)) {
       process.env[key] = value;
@@ -177,4 +171,8 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
     // On CI, inherited variables intentionally win (workflows deliberately inject env vars that
     // override the committed files); this is the designed behavior, so no warning is emitted.
   }
+  // Validate the FINAL value the child will see: the env sources themselves may define a broken
+  // WB_ENV (e.g. `.env` with `WB_ENV=prodcution`), and with a forced mode the mode files may even
+  // override a VALID exported value with a broken one.
+  validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
 }

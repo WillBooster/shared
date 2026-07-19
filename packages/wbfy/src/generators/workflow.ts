@@ -218,14 +218,16 @@ type KnownKind = keyof typeof workflows | 'deploy' | 'autofix';
  * left alone. GitHub treats owner/repository names case-insensitively, so the comparison does
  * too, while the workflow path and ref stay case-sensitive.
  */
-function parseOrgReusableWorkflowCall(uses: string | undefined): { workflowName: string; ref: string } | undefined {
-  const match = /^([^/]+)\/([^/]+)\/\.github\/workflows\/([^/@]+?)\.ya?ml@(.+)$/u.exec(uses ?? '');
+function parseOrgReusableWorkflowCall(
+  uses: string | undefined
+): { workflowName: string; extension: string; ref: string } | undefined {
+  const match = /^([^/]+)\/([^/]+)\/\.github\/workflows\/([^/@]+?)\.(ya?ml)@(.+)$/u.exec(uses ?? '');
   if (!match) return undefined;
   const owner = match[1]!.toLowerCase();
   if ((owner !== 'willbooster' && owner !== 'willboosterlab') || match[2]!.toLowerCase() !== 'reusable-workflows') {
     return undefined;
   }
-  return { workflowName: match[3]!, ref: match[4]! };
+  return { workflowName: match[3]!, extension: match[4]!, ref: match[5]! };
 }
 
 export async function generateWorkflows(rootConfig: PackageConfig): Promise<void> {
@@ -748,9 +750,9 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // Reconstruct from the parsed call so a differently cased owner (GitHub is case-insensitive
   // there) is also normalized to the repository's own organization / mirror.
   if (orgWorkflowCall && config.repository?.startsWith('github:WillBooster/')) {
-    job.uses = `WillBooster/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.yml@${orgWorkflowCall.ref}`;
+    job.uses = `WillBooster/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
   } else if (orgWorkflowCall && config.repository?.startsWith('github:WillBoosterLab/')) {
-    job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.yml@${orgWorkflowCall.ref}`;
+    job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
   }
 
   // Remove redundant parameters
