@@ -10,21 +10,6 @@ import {
   resolveBunWorkspacePackageJsonPaths,
 } from '../src/bunWorkspaces.js';
 
-/** Creates a temp monorepo whose given directories each contain a package.json. */
-function withPackageDirs(packageDirPaths: string[], testBody: (rootDirPath: string) => void): void {
-  const rootDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'bun-workspaces-'));
-  try {
-    fs.writeFileSync(path.join(rootDirPath, 'package.json'), JSON.stringify({ name: 'root' }));
-    for (const packageDirPath of packageDirPaths) {
-      fs.mkdirSync(path.join(rootDirPath, packageDirPath), { recursive: true });
-      fs.writeFileSync(path.join(rootDirPath, packageDirPath, 'package.json'), JSON.stringify({}));
-    }
-    testBody(rootDirPath);
-  } finally {
-    fs.rmSync(rootDirPath, { recursive: true, force: true });
-  }
-}
-
 test('evaluates patterns sequentially: a later positive re-adds what an earlier negation removed', () => {
   withPackageDirs(['apps/web', 'apps/excluded'], (rootDirPath) => {
     expect(resolveBunWorkspacePackageJsonPaths(['apps/*', '!apps/excluded'], rootDirPath)).toEqual([
@@ -156,3 +141,18 @@ test('detects the implicit workspace baseline only for seeding negation shapes',
   expect(hasImplicitWorkspaceBaseline(['!'])).toBe(false);
   expect(hasImplicitWorkspaceBaseline(undefined)).toBe(false);
 });
+
+/** Creates a temp monorepo whose given directories each contain a package.json. */
+function withPackageDirs(packageDirPaths: string[], testBody: (rootDirPath: string) => void): void {
+  const rootDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'bun-workspaces-'));
+  try {
+    fs.writeFileSync(path.join(rootDirPath, 'package.json'), JSON.stringify({ name: 'root' }));
+    for (const packageDirPath of packageDirPaths) {
+      fs.mkdirSync(path.join(rootDirPath, packageDirPath), { recursive: true });
+      fs.writeFileSync(path.join(rootDirPath, packageDirPath, 'package.json'), JSON.stringify({}));
+    }
+    testBody(rootDirPath);
+  } finally {
+    fs.rmSync(rootDirPath, { recursive: true, force: true });
+  }
+}
