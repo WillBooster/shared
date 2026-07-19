@@ -384,30 +384,34 @@ function convertYarnCommandsToBun(
   // has no such concept, so the invocation must be routed to the defining workspace explicitly.
   // Resolved lazily: most scripts have no colon invocations.
   let colonScriptOwners: Map<string, ColonScriptOwner | undefined> | undefined;
-  const makeColonScriptConverter =
-    (scriptValue: string) =>
-    (match: string, scriptName: string): string => {
-      if (typeof scripts[scriptName] === 'string') return `bun run ${scriptName}`;
-      colonScriptOwners ??= collectColonScriptOwners(rootConfig);
-      const owner = colonScriptOwners.get(scriptName);
-      const fallback = (): string =>
-        // A missing or ambiguous leading-colon script cannot run locally either, so its yarn form
-        // is kept to surface in review; other unresolved colon names keep the plain conversion
-        // (e.g. `cd sub && yarn build:sub` targeting a non-workspace directory).
-        scriptName.startsWith(':') ? match : `bun run ${scriptName}`;
-      if (!owner) return fallback();
-      // Bun's --filter never matches the workspace root, and its path filters resolve against the
-      // invoking cwd (both verified on Bun 1.3.14), so the root package and unnamed workspaces are
-      // addressed with --cwd relative to the invoking package instead.
-      if (owner.packageName && owner.dirPath !== path.resolve(rootConfig.dirPath)) {
-        return `bun run --filter ${owner.packageName} ${scriptName}`;
-      }
-      // A `cd` earlier in the script would make the package-relative --cwd resolve from the wrong
-      // directory at runtime, so such scripts fall back instead of getting a silently broken route.
-      if (scriptChangesWorkingDirectory(scriptValue)) return fallback();
-      const relativeDirPath = path.relative(config.dirPath, owner.dirPath) || '.';
-      return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}' ${scriptName}`;
-    };
+  const convertColonScriptInvocation = (
+    match: string,
+    scriptName: string,
+    offset: number,
+    currentScript: string
+  ): string => {
+    if (typeof scripts[scriptName] === 'string') return `bun run ${scriptName}`;
+    colonScriptOwners ??= collectColonScriptOwners(rootConfig);
+    const owner = colonScriptOwners.get(scriptName);
+    const fallback = (): string =>
+      // A missing or ambiguous leading-colon script cannot run locally either, so its yarn form
+      // is kept to surface in review; other unresolved colon names keep the plain conversion
+      // (e.g. `cd sub && yarn build:sub` targeting a non-workspace directory).
+      scriptName.startsWith(':') ? match : `bun run ${scriptName}`;
+    if (!owner) return fallback();
+    // Bun's --filter never matches the workspace root, and its path filters resolve against the
+    // invoking cwd (both verified on Bun 1.3.14), so the root package and unnamed workspaces are
+    // addressed with --cwd relative to the invoking package instead.
+    if (owner.packageName && owner.dirPath !== path.resolve(rootConfig.dirPath)) {
+      return `bun run --filter ${owner.packageName} ${scriptName}`;
+    }
+    // A `cd` BEFORE this invocation would make the package-relative --cwd resolve from the wrong
+    // directory at runtime, so such invocations fall back instead of getting a silently broken
+    // route; a cd after the invocation cannot affect it and must not prevent the conversion.
+    if (scriptChangesWorkingDirectory(currentScript.slice(0, offset))) return fallback();
+    const relativeDirPath = path.relative(config.dirPath, owner.dirPath) || '.';
+    return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}' ${scriptName}`;
+  };
   // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
   // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
   for (const [key, value] of Object.entries(scripts)) {
@@ -429,10 +433,7 @@ function convertYarnCommandsToBun(
       // so the whole shell word is captured and the colon requirement is a lookahead. Only a
       // leading `-` (a yarn flag) is excluded: Yarn's global lookup has no first-character
       // restriction, so names like `.build:cache` must resolve too.
-      .replaceAll(
-        /\byarn\s+(?:run\s+)?(?!-)((?=[^\s:;&|<>()'"`]*:)[^\s;&|<>()'"`]+)/gu,
-        makeColonScriptConverter(value)
-      )
+      .replaceAll(/\byarn\s+(?:run\s+)?(?!-)((?=[^\s:;&|<>()'"`]*:)[^\s;&|<>()'"`]+)/gu, convertColonScriptInvocation)
       // The `(?!\s+:)` guard keeps an unresolvable `yarn run :name` in its yarn form (the colon
       // rule above already converted every resolvable one).
       .replaceAll(/\byarn\s+run\b(?!\s+:)/gu, 'bun run')

@@ -1583,7 +1583,11 @@ test('routes a root-owned colon global script invoked from a child workspace', a
     };
     const childPackageJson = {
       name: '@x/child',
-      scripts: { deep: 'cd src && yarn :root-cache', warm: 'yarn :root-cache' },
+      scripts: {
+        after: 'yarn :root-cache && cd dist && echo done',
+        deep: 'cd src && yarn :root-cache',
+        warm: 'yarn :root-cache',
+      },
     };
     await fs.writeFile(path.join(dirPath, 'package.json'), JSON.stringify(rootPackageJson));
     await fs.mkdir(path.join(dirPath, 'packages', 'child'), { recursive: true });
@@ -1607,6 +1611,8 @@ test('routes a root-owned colon global script invoked from a child workspace', a
     expect(generated.scripts?.warm).toBe("bun run --cwd '../..' :root-cache");
     // A cd before the invocation would break the package-relative --cwd at runtime.
     expect(generated.scripts?.deep).toBe('cd src && yarn :root-cache');
+    // A cd after the invocation cannot affect it and must not prevent the conversion.
+    expect(generated.scripts?.after).toBe("bun run --cwd '../..' :root-cache && cd dist && echo done");
   } finally {
     await fs.rm(dirPath, { force: true, recursive: true });
   }
