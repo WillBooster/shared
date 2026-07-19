@@ -229,18 +229,23 @@ export class Project {
     const forcedMode =
       this.argv.cascadeEnv ??
       (this.argv.cascadeNodeEnv ? process.env.NODE_ENV || 'development' : process.env.WB_ENV || undefined);
+    // The AUTO-selected mode counts as the expectation too: with nothing set anywhere, the
+    // development cascade's files are loaded, so a `.env.local` declaring WB_ENV=production would
+    // otherwise run development sources labeled as production.
+    const expectedMode =
+      forcedMode ?? (this.argv.autoCascadeEnv !== false ? resolveFallbackWbEnv(this.argv) : undefined);
     // The command-level default is a legitimate second expectation: `wb test --cascade-env=staging`
     // loads the staging files while the fallback correctly fills WB_ENV=test.
     if (
-      forcedMode &&
-      Project.standardWbEnvModes.has(forcedMode) &&
-      env.WB_ENV !== forcedMode &&
+      expectedMode &&
+      Project.standardWbEnvModes.has(expectedMode) &&
+      env.WB_ENV !== expectedMode &&
       env.WB_ENV !== this.argv.commandDefaultWbEnv
     ) {
       console.error(
         chalk.red(
-          `WB_ENV resolves to "${env.WB_ENV}" although the "${forcedMode}" environment was selected. ` +
-            `Fix the WB_ENV defined in the mode's env source (e.g. .env.${forcedMode} or the fnox "${forcedMode}" profile), ` +
+          `WB_ENV resolves to "${env.WB_ENV}" although the "${expectedMode}" environment was selected. ` +
+            `Fix the WB_ENV defined in the mode's env source (e.g. .env.${expectedMode} or the fnox "${expectedMode}" profile), ` +
             'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
         )
       );

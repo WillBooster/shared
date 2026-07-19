@@ -87,7 +87,9 @@ async function warnOnMismatchedDotenvWbEnvValues(dirPath: string, needsNextPubli
       // evaluated statically.
       if (typeof value === 'string' && value !== '' && !value.includes('$')) {
         console.warn(
-          `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb fails fast when it mismatches the selected mode).`
+          keyName === 'WB_ENV'
+            ? `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb fails fast when it mismatches the selected mode).`
+            : `${keyName} in .env.local is "${value}", which overrides every cascade mode; remove it (wb overrides it with WB_ENV, but a direct framework build would inline this value).`
         );
       }
     }
@@ -193,6 +195,12 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
 function warnOnUnexpectedWbEnvValue(keyName: string, value: unknown, mode: WbEnvMode, sourceLabel: string): void {
   // An EMPTY value counts as unset (wb supplies the fallback mode), not as a mismatching mode.
   if (typeof value !== 'string' || value === '' || value === mode) return;
+  if (keyName === 'NEXT_PUBLIC_WB_ENV') {
+    console.warn(
+      `${keyName} in ${sourceLabel} is "${value}" but should be "${mode}" for the ${mode} mode; wb overrides it with WB_ENV, but a direct framework build would inline this value.`
+    );
+    return;
+  }
   // A dynamic value (e.g. `WB_ENV=${MODE}`) may legitimately resolve to the mode through wb's
   // dotenv expansion, which this static check cannot evaluate — skip instead of misfiring.
   if (value.includes('$')) return;
