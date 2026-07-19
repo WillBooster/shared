@@ -424,22 +424,13 @@ function removeBunRuntimeFlag(script: string): string {
       continue;
     }
     if (!atCommandPosition) continue;
-    // `KEY=VALUE` prefixes and `exec` keep the next token in command position.
-    if (/^[A-Za-z_]\w*=/u.test(token.text) || token.text === 'exec') continue;
+    // `KEY=VALUE` prefixes and the `exec`/`env` prefix commands keep the next token in command position.
+    if (/^[A-Za-z_]\w*=/u.test(token.text) || token.text === 'exec' || token.text === 'env') continue;
     atCommandPosition = false;
     if (unquoteShellToken(token.text) !== 'bun') continue;
     const flagToken = tokens[index + 1];
     if (flagToken?.text !== '--bun') continue;
-    // The first positional argument after Bun runtime flags decides: direct script files and
-    // shell-expanded targets (whose extension is unknowable here) keep their intentional shim.
-    let target: string | undefined;
-    for (const candidate of tokens.slice(index + 2)) {
-      if (isShellSeparator(candidate.text)) break;
-      if (candidate.text.startsWith('-')) continue;
-      target = unquoteShellToken(candidate.text);
-      break;
-    }
-    if (target && (/\.[cm]?[jt]sx?$/u.test(target) || target.startsWith('$'))) continue;
+    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2))) continue;
     removalRanges.push([flagToken.start, flagToken.end]);
   }
 
@@ -450,6 +441,33 @@ function removeBunRuntimeFlag(script: string): string {
     result = result.slice(0, whitespaceStart) + result.slice(end);
   }
   return result;
+}
+
+/**
+ * Whether the tokens following `bun --bun` describe a direct script execution (or an ambiguous
+ * invocation) whose intentional shim must survive. Only unambiguous Node-based tool invocations
+ * are stripped: wrongly removing an intentional shim changes the runtime seen by child processes,
+ * while wrongly keeping it only leaves wb's startup warning.
+ */
+function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[]): boolean {
+  const positionals: string[] = [];
+  for (const token of followingTokens) {
+    if (isShellSeparator(token.text)) break;
+    // A flag may take a separate value (e.g. `--preload ./setup.ts`), so the real entrypoint is
+    // unknowable without modeling the full option arity of Bun (and of `bun run`) — keep the flag.
+    if (token.text.startsWith('-')) return true;
+    positionals.push(unquoteShellToken(token.text));
+    // `bun run <file>` also executes script files directly, so its target decides too.
+    if (positionals[0] !== 'run' || positionals.length === 2) break;
+  }
+  const target = positionals[0] === 'run' ? positionals[1] : positionals[0];
+  return target !== undefined && isDirectScriptTarget(target);
+}
+
+function isDirectScriptTarget(target: string): boolean {
+  // Script extensions, path-like targets (Bun also runs extensionless files by path), and
+  // shell-expanded targets are direct executions; bare words are tool or package-script names.
+  return /\.[cm]?[jt]sx?$/u.test(target) || target.includes('/') || target.startsWith('$');
 }
 
 interface ShellToken {
@@ -463,7 +481,8 @@ function tokenizeShellCommand(script: string): ShellToken[] {
   let index = 0;
   while (index < script.length) {
     const char = script[index] ?? '';
-    if (/\s/u.test(char)) {
+    // An unquoted newline separates commands like `;`, so it must produce a separator token.
+    if (/[^\S\n]/u.test(char)) {
       index++;
       continue;
     }
@@ -497,7 +516,7 @@ function tokenizeShellCommand(script: string): ShellToken[] {
 }
 
 function isShellSeparator(text: string): boolean {
-  return /^[;|&()]+$/u.test(text);
+  return /^[;|&()\n]+$/u.test(text);
 }
 
 function unquoteShellToken(text: string): string {
