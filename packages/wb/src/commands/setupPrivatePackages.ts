@@ -214,6 +214,10 @@ async function collectPrivatePackages(
       privatePackage.sourceDirPath = installed?.dirPath;
       privatePackage.resolvedVersion = installed?.version;
     }
+    // Selected BEFORE the deep scan: a manifest inside the package may refer back to the package
+    // itself, and that requirement must be validated against the selection (assertNoVersionConflict
+    // below), never narrow the already-selected specifier.
+    privatePackages.set(privatePackage.name, privatePackage);
     // Nested private dependencies of an installed package are discoverable right away; registry
     // packages without a usable installed copy are inspected after download instead
     // (collectNestedPrivatePackages).
@@ -243,7 +247,6 @@ async function collectPrivatePackages(
         }
       }
     }
-    privatePackages.set(privatePackage.name, privatePackage);
   }
 
   return privatePackages;

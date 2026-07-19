@@ -242,6 +242,9 @@ export function isExactVersion(specifier: string | undefined): boolean {
  */
 export function specifierSubset(specifier: string | undefined, requirement: string | undefined): boolean {
   if (specifier === undefined || requirement === undefined) return false;
+  // `*` resolves through the `latest` dist-tag (selectVersionFromPackument), not as a range, so
+  // it is not statically comparable in either position.
+  if (specifier === '*' || requirement === '*') return false;
   // Build metadata distinguishes registry artifacts (resolveVersion fetches an exact specifier
   // verbatim) but semver comparisons ignore it, so two exact versions must match as strings.
   if (isExactVersion(specifier) && isExactVersion(requirement)) return specifier === requirement;
@@ -268,6 +271,9 @@ export function materializedVersionSatisfies(specifier: string, version: string)
  * a registry download, so uncertainty must fall back to downloading.
  */
 export function installedVersionSatisfies(specifier: string, version: string): boolean {
+  // `*` resolves through the `latest` dist-tag (selectVersionFromPackument), so like any other
+  // dist-tag it is not statically checkable against an installed version.
+  if (specifier === '*') return false;
   // resolveVersion fetches an exact specifier verbatim (build metadata included), so an installed
   // copy may replace the download only when the version strings match exactly.
   if (isExactVersion(specifier)) return specifier === version;
