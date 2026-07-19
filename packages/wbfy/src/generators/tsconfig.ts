@@ -27,6 +27,10 @@ const subJsonObj = {
   exclude: ['test/fixtures'],
   // wbfy generates root-level tool configs such as playwright.config.ts, and
   // type-aware linting needs those files in the project to see Node/Bun globals.
+  // `app/**` is deliberately absent even though the doesContain*Script signals scan it: app
+  // directories belong to framework packages (Next.js/Blitz), which own their tsconfig
+  // (generateTsconfig skips them), and checking framework sources under this project's compiler
+  // options would produce false errors.
   include: ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'],
 };
 
@@ -123,15 +127,22 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
  * sources, not just the conventional packages/* directory.
  */
 function buildRootJsonObj(config: PackageConfig): TsConfigJson {
-  const workspacePatterns = config.doesContainSubPackageJsons ? getWorkspaceDirPatterns(config) : [];
+  const workspacePatterns = config.doesContainSubPackageJsons
+    ? getWorkspaceDirPatterns(config)
+    : { excludes: [], includes: [] };
   const settings = structuredClone(subJsonObj) as TsConfigJson;
   settings.exclude = [
-    ...workspacePatterns.map((workspacePattern) => `${workspacePattern}/test/fixtures`),
-    ...(settings.exclude ?? []),
-  ];
+    ...new Set([
+      ...workspacePatterns.includes.map((workspacePattern) => `${workspacePattern}/test/fixtures`),
+      // Negative workspace patterns (e.g. `!packages/excluded`) opt whole workspace subtrees out
+      // of the monorepo, so their sources must not enter the root type-check project either.
+      ...workspacePatterns.excludes,
+      ...(settings.exclude ?? []),
+    ]),
+  ].toSorted();
   settings.include = [
     ...(settings.include ?? []),
-    ...workspacePatterns.flatMap((workspacePattern) => [
+    ...workspacePatterns.includes.flatMap((workspacePattern) => [
       `${workspacePattern}/*.config.ts`,
       `${workspacePattern}/scripts/**/*`,
       `${workspacePattern}/src/**/*`,

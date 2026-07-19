@@ -46,16 +46,62 @@ export function getWorkspacePackageJsonPaths(rootConfig: WorkspaceRootLike): str
   });
 }
 
+export interface WorkspaceDirPatterns {
+  /** Directory subtrees matched by negative workspace patterns, for tsconfig `exclude` entries. */
+  excludes: string[];
+  /** Positive directory patterns (or concrete directories for Bun-only glob syntax). */
+  includes: string[];
+}
+
 /**
- * Sorted non-negative workspace directory patterns (posix, relative to the monorepo root), for
- * generators that need pattern-shaped globs covering every workspace layout — e.g. the root
- * tsconfig's `apps/*` include entries — instead of concrete directories, which would churn
- * generated files whenever a workspace package is added or removed.
+ * Sorted workspace directory patterns (posix, relative to the monorepo root) for generators that
+ * need pattern-shaped globs covering every workspace layout — e.g. the root tsconfig's `apps/*`
+ * include entries — instead of concrete directories, which would churn generated files whenever a
+ * workspace package is added or removed. Every returned pattern is valid tsconfig glob syntax.
  */
-export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): string[] {
-  return getSanitizedWorkspacePatterns(rootLike)
-    .filter((workspacePattern) => !workspacePattern.startsWith('!'))
-    .toSorted();
+export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): WorkspaceDirPatterns {
+  // Unlike discovery, generated output must not contain a never-matching `packages/*` fallback:
+  // an apps/*-only monorepo would get dead globs committed into its root tsconfig. Mirror
+  // applyPackageJsonConventions, which forces `packages/*` only when a manifest actually matches.
+  const hasPackagesLayout =
+    rootLike.doesContainSubPackageJsons &&
+    fg.globSync('packages/*/package.json', {
+      cwd: rootLike.dirPath,
+      followSymbolicLinks: false,
+      ignore: ['**/node_modules/**'],
+    }).length > 0;
+  const excludes = new Set<string>();
+  const includes = new Set<string>();
+  for (const workspacePattern of getSanitizedWorkspacePatterns({
+    ...rootLike,
+    doesContainSubPackageJsons: hasPackagesLayout,
+  })) {
+    const isNegative = workspacePattern.startsWith('!');
+    // Normalization collapses `//` and strips trailing slashes so template-literal consumers
+    // (e.g. `${pattern}/src/**/*`) never emit doubled separators for patterns like `apps/*/`.
+    const patternBody = path.posix
+      .normalize(isNegative ? workspacePattern.slice(1) : workspacePattern)
+      .replace(/\/+$/u, '');
+    for (const dirPattern of toTsconfigCompatibleDirPatterns(patternBody, rootLike.dirPath)) {
+      (isNegative ? excludes : includes).add(dirPattern);
+    }
+  }
+  return { excludes: [...excludes].toSorted(), includes: [...includes].toSorted() };
+}
+
+/**
+ * tsconfig include/exclude support only the `*`, `?`, and `**` wildcards, while Bun workspaces
+ * accept full glob syntax (brace expansion, character classes, …), so expand Bun-only patterns to
+ * the concrete directories they match to keep the generated globs valid for TypeScript.
+ */
+function toTsconfigCompatibleDirPatterns(patternBody: string, rootDirPath: string): string[] {
+  if (!/[()[\]{}]/u.test(patternBody)) return [patternBody];
+  return fg.globSync(patternBody, {
+    cwd: rootDirPath,
+    followSymbolicLinks: false,
+    ignore: ['**/node_modules/**'],
+    onlyDirectories: true,
+  });
 }
 
 /**
@@ -64,8 +110,11 @@ export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): string[] {
  * repository's files.
  */
 function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
-  // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
-  // not have written the root package.json yet, so mirror that normalization here.
+  // applyPackageJsonConventions forces `packages/*` into a monorepo's workspaces when a
+  // packages/*/package.json actually matches, but it may not have written the root package.json
+  // yet, so mirror that normalization here. Discovery callers pass the fallback unconditionally
+  // for monorepos — a never-matching pattern contributes no paths there — while pattern-shaped
+  // callers (getWorkspaceDirPatterns) gate it on an actual match.
   const workspacePatterns = [
     ...new Set([
       ...getDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces),

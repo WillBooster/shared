@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { getWorkspaceSubDirPaths } from '../src/utils/workspaceUtil.js';
+import { getWorkspaceDirPatterns, getWorkspaceSubDirPaths } from '../src/utils/workspaceUtil.js';
 import { generateTsconfig } from '../src/generators/tsconfig.js';
 import { getPackageConfig } from '../src/packageConfig.js';
 import { promisePool } from '../src/utils/promisePool.js';
@@ -75,10 +75,38 @@ test('derives root signals and root tsconfig coverage from an apps/*-only monore
       exclude?: string[];
       include?: string[];
     };
-    expect(tsconfig.include).toEqual(
-      expect.arrayContaining(['apps/*/*.config.ts', 'apps/*/scripts/**/*', 'apps/*/src/**/*', 'apps/*/test/**/*'])
-    );
-    expect(tsconfig.exclude).toEqual(expect.arrayContaining(['apps/*/test/fixtures', 'test/fixtures']));
+    // Exact arrays: the never-matching packages/* fallback must not leak into apps/*-only output.
+    expect(tsconfig.include).toEqual([
+      '*.config.ts',
+      'apps/*/*.config.ts',
+      'apps/*/scripts/**/*',
+      'apps/*/src/**/*',
+      'apps/*/test/**/*',
+      'scripts/**/*',
+      'src/**/*',
+      'test/**/*',
+    ]);
+    expect(tsconfig.exclude).toEqual(['apps/*/test/fixtures', 'test/fixtures']);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('translates Bun-only workspace glob syntax and negations into tsconfig-safe patterns', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of ['apps/web', 'apps/excluded', 'tools/cli']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(workspaceDirPath, { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+    }
+    // Trailing slash must not double separators; braces (Bun-only glob syntax, invalid in
+    // tsconfig include) must expand to concrete directories; negations must become excludes.
+    const workspaces = ['apps/*/', '!apps/excluded', '{tools,services}/*'];
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
+    expect(
+      getWorkspaceDirPatterns({ dirPath: tempDirPath, doesContainSubPackageJsons: true, packageJson: { workspaces } })
+    ).toEqual({ excludes: ['apps/excluded'], includes: ['apps/*', 'tools/cli'] });
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
