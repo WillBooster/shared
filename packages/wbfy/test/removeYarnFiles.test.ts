@@ -60,6 +60,32 @@ test('reports every blocker at once instead of only the first one', async () => 
   });
 });
 
+test('blocks on an npmMinimalAgeGate value the translation cannot parse literally', async () => {
+  await withTempDir(async (tempDirPath) => {
+    // Yarn expands ${ENV_VAR:-fallback} at read time; wbfy sees the raw expression, and silently
+    // falling back to the 5-day default could weaken the repository's gate.
+    fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), 'npmMinimalAgeGate: "${AGE_GATE:-14d}"\n');
+    expect(findUnmigratableYarnSettings(tempDirPath)).toBe(
+      '.yarnrc.yml declares behavior-affecting settings [npmMinimalAgeGate]'
+    );
+  });
+});
+
+test('detects patch: dependencies in packages/* manifests excluded by a workspace negation', async () => {
+  await withTempDir(async (tempDirPath) => {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ workspaces: ['packages/*', '!packages/legacy'] })
+    );
+    fs.mkdirSync(path.join(tempDirPath, 'packages', 'legacy'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempDirPath, 'packages', 'legacy', 'package.json'),
+      JSON.stringify({ dependencies: { foo: 'patch:foo@npm%3A1.0.0#./foo.patch' } })
+    );
+    expect(findUnmigratableYarnSettings(tempDirPath)).toBe('packages/legacy/package.json uses the patch: protocol');
+  });
+});
+
 test('detects patch: dependencies declared in workspace manifests, not only the root one', async () => {
   await withTempDir(async (tempDirPath) => {
     fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ workspaces: ['packages/*'] }));

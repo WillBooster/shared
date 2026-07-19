@@ -39,7 +39,7 @@ const safeYarnrcSettings = new Set([
   'logFilters',
   'nmMode',
   'nodeLinker',
-  'npmMinimalAgeGate',
+  // npmMinimalAgeGate is handled by isMigratableYarnrcSetting (only parsable values migrate).
   'npmPreapprovedPackages',
   'plugins',
   'preferInteractive',
@@ -97,12 +97,19 @@ export function findUnmigratableYarnSettings(dirPath: string): string | undefine
  */
 function findPatchProtocolManifests(dirPath: string): string[] {
   const manifestPaths = new Set(['package.json']);
+  // The main flow processes EVERY immediate packages/* directory (index.ts), even ones a
+  // workspace negation excludes, so the preflight must inspect them all regardless of the
+  // declared workspace patterns.
+  const packagesManifestPaths = fg.globSync('packages/*/package.json', { cwd: dirPath });
+  for (const manifestPath of packagesManifestPaths) {
+    manifestPaths.add(manifestPath);
+  }
   try {
     const packageJson = JSON.parse(fs.readFileSync(path.resolve(dirPath, 'package.json'), 'utf8')) as PackageJson;
     for (const packageJsonPath of getWorkspacePackageJsonPaths({
       dirPath,
       packageJson,
-      doesContainSubPackageJsons: fg.globSync('packages/*/package.json', { cwd: dirPath }).length > 0,
+      doesContainSubPackageJsons: packagesManifestPaths.length > 0,
     })) {
       manifestPaths.add(packageJsonPath);
     }
@@ -119,7 +126,8 @@ function findPatchProtocolManifests(dirPath: string): string[] {
       // An unreadable workspace manifest cannot prove a patch: dependency.
     }
   }
-  return offendingPaths;
+  // Sorted for a deterministic report (fast-glob's result order is not guaranteed).
+  return offendingPaths.toSorted();
 }
 
 function isMigratableYarnrcSetting(key: string, value: unknown): boolean {
@@ -130,6 +138,11 @@ function isMigratableYarnrcSetting(key: string, value: unknown): boolean {
   // the intended outcome of the migration (#1014). An explicit `enableScripts: true` has no
   // automatic translation because Bun cannot enable all lifecycle scripts wholesale.
   if (key === 'enableScripts') return value === false;
+  // A gate value the translation cannot parse (e.g. Yarn's `${ENV_VAR:-14d}` expansion syntax)
+  // would silently fall back to the 5-day org default and could WEAKEN the repository's policy,
+  // so only literally parsable durations are migratable. Untranslatable npmPreapprovedPackages
+  // entries need no such gate: dropping them is fail-safe (packages become age-gated).
+  if (key === 'npmMinimalAgeGate') return parseYarnDurationAsSeconds(value) !== undefined;
   return safeYarnrcSettings.has(key);
 }
 
