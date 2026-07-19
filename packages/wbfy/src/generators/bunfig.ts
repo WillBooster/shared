@@ -214,17 +214,17 @@ const newContent = (
   // bunfig.toml are merged after the managed list, and a custom npmMinimalAgeGate (or an
   // already-customized minimumReleaseAge) is carried over. Only marker-tagged entries count as
   // repo-specific — provenance stays explicit in the file itself, so entries an older wbfy
-  // version managed and later retired can never masquerade as repository policy — and entries
-  // of the FULL managed list are filtered out so wbfy can still drop a managed entry (e.g.
-  // @willbooster/prettier-config in non-Java repositories) without it resurfacing.
-  const knownManagedExcludes = new Set(bunMinimumReleaseAgeExcludes);
+  // version managed and later retired can never masquerade as repository policy. Deduplication
+  // is against the EFFECTIVE managed list only: an explicit repository preapproval that the
+  // managed list happens to omit for this repository (e.g. @willbooster/prettier-config in a
+  // non-Java repository) must still be emitted under the marker.
   const repoSpecificExcludes = [
     ...new Set([
       ...(yarnReleaseAgeSettings?.minimumReleaseAgeExcludes ?? []),
       ...readRepoSpecificExcludes(existingContent),
     ]),
   ]
-    .filter((packageName) => !knownManagedExcludes.has(packageName))
+    .filter((packageName) => !managedExcludes.includes(packageName))
     .toSorted();
   const minimumReleaseAgeExcludes = [
     ...managedExcludes.map((packageName) => `    "${packageName}",`),
@@ -273,10 +273,9 @@ function readRepoSpecificExcludes(content: string | undefined): string[] {
     // themselves survive regeneration).
     if (trimmed.startsWith(']')) break;
     if (!trimmed || trimmed.startsWith('#')) continue;
-    // A line may carry several comma-separated quoted entries plus an optional quote-free
-    // trailing comment; a line this parser cannot read could hide further entries, so stop
-    // instead of guessing.
-    const withoutComment = line.replace(/\s#[^"']*$/u, '');
+    // A line may carry several comma-separated quoted entries plus an optional trailing comment;
+    // a line this parser cannot read could hide further entries, so stop instead of guessing.
+    const withoutComment = stripTomlLineComment(line);
     if (!/^\s*(?:(?:"[^"]+"|'[^']+')\s*,?\s*)+$/u.test(withoutComment)) break;
     for (const matched of withoutComment.matchAll(/"([^"]+)"|'([^']+)'/gu)) {
       const entry = matched[1] ?? matched[2];
@@ -286,6 +285,22 @@ function readRepoSpecificExcludes(content: string | undefined): string[] {
     }
   }
   return excludes;
+}
+
+/** Removes a trailing `#` comment quote-awarely, so comment prose containing quotes cannot confuse the entry parser. */
+function stripTomlLineComment(line: string): string {
+  let quote: string | undefined;
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index];
+    if (quote) {
+      if (character === quote) quote = undefined;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '#') {
+      return line.slice(0, index);
+    }
+  }
+  return line;
 }
 
 /**

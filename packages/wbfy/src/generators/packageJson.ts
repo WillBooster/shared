@@ -451,12 +451,13 @@ function convertYarnCommandsToBun(
 
 /**
  * Whether the script prefix may change the working directory before the command that follows it.
- * scriptChangesWorkingDirectory models `&&` chains only, so a conservative token scan also
- * catches `cd` after `;`, `|`, `||`, newlines, or subshell openers: a wrongly-suppressed --cwd
- * route merely surfaces in review, while a wrongly-emitted one breaks at runtime.
+ * Any standalone `cd` (or `pushd`) token counts, wherever it appears — after separators, group
+ * braces, or shell keywords like `then`/`do` — because a wrongly-suppressed --cwd route merely
+ * surfaces in review, while a wrongly-emitted one breaks at runtime; false positives from `cd`
+ * appearing as data are an acceptable cost of that asymmetry.
  */
 function prefixMayChangeWorkingDirectory(prefix: string): boolean {
-  return scriptChangesWorkingDirectory(prefix) || /(?:^|[;&|()]|\n)\s*cd(?:\s|$)/u.test(prefix);
+  return /(?<![\w./~-])(?:cd|pushd)(?![\w./~-])/u.test(prefix);
 }
 
 interface ColonScriptOwner {

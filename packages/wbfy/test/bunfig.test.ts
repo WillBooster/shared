@@ -42,14 +42,17 @@ test('keeps the migrated .yarnrc.yml release-age-gate behavior in the generated 
   try {
     await generateBunfigToml(createConfig({ dirPath: tempDirPath }), 'isolated', {
       minimumReleaseAgeSeconds: 172_800,
-      minimumReleaseAgeExcludes: ['my-repo-specific-package', 'react'],
+      minimumReleaseAgeExcludes: ['@willbooster/prettier-config', 'my-repo-specific-package', 'react'],
     });
     await promisePool.promiseAll();
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).toContain('minimumReleaseAge = 172800');
     expect(content).toContain('"my-repo-specific-package",');
-    // Entries already in the managed list must not be duplicated.
+    // Entries already in the EFFECTIVE managed list must not be duplicated...
     expect(content.match(/^\s+"react",$/gmu)).toHaveLength(1);
+    // ...but an explicit preapproval the managed list omits for this (non-Java) repository is
+    // still repository policy and must survive under the marker.
+    expect(content).toContain('"@willbooster/prettier-config",');
 
     // A later run has no .yarnrc.yml to read anymore (removeYarnFiles deleted it), so the
     // repo-specific policy must survive via the existing bunfig.toml.
@@ -80,7 +83,7 @@ minimumReleaseAgeExcludes = [
     "my-repo-specific-package",
 
     # a hand-added comment must not truncate the repository-policy list
-    'single-quoted-package', # inline comment
+    'single-quoted-package', # an inline comment with a quote mustn't drop the rest
     'not@a@name',
     "one-line-a", "one-line-b",
 ]
