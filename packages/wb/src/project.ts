@@ -209,8 +209,31 @@ export class Project {
       );
       process.exit(1);
     }
-    if (this.requiresNextPublicWbEnv) {
-      env.NEXT_PUBLIC_WB_ENV ||= env.WB_ENV;
+    // A forced mode (an explicit/command-default --cascade-env, or an exported WB_ENV whose
+    // mode-specific files may override it locally per issue #930) must not be silently replaced
+    // by another mode a mode file defines: `wb test` resolving WB_ENV=development from a
+    // committed `.env` would run the tests against development values, and an exported
+    // WB_ENV=production overridden to development by `.env.production` would build/deploy the
+    // wrong environment while looking successful.
+    const forcedMode = this.argv.cascadeEnv ?? (this.argv.cascadeNodeEnv ? undefined : process.env.WB_ENV || undefined);
+    if (forcedMode && env.WB_ENV !== forcedMode) {
+      console.error(
+        chalk.red(
+          `WB_ENV resolves to "${env.WB_ENV}" although the "${forcedMode}" environment was selected. ` +
+            `Fix the WB_ENV defined in the mode's env source (e.g. .env.${forcedMode} or the fnox "${forcedMode}" profile), ` +
+            'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+        )
+      );
+      process.exit(1);
+    }
+    if (this.requiresNextPublicWbEnv && env.NEXT_PUBLIC_WB_ENV !== env.WB_ENV) {
+      // Assign unconditionally, not `||=`: the pair must agree by convention, and a stale value
+      // (e.g. a base `.env`'s development default while CI exports WB_ENV=test) would otherwise
+      // be baked into the client bundle even though the server side runs with the correct WB_ENV.
+      if (env.NEXT_PUBLIC_WB_ENV && !shouldSuppressEnvironmentOutput(this.argv)) {
+        console.info(`Overriding NEXT_PUBLIC_WB_ENV ("${env.NEXT_PUBLIC_WB_ENV}") with WB_ENV ("${env.WB_ENV}").`);
+      }
+      env.NEXT_PUBLIC_WB_ENV = env.WB_ENV;
     }
   }
 

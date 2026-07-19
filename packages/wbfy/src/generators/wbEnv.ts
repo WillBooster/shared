@@ -140,12 +140,13 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
 
 /**
  * Warns when an existing WB_ENV-family definition names a different mode than the one it is
- * defined for (a typo like `prodcution`, or a copy-pasted wrong mode): wb rejects non-standard
- * values at runtime, so surfacing the mismatch during wbfy is the earliest possible signal.
- * Only plaintext-looking values are checked — an age-encrypted fnox value must not misfire.
+ * defined for (a typo like `prodcution` or `production1`, or a copy-pasted wrong mode): wb
+ * rejects non-standard values at runtime, so surfacing the mismatch during wbfy is the earliest
+ * possible signal. The passed value is always plaintext (a dotenv value or a fnox `default`
+ * field) — encrypted fnox entries are `{ provider, value }` objects whose `default` is absent.
  */
 function warnOnUnexpectedWbEnvValue(keyName: string, value: unknown, mode: WbEnvMode, sourceLabel: string): void {
-  if (typeof value !== 'string' || !/^[A-Za-z-]+$/u.test(value) || value === mode) return;
+  if (typeof value !== 'string' || value === mode) return;
   console.warn(
     `${keyName} in ${sourceLabel} is "${value}" but should be "${mode}" for the ${mode} mode; wb rejects values outside development/test/staging/production.`
   );

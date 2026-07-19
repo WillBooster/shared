@@ -234,9 +234,17 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     await promisePool.run(() => fsUtil.removeConfined(semanticYmlPath, { recursive: true }));
 
     const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() || !isObsoleteGenPrWorkflow(workflowsPath, entry.name)) continue;
-      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, entry.name)));
+    // Decide obsolescence once (the content check reads each file) and AWAIT the deletions:
+    // promisePool.run resolves when a task enters the pool, not when it completes, so a pooled
+    // deletion could race the regeneration below on the same path (e.g. a `test.yml` whose only
+    // job called the retired gen-pr workflow would be merged with its stale on-disk content).
+    const obsoleteGenPrFileNames = new Set(
+      entries
+        .filter((entry) => entry.isFile() && isObsoleteGenPrWorkflow(workflowsPath, entry.name))
+        .map((entry) => entry.name)
+    );
+    for (const fileName of obsoleteGenPrFileNames) {
+      await fsUtil.removeConfined(path.join(workflowsPath, fileName));
     }
     // GitHub accepts both .yml and .yaml workflow files, and a workflow's file name is its public
     // identity (badge URLs, the workflow REST API, same-repository `uses:` references), so .yaml
@@ -245,8 +253,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // the .yaml twin is left untouched, since merging two workflow definitions is ambiguous.
     const fileNamesByKind = new Map<string, string>();
     for (const entry of entries) {
-      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || isObsoleteGenPrWorkflow(workflowsPath, entry.name))
-        continue;
+      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || obsoleteGenPrFileNames.has(entry.name)) continue;
       const kind = entry.name.replace(/\.ya?ml$/u, '');
       const existingFileName = fileNamesByKind.get(kind);
       if (existingFileName === undefined || existingFileName.endsWith('.yaml')) {
@@ -345,7 +352,9 @@ export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string)
   } catch {
     return false;
   }
-  const genPrCallPattern = /\/reusable-workflows\/\.github\/workflows\/gen-pr\.ya?ml@/u;
+  // Owner-restricted: only WillBooster's own reusable gen-pr workflow was retired, so a caller of
+  // some other organization's same-named workflow must not be deleted.
+  const genPrCallPattern = /^(?:WillBooster|WillBoosterLab)\/reusable-workflows\/\.github\/workflows\/gen-pr\.ya?ml@/u;
   try {
     const workflow = yaml.load(content) as Workflow | undefined;
     if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {

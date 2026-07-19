@@ -37,6 +37,30 @@ jobs:
   expect(isObsoleteGenPrWorkflow(workflowsPath, 'ai.yml')).toBe(true);
 });
 
+test('detects a WillBoosterLab mirror caller', () => {
+  writeWorkflow(
+    'lab.yml',
+    `on: issues
+jobs:
+  gen-pr:
+    uses: WillBoosterLab/reusable-workflows/.github/workflows/gen-pr.yml@main
+`
+  );
+  expect(isObsoleteGenPrWorkflow(workflowsPath, 'lab.yml')).toBe(true);
+});
+
+test("keeps a caller of another organization's gen-pr workflow", () => {
+  writeWorkflow(
+    'other-org.yml',
+    `on: issues
+jobs:
+  gen-pr:
+    uses: ExampleOrg/reusable-workflows/.github/workflows/gen-pr.yml@v1
+`
+  );
+  expect(isObsoleteGenPrWorkflow(workflowsPath, 'other-org.yml')).toBe(false);
+});
+
 test('keeps a mixed workflow whose other jobs do not call gen-pr', () => {
   writeWorkflow(
     'mixed.yml',
