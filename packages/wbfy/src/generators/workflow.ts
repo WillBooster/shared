@@ -211,6 +211,25 @@ const workflows = {
 
 type KnownKind = keyof typeof workflows | 'deploy' | 'autofix';
 
+/**
+ * Parses a `uses:` value calling one of WillBooster's own reusable workflows (or the
+ * WillBoosterLab sync mirror) into the workflow name (without extension) and git ref. Only those
+ * follow the contract wbfy enforces — callers of another organization's same-named repository are
+ * left alone. GitHub treats owner/repository names case-insensitively, so the comparison does
+ * too, while the workflow path and ref stay case-sensitive.
+ */
+function parseOrgReusableWorkflowCall(
+  uses: string | undefined
+): { workflowName: string; extension: string; ref: string } | undefined {
+  const match = /^([^/]+)\/([^/]+)\/\.github\/workflows\/([^/@]+?)\.(ya?ml)@(.+)$/u.exec(uses ?? '');
+  if (!match) return undefined;
+  const owner = match[1]!.toLowerCase();
+  if ((owner !== 'willbooster' && owner !== 'willboosterlab') || match[2]!.toLowerCase() !== 'reusable-workflows') {
+    return undefined;
+  }
+  return { workflowName: match[3]!, extension: match[4]!, ref: match[5]! };
+}
+
 export async function generateWorkflows(rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateWorkflow', async () => {
     if (isReusableWorkflowsRepo(rootConfig.repository)) {
@@ -234,9 +253,17 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     await promisePool.run(() => fsUtil.removeConfined(semanticYmlPath, { recursive: true }));
 
     const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile() || !isObsoleteGenPrWorkflowFileName(entry.name)) continue;
-      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, entry.name)));
+    // Decide obsolescence once (the content check reads each file) and AWAIT the deletions:
+    // promisePool.run resolves when a task enters the pool, not when it completes, so a pooled
+    // deletion could race the regeneration below on the same path (e.g. a `test.yml` whose only
+    // job called the retired gen-pr workflow would be merged with its stale on-disk content).
+    const obsoleteGenPrFileNames = new Set(
+      entries
+        .filter((entry) => entry.isFile() && isObsoleteGenPrWorkflow(workflowsPath, entry.name))
+        .map((entry) => entry.name)
+    );
+    for (const fileName of obsoleteGenPrFileNames) {
+      await fsUtil.removeConfined(path.join(workflowsPath, fileName));
     }
     // GitHub accepts both .yml and .yaml workflow files, and a workflow's file name is its public
     // identity (badge URLs, the workflow REST API, same-repository `uses:` references), so .yaml
@@ -245,7 +272,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // the .yaml twin is left untouched, since merging two workflow definitions is ambiguous.
     const fileNamesByKind = new Map<string, string>();
     for (const entry of entries) {
-      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || isObsoleteGenPrWorkflowFileName(entry.name)) continue;
+      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || obsoleteGenPrFileNames.has(entry.name)) continue;
       const kind = entry.name.replace(/\.ya?ml$/u, '');
       const existingFileName = fileNamesByKind.get(kind);
       if (existingFileName === undefined || existingFileName.endsWith('.yaml')) {
@@ -329,8 +356,35 @@ export function isReusableWorkflowsRepo(repository?: string): boolean {
   return repository?.endsWith('/reusable-workflows') ?? false;
 }
 
-function isObsoleteGenPrWorkflowFileName(fileName: string): boolean {
-  return /^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName);
+/**
+ * The gen-pr workflow family is retired (the reusable gen-pr.yml no longer exists), so wbfy
+ * removes its callers: any `gen-pr*.yml` file, plus a file under another name whose jobs ALL call
+ * the reusable gen-pr workflow. Mixed files keep their other jobs, and unparsable files are only
+ * matched by filename — deleting a whole workflow on a text match would be too aggressive.
+ */
+export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string): boolean {
+  if (/^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName)) return true;
+  if (!/\.ya?ml$/u.test(fileName)) return false;
+  let content: string;
+  try {
+    content = fs.readFileSync(path.join(workflowsPath, fileName), 'utf8');
+  } catch {
+    return false;
+  }
+  // Owner-restricted: only WillBooster's own reusable gen-pr workflow was retired, so a caller of
+  // some other organization's same-named workflow must not be deleted.
+  const isGenPrCall = (uses: unknown): boolean =>
+    typeof uses === 'string' && parseOrgReusableWorkflowCall(uses)?.workflowName === 'gen-pr';
+  try {
+    const workflow = yaml.load(content) as Workflow | undefined;
+    if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
+      const jobs = Object.values(workflow.jobs);
+      return jobs.length > 0 && jobs.every((job) => isGenPrCall(job?.uses));
+    }
+  } catch {
+    // Fall through to the filename-only decision above.
+  }
+  return false;
 }
 
 async function writeWorkflowYaml(
@@ -385,7 +439,8 @@ async function writeWorkflowYaml(
   if (kind === 'test-rust') {
     // Migrate hand-written Rust workflows (e.g. an inline cargo-check job) to the reusable workflow.
     for (const [jobName, job] of Object.entries(newSettings.jobs)) {
-      if (!job.uses?.includes('/reusable-workflows/')) {
+      // A job written as `jobName:` with no body parses as null.
+      if (!job?.uses?.includes('/reusable-workflows/')) {
         delete newSettings.jobs[jobName];
       }
     }
@@ -421,8 +476,11 @@ async function writeWorkflowYaml(
 
   let isReusableWorkflow = false;
   for (const job of Object.values(newSettings.jobs)) {
-    // Ignore non-reusable workflows
-    if (!job.uses?.includes('/reusable-workflows/')) continue;
+    // Ignore empty jobs (a bare `jobName:` parses as null), non-reusable workflows, and other
+    // organizations' reusable workflows: a same-named `reusable-workflows` repository elsewhere
+    // follows a different contract, and normalizing its callers (secret injection/removal,
+    // permissions) could break them.
+    if (!job || !parseOrgReusableWorkflowCall(job.uses)) continue;
 
     normalizeJob(config, job, kind);
     isReusableWorkflow = true;
@@ -438,7 +496,9 @@ async function writeWorkflowYaml(
   // because arbitrary package scripts may push commits.
   if (!newSettings.permissions) {
     for (const job of Object.values(newSettings.jobs)) {
-      if (!job.permissions && /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@main$/u.test(job.uses ?? '')) {
+      if (!job) continue;
+      const call = parseOrgReusableWorkflowCall(job.uses);
+      if (!job.permissions && call?.workflowName === 'deploy' && call.ref === 'main') {
         job.permissions = { contents: 'read' };
       }
     }
@@ -618,7 +678,7 @@ function readProductionCustomDomain(rootDirPath: string, workerDirPath: string):
 // The reusable workflows that declare FNOX_AGE_KEY and VERDACCIO_TOKEN under
 // on.workflow_call.secrets (see WillBooster/reusable-workflows). Passing either secret to any
 // other callee is a GitHub error.
-const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'gen-pr', 'release', 'run-script', 'test']);
+const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'release', 'run-script', 'test']);
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
@@ -641,9 +701,8 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // older tag or SHA may still declare NPM_TOKEN (and not VERDACCIO_TOKEN), and GitHub rejects a
   // caller whose secrets do not match the selected revision's declarations, so pinned callers keep
   // their secrets untouched.
-  const calledReusableWorkflow = /\/reusable-workflows\/\.github\/workflows\/([^/@]+?)\.ya?ml@main$/u.exec(
-    job.uses ?? ''
-  )?.[1];
+  const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
+  const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee generates the workspace .npmrc for @willbooster-private/* from VERDACCIO_TOKEN
     // before installing dependencies, which every repository needs regardless of its fnox
@@ -688,10 +747,12 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     }
   }
 
-  if (config.repository?.startsWith('github:WillBooster/')) {
-    job.uses = job.uses?.replace('WillBoosterLab/', 'WillBooster/');
-  } else if (config.repository?.startsWith('github:WillBoosterLab/')) {
-    job.uses = job.uses?.replace('WillBooster/', 'WillBoosterLab/');
+  // Reconstruct from the parsed call so a differently cased owner (GitHub is case-insensitive
+  // there) is also normalized to the repository's own organization / mirror.
+  if (orgWorkflowCall && config.repository?.startsWith('github:WillBooster/')) {
+    job.uses = `WillBooster/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
+  } else if (orgWorkflowCall && config.repository?.startsWith('github:WillBoosterLab/')) {
+    job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
   }
 
   // Remove redundant parameters

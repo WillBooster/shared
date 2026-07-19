@@ -97,9 +97,26 @@ function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
   return { command: separatorIndex === -1 ? args : args.slice(separatorIndex + 1) };
 }
 
-// NOTE: `wb dotenv` deliberately skips Project.env's WB_ENV/NEXT_PUBLIC_WB_ENV validation: it is
-// a generic runner also used before env sources exist (bootstrap) and must not fail fast for
-// repositories that have not adopted the org env standard.
+function validateStandardWbEnv(value: string | undefined, fixTarget: string): void {
+  if (
+    !value ||
+    ['development', 'test', 'staging', 'production'].includes(value) ||
+    process.env.WB_SKIP_ENV_CHECK === '1' ||
+    process.env.WB_SKIP_ENV_CHECK === 'true'
+  ) {
+    return;
+  }
+  console.error(
+    `WB_ENV must be one of development, test, staging, or production, but is "${value}". ` +
+      `Fix ${fixTarget}, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+  );
+  process.exit(1);
+}
+
+// NOTE: `wb dotenv` deliberately skips Project.env's full validation: it is a generic runner also
+// used before env sources exist (bootstrap) and must not fail fast for repositories that have not
+// adopted the org env standard. A NON-EMPTY WB_ENV is still validated against the standard modes,
+// though — a typo like `prodcution` would otherwise silently select the base (development) values.
 function readAndApplyEnvironmentVariables(cwd: string): void {
   const mode = process.env.WB_ENV;
   const readEnvFile = (fileName: string): Record<string, string> =>
@@ -152,5 +169,26 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
     }
     // On CI, inherited variables intentionally win (workflows deliberately inject env vars that
     // override the committed files); this is the designed behavior, so no warning is emitted.
+  }
+  // Validate only AFTER applying the sources, so a WB_SKIP_ENV_CHECK defined in an env FILE is
+  // honored: both the captured exported mode (it selected the cascade) and the FINAL value the
+  // child will see — the env sources may define a broken WB_ENV (e.g. `.env` with
+  // `WB_ENV=prodcution`), and a forced mode's files may even override a VALID exported value.
+  validateStandardWbEnv(mode, 'the exported variable');
+  validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
+  // The exported mode selected the cascade, so a mode file silently replacing it with a DIFFERENT
+  // valid mode (e.g. `.env.production` containing `WB_ENV=development`) must be rejected as well.
+  if (
+    mode &&
+    process.env.WB_ENV &&
+    process.env.WB_ENV !== mode &&
+    process.env.WB_SKIP_ENV_CHECK !== '1' &&
+    process.env.WB_SKIP_ENV_CHECK !== 'true'
+  ) {
+    console.error(
+      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${mode}" environment was selected. ` +
+        `Fix the WB_ENV defined in the mode's env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+    );
+    process.exit(1);
   }
 }

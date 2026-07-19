@@ -109,7 +109,10 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
 
   for (const project of projects.descendants) {
-    project.env.WB_ENV ||= 'test';
+    // Resolve the environment eagerly: withDefaultTestCascadeEnv forces the test cascade and
+    // Project.completeAndValidateWbEnv falls back WB_ENV to that mode — but the env getter is
+    // lazy, so a project with no runnable tests would otherwise skip the validation entirely.
+    void project.env;
 
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
@@ -306,7 +309,9 @@ export function warnIfPlaywrightSpecsAreUndiscoverable(
 
 export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArgv {
   if (argv.env?.length || argv.cascadeEnv || argv.cascadeNodeEnv || argv.autoCascadeEnv === false) {
-    return argv;
+    // Explicit env flags keep their file-selection semantics, but the spawned tests must still
+    // run as `test` when those files define no WB_ENV (the pre-15 `||= 'test'` behavior).
+    return { ...argv, commandDefaultWbEnv: 'test' };
   }
   return { ...argv, cascadeEnv: 'test' };
 }
