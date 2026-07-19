@@ -567,12 +567,17 @@ export async function findWorkspacePackageDirs(
   if (positivePatterns.length === 0) return [];
   // expandDirectories: false — globby would otherwise expand a literal directory pattern to its
   // CHILDREN, turning e.g. `packages` into matches for every packages/* subdirectory.
-  const globbyOptions = { cwd: project.dirPath, expandDirectories: false, ignore: ['**/node_modules/**'] };
+  const globbyOptions = {
+    cwd: project.dirPath,
+    expandDirectories: false,
+    followSymbolicLinks: false,
+    ignore: ['**/node_modules/**'],
+  };
   // fast-glob (globby's engine) returns no matches for file globs with a lone-`?` segment (e.g.
   // `packages/?/package.json`) although Yarn links such workspaces; globbing the directories
   // (where `?` works) and checking their manifests complements it.
   const globbedManifestPaths = await globby(
-    positivePatterns.map((pattern) => `${pattern}/package.json`),
+    positivePatterns.map((pattern) => path.posix.join(pattern, 'package.json')),
     globbyOptions
   );
   const globbedDirPaths = await globby(positivePatterns, { ...globbyOptions, onlyDirectories: true });
