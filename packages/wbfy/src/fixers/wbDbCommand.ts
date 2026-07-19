@@ -57,7 +57,9 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
           // for workspaces, so resolve both sides before the containment check.
           path.resolve(other.dirPath).startsWith(`${configDirPath}${path.sep}`)
       )
-      .map((other) => `${path.relative(configDirPath, path.resolve(other.dirPath)).replaceAll('\\', '/')}/**`);
+      // escapePath: a directory name containing glob syntax (e.g. `apps/[web]`) must be ignored
+      // literally, not as a character class that also matches sibling directories.
+      .map((other) => `${fg.escapePath(path.relative(configDirPath, path.resolve(other.dirPath)))}/**`);
     const filePaths = await fg(migrationTargets, {
       absolute: true,
       cwd: config.dirPath,
