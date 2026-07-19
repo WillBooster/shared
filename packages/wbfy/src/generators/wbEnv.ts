@@ -195,15 +195,16 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
 function warnOnUnexpectedWbEnvValue(keyName: string, value: unknown, mode: WbEnvMode, sourceLabel: string): void {
   // An EMPTY value counts as unset (wb supplies the fallback mode), not as a mismatching mode.
   if (typeof value !== 'string' || value === '' || value === mode) return;
+  // A dynamic value (e.g. `NEXT_PUBLIC_WB_ENV=${WB_ENV}`) may legitimately resolve to the mode
+  // through dotenv expansion (Next.js expands $VARIABLE references in .env* files too), which
+  // this static check cannot evaluate — skip instead of misfiring.
+  if (value.includes('$')) return;
   if (keyName === 'NEXT_PUBLIC_WB_ENV') {
     console.warn(
       `${keyName} in ${sourceLabel} is "${value}" but should be "${mode}" for the ${mode} mode; wb overrides it with WB_ENV, but a direct framework build would inline this value.`
     );
     return;
   }
-  // A dynamic value (e.g. `WB_ENV=${MODE}`) may legitimately resolve to the mode through wb's
-  // dotenv expansion, which this static check cannot evaluate — skip instead of misfiring.
-  if (value.includes('$')) return;
   console.warn(
     `${keyName} in ${sourceLabel} is "${value}" but should be "${mode}" for the ${mode} mode; wb rejects values outside development/test/staging/production.`
   );
