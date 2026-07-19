@@ -257,6 +257,113 @@ test('ignores empty workspace patterns as Bun does', () => {
   }
 });
 
+test('resolves workspace patterns sequentially like Bun (positional re-inclusion and pinning)', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of ['apps/web', 'apps/excluded', 'other/x', 'tools/cli']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(workspaceDirPath, { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+    }
+    const resolve = (workspaces: string[]): string[] => {
+      fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
+      return getWorkspaceSubDirPaths({
+        dirPath: tempDirPath,
+        doesContainSubPackageJsons: false,
+        packageJson: { workspaces },
+      }).map((subDirPath) => path.relative(tempDirPath, subDirPath).replaceAll('\\', '/'));
+    };
+    // Expectations recorded from Bun 1.3.14 (`bun install --lockfile-only` on identical fixtures).
+    // A later positive re-includes an earlier negation's matches.
+    expect(resolve(['!apps/excluded', 'apps/*'])).toEqual(['apps/excluded', 'apps/web']);
+    expect(resolve(['apps/*', '!apps/excluded'])).toEqual(['apps/web']);
+    // A non-glob positive pins its workspace regardless of negation position.
+    expect(resolve(['apps/*', '!apps/excluded', 'apps/excluded'])).toEqual(['apps/excluded', 'apps/web']);
+    expect(resolve(['other/x', '!other/x'])).toEqual(['other/x']);
+    // A two-segment star-run negation seeds the implicit baseline even alongside positives:
+    // `!other/*` seeds `*/*`, re-adding the previously negated apps/excluded.
+    expect(resolve(['apps/*', '!apps/excluded', '!other/*'])).toEqual(['apps/excluded', 'apps/web', 'tools/cli']);
+    expect(resolve(['apps/*', '!other/*', '!apps/excluded'])).toEqual(['apps/web', 'tools/cli']);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('seeds the any-depth ** baseline for a two-segment globstar negation', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of ['apps', 'apps/web', 'solo', 'deep/a/b']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(workspaceDirPath, { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+    }
+    const workspaces = ['!apps/**'];
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
+    const rootLike = { dirPath: tempDirPath, doesContainSubPackageJsons: false, packageJson: { workspaces } };
+    // Bun 1.3.14: `!apps/**` seeds `**` (packages at any depth) and deletes the apps subtree
+    // including the package AT apps (`**` matches zero segments).
+    expect(getWorkspaceSubDirPaths(rootLike)).toEqual([
+      path.join(tempDirPath, 'deep', 'a', 'b'),
+      path.join(tempDirPath, 'solo'),
+    ]);
+    expect(getWorkspaceDirPatterns(rootLike)).toEqual({ excludes: ['apps/**'], includes: ['**'] });
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('drops or concretizes negations that later patterns re-cover in dir patterns', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of ['apps/web', 'apps/excluded', 'tools/cli']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(workspaceDirPath, { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+    }
+    const patternsFor = (workspaces: string[]): ReturnType<typeof getWorkspaceDirPatterns> => {
+      fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
+      return getWorkspaceDirPatterns({
+        dirPath: tempDirPath,
+        doesContainSubPackageJsons: false,
+        packageJson: { workspaces },
+      });
+    };
+    // The later positive re-includes apps/excluded, so no exclude entry may remain for it.
+    expect(patternsFor(['!apps/excluded', 'apps/*'])).toEqual({ excludes: [], includes: ['apps/*'] });
+    // Only the matches a later positive does NOT re-add stay excluded (concretized per directory).
+    expect(patternsFor(['apps/*', '!apps/*', 'apps/web'])).toEqual({
+      excludes: ['apps/excluded'],
+      includes: ['*/*', 'apps/*', 'apps/web'],
+    });
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('excludes only package-owned subpaths for a negated ancestor of a workspace', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of ['apps', 'apps/web']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(path.join(workspaceDirPath, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+      fs.writeFileSync(path.join(workspaceDirPath, 'src', 'index.ts'), 'export {};\n');
+    }
+    const workspaces = ['apps/**', '!apps'];
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
+    const rootLike = { dirPath: tempDirPath, doesContainSubPackageJsons: false, packageJson: { workspaces } };
+    // Bun 1.3.14 excludes only the package AT apps while keeping apps/web, so the whole apps
+    // subtree must not be excluded (#1004).
+    expect(getWorkspaceSubDirPaths(rootLike)).toEqual([path.join(tempDirPath, 'apps', 'web')]);
+    expect(getWorkspaceDirPatterns(rootLike)).toEqual({
+      excludes: ['apps/*.config.ts', 'apps/scripts', 'apps/src', 'apps/test'],
+      includes: ['apps/**'],
+    });
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('ignores workspace patterns escaping the repository', () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
   try {
