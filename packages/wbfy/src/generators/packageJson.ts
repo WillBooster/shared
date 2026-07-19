@@ -757,6 +757,10 @@ function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: Re
 // the common pre-Bun way to set environment variables portably in package scripts), shell
 // keywords introducing a compound command's body (`if cmd`, `then cmd`, ...), and the `{ ... }`
 // grouping braces.
+// Options of the transparent wrapper words below that never consume a following argument
+// (`env -i`/`--ignore-environment`, `command -p`, `time -p`).
+const valuelessWrapperOptions = new Set(['-i', '-p', '--ignore-environment']);
+
 const commandPositionTransparentWords = new Set([
   '!',
   'command',
@@ -786,9 +790,21 @@ function forEachCommandPositionToken(
 ): void {
   let atCommandPosition = true;
   let redirectionOperandFollows = false;
+  // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER position must be
+  // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
+  const outerCommandPositions: boolean[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
-      atCommandPosition = true;
+      for (const char of token.text) {
+        if (char === '(') {
+          outerCommandPositions.push(atCommandPosition);
+          atCommandPosition = true;
+        } else if (char === ')') {
+          atCommandPosition = outerCommandPositions.pop() ?? true;
+        } else {
+          atCommandPosition = true;
+        }
+      }
       redirectionOperandFollows = false;
       continue;
     }
@@ -815,8 +831,13 @@ function forEachCommandPositionToken(
     const tokenText = unquoteShellToken(token.text);
     if (/^[A-Za-z_]\w*=/u.test(tokenText) || commandPositionTransparentWords.has(tokenText)) continue;
     // At command position a `-`-leading token can only be an option of a preceding transparent
-    // wrapper (`env -i yarn build`); a real command never starts with `-`.
-    if (tokenText.startsWith('-')) continue;
+    // wrapper (`env -i yarn build`); a real command never starts with `-`. Only known valueless
+    // options stay transparent — an unmodeled option may consume the next word as its value
+    // (`env -u yarn build`), so discovery for this command stops conservatively instead.
+    if (tokenText.startsWith('-')) {
+      if (!valuelessWrapperOptions.has(tokenText)) atCommandPosition = false;
+      continue;
+    }
     atCommandPosition = false;
     callback(token, index, tokens);
   }
@@ -836,6 +857,14 @@ function tokenizeShellCommand(script: string): ShellToken[] {
       let end = index + 1;
       while (end < script.length && script[end] === char) end++;
       tokens.push({ text: script.slice(index, end), start: index, end });
+      index = end;
+      continue;
+    }
+    // An unquoted `#` starting a word begins a comment: the shell ignores it through the next
+    // newline, so no tokens (in particular no separators) may come out of it.
+    if (char === '#') {
+      let end = index + 1;
+      while (end < script.length && script[end] !== '\n') end++;
       index = end;
       continue;
     }

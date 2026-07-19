@@ -1502,7 +1502,11 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'deps-up': 'yarn up -R typescript',
       dollar: "yarn 'build:$target'",
       dynamic: 'yarn build:$target && yarn run "build:$target"',
+      commented: 'echo ready # note; yarn compile',
       'env-opt': 'env -i yarn compile && 2>&1 yarn compile',
+      'env-unset': 'env -u yarn compile && time -f yarn compile',
+      'in-subst': 'echo $(yarn compile)',
+      subst: 'echo $(date) yarn compile',
       'fan-out': 'yarn workspaces foreach --all run build',
       'gen:sub': 'cd sub && yarn build:sub',
       guarded: 'if [ -f .env ]; then yarn compile; fi && { yarn compile; }',
@@ -1528,10 +1532,14 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'deps-up': 'yarn up -R typescript',
     publish2: 'yarn npm publish --tolerate-republish',
     'ws-add': 'yarn workspace components add -D react',
-    // `yarn` inside a quoted token or in argument position is data, not a command.
+    // `yarn` inside a quoted token, in argument position, after a value-taking wrapper option,
+    // after a command substitution, or inside a comment is data, not a command.
+    commented: 'echo ready # note; yarn compile',
+    'env-unset': 'env -u yarn compile && time -f yarn compile',
     hint: "echo 'run yarn build before deploying'",
     'install-note': "echo 'yarn install && deploy now'",
     mention: 'git commit -m yarn && echo yarn build',
+    subst: 'echo $(date) yarn compile',
     // An unquoted expansion is dynamic: its runtime value could need Yarn's global routing.
     dynamic: 'yarn build:$target && yarn run "build:$target"',
     // A parallelism foreach flag keeps the yarn form: Bun's dependency-ordered concurrency could
@@ -1548,6 +1556,8 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     guarded: 'if [ -f .env ]; then bun run compile; fi && { bun run compile; }',
     // Wrapper options and file-descriptor duplications before the command are stepped over.
     'env-opt': 'env -i bun run compile && 2>&1 bun run compile',
+    // A yarn invocation inside a command substitution really runs.
+    'in-subst': 'echo $(bun run compile)',
     redirect: 'bun run build>out.log',
     // A redirection before the command leaves it in command position.
     'redirect-first': '>build.log bun run compile',
