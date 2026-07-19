@@ -32,7 +32,11 @@ import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
-import { getDeclaredWorkspacePatterns, getWorkspacePackageJsonPaths } from '../utils/workspaceUtil.js';
+import {
+  getDeclaredWorkspacePatterns,
+  getWorkspacePackageJsonPaths,
+  hasImplicitWorkspaceBaseline,
+} from '../utils/workspaceUtil.js';
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
@@ -477,12 +481,17 @@ async function applyPackageJsonConventions(
       // We don't allow non-array workspaces in monorepo. Yarn v1's object form keeps its
       // declared patterns (workspaces.packages); only extras such as nohoist are dropped.
       // Force `packages/*` only when it actually matches a workspace manifest: an apps/*-only
-      // monorepo must not get a never-matching pattern appended to its declaration.
+      // monorepo must not get a never-matching pattern appended to its declaration. A
+      // baseline-active declaration needs no forced pattern at all (the implicit `*/*` already
+      // covers packages/*), and adding one would disable the baseline. The forced pattern is
+      // PREPENDED: Bun evaluates workspace patterns sequentially, so a positive pattern placed
+      // after a user negation would re-include the negated packages.
       const forcedPatterns =
+        !hasImplicitWorkspaceBaseline(jsonObj.workspaces) &&
         fg.globSync('packages/*/package.json', { cwd: config.dirPath, ignore: ['**/node_modules/**'] }).length > 0
           ? ['packages/*']
           : [];
-      jsonObj.workspaces = merge.all([getDeclaredWorkspacePatterns(jsonObj.workspaces), forcedPatterns], {
+      jsonObj.workspaces = merge.all([forcedPatterns, getDeclaredWorkspacePatterns(jsonObj.workspaces)], {
         arrayMerge: combineMerge,
       });
       // Both inputs can be empty (e.g. packages/package.json without any packages/*/package.json

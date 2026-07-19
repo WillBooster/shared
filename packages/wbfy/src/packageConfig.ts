@@ -14,7 +14,11 @@ import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
-import { getWorkspacePackageJsonPaths } from './utils/workspaceUtil.js';
+import {
+  getDeclaredWorkspacePatterns,
+  getWorkspacePackageJsonPaths,
+  getWorkspaceSubDirPaths,
+} from './utils/workspaceUtil.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -179,6 +183,21 @@ export async function getPackageConfig(
     const doesContainTauriConfig = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
       fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
     );
+    // Root-level "InPackages" signals must see every DECLARED workspace layout (e.g. apps/*), not
+    // just the conventional packages/* directory, so scan each discovered workspace directory.
+    // The packages/* fallback is routed through discovery's combined glob so declared negations
+    // (e.g. `!packages/excluded`) exclude a package from the signals too; the broad packages/**
+    // scan remains only for legacy repos with no `workspaces` declaration at all (wbfy adds the
+    // declaration only on a later generator pass), where discovery has nothing to honor.
+    const declaredWorkspacePatterns = getDeclaredWorkspacePatterns(packageJson.workspaces);
+    const workspaceSubDirPaths = getWorkspaceSubDirPaths({
+      dirPath,
+      packageJson,
+      doesContainSubPackageJsons: containsAny('packages/*/package.json', dirPath),
+    });
+    const containsAnyInWorkspaces = (pattern: string): boolean =>
+      workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath)) ||
+      (declaredWorkspacePatterns.length === 0 && containsAny(`packages/**/${pattern}`, dirPath));
     const config: PackageConfig = {
       dirPath,
       dockerfile,
@@ -200,9 +219,7 @@ export async function getPackageConfig(
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
       // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in
       // generatePackageJson and skip monorepo-only conventions such as root `private: true`.
-      doesContainSubPackageJsons:
-        containsAny('packages/**/package.json', dirPath) ||
-        getWorkspacePackageJsonPaths({ dirPath, packageJson, doesContainSubPackageJsons: false }).length > 0,
+      doesContainSubPackageJsons: containsAny('packages/**/package.json', dirPath) || workspaceSubDirPaths.length > 0,
       doesContainDockerfile: !!dockerfile || fs.existsSync(path.resolve(dirPath, 'docker-compose.yml')),
       doesContainGemfile: fs.existsSync(path.resolve(dirPath, 'Gemfile')),
       doesContainGoMod: fs.existsSync(path.resolve(dirPath, 'go.mod')),
@@ -212,9 +229,8 @@ export async function getPackageConfig(
       doesContainPomXml: fs.existsSync(path.resolve(dirPath, 'pom.xml')),
       doesContainPubspecYaml: fs.existsSync(path.resolve(dirPath, 'pubspec.yaml')),
       doesContainTauriConfig,
-      doesContainTauriConfigInPackages: containsAny(
-        'packages/**/src-tauri/{tauri.conf.json,tauri.conf.json5,Tauri.toml}',
-        dirPath
+      doesContainTauriConfigInPackages: containsAnyInWorkspaces(
+        'src-tauri/{tauri.conf.json,tauri.conf.json5,Tauri.toml}'
       ),
       doesContainTemplateYaml: fs.existsSync(path.resolve(dirPath, 'template.yaml')),
       doesContainVscodeSettingsJson: fs.existsSync(path.resolve(dirPath, '.vscode', 'settings.json')),
@@ -222,10 +238,10 @@ export async function getPackageConfig(
       doesContainTypeScript: containsAny('{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}', dirPath),
       doesContainJsxOrTsx: containsAny('{app,src,test}/**/*.{t,j}sx', dirPath),
       doesContainJava: containsAny('**/*.java', dirPath),
-      doesContainJavaScriptInPackages: containsAny('packages/**/{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}', dirPath),
-      doesContainTypeScriptInPackages: containsAny('packages/**/{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}', dirPath),
-      doesContainJsxOrTsxInPackages: containsAny('packages/**/{app,src,test}/**/*.{t,j}sx', dirPath),
-      doesContainJavaInPackages: containsAny('packages/**/*.java', dirPath),
+      doesContainJavaScriptInPackages: containsAnyInWorkspaces('{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx}'),
+      doesContainTypeScriptInPackages: containsAnyInWorkspaces('{app,src,test,scripts}/**/*.{cts,mts,ts,tsx}'),
+      doesContainJsxOrTsxInPackages: containsAnyInWorkspaces('{app,src,test}/**/*.{t,j}sx'),
+      doesContainJavaInPackages: containsAnyInWorkspaces('**/*.java'),
       depending: {
         blitz: !!dependencies.blitz,
         chakra: !!devDependencies['@chakra-ui/cli'],

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import type { TsConfigJson } from 'type-fest';
+import type { PackageJson, TsConfigJson } from 'type-fest';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -12,29 +12,11 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { sortKeys } from '../utils/objectUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { getTsconfigExtends } from '../utils/tsconfigBase.js';
-
-const rootJsonObj = {
-  compilerOptions: {
-    alwaysStrict: true,
-    noUncheckedIndexedAccess: true, // for @typescript-eslint/prefer-nullish-coalescing
-    allowSyntheticDefaultImports: true, // allow `import React from 'react'`
-    esModuleInterop: true, // allow default import from CommonJS/AMD/UMD modules
-    resolveJsonModule: true, // allow to import JSON files
-    importHelpers: false,
-    noEmit: true,
-  },
-  exclude: ['packages/*/test/fixtures', 'test/fixtures'],
-  include: [
-    '*.config.ts',
-    'packages/*/*.config.ts',
-    'packages/*/scripts/**/*',
-    'packages/*/src/**/*',
-    'packages/*/test/**/*',
-    'scripts/**/*',
-    'src/**/*',
-    'test/**/*',
-  ],
-};
+import {
+  getMeaningfulDeclaredWorkspacePatterns,
+  getWorkspaceDirPatterns,
+  getWorkspaceSubDirPaths,
+} from '../utils/workspaceUtil.js';
 
 const subJsonObj = {
   compilerOptions: {
@@ -49,6 +31,10 @@ const subJsonObj = {
   exclude: ['test/fixtures'],
   // wbfy generates root-level tool configs such as playwright.config.ts, and
   // type-aware linting needs those files in the project to see Node/Bun globals.
+  // `app/**` is deliberately absent even though the doesContain*Script signals scan it: app
+  // directories belong to framework packages (Next.js/Blitz), which own their tsconfig
+  // (generateTsconfig skips them), and checking framework sources under this project's compiler
+  // options would produce false errors.
   include: ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'],
 };
 
@@ -59,7 +45,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       return;
     }
 
-    let newSettings = structuredClone(config.isRoot ? rootJsonObj : subJsonObj) as TsConfigJson;
+    let newSettings = (config.isRoot ? buildRootJsonObj(config) : structuredClone(subJsonObj)) as TsConfigJson;
     const generatedTypes = getGeneratedTypes(config);
     newSettings.extends = getTsconfigExtends(config);
     newSettings.compilerOptions ??= {};
@@ -69,10 +55,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     }
     if (!config.doesContainJsxOrTsx && !config.doesContainJsxOrTsxInPackages) {
       delete newSettings.compilerOptions?.jsx;
-    }
-    if (config.isRoot && !config.doesContainSubPackageJsons) {
-      newSettings.include = newSettings.include?.filter((dirPath: string) => !dirPath.startsWith('packages/*/'));
-      newSettings.exclude = newSettings.exclude?.filter((dirPath: string) => !dirPath.startsWith('packages/*/'));
     }
     if (config.depending.prisma) {
       // Prisma seeds and migration helper scripts often live outside src, but
@@ -98,6 +80,9 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
       newSettings.extends = mergeTsconfigExtends(newSettings.extends, oldSettings.extends);
       delete oldSettings.extends;
       delete oldSettings.compilerOptions?.jsx;
+      if (config.isRoot) {
+        removeStaleManagedWorkspaceEntries(config, oldSettings, newSettings);
+      }
       newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge });
       newSettings.include = newSettings.include?.filter(
         (dirPath: string) =>
@@ -143,6 +128,165 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
   });
 }
 
+/**
+ * The monorepo-root tsconfig, whose include/exclude cover every DECLARED workspace layout (e.g.
+ * `apps/*` alongside `packages/*`) so type-aware linting run from the root sees all workspace
+ * sources, not just the conventional packages/* directory.
+ */
+function buildRootJsonObj(config: PackageConfig): TsConfigJson {
+  const workspacePatterns = config.doesContainSubPackageJsons
+    ? getWorkspaceDirPatterns(config)
+    : { excludes: [], includes: [] };
+  const settings = structuredClone(subJsonObj) as TsConfigJson;
+  settings.exclude = [
+    ...new Set([
+      ...workspacePatterns.includes.map((workspacePattern) => `${workspacePattern}/test/fixtures`),
+      // Negative workspace patterns (e.g. `!packages/excluded`) opt whole workspace subtrees out
+      // of the monorepo, so their sources must not enter the root type-check project either.
+      ...workspacePatterns.excludes,
+      ...(settings.exclude ?? []),
+    ]),
+  ].toSorted();
+  settings.include = [
+    ...(settings.include ?? []),
+    ...workspacePatterns.includes.flatMap((workspacePattern) => [
+      `${workspacePattern}/*.config.ts`,
+      `${workspacePattern}/scripts/**/*`,
+      `${workspacePattern}/src/**/*`,
+      `${workspacePattern}/test/**/*`,
+    ]),
+  ];
+  return settings;
+}
+
+const managedWorkspaceIncludeSuffixes = ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'];
+
+/**
+ * Root include/exclude entries wbfy generated for an earlier workspace layout (e.g. `packages/*`
+ * globs in a repo that now declares only `apps/*`) must not survive the merge with the existing
+ * tsconfig, or the obsolete directories would keep entering root type checking forever. A prefix
+ * counts as wbfy-managed only when the COMPLETE generated include set for it is present and no
+ * longer generated — a user-authored entry such as a lone `tools/*\/src/**\/*` never qualifies.
+ */
+function removeStaleManagedWorkspaceEntries(
+  config: PackageConfig,
+  oldSettings: TsConfigJson,
+  newSettings: TsConfigJson
+): void {
+  const stalePrefixes = new Set<string>();
+  if (Array.isArray(oldSettings.include)) {
+    const oldInclude = oldSettings.include.filter((entry): entry is string => typeof entry === 'string');
+    const generatedInclude = new Set(newSettings.include);
+    for (const entry of oldInclude) {
+      const workspacePrefix = getManagedWorkspacePrefix(entry);
+      if (workspacePrefix === undefined || stalePrefixes.has(workspacePrefix)) continue;
+      const isComplete = managedWorkspaceIncludeSuffixes.every((suffix) =>
+        oldInclude.includes(`${workspacePrefix}/${suffix}`)
+      );
+      const isStillGenerated = managedWorkspaceIncludeSuffixes.some((suffix) =>
+        generatedInclude.has(`${workspacePrefix}/${suffix}`)
+      );
+      if (isComplete && !isStillGenerated) stalePrefixes.add(workspacePrefix);
+    }
+    if (stalePrefixes.size > 0) {
+      oldSettings.include = oldSettings.include.filter((entry) => {
+        const workspacePrefix = typeof entry === 'string' ? getManagedWorkspacePrefix(entry) : undefined;
+        return workspacePrefix === undefined || !stalePrefixes.has(workspacePrefix);
+      });
+    }
+  }
+  if (!Array.isArray(oldSettings.exclude)) return;
+  const generatedExclude = new Set(newSettings.exclude);
+  const workspaceIncludePatterns = config.doesContainSubPackageJsons ? getWorkspaceDirPatterns(config).includes : [];
+  // Concrete discovered workspace directories (relative), for detecting overlap between old and
+  // new wildcard layouts that pattern-vs-pattern string comparison cannot see.
+  const workspaceDirPaths = config.doesContainSubPackageJsons
+    ? getWorkspaceSubDirPaths(config).map((workspaceDirPath) =>
+        path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
+      )
+    : [];
+  oldSettings.exclude = oldSettings.exclude.filter((entry) => {
+    if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
+    if (entry.endsWith('/test/fixtures')) {
+      return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
+    }
+    // A negation-derived exclude whose `!pattern` was removed from `workspaces`: the directory is
+    // covered by a positive workspace pattern again and must re-enter the root project. A user
+    // who wants such a directory excluded permanently should keep the workspace negation, which
+    // regenerates the entry on every run. Three checks, because either side can be the pattern:
+    // - a CONCRETE entry (a negation like `!apps/excluded`) against the current include patterns
+    //   — gated on concreteness AND on the entry covering a discovered workspace directory, so a
+    //   user glob such as `**/node_modules` or a hygiene exclude such as `dist` is never dropped
+    //   just because a wildcard-leading include pattern (e.g. the `*/*` baseline) textually
+    //   matches it;
+    // - each CONCRETE current include (expanded from Bun-only glob syntax), as a path, against a
+    //   wildcard-shaped entry (a negation like `!apps/excluded/*`) — gated on the include being
+    //   concrete (a wildcard include's literal `*` character could satisfy the entry's `?`) and
+    //   on the entry containing no `**` segment (hygiene globs such as `**/e2e` must survive);
+    // - each discovered workspace directory against a workspace-layout-shaped entry (no `**`
+    //   segment, same depth as the matched directory), catching overlapping wildcard layouts
+    //   (e.g. old `!apps/*b` vs new `apps/a*`) — the shape gate keeps hygiene globs such as
+    //   `**/e2e` from being deleted just because a workspace directory basename matches them.
+    // Provenance is not tracked, so two residual gaps are ACCEPTED by design: a workspace-shaped
+    // entry covering a discovered workspace is presumed negation-derived even if hand-written
+    // (the policy above), and a negation-derived entry for a manifest-less directory survives
+    // after its negation is removed (it only narrows the root program conservatively).
+    return !(
+      (!/[*?]/u.test(entry) &&
+        workspaceDirPaths.some(
+          (workspaceDirPath) => workspaceDirPath === entry || workspaceDirPath.startsWith(`${entry}/`)
+        ) &&
+        isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns)) ||
+      workspaceIncludePatterns.some(
+        (includePattern) =>
+          !/[!()*?[\]{}]/u.test(includePattern) &&
+          !entry.split('/').includes('**') &&
+          isCoveredByWorkspaceDirPattern(includePattern, [entry])
+      ) ||
+      workspaceDirPaths.some(
+        (workspaceDirPath) =>
+          !entry.split('/').includes('**') &&
+          entry.split('/').length === workspaceDirPath.split('/').length &&
+          isCoveredByWorkspaceDirPattern(workspaceDirPath, [entry])
+      )
+    );
+  });
+}
+
+/** Matches a concrete directory path against tsconfig-safe workspace dir patterns (`*`, `?`, `**`). */
+function isCoveredByWorkspaceDirPattern(dirPath: string, workspacePatterns: string[]): boolean {
+  return workspacePatterns.some((workspacePattern) => {
+    // `**` matches ZERO or more path segments (`apps/**` covers `apps` itself), matching the
+    // fast-glob/Bun semantics workspace discovery uses; the placeholder dance makes the adjacent
+    // separator optional.
+    const globStarPlaceholder = '\u0000';
+    const regexSource = workspacePattern
+      .split('/')
+      // Adjacent globstars are one globstar (`**/**/foo` matches root-level `foo` too).
+      .filter((segment, index, segments) => segment !== '**' || segments[index - 1] !== '**')
+      .map((segment) =>
+        segment === '**'
+          ? globStarPlaceholder
+          : segment
+              .replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`)
+              .replaceAll('*', '[^/]*')
+              .replaceAll('?', '[^/]')
+      )
+      .join('/')
+      .replaceAll(`/${globStarPlaceholder}`, '(?:/.+)?')
+      .replaceAll(`${globStarPlaceholder}/`, '(?:.+/)?')
+      .replaceAll(globStarPlaceholder, '.*');
+    return new RegExp(`^${regexSource}$`, 'u').test(dirPath);
+  });
+}
+
+function getManagedWorkspacePrefix(entry: string): string | undefined {
+  const matchedSuffix = managedWorkspaceIncludeSuffixes.find((suffix) => entry.endsWith(`/${suffix}`));
+  if (!matchedSuffix) return undefined;
+  const workspacePrefix = entry.slice(0, -(matchedSuffix.length + 1));
+  return workspacePrefix === '' ? undefined : workspacePrefix;
+}
+
 async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promise<void> {
   // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
   // node10 resolver spellings that older projects commonly inherited.
@@ -178,14 +322,19 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   // for every TypeScript project except React Native, which uses @tsconfig/react-native instead.
   const types = settings.compilerOptions?.types;
   if (types ? !types.includes('bun') : config.depending.reactNative) return;
+  const correctMapping = `${getRootDir(config)}/node_modules/undici-types/index.d.ts`;
   const existingMapping = settings.compilerOptions?.paths?.['undici-types'];
   if (existingMapping) {
-    // Normalize the package-directory form older wbfy versions generated: it resolves through the
-    // package's `types` condition today but breaks once TypeScript needs the concrete file. Any
-    // other value is a deliberate repo-local mapping (e.g. patched types) and must be kept.
-    const legacyDirMapping = `${getRootDir(config)}/node_modules/undici-types`;
-    if (existingMapping.length === 1 && existingMapping[0] === legacyDirMapping) {
-      settings.compilerOptions!.paths!['undici-types'] = [`${legacyDirMapping}/index.d.ts`];
+    // Rewrite any mapping wbfy could have generated — a `…/node_modules/undici-types` target with
+    // or without the concrete index.d.ts, at whatever root depth an older getRootDir computed
+    // (its fixed two-level probe mis-resolved workspaces deeper than two levels). Any other value
+    // is a deliberate repo-local mapping (e.g. patched types) and must be kept.
+    if (
+      existingMapping.length === 1 &&
+      typeof existingMapping[0] === 'string' &&
+      /(?:^|\/)node_modules\/undici-types(?:\/index\.d\.ts)?$/u.test(existingMapping[0])
+    ) {
+      settings.compilerOptions!.paths!['undici-types'] = [correctMapping];
     }
     return;
   }
@@ -193,7 +342,7 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   settings.compilerOptions ??= {};
   settings.compilerOptions.paths = {
     ...settings.compilerOptions.paths,
-    'undici-types': [`${getRootDir(config)}/node_modules/undici-types/index.d.ts`],
+    'undici-types': [correctMapping],
   };
 }
 
@@ -247,7 +396,35 @@ function normalizePathAliasTargets(targets: string[]): string[] {
 
 function getRootDir(config: PackageConfig): string {
   if (config.isRoot) return '.';
-  return fs.existsSync(path.resolve(config.dirPath, '..', '..', 'package.json')) ? '../..' : '.';
+  // The undici-types path mapping must reach the monorepo root's node_modules (bunfig.toml's
+  // publicHoistPattern hoists the package there), and workspace patterns may be arbitrarily deep
+  // (e.g. `examples/**`), so a fixed two-level probe is not enough. Prefer the nearest ancestor
+  // manifest that declares workspaces (the monorepo root); otherwise fall back to the nearest
+  // ancestor manifest. Stop at the first git repository boundary so an unrelated enclosing
+  // repository's manifest can never be chosen.
+  const dirPath = path.resolve(config.dirPath);
+  let rootDirPath: string | undefined;
+  for (let ancestorDirPath = path.dirname(dirPath); ; ancestorDirPath = path.dirname(ancestorDirPath)) {
+    const manifestPath = path.resolve(ancestorDirPath, 'package.json');
+    if (fs.existsSync(manifestPath)) {
+      rootDirPath ??= ancestorDirPath;
+      try {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as PackageJson;
+        // Bun no-op patterns (e.g. `workspaces: [""]`) do not make a manifest a workspace root.
+        if (getMeaningfulDeclaredWorkspacePatterns(manifest.workspaces).length > 0) {
+          rootDirPath = ancestorDirPath;
+          break;
+        }
+      } catch {
+        // An unparsable manifest still marks a project directory; keep climbing for a workspace root.
+      }
+    }
+    const isRepoBoundary = fs.existsSync(path.resolve(ancestorDirPath, '.git'));
+    const isFilesystemRoot = ancestorDirPath === path.dirname(ancestorDirPath);
+    if (isRepoBoundary || isFilesystemRoot) break;
+  }
+  if (!rootDirPath) return '.';
+  return path.relative(dirPath, rootDirPath).replaceAll('\\', '/') || '.';
 }
 
 function mergeTsconfigExtends(

@@ -57,6 +57,15 @@ test('merges settings from a tsconfig containing JSONC comments instead of repla
   expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
 });
 
+test('rewrites a stale wbfy-generated undici-types mapping to the current root depth', async () => {
+  // An older getRootDir mis-resolved deep workspaces, so wbfy-generated mappings may carry a
+  // wrong depth; they must be migrated to the depth the current getRootDir computes ('.' here).
+  const compilerOptions = await generateCompilerOptionsFromContent(
+    JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['../../node_modules/undici-types/index.d.ts'] } } })
+  );
+  expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
+});
+
 test('keeps a deliberate repo-local undici-types mapping untouched', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(
     JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./patched-types/undici-types/index.d.ts'] } } })

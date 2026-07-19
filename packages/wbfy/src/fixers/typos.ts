@@ -9,6 +9,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixTypos', async () => {
@@ -32,12 +33,23 @@ export async function fixTypos(packageConfig: PackageConfig): Promise<void> {
       });
     }
 
+    // fixTypos runs once on the root config, so this glob set must cover every declared workspace
+    // layout (e.g. apps/*), not just the conventional packages/* directory — while honoring
+    // declared negations (e.g. `!apps/excluded`), whose sources are not part of the monorepo.
+    const workspaceDirPatterns = getWorkspaceDirPatterns(packageConfig);
     const tsFiles = await fg.glob(
       [
         '{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx,cts,mts,ts,tsx}',
         'packages/**/{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx,cts,mts,ts,tsx}',
+        ...workspaceDirPatterns.includes.map(
+          (dirPattern) => `${dirPattern}/**/{app,src,test,scripts}/**/*.{cjs,mjs,js,jsx,cts,mts,ts,tsx}`
+        ),
       ],
-      { dot: true, cwd: dirPath, ignore: globIgnore }
+      {
+        dot: true,
+        cwd: dirPath,
+        ignore: [...globIgnore, ...workspaceDirPatterns.excludes.map((dirPattern) => `${dirPattern}/**`)],
+      }
     );
     if (options.isVerbose) {
       console.info(`Found ${tsFiles.length} TypeScript files in ${dirPath}`);

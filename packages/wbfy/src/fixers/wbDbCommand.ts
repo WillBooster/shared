@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import fg from 'fast-glob';
 import { PromisePool } from 'minimal-promise-pool';
@@ -36,11 +37,34 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
     const command = selectWbDatabaseCommand(config);
     if (!command) continue;
 
+    // A pass must not rewrite files owned by another (possibly nested) package: each package has
+    // its own pass with its own resolved command, and overlapping passes would race
+    // read-modify-write on the same files. Concrete directories of the actually processed
+    // packages are used instead of workspace patterns or a blanket packages/** glob, so a
+    // directory a pattern matches without a manifest, a negation-removed directory, or an
+    // ORM-free package — none of which get a rewrite pass of their own — stays covered by the
+    // enclosing pass. Legacy packages/* layouts need no extra shielding either: workspace
+    // discovery's unconditional packages/* fallback gives each of them its own config.
+    const configDirPath = path.resolve(config.dirPath);
+    const nestedPackageIgnores = packageConfigs
+      .filter(
+        (other) =>
+          other !== config &&
+          // Only packages that get a rewrite pass of their own are shielded: an ORM-free package
+          // has no pass, so the enclosing pass must keep covering its files.
+          selectWbDatabaseCommand(other) !== undefined &&
+          // dirPath may be relative for the root config (the verbatim CLI argument) and absolute
+          // for workspaces, so resolve both sides before the containment check.
+          path.resolve(other.dirPath).startsWith(`${configDirPath}${path.sep}`)
+      )
+      // escapePath: a directory name containing glob syntax (e.g. `apps/[web]`) must be ignored
+      // literally, not as a character class that also matches sibling directories.
+      .map((other) => `${fg.escapePath(path.relative(configDirPath, path.resolve(other.dirPath)))}/**`);
     const filePaths = await fg(migrationTargets, {
       absolute: true,
       cwd: config.dirPath,
       dot: true,
-      ignore: ['**/.git/**', ...(config.isRoot ? ['packages/**'] : []), ...globIgnore],
+      ignore: ['**/.git/**', ...nestedPackageIgnores, ...globIgnore],
       onlyFiles: true,
     });
     for (const filePath of filePaths) {

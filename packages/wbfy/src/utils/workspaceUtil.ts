@@ -28,30 +28,19 @@ export function getWorkspaceSubDirPaths(rootLike: WorkspaceRootLike): string[] {
  * a `name` field — wbfy names those later, so dependency scans must not skip them.
  */
 export function getWorkspacePackageJsonPaths(rootConfig: WorkspaceRootLike): string[] {
-  // applyPackageJsonConventions forces `packages/*` into every monorepo's workspaces, but it may
-  // not have written the root package.json yet, so mirror that normalization here.
-  const workspacePatterns = [
-    ...new Set([
-      ...getDeclaredWorkspacePatterns(rootConfig.packageJson?.workspaces),
-      ...(rootConfig.doesContainSubPackageJsons ? ['packages/*'] : []),
-    ]),
-  ];
   // Expand all patterns in one glob call so Bun-supported negative patterns (e.g.
-  // `!packages/excluded`) actually exclude their matches. Do not apply globIgnore here: workspace
-  // membership is defined solely by the declared patterns, and source-scanning ignores such as
-  // `build` or `dist` would hide legitimately named workspace directories.
-  const packageJsonGlobs = workspacePatterns
-    // Workspace directories must stay inside the repository: absolute or `..`-traversing patterns
-    // would make consumers such as removeNodeModules operate on another repository's files.
-    .filter((workspacePattern) => {
-      const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
-      return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
-    })
-    .map((workspacePattern) =>
-      workspacePattern.startsWith('!')
-        ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
-        : path.posix.join(workspacePattern, 'package.json')
-    );
+  // `!packages/excluded`) actually exclude their matches. Known limitation (#1005): Bun evaluates
+  // patterns sequentially (a positive pattern after a negation re-includes its matches), while
+  // fast-glob treats negations as order-independent global ignores; declarations relying on
+  // positional re-inclusion do not occur in WillBooster repositories and are unsupported.
+  // Do not apply globIgnore here: workspace membership is defined solely by the declared
+  // patterns, and source-scanning ignores such as `build` or `dist` would hide legitimately
+  // named workspace directories.
+  const packageJsonGlobs = getSanitizedWorkspacePatterns(rootConfig).map((workspacePattern) =>
+    workspacePattern.startsWith('!')
+      ? `!${path.posix.join(workspacePattern.slice(1), 'package.json')}`
+      : path.posix.join(workspacePattern, 'package.json')
+  );
   // followSymbolicLinks: false — a workspace symlink pointing outside the repository must not be
   // treated as a workspace directory (removeNodeModules would delete through it).
   return fg.globSync(packageJsonGlobs, {
@@ -59,6 +48,141 @@ export function getWorkspacePackageJsonPaths(rootConfig: WorkspaceRootLike): str
     followSymbolicLinks: false,
     ignore: ['**/node_modules/**'],
   });
+}
+
+export interface WorkspaceDirPatterns {
+  /** Directory subtrees matched by negative workspace patterns, for tsconfig `exclude` entries. */
+  excludes: string[];
+  /** Positive directory patterns (or concrete directories for Bun-only glob syntax). */
+  includes: string[];
+}
+
+/**
+ * Sorted workspace directory patterns (posix, relative to the monorepo root) for generators that
+ * need pattern-shaped globs covering every workspace layout — e.g. the root tsconfig's `apps/*`
+ * include entries — instead of concrete directories, which would churn generated files whenever a
+ * workspace package is added or removed. Every returned pattern is valid tsconfig glob syntax.
+ * A pattern can match a sibling directory without a package.json (not a workspace to Bun); that
+ * is deliberate, mirroring the long-standing `packages/*` entries' behavior in favor of stable
+ * generated output. Known limitation (#1004): a negation whose directory is an ANCESTOR of
+ * another workspace (e.g. `["apps/**", "!apps"]`) excludes the whole subtree here, although Bun
+ * excludes only the package at that directory; such nested workspace layouts do not occur in
+ * WillBooster repositories.
+ */
+export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): WorkspaceDirPatterns {
+  // Unlike discovery, generated output must not contain a never-matching `packages/*` fallback:
+  // an apps/*-only monorepo would get dead globs committed into its root tsconfig. Mirror
+  // applyPackageJsonConventions, which forces `packages/*` only when a manifest actually matches.
+  const hasPackagesLayout =
+    rootLike.doesContainSubPackageJsons &&
+    // Mirror applyPackageJsonConventions' baseline gate too: with the implicit `*/*` baseline
+    // active, `packages/*` entries would be dead globs subsumed by the `*/*` ones.
+    !hasImplicitWorkspaceBaseline(rootLike.packageJson?.workspaces) &&
+    fg.globSync('packages/*/package.json', {
+      cwd: rootLike.dirPath,
+      followSymbolicLinks: false,
+      ignore: ['**/node_modules/**'],
+    }).length > 0;
+  const excludes = new Set<string>();
+  const includes = new Set<string>();
+  for (const workspacePattern of getSanitizedWorkspacePatterns({
+    ...rootLike,
+    doesContainSubPackageJsons: hasPackagesLayout,
+  })) {
+    const isNegative = workspacePattern.startsWith('!');
+    // Normalization collapses `//` and strips trailing slashes so template-literal consumers
+    // (e.g. `${pattern}/src/**/*`) never emit doubled separators for patterns like `apps/*/`.
+    const patternBody = path.posix
+      .normalize(isNegative ? workspacePattern.slice(1) : workspacePattern)
+      .replace(/\/+$/u, '');
+    for (const dirPattern of toTsconfigCompatibleDirPatterns(patternBody, rootLike.dirPath)) {
+      (isNegative ? excludes : includes).add(dirPattern);
+    }
+  }
+  return { excludes: [...excludes].toSorted(), includes: [...includes].toSorted() };
+}
+
+/**
+ * tsconfig include/exclude support only the `*`, `?`, and `**` wildcards, while Bun workspaces
+ * accept full glob syntax (brace expansion, character classes, …), so expand Bun-only patterns to
+ * the concrete directories they match to keep the generated globs valid for TypeScript.
+ */
+function toTsconfigCompatibleDirPatterns(patternBody: string, rootDirPath: string): string[] {
+  if (!/[()[\]{}]/u.test(patternBody)) return [patternBody];
+  return fg.globSync(patternBody, {
+    cwd: rootDirPath,
+    followSymbolicLinks: false,
+    ignore: ['**/node_modules/**'],
+    onlyDirectories: true,
+  });
+}
+
+/**
+ * Declared workspace patterns (negative ones included) that stay inside the repository: absolute
+ * or `..`-traversing patterns would make consumers such as removeNodeModules operate on another
+ * repository's files.
+ */
+function getSanitizedWorkspacePatterns(rootLike: WorkspaceRootLike): string[] {
+  // applyPackageJsonConventions forces `packages/*` into a monorepo's workspaces when a
+  // packages/*/package.json actually matches, but it may not have written the root package.json
+  // yet, so mirror that normalization here. Discovery callers pass the fallback unconditionally
+  // for monorepos — a never-matching pattern contributes no paths there — while pattern-shaped
+  // callers (getWorkspaceDirPatterns) gate it on an actual match.
+  const workspacePatterns = [
+    ...new Set([
+      ...(hasImplicitWorkspaceBaseline(rootLike.packageJson?.workspaces) ? ['*/*'] : []),
+      ...getMeaningfulDeclaredWorkspacePatterns(rootLike.packageJson?.workspaces),
+      ...(rootLike.doesContainSubPackageJsons ? ['packages/*'] : []),
+    ]),
+  ];
+  return workspacePatterns.filter((workspacePattern) => {
+    const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
+    return !path.posix.isAbsolute(patternBody) && !patternBody.split('/').includes('..');
+  });
+}
+
+/**
+ * Whether Bun applies its implicit `*\/*` workspace baseline: the declaration (ignoring no-op
+ * patterns) contains ONLY negative patterns AND at least one of them ends in a standalone
+ * star-run segment (`*`, `**`, `***`, ...). Measured with Bun 1.3.14: those forms consistently
+ * seed the baseline, while concrete or mixed-literal last segments (`!apps/excluded`,
+ * `!apps/*d`, `??`) link ZERO workspaces. `?`, brace, and character-class last segments behaved
+ * inconsistently across fixtures (sometimes dropping even unrelated sibling workspaces), so they
+ * are conservatively treated as not seeding; see #1005.
+ */
+export function hasImplicitWorkspaceBaseline(workspaces: PackageJson['workspaces']): boolean {
+  const workspacePatterns = getMeaningfulDeclaredWorkspacePatterns(workspaces);
+  return (
+    workspacePatterns.length > 0 &&
+    workspacePatterns.every((workspacePattern) => workspacePattern.startsWith('!')) &&
+    workspacePatterns.some((workspacePattern) => {
+      // Normalize first: Bun ignores trailing slashes, so `!apps/*/` seeds the baseline too.
+      const lastSegment = path.posix.normalize(workspacePattern.slice(1)).replace(/\/+$/u, '').split('/').at(-1);
+      return lastSegment !== undefined && /^\*+$/u.test(lastSegment);
+    })
+  );
+}
+
+/**
+ * Declared workspace patterns without Bun's no-op ones (`""`, a lone `"!"`, and `"."`), which Bun
+ * ignores entirely — a lone `"!"` must not activate the negative-only implicit baseline, and `""`
+ * must not make the repository root itself a discovered workspace.
+ */
+export function getMeaningfulDeclaredWorkspacePatterns(workspaces: PackageJson['workspaces']): string[] {
+  return getDeclaredWorkspacePatterns(workspaces)
+    .map((workspacePattern) => {
+      // Bun applies leading-bang PARITY (verified with Bun 1.3.14): `!!p` is the positive `p`
+      // and `!!!p` the negation `!p`, so canonicalize to at most one bang.
+      const bangCount = /^!*/u.exec(workspacePattern)![0].length;
+      const patternBody = workspacePattern.slice(bangCount);
+      return bangCount % 2 === 1 ? `!${patternBody}` : patternBody;
+    })
+    .filter((workspacePattern) => {
+      const patternBody = workspacePattern.startsWith('!') ? workspacePattern.slice(1) : workspacePattern;
+      // Normalize so spellings like `./`, `./.`, and `!./` are recognized as the same no-ops
+      // (path.posix.normalize('') === '.', so the empty pattern is covered too).
+      return path.posix.normalize(patternBody).replace(/\/+$/u, '') !== '.';
+    });
 }
 
 /** Workspace patterns from either the array form or Yarn v1's `{ packages: […] }` object form. */
