@@ -412,6 +412,8 @@ function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
 }
 
 function removeBunRuntimeFlag(script: string): string {
+  // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
+  if (script.includes('<<')) return script;
   // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
   // merely ending in `bun` (`my-bun`), quoted targets with spaces, and Bun runtime flags between
   // `--bun` and the script file are all classified correctly.
@@ -424,8 +426,9 @@ function removeBunRuntimeFlag(script: string): string {
       continue;
     }
     if (!atCommandPosition) continue;
-    // `KEY=VALUE` prefixes and the `exec`/`env` prefix commands keep the next token in command position.
-    if (/^[A-Za-z_]\w*=/u.test(token.text) || token.text === 'exec' || token.text === 'env') continue;
+    // `KEY=VALUE` prefixes and shell prefix words (`exec`, `env`, `command`, `!`) keep the next
+    // token in command position.
+    if (/^[A-Za-z_]\w*=/u.test(token.text) || ['exec', 'env', 'command', '!'].includes(token.text)) continue;
     atCommandPosition = false;
     if (unquoteShellToken(token.text) !== 'bun') continue;
     const flagToken = tokens[index + 1];
@@ -443,11 +446,16 @@ function removeBunRuntimeFlag(script: string): string {
   return result;
 }
 
+// Node-based tools the WillBooster stack invokes from package scripts; running them (or their
+// children) under the bun-node shim breaks them, so `bun --bun <tool>` is unambiguously wrong.
+const nodeBasedTools = new Set(['next', 'vite', 'vinext', 'wrangler', 'playwright']);
+
 /**
- * Whether the tokens following `bun --bun` describe a direct script execution (or an ambiguous
- * invocation) whose intentional shim must survive. Only unambiguous Node-based tool invocations
- * are stripped: wrongly removing an intentional shim changes the runtime seen by child processes,
- * while wrongly keeping it only leaves wb's startup warning.
+ * Whether the tokens following `bun --bun` describe an invocation whose shim must survive. Only
+ * unambiguous cases are stripped — a known Node-based tool, or a `bun run <package-script>` alias:
+ * wrongly removing an intentional shim changes the runtime seen by child processes (Bun also
+ * executes bare extensionless files directly), while wrongly keeping it only leaves wb's startup
+ * warning.
  */
 function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[]): boolean {
   const positionals: string[] = [];
@@ -460,14 +468,14 @@ function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[]): boolean {
     // `bun run <file>` also executes script files directly, so its target decides too.
     if (positionals[0] !== 'run' || positionals.length === 2) break;
   }
-  const target = positionals[0] === 'run' ? positionals[1] : positionals[0];
-  return target !== undefined && isDirectScriptTarget(target);
-}
-
-function isDirectScriptTarget(target: string): boolean {
-  // Script extensions, path-like targets (Bun also runs extensionless files by path), and
-  // shell-expanded targets are direct executions; bare words are tool or package-script names.
-  return /\.[cm]?[jt]sx?$/u.test(target) || target.includes('/') || target.startsWith('$');
+  const [first, second] = positionals;
+  if (first === undefined) return true;
+  if (first === 'run') {
+    // Path-like, extension-carrying, or shell-expanded run targets may be direct file executions;
+    // only a bare name is a package-script alias.
+    return second === undefined || /[./$]/u.test(second);
+  }
+  return !nodeBasedTools.has(first);
 }
 
 interface ShellToken {

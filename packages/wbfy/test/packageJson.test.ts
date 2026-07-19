@@ -1751,6 +1751,7 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
         'quoted-executable': '"bun" --bun next build',
         multiline: 'bun --bun next build\nbun --bun wrangler tail',
         'env-prefix': 'env NODE_ENV=production bun --bun next build',
+        'command-prefix': 'command bun --bun next build',
       },
     },
     { isRoot: true }
@@ -1764,6 +1765,7 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
     'quoted-executable': '"bun" next build',
     multiline: 'bun next build\nbun wrangler tail',
     'env-prefix': 'env NODE_ENV=production bun next build',
+    'command-prefix': 'command bun next build',
   });
 });
 
@@ -1779,7 +1781,9 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
         'start-variable': 'bun --bun "$ENTRYPOINT"',
         'start-run-file': 'bun --bun run ./src/index.ts',
         'start-extensionless': 'bun --bun ./scripts/server',
+        'start-bare-file': 'bun --bun server',
         'start-flag-value': 'bun --bun --cwd packages/app src/index.ts',
+        'gen-script': "cat <<'EOF' > generated.sh\nbun --bun next build\nEOF",
       },
     },
     { isRoot: true }
@@ -1794,7 +1798,9 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
     'start-variable': 'bun --bun "$ENTRYPOINT"',
     'start-run-file': 'bun --bun run ./src/index.ts',
     'start-extensionless': 'bun --bun ./scripts/server',
+    'start-bare-file': 'bun --bun server',
     'start-flag-value': 'bun --bun --cwd packages/app src/index.ts',
+    'gen-script': "cat <<'EOF' > generated.sh\nbun --bun next build\nEOF",
   });
 });
 
