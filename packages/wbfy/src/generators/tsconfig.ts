@@ -227,6 +227,10 @@ function removeStaleManagedWorkspaceEntries(
     //   segment, same depth as the matched directory), catching overlapping wildcard layouts
     //   (e.g. old `!apps/*b` vs new `apps/a*`) — the shape gate keeps hygiene globs such as
     //   `**/e2e` from being deleted just because a workspace directory basename matches them.
+    // Provenance is not tracked, so two residual gaps are ACCEPTED by design: a workspace-shaped
+    // entry covering a discovered workspace is presumed negation-derived even if hand-written
+    // (the policy above), and a negation-derived entry for a manifest-less directory survives
+    // after its negation is removed (it only narrows the root program conservatively).
     return !(
       (!/[*?]/u.test(entry) &&
         workspaceDirPaths.some(
