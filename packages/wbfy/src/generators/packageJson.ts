@@ -405,13 +405,14 @@ function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
   // tools requiring real Node.js (Playwright, wrangler, vinext), and wb 15 warns on every run when
   // it detects the shim. Only direct script-file executions (e.g. `exec bun --bun src/index.ts`),
   // where the shim is an intentional Bun-runtime opt-in for spawned children, are preserved.
+  const scriptNames = new Set(Object.keys(scripts));
   for (const [key, value] of Object.entries(scripts)) {
     if (typeof value !== 'string' || !value.includes('--bun')) continue;
-    scripts[key] = removeBunRuntimeFlag(value);
+    scripts[key] = removeBunRuntimeFlag(value, scriptNames);
   }
 }
 
-function removeBunRuntimeFlag(script: string): string {
+function removeBunRuntimeFlag(script: string, scriptNames: ReadonlySet<string>): string {
   // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
   if (script.includes('<<')) return script;
   // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
@@ -426,14 +427,15 @@ function removeBunRuntimeFlag(script: string): string {
       continue;
     }
     if (!atCommandPosition) continue;
+    const tokenText = unquoteShellToken(token.text);
     // `KEY=VALUE` prefixes and shell prefix words (`exec`, `env`, `command`, `!`) keep the next
     // token in command position.
-    if (/^[A-Za-z_]\w*=/u.test(token.text) || ['exec', 'env', 'command', '!'].includes(token.text)) continue;
+    if (/^[A-Za-z_]\w*=/u.test(tokenText) || ['exec', 'env', 'command', '!'].includes(tokenText)) continue;
     atCommandPosition = false;
-    if (unquoteShellToken(token.text) !== 'bun') continue;
+    if (tokenText !== 'bun') continue;
     const flagToken = tokens[index + 1];
-    if (flagToken?.text !== '--bun') continue;
-    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2))) continue;
+    if (!flagToken || unquoteShellToken(flagToken.text) !== '--bun') continue;
+    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2), scriptNames)) continue;
     removalRanges.push([flagToken.start, flagToken.end]);
   }
 
@@ -457,23 +459,24 @@ const nodeBasedTools = new Set(['next', 'vite', 'vinext', 'wrangler', 'playwrigh
  * executes bare extensionless files directly), while wrongly keeping it only leaves wb's startup
  * warning.
  */
-function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[]): boolean {
+function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: ReadonlySet<string>): boolean {
   const positionals: string[] = [];
   for (const token of followingTokens) {
     if (isShellSeparator(token.text)) break;
+    const tokenText = unquoteShellToken(token.text);
     // A flag may take a separate value (e.g. `--preload ./setup.ts`), so the real entrypoint is
     // unknowable without modeling the full option arity of Bun (and of `bun run`) — keep the flag.
-    if (token.text.startsWith('-')) return true;
-    positionals.push(unquoteShellToken(token.text));
+    if (tokenText.startsWith('-')) return true;
+    positionals.push(tokenText);
     // `bun run <file>` also executes script files directly, so its target decides too.
     if (positionals[0] !== 'run' || positionals.length === 2) break;
   }
   const [first, second] = positionals;
   if (first === undefined) return true;
   if (first === 'run') {
-    // Path-like, extension-carrying, or shell-expanded run targets may be direct file executions;
-    // only a bare name is a package-script alias.
-    return second === undefined || /[./$]/u.test(second);
+    // `bun run <name>` is a package-script alias only when the name actually exists in scripts;
+    // otherwise Bun may execute a file (even an extensionless one) of that name directly.
+    return second === undefined || /[./$]/u.test(second) || !scriptNames.has(second);
   }
   return !nodeBasedTools.has(first);
 }

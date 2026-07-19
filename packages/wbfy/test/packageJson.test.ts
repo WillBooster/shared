@@ -1754,7 +1754,7 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
         'command-prefix': 'command bun --bun next build',
       },
     },
-    { isRoot: true }
+    {}
   );
 
   expect(packageJson.scripts).toMatchObject({
@@ -1782,11 +1782,13 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
         'start-run-file': 'bun --bun run ./src/index.ts',
         'start-extensionless': 'bun --bun ./scripts/server',
         'start-bare-file': 'bun --bun server',
+        'start-run-missing': 'bun --bun run server',
+        'start-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
         'start-flag-value': 'bun --bun --cwd packages/app src/index.ts',
         'gen-script': "cat <<'EOF' > generated.sh\nbun --bun next build\nEOF",
       },
     },
-    { isRoot: true }
+    {}
   );
 
   expect(packageJson.scripts).toMatchObject({
@@ -1799,6 +1801,8 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
     'start-run-file': 'bun --bun run ./src/index.ts',
     'start-extensionless': 'bun --bun ./scripts/server',
     'start-bare-file': 'bun --bun server',
+    'start-run-missing': 'bun --bun run server',
+    'start-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
     'start-flag-value': 'bun --bun --cwd packages/app src/index.ts',
     'gen-script': "cat <<'EOF' > generated.sh\nbun --bun next build\nEOF",
   });
@@ -1813,7 +1817,7 @@ test('does not rewrite `bun --bun` outside a command position', async () => {
         'other-tool': 'my-bun --bun next build',
       },
     },
-    { isRoot: true }
+    {}
   );
 
   expect(packageJson.scripts).toMatchObject({
