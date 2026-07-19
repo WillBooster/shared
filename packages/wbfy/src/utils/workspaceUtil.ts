@@ -105,19 +105,31 @@ export function getWorkspaceDirPatterns(rootLike: WorkspaceRootLike): WorkspaceD
 /**
  * tsconfig exclude entries for one negation. Pattern-shaped when the negation excludes exactly
  * what it matches (stable output); per-directory otherwise: a directory that is a workspace
- * despite the negation is not excluded at all, and a directory that is an ancestor of a workspace
- * directory gets only its package-owned subpaths excluded, because Bun excludes only the package
- * AT that directory while keeping descendant workspaces (#1004).
+ * despite the negation is not excluded at all, and neither is a descendant of a workspace
+ * directory — negating a non-package directory is a no-op for Bun, and the enclosing workspace
+ * stays active (e.g. `['apps/**', '!apps/**', 'apps/web']` re-includes apps/web, whose src must
+ * keep type-checking; a tsconfig exclude would override the include). A directory that is an
+ * ancestor of a workspace directory gets only its package-owned subpaths excluded, because Bun
+ * excludes only the package AT that directory while keeping descendant workspaces (#1004).
  */
 function toExcludeEntries(negationBody: string, workspaceDirPaths: Set<string>, rootDirPath: string): string[] {
   const isWorkspaceAncestor = (dirPath: string): boolean =>
     [...workspaceDirPaths].some((workspaceDirPath) => workspaceDirPath.startsWith(`${dirPath}/`));
+  const isWorkspaceDescendant = (dirPath: string): boolean =>
+    [...workspaceDirPaths].some((workspaceDirPath) => dirPath.startsWith(`${workspaceDirPath}/`));
   const matchedDirPaths = getMatchedDirPaths(negationBody, rootDirPath);
-  if (!matchedDirPaths.some((dirPath) => workspaceDirPaths.has(dirPath) || isWorkspaceAncestor(dirPath))) {
+  if (
+    !matchedDirPaths.some(
+      (dirPath) => workspaceDirPaths.has(dirPath) || isWorkspaceAncestor(dirPath) || isWorkspaceDescendant(dirPath)
+    )
+  ) {
     return toTsconfigCompatibleDirPatterns(negationBody, rootDirPath);
   }
   return matchedDirPaths.flatMap((dirPath) => {
-    if (workspaceDirPaths.has(dirPath)) return [];
+    // The descendant check precedes the ancestor one: a directory inside one workspace but above
+    // a nested one (e.g. apps/web/plugins between workspaces apps/web and apps/web/plugins/x)
+    // still belongs to the enclosing active workspace, so nothing of it may be excluded.
+    if (workspaceDirPaths.has(dirPath) || isWorkspaceDescendant(dirPath)) return [];
     if (isWorkspaceAncestor(dirPath)) {
       return [`${dirPath}/*.config.ts`, `${dirPath}/scripts`, `${dirPath}/src`, `${dirPath}/test`];
     }
