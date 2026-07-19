@@ -11,6 +11,7 @@ import { createConfig } from './testConfig.js';
 interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
   devDependencies?: Record<string, string | undefined>;
+  private?: boolean;
   scripts?: Record<string, string | undefined>;
   trustedDependencies?: string[];
 }
@@ -1674,6 +1675,35 @@ test('does not trust @chakra-ui/react for @chakra-ui/cli v2', async () => {
   );
 
   expect(packageJson.trustedDependencies).toBeUndefined();
+});
+
+test('keeps a plain monorepo root private', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { name: 'monorepo', workspaces: ['packages/*'] },
+    { isRoot: true, doesContainSubPackageJsons: true }
+  );
+
+  expect(packageJson.private).toBe(true);
+});
+
+// @semantic-release/npm silently skips private packages, so forcing `private: true` on a
+// publishing monorepo root (e.g. WillBoosterLab/llm-proxy) would stop releases without any error.
+test('does not force private on a monorepo root released via @semantic-release/npm', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { name: '@willbooster-private/llm-proxy', private: false, workspaces: ['packages/*'] },
+    { isRoot: true, doesContainSubPackageJsons: true, release: { branches: ['main'], github: true, npm: true } }
+  );
+
+  expect(packageJson.private).toBe(false);
+});
+
+test('does not force private on a monorepo root with a publishConfig', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { name: 'published-monorepo', workspaces: ['packages/*'], publishConfig: { registry: 'https://npm.example.com' } },
+    { isRoot: true, doesContainSubPackageJsons: true }
+  );
+
+  expect(packageJson.private).toBeUndefined();
 });
 
 async function generatePackageJsonFrom(
