@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { parse } from 'smol-toml';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 
 import { ensureWbEnvDefinitions, insertWbEnvIntoEnvFile, insertWbEnvIntoFnoxToml } from '../src/generators/wbEnv.js';
 
@@ -122,6 +122,27 @@ test('ensureWbEnvDefinitions updates existing legacy mode files only', async () 
     expect(fs.existsSync(path.join(tempDirPath, '.env.production'))).toBe(false);
     expect(fs.existsSync(path.join(tempDirPath, '.env.staging'))).toBe(false);
   } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('ensureWbEnvDefinitions warns on mismatched WB_ENV in higher-precedence cascade variants', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-wbenv-'));
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    fs.writeFileSync(path.join(tempDirPath, '.env'), 'WB_ENV=development\n');
+    fs.writeFileSync(path.join(tempDirPath, '.env.development'), 'WB_ENV=production\n');
+    fs.writeFileSync(path.join(tempDirPath, '.env.production'), 'WB_ENV=production\n');
+    fs.writeFileSync(path.join(tempDirPath, '.env.production.local'), 'WB_ENV=development\n');
+    const rootConfig = createConfig({ dirPath: tempDirPath, isRoot: true });
+    await ensureWbEnvDefinitions(rootConfig, [rootConfig]);
+    const warnings = warnSpy.mock.calls.map(([message]) => String(message));
+    expect(warnings.some((message) => message.includes('.env.development'))).toBe(true);
+    expect(warnings.some((message) => message.includes('.env.production.local'))).toBe(true);
+    // The canonical files hold correct values and must not be warned about.
+    expect(warnings.some((message) => message.includes('"production"') && message.includes(' .env '))).toBe(false);
+  } finally {
+    warnSpy.mockRestore();
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
 });

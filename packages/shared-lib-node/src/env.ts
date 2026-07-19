@@ -59,13 +59,15 @@ const standardWbEnvModes = new Set(['development', 'test', 'staging', 'productio
 
 /**
  * Resolves the WB_ENV value wb falls back to when no env source and no exported variable defines
- * it: the forced cascade if any, then the command-level default, then the ambient-NODE_ENV-driven
- * auto cascade clamped to a standard mode (a non-standard NODE_ENV such as `qa` still selects the
- * cascade suffix, but must not produce a non-standard WB_ENV).
+ * it: the command-level default first (`wb test --cascade-env=staging` loads the staging files
+ * but its tests must still run as `test`, mirroring the pre-15 `||= 'test'` behavior), then the
+ * forced cascade, then the ambient-NODE_ENV-driven auto cascade clamped to a standard mode (a
+ * non-standard NODE_ENV such as `qa` still selects the cascade suffix, but must not produce a
+ * non-standard WB_ENV).
  */
 export function resolveFallbackWbEnv(argv: EnvReaderOptions): string {
-  if (argv.cascadeEnv) return argv.cascadeEnv;
   if (argv.commandDefaultWbEnv) return argv.commandDefaultWbEnv;
+  if (argv.cascadeEnv) return argv.cascadeEnv;
   // Read NODE_ENV through the alias for the same bundler-inlining reason as in
   // readEnvironmentVariables, and from the AMBIENT environment (not loaded files) because the
   // cascade selection below uses the ambient value as well.
@@ -90,6 +92,11 @@ export function readEnvironmentVariables(
      * and the file-defined variables themselves are needed (e.g. `wb gen-dev-vars`).
      */
     ignoreProcessEnv?: boolean;
+    /**
+     * Expand `${WB_ENV}` references against the fallback mode when nothing defines WB_ENV.
+     * Only for callers that subsequently COMPLETE WB_ENV with that fallback (wb's Project.env).
+     */
+    expandFallbackWbEnv?: boolean;
   }
 ): [Record<string, string>, [string, string[]][]] {
   let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
@@ -223,9 +230,12 @@ export function readEnvironmentVariables(
     if (value !== undefined && !(key in envVars)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
   }
   // A value referencing ${WB_ENV} must expand to what the child will actually see: when nothing
-  // defines WB_ENV, wb later fills it with the fallback mode, so expose that fallback here
-  // instead of expanding the reference to an empty string.
-  if (!('WB_ENV' in envVars) && runtimeEnv.WB_ENV === undefined) {
+  // defines WB_ENV, wb's Project.env later fills it with the fallback mode, so expose that
+  // fallback here instead of expanding the reference to an empty string. Opt-in via the option:
+  // a direct readEnvironmentVariables/readAndApplyEnvironmentVariables caller never receives the
+  // completed WB_ENV, and expanding references against a value that is not actually applied
+  // would make the pair inconsistent.
+  if (options?.expandFallbackWbEnv && !('WB_ENV' in envVars) && runtimeEnv.WB_ENV === undefined) {
     referenceEnv.WB_ENV = resolveFallbackWbEnv(argv);
   }
   // dotenv-expand resolves references in key-insertion order, so a .env value referencing a

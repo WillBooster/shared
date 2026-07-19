@@ -47,6 +47,21 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
     for (const config of allConfigs) {
       const needsNextPublicHere = config === rootConfig ? needsNextPublic : requiresNextPublicWbEnv(config);
       for (const mode of wbEnvModes) {
+        // Warn-only inspection of the HIGHER-precedence cascade variants the loader also reads
+        // (`.env.development` for the development cascade, `.env.<mode>.local` for every mode):
+        // a mismatched WB_ENV there overrides the canonical file's correct value, so checking
+        // the canonical file alone could even report a broken repository as correct.
+        const keyNames = needsNextPublicHere ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
+        const variantFileNames =
+          mode === 'development' ? ['.env.development', '.env.development.local'] : [`.env.${mode}.local`];
+        for (const variantFileName of variantFileNames) {
+          const variantContent = await fsUtil.readFileConfinedIfExists(path.resolve(config.dirPath, variantFileName));
+          if (variantContent === undefined) continue;
+          const definedVariantKeys = dotenv.parse(variantContent);
+          for (const keyName of keyNames) {
+            warnOnUnexpectedWbEnvValue(keyName, definedVariantKeys[keyName], mode, variantFileName);
+          }
+        }
         const envFilePath = path.resolve(config.dirPath, mode === 'development' ? '.env' : `.env.${mode}`);
         const envContent = await fsUtil.readFileConfinedIfExists(envFilePath);
         // Only existing mode files are completed: creating .env.production (never committed by

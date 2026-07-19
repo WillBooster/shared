@@ -140,7 +140,11 @@ export class Project {
       return this.envCache;
     }
 
-    const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(this.argv, this.dirPath);
+    const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(this.argv, this.dirPath, {
+      // completeAndValidateWbEnv below fills an unset WB_ENV with the same fallback, so expanding
+      // ${WB_ENV} references against it keeps the pair consistent.
+      expandFallbackWbEnv: true,
+    });
     if (!shouldSuppressEnvironmentOutput(this.argv)) {
       for (const [envPath, names] of envPathAndLoadedEnvVarNamePairs) {
         console.info(`Loaded ${names.length} environment variables from ${envPath}`);
@@ -219,7 +223,9 @@ export class Project {
     // WB_ENV=production overridden to development by `.env.production` would build/deploy the
     // wrong environment while looking successful.
     const forcedMode = this.argv.cascadeEnv ?? (this.argv.cascadeNodeEnv ? undefined : process.env.WB_ENV || undefined);
-    if (forcedMode && env.WB_ENV !== forcedMode) {
+    // The command-level default is a legitimate second expectation: `wb test --cascade-env=staging`
+    // loads the staging files while the fallback correctly fills WB_ENV=test.
+    if (forcedMode && env.WB_ENV !== forcedMode && env.WB_ENV !== this.argv.commandDefaultWbEnv) {
       console.error(
         chalk.red(
           `WB_ENV resolves to "${env.WB_ENV}" although the "${forcedMode}" environment was selected. ` +
