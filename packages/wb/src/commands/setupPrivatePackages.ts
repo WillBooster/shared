@@ -55,11 +55,15 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       process.exit(1);
     }
 
-    const outDirPath = path.resolve(projects.root.dirPath, argv.outDir);
-    assertSubdirectory(projects.root.dirPath, outDirPath);
+    // Every containment/overlap check below compares canonicalized paths: a symlink component
+    // (e.g. `escape -> node_modules`) would otherwise smuggle the recursive deletes past the
+    // lexical guards and destroy the symlink's target.
+    const rootDirPath = canonicalizePath(projects.root.dirPath);
+    const outDirPath = canonicalizePath(path.resolve(rootDirPath, argv.outDir));
+    assertSubdirectory(rootDirPath, outDirPath);
     // Registry packages always materialize at the repository root: `wb optimizeForDockerBuild`
     // resolves them from `<root>/@willbooster-private` regardless of `--out-dir`.
-    const registryOutDirPath = path.join(projects.root.dirPath, PRIVATE_REGISTRY_SCOPE);
+    const registryOutDirPath = canonicalizePath(path.join(rootDirPath, PRIVATE_REGISTRY_SCOPE));
     if (pathsOverlap(outDirPath, registryOutDirPath)) {
       // e.g. `--out-dir @willbooster-private` or `--out-dir @willbooster-private/sub`: the
       // registry step recursively deletes registryOutDirPath, which would destroy the git
@@ -67,8 +71,8 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       console.error(chalk.red(`--out-dir must not overlap the ${PRIVATE_REGISTRY_SCOPE} registry output directory.`));
       process.exit(1);
     }
-    const stagingDirPath = path.join(projects.root.dirPath, '.tmp', 'wb-private-registry-staging');
-    if (pathsOverlap(outDirPath, path.join(projects.root.dirPath, 'node_modules'))) {
+    const stagingDirPath = canonicalizePath(path.join(rootDirPath, '.tmp', 'wb-private-registry-staging'));
+    if (pathsOverlap(outDirPath, canonicalizePath(path.join(rootDirPath, 'node_modules')))) {
       // The recursive delete of outDirPath would destroy the installed sources the copies read.
       console.error(chalk.red('--out-dir must not overlap node_modules.'));
       process.exit(1);
@@ -79,7 +83,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       console.error(chalk.red(`--out-dir must not overlap the staging directory (${stagingDirPath}).`));
       process.exit(1);
     }
-    if (path.relative(projects.root.dirPath, outDirPath) !== '@willbooster') {
+    if (path.relative(rootDirPath, outDirPath) !== '@willbooster') {
       // Pre-existing limitation of the option: the Docker manifest rewrite has no access to it.
       console.warn(
         chalk.yellow(
@@ -88,7 +92,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       );
     }
     const privatePackages = await collectPrivatePackages(
-      projects.root.dirPath,
+      rootDirPath,
       projects.root.packageJson,
       outDirPath,
       registryOutDirPath
@@ -107,7 +111,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     const downloadedPackages = registryPackages.filter((p) => !p.sourceDirPath);
     // Resolve required configuration BEFORE deleting the existing materializations, so a missing
     // registry configuration cannot destroy a previously usable output tree.
-    const auth = downloadedPackages.length > 0 ? resolvePrivateRegistryAuth(projects.root.dirPath) : undefined;
+    const auth = downloadedPackages.length > 0 ? resolvePrivateRegistryAuth(rootDirPath) : undefined;
     if (downloadedPackages.length > 0 && !auth) {
       console.error(
         chalk.red(
@@ -124,7 +128,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     // and a missing source path fails the build.
     await fs.promises.mkdir(outDirPath, { recursive: true });
     for (const privatePackage of copiedPackages) {
-      await copyInstalledPackage(projects.root.dirPath, privatePackage, privatePackage.targetDirPath);
+      await copyInstalledPackage(rootDirPath, privatePackage, privatePackage.targetDirPath);
     }
 
     if (registryPackages.length > 0) {
@@ -137,11 +141,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       try {
         for (const privatePackage of registryPackages) {
           if (privatePackage.sourceDirPath) {
-            await copyInstalledPackage(
-              projects.root.dirPath,
-              privatePackage,
-              toStagedPath(privatePackage.targetDirPath)
-            );
+            await copyInstalledPackage(rootDirPath, privatePackage, toStagedPath(privatePackage.targetDirPath));
           } else {
             await downloadAndExtractRegistryPackage(
               // downloadedPackages is non-empty on this path, so the auth check above passed.
@@ -155,7 +155,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
               privatePackage.name
             );
             console.info(
-              `Downloaded ${privatePackage.name} to ${path.relative(projects.root.dirPath, privatePackage.targetDirPath)}`
+              `Downloaded ${privatePackage.name} to ${path.relative(rootDirPath, privatePackage.targetDirPath)}`
             );
           }
           // A downloaded package may itself depend on private packages that were not visible
@@ -163,7 +163,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
           // by collectPrivatePackages.
           if (!privatePackage.sourceDirPath) {
             await collectNestedPrivatePackages(
-              projects.root.dirPath,
+              rootDirPath,
               auth!,
               privatePackage,
               privatePackages,
@@ -184,9 +184,9 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       await fs.promises.mkdir(registryOutDirPath, { recursive: true });
     }
 
-    await replacePrivateDependencies(projects.root.dirPath, privatePackages);
+    await replacePrivateDependencies(rootDirPath, privatePackages);
     console.info(
-      `Ensure the Dockerfile COPYs ${path.relative(projects.root.dirPath, outDirPath)}/ and ${PRIVATE_REGISTRY_SCOPE}/ into the image before installing dependencies.`
+      `Ensure the Dockerfile COPYs ${path.relative(rootDirPath, outDirPath)}/ and ${PRIVATE_REGISTRY_SCOPE}/ into the image before installing dependencies.`
     );
   },
 };
@@ -415,6 +415,26 @@ function assertNoVersionConflict(existing: PrivatePackage, requested: PrivatePac
       `${existing.versionSpecifier ?? existing.kind} is already selected, but ${dependentName} requires ` +
       `${requested.versionSpecifier ?? requested.kind}. Only a single version per private package is supported.`
   );
+}
+
+/**
+ * Resolves symlinks in the deepest EXISTING ancestor of the path and reattaches the not-yet
+ * existing remainder, so lexical containment/overlap checks operate on physical locations.
+ */
+function canonicalizePath(targetPath: string): string {
+  let existingPath = path.resolve(targetPath);
+  const remainderSegments: string[] = [];
+  while (!fs.existsSync(existingPath)) {
+    const parentPath = path.dirname(existingPath);
+    if (parentPath === existingPath) break;
+    remainderSegments.unshift(path.basename(existingPath));
+    existingPath = parentPath;
+  }
+  try {
+    return path.join(fs.realpathSync(existingPath), ...remainderSegments);
+  } catch {
+    return path.resolve(targetPath);
+  }
 }
 
 /** Whether the two paths are equal or one contains the other. */
