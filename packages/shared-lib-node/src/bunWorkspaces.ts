@@ -59,6 +59,36 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
   // so keep only manifests whose real path stays inside the repository's real root. Scanning each
   // pattern separately (no cross-pattern caching) is deliberate: declarations hold a handful of
   // patterns, so a cache would complicate this shared code without measurable gain.
+  const globManifestPaths = (pattern: string): string[] => {
+    // Bun links dot-directory packages only through fully static patterns: with Bun 1.3.14,
+    // `.hidden/x` pins the package while `.hidden/*`, `.*/*`, and `**` all link nothing under
+    // .hidden — even when the dotted segment itself is literal — so any dynamic pattern must
+    // drop matches containing a dot-led segment (fast-glob's `dot: false` only covers segments
+    // a wildcard matches).
+    const excludesDotSegments = fg.isDynamicPattern(pattern);
+    const globOptions = { cwd: rootDirPath, followSymbolicLinks: false, ignore: ['**/node_modules/**'] };
+    // fast-glob 3.3.3 returns no matches for file globs with a lone-`?` segment (e.g.
+    // `packages/?/package.json`), although micromatch matches them and Bun 1.3.14 links such
+    // workspaces; for `?`-carrying patterns only (a directory glob for e.g. `**` would scan every
+    // directory in the repository), globbing the directories (where `?` works) and checking their
+    // manifests complements the manifest glob, which stays necessary for `**`'s zero-segment
+    // matches — `dir/**` does not return dir itself as a directory.
+    const manifestPaths = new Set(fg.globSync(path.posix.join(pattern, 'package.json'), globOptions));
+    if (pattern.includes('?')) {
+      for (const dirPath of fg.globSync(pattern, { ...globOptions, onlyDirectories: true })) {
+        const packageJsonPath = path.posix.join(dirPath, 'package.json');
+        if (fs.existsSync(path.join(rootDirPath, packageJsonPath))) manifestPaths.add(packageJsonPath);
+      }
+    }
+    // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
+    // monorepo root as its own workspace.
+    return [...manifestPaths].filter(
+      (packageJsonPath) =>
+        packageJsonPath !== 'package.json' &&
+        (!excludesDotSegments || !packageJsonPath.split('/').some((segment) => segment.startsWith('.'))) &&
+        isInsideRealRoot(packageJsonPath)
+    );
+  };
   let realRootDirPath: string | undefined;
   const isInsideRealRoot = (packageJsonPath: string): boolean => {
     try {
@@ -71,35 +101,6 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
       // A manifest that vanished between the glob and the realpath call is not a workspace.
       return false;
     }
-  };
-  const globManifestPaths = (pattern: string): string[] => {
-    // Bun links dot-directory packages only through fully static patterns: with Bun 1.3.14,
-    // `.hidden/x` pins the package while `.hidden/*`, `.*/*`, and `**` all link nothing under
-    // .hidden — even when the dotted segment itself is literal — so any dynamic pattern must
-    // drop matches containing a dot-led segment (fast-glob's `dot: false` only covers segments
-    // a wildcard matches).
-    const excludesDotSegments = fg.isDynamicPattern(pattern);
-    const globOptions = { cwd: rootDirPath, followSymbolicLinks: false, ignore: ['**/node_modules/**'] };
-    // fast-glob 3.3.3 returns no matches for file globs with a lone-`?` segment (e.g.
-    // `packages/?/package.json`), although micromatch matches them and Bun 1.3.14 links such
-    // workspaces; globbing the directories (where `?` works) and checking their manifests
-    // complements it. The manifest glob stays necessary for `**`'s zero-segment matches —
-    // `dir/**` does not return dir itself as a directory.
-    const manifestPaths = new Set([
-      ...fg.globSync(path.posix.join(pattern, 'package.json'), globOptions),
-      ...fg
-        .globSync(pattern, { ...globOptions, onlyDirectories: true })
-        .map((dirPath) => path.posix.join(dirPath, 'package.json'))
-        .filter((packageJsonPath) => fs.existsSync(path.join(rootDirPath, packageJsonPath))),
-    ]);
-    // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
-    // monorepo root as its own workspace.
-    return [...manifestPaths].filter(
-      (packageJsonPath) =>
-        packageJsonPath !== 'package.json' &&
-        (!excludesDotSegments || !packageJsonPath.split('/').some((segment) => segment.startsWith('.'))) &&
-        isInsideRealRoot(packageJsonPath)
-    );
   };
   const accumulatedPaths = new Set<string>();
   const pinnedPaths = new Set<string>();

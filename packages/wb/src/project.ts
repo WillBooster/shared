@@ -574,21 +574,22 @@ export async function findWorkspacePackageDirs(
     ignore: ['**/node_modules/**'],
   };
   // fast-glob (globby's engine) returns no matches for file globs with a lone-`?` segment (e.g.
-  // `packages/?/package.json`) although Yarn links such workspaces; globbing the directories
-  // (where `?` works) and checking their manifests complements it.
+  // `packages/?/package.json`) although Yarn links such workspaces; for `?`-carrying patterns
+  // only (a directory glob for e.g. `**` would scan every directory in the repository), globbing
+  // the directories (where `?` works) and checking their manifests complements the manifest glob.
   const globbedManifestPaths = await globby(
     positivePatterns.map((pattern) => path.posix.join(pattern, 'package.json')),
     globbyOptions
   );
-  const globbedDirPaths = await globby(positivePatterns, { ...globbyOptions, onlyDirectories: true });
-  const manifestPaths = [
-    ...new Set([
-      ...globbedManifestPaths,
-      ...globbedDirPaths
-        .map((dirPath) => path.posix.join(dirPath, 'package.json'))
-        .filter((manifestPath) => fs.existsSync(path.join(project.dirPath, manifestPath))),
-    ]),
-  ];
+  const manifestPathSet = new Set(globbedManifestPaths);
+  const questionMarkPatterns = positivePatterns.filter((pattern) => pattern.includes('?'));
+  if (questionMarkPatterns.length > 0) {
+    for (const dirPath of await globby(questionMarkPatterns, { ...globbyOptions, onlyDirectories: true })) {
+      const manifestPath = path.posix.join(dirPath, 'package.json');
+      if (fs.existsSync(path.join(project.dirPath, manifestPath))) manifestPathSet.add(manifestPath);
+    }
+  }
+  const manifestPaths = [...manifestPathSet];
   const realRootDirPath = fs.realpathSync(project.dirPath);
   const workspaceDirPaths = manifestPaths
     // A `**` pattern reaches the root's own manifest and installed packages, but neither is a
