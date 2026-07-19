@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import semver from 'semver';
+
 /**
  * Materialization of `@willbooster-private/*` registry (Verdaccio) dependencies for Docker builds:
  * the packages are downloaded on the host (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN
@@ -111,9 +113,10 @@ export function parseNpmrc(content: string): Record<string, string> {
 }
 
 /**
- * Download and extract one registry package into `targetDirPath`. The version must be an exact
- * semver (the org pins exact versions via bunfig `exact = true`); `latest` and simple `^`/`~`
- * ranges degrade to the range's base version or the registry's latest dist-tag.
+ * Download and extract one registry package into `targetDirPath`. The specifier may be an exact
+ * semver version (the org's common case via bunfig `exact = true`), any semver range (resolved
+ * max-satisfying against the registry's published versions, matching `npm install`), or a
+ * dist-tag.
  */
 export async function downloadAndExtractRegistryPackage(
   auth: PrivateRegistryAuth,
@@ -157,24 +160,35 @@ async function resolveVersion(
   packageName: string,
   versionSpecifier: string
 ): Promise<string> {
-  // Prerelease and `+build` metadata are both part of valid exact SemVer versions.
-  // toBaseVersion applies the shared anchored SemVer classification: an exact version resolves to
-  // itself and a simple `^`/`~` range degrades to its base version (org repos pin exact versions,
-  // so the range path is a best-effort fallback); anything else resolves as a dist-tag below.
-  const exactVersion = toBaseVersion(versionSpecifier);
-  if (exactVersion) return exactVersion;
+  // Prerelease and `+build` metadata are both part of valid exact SemVer versions, so an exact
+  // specifier resolves to itself without a packument fetch.
+  if (isExactVersion(versionSpecifier)) return versionSpecifier;
 
-  const packument = await fetchRegistryJson<{ 'dist-tags'?: Record<string, string> }>(
-    auth,
-    `${auth.registryUrl}/${encodePackageName(packageName)}`
-  );
-  const distTag = packument['dist-tags']?.[versionSpecifier === '*' ? 'latest' : versionSpecifier];
-  if (!distTag) {
+  const packument = await fetchRegistryJson<Packument>(auth, `${auth.registryUrl}/${encodePackageName(packageName)}`);
+  const version = selectVersionFromPackument(versionSpecifier, packument);
+  if (!version) {
     throw new Error(
-      `Cannot resolve ${packageName}@${versionSpecifier}; use an exact version, a ^/~ range, or a dist-tag.`
+      `Cannot resolve ${packageName}@${versionSpecifier} against ${auth.registryUrl}; use an exact version, a semver range, or a dist-tag.`
     );
   }
-  return distTag;
+  return version;
+}
+
+export interface Packument {
+  'dist-tags'?: Record<string, string>;
+  versions?: Record<string, unknown>;
+}
+
+/**
+ * npm's specifier classification: `*` and dist-tag names resolve via dist-tags (npm resolves `*`
+ * to the `latest` tag), while any other valid semver range resolves to the highest published
+ * version satisfying it, matching `npm install`'s max-satisfying semantics.
+ */
+export function selectVersionFromPackument(versionSpecifier: string, packument: Packument): string | undefined {
+  if (versionSpecifier !== '*' && semver.validRange(versionSpecifier)) {
+    return semver.maxSatisfying(Object.keys(packument.versions ?? {}), versionSpecifier) ?? undefined;
+  }
+  return packument['dist-tags']?.[versionSpecifier === '*' ? 'latest' : versionSpecifier];
 }
 
 async function fetchRegistryJson<T>(auth: PrivateRegistryAuth, url: string): Promise<T> {
@@ -219,53 +233,24 @@ export function isExactVersion(specifier: string | undefined): boolean {
   return !!specifier && exactSemverPattern.test(specifier);
 }
 
-/** The version the specifier resolves to under the degrade-ranges rule, or undefined for tags/git. */
-export function toBaseVersion(specifier: string | undefined): string | undefined {
-  if (!specifier) return;
-  const base = specifier.replace(/^[\^~]/, '');
-  return exactSemverPattern.test(base) ? base : undefined;
+/**
+ * Whether EVERY version `specifier` can resolve to also satisfies `requirement` (exact versions
+ * count as single-version ranges). Conflict checks use this because the actually resolved version
+ * is unknown before the registry is consulted: a subset specifier's max-satisfying resolution is
+ * guaranteed to satisfy the wider requirement. Non-range specifiers (dist-tags, git URLs) are not
+ * comparable and return false — callers accept those only on exact string equality.
+ */
+export function specifierSubset(specifier: string | undefined, requirement: string | undefined): boolean {
+  if (specifier === undefined || requirement === undefined) return false;
+  if (!semver.validRange(specifier) || !semver.validRange(requirement)) return false;
+  return semver.subset(specifier, requirement);
 }
 
 /**
- * Simplified node-semver rules: `^` admits versions not changing the left-most non-zero component
- * (so `^0.1.0` rejects `0.2.0` and `^0.0.3` admits only `0.0.3`), `~` admits same-major.minor
- * >= base. Prerelease identifiers are handled conservatively: any `-` on either side makes this
- * return false, so only an exact string match (checked separately by the callers) is accepted.
+ * Whether the materialized `version` can be the resolution of the registry `specifier`.
+ * Dist-tags (invalid ranges) are not statically checkable and pass.
  */
-export function rangeAdmits(range: string, version: string): boolean {
-  // SemVer build metadata (`+build-1`) is ignored for ordering and may itself contain hyphens,
-  // so strip it BEFORE the prerelease (`-`) check.
-  const rangeBase = range.replace(/^[\^~]/, '').split('+')[0]!;
-  const candidateVersion = version.split('+')[0]!;
-  if (rangeBase.includes('-') || candidateVersion.includes('-')) return false;
-  const baseVersion = parseVersion(rangeBase);
-  const candidate = parseVersion(candidateVersion);
-  if (!baseVersion || !candidate) return false;
-  if (range.startsWith('^')) {
-    if (baseVersion[0] === 0) {
-      if (baseVersion[1] === 0) return compareVersions(candidate, baseVersion) === 0;
-      return candidate[0] === 0 && candidate[1] === baseVersion[1] && compareVersions(candidate, baseVersion) >= 0;
-    }
-    return candidate[0] === baseVersion[0] && compareVersions(candidate, baseVersion) >= 0;
-  }
-  if (range.startsWith('~')) {
-    return (
-      candidate[0] === baseVersion[0] && candidate[1] === baseVersion[1] && compareVersions(candidate, baseVersion) >= 0
-    );
-  }
-  return false;
-}
-
-function parseVersion(version: string): [number, number, number] | undefined {
-  // Anchored: callers strip build metadata and reject prereleases beforehand, so anything beyond
-  // x.y.z marks a non-version (e.g. a numeric-looking dist-tag).
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
-}
-
-function compareVersions(a: [number, number, number], b: [number, number, number]): number {
-  for (let index = 0; index < 3; index++) {
-    if (a[index]! !== b[index]!) return a[index]! - b[index]!;
-  }
-  return 0;
+export function materializedVersionSatisfies(specifier: string, version: string): boolean {
+  if (!semver.validRange(specifier)) return true;
+  return semver.satisfies(version, specifier);
 }
