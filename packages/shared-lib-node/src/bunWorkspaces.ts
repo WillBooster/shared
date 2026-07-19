@@ -36,8 +36,11 @@ export function resolveBunWorkspacePackageJsonPaths(workspaces: WorkspacesDeclar
  *    `**` (packages at any depth), any other star-run seeds `*\/*` (depth 2 only). Seeding
  *    happens even alongside positive patterns (`["apps/*", "!other/*"]` links every depth-2
  *    package outside other/). No other negation shape seeds: `!*`, `!**`, `!*\/*`, `!*\/**`,
- *    `!**\/*`, `!a/b/*`, `!a/b/**`, `!dir`, `!dir/?`, and `!dir/*x` each link nothing on their
- *    own.
+ *    `!**\/*`, `!a/b/*`, `!a/b/**`, `!dir`, and `!dir/*x` each link nothing on their own.
+ *    `?`, brace, and character-class last segments behave ERRATICALLY (`["!other/?"]` links
+ *    packages/a yet not the equally baseline-shaped other/yy, `["!other/??"]` links nothing, and
+ *    `["!?/?"]` links the very other/x it matches), so no consistent rule can model them; they
+ *    are deliberately treated as not seeding — see hasImplicitWorkspaceBaseline and #1005.
  * 3. A non-glob positive pattern PINS its directory: it stays a workspace regardless of where a
  *    matching negation appears (`["other/x", "!other/x"]` and `["!other/x", "other/x"]` both
  *    link other/x).
@@ -69,16 +72,30 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
       return false;
     }
   };
-  const globManifestPaths = (pattern: string): string[] =>
-    fg
-      .globSync(path.posix.join(pattern, 'package.json'), {
-        cwd: rootDirPath,
-        followSymbolicLinks: false,
-        ignore: ['**/node_modules/**'],
-      })
-      // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
-      // monorepo root as its own workspace.
-      .filter((packageJsonPath) => packageJsonPath !== 'package.json' && isInsideRealRoot(packageJsonPath));
+  const globManifestPaths = (pattern: string): string[] => {
+    // Bun links dot-directory packages only through fully static patterns: with Bun 1.3.14,
+    // `.hidden/x` pins the package while `.hidden/*`, `.*/*`, and `**` all link nothing under
+    // .hidden — even when the dotted segment itself is literal — so any dynamic pattern must
+    // drop matches containing a dot-led segment (fast-glob's `dot: false` only covers segments
+    // a wildcard matches).
+    const excludesDotSegments = fg.isDynamicPattern(pattern);
+    return (
+      fg
+        .globSync(path.posix.join(pattern, 'package.json'), {
+          cwd: rootDirPath,
+          followSymbolicLinks: false,
+          ignore: ['**/node_modules/**'],
+        })
+        // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
+        // monorepo root as its own workspace.
+        .filter(
+          (packageJsonPath) =>
+            packageJsonPath !== 'package.json' &&
+            (!excludesDotSegments || !packageJsonPath.split('/').some((segment) => segment.startsWith('.'))) &&
+            isInsideRealRoot(packageJsonPath)
+        )
+    );
+  };
   const accumulatedPaths = new Set<string>();
   const pinnedPaths = new Set<string>();
   for (const workspacePattern of workspacePatterns) {

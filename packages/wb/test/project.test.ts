@@ -1,10 +1,16 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import childProcess from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
 
-import { findDescendantProjects, findSelfProject, getAbsoluteFileDatabaseUrlPath } from '../src/project.js';
+import {
+  findDescendantProjects,
+  findSelfProject,
+  findWorkspacePackageDirs,
+  getAbsoluteFileDatabaseUrlPath,
+} from '../src/project.js';
 
 import { initializeProjectDirectory, tempDir } from './shared.js';
 
@@ -25,6 +31,28 @@ describe('project', () => {
     },
     5 * 60 * 1000
   );
+
+  it('excludes the root manifest and node_modules from Yarn workspace discovery', async () => {
+    const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-yarn-workspaces-'));
+    try {
+      for (const [relativePath, content] of [
+        ['package.json', { name: 'root', workspaces: ['**'] }],
+        ['packages/a/package.json', { name: 'a' }],
+        ['node_modules/dep/package.json', { name: 'dep' }],
+      ] as const) {
+        await fs.promises.mkdir(path.join(dirPath, path.dirname(relativePath)), { recursive: true });
+        await fs.promises.writeFile(path.join(dirPath, relativePath), JSON.stringify(content), 'utf8');
+      }
+      const packageJson = JSON.parse(await fs.promises.readFile(path.join(dirPath, 'package.json'), 'utf8')) as {
+        workspaces: string[];
+      };
+      await expect(findWorkspacePackageDirs({ dirPath, packageJson, usesBunPackageManager: false })).resolves.toEqual([
+        path.join(dirPath, 'packages', 'a'),
+      ]);
+    } finally {
+      await fs.promises.rm(dirPath, { recursive: true, force: true });
+    }
+  });
 
   it('detects bun from a mise.toml tool pin', async () => {
     // wbfy migrates .tool-versions into mise.toml, so the tool-manifest signal must survive

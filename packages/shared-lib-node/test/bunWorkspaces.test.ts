@@ -94,6 +94,17 @@ test('drops no-op patterns, applies bang parity, and ignores repository-escaping
   });
 });
 
+test('links dot-directory packages only through fully static patterns, like Bun', () => {
+  withPackageDirs(['.hidden/x', 'packages/a'], (rootDirPath) => {
+    // Bun 1.3.14 links nothing under .hidden for these dynamic patterns, even with a literal
+    // dotted segment, but pins the fully static `.hidden/x`.
+    expect(resolveBunWorkspacePackageJsonPaths(['.hidden/*'], rootDirPath)).toEqual([]);
+    expect(resolveBunWorkspacePackageJsonPaths(['.*/*'], rootDirPath)).toEqual([]);
+    expect(resolveBunWorkspacePackageJsonPaths(['**'], rootDirPath)).toEqual(['packages/a/package.json']);
+    expect(resolveBunWorkspacePackageJsonPaths(['.hidden/x'], rootDirPath)).toEqual(['.hidden/x/package.json']);
+  });
+});
+
 test('keeps a workspace directory whose name merely starts with ".." inside the repository', () => {
   withPackageDirs(['..pkg'], (rootDirPath) => {
     expect(resolveBunWorkspacePackageJsonPaths(['..pkg'], rootDirPath)).toEqual(['..pkg/package.json']);

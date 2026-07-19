@@ -563,10 +563,13 @@ export async function findWorkspacePackageDirs(
   const manifestPatterns = patterns.map((pattern) =>
     pattern.startsWith('!') ? `!${pattern.slice(1)}/package.json` : `${pattern}/package.json`
   );
-  const manifestPaths = await globby(manifestPatterns, { cwd: project.dirPath });
+  const manifestPaths = await globby(manifestPatterns, { cwd: project.dirPath, ignore: ['**/node_modules/**'] });
   const realRootDirPath = fs.realpathSync(project.dirPath);
-  return manifestPaths
+  const workspaceDirPaths = manifestPaths
+    // A `**` pattern reaches the root's own manifest and installed packages, but neither is a
+    // workspace to Yarn (which never descends into node_modules).
     .filter((manifestPath) => {
+      if (manifestPath === 'package.json') return false;
       try {
         const relativePath = path.relative(realRootDirPath, fs.realpathSync(path.join(project.dirPath, manifestPath)));
         return relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`) && !path.isAbsolute(relativePath);
@@ -575,6 +578,6 @@ export async function findWorkspacePackageDirs(
         return false;
       }
     })
-    .map((manifestPath) => path.join(project.dirPath, path.posix.dirname(manifestPath)))
-    .toSorted();
+    .map((manifestPath) => path.join(project.dirPath, path.posix.dirname(manifestPath)));
+  return [...new Set(workspaceDirPaths)].toSorted();
 }
