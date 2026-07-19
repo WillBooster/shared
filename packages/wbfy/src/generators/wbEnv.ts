@@ -99,6 +99,12 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
     // The staging mode is optional: complete it only when the repository already declares the profile.
     if (mode === 'staging' && !settings.profiles?.staging) continue;
     const definedKeys = mode === 'development' ? settings.secrets : settings.profiles?.[mode]?.secrets;
+    for (const keyName of keyNames) {
+      const defined = definedKeys?.[keyName];
+      const definedValue =
+        typeof defined === 'string' ? defined : (defined as { default?: unknown } | undefined)?.default;
+      warnOnUnexpectedWbEnvValue(keyName, definedValue, mode, 'fnox.toml');
+    }
     const missingLines = keyNames
       .filter((keyName) => definedKeys?.[keyName] === undefined)
       .map((keyName) => `${keyName} = { default = "${mode}" }`);
@@ -133,6 +139,19 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
 }
 
 /**
+ * Warns when an existing WB_ENV-family definition names a different mode than the one it is
+ * defined for (a typo like `prodcution`, or a copy-pasted wrong mode): wb rejects non-standard
+ * values at runtime, so surfacing the mismatch during wbfy is the earliest possible signal.
+ * Only plaintext-looking values are checked — an age-encrypted fnox value must not misfire.
+ */
+function warnOnUnexpectedWbEnvValue(keyName: string, value: unknown, mode: WbEnvMode, sourceLabel: string): void {
+  if (typeof value !== 'string' || !/^[A-Za-z-]+$/u.test(value) || value === mode) return;
+  console.warn(
+    `${keyName} in ${sourceLabel} is "${value}" but should be "${mode}" for the ${mode} mode; wb rejects values outside development/test/staging/production.`
+  );
+}
+
+/**
  * Inserts lines at the top of a TOML section, right after its `[header]` line so profile-specific
  * entries stay grouped with their header; the section is appended at the end when it is absent.
  */
@@ -159,6 +178,9 @@ export function insertWbEnvIntoEnvFile(content: string, mode: WbEnvMode, needsNe
   // contain a `WB_ENV=...` LINE without defining the key, which a raw line match would treat as an
   // existing definition and skip the insertion.
   const definedKeys = dotenv.parse(content);
+  for (const keyName of keyNames) {
+    warnOnUnexpectedWbEnvValue(keyName, definedKeys[keyName], mode, mode === 'development' ? '.env' : `.env.${mode}`);
+  }
   const missingLines = keyNames
     .filter((keyName) => definedKeys[keyName] === undefined)
     .map((keyName) => `${keyName}=${mode}`);

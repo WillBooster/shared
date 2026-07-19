@@ -235,7 +235,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
 
     const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isFile() || !isObsoleteGenPrWorkflowFileName(entry.name)) continue;
+      if (!entry.isFile() || !isObsoleteGenPrWorkflow(workflowsPath, entry.name)) continue;
       await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, entry.name)));
     }
     // GitHub accepts both .yml and .yaml workflow files, and a workflow's file name is its public
@@ -245,7 +245,8 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // the .yaml twin is left untouched, since merging two workflow definitions is ambiguous.
     const fileNamesByKind = new Map<string, string>();
     for (const entry of entries) {
-      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || isObsoleteGenPrWorkflowFileName(entry.name)) continue;
+      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || isObsoleteGenPrWorkflow(workflowsPath, entry.name))
+        continue;
       const kind = entry.name.replace(/\.ya?ml$/u, '');
       const existingFileName = fileNamesByKind.get(kind);
       if (existingFileName === undefined || existingFileName.endsWith('.yaml')) {
@@ -329,8 +330,32 @@ export function isReusableWorkflowsRepo(repository?: string): boolean {
   return repository?.endsWith('/reusable-workflows') ?? false;
 }
 
-function isObsoleteGenPrWorkflowFileName(fileName: string): boolean {
-  return /^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName);
+/**
+ * The gen-pr workflow family is retired (the reusable gen-pr.yml no longer exists), so wbfy
+ * removes its callers: any `gen-pr*.yml` file, plus a file under another name whose jobs ALL call
+ * the reusable gen-pr workflow. Mixed files keep their other jobs, and unparsable files are only
+ * matched by filename — deleting a whole workflow on a text match would be too aggressive.
+ */
+export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string): boolean {
+  if (/^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName)) return true;
+  if (!/\.ya?ml$/u.test(fileName)) return false;
+  let content: string;
+  try {
+    content = fs.readFileSync(path.join(workflowsPath, fileName), 'utf8');
+  } catch {
+    return false;
+  }
+  const genPrCallPattern = /\/reusable-workflows\/\.github\/workflows\/gen-pr\.ya?ml@/u;
+  try {
+    const workflow = yaml.load(content) as Workflow | undefined;
+    if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
+      const jobs = Object.values(workflow.jobs);
+      return jobs.length > 0 && jobs.every((job) => typeof job?.uses === 'string' && genPrCallPattern.test(job.uses));
+    }
+  } catch {
+    // Fall through to the filename-only decision above.
+  }
+  return false;
 }
 
 async function writeWorkflowYaml(
@@ -618,7 +643,7 @@ function readProductionCustomDomain(rootDirPath: string, workerDirPath: string):
 // The reusable workflows that declare FNOX_AGE_KEY and VERDACCIO_TOKEN under
 // on.workflow_call.secrets (see WillBooster/reusable-workflows). Passing either secret to any
 // other callee is a GitHub error.
-const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'gen-pr', 'release', 'run-script', 'test']);
+const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'release', 'run-script', 'test']);
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};

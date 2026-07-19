@@ -149,43 +149,67 @@ export class Project {
     // (e.g. `--cascade-env=test`) wins over a stale `mise activate` environment.
     this.envCache = { ...process.env, ...envVars };
     // `mise env` is excluded: it reports tool-activation output (e.g. PATH) even in repos that
-    // declare no environment variables at all, which must not force the WB_ENV requirement.
-    this.validateRequiredEnvironmentVariables(
-      envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env'))
-    );
+    // declare no environment variables at all, which must not trigger the CI strictness below.
+    this.completeAndValidateWbEnv(envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env')));
     return this.envCache;
   }
 
+  private static readonly standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
+
   /**
-   * Fail fast when the resolved environment violates the org standard: every mode
-   * (development/test/staging/production) must define `WB_ENV`, and Next.js/vinext apps must also
-   * define `NEXT_PUBLIC_WB_ENV` (see the guidelines-for-mise-fnox skill). Skipped while no env
-   * sources exist yet (e.g. during `wb setup` bootstrap before env files/fnox.toml are created)
-   * and when `WB_SKIP_ENV_CHECK=1` is set.
+   * Completes and validates the resolved `WB_ENV` per the org standard (see the
+   * guidelines-for-mise-fnox skill):
+   * - Locally, an unset `WB_ENV` falls back to the selected cascade mode (development unless a
+   *   command forces another, e.g. `wb test` forces test), so casual `bun wb ...` invocations
+   *   work in repositories that define no WB_ENV at all.
+   * - On CI, an unset `WB_ENV` is a hard error when env sources exist: workflows must export the
+   *   environment explicitly instead of silently running in an ambiguous mode.
+   * - The value must name a standard mode; an unknown value (e.g. a typo like `prodcution`) would
+   *   otherwise silently select the development cascade, which is the failure this guards against.
+   * - `NEXT_PUBLIC_WB_ENV` is derived from `WB_ENV` for Next.js/vinext apps when missing, so a
+   *   production build can no longer bake a stale development value into the client bundle.
+   * Skipped when `WB_SKIP_ENV_CHECK=1` is set.
    */
-  private validateRequiredEnvironmentVariables(hasEnvironmentSources: boolean): void {
+  private completeAndValidateWbEnv(hasEnvironmentSources: boolean): void {
     const env = this.envCache;
-    if (!env || !hasEnvironmentSources) return;
+    if (!env) return;
     if (env.WB_SKIP_ENV_CHECK === '1' || env.WB_SKIP_ENV_CHECK === 'true') return;
 
-    const missingKeys: string[] = [];
-    if (!env.WB_ENV) missingKeys.push('WB_ENV');
-    if (this.requiresNextPublicWbEnv && !env.NEXT_PUBLIC_WB_ENV) missingKeys.push('NEXT_PUBLIC_WB_ENV');
-    if (missingKeys.length === 0) return;
-
-    // Resolve the mode label from the loaded environment (not process.env): a WB_ENV/NODE_ENV
-    // supplied only by env files or fnox must still name the correct mode in the error message.
-    const mode =
-      this.argv.cascadeEnv ??
-      (this.argv.cascadeNodeEnv ? env.NODE_ENV || 'development' : (env.WB_ENV ?? env.NODE_ENV ?? 'development'));
-    console.error(
-      chalk.red(
-        `${missingKeys.join(' and ')} ${missingKeys.length === 1 ? 'is' : 'are'} not defined for the "${mode}" environment. ` +
-          `Define ${missingKeys.join(' and ')} in the mode's env source (e.g. .env.${mode} or the fnox "${mode}" profile; see guidelines-for-mise-fnox), ` +
-          'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
-      )
-    );
-    process.exit(1);
+    if (!env.WB_ENV) {
+      if (isCI(env.CI) && hasEnvironmentSources) {
+        console.error(
+          chalk.red(
+            'WB_ENV is not defined on CI. Export WB_ENV explicitly (the reusable workflows pass it via the "environment" input), ' +
+              'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+          )
+        );
+        process.exit(1);
+      }
+      // Resolve the fallback from the selected cascade mode (not a bare 'development'): a command
+      // forcing a mode (e.g. `wb test` forces the test cascade) must fall back to that mode, and
+      // an ambient NODE_ENV drives the auto cascade exactly as in readEnvironmentVariables.
+      const mode =
+        this.argv.cascadeEnv ??
+        (this.argv.cascadeNodeEnv || this.argv.autoCascadeEnv !== false
+          ? env.NODE_ENV || 'development'
+          : 'development');
+      env.WB_ENV = mode;
+      if (hasEnvironmentSources && !shouldSuppressEnvironmentOutput(this.argv)) {
+        console.info(`WB_ENV is not defined; defaulting to "${mode}".`);
+      }
+    }
+    if (!Project.standardWbEnvModes.has(env.WB_ENV)) {
+      console.error(
+        chalk.red(
+          `WB_ENV must be one of development, test, staging, or production, but is "${env.WB_ENV}". ` +
+            'Fix the value in the env source or the exported variable, or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+        )
+      );
+      process.exit(1);
+    }
+    if (this.requiresNextPublicWbEnv) {
+      env.NEXT_PUBLIC_WB_ENV ||= env.WB_ENV;
+    }
   }
 
   @memoizeOne

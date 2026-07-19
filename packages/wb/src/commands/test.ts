@@ -109,8 +109,8 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
 
   for (const project of projects.descendants) {
-    project.env.WB_ENV ||= 'test';
-
+    // project.env already resolves WB_ENV to 'test' here: withDefaultTestCascadeEnv forces the
+    // test cascade, and Project.completeAndValidateWbEnv falls back to the cascade mode.
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;
