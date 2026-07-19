@@ -68,6 +68,48 @@ test('uses wb db for drizzle projects', async () => {
   }
 });
 
+test('root pass covers pattern-matched directories without a manifest but not processed packages', async () => {
+  const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-wb-db-command-'));
+  const webPackagePath = path.join(dirPath, 'apps', 'web');
+  const docsDirPath = path.join(dirPath, 'apps', 'docs');
+
+  await fs.mkdir(webPackagePath, { recursive: true });
+  await fs.mkdir(docsDirPath, { recursive: true });
+  await fs.writeFile(
+    path.join(dirPath, 'package.json'),
+    JSON.stringify({ name: 'root', workspaces: ['apps/*'], scripts: { migrate: 'wb db push' } })
+  );
+  // apps/web is a processed package with its own pass; apps/docs matches the workspace pattern
+  // but has no manifest, so ONLY the root pass can migrate its files.
+  await fs.writeFile(path.join(webPackagePath, 'package.json'), JSON.stringify({ scripts: { migrate: 'wb db push' } }));
+  await fs.writeFile(path.join(docsDirPath, 'setup.md'), 'Run `wb db push`.\n');
+
+  try {
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      depending: { ...createConfig().depending, prisma: true },
+      packageJson: { workspaces: ['apps/*'] },
+      repoAuthor: 'WillBoosterLab',
+      repoName: 'example',
+    });
+    const webConfig = createConfig({
+      dirPath: webPackagePath,
+      depending: { ...createConfig().depending, drizzle: true },
+    });
+    await fixWbDbCommand(rootConfig, [rootConfig, webConfig]);
+
+    await expect(fs.readFile(path.join(docsDirPath, 'setup.md'), 'utf8')).resolves.toBe('Run `wb prisma push`.\n');
+    // The web package is shielded from the root pass and its own drizzle pass is a no-op, so the
+    // file stays byte-identical (a root-pass rewrite would have stamped `wb prisma push`).
+    await expect(fs.readFile(path.join(webPackagePath, 'package.json'), 'utf8')).resolves.toBe(
+      JSON.stringify({ scripts: { migrate: 'wb db push' } })
+    );
+  } finally {
+    await fs.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
 test('normalizes monorepo packages independently', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-wb-db-command-'));
   const prismaPackagePath = path.join(dirPath, 'packages', 'prisma-app');

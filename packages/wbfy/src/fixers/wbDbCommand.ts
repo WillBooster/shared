@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import fg from 'fast-glob';
 import { PromisePool } from 'minimal-promise-pool';
@@ -6,7 +7,6 @@ import { PromisePool } from 'minimal-promise-pool';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
-import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 
 const wbDatabaseCommandRegex = /\bwb\s+(?:db|prisma)\b/gu;
 const maxTextFileBytes = 1024 * 1024;
@@ -37,20 +37,21 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
     const command = selectWbDatabaseCommand(config);
     if (!command) continue;
 
+    // A pass must not rewrite files owned by another (possibly nested) package: each package has
+    // its own pass with its own resolved command, and overlapping passes would race
+    // read-modify-write on the same files. Concrete directories of the actually processed
+    // packages are used instead of workspace patterns, so a directory a pattern matches without a
+    // manifest (or one removed by a negation) — which gets no pass of its own — stays covered by
+    // the enclosing pass. The literal packages/** keeps shielding legacy packages/* layouts that
+    // predate a `workspaces` declaration.
+    const nestedPackageIgnores = packageConfigs
+      .filter((other) => other !== config && other.dirPath.startsWith(`${config.dirPath}${path.sep}`))
+      .map((other) => `${path.relative(config.dirPath, other.dirPath).replaceAll('\\', '/')}/**`);
     const filePaths = await fg(migrationTargets, {
       absolute: true,
       cwd: config.dirPath,
       dot: true,
-      // The root pass must not rewrite files owned by workspace packages, whatever layout the
-      // workspaces declare (e.g. apps/*): each workspace has its own pass with its own resolved
-      // command, and overlapping passes would race read-modify-write on the same files.
-      ignore: [
-        '**/.git/**',
-        ...(config.isRoot
-          ? ['packages/**', ...getWorkspaceDirPatterns(config).includes.map((dirPattern) => `${dirPattern}/**`)]
-          : []),
-        ...globIgnore,
-      ],
+      ignore: ['**/.git/**', ...(config.isRoot ? ['packages/**'] : []), ...nestedPackageIgnores, ...globIgnore],
       onlyFiles: true,
     });
     for (const filePath of filePaths) {

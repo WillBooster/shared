@@ -124,12 +124,22 @@ test('removes stale wbfy-managed packages/* entries from an existing root tsconf
     fs.writeFileSync(path.join(appDirPath, 'package.json'), JSON.stringify({ name: 'web' }));
     fs.writeFileSync(path.join(appDirPath, 'src', 'index.ts'), 'export {};\n');
     // The upgrade path for #995: an apps/*-only repo whose root tsconfig still carries the
-    // packages/* entries an older wbfy generated, plus a concrete user-authored entry.
+    // complete packages/* entry set an older wbfy generated, plus user-authored entries (one
+    // concrete, one wildcard-shaped but incomplete) that must survive.
     fs.writeFileSync(
       path.join(tempDirPath, 'tsconfig.json'),
       JSON.stringify({
         exclude: ['packages/*/test/fixtures', 'test/fixtures'],
-        include: ['*.config.ts', 'packages/*/src/**/*', 'tools/generator/src/**/*', 'src/**/*'],
+        include: [
+          '*.config.ts',
+          'packages/*/*.config.ts',
+          'packages/*/scripts/**/*',
+          'packages/*/src/**/*',
+          'packages/*/test/**/*',
+          'tools/generator/src/**/*',
+          'tools/*/src/**/*',
+          'src/**/*',
+        ],
       })
     );
 
@@ -143,10 +153,13 @@ test('removes stale wbfy-managed packages/* entries from an existing root tsconf
       include?: string[];
     };
     expect(tsconfig.include).not.toContain('packages/*/src/**/*');
+    expect(tsconfig.include).not.toContain('packages/*/*.config.ts');
     expect(tsconfig.exclude).not.toContain('packages/*/test/fixtures');
     expect(tsconfig.include).toContain('apps/*/src/**/*');
-    // Concrete (non-pattern) user entries are not wbfy-managed and must survive.
+    // User-authored entries are not wbfy-managed and must survive: neither concrete ones nor
+    // wildcard-shaped ones lacking the complete generated entry set.
     expect(tsconfig.include).toContain('tools/generator/src/**/*');
+    expect(tsconfig.include).toContain('tools/*/src/**/*');
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }

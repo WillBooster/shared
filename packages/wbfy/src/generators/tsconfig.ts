@@ -155,36 +155,51 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
   return settings;
 }
 
+const managedWorkspaceIncludeSuffixes = ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'];
+
 /**
  * Root include/exclude entries wbfy generated for an earlier workspace layout (e.g. `packages/*`
  * globs in a repo that now declares only `apps/*`) must not survive the merge with the existing
- * tsconfig, or the obsolete directories would keep entering root type checking forever. Only
- * pattern-shaped prefixes (containing `*`) are treated as wbfy-managed, so concrete user-authored
- * entries are preserved.
+ * tsconfig, or the obsolete directories would keep entering root type checking forever. A prefix
+ * counts as wbfy-managed only when the COMPLETE generated include set for it is present and no
+ * longer generated — a user-authored entry such as a lone `tools/*\/src/**\/*` never qualifies.
  */
 function removeStaleManagedWorkspaceEntries(oldSettings: TsConfigJson, newSettings: TsConfigJson): void {
+  if (!Array.isArray(oldSettings.include)) return;
+  const oldInclude = oldSettings.include.filter((entry): entry is string => typeof entry === 'string');
   const generatedInclude = new Set(newSettings.include);
-  const generatedExclude = new Set(newSettings.exclude);
-  if (Array.isArray(oldSettings.include)) {
-    oldSettings.include = oldSettings.include.filter(
-      (entry) =>
-        generatedInclude.has(entry) ||
-        !isManagedWorkspaceEntry(entry, ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'])
+  const stalePrefixes = new Set<string>();
+  for (const entry of oldInclude) {
+    const workspacePrefix = getManagedWorkspacePrefix(entry);
+    if (workspacePrefix === undefined || stalePrefixes.has(workspacePrefix)) continue;
+    const isComplete = managedWorkspaceIncludeSuffixes.every((suffix) =>
+      oldInclude.includes(`${workspacePrefix}/${suffix}`)
     );
+    const isStillGenerated = managedWorkspaceIncludeSuffixes.some((suffix) =>
+      generatedInclude.has(`${workspacePrefix}/${suffix}`)
+    );
+    if (isComplete && !isStillGenerated) stalePrefixes.add(workspacePrefix);
   }
+  if (stalePrefixes.size === 0) return;
+  oldSettings.include = oldSettings.include.filter((entry) => {
+    const workspacePrefix = typeof entry === 'string' ? getManagedWorkspacePrefix(entry) : undefined;
+    return workspacePrefix === undefined || !stalePrefixes.has(workspacePrefix);
+  });
   if (Array.isArray(oldSettings.exclude)) {
     oldSettings.exclude = oldSettings.exclude.filter(
-      (entry) => generatedExclude.has(entry) || !isManagedWorkspaceEntry(entry, ['test/fixtures'])
+      (entry) =>
+        typeof entry !== 'string' ||
+        !entry.endsWith('/test/fixtures') ||
+        !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length))
     );
   }
 }
 
-function isManagedWorkspaceEntry(entry: string, managedSuffixes: string[]): boolean {
-  if (typeof entry !== 'string') return false;
-  const matchedSuffix = managedSuffixes.find((suffix) => entry.endsWith(`/${suffix}`));
-  if (!matchedSuffix) return false;
+function getManagedWorkspacePrefix(entry: string): string | undefined {
+  const matchedSuffix = managedWorkspaceIncludeSuffixes.find((suffix) => entry.endsWith(`/${suffix}`));
+  if (!matchedSuffix) return undefined;
   const workspacePrefix = entry.slice(0, -(matchedSuffix.length + 1));
-  return workspacePrefix.includes('*');
+  return workspacePrefix === '' ? undefined : workspacePrefix;
 }
 
 async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promise<void> {
@@ -222,14 +237,19 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   // for every TypeScript project except React Native, which uses @tsconfig/react-native instead.
   const types = settings.compilerOptions?.types;
   if (types ? !types.includes('bun') : config.depending.reactNative) return;
+  const correctMapping = `${getRootDir(config)}/node_modules/undici-types/index.d.ts`;
   const existingMapping = settings.compilerOptions?.paths?.['undici-types'];
   if (existingMapping) {
-    // Normalize the package-directory form older wbfy versions generated: it resolves through the
-    // package's `types` condition today but breaks once TypeScript needs the concrete file. Any
-    // other value is a deliberate repo-local mapping (e.g. patched types) and must be kept.
-    const legacyDirMapping = `${getRootDir(config)}/node_modules/undici-types`;
-    if (existingMapping.length === 1 && existingMapping[0] === legacyDirMapping) {
-      settings.compilerOptions!.paths!['undici-types'] = [`${legacyDirMapping}/index.d.ts`];
+    // Rewrite any mapping wbfy could have generated — a `…/node_modules/undici-types` target with
+    // or without the concrete index.d.ts, at whatever root depth an older getRootDir computed
+    // (its fixed two-level probe mis-resolved workspaces deeper than two levels). Any other value
+    // is a deliberate repo-local mapping (e.g. patched types) and must be kept.
+    if (
+      existingMapping.length === 1 &&
+      typeof existingMapping[0] === 'string' &&
+      /(?:^|\/)node_modules\/undici-types(?:\/index\.d\.ts)?$/u.test(existingMapping[0])
+    ) {
+      settings.compilerOptions!.paths!['undici-types'] = [correctMapping];
     }
     return;
   }
@@ -237,7 +257,7 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   settings.compilerOptions ??= {};
   settings.compilerOptions.paths = {
     ...settings.compilerOptions.paths,
-    'undici-types': [`${getRootDir(config)}/node_modules/undici-types/index.d.ts`],
+    'undici-types': [correctMapping],
   };
 }
 
