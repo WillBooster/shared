@@ -27,7 +27,11 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
   return logger.functionIgnoringException('ensureWbEnvDefinitions', async () => {
     const needsNextPublic = allConfigs.some((config) => requiresNextPublicWbEnv(config));
     const fnoxTomlPath = path.resolve(rootConfig.dirPath, 'fnox.toml');
-    if (fs.existsSync(fnoxTomlPath)) {
+    // lstat, not existsSync: existsSync is false for a DANGLING fnox.toml symlink, which would
+    // wrongly select the legacy .env branch and mutate the wrong configuration family while the
+    // fnox synchronization is failing. Any fnox.toml directory entry marks a fnox repository;
+    // a refused/dangling one aborts instead of falling back.
+    if (await fs.promises.lstat(fnoxTomlPath).catch(() => {})) {
       const content = await fsUtil.readFileConfinedIfExists(fnoxTomlPath);
       if (content === undefined) return;
       const updatedContent = insertWbEnvIntoFnoxToml(content, needsNextPublic);

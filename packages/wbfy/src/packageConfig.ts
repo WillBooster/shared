@@ -654,14 +654,15 @@ function readMiseTaskCommand(value: unknown): string {
  */
 function isWorkspaceOfEnclosingRoot(dirPath: string): boolean {
   const resolvedDirPath = path.resolve(dirPath);
+  // A directory with its own .git is a repository in its own right, never a child workspace —
+  // checked FIRST so an independent repository under some `packages/` directory stays a root.
+  if (fs.existsSync(path.resolve(resolvedDirPath, '.git'))) return false;
   if (
     path.basename(path.resolve(resolvedDirPath, '..')) === 'packages' &&
     fs.existsSync(path.resolve(resolvedDirPath, '..', '..', 'package.json'))
   ) {
     return true;
   }
-  // A directory with its own .git is a repository in its own right, never a child workspace.
-  if (fs.existsSync(path.resolve(resolvedDirPath, '.git'))) return false;
   for (
     let candidateRootDirPath = path.dirname(resolvedDirPath);
     ;

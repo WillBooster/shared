@@ -45,6 +45,16 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
   return logger.functionIgnoringException('generateRenovateJson', async () => {
     let newSettings = structuredClone(jsonObj) as Settings;
     const filePath = path.resolve(config.dirPath, 'renovate.json');
+    // A symlinked renovate.json is never managed: writes through it are refused by the
+    // confinement guards anyway, and when its target happens to already match the generated
+    // settings the semantic no-op below would skip generateFile (and its guard) and proceed to
+    // delete the in-repository fallbacks (.dependabot, .renovaterc.json) — leaving a fresh
+    // checkout with only a possibly-dangling external symlink as Renovate configuration.
+    const managedFileStats = await fs.promises.lstat(filePath).catch(() => {});
+    if (managedFileStats && managedFileStats.isSymbolicLink()) {
+      console.warn(`Skipped generating ${filePath} because it is a symbolic link.`);
+      return;
+    }
     const oldContent = await fsUtil.readFileIfExists(filePath);
     // The shadow checks matter only while renovate.json does not exist: it is FIRST in Renovate's
     // resolution order, so an existing renovate.json already shadows every alternative (including
