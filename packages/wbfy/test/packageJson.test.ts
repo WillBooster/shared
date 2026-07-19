@@ -1748,6 +1748,7 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
         dev: 'bun --bun next dev',
         start: 'bun --bun next start && bun --bun wrangler tail',
         'run-alias': 'bun --bun run build',
+        'quoted-executable': '"bun" --bun next build',
       },
     },
     { isRoot: true }
@@ -1758,6 +1759,7 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
     dev: 'bun next dev',
     start: 'bun next start && bun wrangler tail',
     'run-alias': 'bun run build',
+    'quoted-executable': '"bun" next build',
   });
 });
 
@@ -1768,6 +1770,9 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
         start: 'exec bun --bun src/index.ts',
         'start-chained': 'bun --bun src/index.ts;echo done',
         'start-quoted': 'bun --bun "src/index.ts"',
+        'start-spaced-path': 'bun --bun "src/my script.ts"',
+        'start-runtime-flags': 'bun --bun --smol src/index.ts',
+        'start-variable': 'bun --bun "$ENTRYPOINT"',
       },
     },
     { isRoot: true }
@@ -1777,6 +1782,9 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
     start: 'exec bun --bun src/index.ts',
     'start-chained': 'bun --bun src/index.ts;echo done',
     'start-quoted': 'bun --bun "src/index.ts"',
+    'start-spaced-path': 'bun --bun "src/my script.ts"',
+    'start-runtime-flags': 'bun --bun --smol src/index.ts',
+    'start-variable': 'bun --bun "$ENTRYPOINT"',
   });
 });
 
@@ -1785,6 +1793,7 @@ test('does not rewrite `bun --bun` outside a command position', async () => {
     {
       scripts: {
         'echo-literal': 'echo "bun --bun next build"',
+        'nested-literal': `node -e 'console.log("use bun --bun next")'`,
         'other-tool': 'my-bun --bun next build',
       },
     },
@@ -1793,6 +1802,7 @@ test('does not rewrite `bun --bun` outside a command position', async () => {
 
   expect(packageJson.scripts).toMatchObject({
     'echo-literal': 'echo "bun --bun next build"',
+    'nested-literal': `node -e 'console.log("use bun --bun next")'`,
     'other-tool': 'my-bun --bun next build',
   });
 });

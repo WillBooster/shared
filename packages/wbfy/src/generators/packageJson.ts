@@ -405,17 +405,103 @@ function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
   // tools requiring real Node.js (Playwright, wrangler, vinext), and wb 15 warns on every run when
   // it detects the shim. Only direct script-file executions (e.g. `exec bun --bun src/index.ts`),
   // where the shim is an intentional Bun-runtime opt-in for spawned children, are preserved.
-  // The lookbehind requires `bun` at a command position so quoted literals (`echo "bun --bun ..."`)
-  // and executables merely ending in `bun` (`my-bun`) stay untouched, and only the `bun --bun`
-  // prefix is rewritten so the target token (which the lookahead inspects, ignoring surrounding
-  // quotes and anything from a glued shell operator such as `;` onward) is never altered.
   for (const [key, value] of Object.entries(scripts)) {
     if (typeof value !== 'string' || !value.includes('--bun')) continue;
-    scripts[key] = value.replaceAll(/(?<=^|[\s;&|(])bun[ \t]+--bun(?=[ \t]+(\S+))/gu, (match, target: string) => {
-      const normalizedTarget = target.replace(/^["']+/u, '').replace(/[;&|)"'<>].*$/su, '');
-      return /\.[cm]?[jt]sx?$/u.test(normalizedTarget) ? match : 'bun';
-    });
+    scripts[key] = removeBunRuntimeFlag(value);
   }
+}
+
+function removeBunRuntimeFlag(script: string): string {
+  // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
+  // merely ending in `bun` (`my-bun`), quoted targets with spaces, and Bun runtime flags between
+  // `--bun` and the script file are all classified correctly.
+  const tokens = tokenizeShellCommand(script);
+  const removalRanges: [number, number][] = [];
+  let atCommandPosition = true;
+  for (const [index, token] of tokens.entries()) {
+    if (isShellSeparator(token.text)) {
+      atCommandPosition = true;
+      continue;
+    }
+    if (!atCommandPosition) continue;
+    // `KEY=VALUE` prefixes and `exec` keep the next token in command position.
+    if (/^[A-Za-z_]\w*=/u.test(token.text) || token.text === 'exec') continue;
+    atCommandPosition = false;
+    if (unquoteShellToken(token.text) !== 'bun') continue;
+    const flagToken = tokens[index + 1];
+    if (flagToken?.text !== '--bun') continue;
+    // The first positional argument after Bun runtime flags decides: direct script files and
+    // shell-expanded targets (whose extension is unknowable here) keep their intentional shim.
+    let target: string | undefined;
+    for (const candidate of tokens.slice(index + 2)) {
+      if (isShellSeparator(candidate.text)) break;
+      if (candidate.text.startsWith('-')) continue;
+      target = unquoteShellToken(candidate.text);
+      break;
+    }
+    if (target && (/\.[cm]?[jt]sx?$/u.test(target) || target.startsWith('$'))) continue;
+    removalRanges.push([flagToken.start, flagToken.end]);
+  }
+
+  let result = script;
+  for (const [start, end] of removalRanges.toReversed()) {
+    let whitespaceStart = start;
+    while (whitespaceStart > 0 && /[ \t]/u.test(result[whitespaceStart - 1] ?? '')) whitespaceStart--;
+    result = result.slice(0, whitespaceStart) + result.slice(end);
+  }
+  return result;
+}
+
+interface ShellToken {
+  text: string;
+  start: number;
+  end: number;
+}
+
+function tokenizeShellCommand(script: string): ShellToken[] {
+  const tokens: ShellToken[] = [];
+  let index = 0;
+  while (index < script.length) {
+    const char = script[index] ?? '';
+    if (/\s/u.test(char)) {
+      index++;
+      continue;
+    }
+    if (isShellSeparator(char)) {
+      let end = index + 1;
+      while (end < script.length && script[end] === char) end++;
+      tokens.push({ text: script.slice(index, end), start: index, end });
+      index = end;
+      continue;
+    }
+    let end = index;
+    let quote: string | undefined;
+    while (end < script.length) {
+      const current = script[end] ?? '';
+      if (quote) {
+        if (current === quote) quote = undefined;
+        else if (current === '\\' && quote === '"') end++;
+      } else if (current === '"' || current === "'") {
+        quote = current;
+      } else if (current === '\\') {
+        end++;
+      } else if (/\s/u.test(current) || isShellSeparator(current)) {
+        break;
+      }
+      end++;
+    }
+    tokens.push({ text: script.slice(index, end), start: index, end });
+    index = end;
+  }
+  return tokens;
+}
+
+function isShellSeparator(text: string): boolean {
+  return /^[;|&()]+$/u.test(text);
+}
+
+function unquoteShellToken(text: string): string {
+  return text.replaceAll(/["']/gu, '');
 }
 
 async function applyPackageJsonConventions(
