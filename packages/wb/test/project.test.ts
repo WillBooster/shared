@@ -52,6 +52,10 @@ describe('project', () => {
       await expect(findWorkspacePackageDirs({ dirPath, packageJson, usesBunPackageManager: false })).resolves.toEqual([
         path.join(dirPath, 'packages', 'a'),
       ]);
+      // Yarn also links lone-`?` patterns, which fast-glob's file globs cannot match on their own.
+      await expect(
+        findWorkspacePackageDirs({ dirPath, packageJson: { workspaces: ['packages/?'] }, usesBunPackageManager: false })
+      ).resolves.toEqual([path.join(dirPath, 'packages', 'a')]);
     } finally {
       await fs.promises.rm(dirPath, { recursive: true, force: true });
     }

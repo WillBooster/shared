@@ -94,6 +94,18 @@ test('drops no-op patterns, applies bang parity, and ignores repository-escaping
   });
 });
 
+test('matches lone-`?` segments like Bun despite fast-glob returning no file matches for them', () => {
+  withPackageDirs(['packages/a', 'packages/b', 'packages/long'], (rootDirPath) => {
+    // Bun 1.3.14 links packages/a and packages/b for `packages/?`; fast-glob 3.3.3 returns [] for
+    // the file glob `packages/?/package.json`, so the resolver complements it with a directory
+    // glob.
+    expect(resolveBunWorkspacePackageJsonPaths(['packages/?'], rootDirPath)).toEqual([
+      'packages/a/package.json',
+      'packages/b/package.json',
+    ]);
+  });
+});
+
 test('links dot-directory packages only through fully static patterns, like Bun', () => {
   withPackageDirs(['.hidden/x', 'packages/a'], (rootDirPath) => {
     // Bun 1.3.14 links nothing under .hidden for these dynamic patterns, even with a literal

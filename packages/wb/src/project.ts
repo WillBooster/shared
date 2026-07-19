@@ -565,10 +565,25 @@ export async function findWorkspacePackageDirs(
     (pattern) => !pattern.startsWith('!')
   );
   if (positivePatterns.length === 0) return [];
-  const manifestPaths = await globby(
+  // expandDirectories: false — globby would otherwise expand a literal directory pattern to its
+  // CHILDREN, turning e.g. `packages` into matches for every packages/* subdirectory.
+  const globbyOptions = { cwd: project.dirPath, expandDirectories: false, ignore: ['**/node_modules/**'] };
+  // fast-glob (globby's engine) returns no matches for file globs with a lone-`?` segment (e.g.
+  // `packages/?/package.json`) although Yarn links such workspaces; globbing the directories
+  // (where `?` works) and checking their manifests complements it.
+  const globbedManifestPaths = await globby(
     positivePatterns.map((pattern) => `${pattern}/package.json`),
-    { cwd: project.dirPath, ignore: ['**/node_modules/**'] }
+    globbyOptions
   );
+  const globbedDirPaths = await globby(positivePatterns, { ...globbyOptions, onlyDirectories: true });
+  const manifestPaths = [
+    ...new Set([
+      ...globbedManifestPaths,
+      ...globbedDirPaths
+        .map((dirPath) => path.posix.join(dirPath, 'package.json'))
+        .filter((manifestPath) => fs.existsSync(path.join(project.dirPath, manifestPath))),
+    ]),
+  ];
   const realRootDirPath = fs.realpathSync(project.dirPath);
   const workspaceDirPaths = manifestPaths
     // A `**` pattern reaches the root's own manifest and installed packages, but neither is a

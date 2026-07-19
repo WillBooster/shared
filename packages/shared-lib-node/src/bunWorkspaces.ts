@@ -79,21 +79,26 @@ export function resolveWorkspacePackageJsonPaths(workspacePatterns: string[], ro
     // drop matches containing a dot-led segment (fast-glob's `dot: false` only covers segments
     // a wildcard matches).
     const excludesDotSegments = fg.isDynamicPattern(pattern);
-    return (
-      fg
-        .globSync(path.posix.join(pattern, 'package.json'), {
-          cwd: rootDirPath,
-          followSymbolicLinks: false,
-          ignore: ['**/node_modules/**'],
-        })
-        // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
-        // monorepo root as its own workspace.
-        .filter(
-          (packageJsonPath) =>
-            packageJsonPath !== 'package.json' &&
-            (!excludesDotSegments || !packageJsonPath.split('/').some((segment) => segment.startsWith('.'))) &&
-            isInsideRealRoot(packageJsonPath)
-        )
+    const globOptions = { cwd: rootDirPath, followSymbolicLinks: false, ignore: ['**/node_modules/**'] };
+    // fast-glob 3.3.3 returns no matches for file globs with a lone-`?` segment (e.g.
+    // `packages/?/package.json`), although micromatch matches them and Bun 1.3.14 links such
+    // workspaces; globbing the directories (where `?` works) and checking their manifests
+    // complements it. The manifest glob stays necessary for `**`'s zero-segment matches —
+    // `dir/**` does not return dir itself as a directory.
+    const manifestPaths = new Set([
+      ...fg.globSync(path.posix.join(pattern, 'package.json'), globOptions),
+      ...fg
+        .globSync(pattern, { ...globOptions, onlyDirectories: true })
+        .map((dirPath) => path.posix.join(dirPath, 'package.json'))
+        .filter((packageJsonPath) => fs.existsSync(path.join(rootDirPath, packageJsonPath))),
+    ]);
+    // A zero-segment `**` match reaches the root's own manifest, but Bun never treats the
+    // monorepo root as its own workspace.
+    return [...manifestPaths].filter(
+      (packageJsonPath) =>
+        packageJsonPath !== 'package.json' &&
+        (!excludesDotSegments || !packageJsonPath.split('/').some((segment) => segment.startsWith('.'))) &&
+        isInsideRealRoot(packageJsonPath)
     );
   };
   const accumulatedPaths = new Set<string>();
