@@ -86,6 +86,11 @@ export interface PackageConfig {
     branches: string[];
     github: boolean;
     npm: boolean;
+    /**
+     * An explicit `@semantic-release/npm` plugin entry publishes the root manifest itself
+     * (no pkgRoot redirection and npmPublish not disabled).
+     */
+    npmPublishesRoot: boolean;
   };
   miseTasks: Record<string, string>;
   packageJson?: PackageJson;
@@ -125,7 +130,9 @@ export async function getPackageConfig(
     }
 
     let releaseBranches: string[] = [];
-    let releasePlugins: (string | object)[] = [];
+    let releasePlugins: string[] = [];
+    let releasePluginsAreExplicit = false;
+    let releaseNpmPluginPublishesRoot = false;
     // JS/YAML semantic-release configs and `extends` presets cannot be inspected statically
     // (mirrors readExplicitSemanticReleasePlugins in wb's release.ts). Treating their plugin
     // list as unknown keeps `release.npm` conservatively true, so applyPackageJsonConventions
@@ -141,7 +148,9 @@ export async function getPackageConfig(
       'release.config.mjs',
     ].some((fileName) => fs.existsSync(path.resolve(dirPath, fileName)));
     try {
-      type ReleaseConfig = { branches?: string[]; plugins?: (string | object)[][]; extends?: unknown } | undefined;
+      type ReleaseConfig =
+        | { branches?: string[]; plugins?: (string | [string, Record<string, unknown>])[]; extends?: unknown }
+        | undefined;
       let releaseConfig: ReleaseConfig;
       for (const fileName of ['.releaserc', '.releaserc.json']) {
         const releasercPath = path.resolve(dirPath, fileName);
@@ -153,13 +162,35 @@ export async function getPackageConfig(
       }
       releaseConfig ??= (packageJson as { release?: ReleaseConfig }).release;
       releaseBranches = releaseConfig?.branches ?? [];
-      releasePlugins = releaseConfig?.plugins?.flat() ?? [];
-      if (releaseConfig && !Array.isArray(releaseConfig.plugins) && releaseConfig.extends !== undefined) {
+      if (Array.isArray(releaseConfig?.plugins)) {
+        releasePluginsAreExplicit = true;
+        for (const pluginEntry of releaseConfig.plugins) {
+          const [pluginName, pluginOptions] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry, undefined];
+          if (typeof pluginName !== 'string') continue;
+          releasePlugins.push(pluginName);
+          if (pluginName !== '@semantic-release/npm') continue;
+          // With pkgRoot the plugin publishes another manifest, and npmPublish: false disables
+          // publishing entirely; only the remaining shape proves the ROOT itself is published.
+          const publishesRoot =
+            pluginOptions?.npmPublish !== false &&
+            (pluginOptions?.pkgRoot === undefined || pluginOptions.pkgRoot === '.');
+          releaseNpmPluginPublishesRoot ||= publishesRoot;
+        }
+      } else if (releaseConfig && releaseConfig.extends !== undefined) {
         releasePluginsAreUnknown = true;
       }
     } catch {
       releasePluginsAreUnknown = true;
     }
+    // Without an explicit plugin list, semantic-release's default list applies, which includes
+    // @semantic-release/npm and @semantic-release/github (mirrors releasePublishesToNpm in wb's
+    // release.ts).
+    const usesSemanticRelease = !!(
+      devDependencies['semantic-release'] ||
+      releaseBranches.length > 0 ||
+      releasePlugins.length > 0 ||
+      releasePluginsAreUnknown
+    );
 
     // The caller may classify explicitly (index.ts passes false for every discovered workspace,
     // including non-packages/* layouts such as apps/*); the heuristic classifies the CLI entry
@@ -278,12 +309,7 @@ export async function getPackageConfig(
         prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
         pyright: !!devDependencies.pyright,
         reactNative: !!dependencies['react-native'],
-        semanticRelease: !!(
-          devDependencies['semantic-release'] ||
-          releaseBranches.length > 0 ||
-          releasePlugins.length > 0 ||
-          releasePluginsAreUnknown
-        ),
+        semanticRelease: usesSemanticRelease,
         storybook: !!devDependencies['@storybook/react'],
         tauri:
           !!dependencies['@tauri-apps/api'] ||
@@ -297,8 +323,13 @@ export async function getPackageConfig(
       },
       release: {
         branches: releaseBranches,
-        github: releasePlugins.includes('@semantic-release/github'),
-        npm: releasePlugins.includes('@semantic-release/npm') || releasePluginsAreUnknown,
+        github: releasePluginsAreExplicit
+          ? releasePlugins.includes('@semantic-release/github') || releasePluginsAreUnknown
+          : usesSemanticRelease,
+        npm: releasePluginsAreExplicit
+          ? releasePlugins.includes('@semantic-release/npm') || releasePluginsAreUnknown
+          : usesSemanticRelease,
+        npmPublishesRoot: releaseNpmPluginPublishesRoot,
       },
       miseTasks: await readMiseTasks(dirPath),
       packageJson,

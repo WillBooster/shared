@@ -1691,10 +1691,30 @@ test('keeps a plain monorepo root private', async () => {
 test('does not force private on a monorepo root released via @semantic-release/npm', async () => {
   const packageJson = await generatePackageJsonFrom(
     { name: '@willbooster-private/llm-proxy', private: false, workspaces: ['packages/*'] },
-    { isRoot: true, doesContainSubPackageJsons: true, release: { branches: ['main'], github: true, npm: true } }
+    {
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: false },
+    }
   );
 
   expect(packageJson.private).toBe(false);
+});
+
+// Older wbfy forced `private: true` on every monorepo root; when the user explicitly configured
+// `@semantic-release/npm` to publish the root itself, the stale flag silently suppresses
+// publishing, so the generator must migrate it away on upgrade.
+test('removes stale private from a monorepo root explicitly publishing itself via @semantic-release/npm', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { name: '@willbooster-private/llm-proxy', private: true, workspaces: ['packages/*'] },
+    {
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: true },
+    }
+  );
+
+  expect(packageJson.private).toBeUndefined();
 });
 
 test('does not force private on a monorepo root with a publishConfig', async () => {

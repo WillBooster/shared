@@ -276,9 +276,9 @@ async function prepareNpmCompatibleLayout(
         fs.rmSync(nodeModulesDirPath, { force: true, recursive: true });
       }
       // Resolve and download with lifecycle scripts DISABLED while the release credentials
-      // (VERDACCIO_TOKEN, NPM_TOKEN, GITHUB_TOKEN, fnox-exported secrets, ...) are in the
-      // environment, so repository- or dependency-defined preinstall/postinstall can never read
-      // them — mirroring reusable-workflows' two-step release install (issue #1003).
+      // (VERDACCIO_TOKEN, NPM_TOKEN, GITHUB_TOKEN, FNOX_AGE_KEY, ...) are in the environment,
+      // so repository- or dependency-defined preinstall/postinstall can never read them —
+      // mirroring reusable-workflows' two-step release install (issue #1003).
       const installStatus = await spawnAndWait(activeChild, 'bun', ['install', '--ignore-scripts'], {
         cwd: project.dirPath,
         env: project.env,
@@ -332,7 +332,13 @@ async function prepareNpmCompatibleLayout(
 
 // The credentials the release workflow injects (cf. reusable-workflows' release.yml secrets and
 // npm's own token variables). The release command loads the project with loadEnv: false, so no
-// wb-loader-injected keys exist to scrub beyond these.
+// wb-loader-injected keys exist to scrub beyond these. A denylist (not an allowlist) is
+// deliberate: in the supported entry point — reusable-workflows' release job — these enumerated
+// variables are the ONLY secrets in the ambient environment (fnox secrets stay encrypted because
+// FNOX_AGE_KEY is scrubbed and never exported as plaintext there), while an allowlist would
+// break lifecycle scripts that legitimately read operational variables (PATH, HOME, CI, ...).
+// A local `wb release` inherits whatever the developer's shell already exposes to every
+// `bun install`, which this replay does not widen.
 const credentialEnvVarNames = [
   'VERDACCIO_TOKEN',
   'NPM_TOKEN',
