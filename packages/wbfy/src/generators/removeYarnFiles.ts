@@ -60,6 +60,16 @@ const yarnDurationUnitsInSeconds: Record<string, number> = {
 const unparsableYarnrc = Symbol('unparsableYarnrc');
 
 /**
+ * Whether the value is a plain (optionally scoped) npm package name. Anything else — globs,
+ * versioned descriptors, or names with characters npm forbids — is not a usable
+ * minimumReleaseAgeExcludes entry, and the strict character set also guarantees the value can be
+ * interpolated into a double-quoted TOML string without escaping.
+ */
+export function isLiteralNpmPackageName(value: string): boolean {
+  return /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/u.test(value);
+}
+
+/**
  * Detects Yarn configuration that has no automatic Bun translation. Must run as a read-only
  * preflight BEFORE any fixer mutates the repository: deleting such configuration (or migrating
  * everything around it) would break installs or silently drop patched dependency behavior.
@@ -210,7 +220,7 @@ export function readYarnrcReleaseAgeSettings(dirPath: string): YarnReleaseAgeSet
       // would be dead configuration and are dropped. Dropping is fail-safe (an uncovered package
       // becomes age-gated, which surfaces at install time instead of weakening the gate), and
       // the org-standard globs are already covered literally by bunMinimumReleaseAgeExcludes.
-      (entry): entry is string => typeof entry === 'string' && /^(?:@[^\s@/*?{}[\]]+\/)?[^\s@/*?{}[\]]+$/u.test(entry)
+      (entry): entry is string => typeof entry === 'string' && isLiteralNpmPackageName(entry)
     );
   }
   return settings;

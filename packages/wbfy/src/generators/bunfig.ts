@@ -5,7 +5,7 @@ import { parse } from 'smol-toml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import type { YarnReleaseAgeSettings } from './removeYarnFiles.js';
+import { isLiteralNpmPackageName, type YarnReleaseAgeSettings } from './removeYarnFiles.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -277,7 +277,9 @@ function readRepoSpecificExcludes(content: string | undefined): string[] {
     // A line this parser cannot read could hide further entries, so stop instead of guessing.
     if (!matched) break;
     const entry = matched[1] ?? matched[2];
-    if (entry) excludes.push(entry);
+    // Hand-edited entries pass the same strict name gate as migrated ones: anything else would
+    // be dead configuration for Bun and could even break the generated TOML when interpolated.
+    if (entry && isLiteralNpmPackageName(entry)) excludes.push(entry);
   }
   return excludes;
 }

@@ -24,6 +24,7 @@ npmMinimalAgeGate: 5d
 npmPreapprovedPackages:
   - '@willbooster/*'
   - 'is-number@npm:7.0.0'
+  - 'bad"name'
   - one-way-git-sync
   - my-repo-specific-package
 
@@ -127,7 +128,8 @@ test('detects patch: dependencies declared in workspace manifests, not only the 
 test('reads release-age settings, dropping globs and descriptors Bun would match literally', async () => {
   await withTempDir(async (tempDirPath) => {
     fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), orgStandardYarnrc);
-    // The glob and the versioned descriptor are dropped: Bun matches plain package names only.
+    // The glob, the versioned descriptor, and the TOML-unsafe name are dropped: only plain
+    // (optionally scoped) npm package names are usable Bun exclude entries.
     expect(readYarnrcReleaseAgeSettings(tempDirPath)).toEqual({
       minimumReleaseAgeSeconds: 432_000,
       minimumReleaseAgeExcludes: ['one-way-git-sync', 'my-repo-specific-package'],
