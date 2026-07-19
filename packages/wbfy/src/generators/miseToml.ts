@@ -25,6 +25,17 @@ export const minimumBunVersion = '1.3.14';
 export async function generateMiseToml(config: PackageConfig, currentBunVersion: string): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
+    // A migration source that exists but is refused by the confined read (a symlink or a path
+    // resolving outside the repository) must abort generation: proceeding as if it were absent
+    // would silently replace its pins (e.g. a linked .node-version) with freshly resolved versions.
+    for (const sourceName of ['.tool-versions', '.node-version']) {
+      const sourcePath = path.resolve(config.dirPath, sourceName);
+      const sourceStats = await fs.promises.lstat(sourcePath).catch(() => {});
+      if (sourceStats && (await fsUtil.readFileConfinedIfExists(sourcePath)) === undefined) {
+        console.warn(`Skipped generating ${miseTomlPath} because ${sourcePath} exists but cannot be read safely.`);
+        return;
+      }
+    }
     // A parse failure must abort instead of falling back to {}: regenerating from an empty object
     // would silently replace the user's existing (albeit broken) mise.toml.
     const settings = parseMiseToml(miseTomlPath);

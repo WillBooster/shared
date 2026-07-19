@@ -80,6 +80,15 @@ test('is idempotent and leaves already-defined values untouched', () => {
   expect(secondPass).toBe(customized);
 });
 
+test('does not duplicate the explanatory comment when only NEXT_PUBLIC_WB_ENV is inserted later', () => {
+  const wbEnvOnly = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '';
+  const withNextPublic = insertWbEnvIntoFnoxToml(wbEnvOnly, true) ?? '';
+  const commentCount = withNextPublic.split('# CI sets WB_ENV').length - 1;
+  expect(commentCount).toBe(1);
+  const settings = parse(withNextPublic) as FnoxSubtree;
+  expect(settings.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'development' });
+});
+
 test('refuses to edit an unparsable fnox.toml', () => {
   expect(insertWbEnvIntoFnoxToml('[secrets\nbroken', false)).toBeUndefined();
 });
@@ -94,6 +103,11 @@ test('leaves existing legacy WB_ENV assignments untouched (idempotent)', () => {
   expect(insertWbEnvIntoEnvFile(content, 'staging', true)).toBe(content);
   const inserted = insertWbEnvIntoEnvFile('PORT=3000\n', 'staging', true);
   expect(insertWbEnvIntoEnvFile(inserted, 'staging', true)).toBe(inserted);
+});
+
+test('a WB_ENV line embedded in a quoted multiline value does not suppress the insertion', () => {
+  const content = 'CERT="line1\nWB_ENV=embedded\nline3"\n';
+  expect(insertWbEnvIntoEnvFile(content, 'test', false)).toBe(`${content}WB_ENV=test\n`);
 });
 
 test('ensureWbEnvDefinitions updates existing legacy mode files only', async () => {

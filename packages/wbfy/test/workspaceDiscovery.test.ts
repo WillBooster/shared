@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { getWorkspaceSubDirPaths } from '../src/generators/packageJson.js';
+import { getWorkspaceSubDirPaths } from '../src/utils/workspaceUtil.js';
 import { generateTsconfig } from '../src/generators/tsconfig.js';
 import { getPackageConfig } from '../src/packageConfig.js';
 import { promisePool } from '../src/utils/promisePool.js';

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import dotenv from 'dotenv';
 import { parse } from 'smol-toml';
 
 import { logger } from '../logger.js';
@@ -42,8 +43,9 @@ export async function ensureWbEnvDefinitions(rootConfig: PackageConfig, allConfi
       // convention) or a whole legacy layout from nothing is not wbfy's call.
       if (envContent === undefined) continue;
       const updatedEnvContent = insertWbEnvIntoEnvFile(envContent, mode, needsNextPublic);
-      if (updatedEnvContent !== envContent) {
-        await fsUtil.writeFileConfined(envFilePath, updatedEnvContent);
+      // Log only when the confined write actually happened; writeFileConfined refuses symlinks
+      // and paths resolving outside the repository (with its own warning).
+      if (updatedEnvContent !== envContent && (await fsUtil.writeFileConfined(envFilePath, updatedEnvContent))) {
         console.log(`Generated/Updated ${envFilePath}`);
       }
     }
@@ -66,6 +68,8 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
     return undefined;
   }
 
+  const wbEnvComment =
+    '# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally.';
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
   let updatedContent = content;
   for (const mode of wbEnvModes) {
@@ -76,15 +80,13 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
       .filter((keyName) => definedKeys?.[keyName] === undefined)
       .map((keyName) => `${keyName} = { default = "${mode}" }`);
     if (missingLines.length === 0) continue;
+    // Skip the comment when a previous run already wrote it (e.g. WB_ENV exists and only
+    // NEXT_PUBLIC_WB_ENV is inserted now); re-inserting would duplicate it on every such run.
+    const includesComment = mode === 'development' && !updatedContent.includes(wbEnvComment);
     updatedContent = insertIntoFnoxSection(
       updatedContent,
       mode === 'development' ? 'secrets' : `profiles.${mode}.secrets`,
-      mode === 'development'
-        ? [
-            '# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally.',
-            ...missingLines,
-          ]
-        : missingLines
+      includesComment ? [wbEnvComment, ...missingLines] : missingLines
     );
   }
   if (updatedContent === content) return content;
@@ -130,8 +132,12 @@ function insertIntoFnoxSection(content: string, sectionName: string, insertedLin
  */
 export function insertWbEnvIntoEnvFile(content: string, mode: WbEnvMode, needsNextPublic: boolean): string {
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
+  // Detect existing keys with dotenv's parser, not a per-line regex: a quoted multiline value may
+  // contain a `WB_ENV=...` LINE without defining the key, which a raw line match would treat as an
+  // existing definition and skip the insertion.
+  const definedKeys = dotenv.parse(content);
   const missingLines = keyNames
-    .filter((keyName) => !new RegExp(String.raw`^\s*(?:export\s+)?${keyName}\s*=`, 'mu').test(content))
+    .filter((keyName) => definedKeys[keyName] === undefined)
     .map((keyName) => `${keyName}=${mode}`);
   if (missingLines.length === 0) return content;
   const body = content.trimEnd();

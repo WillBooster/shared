@@ -27,7 +27,7 @@ import { generateGitignore } from './generators/gitignore.js';
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
-import { generatePackageJson, getWorkspacePackageDirs, getWorkspaceSubDirPaths } from './generators/packageJson.js';
+import { generatePackageJson, getWorkspacePackageDirs } from './generators/packageJson.js';
 import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
@@ -57,6 +57,7 @@ import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
+import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -186,7 +187,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
 
     await fixTestDirectoriesUpdatingPackageJson([rootDirPath, ...subDirPaths]);
 
-    const rootConfig = await getPackageConfig(rootDirPath, { isRoot: true });
+    // Let getPackageConfig derive isRoot for the entry path: `wbfy <repo>/packages/<app>` is a
+    // supported invocation whose target must keep its child classification, so forcing
+    // `isRoot: true` here would apply root-only processing (lefthook install, root tsconfig,
+    // AGENTS.md, …) to a subpackage.
+    const rootConfig = await getPackageConfig(rootDirPath);
     if (options.isVerbose) {
       console.log('rootConfig:', rootConfig);
     }

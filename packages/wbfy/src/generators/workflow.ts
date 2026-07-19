@@ -27,7 +27,6 @@ interface Workflow {
 interface Concurrency {
   group: string;
   'cancel-in-progress': boolean;
-  queue?: 'single' | 'max';
 }
 
 interface On {
@@ -146,13 +145,15 @@ const workflows = {
         branches: [],
       },
     },
-    // Mirror the job-level serialization in the reusable release workflow: GitHub's default
-    // queue (`single`) cancels an already-pending run when another one queues, silently
-    // dropping a release, so keep every queued release with `queue: max`.
+    // The reusable release workflow's job already declares
+    // `concurrency: { group: release-${{ github.repository }}, cancel-in-progress: false, queue: max }`,
+    // which provides the per-repository serialization and keeps every queued release (#974).
+    // The caller-level group must NOT reuse that name: workflow-level and job-level groups share
+    // one repository-wide namespace, and identical names deadlock the run ("Canceling since a
+    // deadlock for concurrency group ... was detected between 'top level workflow' and '<job>'").
     concurrency: {
-      group: 'release-${{ github.repository }}',
+      group: '${{ github.workflow }}',
       'cancel-in-progress': false,
-      queue: 'max',
     },
     permissions: {
       // https://docs.npmjs.com/trusted-publishers#step-2-configure-your-cicd-workflow

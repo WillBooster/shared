@@ -314,14 +314,14 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   // the separate install-layout hook below.
   // Scan every workspace config (not just the root): in a monorepo the app usually lives in
   // packages/<app> or apps/<app>, and the cache directories are workspace-relative.
-  const rmNextDirectories = collectWorkspaceRelativeDirPaths(
+  const nextCacheDirPaths = collectWorkspaceRelativeDirPaths(
     config,
     allConfigs,
     (workspaceConfig) => workspaceConfig.depending.blitz || workspaceConfig.depending.next,
     '.next'
-  )
-    .map((dirPath) => ` && rm -Rf ${dirPath}`)
-    .join('');
+  );
+  const rmNextDirectories =
+    nextCacheDirPaths.length > 0 ? ` && rm -Rf -- ${nextCacheDirPaths.map(quoteForEvaluatedShell).join(' ')}` : '';
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
   postMergeCommands.push(
@@ -339,7 +339,7 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   );
   if (rmViteCacheDirectories.length > 0) {
     postMergeCommands.push(
-      String.raw`run_if_changed "(bunfig\.toml|\.npmrc)" "rm -Rf ${rmViteCacheDirectories.join(' ')}"`
+      String.raw`run_if_changed "(bunfig\.toml|\.npmrc)" "rm -Rf -- ${rmViteCacheDirectories.map(quoteForEvaluatedShell).join(' ')}"`
     );
   }
   if (config.doesContainPoetryLock) {
@@ -373,6 +373,13 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
  * workspace whose config matches the predicate. The hook script runs at the repository root, so
  * paths are relative to the root config's directory.
  */
+// The generated command string is eval'd by run_if_changed, so an unquoted path containing
+// spaces or glob characters (e.g. `apps/my app/.next`) would word-split into unrelated rm
+// targets. Single quotes survive the surrounding double-quoted argument and the eval.
+function quoteForEvaluatedShell(filePath: string): string {
+  return `'${filePath.replaceAll("'", String.raw`'\''`)}'`;
+}
+
 function collectWorkspaceRelativeDirPaths(
   rootConfig: PackageConfig,
   allConfigs: PackageConfig[],

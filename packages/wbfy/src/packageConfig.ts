@@ -14,6 +14,7 @@ import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
+import { getWorkspacePackageJsonPaths } from './utils/workspaceUtil.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -136,8 +137,8 @@ export async function getPackageConfig(
     }
 
     // The caller may classify explicitly (index.ts passes false for every discovered workspace,
-    // including non-packages/* layouts such as apps/*); the packages/* heuristic remains the
-    // fallback for direct calls.
+    // including non-packages/* layouts such as apps/*); the packages/* heuristic classifies the
+    // CLI entry path itself, so `wbfy <repo>/packages/<app>` keeps its child classification.
     const isRoot =
       options?.isRoot ??
       (path.basename(path.resolve(dirPath, '..')) !== 'packages' ||
@@ -198,7 +199,12 @@ export async function getPackageConfig(
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
-      doesContainSubPackageJsons: containsAny('packages/**/package.json', dirPath),
+      // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
+      // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in
+      // generatePackageJson and skip monorepo-only conventions such as root `private: true`.
+      doesContainSubPackageJsons:
+        containsAny('packages/**/package.json', dirPath) ||
+        getWorkspacePackageJsonPaths({ dirPath, packageJson, doesContainSubPackageJsons: false }).length > 0,
       doesContainDockerfile: !!dockerfile || fs.existsSync(path.resolve(dirPath, 'docker-compose.yml')),
       doesContainGemfile: fs.existsSync(path.resolve(dirPath, 'Gemfile')),
       doesContainGoMod: fs.existsSync(path.resolve(dirPath, 'go.mod')),

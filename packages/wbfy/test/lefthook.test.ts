@@ -23,9 +23,9 @@ test('post-merge cache clearing covers workspace frameworks with workspace-relat
     await generateLefthookUpdatingPackageJson(rootConfig, [rootConfig, nextConfig, vinextConfig]);
 
     const prepareScript = fs.readFileSync(path.join(tempDirPath, '.lefthook', 'post-merge', 'prepare.sh'), 'utf8');
-    expect(prepareScript).toContain('bun install && rm -Rf apps/site/.next');
+    expect(prepareScript).toContain("bun install && rm -Rf -- 'apps/site/.next'");
     expect(prepareScript).toContain(
-      String.raw`run_if_changed "(bunfig\.toml|\.npmrc)" "rm -Rf packages/web/node_modules/.vite"`
+      String.raw`run_if_changed "(bunfig\.toml|\.npmrc)" "rm -Rf -- 'packages/web/node_modules/.vite'"`
     );
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
@@ -43,7 +43,7 @@ test('post-merge cache clearing stays root-relative for a root-level Next.js app
     await generateLefthookUpdatingPackageJson(rootConfig, [rootConfig]);
 
     const prepareScript = fs.readFileSync(path.join(tempDirPath, '.lefthook', 'post-merge', 'prepare.sh'), 'utf8');
-    expect(prepareScript).toContain('bun install && rm -Rf .next');
+    expect(prepareScript).toContain("bun install && rm -Rf -- '.next'");
     expect(prepareScript).not.toContain('node_modules/.vite');
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });

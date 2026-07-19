@@ -44,7 +44,21 @@ export async function untrackCloudflareEnv(config: PackageConfig): Promise<void>
     if (!isIgnored) return;
 
     // --cached keeps the file on disk: a local `wb deploy` still needs the real token in it.
-    spawnSyncAndReturnStatus('git', ['rm', '--cached', '--quiet', '--', cloudflareEnvFileName], config.dirPath);
+    // git refuses the removal (non-zero status) e.g. when the staged content differs from both
+    // HEAD and the worktree; claiming success then would leave the token tracked while telling
+    // the operator it is untracked, so report the failure instead. `--force` is deliberately not
+    // used: overriding git's safety check could discard a staged change the operator intended.
+    const rmStatus = spawnSyncAndReturnStatus(
+      'git',
+      ['rm', '--cached', '--quiet', '--', cloudflareEnvFileName],
+      config.dirPath
+    );
+    if (rmStatus !== 0) {
+      console.error(
+        `Failed to untrack ${path.resolve(config.dirPath, cloudflareEnvFileName)} (git rm --cached exited with ${rmStatus}); it is STILL TRACKED and holds a CLOUDFLARE_API_TOKEN. Resolve the staged state (e.g. commit or unstage pending changes) and re-run wbfy, then rotate the token.`
+      );
+      return;
+    }
     console.error(
       `
 ********************************************************************************

@@ -81,6 +81,17 @@ export async function generateRenovateJson(config: PackageConfig): Promise<void>
     // Confined read: a committed .renovaterc.json symlink pointing outside the repository must not
     // get its target's content copied into the tracked renovate.json.
     const legacyContent = oldContent === undefined ? await fsUtil.readFileConfinedIfExists(legacyFilePath) : undefined;
+    // A legacy config that exists but was refused by the confined read (a symlink or a path
+    // resolving outside the repository) must abort generation: renovate.json resolves before
+    // .renovaterc.json, so generating the bare template would silently shadow the user's settings.
+    if (
+      oldContent === undefined &&
+      legacyContent === undefined &&
+      (await fs.promises.lstat(legacyFilePath).catch(() => {}))
+    ) {
+      console.warn(`Skipped generating ${filePath} because ${legacyFilePath} exists but cannot be read safely.`);
+      return;
+    }
     if (legacyContent !== undefined && !jsoncUtil.isTriviaOnly(legacyContent)) {
       oldSettings = jsoncUtil.parseObjectIgnoringError<Settings>(legacyContent);
       if (!oldSettings) {
