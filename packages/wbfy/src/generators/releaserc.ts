@@ -36,7 +36,9 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
         const options = (Array.isArray(pluginEntry) && (pluginEntry[1] as Record<string, unknown>)) || {};
         // tarballDir entries still produce release assets even with npmPublish: false.
         if (typeof options.tarballDir === 'string') return true;
-        return typeof options.pkgRoot === 'string' && options.npmPublish !== false;
+        // A pkgRoot entry acts on another manifest even with npmPublish: false (its prepare step
+        // still bumps that manifest's version), so keep it regardless of the publish setting.
+        return typeof options.pkgRoot === 'string';
       });
       settings.plugins = plugins;
     }

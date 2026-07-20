@@ -1737,8 +1737,10 @@ function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
   if (packageManager === 'uv') return 'uv sync --frozen';
   // `mise which python` yields the single active interpreter path; `mise current python` can
   // print multiple space-separated versions (mise supports multi-version pins), which would pass
-  // extra positional arguments to `poetry env use`.
-  return 'poetry config virtualenvs.in-project true && poetry env use "$(mise which python)" && poetry run pip install --upgrade pip && poetry install';
+  // extra positional arguments to `poetry env use`. When mise is missing or python is
+  // unconfigured, skip `poetry env use` and fall back to poetry's default interpreter instead of
+  // aborting the chain.
+  return 'poetry config virtualenvs.in-project true && { python_path="$(mise which python 2>/dev/null)" && [ -n "$python_path" ] && poetry env use "$python_path" || true; } && poetry run pip install --upgrade pip && poetry install';
 }
 
 function installNpmDependencies(config: PackageConfig, dependencies: string[], dev: boolean): void {
