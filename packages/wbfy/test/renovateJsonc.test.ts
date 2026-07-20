@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import type { ParseError } from 'jsonc-parser';
 import { parse } from 'jsonc-parser';
 import { expect, test } from 'vitest';
 
@@ -163,6 +164,53 @@ test('leaves a renovate.jsonc declaring the same property twice untouched', asyn
   });
 });
 
+test('leaves extends untouched when the generated preset is already listed out of order', async () => {
+  // A later preset overrides an earlier one, so moving the generated preset to the front would
+  // flip which config wins — and the reorder would cost the array's comments too.
+  await withRepo(
+    {
+      'renovate.jsonc': `{
+  "extends": [
+    // The local preset is needed for deployment.
+    "local>team/config",
+    // Organization defaults.
+    "${preset}"
+  ]
+}
+`,
+    },
+    async (dirPath) => {
+      const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+      expect(parseSettings(content).extends).toEqual(['local>team/config', preset]);
+      expect(content).toContain('// The local preset is needed for deployment.');
+      expect(content).toContain('// Organization defaults.');
+    }
+  );
+});
+
+test('keeps a trailing comment on the array element it describes when appending', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-renovate-')));
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'renovate.jsonc'),
+      '{\n  "packageRules": [\n    { "matchPackageNames": ["foo"], "enabled": false } // Disable foo because it breaks production.\n  ]\n}\n'
+    );
+    fsUtil.setRootDirPath(tempDirPath);
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
+    config.depending.blitz = true;
+    await generateRenovateJsonc(config);
+    await promisePool.promiseAll();
+    const content = fs.readFileSync(path.join(tempDirPath, 'renovate.jsonc'), 'utf8');
+    const rules = parseSettings(content).packageRules as { matchPackageNames: string[] }[];
+    expect(rules.map((rule) => rule.matchPackageNames)).toEqual([['foo'], ['next']]);
+    // The comment must stay with the foo rule rather than describe the generated next rule.
+    expect(content.indexOf('// Disable foo')).toBeLessThan(content.indexOf('next'));
+  } finally {
+    fsUtil.setRootDirPath(undefined);
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
 test('bails when a shadowed config outranks the superseded one, leaving the live config alone', async () => {
   // .github/renovate.json (4) outranks .renovaterc.json (11), so migrating the latter would
   // abandon the config Renovate actually reads.
@@ -288,5 +336,10 @@ test('leaves an unparsable renovate.jsonc untouched', async () => {
 });
 
 function parseSettings(content: string): Record<string, unknown> {
-  return parse(content, [], { allowTrailingComma: true }) as Record<string, unknown>;
+  // jsonc-parser recovers from syntax errors and returns whatever it could read, so a generated
+  // file that is subtly malformed would still satisfy assertions about individual properties.
+  const parseErrors: ParseError[] = [];
+  const settings = parse(content, parseErrors, { allowTrailingComma: true }) as Record<string, unknown>;
+  expect(parseErrors).toEqual([]);
+  return settings;
 }

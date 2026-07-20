@@ -235,7 +235,12 @@ function mergeRenovateExtends(generatedExtends: string[], existingExtends: Setti
   // corrupt it into its individual characters, so normalize it to an array first.
   const normalizedExtends =
     existingExtends === undefined ? [] : Array.isArray(existingExtends) ? existingExtends : [existingExtends];
-  return [...new Set([...generatedExtends, ...normalizedExtends])].filter((item) => item !== '@willbooster');
+  // Only prepend the presets that are missing. Moving one that is already listed would reorder the
+  // array, and a later preset overrides an earlier one in Renovate — so re-sorting silently flips
+  // which config wins (and, being a reorder rather than an addition, also costs the array's
+  // comments, which can only be preserved by insertion).
+  const missingExtends = generatedExtends.filter((preset) => !normalizedExtends.includes(preset));
+  return [...missingExtends, ...normalizedExtends].filter((item) => item !== '@willbooster');
 }
 
 function normalize(content: string): string {

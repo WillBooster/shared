@@ -1,5 +1,5 @@
 import type { ParseError } from 'jsonc-parser';
-import { applyEdits, createScanner, modify, parse as parseJsonc, parseTree } from 'jsonc-parser';
+import { applyEdits, createScanner, findNodeAtLocation, modify, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
 // jsonc-parser declares SyntaxKind/ScanError as ambient const enums, which cannot be imported
 // under verbatimModuleSyntax; mirror the needed member values locally.
@@ -105,6 +105,7 @@ export const jsoncUtil = {
           content,
           modify(content, [key, insertion.index], insertion.value, { ...modifyOptions, isArrayInsertion: true })
         );
+        content = restoreTrailingComment(content, key, insertion.index);
       }
       if (insertions) continue;
       content = applyEdits(content, modify(content, [key], value, modifyOptions));
@@ -118,6 +119,36 @@ export const jsoncUtil = {
     return content;
   },
 };
+
+const trailingCommentPattern = /^[^\S\n]*(?:\/\/[^\n]*|\/\*[\S\s]*?\*\/)/u;
+
+/**
+ * Reattaches a same-line comment to the element it describes. Inserting into an array places the
+ * new element BEFORE the trivia that follows its predecessor, so appending after
+ * `{ ... } // why this rule exists` leaves that comment explaining the generated element instead.
+ * A freshly serialized element never carries a comment of its own, so anything trailing the
+ * insertion belonged to the element before it.
+ */
+function restoreTrailingComment(content: string, key: string, insertedIndex: number): string {
+  if (insertedIndex === 0) return content;
+  const root = parseTree(content);
+  const elements = (root && findNodeAtLocation(root, [key]))?.children;
+  const inserted = elements?.[insertedIndex];
+  const previous = elements?.[insertedIndex - 1];
+  if (!inserted || !previous) return content;
+  const insertedEnd = inserted.offset + inserted.length;
+  const comment = trailingCommentPattern.exec(content.slice(insertedEnd))?.[0];
+  if (!comment) return content;
+  // Land the comment after the separating comma so the element keeps its own line intact.
+  const previousEnd = previous.offset + previous.length;
+  const restoreOffset = previousEnd + (/^\s*,/u.exec(content.slice(previousEnd))?.[0].length ?? 0);
+  return (
+    content.slice(0, restoreOffset) +
+    comment +
+    content.slice(restoreOffset, insertedEnd) +
+    content.slice(insertedEnd + comment.length)
+  );
+}
 
 /**
  * Mirrors the indentation the file already uses, so a semantic change does not reindent unrelated
