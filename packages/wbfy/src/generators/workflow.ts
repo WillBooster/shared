@@ -575,6 +575,21 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 // yargsOptionsBuilderForEnv); every other `-`-prefixed token before the subcommand is a boolean.
 const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env', '--check-env']);
 
+// Runner options that consume the FOLLOWING token as their value, so it is not the wb executable
+// (e.g. `bun --cwd dir wb deploy`). A conservative superset across npm/pnpm/yarn/bun.
+const runnerValueOptions = new Set(['--cwd', '-C', '--prefix', '--filter', '-F', '--workspace', '--dir']);
+
+/** Advance past a runner's `-`-prefixed options, consuming a separate value token where one applies. */
+function skipRunnerOptions(tokens: string[], startIndex: number): number {
+  let index = startIndex;
+  while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
+    const option = tokens[index] ?? '';
+    index++;
+    if (!option.includes('=') && runnerValueOptions.has(option) && index < tokens.length) index++;
+  }
+  return index;
+}
+
 /**
  * Tokenize a shell command line into command segments, each a list of tokens with quotes removed.
  * A new segment starts at an unquoted `&&`/`||`/`;`/`|`/`&`; an unquoted `#` starts a comment to
@@ -629,6 +644,48 @@ function tokenizeShellCommand(script: string): string[][] {
       inToken = true;
       continue;
     }
+    // A `<<`/`<<-` heredoc redirection: its body lines (up to the delimiter line) are DATA, not
+    // commands, so `cat <<'EOF'\nwb deploy\nEOF` must not read `wb deploy` as an invocation.
+    if (character === '<' && script[index + 1] === '<') {
+      let cursor = index + 2;
+      if (script[cursor] === '-') cursor++;
+      while (/[ \t]/u.test(script[cursor] ?? '')) cursor++;
+      let delimiter = '';
+      // The delimiter word may be quoted (`<<'EOF'`); collect it without the quotes.
+      let delimiterQuote: string | undefined;
+      while (cursor < script.length) {
+        const delimiterChar = script[cursor] ?? '';
+        if (delimiterQuote) {
+          if (delimiterChar === delimiterQuote) delimiterQuote = undefined;
+          else delimiter += delimiterChar;
+        } else if (delimiterChar === "'" || delimiterChar === '"') {
+          delimiterQuote = delimiterChar;
+        } else if (/[\w.-]/u.test(delimiterChar)) {
+          delimiter += delimiterChar;
+        } else {
+          break;
+        }
+        cursor++;
+      }
+      if (delimiter) {
+        endToken();
+        // Skip to the newline that begins the body, then consume body lines until the delimiter.
+        while (cursor < script.length && script[cursor] !== '\n') cursor++;
+        while (cursor < script.length) {
+          const lineStart = cursor + 1;
+          let lineEnd = lineStart;
+          while (lineEnd < script.length && script[lineEnd] !== '\n') lineEnd++;
+          if (script.slice(lineStart, lineEnd).trim() === delimiter) {
+            cursor = lineEnd;
+            break;
+          }
+          cursor = lineEnd;
+          if (lineEnd >= script.length) break;
+        }
+        index = cursor;
+        continue;
+      }
+    }
     if (character === '#' && !inToken) {
       // Comment runs to end of line; end the current command segment and let the loop resume at
       // the newline so the next line is parsed as its own segment.
@@ -668,8 +725,8 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
   for (const tokens of tokenizeShellCommand(deployScript)) {
     let index = 0;
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
-    // A leading `env` launcher (`env WB_ENV=production bun wb deploy`) precedes the real command;
-    // skip it plus its options (`-i`, `-u NAME`, `-C dir`, `-S`) and its own KEY=value assignments.
+    // Leading launchers run the following command: `env` (with options + KEY=value assignments)
+    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options).
     if (tokens[index] === 'env') {
       index++;
       while (index < tokens.length) {
@@ -680,22 +737,24 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
         else break;
       }
     }
+    while (tokens[index] === 'command') {
+      index++;
+      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) index++;
+    }
     // Resolve a runner prefix to whether the following token is a BINARY (the wb executable) or a
     // package SCRIPT name. `bunx`/`npx` and `<pm> x|dlx|exec` run a binary; `<pm> run|run-script`
     // (and bare `npm <name>`, or any runner followed by `--`) run a package script — so
     // `npm run wb deploy` executes the script named `wb`, not the wb binary, and must be rejected.
     if (['npm', 'pnpm', 'yarn', 'bun'].includes(tokens[index] ?? '')) {
       const runner = tokens[index] ?? '';
-      index++;
-      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) index++;
+      index = skipRunnerOptions(tokens, index + 1);
       const subcommand = tokens[index] ?? '';
       if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
       if (['x', 'dlx', 'exec'].includes(subcommand))
         index++; // binary runner (pnpm dlx, bun x, …)
       else if (runner === 'npm') continue; // bare `npm wb` never runs a binary
     } else if (['bunx', 'npx'].includes(tokens[index] ?? '')) {
-      index++;
-      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) index++;
+      index = skipRunnerOptions(tokens, index + 1);
     }
     if (tokens[index] !== 'wb') continue;
     const wbArgs = tokens.slice(index + 1);

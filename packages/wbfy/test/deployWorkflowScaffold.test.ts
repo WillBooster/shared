@@ -45,6 +45,8 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun wb deploy -w "packages/\\\napi"',
       // A leading `env` launcher with assignments precedes the real command.
       'env WB_ENV=production bun wb deploy -w packages/api',
+      // The `command` builtin launcher.
+      'command bun wb deploy -w packages/api',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');
@@ -59,6 +61,10 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun run wb -- deploy',
       'yarn run wb deploy',
       'npm wb deploy',
+      // `bun --cwd wb deploy` runs `deploy` in directory `wb`, not the wb binary.
+      'bun --cwd wb deploy',
+      // A heredoc body is data, not a command.
+      "cat <<'EOF'\nbun wb deploy\nEOF",
     ]) {
       expect(generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig)).toBeUndefined();
     }

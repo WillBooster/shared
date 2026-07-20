@@ -44,9 +44,17 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
       const options = (Array.isArray(pluginEntry) && (pluginEntry[1] as Record<string, unknown>)) || {};
       return !(pluginName === '@semantic-release/github' && options.assets !== undefined);
     });
+    // @semantic-release/npm's prepare step unconditionally runs `npm version`, which fires the
+    // package's version lifecycle scripts (preversion/version/postversion). If any are defined,
+    // removing the plugin would drop those side effects, so the plugin is load-bearing.
+    const scripts = rootConfig.packageJson?.scripts ?? {};
+    const hasVersionLifecycleScript = ['preversion', 'version', 'postversion'].some(
+      (name) => typeof (scripts as Record<string, unknown>)[name] === 'string'
+    );
     if (
       Array.isArray(settings.plugins) &&
       everyOtherPluginIsStandardNonPublishing &&
+      !hasVersionLifecycleScript &&
       rootConfig.packageJson?.private &&
       !rootConfig.packageJson.publishConfig &&
       !(rootConfig.doesContainSubPackageJsons && rootConfig.release.npmPublishesRoot)
