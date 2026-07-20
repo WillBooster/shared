@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 
 import { generateReadme } from '../src/generators/readme.js';
 import { fsUtil } from '../src/utils/fsUtil.js';
@@ -25,6 +25,12 @@ async function withTempDir(test: (dirPath: string) => Promise<void>): Promise<vo
     fs.rmSync(dirPath, { force: true, recursive: true });
   }
 }
+
+// setRootDirPath is process-wide state: leaving a deleted temporary directory behind would confine
+// any later test sharing this worker to a repository root that no longer exists.
+afterEach(() => {
+  fsUtil.setRootDirPath(undefined);
+});
 
 async function runGenerateReadme(dirPath: string, versionLabel: string | undefined): Promise<string> {
   vi.spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);

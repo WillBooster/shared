@@ -34,10 +34,12 @@ export function getWbfyVersionLabel(): string | undefined {
   if (!gitRootDirPath || path.relative(gitRootDirPath, dirPath) !== wbfyDirPathInRepo) return undefined;
   const commitHash = runGit(['rev-parse', '--short', 'HEAD'], dirPath);
   if (!commitHash) return undefined;
-  // The commit alone would misidentify a build made from an edited checkout, so an uncommitted
-  // change anywhere in the repository (it is a monorepo: wbfy's behavior depends on its workspace
-  // dependencies too) is reported as well.
-  const isDirty = !!runGit(['status', '--porcelain'], dirPath);
+  // The commit alone would misidentify a build made from an edited checkout, so uncommitted changes
+  // are reported too — but only under packages/, which holds wbfy and the workspace dependencies it
+  // is built from. A repository-wide check would also see the files wbfy GENERATES when it targets
+  // its own repository (e.g. the README this label goes into), making a second run relabel the
+  // badge `-dirty-local` purely because the first run wrote it.
+  const isDirty = !!runGit(['status', '--porcelain', '--', path.dirname(wbfyDirPathInRepo)], gitRootDirPath);
   return isDirty ? `${commitHash}-dirty-local` : `${commitHash}-local`;
 }
 
