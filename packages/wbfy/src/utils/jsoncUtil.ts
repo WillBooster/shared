@@ -1,5 +1,5 @@
 import type { ParseError } from 'jsonc-parser';
-import { createScanner, parse as parseJsonc } from 'jsonc-parser';
+import { applyEdits, createScanner, modify, parse as parseJsonc } from 'jsonc-parser';
 
 // jsonc-parser declares SyntaxKind/ScanError as ambient const enums, which cannot be imported
 // under verbatimModuleSyntax; mirror the needed member values locally.
@@ -46,5 +46,39 @@ export const jsoncUtil = {
     return parseErrors.length === 0 && !!value && typeof value === 'object' && !Array.isArray(value)
       ? value
       : undefined;
+  },
+  /** Tells whether the content carries at least one comment, i.e. content JSON.stringify would drop. */
+  containsComment(content: string): boolean {
+    const scanner = createScanner(content.replace(/^\uFEFF/, ''));
+    for (let kind: number = scanner.scan(); kind !== syntaxKind.eof; kind = scanner.scan()) {
+      // A lexical error means the remaining tokens are unreliable; report no comment rather than
+      // guessing, since callers only use this to decide whether to warn about dropped comments.
+      if ((scanner.getTokenError() as number) !== scanErrorNone) return false;
+      if (kind === syntaxKind.lineCommentTrivia || kind === syntaxKind.blockCommentTrivia) return true;
+    }
+    return false;
+  },
+  /**
+   * Serializes `settings` into `oldContent`, editing only the top-level properties whose values
+   * changed so the comments and formatting of an existing file survive. Callers never drop
+   * properties (generated settings are merged ON TOP of the existing ones), so removals are not
+   * handled: a property missing from `settings` is left untouched rather than deleted.
+   */
+  stringifyPreservingTrivia(oldContent: string | undefined, settings: Record<string, unknown>): string {
+    if (oldContent === undefined || jsoncUtil.isTriviaOnly(oldContent)) {
+      return JSON.stringify(settings, undefined, 2);
+    }
+    const oldSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(oldContent);
+    let content = oldContent;
+    for (const [key, value] of Object.entries(settings)) {
+      // Compare serialized forms so deep-equal values (e.g. a re-merged `extends` array) do not
+      // rewrite the property and reflow its formatting.
+      if (oldSettings && JSON.stringify(oldSettings[key]) === JSON.stringify(value)) continue;
+      content = applyEdits(
+        content,
+        modify(content, [key], value, { formattingOptions: { insertSpaces: true, tabSize: 2 } })
+      );
+    }
+    return content;
   },
 };
