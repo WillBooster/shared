@@ -86,10 +86,14 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
  * at or above the minimum proves the floor. Selectors that cannot prove it are replaced with the
  * Bun version running wbfy (which the startup guard proved meets the floor) rather than the
  * frozen minimum, so repositories keep tracking the current toolchain — and stay aligned with
- * @types/bun, which wbfy updates to the latest release. wbfy writes a plain version string; mise's
- * array and `{ version = "…" }` forms are hand-authored and left untouched.
+ * @types/bun, which wbfy updates to the latest release. The `.tool-versions` migration writes an
+ * array when an entry lists several versions, so arrays are lifted member-wise; mise's
+ * `{ version = "…" }` form is hand-authored and left untouched.
  */
 function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string): unknown {
+  if (Array.isArray(bunVersion)) {
+    return [...new Set(bunVersion.map((version) => liftOutdatedBunVersion(version, currentBunVersion)))];
+  }
   if (typeof bunVersion !== 'string') return bunVersion;
   // Unverifiable selectors ("latest", aliases) cannot prove the floor either.
   const lowestResolvableVersion = semver.validRange(bunVersion) && semver.minVersion(bunVersion);
@@ -126,10 +130,15 @@ function liftOutdatedNodeVersion(nodeVersion: unknown, cwd: string): unknown {
  */
 function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): unknown {
   if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
+  // Normalize the migration-source spellings `mise latest` cannot resolve even though mise's own
+  // configuration accepts them: `lts/*` (idiomatic in .node-version) yields empty output while
+  // `lts` resolves, and `prefix:24` is rejected outright while `24` resolves. Verified against mise
+  // 2026.7.7. Anything else stays unresolvable and falls back to the original selector below.
+  const range = typeof version === 'string' ? version.replace(/^prefix:/u, '').replace(/\/\*$/u, '') : undefined;
   // With no meaningful selector, Node.js pins to the latest LTS (matching the reusable workflows'
   // `lts/*` fallback) rather than the newest release.
   const defaultSelector = tool === 'node' ? 'node@lts' : tool;
-  const selector = version && version !== 'latest' ? `${tool}@${version}` : defaultSelector;
+  const selector = range && range !== 'latest' ? `${tool}@${range}` : defaultSelector;
   const resolvedVersion = spawnSyncAndReturnStdout('mise', ['latest', selector], cwd);
   return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
 }
