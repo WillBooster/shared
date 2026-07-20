@@ -41,10 +41,11 @@ export function getWbfyVersionLabel(): string | undefined {
   const commitHash = runGit(['rev-parse', '--short=8', 'HEAD'], dirPath);
   if (!commitHash) return undefined;
   // The commit alone would misidentify a build made from an edited checkout, so uncommitted changes
-  // are reported too — but only under packages/*/src, the source wbfy and its workspace dependencies
-  // are built from. Everything wbfy GENERATES when it targets its own repository lives outside that
-  // (the root README this label goes into, and each package's .gitignore, package.json, tsconfig,
-  // …), so a first run cannot make the next one relabel the badge `-dirty-local` by itself.
+  // are reported too — but only under packages/*/src and packages/*/bin, the source and entry-point
+  // wrapper wbfy and its workspace dependencies actually run from. Everything wbfy GENERATES when it
+  // targets its own repository lives outside those (the root README this label goes into, and each
+  // package's .gitignore, package.json, tsconfig, …), so a first run cannot make the next one
+  // relabel the badge `-dirty-local` by itself.
   const isDirty = getGitDirtyState(gitRootDirPath);
   if (isDirty === undefined) return undefined;
   return isDirty ? `${commitHash}-dirty-local` : `${commitHash}-local`;
@@ -62,7 +63,14 @@ function isWbfyRepository(gitRootDirPath: string): boolean {
 function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
   const proc = child_process.spawnSync(
     'git',
-    ['status', '--porcelain', '--untracked-files=all', '--', `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/src/**`],
+    [
+      'status',
+      '--porcelain',
+      '--untracked-files=all',
+      '--',
+      `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/src/**`,
+      `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/bin/**`,
+    ],
     { cwd: gitRootDirPath, encoding: 'utf8', stdio: 'pipe' }
   );
   return proc.status === 0 ? !!proc.stdout.trim() : undefined;

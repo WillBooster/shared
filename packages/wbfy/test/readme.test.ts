@@ -154,6 +154,26 @@ test.each([
     expected: `---\n# Project\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
   },
   {
+    name: 'a level-2 heading as the only title',
+    input: '## Project\n\nBody.\n',
+    expected: `## Project\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
+  },
+  {
+    name: 'a level-2 heading above the real title',
+    input: '## Intro\n\nText.\n\n# Real Title\n\nBody.\n',
+    expected: `## Intro\n\nText.\n\n# Real Title\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
+  },
+  {
+    name: 'a heading inside a section block',
+    input: '<section>\n# Example\n</section>\n\n# Project\n',
+    expected: `<section>\n# Example\n</section>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
+    name: 'an HTML block left unclosed before the title',
+    input: '<div>Raw HTML\n\n# Project\n',
+    expected: `<div>Raw HTML\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
@@ -220,6 +240,58 @@ test('keeps a badge shown as an inline-code example', async () => {
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).toContain(example);
     expect(content).toContain(badgeOf('1.2.3'));
+  });
+});
+
+test('keeps a badge inside a code span that spans lines', async () => {
+  await withTempDir(async (dirPath) => {
+    const example = `\`code across\n${legacyBadge}\nlines\``;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nUse ${example} as example.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(example);
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
+  });
+});
+
+test('supersedes a badge between escaped backticks', async () => {
+  await withTempDir(async (dirPath) => {
+    // `\`` is literal text, not a code-span delimiter, so the badge between them is live Markdown.
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nA \\\`${legacyBadge}\\\` b.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
+test('keeps a badge example inside a compact block quote', async () => {
+  await withTempDir(async (dirPath) => {
+    const example = `>\`\`\`md\n>${legacyBadge}\n>\`\`\``;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${example}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(example);
+  });
+});
+
+test('supersedes a badge after a multiline comment ends', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText <!-- note\n--> ${legacyBadge}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
+test('supersedes an unlinked wbfy badge', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      '# Project\n\n![wbfy](https://img.shields.io/badge/-wbfy-1e90ff.svg)\n'
+    );
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n`);
   });
 });
 
