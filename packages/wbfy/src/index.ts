@@ -62,6 +62,7 @@ import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
+import { getWbfyVersion } from './utils/version.js';
 import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
 async function main(): Promise<void> {
@@ -95,7 +96,7 @@ async function main(): Promise<void> {
         alias: 'v',
       },
     })
-    .version(getVersion())
+    .version(getWbfyVersion())
     .strict().argv;
   options.isVerbose = argv.verbose;
   options.doesUploadEnvVars = argv.env;
@@ -462,17 +463,6 @@ async function refreshBunLock(
     removeNodeModules(rootDirPath, rootConfig);
   }
   throw new Error(`Failed to refresh Bun lockfile: bun install exited with status ${status}`);
-}
-
-function getVersion(): string {
-  let packageJsonDir = path.dirname(new URL(import.meta.url).pathname);
-  while (!fs.existsSync(path.join(packageJsonDir, 'package.json'))) {
-    packageJsonDir = path.dirname(packageJsonDir);
-  }
-  const packageJson = JSON.parse(fs.readFileSync(path.join(packageJsonDir, 'package.json'), 'utf8')) as {
-    version: string;
-  };
-  return packageJson.version;
 }
 
 await main();

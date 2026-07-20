@@ -6,12 +6,18 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { getWbfyVersionLabel } from '../utils/version.js';
 
 const semanticReleaseBadge =
   '[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)';
 
-const wbfyBadgeUrl = 'https://img.shields.io/badge/-wbfy-1e90ff.svg';
-const wbfyBadge = `[![wbfy](${wbfyBadgeUrl})](https://github.com/WillBooster/shared/tree/main/packages/wbfy)`;
+const wbfyBadgeUrlPrefix = 'https://img.shields.io/badge/wbfy-';
+const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
+
+function buildWbfyBadge(label: string): string {
+  // Hyphens are escaped as `--` per shields.io's badge path syntax, so `v1.2.3-rc.1` stays intact.
+  return `[![wbfy](${wbfyBadgeUrlPrefix}${label.replaceAll('-', '--')}-1e90ff.svg)](${wbfyBadgeLink})`;
+}
 
 export async function generateReadme(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateReadme', async () => {
@@ -21,9 +27,9 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       (await fs.promises.readFile(filePath, 'utf8').catch(() => {})) ??
       `# ${config.packageJson?.name ?? path.basename(path.resolve(config.dirPath))}\n`;
 
-    // Drop any previously inserted badge first, so a link or label change does not leave a stale one.
+    // Drop any previously inserted badge first, so a version or link change leaves no stale one.
     newContent = removeWbfyBadge(newContent);
-    newContent = insertBadge(newContent, wbfyBadge);
+    newContent = insertBadge(newContent, buildWbfyBadge(getWbfyVersionLabel() ?? 'applied'));
 
     if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) {
       newContent = insertBadge(newContent, semanticReleaseBadge);
@@ -100,10 +106,18 @@ export function insertBadge(readme: string, badge: string): string {
   return `${readme}\n${badge}\n`;
 }
 
+const wbfyBadgePattern = new RegExp(
+  String.raw`\[!\[[^\]]*\]\(${escapeRegExp(wbfyBadgeUrlPrefix)}(?<label>[^)\s]*?)-[^-)\s]*\.svg\)\]\([^)\s]*\)`,
+  'u'
+);
+
+export function readWbfyBadgeLabel(readme: string): string | undefined {
+  const label = wbfyBadgePattern.exec(readme)?.groups?.label;
+  return label?.replaceAll('--', '-');
+}
+
 export function removeWbfyBadge(readme: string): string {
-  return readme
-    .replaceAll(new RegExp(String.raw`\[!\[[^\]]*\]\(${escapeRegExp(wbfyBadgeUrl)}\)\]\([^)\s]*\)\n?`, 'gu'), '')
-    .replaceAll(/\n\n\n+/g, '\n\n');
+  return readme.replaceAll(new RegExp(`${wbfyBadgePattern.source}\n?`, 'gu'), '').replaceAll(/\n\n\n+/g, '\n\n');
 }
 
 export function removeGitHubActionsBadge(readme: string, badgeName: string, fileName: string): string {
