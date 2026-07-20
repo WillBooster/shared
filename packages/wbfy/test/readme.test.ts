@@ -269,6 +269,16 @@ test('supersedes a badge below an inline-code comment opener', async () => {
   });
 });
 
+test('preserves a badge example inside a multiline comment', async () => {
+  await withTempDir(async (dirPath) => {
+    const comment = `<!--\n${legacyBadge}\n\n# Not the title\n-->`;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${comment}\n\nBody.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n\n${comment}\n\nBody.\n`);
+  });
+});
+
 test('supersedes a badge whose link changed', async () => {
   await withTempDir(async (dirPath) => {
     const oldLinkBadge = '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://example.com/old-wbfy)';

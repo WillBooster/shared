@@ -29,6 +29,13 @@ interface MarkdownLine {
   isProtected: boolean;
 }
 
+interface ProtectedSpan {
+  text: string;
+  isProtected: boolean;
+  /** Only set for protected spans; distinguishes an inline code span from an HTML comment. */
+  kind?: 'code' | 'comment';
+}
+
 interface MarkdownAnalysis {
   frontMatterEnd: number | undefined;
   lines: MarkdownLine[];
@@ -255,15 +262,15 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
       continue;
     }
 
-    // Only a VISIBLE opener starts a comment: a `<!--` shown inside an inline code span (`` `<!--` ``)
-    // would otherwise protect the whole rest of the file, leaving managed badges below it
-    // unremovable and therefore duplicated on the next run.
-    const visibleContent = splitProtectedSpans(content)
-      .filter((segment) => !segment.isProtected)
+    // Only INLINE CODE is stripped here, never the comment spans themselves: a `<!--` shown inside
+    // code (`` `<!--` ``) must not protect the rest of the file, but a real unterminated opener must
+    // still put the following lines in comment state so their badge examples stay untouched.
+    const codeStrippedContent = splitProtectedSpans(content)
+      .filter((segment) => segment.kind !== 'code')
       .map((segment) => segment.text)
       .join('');
-    const htmlCommentStart = visibleContent.indexOf('<!--');
-    if (htmlCommentStart !== -1 && !visibleContent.includes('-->', htmlCommentStart + 4)) inHtmlComment = true;
+    const htmlCommentStart = codeStrippedContent.indexOf('<!--');
+    if (htmlCommentStart !== -1 && !codeStrippedContent.includes('-->', htmlCommentStart + 4)) inHtmlComment = true;
     lines.push({
       content,
       end,
@@ -305,20 +312,20 @@ function removeMarkdownMatches(readme: string, pattern: RegExp): string {
  * inline code) segments. An unterminated comment runs to the end; an unterminated backtick run is
  * literal text, as in CommonMark.
  */
-function splitProtectedSpans(content: string): { text: string; isProtected: boolean }[] {
-  const segments: { text: string; isProtected: boolean }[] = [];
+function splitProtectedSpans(content: string): ProtectedSpan[] {
+  const segments: ProtectedSpan[] = [];
   let plainStart = 0;
   let index = 0;
-  const pushSpan = (end: number): void => {
+  const pushSpan = (end: number, kind: 'code' | 'comment'): void => {
     if (plainStart < index) segments.push({ text: content.slice(plainStart, index), isProtected: false });
-    segments.push({ text: content.slice(index, end), isProtected: true });
+    segments.push({ text: content.slice(index, end), isProtected: true, kind });
     plainStart = end;
     index = end;
   };
   while (index < content.length) {
     if (content.startsWith('<!--', index)) {
       const commentEnd = content.indexOf('-->', index + 4);
-      pushSpan(commentEnd === -1 ? content.length : commentEnd + 3);
+      pushSpan(commentEnd === -1 ? content.length : commentEnd + 3, 'comment');
       continue;
     }
     if (content[index] === '`') {
@@ -326,7 +333,7 @@ function splitProtectedSpans(content: string): { text: string; isProtected: bool
       // Only a run of exactly the same length closes the span, so a longer run is skipped over.
       const closing = new RegExp('(?<!`)`{' + fence.length + '}(?!`)', 'u').exec(content.slice(index + fence.length));
       if (closing) {
-        pushSpan(index + fence.length + closing.index + fence.length);
+        pushSpan(index + fence.length + closing.index + fence.length, 'code');
         continue;
       }
       index += fence.length;
