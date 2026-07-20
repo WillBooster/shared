@@ -14,23 +14,24 @@ export function getWbfyVersion(): string {
   return readWbfyPackageJson().version;
 }
 
+/** wbfy's location inside its own repository, relative to the repository root. */
+const wbfyDirPathInRepo = path.join('packages', 'wbfy');
+
 /**
  * Identifies the wbfy build that produced the generated files: the released version, or
- * `<short commit hash>-local` when wbfy runs from its own git checkout. Undefined when neither is
- * available (e.g. an unreleased build extracted from a source archive).
+ * `<short commit hash>[-dirty]-local` when wbfy runs from its own git checkout. Undefined when
+ * neither is available (e.g. an unreleased build extracted from a source archive).
  */
 export function getWbfyVersionLabel(): string | undefined {
   const { version, dirPath } = readWbfyPackageJson();
   if (!version.startsWith(unreleasedVersionPrefix)) return version;
 
-  // An unreleased build installed under a TARGET repository (e.g. a packed tarball in its
-  // node_modules) would make git resolve that repository's HEAD, stamping an unrelated commit as
-  // the applied wbfy build. Such an installation always sits below a node_modules directory of the
-  // discovered repository, so that path segment distinguishes it from a genuine wbfy checkout.
+  // git resolves the NEAREST enclosing repository, which for an unreleased build placed under a
+  // target repository (node_modules, or a vendored/extracted source tree) is that repository — its
+  // commit says nothing about the wbfy build that ran. Only wbfy's own location inside its own
+  // repository identifies a genuine checkout, so anything else falls back to the version-less label.
   const gitRootDirPath = runGit(['rev-parse', '--show-toplevel'], dirPath);
-  if (!gitRootDirPath || path.relative(gitRootDirPath, dirPath).split(path.sep).includes('node_modules')) {
-    return undefined;
-  }
+  if (!gitRootDirPath || path.relative(gitRootDirPath, dirPath) !== wbfyDirPathInRepo) return undefined;
   const commitHash = runGit(['rev-parse', '--short', 'HEAD'], dirPath);
   if (!commitHash) return undefined;
   // The commit alone would misidentify a build made from an edited checkout, so an uncommitted
