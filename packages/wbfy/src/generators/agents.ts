@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { findWbDeploySegment } from './workflow.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('generateAgentInstructions', async () => {
@@ -77,7 +78,7 @@ function generateAgentInstruction(
   }
   const usesWbDeploy = allConfigs.some((config) => {
     const deployScript = config.packageJson?.scripts?.['deploy'];
-    return typeof deployScript === 'string' && /^\s*(?:bun\s+(?:run\s+)?)?wb deploy\b/u.test(deployScript);
+    return typeof deployScript === 'string' && findWbDeploySegment(deployScript) !== undefined;
   });
   // The deploy-workflow clause is a filename heuristic (wbfy itself scaffolds `deploy-*.yml`
   // callers); repositories with unrelated `deploy*`-named workflows merely get a slightly

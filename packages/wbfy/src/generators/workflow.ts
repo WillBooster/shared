@@ -597,6 +597,22 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
   };
 }
 
+/**
+ * The shell segment of a deploy script that invokes `wb … deploy` as a command (not a word inside
+ * `echo wb deploy` or an env value), or undefined. Env assignments, package runners, and global
+ * yargs options may precede the deploy command.
+ */
+export function findWbDeploySegment(deployScript: string): string | undefined {
+  return deployScript.split(/\s*(?:&&|\|\||[;&|])\s*/u).find((segment) => {
+    const tokens = segment.split(/\s+/u).filter((token) => token !== '');
+    let index = 0;
+    while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
+    while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
+      index++;
+    return tokens[index] === 'wb' && tokens.slice(index + 1).includes('deploy');
+  });
+}
+
 /** The worker directory of a wb-driven Cloudflare deploy script, or undefined when there is none. */
 function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath' | 'packageJson'>): string | undefined {
   const deployScript = rootConfig.packageJson?.scripts?.deploy;
@@ -605,14 +621,7 @@ function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath'
   // segments, so isolate the shell segment that actually INVOKES wb (as a command token — not a
   // word inside `echo wb deploy` or an env value) and parse only it. Env assignments and package
   // runners may precede the wb token; global yargs options may precede the deploy command.
-  const deploySegment = deployScript.split(/\s*(?:&&|\|\||[;&|])\s*/u).find((segment) => {
-    const tokens = segment.split(/\s+/u).filter((token) => token !== '');
-    let index = 0;
-    while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
-    while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
-      index++;
-    return tokens[index] === 'wb' && tokens.slice(index + 1).includes('deploy');
-  });
+  const deploySegment = findWbDeploySegment(deployScript);
   if (!deploySegment) return;
   // wb declares --working-dir with alias -w (yargs also accepts `=` separators, quoted values,
   // and the attached short form `-wVALUE`).
