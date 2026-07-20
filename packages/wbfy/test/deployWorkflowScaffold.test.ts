@@ -35,9 +35,19 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun run --filter web build -w ignored && bun wb deploy -w packages/api',
       'bun wb deploy -w ./packages/api/',
       'bun wb -wpackages/api deploy',
+      // A real deploy on the line after an inline comment must be found (comment ends its segment).
+      'echo preparing # comment\nbun wb deploy -w packages/api',
+      // Backslash-newline is a shell line continuation, so the two lines form one `wb deploy`.
+      'bun wb \\\ndeploy -w packages/api',
+      // A subshell group still runs wb deploy.
+      '(bun wb deploy -w packages/api)',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');
+    }
+    // Quoted or commented-out operators/text must NOT be read as a live wb deploy invocation.
+    for (const script of ['echo "; wb deploy ;"', 'echo prep # wb deploy -w packages/api', 'wb prisma deploy']) {
+      expect(generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig)).toBeUndefined();
     }
     // Only the config wb deploy selects contributes server_url: a stale wrangler.json sibling
     // must not leak its route past a route-less wrangler.jsonc.

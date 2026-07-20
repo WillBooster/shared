@@ -611,6 +611,12 @@ function tokenizeShellCommand(script: string): string[][] {
       continue;
     }
     if (character === '\\') {
+      // Backslash-newline is a line continuation: the shell removes both, joining the lines
+      // without introducing a token boundary. Any other escaped character is a literal.
+      if (script[index + 1] === '\n') {
+        index++;
+        continue;
+      }
       current += script[++index] ?? '';
       inToken = true;
       continue;
@@ -621,8 +627,10 @@ function tokenizeShellCommand(script: string): string[][] {
       continue;
     }
     if (character === '#' && !inToken) {
-      // Comment runs to end of line; the rest of this line is not executed.
-      while (index < script.length && script[index] !== '\n') index++;
+      // Comment runs to end of line; end the current command segment and let the loop resume at
+      // the newline so the next line is parsed as its own segment.
+      endSegment();
+      while (index + 1 < script.length && script[index + 1] !== '\n') index++;
       continue;
     }
     if (character === '&' || character === '|' || character === ';' || character === '\n') {
@@ -646,10 +654,12 @@ function tokenizeShellCommand(script: string): string[][] {
 }
 
 /**
- * The `wb … deploy` invocation in a deploy script, as its argument tokens AFTER `deploy` (empty
- * array when there are none), or undefined when no segment runs `wb deploy` at command position.
- * Env assignments, package runners, and global yargs options (with their value tokens) may
- * precede the deploy command; shell quoting/escaping/comments/grouping are honored.
+ * The wb argument tokens of a `wb … deploy` invocation (everything after `wb`, so BOTH the global
+ * options that precede `deploy` and the arguments that follow it), or undefined when no segment
+ * runs `wb deploy` at command position. Env assignments, package runners, and global yargs options
+ * (with their value tokens) may precede the deploy command; shell quoting/escaping/comments/
+ * grouping are honored. Returning both sides lets the worker-directory resolver read `-w` wherever
+ * it appears, since wb declares it globally.
  */
 function parseWbDeployArgs(deployScript: string): string[] | undefined {
   for (const tokens of tokenizeShellCommand(deployScript)) {
@@ -658,18 +668,19 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
     while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
       index++;
     if (tokens[index] !== 'wb') continue;
-    index++;
+    const wbArgs = tokens.slice(index + 1);
     // Skip global options (and any value token a value-bearing option consumes) so the FIRST
     // command token decides: `wb --cascade-env production deploy` and `wb -w packages/api deploy`
     // match, while subcommands owning their own `deploy` (`wb prisma deploy`, `wb retry deploy`)
     // do not. `--opt=value` carries its value inline, so only the space-separated form skips one.
-    while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
-      const flag = tokens[index] ?? '';
-      index++;
-      if (wbGlobalValueOptions.has(flag) && index < tokens.length) index++;
+    let commandIndex = 0;
+    while (commandIndex < wbArgs.length && (wbArgs[commandIndex] ?? '').startsWith('-')) {
+      const flag = wbArgs[commandIndex] ?? '';
+      commandIndex++;
+      if (wbGlobalValueOptions.has(flag) && commandIndex < wbArgs.length) commandIndex++;
     }
-    if (tokens[index] !== 'deploy') continue;
-    return tokens.slice(index + 1);
+    if (wbArgs[commandIndex] !== 'deploy') continue;
+    return wbArgs;
   }
   return undefined;
 }
@@ -679,11 +690,12 @@ export function invokesWbDeploy(deployScript: string): boolean {
   return parseWbDeployArgs(deployScript) !== undefined;
 }
 
-/** The `-w`/`--working-dir` value among parsed `wb deploy` argument tokens, or `.`. */
+/** The `-w`/`--working-dir` value among the wb invocation's tokens (either side of `deploy`), or `.`. */
 function workerDirPathFromDeployArgs(deployArgs: string[]): string {
   for (let index = 0; index < deployArgs.length; index++) {
     const token = deployArgs[index] ?? '';
     if (token === '-w' || token === '--working-dir') return deployArgs[index + 1] ?? '.';
+    // yargs also accepts `--working-dir=path`, `-w=path`, and the attached short form `-wpath`.
     const inlineMatch = /^(?:--working-dir=|-w=?)(.+)$/u.exec(token);
     if (inlineMatch) return inlineMatch[1] ?? '.';
   }
