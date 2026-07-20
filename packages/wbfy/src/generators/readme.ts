@@ -126,16 +126,26 @@ export function insertBadge(readme: string, badge: string): string {
     .slice(insertionAnchor)
     .replace(/^\r?\n/u, '')
     .replace(/^(?:[ \t]*\r?\n)*/u, '');
-  if (after && !after.startsWith('[') && !after.startsWith('!')) after = `${lineEnding}${after}`;
+  // Only another BADGE line may sit directly under the inserted badge. Prose that merely starts with
+  // a link or an image (`[Documentation](docs.md) explains …`) would otherwise be joined into the
+  // badge's paragraph by CommonMark's soft line break and render on the badge row.
+  if (after && !isBadgeLine(after.slice(0, after.search(/\r?\n|$/u)))) after = `${lineEnding}${after}`;
   return `${before}${lineEnding}${lineEnding}${badge}${lineEnding}${after}`;
 }
 
 function findBadgeInsertionAnchor(readme: string): number | undefined {
   const analysis = analyzeMarkdown(readme);
 
+  // A heading inside a collapsed `<details>` is not the repository title, and anchoring to it hides
+  // the badge until the reader expands the section. `<details>` spans blank lines, so the block-level
+  // HTML tracking in analyzeMarkdown cannot cover it; its open tags are counted here instead.
+  let collapsedDepth = 0;
+
   for (let index = 0; index < analysis.lines.length; index++) {
     const line = analysis.lines[index]!;
     if (line.isProtected) continue;
+    collapsedDepth += countRawHtmlTags(line.content, 'details') - countRawHtmlClosingTags(line.content, 'details');
+    if (collapsedDepth > 0) continue;
     if (/^ {0,3}#(?:[ \t]+|$)/u.test(line.content)) return line.end;
 
     // A centered HTML title (`<h1 align="center">…</h1>`) is a title just as much as a Markdown
@@ -143,7 +153,14 @@ function findBadgeInsertionAnchor(readme: string): number | undefined {
     if (/^ {0,3}<h1(?:[ \t>]|$)/iu.test(line.content)) {
       for (let closingIndex = index; closingIndex < analysis.lines.length; closingIndex++) {
         const closingLine = analysis.lines[closingIndex]!;
-        if (hasRawHtmlClosingTag(closingLine.content, 'h1')) return closingLine.end;
+        if (closingLine.isProtected) continue;
+        // A `</h1>` written inside a comment or inline code closes nothing; anchoring there would put
+        // the badge INSIDE the title and split the raw HTML block with blank lines.
+        const visibleContent = splitProtectedSpans(closingLine.content)
+          .filter((segment) => !segment.isProtected)
+          .map((segment) => segment.text)
+          .join('');
+        if (hasRawHtmlClosingTag(visibleContent, 'h1')) return closingLine.end;
       }
     }
 
@@ -250,41 +267,66 @@ function removeMarkdownMatches(readme: string, pattern: RegExp): string {
   const { lines } = analyzeMarkdown(readme);
   return lines
     .map((line) => {
+      if (line.isProtected) return `${line.content}${line.ending}`;
+
       // A comment ANYWHERE on the line used to protect the whole line, so a managed badge trailed by
       // e.g. `<!-- managed badge -->` could never be superseded and got duplicated instead. Only the
-      // commented-out spans are off limits; the segments around them are ordinary Markdown.
-      const segments = splitHtmlCommentSpans(line.content);
-      const visibleContent = segments.filter((segment) => !segment.isComment).map((segment) => segment.text);
-      if (line.isProtected || !isBadgeLine(visibleContent.join(''))) return `${line.content}${line.ending}`;
-
-      const content = segments
-        .map((segment) => (segment.isComment ? segment.text : segment.text.replaceAll(pattern, '')))
+      // commented-out spans and inline-code examples are off limits; the segments around them are
+      // ordinary Markdown, wherever on the line they sit — a badge embedded in a title or a sentence
+      // is just as managed as one on a line of its own, and skipping it duplicates the badge instead.
+      const content = splitProtectedSpans(line.content)
+        .map((segment) => (segment.isProtected ? segment.text : segment.text.replaceAll(pattern, '')))
         .join('');
+      // Removing the only badge on a line leaves a blank line behind. Keeping it would add one blank
+      // line per run — unbounded growth across runs — so the emptied line goes away with its badge.
+      if (content !== line.content && !content.trim()) return '';
       return `${content}${line.ending}`;
     })
     .join('');
 }
 
-/** Splits a line into alternating plain and `<!-- … -->` segments (an unterminated comment runs to the end). */
-function splitHtmlCommentSpans(content: string): { text: string; isComment: boolean }[] {
-  const segments: { text: string; isComment: boolean }[] = [];
+/**
+ * Splits a line into alternating plain and protected (`<!-- … -->` comment or `` ` ``-delimited
+ * inline code) segments. An unterminated comment runs to the end; an unterminated backtick run is
+ * literal text, as in CommonMark.
+ */
+function splitProtectedSpans(content: string): { text: string; isProtected: boolean }[] {
+  const segments: { text: string; isProtected: boolean }[] = [];
+  let plainStart = 0;
   let index = 0;
+  const pushSpan = (end: number): void => {
+    if (plainStart < index) segments.push({ text: content.slice(plainStart, index), isProtected: false });
+    segments.push({ text: content.slice(index, end), isProtected: true });
+    plainStart = end;
+    index = end;
+  };
   while (index < content.length) {
-    const commentStart = content.indexOf('<!--', index);
-    if (commentStart === -1) {
-      segments.push({ text: content.slice(index), isComment: false });
-      break;
+    if (content.startsWith('<!--', index)) {
+      const commentEnd = content.indexOf('-->', index + 4);
+      pushSpan(commentEnd === -1 ? content.length : commentEnd + 3);
+      continue;
     }
-    if (commentStart > index) segments.push({ text: content.slice(index, commentStart), isComment: false });
-    const commentEnd = content.indexOf('-->', commentStart + 4);
-    if (commentEnd === -1) {
-      segments.push({ text: content.slice(commentStart), isComment: true });
-      break;
+    if (content[index] === '`') {
+      const fence = /^`+/u.exec(content.slice(index))![0];
+      // Only a run of exactly the same length closes the span, so a longer run is skipped over.
+      const closing = new RegExp(String.raw`(?<!\`)\`{${fence.length}}(?!\`)`, 'u').exec(
+        content.slice(index + fence.length)
+      );
+      if (closing) {
+        pushSpan(index + fence.length + closing.index + fence.length);
+        continue;
+      }
+      index += fence.length;
+      continue;
     }
-    segments.push({ text: content.slice(commentStart, commentEnd + 3), isComment: true });
-    index = commentEnd + 3;
+    index++;
   }
+  if (plainStart < content.length) segments.push({ text: content.slice(plainStart), isProtected: false });
   return segments;
+}
+
+function isBadgeLine(line: string): boolean {
+  return !line.replaceAll(/\[!\[[^\]]*\]\([^\s)]*\)\]\([^\s)]*\)/gu, '').trim();
 }
 
 function isIndentedCode(line: string): boolean {
@@ -299,8 +341,12 @@ function hasRawHtmlClosingTag(line: string, tag: string): boolean {
   return new RegExp(`</${tag}[ \\t]*>`, 'iu').test(line);
 }
 
-function isBadgeLine(line: string): boolean {
-  return !line.replaceAll(/\[!\[[^\]]*\]\([^\s)]*\)\]\([^\s)]*\)/gu, '').trim();
+function countRawHtmlTags(line: string, tag: string): number {
+  return line.match(new RegExp(`<${tag}(?:[ \\t>]|$)`, 'giu'))?.length ?? 0;
+}
+
+function countRawHtmlClosingTags(line: string, tag: string): number {
+  return line.match(new RegExp(`</${tag}[ \\t]*>`, 'giu'))?.length ?? 0;
 }
 
 function removeWbfyBadge(readme: string): string {

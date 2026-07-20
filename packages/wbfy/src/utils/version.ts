@@ -41,24 +41,28 @@ export function getWbfyVersionLabel(): string | undefined {
   const commitHash = runGit(['rev-parse', '--short=8', 'HEAD'], dirPath);
   if (!commitHash) return undefined;
   // The commit alone would misidentify a build made from an edited checkout, so uncommitted changes
-  // are reported too — but only under packages/, which holds wbfy and the workspace dependencies it
-  // is built from. A repository-wide check would also see the files wbfy GENERATES when it targets
-  // its own repository (e.g. the README this label goes into), making a second run relabel the
-  // badge `-dirty-local` purely because the first run wrote it.
+  // are reported too — but only under packages/*/src, the source wbfy and its workspace dependencies
+  // are built from. Everything wbfy GENERATES when it targets its own repository lives outside that
+  // (the root README this label goes into, and each package's .gitignore, package.json, tsconfig,
+  // …), so a first run cannot make the next one relabel the badge `-dirty-local` by itself.
   const isDirty = getGitDirtyState(gitRootDirPath);
   if (isDirty === undefined) return undefined;
   return isDirty ? `${commitHash}-dirty-local` : `${commitHash}-local`;
 }
 
 function isWbfyRepository(gitRootDirPath: string): boolean {
-  const originUrls = runGit(['remote', 'get-url', '--all', 'origin'], gitRootDirPath);
-  return !!originUrls?.split('\n').some((url) => /github\.com[:/]WillBooster\/shared(?:\.git)?$/iu.test(url));
+  // Every remote counts, not just `origin`: a fork checkout carries the canonical repository as
+  // `upstream`, and it is still a genuine wbfy checkout whose commit identifies the build.
+  const remoteUrls = runGit(['remote', '-v'], gitRootDirPath);
+  return !!remoteUrls
+    ?.split('\n')
+    .some((line) => /github\.com[:/]WillBooster\/shared(?:\.git)?$/iu.test(line.split(/[ \t]+/u)[1] ?? ''));
 }
 
 function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
   const proc = child_process.spawnSync(
     'git',
-    ['status', '--porcelain', '--untracked-files=all', '--', path.dirname(wbfyDirPathInRepo)],
+    ['status', '--porcelain', '--untracked-files=all', '--', `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/src/**`],
     { cwd: gitRootDirPath, encoding: 'utf8', stdio: 'pipe' }
   );
   return proc.status === 0 ? !!proc.stdout.trim() : undefined;

@@ -119,6 +119,21 @@ test.each([
     expected: `<h1 align="center">\n  Project\n</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
   {
+    name: 'a commented-out closing tag in an HTML title',
+    input: '<h1>\nProject\n<!-- </h1> old close -->\n</h1>\n\nBody.\n',
+    expected: `<h1>\nProject\n<!-- </h1> old close -->\n</h1>\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
+  },
+  {
+    name: 'prose that starts with a link',
+    input: '# Project\n\n[Documentation](docs.md) explains setup.\n',
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n[Documentation](docs.md) explains setup.\n`,
+  },
+  {
+    name: 'a heading inside a collapsed details section',
+    input: '<details>\n<summary>Example</summary>\n\n# Example\n\nHidden.\n</details>\n\n# Project\n\nVisible.\n',
+    expected: `<details>\n<summary>Example</summary>\n\n# Example\n\nHidden.\n</details>\n\n# Project\n\n${badgeOf('1.2.3')}\n\nVisible.\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
@@ -149,6 +164,42 @@ test('does not merge lines when replacing an inline legacy badge', async () => {
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n${otherBadge} \nDescription.\n`);
+  });
+});
+
+test('stays idempotent when another badge sits above the body', async () => {
+  await withTempDir(async (dirPath) => {
+    // The wbfy badge is inserted first, so any second badge pushes it against the body — the case
+    // where an emptied badge line used to leave a blank line behind and grow the file on every run.
+    fs.writeFileSync(path.resolve(dirPath, '.releaserc.json'), '{}\n');
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# Project\n\nBody text.\n');
+
+    const firstContent = await runGenerateReadme(dirPath, '1.2.3');
+    expect(firstContent).toContain('semantic-release');
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(firstContent);
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(firstContent);
+  });
+});
+
+test('supersedes a badge embedded in the title line', async () => {
+  await withTempDir(async (dirPath) => {
+    const oldBadge = '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://example.com/old-wbfy)';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project ${oldBadge}\n\nDescription.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).not.toContain('0.9.0');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
+test('keeps a badge shown as an inline-code example', async () => {
+  await withTempDir(async (dirPath) => {
+    const example = `\`${legacyBadge}\``;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nUse ${example} to mark it.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(example);
+    expect(content).toContain(badgeOf('1.2.3'));
   });
 });
 
