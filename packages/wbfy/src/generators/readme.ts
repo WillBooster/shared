@@ -10,10 +10,20 @@ import { promisePool } from '../utils/promisePool.js';
 const semanticReleaseBadge =
   '[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)';
 
+const wbfyBadgeUrl = 'https://img.shields.io/badge/-wbfy-1e90ff.svg';
+const wbfyBadge = `[![wbfy](${wbfyBadgeUrl})](https://github.com/WillBooster/shared/tree/main/packages/wbfy)`;
+
 export async function generateReadme(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateReadme', async () => {
     const filePath = path.resolve(config.dirPath, 'README.md');
-    let newContent = await fs.promises.readFile(filePath, 'utf8');
+    // The wbfy badge marks a repository as wbfied, so a repository without a README still gets one.
+    let newContent =
+      (await fs.promises.readFile(filePath, 'utf8').catch(() => {})) ??
+      `# ${config.packageJson?.name ?? path.basename(path.resolve(config.dirPath))}\n`;
+
+    // Drop any previously inserted badge first, so a link or label change does not leave a stale one.
+    newContent = removeWbfyBadge(newContent);
+    newContent = insertBadge(newContent, wbfyBadge);
 
     if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) {
       newContent = insertBadge(newContent, semanticReleaseBadge);
@@ -88,6 +98,12 @@ export function insertBadge(readme: string, badge: string): string {
     }
   }
   return `${readme}\n${badge}\n`;
+}
+
+export function removeWbfyBadge(readme: string): string {
+  return readme
+    .replaceAll(new RegExp(String.raw`\[!\[[^\]]*\]\(${escapeRegExp(wbfyBadgeUrl)}\)\]\([^)\s]*\)\n?`, 'gu'), '')
+    .replaceAll(/\n\n\n+/g, '\n\n');
 }
 
 export function removeGitHubActionsBadge(readme: string, badgeName: string, fileName: string): string {
