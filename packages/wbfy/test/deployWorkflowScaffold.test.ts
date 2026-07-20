@@ -82,6 +82,11 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun --cwd=packages/api wb deploy',
       'env -C packages/api bun wb deploy',
       'env --chdir packages/api bun wb deploy',
+      // A workspace/filter selector runs the command inside the selected workspace, so the parser
+      // cannot resolve the worker directory from the root and declines.
+      'pnpm --filter api exec wb deploy',
+      'pnpm -F api exec wb deploy',
+      'npm --workspace api exec wb deploy',
       // Any heredoc makes body-vs-command classification unreliable, so the whole script declines —
       // whether the delimiter form would otherwise hide the invocation (an escaped `<<\EOF` body)
       // or expose one (a `+`-suffixed delimiter word the earlier regex could not match).

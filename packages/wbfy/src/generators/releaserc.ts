@@ -16,8 +16,30 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
 
     const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as {
       plugins?: (string | [string, unknown])[];
+      extends?: unknown;
     };
     let plugins = settings.plugins ?? [];
+    // semantic-release also assigns plugins to top-level lifecycle-step fields (prepare/publish/
+    // success/fail/…), and `extends` can pull in more from a shared config — both invisible to the
+    // `settings.plugins`-only inspection below. A step-specific hook (e.g. a `success` script that
+    // reads the version @semantic-release/npm's prepare step wrote) would silently break if the npm
+    // plugin were removed, so any such field or an `extends` keeps the plugin.
+    const stepSpecificPluginFields = [
+      'verifyConditions',
+      'analyzeCommits',
+      'verifyRelease',
+      'generateNotes',
+      'prepare',
+      'publish',
+      'addChannel',
+      'success',
+      'fail',
+    ];
+    const hasStepSpecificPluginsOrExtends =
+      settings.extends !== undefined ||
+      stepSpecificPluginFields.some(
+        (field) => Object.hasOwn(settings, field) && (settings as Record<string, unknown>)[field] !== undefined
+      );
     // A private package without publishConfig releases only to GitHub (e.g. a deployed web app),
     // so a leftover npm plugin is dead configuration from a published-package template — but only
     // when the plugin provably publishes nothing AND no other plugin consumes the manifest its
@@ -54,6 +76,7 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     if (
       Array.isArray(settings.plugins) &&
       everyOtherPluginIsStandardNonPublishing &&
+      !hasStepSpecificPluginsOrExtends &&
       !hasVersionLifecycleScript &&
       rootConfig.packageJson?.private &&
       !rootConfig.packageJson.publishConfig &&

@@ -592,27 +592,39 @@ const runnerValueOptions = new Set([
   '--call',
 ]);
 
-// Runner options that change the process working directory, so `wb`'s own `-w` (and every wrangler
-// path) resolves relative to a directory this static parser cannot recover. Their presence makes
-// the worker-directory resolution unsound, so scaffolding is declined rather than guessed.
-const cwdChangingRunnerOptions = new Set(['--cwd', '-C', '--prefix', '--dir']);
+// Runner options that change WHERE the command runs, so `wb`'s own `-w` (and every wrangler path)
+// resolves relative to a directory this static parser cannot recover: directory selectors
+// (`--cwd`/`-C`/`--prefix`/`--dir`) and workspace/filter selectors (`--filter`/`-F`/`--workspace`/
+// `--workspaces`/`--ws`, which run inside the selected workspace). Their presence makes the
+// worker-directory resolution unsound, so scaffolding is declined rather than guessed.
+const contextChangingRunnerOptions = new Set([
+  '--cwd',
+  '-C',
+  '--prefix',
+  '--dir',
+  '--filter',
+  '-F',
+  '--workspace',
+  '--workspaces',
+  '--ws',
+]);
 
 /**
  * Advance past a runner's `-`-prefixed options, consuming a separate value token where one applies.
- * `sawCwdChange` reports whether any option relocates the working directory (see
- * cwdChangingRunnerOptions), so the caller can decline scaffolding it cannot resolve correctly.
+ * `sawContextChange` reports whether any option relocates the execution directory/package (see
+ * contextChangingRunnerOptions), so the caller can decline scaffolding it cannot resolve correctly.
  */
-function skipRunnerOptions(tokens: string[], startIndex: number): { index: number; sawCwdChange: boolean } {
+function skipRunnerOptions(tokens: string[], startIndex: number): { index: number; sawContextChange: boolean } {
   let index = startIndex;
-  let sawCwdChange = false;
+  let sawContextChange = false;
   while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
     const option = tokens[index] ?? '';
     const bareOption = option.includes('=') ? option.slice(0, option.indexOf('=')) : option;
-    if (cwdChangingRunnerOptions.has(bareOption)) sawCwdChange = true;
+    if (contextChangingRunnerOptions.has(bareOption)) sawContextChange = true;
     index++;
     if (!option.includes('=') && runnerValueOptions.has(option) && index < tokens.length) index++;
   }
-  return { index, sawCwdChange };
+  return { index, sawContextChange };
 }
 
 /**
@@ -820,9 +832,10 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
     if (['npm', 'pnpm', 'yarn', 'bun'].includes(tokens[index] ?? '')) {
       const runner = tokens[index] ?? '';
       const runnerScan = skipRunnerOptions(tokens, index + 1);
-      // A cwd-changing runner option (`--cwd`/`-C`/`--prefix`/`--dir`) moves where `wb -w` resolves,
-      // which this parser cannot recover, so decline rather than scaffold a wrong target.
-      if (runnerScan.sawCwdChange) return undefined;
+      // A context-changing runner option (directory or workspace/filter selector) moves where
+      // `wb -w` resolves, which this parser cannot recover, so decline rather than scaffold a wrong
+      // target (e.g. `pnpm --filter api exec wb deploy` runs inside the selected workspace).
+      if (runnerScan.sawContextChange) return undefined;
       index = runnerScan.index;
       const subcommand = tokens[index] ?? '';
       if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
@@ -838,7 +851,7 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
       }
     } else if (['bunx', 'npx'].includes(tokens[index] ?? '')) {
       const runnerScan = skipRunnerOptions(tokens, index + 1);
-      if (runnerScan.sawCwdChange) return undefined;
+      if (runnerScan.sawContextChange) return undefined;
       index = runnerScan.index;
     }
     if (tokens[index] !== 'wb') continue;
