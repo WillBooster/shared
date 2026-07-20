@@ -30,6 +30,7 @@ async function withTempDir(test: (dirPath: string) => Promise<void>): Promise<vo
 // any later test sharing this worker to a repository root that no longer exists.
 afterEach(() => {
   fsUtil.setRootDirPath(undefined);
+  vi.restoreAllMocks();
 });
 
 async function runGenerateReadme(dirPath: string, versionLabel: string | undefined): Promise<string> {
@@ -83,6 +84,11 @@ test.each([
     expected: `Project\n=======\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
   {
+    name: 'a dash-style Setext heading',
+    input: 'Project\n-------\nDescription.\n',
+    expected: `Project\n-------\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
     name: 'front matter without a heading',
     input: '---\ntitle: Project\n---\n\nDescription.\n',
     expected: `---\ntitle: Project\n---\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
@@ -96,6 +102,16 @@ test.each([
     name: 'a tab-indented code block without a heading',
     input: '\t# comment inside code\nCode content.\n',
     expected: `${badgeOf('1.2.3')}\n\n\t# comment inside code\nCode content.\n`,
+  },
+  {
+    name: 'a fenced example nested directly in a list',
+    input: '- ```md\n  # Example\n  ```\n\n# Project\n',
+    expected: `- \`\`\`md\n  # Example\n  \`\`\`\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
+    name: 'a raw HTML block',
+    input: '<pre>\n# Example\n</pre>\n\n# Project\n',
+    expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
   },
 ])('places the badge correctly with $name', async ({ input, expected }) => {
   await withTempDir(async (dirPath) => {
@@ -191,7 +207,6 @@ test('keeps an existing README that cannot be read', async () => {
 });
 
 test('resolves a real version label from wbfy itself', () => {
-  vi.restoreAllMocks();
   // Either a released version or `<commit hash>[-dirty]-local`, never the unreleased placeholder.
   expect(version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{8,}(?:-dirty)?-local)$/u);
 });

@@ -26,7 +26,6 @@ interface MarkdownLine {
   content: string;
   end: number;
   ending: string;
-  hasHtmlComment: boolean;
   isProtected: boolean;
 }
 
@@ -145,7 +144,7 @@ function findBadgeInsertionAnchor(readme: string): number | undefined {
       !previousLine.isProtected &&
       previousLine.content.trim() &&
       !isIndentedCode(previousLine.content) &&
-      /^ {0,3}=+[ \t]*$/u.test(line.content)
+      /^ {0,3}(?:=+|-+)[ \t]*$/u.test(line.content)
     ) {
       return line.end;
     }
@@ -157,6 +156,7 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
   let inHtmlComment = false;
   let fence: { character: string; length: number } | undefined;
   let frontMatterMarker: string | undefined;
+  let rawHtmlTag: string | undefined;
   let frontMatterEnd: number | undefined;
   let offset = 0;
   const lines: MarkdownLine[] = [];
@@ -173,7 +173,7 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
 
     if (start === 0 && (trimmedLine === '---' || trimmedLine === '+++')) {
       frontMatterMarker = trimmedLine;
-      lines.push({ content, end, ending, hasHtmlComment: false, isProtected: true });
+      lines.push({ content, end, ending, isProtected: true });
       continue;
     }
     if (frontMatterMarker) {
@@ -181,29 +181,42 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
         frontMatterMarker = undefined;
         frontMatterEnd = end;
       }
-      lines.push({ content, end, ending, hasHtmlComment: false, isProtected: true });
+      lines.push({ content, end, ending, isProtected: true });
       continue;
     }
 
     if (inHtmlComment) {
       if (content.includes('-->')) inHtmlComment = false;
-      lines.push({ content, end, ending, hasHtmlComment: true, isProtected: true });
+      lines.push({ content, end, ending, isProtected: true });
+      continue;
+    }
+
+    if (rawHtmlTag) {
+      if (hasRawHtmlClosingTag(content, rawHtmlTag)) rawHtmlTag = undefined;
+      lines.push({ content, end, ending, isProtected: true });
       continue;
     }
 
     if (fence) {
-      const fenceMatch = content.match(/^ {0,3}(`+|~+)[ \t]*$/u)?.[1];
+      const fenceMatch = getContainerContent(content).match(/^ {0,3}(`+|~+)[ \t]*$/u)?.[1];
       if (fenceMatch?.[0] === fence.character && fenceMatch.length >= fence.length) fence = undefined;
-      lines.push({ content, end, ending, hasHtmlComment: false, isProtected: true });
+      lines.push({ content, end, ending, isProtected: true });
       continue;
     }
 
-    const openingFenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+    const openingFenceMatch = getContainerContent(content).match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
     const fenceMatch = openingFenceMatch?.[1];
     const fenceInfo = openingFenceMatch?.[2] ?? '';
     if (fenceMatch && (fenceMatch[0] === '~' || !fenceInfo.includes('`'))) {
       fence = { character: fenceMatch[0]!, length: fenceMatch.length };
-      lines.push({ content, end, ending, hasHtmlComment: false, isProtected: true });
+      lines.push({ content, end, ending, isProtected: true });
+      continue;
+    }
+
+    const rawHtmlOpeningTag = content.match(/^ {0,3}<(pre|script|style|textarea)(?:[ \t>]|$)/iu)?.[1];
+    if (rawHtmlOpeningTag) {
+      if (!hasRawHtmlClosingTag(content, rawHtmlOpeningTag)) rawHtmlTag = rawHtmlOpeningTag;
+      lines.push({ content, end, ending, isProtected: true });
       continue;
     }
 
@@ -214,7 +227,6 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
       content,
       end,
       ending,
-      hasHtmlComment,
       isProtected: isIndentedCode(content),
     });
   }
@@ -228,25 +240,60 @@ function getLineEnding(content: string): '\n' | '\r\n' {
 function removeMarkdownMatches(readme: string, pattern: RegExp): string {
   const { lines } = analyzeMarkdown(readme);
   return lines
-    .map((line) =>
-      line.isProtected || line.hasHtmlComment || !isBadgeLine(line.content)
-        ? `${line.content}${line.ending}`
-        : `${line.content.replaceAll(pattern, '')}${line.ending}`
-    )
+    .map((line) => {
+      // A comment ANYWHERE on the line used to protect the whole line, so a managed badge trailed by
+      // e.g. `<!-- managed badge -->` could never be superseded and got duplicated instead. Only the
+      // commented-out spans are off limits; the segments around them are ordinary Markdown.
+      const segments = splitHtmlCommentSpans(line.content);
+      const visibleContent = segments.filter((segment) => !segment.isComment).map((segment) => segment.text);
+      if (line.isProtected || !isBadgeLine(visibleContent.join(''))) return `${line.content}${line.ending}`;
+
+      const content = segments
+        .map((segment) => (segment.isComment ? segment.text : segment.text.replaceAll(pattern, '')))
+        .join('');
+      return `${content}${line.ending}`;
+    })
     .join('');
+}
+
+/** Splits a line into alternating plain and `<!-- … -->` segments (an unterminated comment runs to the end). */
+function splitHtmlCommentSpans(content: string): { text: string; isComment: boolean }[] {
+  const segments: { text: string; isComment: boolean }[] = [];
+  let index = 0;
+  while (index < content.length) {
+    const commentStart = content.indexOf('<!--', index);
+    if (commentStart === -1) {
+      segments.push({ text: content.slice(index), isComment: false });
+      break;
+    }
+    if (commentStart > index) segments.push({ text: content.slice(index, commentStart), isComment: false });
+    const commentEnd = content.indexOf('-->', commentStart + 4);
+    if (commentEnd === -1) {
+      segments.push({ text: content.slice(commentStart), isComment: true });
+      break;
+    }
+    segments.push({ text: content.slice(commentStart, commentEnd + 3), isComment: true });
+    index = commentEnd + 3;
+  }
+  return segments;
 }
 
 function isIndentedCode(line: string): boolean {
   return /^(?: {4}| {0,3}\t)/u.test(line);
 }
 
+function getContainerContent(line: string): string {
+  return line.replace(/^ {0,3}(?:(?:>|[-+*]|\d{1,9}[.)])[ \t]+)+/u, '');
+}
+
+function hasRawHtmlClosingTag(line: string, tag: string): boolean {
+  return new RegExp(`</${tag}[ \\t]*>`, 'iu').test(line);
+}
+
 function isBadgeLine(line: string): boolean {
   return !line.replaceAll(/\[!\[[^\]]*\]\([^\s)]*\)\]\([^\s)]*\)/gu, '').trim();
 }
 
-// Matched by the badge's LINK, not by its image URL: every wbfy badge wbfy ever generated points
-// here, so a badge whose image URL changed (e.g. the version-less one this badge replaced) is still
-// recognized as managed and gets superseded instead of duplicated.
 function removeWbfyBadge(readme: string): string {
   return removeMarkdownMatches(readme, wbfyBadgePattern);
 }

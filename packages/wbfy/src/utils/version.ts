@@ -31,7 +31,13 @@ export function getWbfyVersionLabel(): string | undefined {
   // commit says nothing about the wbfy build that ran. Only wbfy's own location inside its own
   // repository identifies a genuine checkout, so anything else falls back to the version-less label.
   const gitRootDirPath = runGit(['rev-parse', '--show-toplevel'], dirPath);
-  if (!gitRootDirPath || path.relative(gitRootDirPath, dirPath) !== wbfyDirPathInRepo) return undefined;
+  if (
+    !gitRootDirPath ||
+    path.relative(gitRootDirPath, dirPath) !== wbfyDirPathInRepo ||
+    !isWbfyRepository(gitRootDirPath)
+  ) {
+    return undefined;
+  }
   const commitHash = runGit(['rev-parse', '--short=8', 'HEAD'], dirPath);
   if (!commitHash) return undefined;
   // The commit alone would misidentify a build made from an edited checkout, so uncommitted changes
@@ -42,6 +48,11 @@ export function getWbfyVersionLabel(): string | undefined {
   const isDirty = getGitDirtyState(gitRootDirPath);
   if (isDirty === undefined) return undefined;
   return isDirty ? `${commitHash}-dirty-local` : `${commitHash}-local`;
+}
+
+function isWbfyRepository(gitRootDirPath: string): boolean {
+  const originUrls = runGit(['remote', 'get-url', '--all', 'origin'], gitRootDirPath);
+  return !!originUrls?.split('\n').some((url) => /github\.com[:/]WillBooster\/shared(?:\.git)?$/iu.test(url));
 }
 
 function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
