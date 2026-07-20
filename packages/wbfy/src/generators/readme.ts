@@ -165,17 +165,8 @@ function findTitleEndIndex(lines: string[]): number | undefined {
 
   const line = lines[index];
   if (line === undefined) return undefined;
-  // wbfy writes `# <name>`; an existing README may center its title in an `<h1>` that closes later.
-  if (/^ {0,3}#{1,6}[ \t]/u.test(line)) return index;
-  if (/^ {0,3}<h1[ \t>]/iu.test(line)) {
-    const closingIndex = lines.findIndex(
-      (candidate, candidateIndex) => candidateIndex >= index && /<\/h1>/iu.test(candidate)
-    );
-    return closingIndex === -1 ? index : closingIndex;
-  }
-  // A Setext underline on the next line makes this line the title.
-  if (lines[index + 1] !== undefined && /^ {0,3}(?:=+|-+)[ \t]*$/u.test(lines[index + 1]!)) return index + 1;
-  return undefined;
+  // wbfy writes `# <name>`; any other title construct is left for manual placement.
+  return /^ {0,3}#{1,6}[ \t]/u.test(line) ? index : undefined;
 }
 
 /**

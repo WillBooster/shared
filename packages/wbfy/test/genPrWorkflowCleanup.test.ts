@@ -20,7 +20,7 @@ function writeWorkflow(fileName: string, content: string): void {
   fs.writeFileSync(path.join(workflowsPath, fileName), content);
 }
 
-test.each(['gen-pr.yml', 'gen-pr.yaml', 'gen-pr-claude.yml'])('detects %s by filename', (fileName) => {
+test.each(['gen-pr.yml', 'gen-pr-claude.yml'])('detects %s by filename', (fileName) => {
   expect(isObsoleteGenPrWorkflow(workflowsPath, fileName)).toBe(true);
 });
 

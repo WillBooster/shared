@@ -86,25 +86,16 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
  * at or above the minimum proves the floor. Selectors that cannot prove it are replaced with the
  * Bun version running wbfy (which the startup guard proved meets the floor) rather than the
  * frozen minimum, so repositories keep tracking the current toolchain — and stay aligned with
- * @types/bun, which wbfy updates to the latest release. Handles mise's string, array, and
- * `{ version = "…" }` tool forms.
+ * @types/bun, which wbfy updates to the latest release. wbfy writes a plain version string; mise's
+ * array and `{ version = "…" }` forms are hand-authored and left untouched.
  */
 function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string): unknown {
-  if (typeof bunVersion === 'string') {
-    const range = bunVersion.startsWith('prefix:') ? bunVersion.slice('prefix:'.length) : bunVersion;
-    // Unverifiable selectors ("latest", "ref:…", "path:…", aliases) cannot prove the floor either.
-    const lowestResolvableVersion = semver.validRange(range) && semver.minVersion(range);
-    return lowestResolvableVersion && semver.gte(lowestResolvableVersion, minimumBunVersion)
-      ? bunVersion
-      : currentBunVersion;
-  }
-  if (Array.isArray(bunVersion)) {
-    return [...new Set(bunVersion.map((version) => liftOutdatedBunVersion(version, currentBunVersion)))];
-  }
-  if (bunVersion && typeof bunVersion === 'object' && 'version' in bunVersion) {
-    return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version, currentBunVersion) };
-  }
-  return bunVersion;
+  if (typeof bunVersion !== 'string') return bunVersion;
+  // Unverifiable selectors ("latest", aliases) cannot prove the floor either.
+  const lowestResolvableVersion = semver.validRange(bunVersion) && semver.minVersion(bunVersion);
+  return lowestResolvableVersion && semver.gte(lowestResolvableVersion, minimumBunVersion)
+    ? bunVersion
+    : currentBunVersion;
 }
 
 /**
@@ -129,21 +120,16 @@ function liftOutdatedNodeVersion(nodeVersion: unknown, cwd: string): unknown {
  * with the newest concrete version mise resolves for it, because the repository-structure
  * standard requires concrete pins: CI installs whatever an unpinned selector resolves to at run
  * time, so builds drift across runs. Exact versions are kept as-is, and non-string forms (mise's
- * array and `{ version = "…" }` forms) are user-managed and left untouched. When mise is
+ * array and `{ version = "…" }` forms) are hand-authored and left untouched. When mise is
  * unavailable or cannot resolve the selector (e.g. offline), the original selector is kept —
  * an unpinned tool is better than a broken configuration.
  */
 function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): unknown {
   if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
-  // Normalize selector forms `mise latest` cannot resolve even though mise configuration accepts
-  // them: `prefix:24` is rejected outright while `24` resolves, and `lts/*` (idiomatic in
-  // .node-version files) yields empty output while `lts` resolves. Modifier selectors such as
-  // `sub-2:lts` stay unresolvable and fall back to the original selector below.
-  const range = typeof version === 'string' ? version.replace(/^prefix:/u, '').replace(/\/\*$/u, '') : undefined;
   // With no meaningful selector, Node.js pins to the latest LTS (matching the reusable workflows'
   // `lts/*` fallback) rather than the newest release.
   const defaultSelector = tool === 'node' ? 'node@lts' : tool;
-  const selector = range && range !== 'latest' ? `${tool}@${range}` : defaultSelector;
+  const selector = version && version !== 'latest' ? `${tool}@${version}` : defaultSelector;
   const resolvedVersion = spawnSyncAndReturnStdout('mise', ['latest', selector], cwd);
   return semver.valid(resolvedVersion) ? resolvedVersion : (version ?? 'latest');
 }

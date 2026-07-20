@@ -95,14 +95,12 @@ function getNextConfigObjectLiteral(
       const objectLiteral = unwrapObjectLiteral(node.initializer);
       if (objectLiteral && ast.isIdentifier(node.name)) {
         variableObjectLiterals.set(node.name.getText(source), objectLiteral);
-        // A `: NextConfig` annotation or a `satisfies`/`as NextConfig` assertion marks the canonical
-        // config object (accepting qualified names such as `import('next').NextConfig`).
+        // The `: NextConfig` annotation wbfy writes marks the canonical config object (accepting
+        // qualified names such as `import('next').NextConfig`).
         const annotationType = node.type?.getText(source);
-        const assertedType = getAssertedType(node.initializer)?.getText(source);
-        const isTypedAsNextConfig =
-          (annotationType !== undefined && isNextConfigType(annotationType)) ||
-          (assertedType !== undefined && isNextConfigType(assertedType));
-        if (isTypedAsNextConfig) typedConfigObjectLiterals.push(objectLiteral);
+        if (annotationType !== undefined && isNextConfigType(annotationType)) {
+          typedConfigObjectLiterals.push(objectLiteral);
+        }
       }
     }
     node.forEachChild(visit);
@@ -117,25 +115,10 @@ function getNextConfigObjectLiteral(
   return objectLiteral ? { source, objectLiteral } : undefined;
 }
 
-// Unwrap `({ ... })` / `{ ... } as NextConfig` / `{ ... } satisfies NextConfig` to the object literal.
+// Unwrap `({ ... })` to the object literal.
 function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
-  const current = unwrapExpression(node);
-  return ast.isObjectLiteralExpression(current) ? current : undefined;
-}
-
-// Return the asserted type of a `satisfies`/`as` expression, if any (ignoring wrapping parentheses).
-function getAssertedType(node: ast.Expression): ast.TypeNode | undefined {
   const current = unwrapParentheses(node);
-  return ast.isAsExpression(current) || ast.isSatisfiesExpression(current) ? current.type : undefined;
-}
-
-// Peel parentheses and `as`/`satisfies` assertions off an expression.
-function unwrapExpression(node: ast.Expression): ast.Node {
-  let current: ast.Node = unwrapParentheses(node);
-  while (ast.isAsExpression(current) || ast.isSatisfiesExpression(current)) {
-    current = unwrapParentheses(current.expression);
-  }
-  return current;
+  return ast.isObjectLiteralExpression(current) ? current : undefined;
 }
 
 // Peel wrapping parentheses off an expression.
