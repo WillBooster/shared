@@ -57,15 +57,19 @@ test('stamps the released version and stays idempotent', async () => {
   });
 });
 
-test('stays idempotent with a second badge in the block', async () => {
+test('orders the block as workflows, semantic-release, then wbfy', async () => {
   await withTempDir(async (dirPath) => {
-    // The wbfy badge is inserted first, so any other badge pushes it against the body — the case
-    // where an emptied badge line used to leave a blank line behind and grow the file on every run.
+    const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
+    fs.mkdirSync(workflowsPath, { recursive: true });
+    fs.writeFileSync(path.resolve(workflowsPath, 'test.yml'), 'name: test\n');
     fs.writeFileSync(path.resolve(dirPath, '.releaserc.json'), '{}\n');
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# Project\n\nBody text.\n');
 
     const firstContent = await runGenerateReadme(dirPath, '1.2.3');
-    expect(firstContent).toContain('semantic-release');
+    expect(firstContent).toBe(
+      `# Project\n\n[![Test](https://github.com/WillBooster/example/actions/workflows/test.yml/badge.svg)](https://github.com/WillBooster/example/actions/workflows/test.yml)\n[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)\n${badgeOf('1.2.3')}\n\nBody text.\n`
+    );
+    // Rewriting the whole block means the order is re-established on every run, not just the first.
     expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(firstContent);
     expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(firstContent);
   });
