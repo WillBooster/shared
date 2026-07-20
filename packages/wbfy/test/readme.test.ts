@@ -134,6 +134,21 @@ test.each([
     expected: `<details>\n<summary>Example</summary>\n\n# Example\n\nHidden.\n</details>\n\n# Project\n\n${badgeOf('1.2.3')}\n\nVisible.\n`,
   },
   {
+    name: 'a heading inside a raw div block',
+    input: '<div>\n# Example\n</div>\n\n# Project\n',
+    expected: `<div>\n# Example\n</div>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
+    name: 'a commented-out details tag before the title',
+    input: '<!-- <details> -->\n# Project\n',
+    expected: `<!-- <details> -->\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
+    name: 'a reference-style badge under the title',
+    input: '# Project\n\n[![Build][build-image]][build-url]\n\n[build-image]: build.svg\n[build-url]: build\n',
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n[![Build][build-image]][build-url]\n\n[build-image]: build.svg\n[build-url]: build\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,

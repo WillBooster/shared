@@ -144,7 +144,14 @@ function findBadgeInsertionAnchor(readme: string): number | undefined {
   for (let index = 0; index < analysis.lines.length; index++) {
     const line = analysis.lines[index]!;
     if (line.isProtected) continue;
-    collapsedDepth += countRawHtmlTags(line.content, 'details') - countRawHtmlClosingTags(line.content, 'details');
+    // Only VISIBLE tags open a collapsed section: a `<details>` written in a comment or an inline
+    // code example would otherwise raise the depth forever and hide the real title from the anchor.
+    const visibleLineContent = splitProtectedSpans(line.content)
+      .filter((segment) => !segment.isProtected)
+      .map((segment) => segment.text)
+      .join('');
+    collapsedDepth +=
+      countRawHtmlTags(visibleLineContent, 'details') - countRawHtmlClosingTags(visibleLineContent, 'details');
     if (collapsedDepth > 0) continue;
     if (/^ {0,3}#(?:[ \t]+|$)/u.test(line.content)) return line.end;
 
@@ -239,7 +246,9 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
       continue;
     }
 
-    const rawHtmlOpeningTag = content.match(/^ {0,3}<(pre|script|style|textarea)(?:[ \t>]|$)/iu)?.[1];
+    // `div`/`table` matter most for READMEs: a centered `<div align="center">` header is a common
+    // opening, and its contents stay raw HTML that the badge must not be inserted into.
+    const rawHtmlOpeningTag = content.match(/^ {0,3}<(pre|script|style|textarea|div|table)(?:[ \t>]|$)/iu)?.[1];
     if (rawHtmlOpeningTag) {
       if (!hasRawHtmlClosingTag(content, rawHtmlOpeningTag)) rawHtmlTag = rawHtmlOpeningTag;
       lines.push({ content, end, ending, isProtected: true });
@@ -324,7 +333,12 @@ function splitProtectedSpans(content: string): { text: string; isProtected: bool
 }
 
 function isBadgeLine(line: string): boolean {
-  return !line.replaceAll(/\[!\[[^\]]*\]\([^\s)]*\)\]\([^\s)]*\)/gu, '').trim();
+  // Reference-style badges (`[![Build][build-image]][build-url]`) and unlinked image badges are
+  // badges too; treating them as prose puts a blank line between them and the generated badge.
+  return !line
+    .replaceAll(/\[!\[[^\]]*\](?:\([^\s)]*\)|\[[^\]]*\])\](?:\([^\s)]*\)|\[[^\]]*\])/gu, '')
+    .replaceAll(/!\[[^\]]*\](?:\([^\s)]*\)|\[[^\]]*\])/gu, '')
+    .trim();
 }
 
 function isIndentedCode(line: string): boolean {
