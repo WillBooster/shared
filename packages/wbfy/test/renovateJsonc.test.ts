@@ -162,6 +162,72 @@ test('leaves a renovate.jsonc declaring the same property twice untouched', asyn
   });
 });
 
+test('bails when a shadowed config outranks the superseded one, leaving the live config alone', async () => {
+  // .github/renovate.json (4) outranks .renovaterc.json (11), so migrating the latter would
+  // abandon the config Renovate actually reads.
+  await withRepo(
+    {
+      '.github/renovate.json': JSON.stringify({ timezone: 'Asia/Tokyo' }),
+      '.renovaterc.json': JSON.stringify({ timezone: 'UTC' }),
+    },
+    async (dirPath) => {
+      expect(fs.existsSync(path.join(dirPath, 'renovate.jsonc'))).toBe(false);
+      expect(fs.existsSync(path.join(dirPath, '.renovaterc.json'))).toBe(true);
+    }
+  );
+});
+
+test('does not resurrect settings that only a dead lower-priority config declares', async () => {
+  await withRepo(
+    {
+      'renovate.jsonc': JSON.stringify({ timezone: 'Asia/Tokyo' }),
+      'renovate.json5': '{ automerge: true }',
+    },
+    async (dirPath) => {
+      const settings = JSON.parse(stripComments(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')));
+      expect(settings.automerge).toBeUndefined();
+      expect(settings.timezone).toBe('Asia/Tokyo');
+      expect(fs.existsSync(path.join(dirPath, 'renovate.json5'))).toBe(false);
+    }
+  );
+});
+
+test('keeps comments while migrating a renovate.json, whose syntax is editable in place', async () => {
+  await withRepo(
+    {
+      'renovate.json': `{
+  // Tokyo business hours keep the noise out of the night.
+  "timezone": "Asia/Tokyo"
+}
+`,
+    },
+    async (dirPath) => {
+      const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+      expect(content).toContain('// Tokyo business hours keep the noise out of the night.');
+      expect(JSON.parse(stripComments(content)).timezone).toBe('Asia/Tokyo');
+      expect(fs.existsSync(path.join(dirPath, 'renovate.json'))).toBe(false);
+    }
+  );
+});
+
+test('keeps a trailing comment attached to the property it describes', async () => {
+  await withRepo(
+    { 'renovate.jsonc': '{\n  "timezone": "UTC" // Renovate must use Tokyo business hours.\n}\n' },
+    async (dirPath) => {
+      const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+      expect(content).toMatch(/"timezone": "UTC",? \/\/ Renovate must use Tokyo business hours\./u);
+    }
+  );
+});
+
+test("matches the file's existing indentation instead of reindenting it", async () => {
+  await withRepo({ 'renovate.jsonc': '{\n    "timezone": "UTC"\n}\n' }, async (dirPath) => {
+    const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+    expect(content).toMatch(/^ {4}"\$schema":/mu);
+    expect(content).toMatch(/^ {8}"github>WillBooster/mu);
+  });
+});
+
 test('bails instead of shadowing a config Renovate resolves after renovate.jsonc', async () => {
   await withRepo({ '.github/renovate.json': JSON.stringify({ extends: [preset] }) }, async (dirPath) => {
     expect(fs.existsSync(path.join(dirPath, 'renovate.jsonc'))).toBe(false);

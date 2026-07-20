@@ -83,12 +83,18 @@ export const jsoncUtil = {
     if (oldContent === undefined) return JSON.stringify(settings, undefined, 2);
 
     const oldSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(oldContent);
+    const modifyOptions = { formattingOptions: detectFormattingOptions(oldContent) };
     let content = oldContent;
+    const newEntries: [string, unknown][] = [];
     for (const [key, value] of Object.entries(settings)) {
       const oldValue = oldSettings?.[key];
       // Compare serialized forms so deep-equal values (e.g. a re-merged `extends` array) do not
       // rewrite the property and reflow its formatting.
       if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
+      if (oldValue === undefined) {
+        newEntries.push([key, value]);
+        continue;
+      }
       // Replacing a whole array would discard the comments between its elements, so grow it with
       // per-element insertions whenever the new value only adds to it.
       const insertions = Array.isArray(oldValue) && Array.isArray(value) ? findInsertions(oldValue, value) : undefined;
@@ -101,11 +107,25 @@ export const jsoncUtil = {
       if (insertions) continue;
       content = applyEdits(content, modify(content, [key], value, modifyOptions));
     }
+    // Prepend rather than append the properties that are new: appending detaches a trailing
+    // same-line comment from the last property, leaving it to describe the generated value
+    // instead. Inserting in reverse keeps the order the settings declare them in.
+    for (const [key, value] of newEntries.toReversed()) {
+      content = applyEdits(content, modify(content, [key], value, { ...modifyOptions, getInsertionIndex: () => 0 }));
+    }
     return content;
   },
 };
 
-const modifyOptions = { formattingOptions: { insertSpaces: true, tabSize: 2 } };
+/**
+ * Mirrors the indentation the file already uses, so a semantic change does not reindent unrelated
+ * lines. Falls back to the two spaces every generated config uses.
+ */
+function detectFormattingOptions(content: string): { insertSpaces: boolean; tabSize: number } {
+  const indentation = /^(?<indentation>[ \t]+)\S/mu.exec(content)?.groups?.['indentation'];
+  if (indentation?.startsWith('\t')) return { insertSpaces: false, tabSize: 1 };
+  return { insertSpaces: true, tabSize: indentation?.length ?? 2 };
+}
 
 /**
  * Returns the elements to insert into `oldValue` to turn it into `newValue`, or undefined when
