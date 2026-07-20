@@ -13,6 +13,20 @@ const semanticReleaseBadge =
 
 const wbfyBadgeUrlPrefix = 'https://img.shields.io/badge/wbfy-';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
+const wbfyBadgePattern = new RegExp(String.raw`\[!\[[^\]]*\]\([^)\s]*\)\]\(${escapeRegExp(wbfyBadgeLink)}\)`, 'gu');
+
+interface MarkdownLine {
+  content: string;
+  end: number;
+  ending: string;
+  hasHtmlComment: boolean;
+  isProtected: boolean;
+}
+
+interface MarkdownAnalysis {
+  frontMatterEnd: number | undefined;
+  lines: MarkdownLine[];
+}
 
 function buildWbfyBadge(label: string): string {
   // Hyphens are escaped as `--` per shields.io's badge path syntax, so `v1.2.3-rc.1` stays intact.
@@ -93,102 +107,152 @@ async function hasAnyWorkflowRun(
 
 export function insertBadge(readme: string, badge: string): string {
   const lineEnding = getLineEnding(readme);
-  readme = collapseBlankLines(readme.replace(badge, ''), lineEnding);
+  readme = removeMarkdownMatches(readme, new RegExp(escapeRegExp(badge), 'gu'));
 
-  const headingEnd = findTopLevelHeadingEnd(readme);
-  if (headingEnd === undefined) return `${badge}${lineEnding}${lineEnding}${readme}`;
+  const insertionAnchor = findBadgeInsertionAnchor(readme);
+  if (insertionAnchor === undefined) {
+    readme = readme.replace(/^(?:[ \t]*\r?\n)*/u, '');
+    return `${badge}${lineEnding}${lineEnding}${readme}`;
+  }
 
-  const before = readme.slice(0, headingEnd);
-  let after = readme.slice(headingEnd);
-  if (after.startsWith(lineEnding)) after = after.slice(lineEnding.length);
-  if (!after.startsWith(lineEnding)) after = `${lineEnding}${after}`;
+  const before = readme.slice(0, insertionAnchor);
+  let after = readme
+    .slice(insertionAnchor)
+    .replace(/^\r?\n/u, '')
+    .replace(/^(?:[ \t]*\r?\n)*/u, '');
+  if (after && !after.startsWith('[') && !after.startsWith('!')) after = `${lineEnding}${after}`;
   return `${before}${lineEnding}${lineEnding}${badge}${lineEnding}${after}`;
 }
 
-function findTopLevelHeadingEnd(readme: string): number | undefined {
+function findBadgeInsertionAnchor(readme: string): number | undefined {
+  const analysis = analyzeMarkdown(readme);
+
+  for (let index = 0; index < analysis.lines.length; index++) {
+    const line = analysis.lines[index]!;
+    if (line.isProtected) continue;
+    if (/^ {0,3}#(?:[ \t]+|$)/u.test(line.content)) return line.end;
+
+    const previousLine = analysis.lines[index - 1];
+    if (
+      previousLine &&
+      !previousLine.isProtected &&
+      previousLine.content.trim() &&
+      !isIndentedCode(previousLine.content) &&
+      /^ {0,3}=+[ \t]*$/u.test(line.content)
+    ) {
+      return line.end;
+    }
+  }
+  return analysis.frontMatterEnd;
+}
+
+function analyzeMarkdown(readme: string): MarkdownAnalysis {
   let inHtmlComment = false;
   let fence: { character: string; length: number } | undefined;
   let frontMatterMarker: string | undefined;
+  let frontMatterEnd: number | undefined;
   let offset = 0;
+  const lines: MarkdownLine[] = [];
 
   for (const lineWithEnding of readme.matchAll(/.*?(?:\r\n|\n|$)/gu)) {
     if (!lineWithEnding[0]) break;
-    const line = lineWithEnding[0].replace(/\r?\n$/u, '');
-    const trimmedLine = line.trim();
+    const fullLine = lineWithEnding[0];
+    const ending = fullLine.match(/\r?\n$/u)?.[0] ?? '';
+    const content = fullLine.slice(0, fullLine.length - ending.length);
+    const trimmedLine = content.trim();
+    const start = offset;
+    const end = start + content.length;
+    offset += fullLine.length;
 
-    if (offset === 0 && (trimmedLine === '---' || trimmedLine === '+++')) {
+    if (start === 0 && (trimmedLine === '---' || trimmedLine === '+++')) {
       frontMatterMarker = trimmedLine;
-      offset += lineWithEnding[0].length;
+      lines.push({ content, end, ending, hasHtmlComment: false, isProtected: true });
       continue;
     }
     if (frontMatterMarker) {
-      if (trimmedLine === frontMatterMarker) frontMatterMarker = undefined;
-      offset += lineWithEnding[0].length;
+      if (trimmedLine === frontMatterMarker) {
+        frontMatterMarker = undefined;
+        frontMatterEnd = end;
+      }
+      lines.push({ content, end, ending, hasHtmlComment: false, isProtected: true });
       continue;
     }
 
     if (inHtmlComment) {
-      if (line.includes('-->')) inHtmlComment = false;
-      offset += lineWithEnding[0].length;
-      continue;
-    }
-    if (line.includes('<!--')) {
-      if (!line.includes('-->', line.indexOf('<!--') + 4)) inHtmlComment = true;
-      offset += lineWithEnding[0].length;
+      if (content.includes('-->')) inHtmlComment = false;
+      lines.push({ content, end, ending, hasHtmlComment: true, isProtected: true });
       continue;
     }
 
-    const fenceMatch = line.match(/^[ \t]{0,3}(`{3,}|~{3,})/u);
-    if (fenceMatch?.[1]) {
-      if (!fence) {
-        fence = { character: fenceMatch[1][0]!, length: fenceMatch[1].length };
-      } else if (fenceMatch[1][0] === fence.character && fenceMatch[1].length >= fence.length) {
-        fence = undefined;
-      }
-      offset += lineWithEnding[0].length;
+    if (fence) {
+      const fenceMatch = content.match(/^ {0,3}(`+|~+)[ \t]*$/u)?.[1];
+      if (fenceMatch?.[0] === fence.character && fenceMatch.length >= fence.length) fence = undefined;
+      lines.push({ content, end, ending, hasHtmlComment: false, isProtected: true });
       continue;
     }
 
-    if (!fence && /^[ \t]{0,3}#(?:[ \t]+|$)/u.test(line)) return offset + line.length;
-    offset += lineWithEnding[0].length;
+    const openingFenceMatch = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+    const fenceMatch = openingFenceMatch?.[1];
+    const fenceInfo = openingFenceMatch?.[2] ?? '';
+    if (fenceMatch && (fenceMatch[0] === '~' || !fenceInfo.includes('`'))) {
+      fence = { character: fenceMatch[0]!, length: fenceMatch.length };
+      lines.push({ content, end, ending, hasHtmlComment: false, isProtected: true });
+      continue;
+    }
+
+    const htmlCommentStart = content.indexOf('<!--');
+    const hasHtmlComment = htmlCommentStart !== -1;
+    if (hasHtmlComment && !content.includes('-->', htmlCommentStart + 4)) inHtmlComment = true;
+    lines.push({
+      content,
+      end,
+      ending,
+      hasHtmlComment,
+      isProtected: isIndentedCode(content),
+    });
   }
-  return undefined;
+  return { frontMatterEnd, lines };
 }
 
 function getLineEnding(content: string): '\n' | '\r\n' {
   return content.includes('\r\n') ? '\r\n' : '\n';
 }
 
-function collapseBlankLines(content: string, lineEnding: '\n' | '\r\n'): string {
-  return content.replaceAll(/(?:\r?\n){3,}/gu, `${lineEnding}${lineEnding}`);
+function removeMarkdownMatches(readme: string, pattern: RegExp): string {
+  const { lines } = analyzeMarkdown(readme);
+  return lines
+    .map((line) =>
+      line.isProtected || line.hasHtmlComment || !isBadgeLine(line.content)
+        ? `${line.content}${line.ending}`
+        : `${line.content.replaceAll(pattern, '')}${line.ending}`
+    )
+    .join('');
+}
+
+function isIndentedCode(line: string): boolean {
+  return /^(?: {4}| {0,3}\t)/u.test(line);
+}
+
+function isBadgeLine(line: string): boolean {
+  return !line.replaceAll(/\[!\[[^\]]*\]\([^\s)]*\)\]\([^\s)]*\)/gu, '').trim();
 }
 
 // Matched by the badge's LINK, not by its image URL: every wbfy badge wbfy ever generated points
 // here, so a badge whose image URL changed (e.g. the version-less one this badge replaced) is still
 // recognized as managed and gets superseded instead of duplicated.
-const wbfyBadgePattern = new RegExp(String.raw`\[!\[[^\]]*\]\([^)\s]*\)\]\(${escapeRegExp(wbfyBadgeLink)}\)`, 'u');
-
 function removeWbfyBadge(readme: string): string {
-  const lineEnding = getLineEnding(readme);
-  return collapseBlankLines(
-    readme.replaceAll(new RegExp(`${wbfyBadgePattern.source}(?:\\r?\\n)?`, 'gu'), ''),
-    lineEnding
-  );
+  return removeMarkdownMatches(readme, wbfyBadgePattern);
 }
 
 export function removeGitHubActionsBadge(readme: string, badgeName: string, fileName: string): string {
   const escapedBadgeName = escapeRegExp(badgeName);
   const escapedFileName = escapeRegExp(fileName);
-  const lineEnding = getLineEnding(readme);
-  return collapseBlankLines(
-    readme.replaceAll(
-      new RegExp(
-        String.raw`\[!\[${escapedBadgeName}\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}/badge\.svg\)\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}\)(?:\r?\n)?`,
-        'gu'
-      ),
-      ''
-    ),
-    lineEnding
+  return removeMarkdownMatches(
+    readme,
+    new RegExp(
+      String.raw`\[!\[${escapedBadgeName}\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}/badge\.svg\)\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}\)`,
+      'gu'
+    )
   );
 }
 

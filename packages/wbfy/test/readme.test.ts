@@ -72,12 +72,57 @@ test.each([
     input: '# Project\nDescription.\n',
     expected: `# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
-])('inserts the badge after the heading with $name', async ({ input, expected }) => {
+  {
+    name: 'an inline HTML comment in the heading',
+    input: '# Project <!-- generated -->\nDescription.\n',
+    expected: `# Project <!-- generated -->\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    name: 'a Setext heading',
+    input: 'Project\n=======\nDescription.\n',
+    expected: `Project\n=======\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    name: 'front matter without a heading',
+    input: '---\ntitle: Project\n---\n\nDescription.\n',
+    expected: `---\ntitle: Project\n---\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    name: 'a fence containing a non-closing fence line',
+    input: '```md\n```not-a-close\n# still code\n```\n# Project\nDescription.\n',
+    expected: `\`\`\`md\n\`\`\`not-a-close\n# still code\n\`\`\`\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    name: 'a tab-indented code block without a heading',
+    input: '\t# comment inside code\nCode content.\n',
+    expected: `${badgeOf('1.2.3')}\n\n\t# comment inside code\nCode content.\n`,
+  },
+])('places the badge correctly with $name', async ({ input, expected }) => {
   await withTempDir(async (dirPath) => {
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), input);
 
     expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(expected);
     expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(expected);
+  });
+});
+
+test('preserves badge examples and whitespace inside fenced code', async () => {
+  await withTempDir(async (dirPath) => {
+    const example = `\`\`\`md\n${legacyBadge}\n\n\nPreserve two blank lines above.\n\`\`\``;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${example}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n\n${example}\n`);
+  });
+});
+
+test('does not merge lines when replacing an inline legacy badge', async () => {
+  await withTempDir(async (dirPath) => {
+    const otherBadge = '[![Test](https://example.com/test.svg)](https://example.com/test)';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${otherBadge} ${legacyBadge}\nDescription.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n${otherBadge} \nDescription.\n`);
   });
 });
 
@@ -126,5 +171,5 @@ test('keeps an existing README that cannot be read', async () => {
 test('resolves a real version label from wbfy itself', () => {
   vi.restoreAllMocks();
   // Either a released version or `<commit hash>[-dirty]-local`, never the unreleased placeholder.
-  expect(version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{7,}(?:-dirty)?-local)$/u);
+  expect(version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{8,}(?:-dirty)?-local)$/u);
 });

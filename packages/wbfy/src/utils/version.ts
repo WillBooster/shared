@@ -32,15 +32,25 @@ export function getWbfyVersionLabel(): string | undefined {
   // repository identifies a genuine checkout, so anything else falls back to the version-less label.
   const gitRootDirPath = runGit(['rev-parse', '--show-toplevel'], dirPath);
   if (!gitRootDirPath || path.relative(gitRootDirPath, dirPath) !== wbfyDirPathInRepo) return undefined;
-  const commitHash = runGit(['rev-parse', '--short', 'HEAD'], dirPath);
+  const commitHash = runGit(['rev-parse', '--short=8', 'HEAD'], dirPath);
   if (!commitHash) return undefined;
   // The commit alone would misidentify a build made from an edited checkout, so uncommitted changes
   // are reported too — but only under packages/, which holds wbfy and the workspace dependencies it
   // is built from. A repository-wide check would also see the files wbfy GENERATES when it targets
   // its own repository (e.g. the README this label goes into), making a second run relabel the
   // badge `-dirty-local` purely because the first run wrote it.
-  const isDirty = !!runGit(['status', '--porcelain', '--', path.dirname(wbfyDirPathInRepo)], gitRootDirPath);
+  const isDirty = getGitDirtyState(gitRootDirPath);
+  if (isDirty === undefined) return undefined;
   return isDirty ? `${commitHash}-dirty-local` : `${commitHash}-local`;
+}
+
+function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
+  const proc = child_process.spawnSync(
+    'git',
+    ['status', '--porcelain', '--untracked-files=all', '--', path.dirname(wbfyDirPathInRepo)],
+    { cwd: gitRootDirPath, encoding: 'utf8', stdio: 'pipe' }
+  );
+  return proc.status === 0 ? !!proc.stdout.trim() : undefined;
 }
 
 function runGit(args: string[], cwd: string): string | undefined {
