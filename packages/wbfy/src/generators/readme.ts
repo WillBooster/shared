@@ -74,7 +74,7 @@ async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
       continue;
     }
     const badgeName = (fileName[0] ?? '').toUpperCase() + fileName.slice(1, fileName.indexOf('.')).replace('-', ' ');
-    const workflowUrl = `https://github.com/${repository}/actions/workflows/${fileName}`;
+    const workflowUrl = `https://github.com/${repository}/actions/workflows/${encodeUrlPath(fileName)}`;
     badges.push(`[![${badgeName}](${workflowUrl}/badge.svg)](${workflowUrl})`);
   }
   return badges;
@@ -174,6 +174,15 @@ function findTitleEndIndex(lines: string[]): number | undefined {
   // A Setext underline on the next line makes this line the title.
   if (lines[index + 1] !== undefined && /^ {0,3}(?:=+|-+)[ \t]*$/u.test(lines[index + 1]!)) return index + 1;
   return undefined;
+}
+
+/**
+ * Percent-encodes the characters that would end a Markdown destination early. A workflow file may be
+ * named anything with a `.yml` extension, and one containing `(` or `)` produced a badge that wbfy's
+ * own badge pattern could not read back — so the line left the block and the badge was duplicated.
+ */
+function encodeUrlPath(value: string): string {
+  return value.replaceAll(/[()\s]/gu, (character) => `%${character.codePointAt(0)!.toString(16).toUpperCase()}`);
 }
 
 /** Whether the badge is one wbfy generates, in any version it has ever written. */

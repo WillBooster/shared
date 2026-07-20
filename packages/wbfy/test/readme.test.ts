@@ -157,6 +157,32 @@ test('supersedes a workflow badge carrying query parameters', async () => {
   });
 });
 
+test('stays idempotent with a Markdown-significant workflow filename', async () => {
+  await withTempDir(async (dirPath) => {
+    // An unencoded `(` would end the Markdown destination early, so wbfy could not read its own
+    // badge back and added a second one on the next run.
+    const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
+    fs.mkdirSync(workflowsPath, { recursive: true });
+    fs.writeFileSync(path.resolve(workflowsPath, 'test(foo).yml'), 'name: test\n');
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# Project\n\nBody.\n');
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain('test%28foo%29.yml');
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
+  });
+});
+
+test('replaces a badge block stamped above a title-less README', async () => {
+  await withTempDir(async (dirPath) => {
+    // Nothing is searched for beyond the first content, so a heading added later cannot orphan the
+    // badges already at the top.
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${legacyBadge}\n\nDescription.\n\n## Usage\n\nSteps.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toBe(`${badgeOf('1.2.3')}\n\nDescription.\n\n## Usage\n\nSteps.\n`);
+  });
+});
+
 test('keeps an unrelated image that merely links to wbfy', async () => {
   await withTempDir(async (dirPath) => {
     const diagram =
