@@ -78,12 +78,12 @@ export const fsUtil = {
     return true;
   },
   /** Returns whether the file was actually generated (false when the confinement guards skip it). */
-  async generateFile(filePath: string, content: string): Promise<boolean> {
+  async generateFile(filePath: string, content: string, lineEnding: '\n' | '\r\n' = '\n'): Promise<boolean> {
     if (!(await isConfinedWritablePath(filePath))) return false;
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     let normalizedContent = content.trim();
     if (normalizedContent) {
-      normalizedContent += '\n';
+      normalizedContent += lineEnding;
     }
     await fs.promises.writeFile(filePath, normalizedContent);
     console.log(`Generated/Updated ${filePath}`);

@@ -56,6 +56,31 @@ test('stamps the released version and stays idempotent', async () => {
   });
 });
 
+test.each([
+  {
+    name: 'leading HTML comment',
+    input: '<!--\n\nGenerated file; edit elsewhere.\n-->\n\n# Project\n\nDescription.\n',
+    expected: `<!--\n\nGenerated file; edit elsewhere.\n-->\n\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    name: 'CRLF line endings',
+    input: '# Project\r\n\r\nDescription.\r\n',
+    expected: `# Project\r\n\r\n${badgeOf('1.2.3')}\r\n\r\nDescription.\r\n`,
+  },
+  {
+    name: 'no blank line after the heading',
+    input: '# Project\nDescription.\n',
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+])('inserts the badge after the heading with $name', async ({ input, expected }) => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), input);
+
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(expected);
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(expected);
+  });
+});
+
 test('supersedes a badge whose image URL format changed', async () => {
   await withTempDir(async (dirPath) => {
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${legacyBadge}\n`);

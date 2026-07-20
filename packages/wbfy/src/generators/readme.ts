@@ -61,7 +61,7 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       }
     }
 
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.run(() => fsUtil.generateFile(filePath, newContent, getLineEnding(newContent)));
   });
 }
 
@@ -92,20 +92,75 @@ async function hasAnyWorkflowRun(
 }
 
 export function insertBadge(readme: string, badge: string): string {
-  // 既にbadgeがある場合は削除
-  readme = readme.replace(badge, '').replaceAll(/\n\n\n+/g, '\n\n');
+  const lineEnding = getLineEnding(readme);
+  readme = collapseBlankLines(readme.replace(badge, ''), lineEnding);
 
-  for (let i = 0; i < readme.length; i++) {
-    if (readme[i - 1] === '\n' && readme[i] === '\n') {
-      const before = readme.slice(0, i + 1);
-      let after = readme.slice(i + 1);
-      if (!after.startsWith('[') && !after.startsWith('!')) {
-        after = `\n${after}`;
-      }
-      return `${before}${badge}\n${after}`;
+  const headingEnd = findTopLevelHeadingEnd(readme);
+  if (headingEnd === undefined) return `${badge}${lineEnding}${lineEnding}${readme}`;
+
+  const before = readme.slice(0, headingEnd);
+  let after = readme.slice(headingEnd);
+  if (after.startsWith(lineEnding)) after = after.slice(lineEnding.length);
+  if (!after.startsWith(lineEnding)) after = `${lineEnding}${after}`;
+  return `${before}${lineEnding}${lineEnding}${badge}${lineEnding}${after}`;
+}
+
+function findTopLevelHeadingEnd(readme: string): number | undefined {
+  let inHtmlComment = false;
+  let fence: { character: string; length: number } | undefined;
+  let frontMatterMarker: string | undefined;
+  let offset = 0;
+
+  for (const lineWithEnding of readme.matchAll(/.*?(?:\r\n|\n|$)/gu)) {
+    if (!lineWithEnding[0]) break;
+    const line = lineWithEnding[0].replace(/\r?\n$/u, '');
+    const trimmedLine = line.trim();
+
+    if (offset === 0 && (trimmedLine === '---' || trimmedLine === '+++')) {
+      frontMatterMarker = trimmedLine;
+      offset += lineWithEnding[0].length;
+      continue;
     }
+    if (frontMatterMarker) {
+      if (trimmedLine === frontMatterMarker) frontMatterMarker = undefined;
+      offset += lineWithEnding[0].length;
+      continue;
+    }
+
+    if (inHtmlComment) {
+      if (line.includes('-->')) inHtmlComment = false;
+      offset += lineWithEnding[0].length;
+      continue;
+    }
+    if (line.includes('<!--')) {
+      if (!line.includes('-->', line.indexOf('<!--') + 4)) inHtmlComment = true;
+      offset += lineWithEnding[0].length;
+      continue;
+    }
+
+    const fenceMatch = line.match(/^[ \t]{0,3}(`{3,}|~{3,})/u);
+    if (fenceMatch?.[1]) {
+      if (!fence) {
+        fence = { character: fenceMatch[1][0]!, length: fenceMatch[1].length };
+      } else if (fenceMatch[1][0] === fence.character && fenceMatch[1].length >= fence.length) {
+        fence = undefined;
+      }
+      offset += lineWithEnding[0].length;
+      continue;
+    }
+
+    if (!fence && /^[ \t]{0,3}#(?:[ \t]+|$)/u.test(line)) return offset + line.length;
+    offset += lineWithEnding[0].length;
   }
-  return `${readme}\n${badge}\n`;
+  return undefined;
+}
+
+function getLineEnding(content: string): '\n' | '\r\n' {
+  return content.includes('\r\n') ? '\r\n' : '\n';
+}
+
+function collapseBlankLines(content: string, lineEnding: '\n' | '\r\n'): string {
+  return content.replaceAll(/(?:\r?\n){3,}/gu, `${lineEnding}${lineEnding}`);
 }
 
 // Matched by the badge's LINK, not by its image URL: every wbfy badge wbfy ever generated points
@@ -114,21 +169,27 @@ export function insertBadge(readme: string, badge: string): string {
 const wbfyBadgePattern = new RegExp(String.raw`\[!\[[^\]]*\]\([^)\s]*\)\]\(${escapeRegExp(wbfyBadgeLink)}\)`, 'u');
 
 function removeWbfyBadge(readme: string): string {
-  return readme.replaceAll(new RegExp(`${wbfyBadgePattern.source}\n?`, 'gu'), '').replaceAll(/\n\n\n+/g, '\n\n');
+  const lineEnding = getLineEnding(readme);
+  return collapseBlankLines(
+    readme.replaceAll(new RegExp(`${wbfyBadgePattern.source}(?:\\r?\\n)?`, 'gu'), ''),
+    lineEnding
+  );
 }
 
 export function removeGitHubActionsBadge(readme: string, badgeName: string, fileName: string): string {
   const escapedBadgeName = escapeRegExp(badgeName);
   const escapedFileName = escapeRegExp(fileName);
-  return readme
-    .replaceAll(
+  const lineEnding = getLineEnding(readme);
+  return collapseBlankLines(
+    readme.replaceAll(
       new RegExp(
-        String.raw`\[!\[${escapedBadgeName}\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}/badge\.svg\)\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}\)\n?`,
+        String.raw`\[!\[${escapedBadgeName}\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}/badge\.svg\)\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}\)(?:\r?\n)?`,
         'gu'
       ),
       ''
-    )
-    .replaceAll(/\n\n\n+/g, '\n\n');
+    ),
+    lineEnding
+  );
 }
 
 function escapeRegExp(value: string): string {
