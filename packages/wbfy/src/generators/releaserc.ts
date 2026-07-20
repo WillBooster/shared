@@ -19,11 +19,22 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     };
     let plugins = settings.plugins ?? [];
     // A private package without publishConfig releases only to GitHub (e.g. a deployed web app),
-    // so a leftover npm plugin is dead configuration from a published-package template.
-    if (rootConfig.packageJson?.private && !rootConfig.packageJson.publishConfig) {
-      plugins = plugins.filter(
-        (pluginEntry) => (Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry) !== '@semantic-release/npm'
-      );
+    // so a leftover npm plugin is dead configuration from a published-package template — but only
+    // when the plugin provably publishes nothing: an entry that publishes the root keeps working
+    // because generatePackageJson later removes the stale `private` flag for exactly that shape
+    // (npmPublishesRoot), and a pkgRoot entry publishes another manifest regardless of the root's
+    // privacy, so both must be kept.
+    if (
+      rootConfig.packageJson?.private &&
+      !rootConfig.packageJson.publishConfig &&
+      !rootConfig.release.npmPublishesRoot
+    ) {
+      plugins = plugins.filter((pluginEntry) => {
+        const pluginName = Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry;
+        if (pluginName !== '@semantic-release/npm') return true;
+        const options = (Array.isArray(pluginEntry) && (pluginEntry[1] as Record<string, unknown>)) || {};
+        return typeof options.pkgRoot === 'string' && options.npmPublish !== false;
+      });
       settings.plugins = plugins;
     }
     for (let i = 0; i < plugins.length; i++) {

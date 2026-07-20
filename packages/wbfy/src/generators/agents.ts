@@ -51,8 +51,16 @@ function generateAgentInstruction(
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
     ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -- <command>\` instead of expecting \`.env\` files.`
     : '';
-  const cloudflareInstruction = rootConfig.isCloudflare
-    ? '\n- This project deploys to Cloudflare Workers: `wrangler.jsonc` defines bindings and per-environment settings, and `wb deploy` (called from the deploy workflows under `.github/workflows`) performs deployments.'
+  // Gate on an actual wrangler config file (isCloudflare also matches a mere wrangler mention in
+  // a script or workflow), and promise `wb deploy` only when a deploy script really uses it.
+  const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
+  const usesWbDeploy = allConfigs.some((config) =>
+    Object.values(config.packageJson?.scripts ?? {}).some(
+      (script) => typeof script === 'string' && /\bwb deploy\b/u.test(script)
+    )
+  );
+  const cloudflareInstruction = ownsWranglerConfig
+    ? `\n- This project deploys to Cloudflare Workers: the wrangler configuration file defines bindings and per-environment settings, and the deploy workflows under \`.github/workflows\` perform deployments${usesWbDeploy ? ' via `wb deploy`' : ''}.`
     : '';
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway
