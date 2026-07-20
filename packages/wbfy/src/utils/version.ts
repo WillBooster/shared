@@ -61,8 +61,11 @@ function isWbfyRepository(gitRootDirPath: string): boolean {
   return !!remoteUrls
     ?.split('\n')
     // The host is anchored: unanchored, `notgithub.com/WillBooster/shared` also matched, letting a
-    // vendored tree with a lookalike remote claim to be a genuine wbfy checkout.
-    .some((line) => /(?:^|@|\/\/)github\.com[:/]WillBooster\/shared(?:\.git)?$/iu.test(line.split(/[ \t]+/u)[1] ?? ''));
+    // vendored tree with a lookalike remote claim to be a genuine wbfy checkout. An explicit port is
+    // allowed too, since git accepts `ssh://git@github.com:22/WillBooster/shared.git`.
+    .some((line) =>
+      /(?:^|@|\/\/)github\.com(?::\d+)?[:/]WillBooster\/shared(?:\.git)?$/iu.test(line.split(/[ \t]+/u)[1] ?? '')
+    );
 }
 
 function getGitDirtyState(gitRootDirPath: string): boolean | undefined {

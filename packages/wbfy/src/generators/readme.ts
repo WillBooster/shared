@@ -268,9 +268,11 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
       continue;
     }
 
-    // A code span cannot contain a blank line (it would end the paragraph), so one closes any span
-    // still open — otherwise a stray backtick would silence badge removal for the rest of the file.
-    if (openSpan?.kind === 'code' && !trimmedLine) openSpan = undefined;
+    // Neither an inline code span nor a mid-line comment can contain a blank line (it would end the
+    // paragraph), so one closes any span still open — otherwise a stray backtick or `<!--` would
+    // silence badge removal for the rest of the file. A LINE-LEADING comment is a type-2 HTML block
+    // instead, tracked by rawTextTerminator, and it may legitimately span blank lines.
+    if (openSpan && !trimmedLine) openSpan = undefined;
 
     // A line outside the container that opened the block ends it, whatever its own terminator says.
     if ((rawTextTerminator || rawHtmlTag || inHtmlBlock) && exitsContainer(content, blockContainerIndent)) {
@@ -542,6 +544,13 @@ function splitProtectedSpans(
     if (content.startsWith('<!--', index)) {
       const commentEnd = content.indexOf('-->', index + 4);
       if (commentEnd === -1) {
+        // A comment opening MID-LINE is inline HTML, so like a code span it lives inside one
+        // paragraph. Carrying it regardless made an unterminated opener protect the rest of the
+        // file, leaving a stale badge below it live but untouched — and so duplicated.
+        if (!getParagraphRest().includes('-->')) {
+          index += 4;
+          continue;
+        }
         pushSpan(content.length, 'comment');
         carried = { kind: 'comment' };
         break;

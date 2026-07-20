@@ -452,6 +452,16 @@ test('supersedes a badge outside the block quote that opened a code span', async
   });
 });
 
+test('supersedes a badge below an unterminated mid-line comment', async () => {
+  await withTempDir(async (dirPath) => {
+    // A comment opening mid-line is inline HTML, so it cannot reach past the blank line below it.
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText <!-- note\n\n${legacyBadge}\n-->\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
 test('supersedes a badge whose image URL format changed', async () => {
   await withTempDir(async (dirPath) => {
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${legacyBadge}\n`);
