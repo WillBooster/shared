@@ -61,9 +61,10 @@ export async function setup(
         // mise missing or python unconfigured; let poetry pick its default interpreter.
       }
       if (pythonPath) {
-        // The command runs through a shell, so an interpreter path containing whitespace must stay
-        // one argument (mise install paths cannot contain quote characters, so quoting suffices).
-        await runWithSpawnInParallel(`poetry env use "${pythonPath}"`, project, argv);
+        // The command runs through a shell; POSIX single quotes keep the path one literal argument
+        // even when a relocated mise data dir puts metacharacters into it.
+        const quotedPythonPath = `'${pythonPath.replaceAll("'", String.raw`'\''`)}'`;
+        await runWithSpawnInParallel(`poetry env use ${quotedPythonPath}`, project, argv);
       }
       await promisePool.promiseAll();
       await runWithSpawn('poetry run pip install --upgrade pip', project, argv);

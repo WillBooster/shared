@@ -28,8 +28,15 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     // Only an EXPLICIT plugin array is filtered: assigning to an omitted `plugins` would replace
     // semantic-release's default plugin list (which includes the GitHub release plugin) with an
     // empty one, and the default npm plugin already skips private manifests.
+    // With @semantic-release/git present, the npm plugin's prepare step (which bumps
+    // package.json's version even with npmPublish: false) feeds the committed release metadata,
+    // so the entry is load-bearing regardless of privacy.
+    const hasGitPlugin = plugins.some(
+      (pluginEntry) => (Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry) === '@semantic-release/git'
+    );
     if (
       Array.isArray(settings.plugins) &&
+      !hasGitPlugin &&
       rootConfig.packageJson?.private &&
       !rootConfig.packageJson.publishConfig &&
       !(rootConfig.doesContainSubPackageJsons && rootConfig.release.npmPublishesRoot)

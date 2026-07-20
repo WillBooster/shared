@@ -82,8 +82,10 @@ function generateAgentInstruction(
   // The deploy-workflow clause is a filename heuristic (wbfy itself scaffolds `deploy-*.yml`
   // callers); repositories with unrelated `deploy*`-named workflows merely get a slightly
   // broader-than-precise sentence, which is acceptable for guidance prose.
+  // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
+  // inspected, so the wb-deploy clause must not claim the workflow invokes it.
   const cloudflareInstruction = ownsWranglerConfig
-    ? `\n- This project runs on Cloudflare Workers: the wrangler configuration file holds the Worker's configuration, including any bindings and per-environment overrides.${hasDeployWorkflow ? ` The deploy workflows under \`.github/workflows\` perform deployments${usesWbDeploy ? ' via `wb deploy`' : ''}.` : ''}`
+    ? `\n- This project runs on Cloudflare Workers: the wrangler configuration file holds the Worker's configuration, including any bindings and per-environment overrides.${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''}`
     : '';
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway
