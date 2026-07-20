@@ -169,7 +169,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
 
   if (!skipAddingDeps) {
-    installDependencyUpdates(config, jsonObj, dependencyUpdates, 'bun');
+    installDependencyUpdates(config, jsonObj, dependencyUpdates);
     formatPackageJsonWithProjectFormatter(config, 'bun', filePath);
   }
 }
@@ -1709,14 +1709,13 @@ function removeEmptyDependencySections(jsonObj: PackageJson): void {
 function installDependencyUpdates(
   config: PackageConfig,
   jsonObj: PackageJson,
-  dependencyUpdates: DependencyUpdates,
-  packageManager: 'bun' | 'yarn'
+  dependencyUpdates: DependencyUpdates
 ): void {
   const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-  installNpmDependencies(config, packageManager, dependencies, false);
+  installNpmDependencies(config, dependencies, false);
 
   const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-  installNpmDependencies(config, packageManager, devDependencies, true);
+  installNpmDependencies(config, devDependencies, true);
 
   const pythonPackageManager = getPythonPackageManager(config);
   if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
@@ -1739,18 +1738,13 @@ function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
   return 'poetry config virtualenvs.in-project true && poetry env use $(mise current python) && poetry run pip install --upgrade pip && poetry install';
 }
 
-function installNpmDependencies(
-  config: PackageConfig,
-  packageManager: 'bun' | 'yarn',
-  dependencies: string[],
-  dev: boolean
-): void {
+function installNpmDependencies(config: PackageConfig, dependencies: string[], dev: boolean): void {
   if (dependencies.length === 0) return;
 
   const dependencySpecifiers = [
     ...new Set(dependencies.map((dependency) => getInstallDependencySpecifier(config, dependency))),
   ];
-  spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
+  spawnSync('bun', ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
 }
 
 function addPackageJsonDependencies(
@@ -2417,27 +2411,26 @@ async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void
   const packageNames = new Set([...Object.keys(jsonObj.dependencies), ...Object.keys(jsonObj.devDependencies)]);
   const privatePackages: {
     packageName: string;
+    org: string;
     repo: string;
     target: 'dependencies' | 'devDependencies';
   }[] = [
-    { packageName: '@willbooster/auth', repo: 'auth', target: 'dependencies' },
-    { packageName: '@discord-bot/shared', repo: 'discord-bot', target: 'dependencies' },
-    { packageName: '@willbooster/code-analyzer', repo: 'code-analyzer', target: 'devDependencies' },
-    { packageName: '@willbooster/judge', repo: 'judge', target: 'dependencies' },
-    { packageName: '@willbooster/llm-proxy', repo: 'llm-proxy', target: 'dependencies' },
+    { packageName: '@willbooster/code-analyzer', org: 'WillBooster', repo: 'code-analyzer', target: 'devDependencies' },
+    { packageName: '@willbooster/judge', org: 'WillBoosterLab', repo: 'judge', target: 'dependencies' },
+    { packageName: '@willbooster/llm-proxy', org: 'WillBoosterLab', repo: 'llm-proxy', target: 'dependencies' },
   ];
 
   await Promise.all(
-    privatePackages.map(async ({ packageName, repo, target }) => {
+    privatePackages.map(async ({ org, packageName, repo, target }) => {
       if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
 
       const existingSpecifier = jsonObj.dependencies[packageName] ?? jsonObj.devDependencies[packageName];
       const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
       // The lint rule disallows `delete` with computed package names; Reflect has the same deletion semantics here.
       Reflect.deleteProperty(jsonObj[otherTarget], packageName);
-      jsonObj[target][packageName] = isPinnedPrivatePackageSpecifier(existingSpecifier, repo)
+      jsonObj[target][packageName] = isPinnedPrivatePackageSpecifier(existingSpecifier, org, repo)
         ? existingSpecifier
-        : await getLatestPrivatePackageSpecifier(repo);
+        : await getLatestPrivatePackageSpecifier(org, repo);
     })
   );
 }
@@ -2448,14 +2441,18 @@ async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void
  * would otherwise change the dependency's version as a side effect (updating pins is Renovate's
  * job), possibly to a commit whose prebuilt artifacts are missing.
  */
-function isPinnedPrivatePackageSpecifier(specifier: string | undefined, repo: string): specifier is string {
+function isPinnedPrivatePackageSpecifier(
+  specifier: string | undefined,
+  org: string,
+  repo: string
+): specifier is string {
   if (!specifier) return false;
-  return new RegExp(String.raw`(?:^|[:/])WillBoosterLab/${repo}(?:\.git)?#\S+$`, 'u').test(specifier);
+  return new RegExp(String.raw`(?:^|[:/])${org}/${repo}(?:\.git)?#\S+$`, 'u').test(specifier);
 }
 
-async function getLatestPrivatePackageSpecifier(repo: string): Promise<string> {
-  const commitHash = await getLatestCommitHash('WillBoosterLab', repo);
-  return `git@github.com:WillBoosterLab/${repo}.git#${commitHash}`;
+async function getLatestPrivatePackageSpecifier(org: string, repo: string): Promise<string> {
+  const commitHash = await getLatestCommitHash(org, repo);
+  return `git@github.com:${org}/${repo}.git#${commitHash}`;
 }
 
 function isWorkspacePackage(jsonObj: PackageJson, packageName: string): boolean {

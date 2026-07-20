@@ -41,14 +41,15 @@ export async function setup(
         await runWithSpawnInParallel(`brew install ${packages.join(' ')}`, project, argv);
       }
 
-      if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
-        await runWithSpawn('asdf install', project, argv, { exitIfFailed: false });
+      if (dirents.some((d) => d.isFile() && (d.name === 'mise.toml' || d.name.includes('-version')))) {
+        await runWithSpawn('mise install', project, argv, { exitIfFailed: false });
       }
     }
 
     if (dirents.some((d) => d.isFile() && d.name === 'pyproject.toml')) {
       await runWithSpawnInParallel('poetry config virtualenvs.in-project true', project, argv);
-      const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
+      // `mise current python` prints only the resolved version (unlike asdf's `<name> <version> <path>` rows).
+      const version = child_process.execSync('mise current python').toString().trim();
       await runWithSpawnInParallel(`poetry env use ${version}`, project, argv);
       await promisePool.promiseAll();
       await runWithSpawn('poetry run pip install --upgrade pip', project, argv);

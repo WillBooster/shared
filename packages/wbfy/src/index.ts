@@ -36,7 +36,6 @@ import { fixRailwayignore } from './generators/railwayignore.js';
 import { generateReadme } from './generators/readme.js';
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
-import { installAgentSkills } from './generators/skills.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { fixVscodeExtensions, generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
@@ -363,8 +362,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       hasInvalidPackageConfig = true;
     }
     spawnSync('bun', ['cleanup'], rootDirPath);
-
-    await installAgentSkills(rootConfig);
   }
   return hasInvalidPackageConfig;
 }

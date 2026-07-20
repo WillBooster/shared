@@ -51,6 +51,9 @@ function generateAgentInstruction(
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
     ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -- <command>\` instead of expecting \`.env\` files.`
     : '';
+  const cloudflareInstruction = rootConfig.isCloudflare
+    ? '\n- This project deploys to Cloudflare Workers: `wrangler.jsonc` defines bindings and per-environment settings, and `wb deploy` (called from the deploy workflows under `.github/workflows`) performs deployments.'
+    : '';
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway
     ? '\n- Railway project information is in the deploy workflows under `.github/workflows`.'
@@ -83,7 +86,7 @@ function generateAgentInstruction(
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
-- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${fnoxInstruction}${railwayInstruction}${playwrightTestServerInstruction}
+- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
 ${generateAgentCodingStyle(allConfigs)}
 `
