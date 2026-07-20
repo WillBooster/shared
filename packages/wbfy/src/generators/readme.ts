@@ -309,9 +309,7 @@ function splitProtectedSpans(content: string): { text: string; isProtected: bool
     if (content[index] === '`') {
       const fence = /^`+/u.exec(content.slice(index))![0];
       // Only a run of exactly the same length closes the span, so a longer run is skipped over.
-      const closing = new RegExp(String.raw`(?<!\`)\`{${fence.length}}(?!\`)`, 'u').exec(
-        content.slice(index + fence.length)
-      );
+      const closing = new RegExp('(?<!`)`{' + fence.length + '}(?!`)', 'u').exec(content.slice(index + fence.length));
       if (closing) {
         pushSpan(index + fence.length + closing.index + fence.length);
         continue;
