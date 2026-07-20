@@ -17,7 +17,15 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     const settings = JSON.parse(await fs.promises.readFile(filePath, 'utf8')) as {
       plugins?: (string | [string, unknown])[];
     };
-    const plugins = settings.plugins ?? [];
+    let plugins = settings.plugins ?? [];
+    // A private package without publishConfig releases only to GitHub (e.g. a deployed web app),
+    // so a leftover npm plugin is dead configuration from a published-package template.
+    if (rootConfig.packageJson?.private && !rootConfig.packageJson.publishConfig) {
+      plugins = plugins.filter(
+        (pluginEntry) => (Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry) !== '@semantic-release/npm'
+      );
+      settings.plugins = plugins;
+    }
     for (let i = 0; i < plugins.length; i++) {
       const pluginEntry = plugins[i];
       const isArray = Array.isArray(pluginEntry);
@@ -37,6 +45,10 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
           ),
         ];
       } else if (plugin === '@semantic-release/github') {
+        // successCommentCondition/failCommentCondition below supersede these deprecated options;
+        // keeping both makes semantic-release warn and the config ambiguous.
+        delete (oldConfig as Record<string, unknown>).successComment;
+        delete (oldConfig as Record<string, unknown>).failComment;
         plugins[i] = [
           '@semantic-release/github',
           merge.all(
