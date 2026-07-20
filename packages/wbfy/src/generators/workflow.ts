@@ -763,8 +763,8 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
   // fork PRs where exposing a decryption secret would be unsafe. wb degrades gracefully (warns
   // and proceeds without fnox variables) when fnox is unavailable.
   const steps: Step[] = [
-    { uses: 'actions/checkout@v6' },
-    { uses: 'actions/setup-node@v6', with: { 'check-latest': true, 'node-version': 'lts/*' } },
+    { uses: 'actions/checkout@v7' },
+    { uses: 'actions/setup-node@v7', with: { 'check-latest': true, 'node-version': 'lts/*' } },
     { uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } },
     { run: 'bun install' },
     { run: 'bun run cleanup' },

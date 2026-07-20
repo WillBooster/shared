@@ -58,6 +58,7 @@ import type { PackageConfig } from './packageConfig.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
+import { gitHubUtil } from './utils/githubUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
@@ -114,6 +115,23 @@ async function main(): Promise<void> {
   }
 }
 
+// Repositories deliberately kept off the standard, by GitHub repository name. exercode pins
+// dependencies through Yarn patches that have no Bun equivalent, so its migration is a manual
+// decision that must not be re-reported as an error on every run.
+export const excludedRepoNames = new Set(['exercode']);
+
+/** Whether the repository is on the exclusion list, matched by its GitHub repository name. */
+export function isExcludedRepo(rootDirPath: string, packageJson: PackageConfig['packageJson']): boolean {
+  const repositoryUrl =
+    typeof packageJson?.repository === 'string' ? packageJson.repository : packageJson?.repository?.url;
+  // The manifest names the repository canonically; a checkout directory may be renamed freely, so
+  // it is only the fallback for a manifest without a repository field.
+  const repoName = repositoryUrl
+    ? gitHubUtil.getOrgAndName(repositoryUrl)[1]
+    : path.basename(path.resolve(rootDirPath));
+  return excludedRepoNames.has(repoName);
+}
+
 async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<boolean> {
   // wbfy rewrites repositories to the Bun + mise toolchain and runs `bun add` / `bun install`;
   // proceeding without Bun would delete Yarn state and then fail to produce a Bun lockfile.
@@ -135,6 +153,15 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     // Confine every generated file to this repository (see fsUtil.generateFile). Set BEFORE any
     // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
     fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
+    const rootPackageJson =
+      ignoreError(
+        () =>
+          JSON.parse(fs.readFileSync(path.resolve(rootDirPath, 'package.json'), 'utf8')) as PackageConfig['packageJson']
+      ) ?? {};
+    if (isExcludedRepo(rootDirPath, rootPackageJson)) {
+      console.info(`Skip ${rootDirPath}: excluded from wbfy.`);
+      continue;
+    }
     // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
     // automatic Bun translation must abort the whole migration for this path, not just the file
     // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.
@@ -142,7 +169,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     if (unmigratableYarnSettings) {
       console.error(
         `Skip ${rootDirPath}: ${unmigratableYarnSettings}. ` +
-          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy.'
+          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy, ' +
+          "or add the repository to wbfy's excludedRepoNames when it is deliberately kept off the standard."
       );
       hasInvalidPackageConfig = true;
       continue;
@@ -155,11 +183,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       .map((d) => path.resolve(packagesDirPath, d.name));
     // Also cover workspaces declared outside packages/* (e.g. apps/*): they receive the same
     // managed configs (tsconfig.json, package.json conventions, …) as packages/* children.
-    const rootPackageJson =
-      ignoreError(
-        () =>
-          JSON.parse(fs.readFileSync(path.resolve(rootDirPath, 'package.json'), 'utf8')) as PackageConfig['packageJson']
-      ) ?? {};
     const workspaceSubDirPaths = getWorkspaceSubDirPaths({
       dirPath: rootDirPath,
       packageJson: rootPackageJson,
