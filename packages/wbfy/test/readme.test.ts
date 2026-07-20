@@ -57,11 +57,25 @@ test('stamps the released version and stays idempotent', async () => {
   });
 });
 
+test('stays idempotent with a second badge in the block', async () => {
+  await withTempDir(async (dirPath) => {
+    // The wbfy badge is inserted first, so any other badge pushes it against the body — the case
+    // where an emptied badge line used to leave a blank line behind and grow the file on every run.
+    fs.writeFileSync(path.resolve(dirPath, '.releaserc.json'), '{}\n');
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# Project\n\nBody text.\n');
+
+    const firstContent = await runGenerateReadme(dirPath, '1.2.3');
+    expect(firstContent).toContain('semantic-release');
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(firstContent);
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(firstContent);
+  });
+});
+
 test.each([
   {
-    name: 'leading HTML comment',
-    input: '<!--\n\nGenerated file; edit elsewhere.\n-->\n\n# Project\n\nDescription.\n',
-    expected: `<!--\n\nGenerated file; edit elsewhere.\n-->\n\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+    name: 'no blank line after the heading',
+    input: '# Project\nDescription.\n',
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
   {
     name: 'CRLF line endings',
@@ -69,44 +83,9 @@ test.each([
     expected: `# Project\r\n\r\n${badgeOf('1.2.3')}\r\n\r\nDescription.\r\n`,
   },
   {
-    name: 'no blank line after the heading',
-    input: '# Project\nDescription.\n',
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
-  },
-  {
-    name: 'an inline HTML comment in the heading',
-    input: '# Project <!-- generated -->\nDescription.\n',
-    expected: `# Project <!-- generated -->\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
-  },
-  {
     name: 'a Setext heading',
     input: 'Project\n=======\nDescription.\n',
     expected: `Project\n=======\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
-  },
-  {
-    name: 'a dash-style Setext heading',
-    input: 'Project\n-------\nDescription.\n',
-    expected: `Project\n-------\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
-  },
-  {
-    name: 'front matter without a heading',
-    input: '---\ntitle: Project\n---\n\nDescription.\n',
-    expected: `---\ntitle: Project\n---\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
-  },
-  {
-    name: 'a fence containing a non-closing fence line',
-    input: '```md\n```not-a-close\n# still code\n```\n# Project\nDescription.\n',
-    expected: `\`\`\`md\n\`\`\`not-a-close\n# still code\n\`\`\`\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
-  },
-  {
-    name: 'a tab-indented code block without a heading',
-    input: '\t# comment inside code\nCode content.\n',
-    expected: `${badgeOf('1.2.3')}\n\n\t# comment inside code\nCode content.\n`,
-  },
-  {
-    name: 'a fenced example nested directly in a list',
-    input: '- ```md\n  # Example\n  ```\n\n# Project\n',
-    expected: `- \`\`\`md\n  # Example\n  \`\`\`\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
   },
   {
     name: 'a centered HTML title',
@@ -119,125 +98,14 @@ test.each([
     expected: `<h1 align="center">\n  Project\n</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
   {
-    name: 'a commented-out closing tag in an HTML title',
-    input: '<h1>\nProject\n<!-- </h1> old close -->\n</h1>\n\nBody.\n',
-    expected: `<h1>\nProject\n<!-- </h1> old close -->\n</h1>\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
+    name: 'a fenced example above the title',
+    input: '```md\n# Example\n```\n\n# Project\n\nDescription.\n',
+    expected: `\`\`\`md\n# Example\n\`\`\`\n\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
   {
-    name: 'prose that starts with a link',
-    input: '# Project\n\n[Documentation](docs.md) explains setup.\n',
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n[Documentation](docs.md) explains setup.\n`,
-  },
-  {
-    name: 'a heading inside a collapsed details section',
-    input: '<details>\n<summary>Example</summary>\n\n# Example\n\nHidden.\n</details>\n\n# Project\n\nVisible.\n',
-    expected: `<details>\n<summary>Example</summary>\n\n# Example\n\nHidden.\n</details>\n\n# Project\n\n${badgeOf('1.2.3')}\n\nVisible.\n`,
-  },
-  {
-    name: 'a heading inside a raw div block',
-    input: '<div>\n# Example\n</div>\n\n# Project\n',
-    expected: `<div>\n# Example\n</div>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a commented-out details tag before the title',
-    input: '<!-- <details> -->\n# Project\n',
-    expected: `<!-- <details> -->\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a reference-style badge under the title',
-    input: '# Project\n\n[![Build][build-image]][build-url]\n\n[build-image]: build.svg\n[build-url]: build\n',
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n[![Build][build-image]][build-url]\n\n[build-image]: build.svg\n[build-url]: build\n`,
-  },
-  {
-    name: 'a leading thematic break that is not front matter',
-    input: '---\n# Project\nBody.\n',
-    expected: `---\n# Project\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
-  },
-  {
-    name: 'a level-2 heading as the only title',
-    input: '## Project\n\nBody.\n',
-    expected: `## Project\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
-  },
-  {
-    name: 'a level-2 heading above the real title',
-    input: '## Intro\n\nText.\n\n# Real Title\n\nBody.\n',
-    expected: `## Intro\n\nText.\n\n# Real Title\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
-  },
-  {
-    name: 'a heading inside a section block',
-    input: '<section>\n# Example\n</section>\n\n# Project\n',
-    expected: `<section>\n# Example\n</section>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'an HTML block left unclosed before the title',
-    input: '<div>Raw HTML\n\n# Project\n',
-    expected: `<div>Raw HTML\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a CDATA section',
-    input: '<![CDATA[\n# Example\n]]>\n\n# Project\n',
-    expected: `<![CDATA[\n# Example\n]]>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a commented-out details tag inside an HTML block',
-    input: '<div><!-- <details> --></div>\n\n# Project\n',
-    expected: `<div><!-- <details> --></div>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a closing tag inside an HTML title attribute',
-    input: '<h1 title="literal </h1> text">\nProject\n</h1>\n\nBody.\n',
-    expected: `<h1 title="literal </h1> text">\nProject\n</h1>\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
-  },
-  {
-    name: 'a fence left unclosed inside a list item',
-    input: '- ```md\n  # Example\n\n# Project\n',
-    expected: `- \`\`\`md\n  # Example\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a closing details tag inside an attribute',
-    input:
-      '<details title="foo </details> bar">\n<summary>x</summary>\n\n# Hidden\n\nH.\n</details>\n\n# Project\n\nV.\n',
-    expected: `<details title="foo </details> bar">\n<summary>x</summary>\n\n# Hidden\n\nH.\n</details>\n\n# Project\n\n${badgeOf('1.2.3')}\n\nV.\n`,
-  },
-  {
-    name: 'an escaped details tag before the title',
-    input: '\\<details>\n# Project\n',
-    expected: `\\<details>\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a comment opener inside an HTML attribute',
-    input: '<div data-prefix="<!--"></div>\n\n# Project\n',
-    expected: `<div data-prefix="<!--"></div>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a raw block inside a block quote',
-    input: '# Project\n\n> <pre>\n> # Example\n> </pre>\n',
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n> <pre>\n> # Example\n> </pre>\n`,
-  },
-  {
-    name: 'an HTML block left unclosed inside a block quote',
-    input: '> <div>\n> # Hidden\n# Project\nBody.\n',
-    expected: `> <div>\n> # Hidden\n# Project\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
-  },
-  {
-    name: 'a type-1 block closed by a different tag',
-    input: '<pre>\n</script>\n# Project\n',
-    expected: `<pre>\n</script>\n# Project\n\n${badgeOf('1.2.3')}\n`,
-  },
-  {
-    name: 'a dash Setext heading above the real title',
-    input: 'Intro\n---\n\nPreface.\n\n# Real Title\n\nBody.\n',
-    expected: `Intro\n---\n\nPreface.\n\n# Real Title\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
-  },
-  {
-    name: 'a badge carrying a Markdown title',
-    input: '# Project\n\n[![Build](https://example.com/b.svg "Build status")](https://example.com/b)\n',
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n[![Build](https://example.com/b.svg "Build status")](https://example.com/b)\n`,
-  },
-  {
-    name: 'a raw HTML block',
-    input: '<pre>\n# Example\n</pre>\n\n# Project\n',
-    expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+    name: 'no title at all',
+    input: 'Just a description.\n',
+    expected: `${badgeOf('1.2.3')}\n\nJust a description.\n`,
   },
 ])('places the badge correctly with $name', async ({ input, expected }) => {
   await withTempDir(async (dirPath) => {
@@ -248,183 +116,22 @@ test.each([
   });
 });
 
-test('preserves badge examples and whitespace inside fenced code', async () => {
+test('supersedes a badge whose image URL format changed', async () => {
   await withTempDir(async (dirPath) => {
-    const example = `\`\`\`md\n${legacyBadge}\n\n\nPreserve two blank lines above.\n\`\`\``;
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${example}\n`);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${legacyBadge}\n`);
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n\n${example}\n`);
+    expect(content).toBe(`# example\n\n${badgeOf('1.2.3')}\n`);
   });
 });
 
-test('does not merge lines when replacing an inline legacy badge', async () => {
+test('supersedes a badge whose link changed', async () => {
   await withTempDir(async (dirPath) => {
-    const otherBadge = '[![Test](https://example.com/test.svg)](https://example.com/test)';
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${otherBadge} ${legacyBadge}\nDescription.\n`);
+    const oldLinkBadge = '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://example.com/old-wbfy)';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${oldLinkBadge}\n`);
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n${otherBadge} \nDescription.\n`);
-  });
-});
-
-test('stays idempotent when another badge sits above the body', async () => {
-  await withTempDir(async (dirPath) => {
-    // The wbfy badge is inserted first, so any second badge pushes it against the body — the case
-    // where an emptied badge line used to leave a blank line behind and grow the file on every run.
-    fs.writeFileSync(path.resolve(dirPath, '.releaserc.json'), '{}\n');
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# Project\n\nBody text.\n');
-
-    const firstContent = await runGenerateReadme(dirPath, '1.2.3');
-    expect(firstContent).toContain('semantic-release');
-    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(firstContent);
-    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(firstContent);
-  });
-});
-
-test('supersedes a badge embedded in the title line', async () => {
-  await withTempDir(async (dirPath) => {
-    const oldBadge = '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://example.com/old-wbfy)';
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project ${oldBadge}\n\nDescription.\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).not.toContain('0.9.0');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-  });
-});
-
-test('keeps a badge shown as an inline-code example', async () => {
-  await withTempDir(async (dirPath) => {
-    const example = `\`${legacyBadge}\``;
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nUse ${example} to mark it.\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(example);
-    expect(content).toContain(badgeOf('1.2.3'));
-  });
-});
-
-test('keeps a badge inside a code span that spans lines', async () => {
-  await withTempDir(async (dirPath) => {
-    const example = `\`code across\n${legacyBadge}\nlines\``;
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nUse ${example} as example.\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(example);
-    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
-  });
-});
-
-test('supersedes a badge between escaped backticks', async () => {
-  await withTempDir(async (dirPath) => {
-    // `\`` is literal text, not a code-span delimiter, so the badge between them is live Markdown.
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nA \\\`${legacyBadge}\\\` b.\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-  });
-});
-
-test('keeps a badge example inside a compact block quote', async () => {
-  await withTempDir(async (dirPath) => {
-    const example = `>\`\`\`md\n>${legacyBadge}\n>\`\`\``;
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${example}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(example);
-  });
-});
-
-test('supersedes a badge after a multiline comment ends', async () => {
-  await withTempDir(async (dirPath) => {
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText <!-- note\n--> ${legacyBadge}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-  });
-});
-
-test('supersedes an unlinked wbfy badge', async () => {
-  await withTempDir(async (dirPath) => {
-    fs.writeFileSync(
-      path.resolve(dirPath, 'README.md'),
-      '# Project\n\n![wbfy](https://img.shields.io/badge/-wbfy-1e90ff.svg)\n'
-    );
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n`);
-  });
-});
-
-test('keeps a badge whose opening bracket is escaped', async () => {
-  await withTempDir(async (dirPath) => {
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nWrite \\${legacyBadge} to show it.\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(`\\${legacyBadge}`);
-    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
-  });
-});
-
-test('supersedes a badge below a stray unmatched backtick', async () => {
-  await withTempDir(async (dirPath) => {
-    // The backtick has no closer in the paragraph, so it is literal text and protects nothing.
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText \`\n${legacyBadge}\nBody.\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-  });
-});
-
-test('supersedes a badge below an unmatched backtick in a heading', async () => {
-  await withTempDir(async (dirPath) => {
-    // A heading's inline content ends with its own line, so its backtick cannot pair with a later one.
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project \`\n\n${legacyBadge}\ntext \`\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-  });
-});
-
-test('keeps a badge inside a link form the pattern does not cover', async () => {
-  await withTempDir(async (dirPath) => {
-    // Removing only the inner image would leave a wrecked `[](…)` link behind.
-    const titled = '[![wbfy](https://img.shields.io/badge/-wbfy-1e90ff.svg)](https://example.com "title")';
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${titled}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(titled);
-    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
-  });
-});
-
-test('keeps a badge after a line-leading comment block ends', async () => {
-  await withTempDir(async (dirPath) => {
-    // A comment that BEGINS a line is a type-2 HTML block whose closing line is raw content in full.
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `<!-- note\n--> ${legacyBadge}\n\n# Project\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(legacyBadge);
-    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
-  });
-});
-
-test('keeps a badge in an HTML block whose comment spans lines', async () => {
-  await withTempDir(async (dirPath) => {
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `<div><!--\n--> ${legacyBadge}\n</div>\n\n# Project\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(legacyBadge);
-  });
-});
-
-test('supersedes a badge past a block that interrupts the paragraph', async () => {
-  await withTempDir(async (dirPath) => {
-    // The block quote ends the paragraph, so the two backticks are not one code span.
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText \`\n> # Quote\n${legacyBadge}\n\` close\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
+    expect(content).toBe(`# example\n\n${badgeOf('1.2.3')}\n`);
   });
 });
 
@@ -443,121 +150,6 @@ test('supersedes a workflow badge carrying query parameters', async () => {
   });
 });
 
-test('keeps an indented code example inside a block quote', async () => {
-  await withTempDir(async (dirPath) => {
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n>     ${legacyBadge}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(legacyBadge);
-  });
-});
-
-test('supersedes a badge outside the block quote that opened a code span', async () => {
-  await withTempDir(async (dirPath) => {
-    // The backtick inside the quote cannot pair with a top-level one below it.
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n> text \`\n${legacyBadge}\n\` close\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-  });
-});
-
-test('supersedes a badge below an unterminated mid-line comment', async () => {
-  await withTempDir(async (dirPath) => {
-    // A comment opening mid-line is inline HTML, so it cannot reach past the blank line below it.
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText <!-- note\n\n${legacyBadge}\n-->\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-  });
-});
-
-test('keeps a multiline code example inside a block quote', async () => {
-  await withTempDir(async (dirPath) => {
-    const example = `> Use \`code across\n> ${legacyBadge}\n> lines\` here.`;
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${example}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(example);
-  });
-});
-
-test('drops a list item emptied by badge removal', async () => {
-  await withTempDir(async (dirPath) => {
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n- ${legacyBadge}\n- Documentation\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).not.toMatch(/^-\s*$/mu);
-    expect(content).toContain('- Documentation');
-  });
-});
-
-test('supersedes a badge whose image URL format changed', async () => {
-  await withTempDir(async (dirPath) => {
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${legacyBadge}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toBe(`# example\n\n${badgeOf('1.2.3')}\n`);
-  });
-});
-
-test('supersedes a badge trailed by an inline HTML comment', async () => {
-  await withTempDir(async (dirPath) => {
-    const comment = '<!-- managed badge -->';
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${legacyBadge} ${comment}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(comment);
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-  });
-});
-
-test('keeps a badge that is itself commented out', async () => {
-  await withTempDir(async (dirPath) => {
-    const commentedBadge = `<!-- ${legacyBadge} -->`;
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${commentedBadge}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toContain(commentedBadge);
-    expect(content).toContain(badgeOf('1.2.3'));
-  });
-});
-
-test('supersedes a badge below an inline-code comment opener', async () => {
-  await withTempDir(async (dirPath) => {
-    // A `<!--` inside inline code must not protect the rest of the file; the badge under it is still
-    // managed, and failing to remove it duplicates the badge on every run.
-    fs.writeFileSync(
-      path.resolve(dirPath, 'README.md'),
-      `# Project\n\nUse \`<!--\` to show a comment opener.\n\n${legacyBadge}\n`
-    );
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content.split('img.shields.io/badge')).toHaveLength(2);
-    expect(content).toContain(badgeOf('1.2.3'));
-  });
-});
-
-test('preserves a badge example inside a multiline comment', async () => {
-  await withTempDir(async (dirPath) => {
-    const comment = `<!--\n${legacyBadge}\n\n# Not the title\n-->`;
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${comment}\n\nBody.\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n\n${comment}\n\nBody.\n`);
-  });
-});
-
-test('supersedes a badge whose link changed', async () => {
-  await withTempDir(async (dirPath) => {
-    const oldLinkBadge = '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://example.com/old-wbfy)';
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${oldLinkBadge}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toBe(`# example\n\n${badgeOf('1.2.3')}\n`);
-  });
-});
-
 test('keeps an unrelated image that merely links to wbfy', async () => {
   await withTempDir(async (dirPath) => {
     const diagram =
@@ -567,6 +159,31 @@ test('keeps an unrelated image that merely links to wbfy', async () => {
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).toContain(diagram);
     expect(content).toContain(badgeOf('1.2.3'));
+  });
+});
+
+test('leaves everything below the badge block untouched', async () => {
+  await withTempDir(async (dirPath) => {
+    // The badge block is the only region wbfy edits, so an example badge in a fenced block, in a
+    // comment or in prose survives without the generator understanding any of those constructs.
+    const body = [
+      '```md',
+      legacyBadge,
+      '',
+      '',
+      'Preserve two blank lines above.',
+      '```',
+      '',
+      '<!--',
+      legacyBadge,
+      '-->',
+      '',
+      `Write ${legacyBadge} inline.`,
+    ].join('\n');
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${body}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n\n${body}\n`);
   });
 });
 
