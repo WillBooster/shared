@@ -149,6 +149,11 @@ test.each([
     expected: `# Project\n\n${badgeOf('1.2.3')}\n[![Build][build-image]][build-url]\n\n[build-image]: build.svg\n[build-url]: build\n`,
   },
   {
+    name: 'a leading thematic break that is not front matter',
+    input: '---\n# Project\nBody.\n',
+    expected: `---\n# Project\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
@@ -245,6 +250,21 @@ test('keeps a badge that is itself commented out', async () => {
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).toContain(commentedBadge);
+    expect(content).toContain(badgeOf('1.2.3'));
+  });
+});
+
+test('supersedes a badge below an inline-code comment opener', async () => {
+  await withTempDir(async (dirPath) => {
+    // A `<!--` inside inline code must not protect the rest of the file; the badge under it is still
+    // managed, and failing to remove it duplicates the badge on every run.
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      `# Project\n\nUse \`<!--\` to show a comment opener.\n\n${legacyBadge}\n`
+    );
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
     expect(content).toContain(badgeOf('1.2.3'));
   });
 });

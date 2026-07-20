@@ -204,7 +204,7 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     const end = start + content.length;
     offset += fullLine.length;
 
-    if (start === 0 && (trimmedLine === '---' || trimmedLine === '+++')) {
+    if (start === 0 && (trimmedLine === '---' || trimmedLine === '+++') && hasFrontMatterEnd(readme, trimmedLine)) {
       frontMatterMarker = trimmedLine;
       lines.push({ content, end, ending, isProtected: true });
       continue;
@@ -255,9 +255,15 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
       continue;
     }
 
-    const htmlCommentStart = content.indexOf('<!--');
-    const hasHtmlComment = htmlCommentStart !== -1;
-    if (hasHtmlComment && !content.includes('-->', htmlCommentStart + 4)) inHtmlComment = true;
+    // Only a VISIBLE opener starts a comment: a `<!--` shown inside an inline code span (`` `<!--` ``)
+    // would otherwise protect the whole rest of the file, leaving managed badges below it
+    // unremovable and therefore duplicated on the next run.
+    const visibleContent = splitProtectedSpans(content)
+      .filter((segment) => !segment.isProtected)
+      .map((segment) => segment.text)
+      .join('');
+    const htmlCommentStart = visibleContent.indexOf('<!--');
+    if (htmlCommentStart !== -1 && !visibleContent.includes('-->', htmlCommentStart + 4)) inHtmlComment = true;
     lines.push({
       content,
       end,
@@ -339,6 +345,18 @@ function isBadgeLine(line: string): boolean {
     .replaceAll(/\[!\[[^\]]*\](?:\([^\s)]*\)|\[[^\]]*\])\](?:\([^\s)]*\)|\[[^\]]*\])/gu, '')
     .replaceAll(/!\[[^\]]*\](?:\([^\s)]*\)|\[[^\]]*\])/gu, '')
     .trim();
+}
+
+/**
+ * Tells whether an opening front-matter delimiter is actually closed. An unclosed leading `---` is a
+ * thematic break, not front matter; treating it as front matter protects the whole document and
+ * hides the title from the badge anchor.
+ */
+function hasFrontMatterEnd(readme: string, marker: string): boolean {
+  return readme
+    .split(/\r?\n/u)
+    .slice(1)
+    .some((line) => line.trim() === marker);
 }
 
 function isIndentedCode(line: string): boolean {
