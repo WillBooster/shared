@@ -112,9 +112,11 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'if true; then bun wb deploy -w packages/api; fi',
       'time bun wb deploy -w packages/api',
       'exec bun wb deploy -w packages/api',
-      // A preceding `cd`/`pushd` changes the directory the later `wb deploy` resolves from.
+      // A preceding `cd`/`pushd` changes the directory the later `wb deploy` resolves from —
+      // including when wrapped in a `command`/`env` launcher.
       'cd packages/api && wb deploy',
       'pushd packages/api && bun wb deploy',
+      'command cd packages/api && wb deploy',
     ]) {
       expect(generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig)).toBeUndefined();
     }

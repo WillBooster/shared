@@ -813,10 +813,6 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
   for (const tokens of segments) {
     let index = 0;
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
-    // A preceding `cd`/`pushd`/`popd` segment (`cd packages/api && wb deploy`) changes the working
-    // directory the later `wb deploy` resolves `-w` and wrangler paths from, which this per-segment
-    // parser cannot recover, so decline rather than resolve from the repo root.
-    if (['cd', 'pushd', 'popd'].includes(tokens[index] ?? '')) return undefined;
     // Leading launchers run the following command: `env` (with options + KEY=value assignments)
     // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Command-position shell
     // reserved words and other launchers (`if`/`then`/`for`/`time`/`exec`/`!`/brace groups, …) are
@@ -853,6 +849,11 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
       }
     }
     if (index < 0) continue;
+    // A `cd`/`pushd`/`popd` at command position (`cd packages/api && wb deploy`, or wrapped in
+    // `command`/`env`) changes the directory the later `wb deploy` resolves `-w` and wrangler paths
+    // from, which this per-segment parser cannot recover, so decline. Checked AFTER unwrapping the
+    // launchers so `command cd …` is caught too.
+    if (['cd', 'pushd', 'popd'].includes(tokens[index] ?? '')) return undefined;
     // Resolve a runner prefix to whether the following token is a BINARY (the wb executable) or a
     // package SCRIPT name. `bunx`/`npx` and `<pm> x|dlx|exec` run a binary; `<pm> run|run-script`
     // (and bare `npm <name>`, or any runner followed by `--`) run a package script — so
