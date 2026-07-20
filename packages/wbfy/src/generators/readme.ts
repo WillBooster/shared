@@ -223,22 +223,25 @@ function visibleContentOf(line: MarkdownLine): string {
 function analyzeMarkdown(readme: string): MarkdownAnalysis {
   let openSpan: OpenSpan | undefined;
   let inHtmlBlock = false;
-  let fence: { character: string; length: number } | undefined;
+  let fence: { character: string; length: number; containerIndent: number } | undefined;
   let frontMatterMarker: string | undefined;
   let rawHtmlTag: string | undefined;
+  let rawTextTerminator: string | undefined;
   let frontMatterEnd: number | undefined;
   let offset = 0;
   const lines: MarkdownLine[] = [];
 
-  for (const lineWithEnding of readme.matchAll(/.*?(?:\r\n|\n|$)/gu)) {
-    if (!lineWithEnding[0]) break;
-    const fullLine = lineWithEnding[0];
+  const rawLines = [...readme.matchAll(/.*?(?:\r\n|\n|$)/gu)].map((match) => match[0]).filter(Boolean);
+  for (const [lineIndex, fullLine] of rawLines.entries()) {
     const ending = fullLine.match(/\r?\n$/u)?.[0] ?? '';
     const content = fullLine.slice(0, fullLine.length - ending.length);
     const trimmedLine = content.trim();
     const start = offset;
     const end = start + content.length;
     offset += fullLine.length;
+    // A code span may continue onto later lines but never past a blank one, so an unmatched backtick
+    // is only a span opener when its closer appears in the rest of THIS paragraph.
+    const paragraphRest = takeParagraphRest(rawLines, lineIndex + 1);
 
     if (start === 0 && (trimmedLine === '---' || trimmedLine === '+++') && hasFrontMatterEnd(readme, trimmedLine)) {
       frontMatterMarker = trimmedLine;
@@ -262,39 +265,60 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     // state rather than read as fresh Markdown. Only the part up to the closing delimiter stays
     // protected: text after a `-->` is live Markdown, and a badge there must still be superseded.
     if (openSpan) {
-      const split = splitProtectedSpans(content, openSpan);
+      const split = splitProtectedSpans(content, openSpan, paragraphRest);
       openSpan = split.openSpan;
       lines.push(buildSpanLine(content, end, ending, split.spans));
       continue;
     }
 
+    // Types 1 and 3-5 hold VERBATIM text and each run to their own terminator.
+    if (rawTextTerminator) {
+      if (content.includes(rawTextTerminator)) rawTextTerminator = undefined;
+      lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
+      continue;
+    }
+
     if (rawHtmlTag) {
       if (hasRawHtmlClosingTag(content, rawHtmlTag)) rawHtmlTag = undefined;
-      lines.push({ content, end, ending, isProtected: true, isRawText: false, spans: [] });
+      lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
       continue;
     }
 
     // A CommonMark type-6 HTML block ends at a BLANK LINE, not at a closing tag, and that blank line
     // sits outside the block. Waiting for the closing tag instead left an unclosed block open to the
-    // end of the file, hiding the real title from the badge anchor.
+    // end of the file, hiding the real title from the badge anchor. Its spans are still computed: the
+    // block holds live markup, so a `<details>` commented out inside it must not count as an opener.
     if (inHtmlBlock) {
       if (!trimmedLine) inHtmlBlock = false;
-      lines.push({ content, end, ending, isProtected: !!trimmedLine, isRawText: false, spans: [] });
+      const split = splitProtectedSpans(content, openSpan, paragraphRest);
+      openSpan = split.openSpan;
+      lines.push({ content, end, ending, isProtected: !!trimmedLine, isRawText: false, spans: split.spans });
       continue;
     }
 
     if (fence) {
-      const fenceMatch = getContainerContent(content).match(/^ {0,3}(`+|~+)[ \t]*$/u)?.[1];
-      if (fenceMatch?.[0] === fence.character && fenceMatch.length >= fence.length) fence = undefined;
-      lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
-      continue;
+      // An unclosed fence ends with the list item or block quote that opened it, so a line that falls
+      // outside that container closes it — otherwise the rest of the file stays code and the real
+      // title never anchors.
+      if (trimmedLine && leadingWhitespaceOf(content) < fence.containerIndent && !isContainerStart(content)) {
+        fence = undefined;
+      } else {
+        const fenceMatch = getContainerContent(content).match(/^ {0,3}(`+|~+)[ \t]*$/u)?.[1];
+        if (fenceMatch?.[0] === fence.character && fenceMatch.length >= fence.length) fence = undefined;
+        lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
+        continue;
+      }
     }
 
     const openingFenceMatch = getContainerContent(content).match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
     const fenceMatch = openingFenceMatch?.[1];
     const fenceInfo = openingFenceMatch?.[2] ?? '';
     if (fenceMatch && (fenceMatch[0] === '~' || !fenceInfo.includes('`'))) {
-      fence = { character: fenceMatch[0]!, length: fenceMatch.length };
+      fence = {
+        character: fenceMatch[0]!,
+        length: fenceMatch.length,
+        containerIndent: content.length - getContainerContent(content).length,
+      };
       lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
       continue;
     }
@@ -308,18 +332,55 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
       lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
       continue;
     }
+    // CommonMark HTML block types 3-5: a processing instruction, a declaration and a CDATA section.
+    // Each holds verbatim text that the badge must not be inserted into.
+    const rawTextOpener = RAW_TEXT_BLOCKS.find(([opener]) => new RegExp(`^ {0,3}${opener}`, 'u').test(content));
+    if (rawTextOpener) {
+      const [, terminator] = rawTextOpener;
+      if (!content.slice(content.indexOf('<')).includes(terminator)) rawTextTerminator = terminator;
+      lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
+      continue;
+    }
     if (htmlBlockPattern.test(content)) {
       inHtmlBlock = true;
-      lines.push({ content, end, ending, isProtected: true, isRawText: false, spans: [] });
+      const split = splitProtectedSpans(content, undefined, paragraphRest);
+      openSpan = split.openSpan;
+      lines.push({ content, end, ending, isProtected: true, isRawText: false, spans: split.spans });
       continue;
     }
 
-    const split = splitProtectedSpans(content, undefined);
+    const split = splitProtectedSpans(content, undefined, paragraphRest);
     openSpan = split.openSpan;
     const line = buildSpanLine(content, end, ending, split.spans);
     lines.push(isIndentedCode(content) ? { ...line, isProtected: true, isRawText: true, spans: [] } : line);
   }
   return { frontMatterEnd, lines };
+}
+
+/** CommonMark HTML block types 3-5, as `[opening pattern, terminator]` pairs. */
+const RAW_TEXT_BLOCKS: [string, string][] = [
+  [String.raw`<!\[CDATA\[`, ']]>'],
+  [String.raw`<\?`, '?>'],
+  [String.raw`<![A-Za-z]`, '>'],
+];
+
+/** The lines following `from` up to the next blank one — the rest of the paragraph. */
+function takeParagraphRest(rawLines: string[], from: number): string {
+  const rest: string[] = [];
+  for (let index = from; index < rawLines.length; index++) {
+    const line = rawLines[index]!;
+    if (!line.trim()) break;
+    rest.push(line);
+  }
+  return rest.join('');
+}
+
+function leadingWhitespaceOf(content: string): number {
+  return content.length - content.trimStart().length;
+}
+
+function isContainerStart(content: string): boolean {
+  return content !== getContainerContent(content);
 }
 
 function buildSpanLine(content: string, end: number, ending: string, spans: ProtectedSpan[]): MarkdownLine {
@@ -345,7 +406,15 @@ function removeMarkdownMatches(readme: string, pattern: RegExp): string {
       // ordinary Markdown, wherever on the line they sit — a badge embedded in a title or a sentence
       // is just as managed as one on a line of its own, and skipping it duplicates the badge instead.
       const content = line.spans
-        .map((segment) => (segment.isProtected ? segment.text : segment.text.replaceAll(pattern, '')))
+        .map((segment) =>
+          segment.isProtected
+            ? segment.text
+            : // A backslash-escaped `[` or `!` makes the badge literal documentation rather than a
+              // managed badge, so an escaped example must survive instead of being deleted.
+              segment.text.replaceAll(pattern, (match, offset: number) =>
+                isEscaped(segment.text, offset) ? match : ''
+              )
+        )
         .join('');
       // Removing the only badge on a line leaves a blank line behind. Keeping it would add one blank
       // line per run — unbounded growth across runs — so the emptied line goes away with its badge.
@@ -362,7 +431,8 @@ function removeMarkdownMatches(readme: string, pattern: RegExp): string {
  */
 function splitProtectedSpans(
   content: string,
-  openSpan: OpenSpan | undefined
+  openSpan: OpenSpan | undefined,
+  paragraphRest: string
 ): { spans: ProtectedSpan[]; openSpan: OpenSpan | undefined } {
   const spans: ProtectedSpan[] = [];
   let plainStart = 0;
@@ -373,11 +443,6 @@ function splitProtectedSpans(
     plainStart = end;
     index = end;
   };
-  const findCodeEnd = (fence: string, from: number): number | undefined => {
-    // Only a run of exactly the same length closes the span, so a longer run is skipped over.
-    const closing = new RegExp('(?<!`)`{' + fence.length + '}(?!`)', 'u').exec(content.slice(from));
-    return closing ? from + closing.index + fence.length : undefined;
-  };
 
   if (openSpan) {
     const spanEnd =
@@ -385,7 +450,7 @@ function splitProtectedSpans(
         ? content.includes('-->')
           ? content.indexOf('-->') + 3
           : undefined
-        : findCodeEnd(openSpan.fence!, 0);
+        : findCodeEnd(content, openSpan.fence!, 0);
     if (spanEnd === undefined) {
       return { spans: [{ text: content, isProtected: true, kind: openSpan.kind }], openSpan };
     }
@@ -413,13 +478,18 @@ function splitProtectedSpans(
     }
     if (content[index] === '`') {
       const fence = /^`+/u.exec(content.slice(index))![0];
-      const codeEnd = findCodeEnd(fence, index + fence.length);
+      const codeEnd = findCodeEnd(content, fence, index + fence.length);
       if (codeEnd !== undefined) {
         pushSpan(codeEnd, 'code');
         continue;
       }
-      // A code span may continue on the next line, so an unclosed run opens one rather than ending
-      // as literal text — otherwise a badge inside it would be deleted as if it were live Markdown.
+      // A code span may continue onto later lines, but only when its closer actually appears in the
+      // rest of the paragraph. Without that check a lone stray backtick protected everything after
+      // it, so a stale badge below was never superseded and got duplicated instead.
+      if (findCodeEnd(paragraphRest, fence, 0) === undefined) {
+        index += fence.length;
+        continue;
+      }
       pushSpan(content.length, 'code');
       carried = { kind: 'code', fence };
       break;
@@ -462,12 +532,38 @@ function getContainerContent(line: string): string {
   return line.replace(/^ {0,3}(?:>[ \t]?|(?:[-+*]|\d{1,9}[.)])[ \t]+)+/u, '');
 }
 
+/** The offset just past the run of `fence` backticks that closes a code span, if there is one. */
+function findCodeEnd(within: string, fence: string, from: number): number | undefined {
+  // Only a run of exactly the same length closes the span, so a longer run is skipped over.
+  const closing = new RegExp('(?<!`)`{' + fence.length + '}(?!`)', 'u').exec(within.slice(from));
+  return closing ? from + closing.index + fence.length : undefined;
+}
+
+/** Whether the character at `offset` is escaped by an odd-length run of backslashes before it. */
+function isEscaped(text: string, offset: number): boolean {
+  let backslashes = 0;
+  while (offset - backslashes > 0 && text[offset - backslashes - 1] === '\\') backslashes++;
+  return backslashes % 2 === 1;
+}
+
 function hasRawHtmlClosingTag(line: string, tag: string): boolean {
-  return new RegExp(`</${tag}[ \\t]*>`, 'iu').test(line);
+  return new RegExp(`</${tag}[ \\t]*>`, 'iu').test(stripAttributeValues(line));
 }
 
 function countRawHtmlTags(line: string, tag: string): number {
-  return line.match(new RegExp(`<${tag}(?:[ \\t>]|$)`, 'giu'))?.length ?? 0;
+  return stripAttributeValues(line).match(new RegExp(`<${tag}(?:[ \\t>]|$)`, 'giu'))?.length ?? 0;
+}
+
+/**
+ * Blanks out quoted attribute values inside tags, so `<h1 title="literal </h1> text">` no longer
+ * looks like it closes the title and splits the element in half.
+ */
+function stripAttributeValues(line: string): string {
+  // The tag pattern steps OVER quoted values rather than stopping at the first `>`, which may sit
+  // inside one of them.
+  return line.replaceAll(/<[^>"']*(?:(?:"[^"]*"|'[^']*')[^>"']*)*>/gu, (tag) =>
+    tag.replaceAll(/"[^"]*"|'[^']*'/gu, (value) => '_'.repeat(value.length))
+  );
 }
 
 function countRawHtmlClosingTags(line: string, tag: string): number {

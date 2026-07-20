@@ -174,6 +174,26 @@ test.each([
     expected: `<div>Raw HTML\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
   },
   {
+    name: 'a CDATA section',
+    input: '<![CDATA[\n# Example\n]]>\n\n# Project\n',
+    expected: `<![CDATA[\n# Example\n]]>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
+    name: 'a commented-out details tag inside an HTML block',
+    input: '<div><!-- <details> --></div>\n\n# Project\n',
+    expected: `<div><!-- <details> --></div>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
+    name: 'a closing tag inside an HTML title attribute',
+    input: '<h1 title="literal </h1> text">\nProject\n</h1>\n\nBody.\n',
+    expected: `<h1 title="literal </h1> text">\nProject\n</h1>\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
+  },
+  {
+    name: 'a fence left unclosed inside a list item',
+    input: '- ```md\n  # Example\n\n# Project\n',
+    expected: `- \`\`\`md\n  # Example\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
@@ -292,6 +312,26 @@ test('supersedes an unlinked wbfy badge', async () => {
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).toBe(`# Project\n\n${badgeOf('1.2.3')}\n`);
+  });
+});
+
+test('keeps a badge whose opening bracket is escaped', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nWrite \\${legacyBadge} to show it.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(`\\${legacyBadge}`);
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
+  });
+});
+
+test('supersedes a badge below a stray unmatched backtick', async () => {
+  await withTempDir(async (dirPath) => {
+    // The backtick has no closer in the paragraph, so it is literal text and protects nothing.
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText \`\n${legacyBadge}\nBody.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
   });
 });
 
