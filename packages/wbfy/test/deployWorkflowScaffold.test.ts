@@ -50,6 +50,7 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       // `npm exec -- wb deploy` runs the wb binary; the optional `--` separator is skipped.
       'npm exec -- wb deploy -w packages/api',
       'bun x wb deploy -w packages/api',
+      'pnpm dlx wb deploy -w packages/api',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1, script).toBe('packages/api/.env.cloudflare');
@@ -66,6 +67,9 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'npm wb deploy',
       // `bun --cwd wb deploy` runs `deploy` in directory `wb`, not the wb binary.
       'bun --cwd wb deploy',
+      // bun reserves only `x`, so `bun dlx`/`bun exec` run a package script, not the wb binary.
+      'bun dlx wb deploy -w packages/api',
+      'bun exec wb deploy -w packages/api',
       // A heredoc body is data, not a command.
       "cat <<'EOF'\nbun wb deploy\nEOF",
       // `command -v`/`-V` only query availability; they do not run wb — including clustered forms.

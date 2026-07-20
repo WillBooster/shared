@@ -575,6 +575,16 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 // yargsOptionsBuilderForEnv); every other `-`-prefixed token before the subcommand is a boolean.
 const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env', '--check-env']);
 
+// Subcommands that run a BINARY (so the following token can be the wb executable), per runner: bun
+// reserves only `x` (`bun dlx`/`bun exec` run a package script of that name), npm has `exec`/`x`,
+// and pnpm/yarn (Berry) have `exec`/`dlx`.
+const runnerExecutorSubcommandsByRunner: Record<string, Set<string>> = {
+  npm: new Set(['exec', 'x']),
+  pnpm: new Set(['exec', 'dlx']),
+  yarn: new Set(['exec', 'dlx']),
+  bun: new Set(['x']),
+};
+
 // Runner options that consume the FOLLOWING token as their value, so it is not the wb executable
 // (e.g. `bun --cwd dir wb deploy`, `npx -p pkg wb deploy`). A conservative superset across
 // npm/pnpm/yarn/bun and the npx/bunx package executors.
@@ -843,7 +853,10 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
       index = runnerScan.index;
       const subcommand = tokens[index] ?? '';
       if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
-      if (['x', 'dlx', 'exec'].includes(subcommand)) {
+      // Executor subcommands are runner-SPECIFIC: bun reserves only `x` (`bun dlx`/`bun exec` run a
+      // package script named dlx/exec), so classifying them generically would mis-scaffold from a
+      // shadowing script. An unrecognized subcommand falls through to the package-script checks.
+      if (runnerExecutorSubcommandsByRunner[runner]?.has(subcommand)) {
         index++; // binary runner (pnpm dlx, bun x, `npm exec -- wb …`)
         if (tokens[index] === '--') index++; // the executor's optional `--` before the command
       } else if (runner === 'npm') {
