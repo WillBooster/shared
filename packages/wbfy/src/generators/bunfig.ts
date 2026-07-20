@@ -117,7 +117,6 @@ export const bunMinimumReleaseAgeExcludes = [
   '@willbooster/oxlint-config',
   '@willbooster/prettier-config',
   '@willbooster/react-frame-component',
-  '@willbooster/renovate-config',
   '@willbooster/shared-lib',
   '@willbooster/shared-lib-blitz-next',
   '@willbooster/shared-lib-next',

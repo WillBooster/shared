@@ -41,15 +41,31 @@ export async function setup(
         await runWithSpawnInParallel(`brew install ${packages.join(' ')}`, project, argv);
       }
 
-      if (dirents.some((d) => d.isFile() && d.name.includes('-version'))) {
-        await runWithSpawn('asdf install', project, argv, { exitIfFailed: false });
+      if (dirents.some((d) => d.isFile() && (d.name === 'mise.toml' || d.name.includes('-version')))) {
+        await runWithSpawn('mise install', project, argv, { exitIfFailed: false });
       }
     }
 
     if (dirents.some((d) => d.isFile() && d.name === 'pyproject.toml')) {
       await runWithSpawnInParallel('poetry config virtualenvs.in-project true', project, argv);
-      const [, version] = child_process.execSync('asdf current python').toString().trim().split(/\s+/);
-      await runWithSpawnInParallel(`poetry env use ${version}`, project, argv);
+      // `mise which python` resolves the project's ACTIVE interpreter to a single absolute path,
+      // unlike `mise current python`, which prints every configured version (mise supports
+      // multi-version pins) and would pass extra positional arguments to `poetry env use`.
+      let pythonPath = '';
+      try {
+        pythonPath = child_process
+          .execSync('mise which python', { cwd: project.dirPath, stdio: ['ignore', 'pipe', 'ignore'] })
+          .toString()
+          .trim();
+      } catch {
+        // mise missing or python unconfigured; let poetry pick its default interpreter.
+      }
+      if (pythonPath) {
+        // The command runs through a shell; POSIX single quotes keep the path one literal argument
+        // even when a relocated mise data dir puts metacharacters into it.
+        const quotedPythonPath = `'${pythonPath.replaceAll("'", String.raw`'\''`)}'`;
+        await runWithSpawnInParallel(`poetry env use ${quotedPythonPath}`, project, argv);
+      }
       await promisePool.promiseAll();
       await runWithSpawn('poetry run pip install --upgrade pip', project, argv);
       await runWithSpawn('poetry install --ansi', project, argv);

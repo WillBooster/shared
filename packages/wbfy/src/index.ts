@@ -36,7 +36,6 @@ import { fixRailwayignore } from './generators/railwayignore.js';
 import { generateReadme } from './generators/readme.js';
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
-import { installAgentSkills } from './generators/skills.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { fixVscodeExtensions, generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
@@ -274,7 +273,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await Promise.all([
       fixPrismaEnvFiles(rootConfig),
       abbreviationPromise.then(() => generateReadme(rootConfig)),
-      generateAgentInstructions(rootConfig, allPackageConfigs),
       generateDockerignore(rootConfig),
       generateEditorconfig(rootConfig),
       generateGeminiConfig(rootConfig, allPackageConfigs),
@@ -296,6 +294,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       ...(rootConfig.isRoot ? [generateLefthookUpdatingPackageJson(rootConfig, allPackageConfigs)] : []),
       generateLintstagedrc(rootConfig),
     ]);
+    await promisePool.promiseAll();
+    // After the workflow generator (and its pooled writes) so the instruction files see the
+    // deploy workflows a first run scaffolds instead of lagging one run behind.
+    await generateAgentInstructions(rootConfig, allPackageConfigs);
     await promisePool.promiseAll();
 
     const promises: Promise<void>[] = [];
@@ -370,8 +372,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       hasInvalidPackageConfig = true;
     }
     spawnSync('bun', ['cleanup'], rootDirPath);
-
-    await installAgentSkills(rootConfig);
   }
   return hasInvalidPackageConfig;
 }

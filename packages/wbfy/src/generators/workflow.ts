@@ -292,25 +292,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // reusable deploy workflow may live under any filename (e.g. cloudflare.yml), and a
     // deploy-prefixed file that never calls it (e.g. deploy-docs.yml) still suppresses the
     // scaffold only via the conservative filename check.
-    const hasDeployWorkflow =
-      [...fileNamesByKind.keys()].some((kind) => kind.startsWith('deploy')) ||
-      // Inspect live jobs.*.uses values — a raw text search would also match comments.
-      [...fileNamesByKind.values()].some((fileName) => {
-        let workflow: Workflow | undefined;
-        try {
-          workflow = yaml.load(fs.readFileSync(path.join(workflowsPath, fileName), 'utf8')) as Workflow | undefined;
-        } catch {
-          return false;
-        }
-        if (!workflow || typeof workflow !== 'object' || !workflow.jobs || typeof workflow.jobs !== 'object') {
-          return false;
-        }
-        return Object.values(workflow.jobs).some(
-          (job) =>
-            typeof job?.uses === 'string' && job.uses.includes('/reusable-workflows/.github/workflows/deploy.yml@')
-        );
-      });
-    if (resolveCloudflareDeployTarget(rootConfig) && !hasDeployWorkflow) {
+    if (resolveCloudflareDeployTarget(rootConfig) && !hasCloudflareDeployWorkflow(workflowsPath)) {
       fileNamesByKind.set('deploy', 'deploy.yml');
     }
     if (fileNamesByKind.has('sync')) {
@@ -571,26 +553,411 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
   };
 }
 
+// wb's global options that consume a following value token (from sharedOptionsBuilder plus
+// yargsOptionsBuilderForEnv); every other `-`-prefixed token before the subcommand is a boolean.
+const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env', '--check-env']);
+
+// Subcommands that run a BINARY (so the following token can be the wb executable), per runner: bun
+// reserves only `x` (`bun dlx`/`bun exec` run a package script of that name), npm has `exec`/`x`,
+// and pnpm/yarn (Berry) have `exec`/`dlx`.
+const runnerExecutorSubcommandsByRunner: Record<string, Set<string>> = {
+  npm: new Set(['exec', 'x']),
+  pnpm: new Set(['exec', 'dlx']),
+  yarn: new Set(['exec', 'dlx']),
+  bun: new Set(['x']),
+};
+
+// Runner options that consume the FOLLOWING token as their value, so it is not the wb executable
+// (e.g. `bun --cwd dir wb deploy`, `npx -p pkg wb deploy`). A conservative superset across
+// npm/pnpm/yarn/bun and the npx/bunx package executors.
+const runnerValueOptions = new Set([
+  '--cwd',
+  '-C',
+  '--prefix',
+  '--filter',
+  '-F',
+  '--workspace',
+  '-w',
+  '--dir',
+  '-p',
+  '--package',
+  '-c',
+  '--call',
+]);
+
+// Runner options that change WHERE the command runs, so `wb`'s own `-w` (and every wrangler path)
+// resolves relative to a directory this static parser cannot recover: directory selectors
+// (`--cwd`/`-C`/`--prefix`/`--dir`) and workspace/filter selectors (`--filter`/`-F`/`--workspace`/
+// `--workspaces`/`--ws`, which run inside the selected workspace). Their presence makes the
+// worker-directory resolution unsound, so scaffolding is declined rather than guessed.
+const contextChangingRunnerOptions = new Set([
+  '--cwd',
+  '-C',
+  '--prefix',
+  '--dir',
+  '--filter',
+  '-F',
+  '--workspace',
+  '-w',
+  '--workspaces',
+  '--ws',
+]);
+
+/**
+ * Advance past a runner's `-`-prefixed options, consuming a separate value token where one applies.
+ * `sawContextChange` reports whether any option relocates the execution directory/package (see
+ * contextChangingRunnerOptions), so the caller can decline scaffolding it cannot resolve correctly.
+ */
+// Short context-changing options whose value may be attached (`-Cdir`, `-Fpkg`, `-wpackages/api`).
+const shortContextChangingRunnerOptions = ['-C', '-F', '-w'];
+
+function skipRunnerOptions(tokens: string[], startIndex: number): { index: number; sawContextChange: boolean } {
+  let index = startIndex;
+  let sawContextChange = false;
+  while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
+    const option = tokens[index] ?? '';
+    const bareOption = option.includes('=') ? option.slice(0, option.indexOf('=')) : option;
+    // Detect both the exact form (`-C`, `--filter`, `--filter=x`) and a short option with its value
+    // attached (`-Cdir`) — the latter would otherwise slip past the set lookup and mis-resolve.
+    if (
+      contextChangingRunnerOptions.has(bareOption) ||
+      (!option.startsWith('--') && shortContextChangingRunnerOptions.some((short) => option.startsWith(short)))
+    ) {
+      sawContextChange = true;
+    }
+    index++;
+    if (!option.includes('=') && runnerValueOptions.has(option) && index < tokens.length) index++;
+  }
+  return { index, sawContextChange };
+}
+
+/**
+ * Tokenize a shell command line into command segments, each a list of tokens with quotes removed.
+ * A new segment starts at an unquoted `&&`/`||`/`;`/`|`/`&`; an unquoted `#` starts a comment to
+ * end of line; a backslash escapes the next character (so `\;` is a literal, not a separator);
+ * grouping parentheses `(`/`)` are token separators, so `(wb deploy)` tokenizes as `wb deploy`.
+ * Segments/tokens model command structure precisely enough that quoted operators, escaped
+ * operators, comments, and subshell groups neither fabricate nor hide a `wb deploy` invocation.
+ */
+function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredoc: boolean } {
+  const segments: string[][] = [];
+  let tokens: string[] = [];
+  let current = '';
+  let inToken = false;
+  let quote: string | undefined;
+  // Whether the script uses any heredoc. Faithfully classifying which body lines are data (the
+  // delimiter word can be quoted/backslash-escaped, `<<-` strips leading tabs, terminators match
+  // exactly) is more than this parser models, so a heredoc anywhere makes the caller decline
+  // scaffolding instead of risking either reading a body line as a command or hiding a real one.
+  let sawHeredoc = false;
+  // Heredoc delimiters whose bodies begin at the NEXT newline: `cat <<A <<B` queues A then B, and
+  // the commands AFTER the `<<` header on the same line still execute, so the header is recorded
+  // here and the bodies are skipped only when the line's newline is reached.
+  let pendingHeredocDelimiters: string[] = [];
+  const skipHeredocBodies = (fromIndex: number): number => {
+    let cursor = fromIndex;
+    for (const delimiter of pendingHeredocDelimiters) {
+      while (cursor < script.length) {
+        const lineStart = cursor + 1;
+        let lineEnd = lineStart;
+        while (lineEnd < script.length && script[lineEnd] !== '\n') lineEnd++;
+        cursor = lineEnd;
+        if (script.slice(lineStart, lineEnd).trim() === delimiter) break;
+        if (lineEnd >= script.length) break;
+      }
+    }
+    pendingHeredocDelimiters = [];
+    return cursor;
+  };
+  const endToken = (): void => {
+    if (inToken) tokens.push(current);
+    current = '';
+    inToken = false;
+  };
+  const endSegment = (): void => {
+    endToken();
+    segments.push(tokens);
+    tokens = [];
+  };
+  for (let index = 0; index < script.length; index++) {
+    const character = script[index] ?? '';
+    if (quote) {
+      if (character === '\\' && quote === '"') {
+        // Inside double quotes, backslash-newline is still a line continuation (both removed);
+        // any other escaped character contributes literally.
+        if (script[index + 1] === '\n') index++;
+        else current += script[++index] ?? '';
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      else current += character;
+      continue;
+    }
+    if (character === '\\') {
+      // Backslash-newline is a line continuation: the shell removes both, joining the lines
+      // without introducing a token boundary. Any other escaped character is a literal.
+      if (script[index + 1] === '\n') {
+        index++;
+        continue;
+      }
+      current += script[++index] ?? '';
+      inToken = true;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      inToken = true;
+      continue;
+    }
+    // A `<<`/`<<-` heredoc redirection: its body lines (up to the delimiter line) are DATA, not
+    // commands, so `cat <<'EOF'\nwb deploy\nEOF` must not read `wb deploy` as an invocation. Since
+    // the caller declines on ANY heredoc, flag it the instant `<<` appears — before parsing the
+    // delimiter word — so an exotic delimiter (`<<+`) the word scanner cannot read still declines.
+    if (character === '<' && script[index + 1] === '<') {
+      sawHeredoc = true;
+      let cursor = index + 2;
+      if (script[cursor] === '-') cursor++;
+      while (/[ \t]/u.test(script[cursor] ?? '')) cursor++;
+      let delimiter = '';
+      // The delimiter word may be quoted (`<<'EOF'`) or backslash-escaped (`<<\EOF`); either form
+      // just disables body expansion, so collect the bare word. Missing the escaped form would drop
+      // `sawHeredoc` and read the heredoc body as commands.
+      let delimiterQuote: string | undefined;
+      while (cursor < script.length) {
+        const delimiterChar = script[cursor] ?? '';
+        if (delimiterQuote) {
+          if (delimiterChar === delimiterQuote) delimiterQuote = undefined;
+          else delimiter += delimiterChar;
+        } else if (delimiterChar === '\\') {
+          // A backslash quotes the next character into the delimiter word (`<<\EOF` → `EOF`).
+          cursor++;
+          delimiter += script[cursor] ?? '';
+        } else if (delimiterChar === "'" || delimiterChar === '"') {
+          delimiterQuote = delimiterChar;
+        } else if (/[\w.-]/u.test(delimiterChar)) {
+          delimiter += delimiterChar;
+        } else {
+          break;
+        }
+        cursor++;
+      }
+      if (delimiter) {
+        // The `<<delim` header is a redirection (not a token); record the delimiter and keep
+        // parsing the rest of this line — its body is skipped when the newline is reached.
+        endToken();
+        pendingHeredocDelimiters.push(delimiter);
+        index = cursor - 1;
+        continue;
+      }
+    }
+    if (character === '#' && !inToken) {
+      // Comment runs to end of line; end the current command segment and let the loop resume at
+      // the newline so the next line is parsed as its own segment.
+      endSegment();
+      while (index + 1 < script.length && script[index + 1] !== '\n') index++;
+      continue;
+    }
+    if (character === '&' || character === '|' || character === ';' || character === '\n') {
+      endSegment();
+      if ((character === '&' || character === '|') && script[index + 1] === character) index++;
+      // A newline that closes a heredoc header line consumes the queued bodies before the next
+      // command.
+      if (character === '\n' && pendingHeredocDelimiters.length > 0) index = skipHeredocBodies(index);
+      continue;
+    }
+    if (character === '(' || character === ')') {
+      endToken();
+      continue;
+    }
+    if (/\s/u.test(character)) {
+      endToken();
+      continue;
+    }
+    current += character;
+    inToken = true;
+  }
+  endSegment();
+  return { segments, sawHeredoc };
+}
+
+/**
+ * The wb argument tokens of a `wb … deploy` invocation (everything after `wb`, so BOTH the global
+ * options that precede `deploy` and the arguments that follow it), or undefined when no segment
+ * runs `wb deploy` at command position. Env assignments, package runners, and global yargs options
+ * (with their value tokens) may precede the deploy command; shell quoting/escaping/comments/
+ * grouping are honored. Returning both sides lets the worker-directory resolver read `-w` wherever
+ * it appears, since wb declares it globally.
+ */
+function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string>): string[] | undefined {
+  const { segments, sawHeredoc } = tokenizeShellCommand(deployScript);
+  // A heredoc makes body-vs-command classification unreliable (see tokenizeShellCommand); decline.
+  if (sawHeredoc) return undefined;
+  for (const tokens of segments) {
+    let index = 0;
+    while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
+    // Leading launchers run the following command: `env` (with options + KEY=value assignments)
+    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Command-position shell
+    // reserved words and other launchers (`if`/`then`/`for`/`time`/`exec`/`!`/brace groups, …) are
+    // NOT modeled: they leave a non-`wb` first token, so the segment simply does not match and
+    // scaffolding is declined — a deliberate false-negative (safe for guidance) over guessing.
+    if (tokens[index] === 'env') {
+      index++;
+      while (index < tokens.length) {
+        const token = tokens[index] ?? '';
+        if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token)) index++;
+        // env's `-C`/`--chdir` relocates the working directory, so `wb`'s `-w` and wrangler paths
+        // resolve from a directory this parser cannot recover: decline rather than mis-resolve.
+        // The value may be attached (`-Cdir`, `--chdir=dir`).
+        else if (token === '-C' || token.startsWith('-C') || token === '--chdir' || token.startsWith('--chdir=')) {
+          return undefined;
+        } else if (token === '-u') index += 2;
+        else if (token.startsWith('-')) index++;
+        else break;
+      }
+    }
+    // `command CMD` executes CMD, but `command -v`/`-V CMD` only QUERY its availability without
+    // running it, so a deploy behind them does not run. The `v`/`V` flag may be clustered with
+    // other option letters (`command -pv wb`), so match any option letter cluster containing it.
+    while (tokens[index] === 'command') {
+      index++;
+      let queriesOnly = false;
+      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
+        if (/^-[A-Za-z]*[vV][A-Za-z]*$/u.test(tokens[index] ?? '')) queriesOnly = true;
+        index++;
+      }
+      if (queriesOnly) {
+        index = -1;
+        break;
+      }
+    }
+    if (index < 0) continue;
+    // A `cd`/`pushd`/`popd` at command position (`cd packages/api && wb deploy`, or wrapped in
+    // `command`/`env`) changes the directory the later `wb deploy` resolves `-w` and wrangler paths
+    // from, which this per-segment parser cannot recover, so decline. Checked AFTER unwrapping the
+    // launchers so `command cd …` is caught too.
+    if (['cd', 'pushd', 'popd'].includes(tokens[index] ?? '')) return undefined;
+    // Resolve a runner prefix to whether the following token is a BINARY (the wb executable) or a
+    // package SCRIPT name. `bunx`/`npx` and `<pm> x|dlx|exec` run a binary; `<pm> run|run-script`
+    // (and bare `npm <name>`, or any runner followed by `--`) run a package script — so
+    // `npm run wb deploy` executes the script named `wb`, not the wb binary, and must be rejected.
+    if (['npm', 'pnpm', 'yarn', 'bun'].includes(tokens[index] ?? '')) {
+      const runner = tokens[index] ?? '';
+      const runnerScan = skipRunnerOptions(tokens, index + 1);
+      // A context-changing runner option (directory or workspace/filter selector) moves where
+      // `wb -w` resolves, which this parser cannot recover, so decline rather than scaffold a wrong
+      // target (e.g. `pnpm --filter api exec wb deploy` runs inside the selected workspace).
+      if (runnerScan.sawContextChange) return undefined;
+      index = runnerScan.index;
+      const subcommand = tokens[index] ?? '';
+      if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
+      // Executor subcommands are runner-SPECIFIC: bun reserves only `x` (`bun dlx`/`bun exec` run a
+      // package script named dlx/exec). Real built-in executors (`exec`/`x`, and `dlx` for pnpm)
+      // take precedence over a same-named script, so they are NOT shadow-checked. Only `yarn dlx` is
+      // ambiguous — a Berry built-in but a package SCRIPT in Yarn Classic — so a declared `dlx`
+      // script makes `yarn dlx` decline (fall through to the package-script checks).
+      const isYarnDlxShadowedByScript = runner === 'yarn' && subcommand === 'dlx' && scriptNames.has('dlx');
+      if (runnerExecutorSubcommandsByRunner[runner]?.has(subcommand) && !isYarnDlxShadowedByScript) {
+        index++; // binary runner (pnpm dlx, bun x, `npm exec -- wb …`)
+        if (tokens[index] === '--') index++; // the executor's optional `--` before the command
+      } else if (runner === 'npm') {
+        continue; // bare `npm wb` never runs a binary
+      } else if (tokens[index] === 'wb' && scriptNames.has('wb')) {
+        // Bare `bun/pnpm/yarn wb` runs a package SCRIPT named `wb` when one exists (passing `deploy`
+        // as its argument), not the wb binary, so decline rather than mis-scaffold.
+        continue;
+      }
+    } else if (['bunx', 'npx'].includes(tokens[index] ?? '')) {
+      const runnerScan = skipRunnerOptions(tokens, index + 1);
+      if (runnerScan.sawContextChange) return undefined;
+      index = runnerScan.index;
+    }
+    if (tokens[index] !== 'wb') continue;
+    const wbArgs = tokens.slice(index + 1);
+    // Skip global options (and any value token a value-bearing option consumes) so the FIRST
+    // command token decides: `wb --cascade-env production deploy` and `wb -w packages/api deploy`
+    // match, while subcommands owning their own `deploy` (`wb prisma deploy`, `wb retry deploy`)
+    // do not. `--opt=value` carries its value inline, so only the space-separated form skips one.
+    let commandIndex = 0;
+    while (commandIndex < wbArgs.length && (wbArgs[commandIndex] ?? '').startsWith('-')) {
+      const flag = wbArgs[commandIndex] ?? '';
+      commandIndex++;
+      if (wbGlobalValueOptions.has(flag) && commandIndex < wbArgs.length) commandIndex++;
+    }
+    if (wbArgs[commandIndex] !== 'deploy') continue;
+    return wbArgs;
+  }
+  return undefined;
+}
+
+/** Whether a deploy script invokes `wb … deploy` at command position. */
+export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
+  return parseWbDeployArgs(deployScript, scriptNames) !== undefined;
+}
+
+/** The `-w`/`--working-dir` value among the wb invocation's tokens (either side of `deploy`), or `.`. */
+function workerDirPathFromDeployArgs(deployArgs: string[]): string {
+  for (let index = 0; index < deployArgs.length; index++) {
+    const token = deployArgs[index] ?? '';
+    if (token === '-w' || token === '--working-dir') return deployArgs[index + 1] ?? '.';
+    // yargs also accepts `--working-dir=path`, `-w=path`, and the attached short form `-wpath`.
+    const inlineMatch = /^(?:--working-dir=|-w=?)(.+)$/u.exec(token);
+    if (inlineMatch) return inlineMatch[1] ?? '.';
+  }
+  return '.';
+}
+
+/**
+ * Whether the workflows directory holds a live caller of the reusable Cloudflare deploy workflow.
+ * YAML is parsed and only `jobs.*.uses` values are inspected (a raw-text search would match
+ * comments or `run:` strings), with a `deploy*`-filename shortcut and a conservative raw-text
+ * fallback for unparseable files. Shared by the workflow scaffolder and the agent-instruction
+ * generator so both judge "already has a deploy workflow" identically.
+ */
+export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(workflowsDirPath, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  // Case-insensitive owner/repository (GitHub treats them so), case-sensitive path/ref — matching
+  // parseOrgReusableWorkflowCall, used for the unparseable-YAML raw-text fallback only.
+  const deployCallPattern = /[^/]+\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/iu;
+  const callsDeployWorkflow = (uses: string | undefined): boolean =>
+    parseOrgReusableWorkflowCall(uses)?.workflowName === 'deploy';
+  return entries.some((entry) => {
+    if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name)) return false;
+    if (entry.name.startsWith('deploy')) return true;
+    let content: string;
+    try {
+      content = fs.readFileSync(path.join(workflowsDirPath, entry.name), 'utf8');
+    } catch {
+      return false;
+    }
+    try {
+      const workflow = yaml.load(content) as Workflow | undefined;
+      if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
+        return Object.values(workflow.jobs).some((job) => callsDeployWorkflow(job?.uses));
+      }
+      return false;
+    } catch {
+      return deployCallPattern.test(content);
+    }
+  });
+}
+
 /** The worker directory of a wb-driven Cloudflare deploy script, or undefined when there is none. */
 function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath' | 'packageJson'>): string | undefined {
   const deployScript = rootConfig.packageJson?.scripts?.deploy;
   if (typeof deployScript !== 'string') return;
   // Compound scripts (`bun run build && wb deploy -w …`) may carry unrelated options in other
   // segments, so isolate the shell segment that actually INVOKES wb (as a command token — not a
-  // word inside `echo wb deploy` or an env value) and parse only it. Env assignments and package
-  // runners may precede the wb token; global yargs options may precede the deploy command.
-  const deploySegment = deployScript.split(/\s*(?:&&|\|\||[;&|])\s*/u).find((segment) => {
-    const tokens = segment.split(/\s+/u).filter((token) => token !== '');
-    let index = 0;
-    while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
-    while (index < tokens.length && ['bun', 'bunx', 'run'].includes(tokens[index] ?? '')) index++;
-    return tokens[index] === 'wb' && tokens.slice(index + 1).includes('deploy');
-  });
-  if (!deploySegment) return;
-  // wb declares --working-dir with alias -w; yargs also accepts an `=` separator.
-  const rawWorkerDirPath = /(?:^|\s)(?:--working-dir|-w)(?:\s+|=)(\S+)/u.exec(deploySegment)?.[1] ?? '.';
+  // word inside `echo wb deploy` or an env value) and read the working directory from ITS parsed
+  // argument tokens, never a raw-text regex (which could match `-w` inside an env value).
+  const deployArgs = parseWbDeployArgs(deployScript, new Set(Object.keys(rootConfig.packageJson?.scripts ?? {})));
+  if (!deployArgs) return;
   // Normalize spellings such as `./packages/api` and `packages/api/` before the layout check.
-  const workerDirPath = path.posix.normalize(rawWorkerDirPath).replace(/\/+$/u, '') || '.';
+  const workerDirPath = path.posix.normalize(workerDirPathFromDeployArgs(deployArgs)).replace(/\/+$/u, '') || '.';
   // Restrict scaffolding to the layouts wbfy's secret verification also understands (the repo
   // root and direct packages/*, apps/* workspaces) so a generated workflow never references a
   // CLOUDFLARE_API_TOKEN that `wbfy --env` would not verify.
