@@ -34,6 +34,7 @@ const commonContent = `
 **/.releaserc.json
 **/.ruff_cache
 **/.tmp
+**/.tmp-*/**
 **/.turbo
 **/.tox
 **/.vscode

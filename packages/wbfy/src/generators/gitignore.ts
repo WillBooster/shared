@@ -29,6 +29,7 @@ __generated__/
 .playwright-mcp/
 .serena/
 .tmp/
+.tmp-*/
 .tokensave/
 .wb/
 @willbooster/

@@ -64,7 +64,7 @@ export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs =
       absolute: true,
       cwd: config.dirPath,
       dot: true,
-      ignore: ['**/.git/**', ...nestedPackageIgnores, ...globIgnore],
+      ignore: [...nestedPackageIgnores, ...globIgnore],
       onlyFiles: true,
     });
     for (const filePath of filePaths) {

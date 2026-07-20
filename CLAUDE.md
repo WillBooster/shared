@@ -37,3 +37,5 @@
 - Ensure compatibility only with macOS and Linux; do not include Windows-specific code.
 - Use `project.env` instead of `process.env` on `wb` package.
 - Always drop any Windows support.
+- `wbfy` specializes in repositories of the WillBooster / WillBoosterLab organizations; support for other repositories is a best-effort extra.
+- `wbfy` assumes its target repositories have already been wbfy-applied; exceptional cases outside this assumption should be fixed manually as a rule.
