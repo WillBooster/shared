@@ -300,33 +300,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // reusable deploy workflow may live under any filename (e.g. cloudflare.yml), and a
     // deploy-prefixed file that never calls it (e.g. deploy-docs.yml) still suppresses the
     // scaffold only via the conservative filename check.
-    const hasDeployWorkflow =
-      [...fileNamesByKind.keys()].some((kind) => kind.startsWith('deploy')) ||
-      // Scan every workflow file (not fileNamesByKind, which collapses same-stem .yml/.yaml
-      // twins) and inspect live jobs.*.uses values — a raw text search would also match comments.
-      // Unparseable files fall back to the conservative text search.
-      entries.some((entry) => {
-        if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name)) return false;
-        let content: string;
-        try {
-          content = fs.readFileSync(path.join(workflowsPath, entry.name), 'utf8');
-        } catch {
-          return false;
-        }
-        const deployCallPattern = /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/u;
-        try {
-          const workflow = yaml.load(content) as Workflow | undefined;
-          if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
-            return Object.values(workflow.jobs).some(
-              (job) => typeof job?.uses === 'string' && deployCallPattern.test(job.uses)
-            );
-          }
-          return false;
-        } catch {
-          return deployCallPattern.test(content);
-        }
-      });
-    if (resolveCloudflareDeployTarget(rootConfig) && !hasDeployWorkflow) {
+    if (resolveCloudflareDeployTarget(rootConfig) && !hasCloudflareDeployWorkflow(workflowsPath)) {
       fileNamesByKind.set('deploy', 'deploy.yml');
     }
     if (fileNamesByKind.has('sync')) {
@@ -597,29 +571,144 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
   };
 }
 
+// wb's global options that consume a following value token (from sharedOptionsBuilder plus
+// yargsOptionsBuilderForEnv); every other `-`-prefixed token before the subcommand is a boolean.
+const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env', '--check-env']);
+
+/**
+ * Split a shell command line on `&&`/`||`/`;`/`|`/`&` that appear OUTSIDE quotes, so an operator
+ * inside quoted text (e.g. `echo '; wb deploy ;'`) is not mistaken for a command boundary.
+ */
+function splitShellSegments(script: string): string[] {
+  const segments: string[] = [];
+  let current = '';
+  let quote: string | undefined;
+  for (let index = 0; index < script.length; index++) {
+    const character = script[index] ?? '';
+    if (quote) {
+      if (character === '\\' && quote === '"') {
+        current += character + (script[++index] ?? '');
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      current += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (character === '&' || character === '|' || character === ';') {
+      segments.push(current);
+      current = '';
+      if ((character === '&' || character === '|') && script[index + 1] === character) index++;
+      continue;
+    }
+    current += character;
+  }
+  segments.push(current);
+  return segments;
+}
+
+/** Whitespace-tokenize a shell segment, dropping quote delimiters so `"deploy"` yields `deploy`. */
+function tokenizeShellSegment(segment: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let inToken = false;
+  let quote: string | undefined;
+  for (let index = 0; index < segment.length; index++) {
+    const character = segment[index] ?? '';
+    if (quote) {
+      if (character === '\\' && quote === '"') {
+        current += segment[++index] ?? '';
+        continue;
+      }
+      if (character === quote) quote = undefined;
+      else current += character;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      inToken = true;
+      continue;
+    }
+    if (/\s/u.test(character)) {
+      if (inToken) tokens.push(current);
+      current = '';
+      inToken = false;
+      continue;
+    }
+    current += character;
+    inToken = true;
+  }
+  if (inToken) tokens.push(current);
+  return tokens;
+}
+
 /**
  * The shell segment of a deploy script that invokes `wb … deploy` as a command (not a word inside
- * `echo wb deploy` or an env value), or undefined. Env assignments, package runners, and global
- * yargs options may precede the deploy command.
+ * `echo "wb deploy"` or an env value), or undefined. Env assignments, package runners, and global
+ * yargs options (including their value tokens) may precede the deploy command; shell quoting is
+ * honored so quoted operators/whitespace do not fabricate or hide invocations.
  */
 export function findWbDeploySegment(deployScript: string): string | undefined {
-  return deployScript.split(/\s*(?:&&|\|\||[;&|])\s*/u).find((segment) => {
-    const tokens = segment.split(/\s+/u).filter((token) => token !== '');
+  return splitShellSegments(deployScript).find((segment) => {
+    const tokens = tokenizeShellSegment(segment);
     let index = 0;
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
     while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
       index++;
     if (tokens[index] !== 'wb') return false;
     index++;
-    // Skip global options (and the separate value of `-w`/`--working-dir`) so the FIRST command
-    // token decides: `wb -w packages/api deploy` matches while subcommands owning their own
-    // `deploy` (`wb prisma deploy`, `wb retry deploy`) do not.
+    // Skip global options (and any value token a value-bearing option consumes) so the FIRST
+    // command token decides: `wb --cascade-env production deploy` and `wb -w packages/api deploy`
+    // match, while subcommands owning their own `deploy` (`wb prisma deploy`, `wb retry deploy`)
+    // do not. `--opt=value` carries its value inline, so only the space-separated form skips one.
     while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
       const flag = tokens[index] ?? '';
       index++;
-      if ((flag === '-w' || flag === '--working-dir') && index < tokens.length) index++;
+      if (wbGlobalValueOptions.has(flag) && index < tokens.length) index++;
     }
     return tokens[index] === 'deploy';
+  });
+}
+
+/**
+ * Whether the workflows directory holds a live caller of the reusable Cloudflare deploy workflow.
+ * YAML is parsed and only `jobs.*.uses` values are inspected (a raw-text search would match
+ * comments or `run:` strings), with a `deploy*`-filename shortcut and a conservative raw-text
+ * fallback for unparseable files. Shared by the workflow scaffolder and the agent-instruction
+ * generator so both judge "already has a deploy workflow" identically.
+ */
+export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(workflowsDirPath, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  const deployCallPattern = /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/u;
+  return entries.some((entry) => {
+    if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name)) return false;
+    if (entry.name.startsWith('deploy')) return true;
+    let content: string;
+    try {
+      content = fs.readFileSync(path.join(workflowsDirPath, entry.name), 'utf8');
+    } catch {
+      return false;
+    }
+    try {
+      const workflow = yaml.load(content) as Workflow | undefined;
+      if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
+        return Object.values(workflow.jobs).some(
+          (job) => typeof job?.uses === 'string' && deployCallPattern.test(job.uses)
+        );
+      }
+      return false;
+    } catch {
+      return deployCallPattern.test(content);
+    }
   });
 }
 

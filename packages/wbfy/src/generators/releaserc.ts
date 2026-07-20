@@ -20,32 +20,33 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     let plugins = settings.plugins ?? [];
     // A private package without publishConfig releases only to GitHub (e.g. a deployed web app),
     // so a leftover npm plugin is dead configuration from a published-package template — but only
-    // when the plugin provably publishes nothing. Two shapes still publish and must be kept: a
-    // MONOREPO root whose entry publishes the root (generatePackageJson later removes the stale
-    // `private` flag for exactly that shape — it never un-privates a single-package root, where
-    // `@semantic-release/npm` skips publishing for private manifests anyway), and a pkgRoot entry
-    // publishing another manifest regardless of the root's privacy (kept in the filter below).
-    // Only an EXPLICIT plugin array is filtered: assigning to an omitted `plugins` would replace
-    // semantic-release's default plugin list (which includes the GitHub release plugin) with an
-    // empty one, and the default npm plugin already skips private manifests.
-    // With @semantic-release/git present, the npm plugin's prepare step (which bumps
-    // package.json's version even with npmPublish: false) feeds the committed release metadata,
-    // so the entry is load-bearing regardless of privacy. The same applies whenever any OTHER
-    // plugin configuration references the manifest the prepare step rewrites (e.g. a GitHub
-    // release uploading package.json as an asset) — checked conservatively over the serialized
-    // remaining configuration.
-    const otherPluginsJson = JSON.stringify(
-      plugins.filter(
-        (pluginEntry) => (Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry) !== '@semantic-release/npm'
-      )
-    );
-    const keepsPreparedManifest =
-      otherPluginsJson.includes('@semantic-release/git') ||
-      otherPluginsJson.includes('package.json') ||
-      otherPluginsJson.includes('npm-shrinkwrap.json');
+    // when the plugin provably publishes nothing AND no other plugin consumes the manifest its
+    // prepare step still rewrites (npm bumps package.json's version even with npmPublish: false).
+    // Because arbitrary plugins/commands can consume that manifest indirectly, removal is limited
+    // to the KNOWN-SAFE released-web-app template shape: every other plugin is one of the standard
+    // analysis/notes/github plugins, and the github plugin uploads no assets (an assets glob could
+    // be the prepared manifest). Any exec/git/custom plugin means keep npm. Two npm shapes still
+    // publish and are kept even in that template (filter below): a MONOREPO root whose entry
+    // publishes the root (generatePackageJson later un-privates exactly that shape — never a
+    // single-package root, where npm skips private manifests anyway) and a pkgRoot entry acting on
+    // another manifest. Only an EXPLICIT plugin array is filtered: assigning to an omitted
+    // `plugins` would replace semantic-release's defaults (which include the GitHub plugin).
+    const standardNonPublishingPlugins = new Set([
+      '@semantic-release/commit-analyzer',
+      '@semantic-release/release-notes-generator',
+      '@semantic-release/github',
+    ]);
+    const everyOtherPluginIsStandardNonPublishing = plugins.every((pluginEntry) => {
+      const pluginName = Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry;
+      if (pluginName === '@semantic-release/npm') return true;
+      if (typeof pluginName !== 'string' || !standardNonPublishingPlugins.has(pluginName)) return false;
+      // A github plugin uploading assets could publish the prepared manifest, so it is not "safe".
+      const options = (Array.isArray(pluginEntry) && (pluginEntry[1] as Record<string, unknown>)) || {};
+      return !(pluginName === '@semantic-release/github' && options.assets !== undefined);
+    });
     if (
       Array.isArray(settings.plugins) &&
-      !keepsPreparedManifest &&
+      everyOtherPluginIsStandardNonPublishing &&
       rootConfig.packageJson?.private &&
       !rootConfig.packageJson.publishConfig &&
       !(rootConfig.doesContainSubPackageJsons && rootConfig.release.npmPublishesRoot)

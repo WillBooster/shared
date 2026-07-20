@@ -5,7 +5,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { findWbDeploySegment } from './workflow.js';
+import { findWbDeploySegment, hasCloudflareDeployWorkflow } from './workflow.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('generateAgentInstructions', async () => {
@@ -52,37 +52,17 @@ function generateAgentInstruction(
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
     ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\` instead of expecting \`.env\` files. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) select it themselves, while \`wb dotenv\` and bare \`fnox run\` need an explicit \`WB_ENV=<profile>\` / \`-P <profile>\`.`
     : '';
-  // Every clause states only a verified fact: the wrangler-config clause needs an actual config
-  // file (isCloudflare also matches a mere wrangler mention in a script or workflow), the
-  // workflow clause needs an existing deploy workflow file, and the `wb deploy` clause needs a
-  // deploy script that starts with that command.
+  // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
+  // wrangler-config clause needs an actual config file (isCloudflare also matches a mere wrangler
+  // mention in a script or workflow), the workflow clause needs a live reusable-deploy caller
+  // (YAML-parsed jobs.*.uses, not a raw-text/comment match), and the `wb deploy` clause needs a
+  // deploy script whose command token is `wb … deploy`.
   const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
-  let hasDeployWorkflow = false;
-  try {
-    const workflowsDirPath = path.resolve(rootConfig.dirPath, '.github/workflows');
-    // Content-based like the workflow generator: a deploy caller may live under any filename
-    // (e.g. cloudflare.yml), so a `deploy*` name OR a reusable deploy.yml reference counts.
-    hasDeployWorkflow = fs.readdirSync(workflowsDirPath).some((fileName) => {
-      if (!/\.ya?ml$/u.test(fileName)) return false;
-      if (fileName.startsWith('deploy')) return true;
-      try {
-        return fs
-          .readFileSync(path.resolve(workflowsDirPath, fileName), 'utf8')
-          .includes('reusable-workflows/.github/workflows/deploy.yml@');
-      } catch {
-        return false;
-      }
-    });
-  } catch {
-    // No workflows directory.
-  }
+  const hasDeployWorkflow = hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
   const usesWbDeploy = allConfigs.some((config) => {
     const deployScript = config.packageJson?.scripts?.['deploy'];
     return typeof deployScript === 'string' && findWbDeploySegment(deployScript) !== undefined;
   });
-  // The deploy-workflow clause is a filename heuristic (wbfy itself scaffolds `deploy-*.yml`
-  // callers); repositories with unrelated `deploy*`-named workflows merely get a slightly
-  // broader-than-precise sentence, which is acceptable for guidance prose.
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.
   const cloudflareInstruction = ownsWranglerConfig
