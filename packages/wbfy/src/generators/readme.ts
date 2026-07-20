@@ -46,9 +46,11 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       (await fsUtil.readFileIfExists(filePath)) ??
       `# ${config.packageJson?.name ?? path.basename(path.resolve(config.dirPath))}\n`;
 
-    const badges = [buildWbfyBadge(getWbfyVersionLabel() ?? 'applied')];
+    // Ordered by what a reader cares about most: the workflow badges report whether the code is
+    // currently healthy, then how it is released, and last the wbfy build that configured it.
+    const badges = await buildWorkflowBadges(config);
     if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) badges.push(semanticReleaseBadge);
-    badges.push(...(await buildWorkflowBadges(config)));
+    badges.push(buildWbfyBadge(getWbfyVersionLabel() ?? 'applied'));
 
     // The block is written in one pass from the badges wbfy manages right now. A badge that is no
     // longer wanted — a superseded version, or one whose workflow is gone — simply is not in the
