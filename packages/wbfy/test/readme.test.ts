@@ -225,6 +225,16 @@ test.each([
     expected: `<pre>\n</script>\n# Project\n\n${badgeOf('1.2.3')}\n`,
   },
   {
+    name: 'a dash Setext heading above the real title',
+    input: 'Intro\n---\n\nPreface.\n\n# Real Title\n\nBody.\n',
+    expected: `Intro\n---\n\nPreface.\n\n# Real Title\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
+  },
+  {
+    name: 'a badge carrying a Markdown title',
+    input: '# Project\n\n[![Build](https://example.com/b.svg "Build status")](https://example.com/b)\n',
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n[![Build](https://example.com/b.svg "Build status")](https://example.com/b)\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
@@ -459,6 +469,26 @@ test('supersedes a badge below an unterminated mid-line comment', async () => {
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
+test('keeps a multiline code example inside a block quote', async () => {
+  await withTempDir(async (dirPath) => {
+    const example = `> Use \`code across\n> ${legacyBadge}\n> lines\` here.`;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${example}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(example);
+  });
+});
+
+test('drops a list item emptied by badge removal', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n- ${legacyBadge}\n- Documentation\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).not.toMatch(/^-\s*$/mu);
+    expect(content).toContain('- Documentation');
   });
 });
 

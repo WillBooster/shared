@@ -206,7 +206,10 @@ function findBadgeInsertionAnchor(readme: string): number | undefined {
       !isIndentedCode(previousLine.content) &&
       /^ {0,3}(?:=+|-+)[ \t]*$/u.test(line.content)
     ) {
-      return line.end;
+      // `=` underlines an H1 and anchors immediately; `-` underlines an H2, which — like an ATX
+      // `##` — only serves as a fallback so a real `#` title further down still wins.
+      if (line.content.trimStart().startsWith('=')) return line.end;
+      deeperHeadingEnd ??= line.end;
     }
   }
   return deeperHeadingEnd ?? analysis.frontMatterEnd;
@@ -418,8 +421,12 @@ function takeParagraphRest(rawLines: string[], from: number, containerIndent: nu
     const line = rawLines[index]!;
     // Leaving the opener's container ends the paragraph just as entering a new one does: a backtick
     // opened inside a block quote must not pair with a later top-level one across the boundary.
-    if (line.length - getContainerContent(line).length !== containerIndent) break;
-    if (!getContainerContent(line).trim() || isParagraphInterrupter(line)) break;
+    const lineContent = getContainerContent(line);
+    if (line.length - lineContent.length !== containerIndent) break;
+    // Checked against the CONTAINER CONTENT: every repeated `>` is a container start, so testing the
+    // raw line ended the paragraph at each quoted line and deleted badge examples from multiline
+    // spans inside a block quote.
+    if (!lineContent.trim() || isParagraphInterrupter(lineContent)) break;
     rest.push(line);
   }
   return rest.join('');
@@ -491,9 +498,10 @@ function removeMarkdownMatches(readme: string, pattern: RegExp): string {
               )
         )
         .join('');
-      // Removing the only badge on a line leaves a blank line behind. Keeping it would add one blank
-      // line per run — unbounded growth across runs — so the emptied line goes away with its badge.
-      if (content !== line.content && !content.trim()) return '';
+      // Removing the only badge on a line leaves it empty. Keeping it would add one blank line per
+      // run — unbounded growth across runs — so the emptied line goes away with its badge. A line
+      // emptied down to a bare `-` or `>` marker goes too, rather than leaving a dangling one.
+      if (content !== line.content && !getContainerContent(content).trim()) return '';
       return `${content}${line.ending}`;
     })
     .join('');
@@ -585,9 +593,12 @@ function splitProtectedSpans(
 function isBadgeLine(line: string): boolean {
   // Reference-style badges (`[![Build][build-image]][build-url]`) and unlinked image badges are
   // badges too; treating them as prose puts a blank line between them and the generated badge.
+  // A destination may carry a Markdown title (`(url "Build status")`); rejecting those classified a
+  // valid badge as prose, so the generated badge was pushed onto a row of its own.
+  const destination = String.raw`\((?:[^\s)]*)(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\)|\[[^\]]*\]`;
   return !line
-    .replaceAll(/\[!\[[^\]]*\](?:\([^\s)]*\)|\[[^\]]*\])\](?:\([^\s)]*\)|\[[^\]]*\])/gu, '')
-    .replaceAll(/!\[[^\]]*\](?:\([^\s)]*\)|\[[^\]]*\])/gu, '')
+    .replaceAll(new RegExp(String.raw`\[!\[[^\]]*\](?:${destination})\](?:${destination})`, 'gu'), '')
+    .replaceAll(new RegExp(String.raw`!\[[^\]]*\](?:${destination})`, 'gu'), '')
     .trim();
 }
 
