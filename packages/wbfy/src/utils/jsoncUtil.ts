@@ -79,14 +79,20 @@ export const jsoncUtil = {
    * Trivia-only content is edited rather than replaced too, so its comments survive (modify()
    * appends the generated object before them).
    */
-  stringifyPreservingTrivia(oldContent: string | undefined, settings: Record<string, unknown>): string {
-    if (oldContent === undefined) return JSON.stringify(settings, undefined, 2);
+  stringifyPreservingTrivia(
+    oldContent: string | undefined,
+    settings: Record<string, unknown>
+  ): { content: string; keysLosingComments: string[] } {
+    if (oldContent === undefined) {
+      return { content: JSON.stringify(settings, undefined, 2), keysLosingComments: [] };
+    }
 
     const oldSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(oldContent);
-    const modifyOptions = { formattingOptions: detectFormattingOptions(oldContent) };
     // Drop a leading BOM: modify() inserts the generated object BEFORE any leading trivia, which
     // would leave the BOM stranded mid-file where it is a syntax error rather than an ignored mark.
     let content = oldContent.replace(/^\uFEFF/, '');
+    const modifyOptions = { formattingOptions: detectFormattingOptions(content) };
+    const keysLosingComments: string[] = [];
     const newEntries: [string, unknown][] = [];
     for (const [key, value] of Object.entries(settings)) {
       const oldValue = oldSettings?.[key];
@@ -108,6 +114,10 @@ export const jsoncUtil = {
         content = restoreTrailingComment(content, key, insertion.index);
       }
       if (insertions) continue;
+      // Rewriting the whole value is the only option left (the new one drops or reorders elements),
+      // and it takes any comment nested inside it along. Report that rather than losing it quietly.
+      const replacedText = valueTextOf(content, key);
+      if (replacedText !== undefined && jsoncUtil.containsComment(replacedText)) keysLosingComments.push(key);
       content = applyEdits(content, modify(content, [key], value, modifyOptions));
     }
     // Prepend rather than append the properties that are new: appending detaches a trailing
@@ -116,11 +126,21 @@ export const jsoncUtil = {
     for (const [key, value] of newEntries.toReversed()) {
       content = applyEdits(content, modify(content, [key], value, { ...modifyOptions, getInsertionIndex: () => 0 }));
     }
-    return content;
+    return { content, keysLosingComments };
   },
 };
 
-const trailingCommentPattern = /^[^\S\n]*(?:\/\/[^\n]*|\/\*[\S\s]*?\*\/)/u;
+/** Returns the source text of a top-level property's value, comments and all. */
+function valueTextOf(content: string, key: string): string | undefined {
+  const root = parseTree(content);
+  const node = root && findNodeAtLocation(root, [key]);
+  return node && content.slice(node.offset, node.offset + node.length);
+}
+
+// The whole same-line comment sequence, not just the first one: a line comment ends it (it runs to
+// the newline), but any number of block comments can precede it, and moving only the first would
+// leave the rest describing the wrong element.
+const trailingCommentPattern = /^(?:[^\S\n]*\/\*[\S\s]*?\*\/)*(?:[^\S\n]*\/\/[^\n]*)?/u;
 
 /**
  * Reattaches a same-line comment to the element it describes. Inserting into an array places the
@@ -152,12 +172,17 @@ function restoreTrailingComment(content: string, key: string, insertedIndex: num
 
 /**
  * Mirrors the indentation the file already uses, so a semantic change does not reindent unrelated
- * lines. Falls back to the two spaces every generated config uses.
+ * lines. The first property is measured rather than the first indented line, because a decorated
+ * block comment (` * ...`) would otherwise pass for the file's indentation. Falls back to the two
+ * spaces every generated config uses.
  */
 function detectFormattingOptions(content: string): { insertSpaces: boolean; tabSize: number } {
-  const indentation = /^(?<indentation>[ \t]+)\S/mu.exec(content)?.groups?.['indentation'];
-  if (indentation?.startsWith('\t')) return { insertSpaces: false, tabSize: 1 };
-  return { insertSpaces: true, tabSize: indentation?.length ?? 2 };
+  const firstProperty = parseTree(content)?.children?.[0];
+  const indentation =
+    firstProperty && content.slice(content.lastIndexOf('\n', firstProperty.offset) + 1, firstProperty.offset);
+  if (!indentation || !/^[\t ]+$/u.test(indentation)) return { insertSpaces: true, tabSize: 2 };
+  if (indentation.startsWith('\t')) return { insertSpaces: false, tabSize: 1 };
+  return { insertSpaces: true, tabSize: indentation.length };
 }
 
 /**

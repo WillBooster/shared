@@ -211,6 +211,43 @@ test('keeps a trailing comment on the array element it describes when appending'
   }
 });
 
+test('reports the comments lost when dropping the legacy preset forces a rewrite', async () => {
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (message: string): void => void warnings.push(message);
+  try {
+    await withRepo(
+      {
+        'renovate.jsonc': `{
+  "extends": [
+    // Keep the local preset after the legacy preset.
+    "@willbooster",
+    "local>team/config"
+  ]
+}
+`,
+      },
+      async (dirPath) => {
+        const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
+        expect(settings.extends).toEqual([preset, 'local>team/config']);
+      }
+    );
+  } finally {
+    console.warn = warn;
+  }
+  expect(warnings.some((message) => message.includes('"extends"'))).toBe(true);
+});
+
+test('measures indentation from the first property, not from block-comment decoration', async () => {
+  await withRepo(
+    { 'renovate.jsonc': '{\n/*\n * Repository-wide Renovate policy.\n */\n    "timezone": "UTC"\n}\n' },
+    async (dirPath) => {
+      const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+      expect(content).toMatch(/^ {4}"\$schema":/mu);
+    }
+  );
+});
+
 test('bails when a shadowed config outranks the superseded one, leaving the live config alone', async () => {
   // .github/renovate.json (4) outranks .renovaterc.json (11), so migrating the latter would
   // abandon the config Renovate actually reads.

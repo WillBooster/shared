@@ -111,7 +111,16 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
     }
 
     const newSettings = buildSettings(config, liveSettings);
-    const newContent = jsoncUtil.stringifyPreservingTrivia(baseContent, newSettings as Record<string, unknown>);
+    const { content: newContent, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
+      baseContent,
+      newSettings as Record<string, unknown>
+    );
+    // Editing in place preserves comments property by property, but a property whose value had to
+    // be rewritten wholesale (e.g. `extends` losing the legacy @willbooster preset) takes its
+    // nested comments with it.
+    for (const key of keysLosingComments) {
+      console.warn(`Comments inside "${key}" were dropped while rewriting it in ${filePath}.`);
+    }
     // Compare against the managed file the same way generateFile normalizes its writes, so an
     // unchanged repository is left completely untouched. Await the write directly: the superseded
     // sources below must survive when the confinement guards refuse it (e.g. renovate.jsonc is a
