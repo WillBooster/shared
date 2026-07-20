@@ -214,15 +214,28 @@ async function readExistingConfigs(config: PackageConfig): Promise<ExistingConfi
       }
       continue;
     }
-    // Confined read: a committed symlink pointing outside the repository must not get its
-    // target's content copied into the tracked renovate.jsonc.
-    const content = await fsUtil.readFileConfinedIfExists(filePath);
+    const content = await readContentIfPossible(filePath);
     // Distinguish "absent" (skip it) from "present but refused by the confined read", which still
     // occupies its slot in the resolution order and must be recorded.
     if (content === undefined && !(await fs.promises.lstat(filePath).catch(() => {}))) continue;
     existingConfigs.push({ filePath, content, role, isEditableSyntax });
   }
   return existingConfigs;
+}
+
+/**
+ * Confined read: a committed symlink pointing outside the repository must not get its target's
+ * content copied into the tracked renovate.jsonc. A read that fails outright (e.g. EACCES) yields
+ * undefined rather than throwing — only the live config's content is required, and a dead file's
+ * content is used solely for the comment-loss warning, so one unreadable leftover must not abort
+ * the whole generator. The caller still bails when the unreadable file is the live one.
+ */
+async function readContentIfPossible(filePath: string): Promise<string | undefined> {
+  try {
+    return await fsUtil.readFileConfinedIfExists(filePath);
+  } catch {
+    return;
+  }
 }
 
 /**

@@ -76,8 +76,8 @@ export const jsoncUtil = {
    * properties (generated settings are merged ON TOP of the existing ones), so removals are not
    * handled: a property missing from `settings` is left untouched rather than deleted.
    *
-   * Trivia-only content is edited rather than replaced too, so its comments survive (modify()
-   * appends the generated object before them).
+   * Trivia-only content keeps its comments as a header above the generated object, rather than
+   * being replaced outright or run through modify() (which would move the object in front of them).
    */
   stringifyPreservingTrivia(
     oldContent: string | undefined,
@@ -91,6 +91,13 @@ export const jsoncUtil = {
     // Drop a leading BOM: modify() inserts the generated object BEFORE any leading trivia, which
     // would leave the BOM stranded mid-file where it is a syntax error rather than an ignored mark.
     let content = oldContent.replace(/^\uFEFF/, '');
+    if (jsoncUtil.isTriviaOnly(content)) {
+      const header = content.trim();
+      return {
+        content: `${header ? header + '\n' : ''}${JSON.stringify(settings, undefined, 2)}`,
+        keysLosingComments: [],
+      };
+    }
     const modifyOptions = { formattingOptions: detectFormattingOptions(content) };
     const keysLosingComments: string[] = [];
     const newEntries: [string, unknown][] = [];

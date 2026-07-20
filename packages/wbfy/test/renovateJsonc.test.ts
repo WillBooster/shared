@@ -319,7 +319,7 @@ test('keeps a BOM-prefixed comment-only file parsable after generation', async (
   // mid-file where it is a syntax error rather than an ignored mark.
   await withRepo({ 'renovate.jsonc': '\uFEFF// preserve me\n' }, async (dirPath) => {
     const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
-    expect(content).toContain('// preserve me');
+    expect(content.indexOf('// preserve me')).toBeLessThan(content.indexOf('{'));
     expect(content).not.toContain('\uFEFF');
     expect(parseSettings(content).extends).toEqual([preset]);
   });
