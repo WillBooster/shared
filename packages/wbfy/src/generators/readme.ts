@@ -13,7 +13,14 @@ const semanticReleaseBadge =
 
 const wbfyBadgeUrlPrefix = 'https://img.shields.io/badge/wbfy-';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
-const wbfyBadgePattern = new RegExp(String.raw`\[!\[[^\]]*\]\([^)\s]*\)\]\(${escapeRegExp(wbfyBadgeLink)}\)`, 'gu');
+// Identified by what makes a badge wbfy's own — the `wbfy` alt text on a shields.io badge image —
+// rather than by its exact image URL or its link. Both of those have changed once already and may
+// change again; keying on either alone leaves the superseded badge behind and duplicates it. The
+// alt text also keeps an unrelated image that merely links to wbfy (e.g. a diagram) from deletion.
+const wbfyBadgePattern = new RegExp(
+  String.raw`\[!\[wbfy\]\(https://img\.shields\.io/badge/[^)\s]*\)\]\([^)\s]*\)`,
+  'gu'
+);
 
 interface MarkdownLine {
   content: string;

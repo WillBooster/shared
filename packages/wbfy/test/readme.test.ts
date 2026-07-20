@@ -135,6 +135,28 @@ test('supersedes a badge whose image URL format changed', async () => {
   });
 });
 
+test('supersedes a badge whose link changed', async () => {
+  await withTempDir(async (dirPath) => {
+    const oldLinkBadge = '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://example.com/old-wbfy)';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${oldLinkBadge}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toBe(`# example\n\n${badgeOf('1.2.3')}\n`);
+  });
+});
+
+test('keeps an unrelated image that merely links to wbfy', async () => {
+  await withTempDir(async (dirPath) => {
+    const diagram =
+      '[![Architecture diagram](./architecture.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${diagram}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(diagram);
+    expect(content).toContain(badgeOf('1.2.3'));
+  });
+});
+
 test('marks a run from an unreleased checkout with its commit hash', async () => {
   await withTempDir(async (dirPath) => {
     await runGenerateReadme(dirPath, '1.2.3');
