@@ -30,13 +30,22 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     // empty one, and the default npm plugin already skips private manifests.
     // With @semantic-release/git present, the npm plugin's prepare step (which bumps
     // package.json's version even with npmPublish: false) feeds the committed release metadata,
-    // so the entry is load-bearing regardless of privacy.
-    const hasGitPlugin = plugins.some(
-      (pluginEntry) => (Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry) === '@semantic-release/git'
+    // so the entry is load-bearing regardless of privacy. The same applies whenever any OTHER
+    // plugin configuration references the manifest the prepare step rewrites (e.g. a GitHub
+    // release uploading package.json as an asset) — checked conservatively over the serialized
+    // remaining configuration.
+    const otherPluginsJson = JSON.stringify(
+      plugins.filter(
+        (pluginEntry) => (Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry) !== '@semantic-release/npm'
+      )
     );
+    const keepsPreparedManifest =
+      otherPluginsJson.includes('@semantic-release/git') ||
+      otherPluginsJson.includes('package.json') ||
+      otherPluginsJson.includes('npm-shrinkwrap.json');
     if (
       Array.isArray(settings.plugins) &&
-      !hasGitPlugin &&
+      !keepsPreparedManifest &&
       rootConfig.packageJson?.private &&
       !rootConfig.packageJson.publishConfig &&
       !(rootConfig.doesContainSubPackageJsons && rootConfig.release.npmPublishesRoot)

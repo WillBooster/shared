@@ -609,7 +609,17 @@ export function findWbDeploySegment(deployScript: string): string | undefined {
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
     while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
       index++;
-    return tokens[index] === 'wb' && tokens.slice(index + 1).includes('deploy');
+    if (tokens[index] !== 'wb') return false;
+    index++;
+    // Skip global options (and the separate value of `-w`/`--working-dir`) so the FIRST command
+    // token decides: `wb -w packages/api deploy` matches while subcommands owning their own
+    // `deploy` (`wb prisma deploy`, `wb retry deploy`) do not.
+    while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
+      const flag = tokens[index] ?? '';
+      index++;
+      if ((flag === '-w' || flag === '--working-dir') && index < tokens.length) index++;
+    }
+    return tokens[index] === 'deploy';
   });
 }
 
