@@ -215,6 +215,16 @@ test.each([
     expected: `# Project\n\n${badgeOf('1.2.3')}\n\n> <pre>\n> # Example\n> </pre>\n`,
   },
   {
+    name: 'an HTML block left unclosed inside a block quote',
+    input: '> <div>\n> # Hidden\n# Project\nBody.\n',
+    expected: `> <div>\n> # Hidden\n# Project\n\n${badgeOf('1.2.3')}\n\nBody.\n`,
+  },
+  {
+    name: 'a type-1 block closed by a different tag',
+    input: '<pre>\n</script>\n# Project\n',
+    expected: `<pre>\n</script>\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
@@ -420,6 +430,25 @@ test('supersedes a workflow badge carrying query parameters', async () => {
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).not.toContain('?branch=main');
     expect(content.split('actions/workflows/test.yml/badge.svg')).toHaveLength(2);
+  });
+});
+
+test('keeps an indented code example inside a block quote', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n>     ${legacyBadge}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(legacyBadge);
+  });
+});
+
+test('supersedes a badge outside the block quote that opened a code span', async () => {
+  await withTempDir(async (dirPath) => {
+    // The backtick inside the quote cannot pair with a top-level one below it.
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n> text \`\n${legacyBadge}\n\` close\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
   });
 });
 

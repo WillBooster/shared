@@ -228,6 +228,10 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
   let frontMatterMarker: string | undefined;
   let rawHtmlTag: string | undefined;
   let rawTextTerminator: string | undefined;
+  // The container a block state was opened in. CommonMark ends an HTML block at the end of its
+  // containing block quote or list item too, so a quoted block must not protect later top-level
+  // lines — an unterminated `> <div>` used to hide the real title from the badge anchor.
+  let blockContainerIndent = 0;
   let frontMatterEnd: number | undefined;
   let offset = 0;
   const lines: MarkdownLine[] = [];
@@ -246,7 +250,9 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     // gathered LAZILY: scanning ahead from every line made analysis quadratic (6000 lines took 1.6s).
     let cachedParagraphRest: string | undefined;
     const getParagraphRest = (): string =>
-      (cachedParagraphRest ??= isAtxHeading(content) ? '' : takeParagraphRest(rawLines, lineIndex + 1));
+      (cachedParagraphRest ??= isAtxHeading(content)
+        ? ''
+        : takeParagraphRest(rawLines, lineIndex + 1, content.length - getContainerContent(content).length));
 
     if (start === 0 && (trimmedLine === '---' || trimmedLine === '+++') && hasFrontMatterEnd(readme, trimmedLine)) {
       frontMatterMarker = trimmedLine;
@@ -266,6 +272,13 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     // still open — otherwise a stray backtick would silence badge removal for the rest of the file.
     if (openSpan?.kind === 'code' && !trimmedLine) openSpan = undefined;
 
+    // A line outside the container that opened the block ends it, whatever its own terminator says.
+    if ((rawTextTerminator || rawHtmlTag || inHtmlBlock) && exitsContainer(content, blockContainerIndent)) {
+      rawTextTerminator = undefined;
+      rawHtmlTag = undefined;
+      inHtmlBlock = false;
+    }
+
     // Types 1 and 3-5 hold VERBATIM text and each run to their own terminator.
     if (rawTextTerminator) {
       if (content.includes(rawTextTerminator)) rawTextTerminator = undefined;
@@ -273,8 +286,10 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
       continue;
     }
 
+    // Any of the four type-1 tags closes the block, not just the one that opened it: CommonMark's
+    // end condition names the whole set, so `<pre>` followed by `</script>` ends there.
     if (rawHtmlTag) {
-      if (hasRawHtmlClosingTag(content, rawHtmlTag)) rawHtmlTag = undefined;
+      if (hasVerbatimHtmlClosingTag(content)) rawHtmlTag = undefined;
       lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
       continue;
     }
@@ -339,7 +354,10 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     const containerContent = getContainerContent(content);
     const verbatimHtmlTag = containerContent.match(/^ {0,3}<(pre|script|style|textarea)(?:[ \t>]|$)/iu)?.[1];
     if (verbatimHtmlTag) {
-      if (!hasRawHtmlClosingTag(content, verbatimHtmlTag)) rawHtmlTag = verbatimHtmlTag;
+      if (!hasVerbatimHtmlClosingTag(content.slice(content.indexOf('<') + 1))) {
+        rawHtmlTag = verbatimHtmlTag;
+        blockContainerIndent = content.length - containerContent.length;
+      }
       lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
       continue;
     }
@@ -350,12 +368,16 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     );
     if (rawTextOpener) {
       const [, terminator] = rawTextOpener;
-      if (!containerContent.slice(containerContent.indexOf('<')).includes(terminator)) rawTextTerminator = terminator;
+      if (!containerContent.slice(containerContent.indexOf('<')).includes(terminator)) {
+        rawTextTerminator = terminator;
+        blockContainerIndent = content.length - containerContent.length;
+      }
       lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
       continue;
     }
     if (htmlBlockPattern.test(containerContent)) {
       inHtmlBlock = true;
+      blockContainerIndent = content.length - containerContent.length;
       const split = splitProtectedSpans(stripAttributeValues(content), undefined, getParagraphRest);
       openSpan = split.openSpan;
       lines.push({ content, end, ending, isProtected: true, isRawText: false, spans: split.spans });
@@ -365,7 +387,9 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     const split = splitProtectedSpans(content, undefined, getParagraphRest);
     openSpan = split.openSpan;
     const line = buildSpanLine(content, end, ending, split.spans);
-    lines.push(isIndentedCode(content) ? { ...line, isProtected: true, isRawText: true, spans: [] } : line);
+    // Measured after the container prefix: `>     example` is an indented code block just like an
+    // unquoted one, and reading the raw line deleted its badge example as if it were live.
+    lines.push(isIndentedCode(containerContent) ? { ...line, isProtected: true, isRawText: true, spans: [] } : line);
   }
   return { frontMatterEnd, lines };
 }
@@ -386,10 +410,13 @@ const RAW_TEXT_BLOCKS: [string, string][] = [
  * before inline spans, so the paragraph ends at a blank line — including one that is blank inside its
  * container, like a lone `>` — and at a heading, which starts a block of its own.
  */
-function takeParagraphRest(rawLines: string[], from: number): string {
+function takeParagraphRest(rawLines: string[], from: number, containerIndent: number): string {
   const rest: string[] = [];
   for (let index = from; index < rawLines.length; index++) {
     const line = rawLines[index]!;
+    // Leaving the opener's container ends the paragraph just as entering a new one does: a backtick
+    // opened inside a block quote must not pair with a later top-level one across the boundary.
+    if (line.length - getContainerContent(line).length !== containerIndent) break;
     if (!getContainerContent(line).trim() || isParagraphInterrupter(line)) break;
     rest.push(line);
   }
@@ -413,6 +440,12 @@ function isParagraphInterrupter(content: string): boolean {
     /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(content) ||
     /^ {0,3}<(?:pre|script|style|textarea|!|\?)/iu.test(content)
   );
+}
+
+/** Whether the line sits outside a container whose content started at `containerIndent`. */
+function exitsContainer(content: string, containerIndent: number): boolean {
+  if (containerIndent === 0 || !content.trim()) return false;
+  return leadingWhitespaceOf(content) < containerIndent && !isContainerStart(content);
 }
 
 function leadingWhitespaceOf(content: string): number {
@@ -584,6 +617,11 @@ function isEscaped(text: string, offset: number): boolean {
   let backslashes = 0;
   while (offset - backslashes > 0 && text[offset - backslashes - 1] === '\\') backslashes++;
   return backslashes % 2 === 1;
+}
+
+/** Whether the line closes a CommonMark type-1 HTML block, whichever of its tags opened it. */
+function hasVerbatimHtmlClosingTag(line: string): boolean {
+  return /<\/(?:pre|script|style|textarea)[ \t]*>/iu.test(stripAttributeValues(line));
 }
 
 function hasRawHtmlClosingTag(line: string, tag: string): boolean {

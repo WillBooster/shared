@@ -60,7 +60,9 @@ function isWbfyRepository(gitRootDirPath: string): boolean {
   const remoteUrls = runGit(['remote', '-v'], gitRootDirPath);
   return !!remoteUrls
     ?.split('\n')
-    .some((line) => /github\.com[:/]WillBooster\/shared(?:\.git)?$/iu.test(line.split(/[ \t]+/u)[1] ?? ''));
+    // The host is anchored: unanchored, `notgithub.com/WillBooster/shared` also matched, letting a
+    // vendored tree with a lookalike remote claim to be a genuine wbfy checkout.
+    .some((line) => /(?:^|@|\/\/)github\.com[:/]WillBooster\/shared(?:\.git)?$/iu.test(line.split(/[ \t]+/u)[1] ?? ''));
 }
 
 function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
