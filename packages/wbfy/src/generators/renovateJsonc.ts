@@ -123,21 +123,24 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
       return;
     }
 
-    const supersededConfigs = existingConfigs.filter((existing) => existing.role === 'superseded');
-    for (const superseded of supersededConfigs) {
-      if (superseded.content === undefined || !jsoncUtil.containsComment(superseded.content)) continue;
+    // Every config other than the live one loses its comments here — the superseded ones by being
+    // deleted below, and a non-live managed file by being overwritten with the live settings.
+    for (const discarded of existingConfigs) {
+      if (discarded.role === 'shadowed' || discarded.content === undefined) continue;
+      if (!jsoncUtil.containsComment(discarded.content)) continue;
       // The live source's comments came along whenever it doubled as the editing base, so only a
       // re-serialized (JSON5) one loses them. A dead config's comments describe settings that were
       // never in effect, so telling the user to copy those would be actively misleading.
-      if (superseded === liveConfig) {
-        if (superseded.content === baseContent) continue;
+      if (discarded === liveConfig) {
+        if (discarded.content === baseContent) continue;
         console.warn(
-          `Comments in ${superseded.filePath} were dropped while migrating it into ${filePath}; copy them over manually.`
+          `Comments in ${discarded.filePath} were dropped while migrating it into ${filePath}; copy them over manually.`
         );
         continue;
       }
+      const fate = discarded.role === 'managed' ? 'overwritten' : 'deleted';
       console.warn(
-        `${superseded.filePath} was deleted with its comments: ${liveConfig?.filePath} took precedence, so Renovate never read it.`
+        `${discarded.filePath} was ${fate} with its comments: ${liveConfig?.filePath} took precedence, so Renovate never read it.`
       );
     }
     await promisePool.run(() =>
@@ -146,7 +149,7 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
     // Remove the superseded configs once the managed file is in place (for a symlink this deletes
     // only the link entry). Even a dead one must go: it would otherwise keep occupying its slot in
     // the resolution order, and an empty renovate.json is enough to hide renovate.jsonc entirely.
-    for (const superseded of supersededConfigs) {
+    for (const superseded of existingConfigs.filter((existing) => existing.role === 'superseded')) {
       await promisePool.run(() => fsUtil.removeConfined(superseded.filePath));
     }
   });

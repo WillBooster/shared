@@ -254,6 +254,26 @@ test('migrates a valid live config even when a dead lower-priority one is malfor
   );
 });
 
+test('reports the comments of a managed file that the live config overwrites', async () => {
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (message: string): void => void warnings.push(message);
+  try {
+    await withRepo(
+      {
+        'renovate.json': JSON.stringify({ timezone: 'UTC' }),
+        'renovate.jsonc': '{\n  // this note is about to be destroyed\n  "timezone": "Asia/Tokyo"\n}\n',
+      },
+      async (dirPath) => {
+        expect(parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')).timezone).toBe('UTC');
+      }
+    );
+  } finally {
+    console.warn = warn;
+  }
+  expect(warnings.some((message) => message.includes('renovate.jsonc') && message.includes('overwritten'))).toBe(true);
+});
+
 test('bails instead of shadowing a config Renovate resolves after renovate.jsonc', async () => {
   await withRepo({ '.github/renovate.json': JSON.stringify({ extends: [preset] }) }, async (dirPath) => {
     expect(fs.existsSync(path.join(dirPath, 'renovate.jsonc'))).toBe(false);
