@@ -13,16 +13,23 @@ const semanticReleaseBadge =
 
 const wbfyBadgeUrlPrefix = 'https://img.shields.io/badge/wbfy-';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
-// Identified by what makes a badge wbfy's own — the `wbfy` alt text on a shields.io badge image —
-// rather than by its exact image URL or its link. Both of those have changed once already and may
-// change again; keying on either alone leaves the superseded badge behind and duplicates it.
-const wbfyBadgePattern = new RegExp(
-  String.raw`\[!\[wbfy\]\(https://img\.shields\.io/badge/[^)\s]*\)\]\([^)\s]*\)`,
-  'gu'
-);
 
 /** One `[![alt](image)](link)` badge, the only shape wbfy ever writes. */
 const badgePattern = /\[!\[[^\]]*\]\([^\s)]*\)\]\([^\s)]*\)/gu;
+
+/**
+ * The badges wbfy owns, matched by what identifies each one regardless of the version that wrote it:
+ * its alt text for wbfy's own badge (the image URL and the link have each changed once already, so
+ * keying on either leaves the superseded badge behind and duplicates it), and the workflow endpoint
+ * for an Actions badge (whose URL may carry a `?branch=…` query string).
+ *
+ * Anything else in the block belongs to whoever put it there and is left alone.
+ */
+const managedBadgePatterns = [
+  /^\[!\[wbfy\]\(https:\/\/img\.shields\.io\/badge\/[^)\s]*\)\]\([^)\s]*\)$/u,
+  /^\[!\[semantic-release\]\(https:\/\/img\.shields\.io\/badge\/[^)\s]*\)\]\([^)\s]*\)$/u,
+  /^\[!\[[^\]]*\]\(https:\/\/github\.com\/[^)\s]*\/actions\/workflows\/[^)\s]*\)\]\([^)\s]*\)$/u,
+];
 
 function buildWbfyBadge(label: string): string {
   // Hyphens are escaped as `--` per shields.io's badge path syntax, so `v1.2.3-rc.1` stays intact.
@@ -39,40 +46,38 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       (await fsUtil.readFileIfExists(filePath)) ??
       `# ${config.packageJson?.name ?? path.basename(path.resolve(config.dirPath))}\n`;
 
-    // Drop any previously inserted badge first, so a version or link change leaves no stale one.
-    newContent = removeBadges(newContent, wbfyBadgePattern);
-    newContent = insertBadge(newContent, buildWbfyBadge(getWbfyVersionLabel() ?? 'applied'));
+    const badges = [buildWbfyBadge(getWbfyVersionLabel() ?? 'applied')];
+    if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) badges.push(semanticReleaseBadge);
+    badges.push(...(await buildWorkflowBadges(config)));
 
-    if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) {
-      newContent = insertBadge(newContent, semanticReleaseBadge);
-    }
-
-    const repository = config.repository?.slice(config.repository.indexOf(':') + 1);
-    const workflowsPath = path.resolve(config.dirPath, '.github', 'workflows');
-    const fileNames = fs.existsSync(workflowsPath) ? fs.readdirSync(workflowsPath) : [];
-    for (const fileName of fileNames) {
-      if (!fileName.startsWith('test') && !fileName.startsWith('deploy')) continue;
-
-      let badgeName = fileName;
-      badgeName = (badgeName[0] || '').toUpperCase() + badgeName.slice(1, badgeName.indexOf('.'));
-      badgeName = badgeName.replace('-', ' ');
-      if (!repository) continue;
-      const badge = `[![${badgeName}](https://github.com/${repository}/actions/workflows/${fileName}/badge.svg)](https://github.com/${repository}/actions/workflows/${fileName})`;
-      if (fs.existsSync(path.resolve(config.dirPath, `.github/workflows/${fileName}`))) {
-        // Always drop the existing badge first, so a stale broken badge is removed even when the
-        // guard below skips re-inserting it.
-        newContent = removeGitHubActionsBadge(newContent, badgeName, fileName);
-        // GitHub's badge endpoint returns 404 until the workflow has at least one run, so a badge
-        // for a dispatch-only deploy workflow that has never run renders as a broken image.
-        // Test workflows run on every PR, so only deploy badges need the guard.
-        if (fileName.startsWith('deploy') && !(await hasAnyWorkflowRun(repository, fileName, config.isPublicRepo)))
-          continue;
-        newContent = insertBadge(newContent, badge);
-      }
-    }
+    // The block is written in one pass from the badges wbfy manages right now. A badge that is no
+    // longer wanted — a superseded version, or one whose workflow is gone — simply is not in the
+    // list, so nothing has to remove it.
+    newContent = writeBadgeBlock(newContent, badges);
 
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent, getLineEnding(newContent)));
   });
+}
+
+async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
+  const repository = config.repository?.slice(config.repository.indexOf(':') + 1);
+  const workflowsPath = path.resolve(config.dirPath, '.github', 'workflows');
+  if (!repository || !fs.existsSync(workflowsPath)) return [];
+
+  const badges: string[] = [];
+  for (const fileName of fs.readdirSync(workflowsPath)) {
+    if (!fileName.startsWith('test') && !fileName.startsWith('deploy')) continue;
+    // GitHub's badge endpoint returns 404 until the workflow has at least one run, so a badge for a
+    // dispatch-only deploy workflow that has never run renders as a broken image. Test workflows run
+    // on every PR, so only deploy badges need the guard.
+    if (fileName.startsWith('deploy') && !(await hasAnyWorkflowRun(repository, fileName, config.isPublicRepo))) {
+      continue;
+    }
+    const badgeName = (fileName[0] ?? '').toUpperCase() + fileName.slice(1, fileName.indexOf('.')).replace('-', ' ');
+    const workflowUrl = `https://github.com/${repository}/actions/workflows/${fileName}`;
+    badges.push(`[![${badgeName}](${workflowUrl}/badge.svg)](${workflowUrl})`);
+  }
+  return badges;
 }
 
 async function hasAnyWorkflowRun(
@@ -102,103 +107,78 @@ async function hasAnyWorkflowRun(
 }
 
 /**
- * Rewrites the badge block — the run of badge-only lines wbfy keeps directly under the title —
- * through `transform`, and reassembles the README around it with exactly one blank line on each
- * side.
+ * Replaces the badge block — the run of badge-only lines wbfy keeps directly under the title — with
+ * `managedBadges`, keeping any badge there that wbfy does not manage, and reassembles the README
+ * around it with exactly one blank line on each side.
  *
- * Confining every edit to this block is what keeps this module small. wbfy only ever writes badges
- * here, and it only ever reads back its own output, so nothing else in the README has to be
- * understood: prose, fenced examples, HTML and comments are simply never touched.
+ * This is the module's whole job. Because the block is the only region ever read or written, the
+ * rest of the README needs no understanding at all: prose, fenced examples, HTML and comments are
+ * never touched, so none of the constructs a Markdown parser exists to recognize matter here.
  */
-function rewriteBadgeBlock(readme: string, transform: (badges: string[]) => string[]): string {
+export function writeBadgeBlock(readme: string, managedBadges: string[]): string {
   const lineEnding = getLineEnding(readme);
   // The final newline is set aside rather than split into a trailing empty line, which the blank-line
   // trimming below would otherwise swallow.
   const endsWithNewline = /\r?\n$/u.test(readme);
   const lines = readme.replace(/\r?\n$/u, '').split(/\r?\n/u);
 
-  const titleIndex = findTitleIndex(lines);
-  // Without a title the block sits at the very top, above everything.
-  const head = titleIndex === undefined ? [] : lines.slice(0, titleIndex + 1);
+  const titleEndIndex = findTitleEndIndex(lines);
+  // Without a recognizable title the block sits at the very top, above everything.
+  const head = titleEndIndex === undefined ? [] : lines.slice(0, titleEndIndex + 1);
   let index = head.length;
   while (index < lines.length && !lines[index]!.trim()) index++;
-  const badges: string[] = [];
-  while (index < lines.length && isBadgeLine(lines[index]!)) badges.push(lines[index++]!.trim());
+  const existing: string[] = [];
+  while (index < lines.length && isBadgeLine(lines[index]!)) {
+    existing.push(...(lines[index++]!.match(badgePattern) ?? []));
+  }
   while (index < lines.length && !lines[index]!.trim()) index++;
   const body = lines.slice(index);
 
-  const newBadges = transform(badges);
+  // Superseding a managed badge is just dropping the old one: a version, URL or workflow change
+  // leaves no stale copy, while a badge someone else added to the block is kept.
+  const badges = [...managedBadges, ...existing.filter((badge) => !isManagedBadge(badge))];
   const result = [
     ...head,
-    ...(head.length > 0 && newBadges.length > 0 ? [''] : []),
-    ...newBadges,
-    ...(body.length > 0 && head.length + newBadges.length > 0 ? [''] : []),
+    ...(head.length > 0 && badges.length > 0 ? [''] : []),
+    ...badges,
+    ...(body.length > 0 && head.length + badges.length > 0 ? [''] : []),
     ...body,
   ].join(lineEnding);
   return endsWithNewline ? `${result}${lineEnding}` : result;
 }
 
-/** The line index of the README's title, which the badge block follows. */
-function findTitleIndex(lines: string[]): number | undefined {
-  let fence: string | undefined;
-  for (const [index, line] of lines.entries()) {
-    // The one piece of Markdown structure worth tracking: a leading fenced example may contain a
-    // `#` line, and anchoring to it would write the badges inside the code block.
-    const [, delimiter, info] = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line) ?? [];
-    if (fence) {
-      // Only the same character, at least as long, with nothing but spaces after it, closes a fence;
-      // toggling on any delimiter line ended the block early at an example like ```` ```not-a-close ````.
-      if (delimiter && delimiter[0] === fence[0] && delimiter.length >= fence.length && !info?.trim()) {
-        fence = undefined;
-      }
-      continue;
-    }
-    if (delimiter) {
-      fence = delimiter;
-      continue;
-    }
-
-    if (/^ {0,3}#{1,6}(?:[ \t]|$)/u.test(line)) return index;
-    // A centered `<h1 align="center">…</h1>` is a title too; it may close on a later line.
-    if (/^ {0,3}<h1(?:[ \t>]|$)/iu.test(line)) {
-      const closingIndex = lines.findIndex(
-        (candidate, candidateIndex) => candidateIndex >= index && /<\/h1>/iu.test(candidate)
-      );
-      return closingIndex === -1 ? index : closingIndex;
-    }
-    // A Setext underline turns the line above it into the title.
-    if (index > 0 && lines[index - 1]!.trim() && /^ {0,3}(?:=+|-+)[ \t]*$/u.test(line)) return index;
+/**
+ * The line index the badge block follows. Only the FIRST piece of content is examined, never the
+ * whole file: a title is what a README opens with, and scanning further would mean recognizing every
+ * construct a `#` could be hiding inside — exactly the Markdown parsing this module does without.
+ */
+function findTitleEndIndex(lines: string[]): number | undefined {
+  let index = 0;
+  // Front matter has to stay first in the file, so the badges go after it rather than above it.
+  if (lines[0]?.trim() === '---') {
+    const closingIndex = lines.findIndex((line, lineIndex) => lineIndex > 0 && line.trim() === '---');
+    if (closingIndex !== -1) index = closingIndex + 1;
   }
+  while (index < lines.length && !lines[index]!.trim()) index++;
+
+  const line = lines[index];
+  if (line === undefined) return undefined;
+  // wbfy writes `# <name>`; an existing README may center its title in an `<h1>` that closes later.
+  if (/^ {0,3}#{1,6}[ \t]/u.test(line)) return index;
+  if (/^ {0,3}<h1[ \t>]/iu.test(line)) {
+    const closingIndex = lines.findIndex(
+      (candidate, candidateIndex) => candidateIndex >= index && /<\/h1>/iu.test(candidate)
+    );
+    return closingIndex === -1 ? index : closingIndex;
+  }
+  // A Setext underline on the next line makes this line the title.
+  if (lines[index + 1] !== undefined && /^ {0,3}(?:=+|-+)[ \t]*$/u.test(lines[index + 1]!)) return index + 1;
   return undefined;
 }
 
-export function insertBadge(readme: string, badge: string): string {
-  const pattern = new RegExp(escapeRegExp(badge), 'gu');
-  // The badge is dropped before being re-added, so re-running replaces it instead of stacking a
-  // second copy.
-  return rewriteBadgeBlock(readme, (badges) => [badge, ...stripBadges(badges, pattern)]);
-}
-
-export function removeGitHubActionsBadge(readme: string, badgeName: string, fileName: string): string {
-  const escapedFileName = escapeRegExp(fileName);
-  return removeBadges(
-    readme,
-    new RegExp(
-      // The query string GitHub's UI puts on badge URLs (`?branch=…`) is optional on both.
-      String.raw`\[!\[${escapeRegExp(badgeName)}\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}/badge\.svg(?:\?[^)\s]*)?\)\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}(?:\?[^)\s]*)?\)`,
-      'gu'
-    )
-  );
-}
-
-function removeBadges(readme: string, pattern: RegExp): string {
-  return rewriteBadgeBlock(readme, (badges) => stripBadges(badges, pattern));
-}
-
-function stripBadges(badges: string[], pattern: RegExp): string[] {
-  // A line holding nothing but the removed badge goes away with it; keeping it would add a blank
-  // line on every run.
-  return badges.map((line) => line.replaceAll(pattern, '').trim()).filter(Boolean);
+/** Whether the badge is one wbfy generates, in any version it has ever written. */
+function isManagedBadge(badge: string): boolean {
+  return managedBadgePatterns.some((pattern) => pattern.test(badge));
 }
 
 /** Whether the line holds badges and nothing else — the only content wbfy puts in the block. */
@@ -209,8 +189,4 @@ function isBadgeLine(line: string): boolean {
 
 function getLineEnding(content: string): '\n' | '\r\n' {
   return content.includes('\r\n') ? '\r\n' : '\n';
-}
-
-function escapeRegExp(value: string): string {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }

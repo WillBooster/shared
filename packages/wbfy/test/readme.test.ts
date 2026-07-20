@@ -98,14 +98,16 @@ test.each([
     expected: `<h1 align="center">\n  Project\n</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
   {
-    name: 'a fenced example above the title',
+    // A README that opens with something other than a title has no anchor to sit under, so the
+    // badges go to the top rather than the generator hunting for a heading further down.
+    name: 'content that does not open with a title',
     input: '```md\n# Example\n```\n\n# Project\n\nDescription.\n',
-    expected: `\`\`\`md\n# Example\n\`\`\`\n\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+    expected: `${badgeOf('1.2.3')}\n\n\`\`\`md\n# Example\n\`\`\`\n\n# Project\n\nDescription.\n`,
   },
   {
-    name: 'a fence containing a non-closing fence line',
-    input: '```md\n```not-a-close\n# still code\n```\n\n# Project\n\nDescription.\n',
-    expected: `\`\`\`md\n\`\`\`not-a-close\n# still code\n\`\`\`\n\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+    name: 'front matter before the title',
+    input: '---\ntitle: Project\n---\n\n# Project\n\nDescription.\n',
+    expected: `---\ntitle: Project\n---\n\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
   {
     name: 'no title at all',
