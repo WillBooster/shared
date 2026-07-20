@@ -151,6 +151,28 @@ test('supersedes a badge whose image URL format changed', async () => {
   });
 });
 
+test('supersedes a badge trailed by an inline HTML comment', async () => {
+  await withTempDir(async (dirPath) => {
+    const comment = '<!-- managed badge -->';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${legacyBadge} ${comment}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(comment);
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
+test('keeps a badge that is itself commented out', async () => {
+  await withTempDir(async (dirPath) => {
+    const commentedBadge = `<!-- ${legacyBadge} -->`;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${commentedBadge}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(commentedBadge);
+    expect(content).toContain(badgeOf('1.2.3'));
+  });
+});
+
 test('supersedes a badge whose link changed', async () => {
   await withTempDir(async (dirPath) => {
     const oldLinkBadge = '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://example.com/old-wbfy)';
