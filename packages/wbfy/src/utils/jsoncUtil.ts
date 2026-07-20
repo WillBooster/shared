@@ -59,18 +59,6 @@ export const jsoncUtil = {
     return false;
   },
   /**
-   * Tells whether the object declares the same top-level property twice. Such content cannot be
-   * edited in place: this module's parser keeps the LAST occurrence (matching JSON.parse) while
-   * jsonc-parser's modify() rewrites the FIRST, so an edit would land on the occurrence that does
-   * not take effect and be re-applied on every run.
-   */
-  hasDuplicateTopLevelKey(content: string): boolean {
-    const keys = (parseTree(content.replace(/^\uFEFF/, ''))?.children ?? []).map(
-      (property) => property.children?.[0]?.value as unknown
-    );
-    return new Set(keys).size !== keys.length;
-  },
-  /**
    * Serializes `settings` into `oldContent`, editing only the top-level properties whose values
    * changed so the comments and formatting of an existing file survive. Callers never drop
    * properties (generated settings are merged ON TOP of the existing ones), so removals are not

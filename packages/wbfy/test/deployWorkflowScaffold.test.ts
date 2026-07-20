@@ -132,15 +132,6 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
         .deploy?.with?.server_url
     ).toBeUndefined();
     await fs.promises.rm(path.join(workerDirPath, 'wrangler.json'));
-    // A singular `route` object works too.
-    await fs.promises.writeFile(
-      path.join(workerDirPath, 'wrangler.jsonc'),
-      '{ "route": { "pattern": "single.example.com", "custom_domain": true } }'
-    );
-    expect(
-      generateCloudflareDeployWorkflow(createConfig(dirPath, 'bun wb deploy -w packages/api') as PackageConfig)?.jobs
-        .deploy?.with?.server_url
-    ).toBe('https://single.example.com/');
     // An env.production section is authoritative (routes are non-inheritable): with the section
     // present but declaring no routes, the top-level route must NOT leak into server_url.
     await fs.promises.writeFile(

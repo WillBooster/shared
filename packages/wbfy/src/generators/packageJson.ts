@@ -227,7 +227,6 @@ function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
  */
 function removeLegacyYarnInstallPrefixes(script: string): string {
   const tokens = tokenizeShellCommand(script);
-  if (containsHeredocOperator(tokens)) return script;
   const removalRanges: [number, number][] = [];
   forEachCommandPositionToken(tokens, (token, index) => {
     if (token.text !== 'yarn') return;
@@ -475,9 +474,6 @@ function convertYarnInvocationsToBun(
   resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
 ): string {
   const tokens = tokenizeShellCommand(script);
-  // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs. Only
-  // a real unquoted operator counts — `echo '<<' && yarn compile` still converts.
-  if (containsHeredocOperator(tokens)) return script;
   const replacements: ShellReplacement[] = [];
   forEachCommandPositionToken(tokens, (token, index) => {
     // Only a bare unquoted `yarn` word at command position starts an invocation.
@@ -523,41 +519,22 @@ function convertSingleYarnInvocation(
   script: string,
   resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
 ): ShellReplacement | undefined {
-  // Redirections may appear anywhere in a simple command without affecting which strings the
-  // command receives (`yarn run >out.log build:cache` passes `run build:cache`), so the rules
-  // below operate on the logical (non-redirection) arguments only.
-  const logicalArgs: { token: ShellToken; rawIndex: number }[] = [];
-  for (let index = 0; index < args.length; index++) {
-    const token = args[index] as ShellToken;
-    if (/^&?[<>]/u.test(token.text)) {
-      // The operator consumes its operand unless a `>&1`-style duplication is self-contained.
-      if (!/&(?:\d+|-)$/u.test(token.text)) index++;
-      continue;
-    }
-    if (
-      /^\d+$/u.test(token.text) &&
-      args[index + 1]?.start === token.end &&
-      /^[<>]/u.test(args[index + 1]?.text ?? '')
-    ) {
-      continue;
-    }
-    logicalArgs.push({ token, rawIndex: index });
-  }
+  // A redirection ends the arguments that decide the conversion (`yarn install > /dev/null`): the
+  // rewrite never spans one, so the redirection survives verbatim after the replaced prefix.
+  const redirectionIndex = args.findIndex((argToken) => isRedirectionOperator(argToken.text));
+  const logicalArgs = redirectionIndex === -1 ? args : args.slice(0, redirectionIndex);
   // Decoded (literal) argument values drive the matching, while emitted rewrites always reuse the
   // raw token text (rawArg) so quoting and expansion semantics survive the conversion unchanged
   // (e.g. `yarn 'build:$target'` keeps its single quotes). A shell-ambiguous token decodes to
   // undefined, which keeps the invocation in its yarn form.
   const argText = (argIndex: number): string | undefined => {
     const arg = logicalArgs[argIndex];
-    return arg && decodeSimpleShellWord(arg.token.text);
+    return arg && decodeSimpleShellWord(arg.text);
   };
-  const rawArg = (argIndex: number): string => logicalArgs[argIndex]?.token.text ?? '';
+  const rawArg = (argIndex: number): string => logicalArgs[argIndex]?.text ?? '';
   const replaceThroughArg = (argIndex: number, text: string): ShellReplacement | undefined => {
-    const arg = logicalArgs[argIndex] as { token: ShellToken; rawIndex: number };
-    // A redirection inside the replaced span would be deleted by the rewrite, so such an
-    // invocation keeps its yarn form to surface in review.
-    if (args.slice(0, arg.rawIndex).some((argToken) => /^&?[<>]/u.test(argToken.text))) return undefined;
-    return { start: yarnToken.start, end: arg.token.end, text };
+    const arg = logicalArgs[argIndex];
+    return arg && { start: yarnToken.start, end: arg.end, text };
   };
   const first = argText(0);
   const second = argText(1);
@@ -629,7 +606,7 @@ function convertSingleYarnInvocation(
     // its expanded name could need Yarn's global routing. Otherwise `bun run` accepts the same
     // flags and target.
     const target = logicalArgs[scriptNameIndex];
-    return target && (scriptName === undefined || scriptName.startsWith(':') || target.token.text.startsWith(':'))
+    return !target || scriptName === undefined || scriptName.startsWith(':') || target.text.startsWith(':')
       ? undefined
       : replaceThroughArg(0, 'bun run');
   }
@@ -713,8 +690,6 @@ function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
 
 function removeBunRuntimeFlag(script: string, scriptNames: ReadonlySet<string>): string {
   const tokens = tokenizeShellCommand(script);
-  // Heredoc bodies are data, not commands; skip such scripts instead of modeling heredocs.
-  if (containsHeredocOperator(tokens)) return script;
   // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
   // merely ending in `bun` (`my-bun`), quoted targets with spaces, and Bun runtime flags between
   // `--bun` and the script file are all classified correctly.
@@ -771,190 +746,21 @@ function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: Re
   return !nodeBasedTools.has(first);
 }
 
-// Words after which the next token is still in command position: prefix words that run the
-// command following them (cross-env is included because `cross-env KEY=VALUE <command> ...` is
-// the common pre-Bun way to set environment variables portably in package scripts), shell
-// keywords introducing a compound command's body (`if cmd`, `then cmd`, ...), and the `{ ... }`
-// grouping braces.
-// Options of the transparent wrapper words below that never consume a following argument
-// (`env -i`/`--ignore-environment`, `command -p`, `time -p`).
-const valuelessWrapperOptions = new Set(['-i', '-p', '--ignore-environment']);
-
-const commandPositionTransparentWords = new Set([
-  '!',
-  'command',
-  'cross-env',
-  'env',
-  'exec',
-  'time',
-  'if',
-  'elif',
-  'then',
-  'else',
-  'while',
-  'until',
-  'do',
-  '{',
-  '}',
-]);
-
 /**
- * Whether the token stream contains an unquoted heredoc or herestring operator (`<<`, `<<<`).
- * `<<` inside an arithmetic context (`echo $((1 << 2))`) is a left shift, not a heredoc.
- */
-function containsHeredocOperator(tokens: readonly ShellToken[]): boolean {
-  let inArithmetic = false;
-  const outerArithmeticStates: boolean[] = [];
-  for (const token of tokens) {
-    if (isShellSeparator(token.text)) {
-      for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
-        const char = token.text[charIndex];
-        if (char === '(') {
-          outerArithmeticStates.push(inArithmetic);
-          if (charIndex > 0) inArithmetic = true;
-        } else if (char === ')') {
-          inArithmetic = outerArithmeticStates.pop() ?? false;
-        }
-      }
-      continue;
-    }
-    if (!inArithmetic && /^&?[<>]/u.test(token.text) && token.text.includes('<<')) return true;
-  }
-  return false;
-}
-
-/**
- * Invokes the callback for every token in shell command position. Separators start a new command;
- * `KEY=VALUE` prefixes and transparent prefix words (`exec`, `env`, ...) keep the next token in
+ * Invokes the callback for every token in shell command position: the first word of the script and
+ * of every command after a separator. `KEY=VALUE` prefixes and redirections keep the next token in
  * command position.
  */
 function forEachCommandPositionToken(
   tokens: readonly ShellToken[],
-  callback: (token: ShellToken, index: number, tokens: readonly ShellToken[]) => void
+  callback: (token: ShellToken, index: number) => void
 ): void {
   let atCommandPosition = true;
   let redirectionOperandFollows = false;
-  // A muted paren context contains data, not commands: `((` arithmetic (`echo $((yarn && 1))`)
-  // and array literals (`args=(yarn compile)`).
-  let inDataParens = false;
-  let previousSeparatorChar: string | undefined;
-  // The word before a `(` decides whether an empty `()` pair is a function definition
-  // (`build_all() { ... }`) or an empty command substitution (`echo $() yarn`), and whether the
-  // parens hold an array literal.
-  let lastWordToken: ShellToken | undefined;
-  // `function f { ... }` declares f without parentheses: the name is consumed, and the `{` body
-  // that follows is in command position.
-  let functionNameFollows = false;
-  // Between `case <subject> in` (or after `;;`) and the pattern's closing `)`, words are patterns
-  // and a leading `(` is a delimiter, not a subshell.
-  type CaseContext = 'none' | 'awaitingIn' | 'pattern' | 'body';
-  let caseContext: CaseContext = 'none';
-  // `case` statements nest (a branch body may contain another `case`); each `esac` must restore
-  // the ENCLOSING statement's context, or a later outer pattern would be scanned as executable.
-  const enclosingCaseContexts: CaseContext[] = [];
-  // `$(...)` (and a subshell) opens a nested command context; on `)` the OUTER state must be
-  // restored, or `echo $(date) yarn build` would treat the outer argument `yarn` as a command.
-  const outerStates: {
-    atCommandPosition: boolean;
-    inDataParens: boolean;
-    functionCandidate: boolean;
-    caseContext: CaseContext;
-  }[] = [];
   for (const [index, token] of tokens.entries()) {
     if (isShellSeparator(token.text)) {
-      // All three case-clause terminators return to pattern context: `;;`, `;;&` (whose `&`
-      // arrives as a separate token startsWith(';;') already covers), and `;&`, which tokenizes
-      // as `;` plus an ADJACENT `&` (same-char runs are one token each).
-      if (
-        caseContext === 'body' &&
-        (token.text.startsWith(';;') ||
-          (token.text === ';' && tokens[index + 1]?.text === '&' && tokens[index + 1]?.start === token.end))
-      ) {
-        caseContext = 'pattern';
-        redirectionOperandFollows = false;
-        previousSeparatorChar = undefined;
-        continue;
-      }
-      // Separator tokens are ASCII, so index-based iteration is safe.
-      for (let charIndex = 0; charIndex < token.text.length; charIndex++) {
-        const char = token.text[charIndex] ?? '';
-        // An ADJACENT `$(` opens a command substitution and an ADJACENT `<(`/`>(` opens a process
-        // substitution; both EXECUTE their content even where the surrounding context is data (a
-        // case subject/pattern, an array literal). Redirect operators become lastWordToken too,
-        // so `<`/`>` adjacency is checked the same way.
-        const opensSubstitution =
-          char === '(' &&
-          lastWordToken !== undefined &&
-          lastWordToken.end === token.start + charIndex &&
-          (lastWordToken.text.endsWith('$') || lastWordToken.text === '<' || lastWordToken.text === '>');
-        if ((caseContext === 'awaitingIn' || caseContext === 'pattern') && !opensSubstitution) {
-          // Inside a pattern, `(` and `|` delimit alternatives and `)` starts the branch body.
-          if (caseContext === 'pattern' && char === ')') {
-            caseContext = 'body';
-            atCommandPosition = true;
-          }
-          previousSeparatorChar = char;
-          continue;
-        }
-        if (char === '(') {
-          outerStates.push({
-            atCommandPosition,
-            inDataParens,
-            // A word opening a command or process substitution never declares a function.
-            functionCandidate: lastWordToken !== undefined && !opensSubstitution,
-            caseContext,
-          });
-          // Only an ADJACENT `((` (one token, since separator tokens are same-char runs) is
-          // arithmetic, and an ADJACENT `name=(` opens an array literal; a spaced `( (` is a
-          // nested subshell.
-          if (
-            charIndex > 0 ||
-            (lastWordToken !== undefined &&
-              lastWordToken.text.endsWith('=') &&
-              lastWordToken.end === token.start + charIndex &&
-              /^[A-Za-z_][+\w]*=$/u.test(lastWordToken.text))
-          ) {
-            inDataParens = true;
-          } else if (opensSubstitution) {
-            inDataParens = false;
-          }
-          caseContext = 'none';
-          atCommandPosition = true;
-        } else if (char === ')') {
-          const outerState = outerStates.pop();
-          inDataParens = outerState?.inDataParens ?? false;
-          caseContext = outerState?.caseContext ?? 'none';
-          // An empty `()` pair after a plain word is a function definition: its body follows in
-          // command position, and its yarn invocations really run when the function is called.
-          atCommandPosition =
-            previousSeparatorChar === '(' && outerState?.functionCandidate
-              ? true
-              : (outerState?.atCommandPosition ?? true);
-        } else {
-          atCommandPosition = true;
-          lastWordToken = undefined;
-          functionNameFollows = false;
-        }
-        previousSeparatorChar = char;
-      }
+      atCommandPosition = true;
       redirectionOperandFollows = false;
-      continue;
-    }
-    previousSeparatorChar = undefined;
-    lastWordToken = token;
-    if (caseContext === 'awaitingIn') {
-      if (token.text === 'in') caseContext = 'pattern';
-      continue;
-    }
-    if (caseContext === 'pattern') {
-      // A branch-less `esac` (e.g. right after `;;`) ends the case statement.
-      if (token.text === 'esac') caseContext = enclosingCaseContexts.pop() ?? 'none';
-      continue;
-    }
-    if (inDataParens) continue;
-    if (functionNameFollows) {
-      // The declared function name is not a command; the `{` body follows in command position.
-      functionNameFollows = false;
       continue;
     }
     if (redirectionOperandFollows) {
@@ -962,48 +768,17 @@ function forEachCommandPositionToken(
       continue;
     }
     if (!atCommandPosition) continue;
-    if (token.text === 'function') {
-      functionNameFollows = true;
+    // A redirection may precede the command (`>out.log yarn build`); the operator and its operand
+    // leave the position intact.
+    if (isRedirectionOperator(token.text)) {
+      redirectionOperandFollows = true;
       continue;
     }
-    if (token.text === 'case') {
-      enclosingCaseContexts.push(caseContext);
-      caseContext = 'awaitingIn';
-      continue;
-    }
-    if (caseContext === 'body' && token.text === 'esac') {
-      caseContext = enclosingCaseContexts.pop() ?? 'none';
-      atCommandPosition = false;
-      continue;
-    }
-    // A redirection may precede the command (`>out.log yarn build`, `2>&1 yarn build`); the
-    // operator (with its operand, unless a `>&1`-style duplication makes it self-contained) and
-    // an ADJACENT file-descriptor digit (`2>` splits into two tokens; a detached `2 >out` is not
-    // a descriptor) leave the position intact.
-    if (/^&?[<>]/u.test(token.text)) {
-      redirectionOperandFollows = !/&(?:\d+|-)$/u.test(token.text);
-      continue;
-    }
-    if (
-      /^\d+$/u.test(token.text) &&
-      tokens[index + 1]?.start === token.end &&
-      /^[<>]/u.test(tokens[index + 1]?.text ?? '')
-    ) {
-      continue;
-    }
-    // The raw token text drives the assignment and keyword checks: shell quoting turns them into
-    // ordinary command words (`"FOO=bar" yarn build` runs the command `FOO=bar`).
-    if (/^[A-Za-z_]\w*=/u.test(token.text) || commandPositionTransparentWords.has(token.text)) continue;
-    // At command position a `-`-leading token can only be an option of a preceding transparent
-    // wrapper (`env -i yarn build`); a real command never starts with `-`. Only known valueless
-    // options stay transparent — an unmodeled option may consume the next word as its value
-    // (`env -u yarn build`), so discovery for this command stops conservatively instead.
-    if (token.text.startsWith('-')) {
-      if (!valuelessWrapperOptions.has(token.text)) atCommandPosition = false;
-      continue;
-    }
+    // The raw token text drives the assignment check: shell quoting turns it into an ordinary
+    // command word (`"FOO=bar" yarn build` runs the command `FOO=bar`).
+    if (/^[A-Za-z_]\w*=/u.test(token.text)) continue;
     atCommandPosition = false;
-    callback(token, index, tokens);
+    callback(token, index);
   }
 }
 
@@ -1017,39 +792,19 @@ function tokenizeShellCommand(script: string): ShellToken[] {
       index++;
       continue;
     }
-    // `&>` starts a compound redirection (`&<` does not exist: shells parse it as `&` then `<`),
-    // so the redirect branch below must win over the separator branch: isShellSeparator('&') is
-    // true.
-    if (isShellSeparator(char) && !(char === '&' && script[index + 1] === '>')) {
+    if (isShellSeparator(char)) {
       let end = index + 1;
       while (end < script.length && script[end] === char) end++;
       tokens.push({ text: script.slice(index, end), start: index, end });
       index = end;
       continue;
     }
-    // An unquoted `#` starting a word begins a comment: the shell ignores it through the next
-    // newline, so no tokens (in particular no separators) may come out of it.
-    if (char === '#') {
-      let end = index + 1;
-      while (end < script.length && script[end] !== '\n') end++;
-      index = end;
-      continue;
-    }
     // An unquoted redirection operator ends the preceding word even without whitespace
-    // (`yarn build>log` redirects `yarn build`), so it forms its own token; heredoc-containing
-    // token streams are rejected by every caller before interpretation. Compound forms — the
-    // `&>file` both-streams shorthand, the `>|` clobber operator, and `>&`/`>&1`-style
-    // duplications — belong to the operator token, or their `&`/`|` would read as a separator.
-    if (char === '<' || char === '>' || (char === '&' && script[index + 1] === '>')) {
-      let end = char === '&' ? index + 1 : index;
-      while (end < script.length && (script[end] === '<' || script[end] === '>')) end++;
-      if (script[end] === '&') {
-        end++;
-        if (script[end] === '-') end++;
-        else while (end < script.length && /\d/u.test(script[end] ?? '')) end++;
-      } else if (script[end] === '|') {
-        end++;
-      }
+    // (`yarn build>log` redirects `yarn build`), so it forms its own token together with an
+    // optional leading file descriptor (`2> /dev/null`).
+    const redirectionOperator = /^\d*[<>]+/u.exec(script.slice(index))?.[0];
+    if (redirectionOperator) {
+      const end = index + redirectionOperator.length;
       tokens.push({ text: script.slice(index, end), start: index, end });
       index = end;
       continue;
@@ -1078,6 +833,10 @@ function tokenizeShellCommand(script: string): ShellToken[] {
 
 function isShellSeparator(text: string): boolean {
   return /^[;|&()\n]+$/u.test(text);
+}
+
+function isRedirectionOperator(text: string): boolean {
+  return /^\d*[<>]/u.test(text);
 }
 
 function unquoteShellToken(text: string): string {

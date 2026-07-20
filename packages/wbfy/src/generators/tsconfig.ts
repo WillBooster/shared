@@ -199,9 +199,6 @@ function removeStaleManagedWorkspaceEntries(
   }
   if (!Array.isArray(oldSettings.exclude)) return;
   const generatedExclude = new Set(newSettings.exclude);
-  const workspaceIncludePatterns = config.doesContainSubPackageJsons ? getWorkspaceDirPatterns(config).includes : [];
-  // Concrete discovered workspace directories (relative), for detecting overlap between old and
-  // new wildcard layouts that pattern-vs-pattern string comparison cannot see.
   const workspaceDirPaths = config.doesContainSubPackageJsons
     ? getWorkspaceSubDirPaths(config).map((workspaceDirPath) =>
         path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
@@ -212,74 +209,31 @@ function removeStaleManagedWorkspaceEntries(
     if (entry.endsWith('/test/fixtures')) {
       return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
     }
-    // A negation-derived exclude whose `!pattern` was removed from `workspaces`: the directory is
-    // covered by a positive workspace pattern again and must re-enter the root project. A user
-    // who wants such a directory excluded permanently should keep the workspace negation, which
-    // regenerates the entry on every run. Three checks, because either side can be the pattern:
-    // - a CONCRETE entry (a negation like `!apps/excluded`) against the current include patterns
-    //   — gated on concreteness AND on the entry covering a discovered workspace directory, so a
-    //   user glob such as `**/node_modules` or a hygiene exclude such as `dist` is never dropped
-    //   just because a wildcard-leading include pattern (e.g. the `*/*` baseline) textually
-    //   matches it;
-    // - each CONCRETE current include (expanded from Bun-only glob syntax), as a path, against a
-    //   wildcard-shaped entry (a negation like `!apps/excluded/*`) — gated on the include being
-    //   concrete (a wildcard include's literal `*` character could satisfy the entry's `?`) and
-    //   on the entry containing no `**` segment (hygiene globs such as `**/e2e` must survive);
-    // - each discovered workspace directory against a workspace-layout-shaped entry (no `**`
-    //   segment, same depth as the matched directory), catching overlapping wildcard layouts
-    //   (e.g. old `!apps/*b` vs new `apps/a*`) — the shape gate keeps hygiene globs such as
-    //   `**/e2e` from being deleted just because a workspace directory basename matches them.
-    // Provenance is not tracked, so two residual gaps are ACCEPTED by design: a workspace-shaped
-    // entry covering a discovered workspace is presumed negation-derived even if hand-written
-    // (the policy above), and a negation-derived entry for a manifest-less directory survives
-    // after its negation is removed (it only narrows the root program conservatively).
-    return !(
-      (!/[*?]/u.test(entry) &&
-        workspaceDirPaths.some(
-          (workspaceDirPath) => workspaceDirPath === entry || workspaceDirPath.startsWith(`${entry}/`)
-        ) &&
-        isCoveredByWorkspaceDirPattern(entry, workspaceIncludePatterns)) ||
-      workspaceIncludePatterns.some(
-        (includePattern) =>
-          !/[!()*?[\]{}]/u.test(includePattern) &&
-          !entry.split('/').includes('**') &&
-          isCoveredByWorkspaceDirPattern(includePattern, [entry])
-      ) ||
-      workspaceDirPaths.some(
-        (workspaceDirPath) =>
-          !entry.split('/').includes('**') &&
-          entry.split('/').length === workspaceDirPath.split('/').length &&
-          isCoveredByWorkspaceDirPattern(workspaceDirPath, [entry])
-      )
-    );
+    return !coversWorkspaceDir(entry, workspaceDirPaths);
   });
 }
 
-/** Matches a concrete directory path against tsconfig-safe workspace dir patterns (`*`, `?`, `**`). */
-function isCoveredByWorkspaceDirPattern(dirPath: string, workspacePatterns: string[]): boolean {
-  return workspacePatterns.some((workspacePattern) => {
-    // `**` matches ZERO or more path segments (`apps/**` covers `apps` itself), matching the
-    // fast-glob/Bun semantics workspace discovery uses; the placeholder dance makes the adjacent
-    // separator optional.
-    const globStarPlaceholder = '\u0000';
-    const regexSource = workspacePattern
-      .split('/')
-      // Adjacent globstars are one globstar (`**/**/foo` matches root-level `foo` too).
-      .filter((segment, index, segments) => segment !== '**' || segments[index - 1] !== '**')
-      .map((segment) =>
-        segment === '**'
-          ? globStarPlaceholder
-          : segment
-              .replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`)
-              .replaceAll('*', '[^/]*')
-              .replaceAll('?', '[^/]')
-      )
-      .join('/')
-      .replaceAll(`/${globStarPlaceholder}`, '(?:/.+)?')
-      .replaceAll(`${globStarPlaceholder}/`, '(?:.+/)?')
-      .replaceAll(globStarPlaceholder, '.*');
-    return new RegExp(`^${regexSource}$`, 'u').test(dirPath);
-  });
+// Whether an exclude entry is a workspace negation (`!apps/excluded`) whose negation is gone: the
+// directory is a workspace again and must re-enter the root project. wbfy writes such a negation as
+// a directory path, as a directory PATTERN when it excludes exactly what it matches (`apps/*b`), or
+// as an ancestor's package-owned subpaths (`apps/x/src`) — so the entry may cover a discovered
+// workspace directory or sit under one. A globstar segment marks a hygiene glob (node_modules, e2e
+// and friends), which is never negation-derived and must survive.
+function coversWorkspaceDir(entry: string, workspaceDirPaths: readonly string[]): boolean {
+  if (entry.split('/').includes('**')) return false;
+  const regexSource = entry
+    .split('/')
+    .map((segment) =>
+      segment
+        .replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`)
+        .replaceAll('*', '[^/]*')
+        .replaceAll('?', '[^/]')
+    )
+    .join('/');
+  const entryPattern = new RegExp(`^${regexSource}(?:/.*)?$`, 'u');
+  return workspaceDirPaths.some(
+    (workspaceDirPath) => entryPattern.test(workspaceDirPath) || entry.startsWith(`${workspaceDirPath}/`)
+  );
 }
 
 function getManagedWorkspacePrefix(entry: string): string | undefined {

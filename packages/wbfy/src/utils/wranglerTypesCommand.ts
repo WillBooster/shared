@@ -150,8 +150,8 @@ export function reachesWranglerTypes(
       if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) {
         runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
       }
-      // A runner directed at another directory (e.g. `yarn --cwd ../other gen-types`) runs that package's
-      // script, not one of these; forwarded arguments (`npm run gen-types -- --check`) change the effective
+      // A runner directed at another package (e.g. `bun run --filter components gen`) runs that package's
+      // script, not one of these; forwarded arguments (`bun run gen-types -- --check`) change the effective
       // invocation, so the wrapper cannot stand for the plain script either.
       invokedScriptName =
         runnerFlags.leavesPackage || tokens.length > runnerFlags.index + 1 ? undefined : tokens[runnerFlags.index];
@@ -466,13 +466,13 @@ export function parseWranglerTypesInvocation(segment: string): string[] | undefi
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
     let runnerFlags = consumeRunnerFlags(tokens, index);
-    // `run`/`run-script` name a package script, never a binary: `npm run wrangler types` invokes the script
+    // `run`/`run-script` name a package script, never a binary: `bun run wrangler types` invokes the script
     // called `wrangler` with `types` as an argument, so it must go through wrapper resolution instead.
     if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) return;
     if (['exec', 'dlx', 'x'].includes(tokens[runnerFlags.index] ?? '')) {
       runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
     }
-    // A runner directed at another directory runs that package's wrangler, not this one's.
+    // A runner directed at another package runs that package's wrangler, not this one's.
     if (runnerFlags.leavesPackage) return;
     index = runnerFlags.index;
   }
@@ -552,14 +552,17 @@ function skipEnvironmentAssignments(tokens: string[]): number {
   return index;
 }
 
-// Runner options that consume the following token as their value; the directory-changing ones make the runner
-// operate on another package when the value is not the package itself, and workspace/filter selectors always
-// may (npm runs `--workspace=other` commands inside that workspace).
+// Runner options consuming the following token as their value; skipping that value too keeps the
+// command word (e.g. the wrapped script name) findable. The directory-changing ones run the
+// command in another package when the value is not this one, and the workspace/filter selectors
+// always do — wbfy generates `bun run --filter <pkg> <script>` itself, so a runner that leaves the
+// package must not resolve the script name against THIS package's scripts.
 const runnerDirectoryValueFlags = new Set(['--cwd', '-C', '--prefix', '--dir']);
 const runnerWorkspaceValueFlags = new Set(['-w', '--workspace', '-F', '--filter']);
 // Bare selectors that run the command in every workspace instead of (only) this package.
 const runnerAllWorkspacesFlags = new Set(['--workspaces', '-ws', '--recursive', '-r']);
 
+/** Skips the runner's own options (e.g. `bunx --yes wrangler types`) to reach the command word. */
 function consumeRunnerFlags(
   tokens: string[],
   index: number,

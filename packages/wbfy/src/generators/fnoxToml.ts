@@ -347,21 +347,15 @@ function replaceAgeRecipients(content: string): string {
   const recipientsText = `recipients = [\n${FNOX_AGE_RECIPIENTS.map(
     (recipient) => `  "${recipient.publicKey}", # ${recipient.name}`
   ).join('\n')}\n]`;
-  // TOML forbids newlines and comments inside inline tables, so the inline form stays single-line.
-  const inlineRecipientsText = `recipients = [${FNOX_AGE_RECIPIENTS.map((recipient) => `"${recipient.publicKey}"`).join(', ')}]`;
-  // Standard form: a [providers.age] table (possibly with a trailing comment). Scan line-wise so
-  // that a `[` inside a comment or a string never terminates the table early; the table ends at
-  // the next line-start table header. The assignment match is line-anchored so a commented-out
+  // wbfy writes a [providers.age] table (possibly with a trailing comment). Scan line-wise so that
+  // a `[` inside a comment or a string never terminates the table early; the table ends at the
+  // next line-start table header. The assignment match is line-anchored so a commented-out
   // `# recipients = [...]` is never mistaken for the real one, while multiline arrays still match
-  // because the negated class [^\]] (unlike `.`) spans newlines. Known accepted limitation: a `]`
-  // inside a comment within a multiline recipients array defeats the match — the re-parse
-  // validation in the caller then fails the run safely with instructions instead of corrupting
-  // the file.
+  // because the negated class [^\]] (unlike `.`) spans newlines. Any other spelling falls through
+  // to the caller's re-parse validation, which fails the run safely with instructions instead of
+  // corrupting the file.
   const lines = content.split('\n');
-  // TOML permits whitespace around dotted-key components, so `[providers . age]` equals
-  // `[providers.age]`; quoted-key spellings remain unmatched and fall through to the caller's
-  // re-parse validation, which fails the run safely.
-  const headerIndex = lines.findIndex((line) => /^\s*\[\s*providers\s*\.\s*age\s*\]\s*(?:#.*)?$/u.test(line));
+  const headerIndex = lines.findIndex((line) => /^\s*\[providers\.age\]\s*(?:#.*)?$/u.test(line));
   if (headerIndex !== -1) {
     let endIndex = lines.length;
     for (let index = headerIndex + 1; index < lines.length; index++) {
@@ -378,12 +372,6 @@ function replaceAgeRecipients(content: string): string {
         : replacedSection;
     return [...lines.slice(0, headerIndex), newSection, ...lines.slice(endIndex)].join('\n');
   }
-  // Inline form: age = { type = "age", recipients = [...] } inside a [providers] table.
-  const withReplacedInline = content.replace(
-    /(\bage\s*=\s*\{[^}]*?)recipients\s*=\s*\[[^\]]*\]/u,
-    `$1${inlineRecipientsText}`
-  );
-  if (withReplacedInline !== content) return withReplacedInline;
   return `${content.trimEnd()}\n\n[providers.age]\ntype = "age"\n${recipientsText}\n`;
 }
 

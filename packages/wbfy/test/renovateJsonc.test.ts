@@ -155,15 +155,6 @@ test('keeps a comment nested inside extends while adding the generated preset', 
   );
 });
 
-test('leaves a renovate.jsonc declaring the same property twice untouched', async () => {
-  // parseObjectIgnoringError keeps the last occurrence while modify() rewrites the first, so
-  // editing such a file would write to the occurrence that does not take effect.
-  const duplicateContent = '{ "extends": ["a"], "extends": ["b"] }';
-  await withRepo({ 'renovate.jsonc': duplicateContent }, async (dirPath) => {
-    expect(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')).toBe(duplicateContent);
-  });
-});
-
 test('leaves extends untouched when the generated preset is already listed out of order', async () => {
   // A later preset overrides an earlier one, so moving the generated preset to the front would
   // flip which config wins — and the reorder would cost the array's comments too.

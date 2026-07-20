@@ -87,19 +87,11 @@ test.each([
     expected: `# Project\r\n\r\n${badgeOf('1.2.3')}\r\n\r\nDescription.\r\n`,
   },
   {
+    // Only the `# <name>` heading wbfy writes anchors the badges; any other title construct sends
+    // them to the top rather than making this generator parse Markdown.
     name: 'a Setext heading',
     input: 'Project\n=======\nDescription.\n',
-    expected: `Project\n=======\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
-  },
-  {
-    name: 'a centered HTML title',
-    input: '<h1 align="center">Project</h1>\n\nDescription.\n',
-    expected: `<h1 align="center">Project</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
-  },
-  {
-    name: 'a multiline HTML title',
-    input: '<h1 align="center">\n  Project\n</h1>\n\nDescription.\n',
-    expected: `<h1 align="center">\n  Project\n</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+    expected: `${badgeOf('1.2.3')}\n\nProject\n=======\nDescription.\n`,
   },
   {
     // A README that opens with something other than a title has no anchor to sit under, so the

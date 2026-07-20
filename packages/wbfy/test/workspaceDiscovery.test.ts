@@ -239,6 +239,87 @@ test('drops a negation-derived exclude after the workspace negation is removed',
   }
 });
 
+// A negation is written as a PATTERN when it excludes exactly what it matches, and as the
+// ancestor's package-owned subpaths when it sits above a workspace. Both shapes must be retired
+// with their negation, while hygiene globs a user added stay untouched.
+test.each([
+  {
+    name: 'a pattern-shaped negation',
+    workspaceDirNames: ['apps/web', 'apps/api'],
+    negated: ['apps/*', '!apps/*b'],
+    plain: ['apps/*'],
+    staleEntry: 'apps/*b',
+  },
+  {
+    name: 'an ancestor negation',
+    workspaceDirNames: ['apps/excluded', 'apps/excluded/child'],
+    negated: ['apps/**', '!apps/excluded'],
+    plain: ['apps/**'],
+    staleEntry: 'apps/excluded/src',
+  },
+])('drops $name after the workspace negation is removed', async ({ workspaceDirNames, negated, plain, staleEntry }) => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of workspaceDirNames) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(path.join(workspaceDirPath, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+      fs.writeFileSync(path.join(workspaceDirPath, 'src', 'index.ts'), 'export {};\n');
+    }
+    const generate = async (workspaces: string[]): Promise<string[]> => {
+      fs.writeFileSync(
+        path.join(tempDirPath, 'package.json'),
+        JSON.stringify({ name: 'root', private: true, workspaces })
+      );
+      const config = await getPackageConfig(tempDirPath, { isRoot: false });
+      if (!config) throw new Error('unreachable');
+      config.isRoot = true;
+      await generateTsconfig(config);
+      await promisePool.promiseAll();
+      const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+        exclude?: string[];
+      };
+      return tsconfig.exclude ?? [];
+    };
+
+    expect(await generate(negated)).toContain(staleEntry);
+    expect(await generate(plain)).not.toContain(staleEntry);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('keeps hygiene excludes a workspace directory happens to match', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+  try {
+    for (const workspaceDirName of ['apps/web', 'apps/e2e']) {
+      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+      fs.mkdirSync(path.join(workspaceDirPath, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+      fs.writeFileSync(path.join(workspaceDirPath, 'src', 'index.ts'), 'export {};\n');
+    }
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['apps/*'] })
+    );
+    fs.writeFileSync(
+      path.join(tempDirPath, 'tsconfig.json'),
+      JSON.stringify({ exclude: ['**/node_modules', '**/e2e', 'dist'] })
+    );
+    const config = await getPackageConfig(tempDirPath, { isRoot: false });
+    if (!config) throw new Error('unreachable');
+    config.isRoot = true;
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+      exclude?: string[];
+    };
+    expect(tsconfig.exclude).toEqual(expect.arrayContaining(['**/node_modules', '**/e2e', 'dist']));
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('ignores empty workspace patterns as Bun does', () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
   try {

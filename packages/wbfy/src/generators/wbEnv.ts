@@ -267,10 +267,8 @@ function warnOnUnexpectedWbEnvValue(
  * entries stay grouped with their header; the section is appended at the end when it is absent.
  */
 function insertIntoFnoxSection(content: string, sectionName: string, insertedLines: string[]): string {
-  const headerPattern = new RegExp(
-    String.raw`^\s*\[\s*${sectionName.split('.').join(String.raw`\s*\.\s*`)}\s*\]\s*(?:#.*)?$`,
-    'u'
-  );
+  // wbfy writes the header without whitespace around the dotted-key components.
+  const headerPattern = new RegExp(String.raw`^\s*\[${sectionName.replaceAll('.', String.raw`\.`)}\]\s*(?:#.*)?$`, 'u');
   const lines = content.split('\n');
   const headerIndex = lines.findIndex((line) => headerPattern.test(line));
   if (headerIndex === -1) {

@@ -273,34 +273,15 @@ function readRepoSpecificExcludes(content: string | undefined): string[] {
     // themselves survive regeneration).
     if (trimmed.startsWith(']')) break;
     if (!trimmed || trimmed.startsWith('#')) continue;
-    // A line may carry several comma-separated quoted entries plus an optional trailing comment;
-    // a line this parser cannot read could hide further entries, so stop instead of guessing.
-    const withoutComment = stripTomlLineComment(line);
-    if (!/^\s*(?:(?:"[^"]+"|'[^']+')\s*,?\s*)+$/u.test(withoutComment)) break;
-    for (const matched of withoutComment.matchAll(/"([^"]+)"|'([^']+)'/gu)) {
-      const entry = matched[1] ?? matched[2];
-      // Hand-edited entries pass the same strict name gate as migrated ones: anything else would
-      // be dead configuration for Bun and could even break the generated TOML when interpolated.
-      if (entry && isLiteralNpmPackageName(entry)) excludes.push(entry);
-    }
+    // wbfy writes one double-quoted entry per line. A line this parser cannot read could hide
+    // further entries, so stop instead of guessing.
+    const entry = /^"([^"]+)",?$/u.exec(trimmed)?.[1];
+    if (!entry) break;
+    // Hand-edited entries pass the same strict name gate as migrated ones: anything else would
+    // be dead configuration for Bun and could even break the generated TOML when interpolated.
+    if (isLiteralNpmPackageName(entry)) excludes.push(entry);
   }
   return excludes;
-}
-
-/** Removes a trailing `#` comment quote-awarely, so comment prose containing quotes cannot confuse the entry parser. */
-function stripTomlLineComment(line: string): string {
-  let quote: string | undefined;
-  for (let index = 0; index < line.length; index++) {
-    const character = line[index];
-    if (quote) {
-      if (character === quote) quote = undefined;
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === '#') {
-      return line.slice(0, index);
-    }
-  }
-  return line;
 }
 
 /**

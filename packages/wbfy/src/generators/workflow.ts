@@ -265,19 +265,11 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     for (const fileName of obsoleteGenPrFileNames) {
       await fsUtil.removeConfined(path.join(workflowsPath, fileName));
     }
-    // GitHub accepts both .yml and .yaml workflow files, and a workflow's file name is its public
-    // identity (badge URLs, the workflow REST API, same-repository `uses:` references), so .yaml
-    // files are processed under their own name instead of being renamed or silently left stale.
-    // Each kind maps to the one file that carries it; when both spellings exist the .yml wins and
-    // the .yaml twin is left untouched, since merging two workflow definitions is ambiguous.
+    // wbfy writes .yml workflows, so each kind maps to its .yml file.
     const fileNamesByKind = new Map<string, string>();
     for (const entry of entries) {
-      if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name) || obsoleteGenPrFileNames.has(entry.name)) continue;
-      const kind = entry.name.replace(/\.ya?ml$/u, '');
-      const existingFileName = fileNamesByKind.get(kind);
-      if (existingFileName === undefined || existingFileName.endsWith('.yaml')) {
-        fileNamesByKind.set(kind, entry.name);
-      }
+      if (!entry.isFile() || !entry.name.endsWith('.yml') || obsoleteGenPrFileNames.has(entry.name)) continue;
+      fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
     }
     const mandatoryKinds = ['test', 'autofix', 'semantic-pr', 'close-comment'];
     if (rootConfig.depending.semanticRelease) {
@@ -314,9 +306,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       // The reusable test workflow already fixes and pushes code on private repos,
       // so a separate autofix workflow only duplicates the same process.
       fileNamesByKind.delete('autofix');
-      for (const autofixFileName of ['autofix.yml', 'autofix.yaml']) {
-        await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, autofixFileName)));
-      }
+      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, 'autofix.yml')));
     }
 
     for (const [kind, fileName] of fileNamesByKind) {
@@ -337,8 +327,8 @@ export function isReusableWorkflowsRepo(repository?: string): boolean {
  * matched by filename — deleting a whole workflow on a text match would be too aggressive.
  */
 export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string): boolean {
-  if (/^gen-pr(?:-.+)?\.ya?ml$/u.test(fileName)) return true;
-  if (!/\.ya?ml$/u.test(fileName)) return false;
+  if (/^gen-pr(?:-.+)?\.yml$/u.test(fileName)) return true;
+  if (!fileName.endsWith('.yml')) return false;
   let content: string;
   try {
     content = fs.readFileSync(path.join(workflowsPath, fileName), 'utf8');
@@ -368,9 +358,9 @@ async function writeWorkflowYaml(
   fileName = `${kind}.yml`
 ): Promise<void> {
   const filePath = path.join(workflowsPath, fileName);
-  const deployProductionFileName = ['deploy-production.yml', 'deploy-production.yaml'].find((deployFileName) =>
-    fs.existsSync(path.join(workflowsPath, deployFileName))
-  );
+  const deployProductionFileName = fs.existsSync(path.join(workflowsPath, 'deploy-production.yml'))
+    ? 'deploy-production.yml'
+    : undefined;
 
   if (kind === 'autofix') {
     await writeYaml(generateAutofixWorkflow(config), filePath);
@@ -516,13 +506,10 @@ async function writeWorkflowYaml(
   await writeYaml(newSettings, filePath);
 
   if (kind === 'sync') {
-    for (const syncInitFileName of ['sync-init.yml', 'sync-init.yaml']) {
-      await fsUtil.removeConfined(path.join(workflowsPath, syncInitFileName));
-    }
+    await fsUtil.removeConfined(path.join(workflowsPath, 'sync-init.yml'));
     if (!newSettings.jobs.sync?.with) return;
 
-    // Generate the force-sync workflow based on the sync workflow if it exists, keeping the
-    // spelling of an existing sync-force file so its identity (badge URLs, API) is preserved.
+    // Generate the force-sync workflow based on the sync workflow if it exists.
     newSettings.jobs['sync-force'] = newSettings.jobs.sync;
     const params = newSettings.jobs.sync.with.sync_params_without_dest;
     if (typeof params !== 'string') return;
@@ -531,12 +518,7 @@ async function writeWorkflowYaml(
     newSettings.name = 'Force to Sync';
     newSettings.on = { workflow_dispatch: null };
     delete newSettings.jobs.sync;
-    const syncForceFileName =
-      !fs.existsSync(path.join(workflowsPath, 'sync-force.yml')) &&
-      fs.existsSync(path.join(workflowsPath, 'sync-force.yaml'))
-        ? 'sync-force.yaml'
-        : 'sync-force.yml';
-    await writeYaml(newSettings, path.join(workflowsPath, syncForceFileName));
+    await writeYaml(newSettings, path.join(workflowsPath, 'sync-force.yml'));
   }
 }
 
@@ -1002,19 +984,15 @@ function readProductionCustomDomain(rootDirPath: string, workerDirPath: string):
     return undefined;
   }
   const wranglerConfig = jsoncUtil.parseObjectIgnoringError<{
-    env?: { production?: { route?: unknown; routes?: unknown } };
-    route?: unknown;
+    env?: { production?: { routes?: unknown } };
     routes?: unknown;
   }>(content);
   if (!wranglerConfig) return undefined;
   // Routes are non-inheritable in wrangler: when an env.production section exists it is
-  // authoritative (no fallback to top-level), mirroring wb deploy's resolution. Both the
-  // plural `routes` and the singular `route` spellings are accepted.
+  // authoritative (no fallback to top-level), mirroring wb deploy's resolution.
   const production = wranglerConfig.env?.production;
-  const rawRoutes = production
-    ? (production.routes ?? production.route)
-    : (wranglerConfig.routes ?? wranglerConfig.route);
-  const routes = Array.isArray(rawRoutes) ? rawRoutes : rawRoutes ? [rawRoutes] : [];
+  const rawRoutes = production ? production.routes : wranglerConfig.routes;
+  const routes = Array.isArray(rawRoutes) ? rawRoutes : [];
   for (const route of routes) {
     if (
       route &&
@@ -1152,8 +1130,8 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
   // fork PRs where exposing a decryption secret would be unsafe. wb degrades gracefully (warns
   // and proceeds without fnox variables) when fnox is unavailable.
   const steps: Step[] = [
-    { uses: 'actions/checkout@v6' },
-    { uses: 'actions/setup-node@v6', with: { 'check-latest': true, 'node-version': 'lts/*' } },
+    { uses: 'actions/checkout@v7' },
+    { uses: 'actions/setup-node@v7', with: { 'check-latest': true, 'node-version': 'lts/*' } },
     { uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } },
     { run: 'bun install' },
     { run: 'bun run cleanup' },

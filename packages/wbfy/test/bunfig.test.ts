@@ -85,9 +85,8 @@ minimumReleaseAgeExcludes = [
     "my-repo-specific-package",
 
     # a hand-added comment must not truncate the repository-policy list
-    'single-quoted-package', # an inline comment with a quote mustn't drop the rest
-    'not@a@name',
-    "one-line-a", "one-line-b",
+    "another-repo-specific-package",
+    "not@a@name",
 ]
 `
     );
@@ -96,12 +95,9 @@ minimumReleaseAgeExcludes = [
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).not.toContain('@next/eslint-plugin-next');
     expect(content).toContain('"my-repo-specific-package",');
-    expect(content).toContain('"single-quoted-package",');
+    expect(content).toContain('"another-repo-specific-package",');
     // A marker entry that is not a plain npm package name is dead configuration and is dropped.
     expect(content).not.toContain('not@a@name');
-    // Several comma-separated entries on one line are all preserved.
-    expect(content).toContain('"one-line-a",');
-    expect(content).toContain('"one-line-b",');
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
