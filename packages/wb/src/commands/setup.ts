@@ -53,7 +53,10 @@ export async function setup(
       // multi-version pins) and would pass extra positional arguments to `poetry env use`.
       let pythonPath = '';
       try {
-        pythonPath = child_process.execSync('mise which python', { cwd: project.dirPath }).toString().trim();
+        pythonPath = child_process
+          .execSync('mise which python', { cwd: project.dirPath, stdio: ['ignore', 'pipe', 'ignore'] })
+          .toString()
+          .trim();
       } catch {
         // mise missing or python unconfigured; let poetry pick its default interpreter.
       }

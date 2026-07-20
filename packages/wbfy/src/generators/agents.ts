@@ -58,9 +58,20 @@ function generateAgentInstruction(
   const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
   let hasDeployWorkflow = false;
   try {
-    hasDeployWorkflow = fs
-      .readdirSync(path.resolve(rootConfig.dirPath, '.github/workflows'))
-      .some((fileName) => /^deploy.*\.ya?ml$/u.test(fileName));
+    const workflowsDirPath = path.resolve(rootConfig.dirPath, '.github/workflows');
+    // Content-based like the workflow generator: a deploy caller may live under any filename
+    // (e.g. cloudflare.yml), so a `deploy*` name OR a reusable deploy.yml reference counts.
+    hasDeployWorkflow = fs.readdirSync(workflowsDirPath).some((fileName) => {
+      if (!/\.ya?ml$/u.test(fileName)) return false;
+      if (fileName.startsWith('deploy')) return true;
+      try {
+        return fs
+          .readFileSync(path.resolve(workflowsDirPath, fileName), 'utf8')
+          .includes('reusable-workflows/.github/workflows/deploy.yml@');
+      } catch {
+        return false;
+      }
+    });
   } catch {
     // No workflows directory.
   }

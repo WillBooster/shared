@@ -1384,6 +1384,11 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   const requiredWbfyPackages = [
     ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
+    // These git-dependency builds import packages they do not declare (e.g. zod), which the
+    // global-store layout places beyond their walk-up; a project-local copy under
+    // node_modules/.bun resolves them (observed in WillBooster/prompt-study).
+    ...(declaredDependencies.has('@willbooster/judge') ? ['@willbooster/judge'] : []),
+    ...(declaredDependencies.has('@willbooster/llm-proxy') ? ['@willbooster/llm-proxy'] : []),
   ];
 
   // wbfy fully owns this field: a package whose lifecycle scripts must run gets added to wbfy
@@ -1421,7 +1426,13 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
 
 // The packages wbfy itself may write into trustedDependencies; their removal is managed cleanup,
 // never a loss of user policy.
-const wbfyManagedTrustedDependencies = new Set(['@chakra-ui/react', 'drizzle-kit', lefthookDependency]);
+const wbfyManagedTrustedDependencies = new Set([
+  '@chakra-ui/react',
+  '@willbooster/judge',
+  '@willbooster/llm-proxy',
+  'drizzle-kit',
+  lefthookDependency,
+]);
 
 function warnAboutRemovedTrustedDependencies(
   config: PackageConfig,
@@ -1740,7 +1751,9 @@ function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
   // extra positional arguments to `poetry env use`. When mise is missing or python is
   // unconfigured, skip `poetry env use` and fall back to poetry's default interpreter instead of
   // aborting the chain.
-  return 'poetry config virtualenvs.in-project true && { python_path="$(mise which python 2>/dev/null)" && [ -n "$python_path" ] && poetry env use "$python_path" || true; } && poetry run pip install --upgrade pip && poetry install';
+  // The `|| true` covers only the mise resolution: a missing/unconfigured mise falls back to
+  // poetry's default interpreter, while a failing `poetry env use` still aborts the chain.
+  return 'poetry config virtualenvs.in-project true && { python_path="$(mise which python 2>/dev/null)" || true; } && { [ -z "$python_path" ] || poetry env use "$python_path"; } && poetry run pip install --upgrade pip && poetry install';
 }
 
 function installNpmDependencies(config: PackageConfig, dependencies: string[], dev: boolean): void {

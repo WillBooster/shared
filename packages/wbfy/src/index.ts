@@ -266,7 +266,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     await Promise.all([
       fixPrismaEnvFiles(rootConfig),
       abbreviationPromise.then(() => generateReadme(rootConfig)),
-      generateAgentInstructions(rootConfig, allPackageConfigs),
       generateDockerignore(rootConfig),
       generateEditorconfig(rootConfig),
       generateGeminiConfig(rootConfig, allPackageConfigs),
@@ -288,6 +287,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       ...(rootConfig.isRoot ? [generateLefthookUpdatingPackageJson(rootConfig, allPackageConfigs)] : []),
       generateLintstagedrc(rootConfig),
     ]);
+    await promisePool.promiseAll();
+    // After the workflow generator (and its pooled writes) so the instruction files see the
+    // deploy workflows a first run scaffolds instead of lagging one run behind.
+    await generateAgentInstructions(rootConfig, allPackageConfigs);
     await promisePool.promiseAll();
 
     const promises: Promise<void>[] = [];
