@@ -700,13 +700,19 @@ function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredo
       if (script[cursor] === '-') cursor++;
       while (/[ \t]/u.test(script[cursor] ?? '')) cursor++;
       let delimiter = '';
-      // The delimiter word may be quoted (`<<'EOF'`); collect it without the quotes.
+      // The delimiter word may be quoted (`<<'EOF'`) or backslash-escaped (`<<\EOF`); either form
+      // just disables body expansion, so collect the bare word. Missing the escaped form would drop
+      // `sawHeredoc` and read the heredoc body as commands.
       let delimiterQuote: string | undefined;
       while (cursor < script.length) {
         const delimiterChar = script[cursor] ?? '';
         if (delimiterQuote) {
           if (delimiterChar === delimiterQuote) delimiterQuote = undefined;
           else delimiter += delimiterChar;
+        } else if (delimiterChar === '\\') {
+          // A backslash quotes the next character into the delimiter word (`<<\EOF` → `EOF`).
+          cursor++;
+          delimiter += script[cursor] ?? '';
         } else if (delimiterChar === "'" || delimiterChar === '"') {
           delimiterQuote = delimiterChar;
         } else if (/[\w.-]/u.test(delimiterChar)) {

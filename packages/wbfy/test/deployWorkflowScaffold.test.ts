@@ -80,7 +80,7 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       // Any heredoc makes body-vs-command classification unreliable, so the whole script declines —
       // whether the delimiter form would otherwise hide the invocation (an escaped `<<\EOF` body)
       // or expose one (a `+`-suffixed delimiter word the earlier regex could not match).
-      'cat <<\\EOF\nwb deploy\nEOF',
+      'cat <<\\EOF\nbun wb deploy -w packages/api\nEOF',
       'cat <<EOF+\ndata\nEOF+\nbun wb deploy -w packages/api',
       // Command-position shell reserved words are not modeled; the segment does not match, so a real
       // deployment inside a control construct is a deliberate (safe) false-negative.
