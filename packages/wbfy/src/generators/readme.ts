@@ -176,11 +176,9 @@ function findBadgeInsertionAnchor(readme: string): number | undefined {
     const line = analysis.lines[index]!;
     // Raw text (code, comments, front matter) holds no live tags; a raw HTML BLOCK does, and its
     // `<details>` must still be counted even though no badge may be inserted inside it.
-    if (!line.isRawText) {
-      const visibleLineContent = visibleContentOf(line);
-      collapsedDepth +=
-        countRawHtmlTags(visibleLineContent, 'details') - countRawHtmlClosingTags(visibleLineContent, 'details');
-    }
+    // Depth never goes negative: a stray `</details>` would otherwise bank a credit that cancels a
+    // later real `<details>` and puts the badge under its hidden heading.
+    if (!line.isRawText) collapsedDepth = Math.max(0, collapsedDepth + countDetailsDepthDelta(visibleContentOf(line)));
     if (line.isProtected || collapsedDepth > 0) continue;
     if (/^ {0,3}#(?:[ \t]+|$)/u.test(line.content)) return line.end;
     if (deeperHeadingEnd === undefined && /^ {0,3}#{2,6}(?:[ \t]+|$)/u.test(line.content)) deeperHeadingEnd = line.end;
@@ -239,9 +237,10 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     const start = offset;
     const end = start + content.length;
     offset += fullLine.length;
-    // A code span may continue onto later lines but never past a blank one, so an unmatched backtick
-    // is only a span opener when its closer appears in the rest of THIS paragraph.
-    const paragraphRest = takeParagraphRest(rawLines, lineIndex + 1);
+    // A code span may continue onto later lines but never out of its own block, so an unmatched
+    // backtick is only a span opener when its closer appears in the rest of THIS paragraph. A
+    // heading's inline content ends with its own line, so it never looks ahead at all.
+    const paragraphRest = isAtxHeading(content) ? '' : takeParagraphRest(rawLines, lineIndex + 1);
 
     if (start === 0 && (trimmedLine === '---' || trimmedLine === '+++') && hasFrontMatterEnd(readme, trimmedLine)) {
       frontMatterMarker = trimmedLine;
@@ -290,7 +289,9 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     // block holds live markup, so a `<details>` commented out inside it must not count as an opener.
     if (inHtmlBlock) {
       if (!trimmedLine) inHtmlBlock = false;
-      const split = splitProtectedSpans(content, openSpan, paragraphRest);
+      // Attribute values are blanked first: a `<!--` written inside one is not a comment opener, and
+      // treating it as one protected the rest of the README and stranded the badge above the title.
+      const split = splitProtectedSpans(stripAttributeValues(content), openSpan, paragraphRest);
       openSpan = split.openSpan;
       lines.push({ content, end, ending, isProtected: !!trimmedLine, isRawText: false, spans: split.spans });
       continue;
@@ -343,7 +344,7 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     }
     if (htmlBlockPattern.test(content)) {
       inHtmlBlock = true;
-      const split = splitProtectedSpans(content, undefined, paragraphRest);
+      const split = splitProtectedSpans(stripAttributeValues(content), undefined, paragraphRest);
       openSpan = split.openSpan;
       lines.push({ content, end, ending, isProtected: true, isRawText: false, spans: split.spans });
       continue;
@@ -364,15 +365,23 @@ const RAW_TEXT_BLOCKS: [string, string][] = [
   [String.raw`<![A-Za-z]`, '>'],
 ];
 
-/** The lines following `from` up to the next blank one — the rest of the paragraph. */
+/**
+ * The lines following `from` that belong to the same paragraph. CommonMark settles block structure
+ * before inline spans, so the paragraph ends at a blank line — including one that is blank inside its
+ * container, like a lone `>` — and at a heading, which starts a block of its own.
+ */
 function takeParagraphRest(rawLines: string[], from: number): string {
   const rest: string[] = [];
   for (let index = from; index < rawLines.length; index++) {
     const line = rawLines[index]!;
-    if (!line.trim()) break;
+    if (!getContainerContent(line).trim() || isAtxHeading(line)) break;
     rest.push(line);
   }
   return rest.join('');
+}
+
+function isAtxHeading(content: string): boolean {
+  return /^ {0,3}#{1,6}(?:[ \t]|$)/u.test(content);
 }
 
 function leadingWhitespaceOf(content: string): number {
@@ -550,8 +559,20 @@ function hasRawHtmlClosingTag(line: string, tag: string): boolean {
   return new RegExp(`</${tag}[ \\t]*>`, 'iu').test(stripAttributeValues(line));
 }
 
-function countRawHtmlTags(line: string, tag: string): number {
-  return stripAttributeValues(line).match(new RegExp(`<${tag}(?:[ \\t>]|$)`, 'giu'))?.length ?? 0;
+/**
+ * How much the line changes `<details>` nesting depth, scanning its opening and closing tags in
+ * order. Quoted attribute values are blanked and backslash-escaped `<` is skipped, since neither
+ * one is a tag — counting them let a literal `\<details>` or a `</details>` written in an attribute
+ * hide the real title from the badge anchor.
+ */
+function countDetailsDepthDelta(line: string): number {
+  const stripped = stripAttributeValues(line);
+  let delta = 0;
+  for (const match of stripped.matchAll(/<(\/?)details(?:[ \t>]|$)/giu)) {
+    if (isEscaped(stripped, match.index)) continue;
+    delta += match[1] ? -1 : 1;
+  }
+  return delta;
 }
 
 /**
@@ -564,10 +585,6 @@ function stripAttributeValues(line: string): string {
   return line.replaceAll(/<[^>"']*(?:(?:"[^"]*"|'[^']*')[^>"']*)*>/gu, (tag) =>
     tag.replaceAll(/"[^"]*"|'[^']*'/gu, (value) => '_'.repeat(value.length))
   );
-}
-
-function countRawHtmlClosingTags(line: string, tag: string): number {
-  return line.match(new RegExp(`</${tag}[ \\t]*>`, 'giu'))?.length ?? 0;
 }
 
 function removeWbfyBadge(readme: string): string {

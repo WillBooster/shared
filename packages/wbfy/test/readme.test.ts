@@ -194,6 +194,22 @@ test.each([
     expected: `- \`\`\`md\n  # Example\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
   },
   {
+    name: 'a closing details tag inside an attribute',
+    input:
+      '<details title="foo </details> bar">\n<summary>x</summary>\n\n# Hidden\n\nH.\n</details>\n\n# Project\n\nV.\n',
+    expected: `<details title="foo </details> bar">\n<summary>x</summary>\n\n# Hidden\n\nH.\n</details>\n\n# Project\n\n${badgeOf('1.2.3')}\n\nV.\n`,
+  },
+  {
+    name: 'an escaped details tag before the title',
+    input: '\\<details>\n# Project\n',
+    expected: `\\<details>\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
+    name: 'a comment opener inside an HTML attribute',
+    input: '<div data-prefix="<!--"></div>\n\n# Project\n',
+    expected: `<div data-prefix="<!--"></div>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
@@ -329,6 +345,16 @@ test('supersedes a badge below a stray unmatched backtick', async () => {
   await withTempDir(async (dirPath) => {
     // The backtick has no closer in the paragraph, so it is literal text and protects nothing.
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText \`\n${legacyBadge}\nBody.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
+test('supersedes a badge below an unmatched backtick in a heading', async () => {
+  await withTempDir(async (dirPath) => {
+    // A heading's inline content ends with its own line, so its backtick cannot pair with a later one.
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project \`\n\n${legacyBadge}\ntext \`\n`);
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content.split('img.shields.io/badge')).toHaveLength(2);

@@ -46,6 +46,9 @@ export function getWbfyVersionLabel(): string | undefined {
   // targets its own repository lives outside those (the root README this label goes into, and each
   // package's .gitignore, package.json, tsconfig, …), so a first run cannot make the next one
   // relabel the badge `-dirty-local` by itself.
+  // Manifests stay out on purpose, even though an edited `exports` map can redirect which code
+  // loads: wbfy GENERATES package.json, so including it would make every run report itself dirty.
+  // The label is best-effort build provenance, not a reproducible-build attestation.
   const isDirty = getGitDirtyState(gitRootDirPath);
   if (isDirty === undefined) return undefined;
   return isDirty ? `${commitHash}-dirty-local` : `${commitHash}-local`;
