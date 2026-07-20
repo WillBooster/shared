@@ -1,5 +1,5 @@
 import type { ParseError } from 'jsonc-parser';
-import { applyEdits, createScanner, modify, parse as parseJsonc } from 'jsonc-parser';
+import { applyEdits, createScanner, modify, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
 // jsonc-parser declares SyntaxKind/ScanError as ambient const enums, which cannot be imported
 // under verbatimModuleSyntax; mirror the needed member values locally.
@@ -59,26 +59,69 @@ export const jsoncUtil = {
     return false;
   },
   /**
+   * Tells whether the object declares the same top-level property twice. Such content cannot be
+   * edited in place: this module's parser keeps the LAST occurrence (matching JSON.parse) while
+   * jsonc-parser's modify() rewrites the FIRST, so an edit would land on the occurrence that does
+   * not take effect and be re-applied on every run.
+   */
+  hasDuplicateTopLevelKey(content: string): boolean {
+    const keys = (parseTree(content.replace(/^\uFEFF/, ''))?.children ?? []).map(
+      (property) => property.children?.[0]?.value as unknown
+    );
+    return new Set(keys).size !== keys.length;
+  },
+  /**
    * Serializes `settings` into `oldContent`, editing only the top-level properties whose values
    * changed so the comments and formatting of an existing file survive. Callers never drop
    * properties (generated settings are merged ON TOP of the existing ones), so removals are not
    * handled: a property missing from `settings` is left untouched rather than deleted.
+   *
+   * Trivia-only content is edited rather than replaced too, so its comments survive (modify()
+   * appends the generated object before them).
    */
   stringifyPreservingTrivia(oldContent: string | undefined, settings: Record<string, unknown>): string {
-    if (oldContent === undefined || jsoncUtil.isTriviaOnly(oldContent)) {
-      return JSON.stringify(settings, undefined, 2);
-    }
+    if (oldContent === undefined) return JSON.stringify(settings, undefined, 2);
+
     const oldSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(oldContent);
     let content = oldContent;
     for (const [key, value] of Object.entries(settings)) {
+      const oldValue = oldSettings?.[key];
       // Compare serialized forms so deep-equal values (e.g. a re-merged `extends` array) do not
       // rewrite the property and reflow its formatting.
-      if (oldSettings && JSON.stringify(oldSettings[key]) === JSON.stringify(value)) continue;
-      content = applyEdits(
-        content,
-        modify(content, [key], value, { formattingOptions: { insertSpaces: true, tabSize: 2 } })
-      );
+      if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
+      // Replacing a whole array would discard the comments between its elements, so grow it with
+      // per-element insertions whenever the new value only adds to it.
+      const insertions = Array.isArray(oldValue) && Array.isArray(value) ? findInsertions(oldValue, value) : undefined;
+      for (const insertion of insertions ?? []) {
+        content = applyEdits(
+          content,
+          modify(content, [key, insertion.index], insertion.value, { ...modifyOptions, isArrayInsertion: true })
+        );
+      }
+      if (insertions) continue;
+      content = applyEdits(content, modify(content, [key], value, modifyOptions));
     }
     return content;
   },
 };
+
+const modifyOptions = { formattingOptions: { insertSpaces: true, tabSize: 2 } };
+
+/**
+ * Returns the elements to insert into `oldValue` to turn it into `newValue`, or undefined when
+ * that is impossible because `newValue` drops or reorders an existing element (the caller must
+ * then replace the array wholesale). Indices address the array as it grows, so applying the
+ * insertions left to right yields `newValue`.
+ */
+function findInsertions(oldValue: unknown[], newValue: unknown[]): { index: number; value: unknown }[] | undefined {
+  const insertions: { index: number; value: unknown }[] = [];
+  let oldIndex = 0;
+  for (const [newIndex, element] of newValue.entries()) {
+    if (oldIndex < oldValue.length && JSON.stringify(oldValue[oldIndex]) === JSON.stringify(element)) {
+      oldIndex++;
+      continue;
+    }
+    insertions.push({ index: newIndex, value: element });
+  }
+  return oldIndex === oldValue.length ? insertions : undefined;
+}

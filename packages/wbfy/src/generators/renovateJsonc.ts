@@ -17,7 +17,9 @@ const jsonObj = {
   extends: ['github>WillBooster/willbooster-configs:renovate.json5'],
 };
 
-type Settings = Omit<typeof jsonObj, 'extends'> & {
+// $schema is optional: an existing config need not declare it, and an empty or comment-only
+// superseded file contributes no properties at all.
+type Settings = Partial<Omit<typeof jsonObj, 'extends'>> & {
   // Renovate's schema allows a single preset string in addition to an array.
   extends?: string | string[];
   packageRules?: { matchPackageNames: string[]; enabled?: boolean }[];
@@ -33,10 +35,15 @@ const managedFileName = 'renovate.jsonc';
 // beside it). Which one it is follows Renovate's documented resolution order:
 //   renovate.json > renovate.jsonc > renovate.json5 > .github/* > .gitlab/* > .renovaterc*
 //   > package.json "renovate"
-// Superseded configs are listed in that order too, so the one Renovate actually reads wins the
-// merge below. renovate.json OUTRANKS the managed file, so leaving it behind would silently keep
-// the old config live — deleting it is what makes the migration take effect.
-const supersededConfigFileNames = ['renovate.json', 'renovate.json5', '.renovaterc.json'];
+// Superseded configs are listed in that order too, and each records whether it OUTRANKS the
+// managed file: only renovate.json does, so only it may overwrite renovate.jsonc's own settings
+// when both exist. Leaving it behind would silently keep the old config live, which is why
+// deleting the superseded files is what makes the migration take effect.
+const supersededConfigSpecs = [
+  { fileName: 'renovate.json', outranksManagedFile: true },
+  { fileName: 'renovate.json5', outranksManagedFile: false },
+  { fileName: '.renovaterc.json', outranksManagedFile: false },
+];
 
 // Everything Renovate resolves AFTER renovate.jsonc: generating the managed file would shadow
 // these, so wbfy bails instead when one exists and renovate.jsonc does not. The list is
@@ -94,23 +101,31 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
 
     // Renovate accepts JSONC in renovate.jsonc; an existing file wbfy cannot parse must be left
     // untouched instead of being overwritten with the bare template.
-    let oldSettings: Settings | undefined;
+    let managedSettings: Settings | undefined;
     let originalSettingsJson: string | undefined;
     if (oldContent !== undefined && !jsoncUtil.isTriviaOnly(oldContent)) {
-      oldSettings = jsoncUtil.parseObjectIgnoringError<Settings>(oldContent);
-      if (!oldSettings) {
+      managedSettings = jsoncUtil.parseObjectIgnoringError<Settings>(oldContent);
+      if (!managedSettings) {
         console.warn(`Skipped generating ${filePath} because the existing content is not parsable.`);
         return;
       }
-      originalSettingsJson = JSON.stringify(sortKeys(structuredClone(oldSettings) as Record<string, unknown>));
+      if (jsoncUtil.hasDuplicateTopLevelKey(oldContent)) {
+        console.warn(`Skipped generating ${filePath} because it declares the same property twice.`);
+        return;
+      }
+      originalSettingsJson = JSON.stringify(sortKeys(structuredClone(managedSettings) as Record<string, unknown>));
     }
 
-    // Merge the superseded configs from the lowest-priority one up, so the config Renovate
-    // currently reads overwrites the dead ones on conflict.
-    for (const superseded of [...supersededConfigs].toReversed()) {
-      oldSettings = oldSettings
-        ? (merge(oldSettings, superseded.settings, { arrayMerge: overwriteMerge }) as Settings)
-        : superseded.settings;
+    // Merge every source from the lowest-priority one up, so the config Renovate actually reads
+    // wins on conflict. Only renovate.json outranks the managed file; the rest are dead config
+    // that must not overwrite it.
+    let oldSettings: Settings | undefined;
+    for (const settings of [
+      ...supersededConfigs.filter((superseded) => !superseded.outranksManagedFile).toReversed(),
+      ...(managedSettings ? [{ settings: managedSettings }] : []),
+      ...supersededConfigs.filter((superseded) => superseded.outranksManagedFile),
+    ].map((source) => source.settings)) {
+      oldSettings = oldSettings ? (merge(oldSettings, settings, { arrayMerge: overwriteMerge }) as Settings) : settings;
     }
 
     if (oldSettings) {
@@ -167,6 +182,7 @@ interface SupersededConfig {
   filePath: string;
   content: string;
   settings: Settings;
+  outranksManagedFile: boolean;
 }
 
 /**
@@ -175,7 +191,7 @@ interface SupersededConfig {
  */
 async function readSupersededConfigs(config: PackageConfig): Promise<SupersededConfig[] | undefined> {
   const supersededConfigs: SupersededConfig[] = [];
-  for (const fileName of supersededConfigFileNames) {
+  for (const { fileName, outranksManagedFile } of supersededConfigSpecs) {
     const filePath = path.resolve(config.dirPath, fileName);
     // Confined read: a committed symlink pointing outside the repository must not get its
     // target's content copied into the tracked renovate.jsonc.
@@ -188,13 +204,15 @@ async function readSupersededConfigs(config: PackageConfig): Promise<SupersededC
       }
       continue;
     }
-    if (jsoncUtil.isTriviaOnly(content)) continue;
-    const settings = parseRenovateConfig(fileName, content);
+    // An empty or comment-only file holds no settings, but it still occupies its slot in the
+    // resolution order (an empty renovate.json makes Renovate ignore renovate.jsonc entirely), so
+    // it is recorded with empty settings to be deleted like any other superseded config.
+    const settings = jsoncUtil.isTriviaOnly(content) ? {} : parseRenovateConfig(fileName, content);
     if (!settings) {
       console.warn(`Skipped generating ${managedFileName} because ${filePath} is not parsable.`);
       return undefined;
     }
-    supersededConfigs.push({ filePath, content, settings });
+    supersededConfigs.push({ filePath, content, settings, outranksManagedFile });
   }
   return supersededConfigs;
 }

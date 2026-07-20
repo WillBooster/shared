@@ -98,6 +98,70 @@ test('lets the config Renovate actually reads win over a dead lower-priority one
   );
 });
 
+test('keeps a pre-existing renovate.jsonc winning over a superseded config ranked below it', async () => {
+  // renovate.jsonc outranks renovate.json5, so the value Renovate actually reads must survive.
+  await withRepo(
+    {
+      'renovate.jsonc': JSON.stringify({ timezone: 'Asia/Tokyo' }),
+      'renovate.json5': "{ timezone: 'UTC' }",
+    },
+    async (dirPath) => {
+      const settings = JSON.parse(stripComments(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')));
+      expect(settings.timezone).toBe('Asia/Tokyo');
+      expect(fs.existsSync(path.join(dirPath, 'renovate.json5'))).toBe(false);
+    }
+  );
+});
+
+test('lets renovate.json override a pre-existing renovate.jsonc, since it outranks it', async () => {
+  await withRepo(
+    {
+      'renovate.jsonc': JSON.stringify({ timezone: 'Asia/Tokyo' }),
+      'renovate.json': JSON.stringify({ timezone: 'UTC' }),
+    },
+    async (dirPath) => {
+      const settings = JSON.parse(stripComments(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')));
+      expect(settings.timezone).toBe('UTC');
+      expect(fs.existsSync(path.join(dirPath, 'renovate.json'))).toBe(false);
+    }
+  );
+});
+
+test('deletes an empty superseded config, which would otherwise keep outranking renovate.jsonc', async () => {
+  await withRepo({ 'renovate.json': '' }, async (dirPath) => {
+    expect(fs.existsSync(path.join(dirPath, 'renovate.json'))).toBe(false);
+    expect(fs.existsSync(path.join(dirPath, 'renovate.jsonc'))).toBe(true);
+  });
+});
+
+test('keeps a comment nested inside extends while adding the generated preset', async () => {
+  await withRepo(
+    {
+      'renovate.jsonc': `{
+  "extends": [
+    // Keep the local preset last so it overrides the organization defaults.
+    "local>team/config"
+  ]
+}
+`,
+    },
+    async (dirPath) => {
+      const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+      expect(content).toContain('// Keep the local preset last so it overrides the organization defaults.');
+      expect(JSON.parse(stripComments(content)).extends).toEqual([preset, 'local>team/config']);
+    }
+  );
+});
+
+test('leaves a renovate.jsonc declaring the same property twice untouched', async () => {
+  // parseObjectIgnoringError keeps the last occurrence while modify() rewrites the first, so
+  // editing such a file would write to the occurrence that does not take effect.
+  const duplicateContent = '{ "extends": ["a"], "extends": ["b"] }';
+  await withRepo({ 'renovate.jsonc': duplicateContent }, async (dirPath) => {
+    expect(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')).toBe(duplicateContent);
+  });
+});
+
 test('bails instead of shadowing a config Renovate resolves after renovate.jsonc', async () => {
   await withRepo({ '.github/renovate.json': JSON.stringify({ extends: [preset] }) }, async (dirPath) => {
     expect(fs.existsSync(path.join(dirPath, 'renovate.jsonc'))).toBe(false);
