@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 
-import { isExcludedRepo } from '../src/index.js';
+import { isExcludedRepo } from '../src/utils/excludedRepo.js';
 
 // The manifest names the repository canonically, so a renamed checkout directory must not change
 // the decision — and a fork under another org keeps its excluded name.

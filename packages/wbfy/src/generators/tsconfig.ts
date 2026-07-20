@@ -199,24 +199,41 @@ function removeStaleManagedWorkspaceEntries(
   }
   if (!Array.isArray(oldSettings.exclude)) return;
   const generatedExclude = new Set(newSettings.exclude);
-  // wbfy writes a workspace negation (`!apps/excluded`) as the bare directory path, so an exclude
-  // that exactly equals a DISCOVERED workspace directory is a negation-derived leftover whose
-  // negation is gone: the directory is a workspace again and must re-enter the root project.
-  // Requiring an exact match keeps hygiene globs (`**/node_modules`, `dist`) untouched.
-  const workspaceDirPaths = new Set(
-    config.doesContainSubPackageJsons
-      ? getWorkspaceSubDirPaths(config).map((workspaceDirPath) =>
-          path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
-        )
-      : []
-  );
+  const workspaceDirPaths = config.doesContainSubPackageJsons
+    ? getWorkspaceSubDirPaths(config).map((workspaceDirPath) =>
+        path.relative(path.resolve(config.dirPath), workspaceDirPath).replaceAll('\\', '/')
+      )
+    : [];
   oldSettings.exclude = oldSettings.exclude.filter((entry) => {
     if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
     if (entry.endsWith('/test/fixtures')) {
       return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
     }
-    return !workspaceDirPaths.has(entry);
+    return !coversWorkspaceDir(entry, workspaceDirPaths);
   });
+}
+
+// Whether an exclude entry is a workspace negation (`!apps/excluded`) whose negation is gone: the
+// directory is a workspace again and must re-enter the root project. wbfy writes such a negation as
+// a directory path, as a directory PATTERN when it excludes exactly what it matches (`apps/*b`), or
+// as an ancestor's package-owned subpaths (`apps/x/src`) — so the entry may cover a discovered
+// workspace directory or sit under one. A globstar segment marks a hygiene glob (node_modules, e2e
+// and friends), which is never negation-derived and must survive.
+function coversWorkspaceDir(entry: string, workspaceDirPaths: readonly string[]): boolean {
+  if (entry.split('/').includes('**')) return false;
+  const regexSource = entry
+    .split('/')
+    .map((segment) =>
+      segment
+        .replaceAll(/[.+^${}()|[\]\\]/gu, String.raw`\$&`)
+        .replaceAll('*', '[^/]*')
+        .replaceAll('?', '[^/]')
+    )
+    .join('/');
+  const entryPattern = new RegExp(`^${regexSource}(?:/.*)?$`, 'u');
+  return workspaceDirPaths.some(
+    (workspaceDirPath) => entryPattern.test(workspaceDirPath) || entry.startsWith(`${workspaceDirPath}/`)
+  );
 }
 
 function getManagedWorkspacePrefix(entry: string): string | undefined {
