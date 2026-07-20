@@ -603,7 +603,10 @@ function tokenizeShellCommand(script: string): string[][] {
     const character = script[index] ?? '';
     if (quote) {
       if (character === '\\' && quote === '"') {
-        current += script[++index] ?? '';
+        // Inside double quotes, backslash-newline is still a line continuation (both removed);
+        // any other escaped character contributes literally.
+        if (script[index + 1] === '\n') index++;
+        else current += script[++index] ?? '';
         continue;
       }
       if (character === quote) quote = undefined;

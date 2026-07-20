@@ -41,6 +41,8 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun wb \\\ndeploy -w packages/api',
       // A subshell group still runs wb deploy.
       '(bun wb deploy -w packages/api)',
+      // Backslash-newline inside double quotes is also a line continuation.
+      'bun wb deploy -w "packages/\\\napi"',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');
