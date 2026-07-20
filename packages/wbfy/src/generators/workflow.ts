@@ -592,15 +592,27 @@ const runnerValueOptions = new Set([
   '--call',
 ]);
 
-/** Advance past a runner's `-`-prefixed options, consuming a separate value token where one applies. */
-function skipRunnerOptions(tokens: string[], startIndex: number): number {
+// Runner options that change the process working directory, so `wb`'s own `-w` (and every wrangler
+// path) resolves relative to a directory this static parser cannot recover. Their presence makes
+// the worker-directory resolution unsound, so scaffolding is declined rather than guessed.
+const cwdChangingRunnerOptions = new Set(['--cwd', '-C', '--prefix', '--dir']);
+
+/**
+ * Advance past a runner's `-`-prefixed options, consuming a separate value token where one applies.
+ * `sawCwdChange` reports whether any option relocates the working directory (see
+ * cwdChangingRunnerOptions), so the caller can decline scaffolding it cannot resolve correctly.
+ */
+function skipRunnerOptions(tokens: string[], startIndex: number): { index: number; sawCwdChange: boolean } {
   let index = startIndex;
+  let sawCwdChange = false;
   while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
     const option = tokens[index] ?? '';
+    const bareOption = option.includes('=') ? option.slice(0, option.indexOf('=')) : option;
+    if (cwdChangingRunnerOptions.has(bareOption)) sawCwdChange = true;
     index++;
     if (!option.includes('=') && runnerValueOptions.has(option) && index < tokens.length) index++;
   }
-  return index;
+  return { index, sawCwdChange };
 }
 
 /**
@@ -611,12 +623,17 @@ function skipRunnerOptions(tokens: string[], startIndex: number): number {
  * Segments/tokens model command structure precisely enough that quoted operators, escaped
  * operators, comments, and subshell groups neither fabricate nor hide a `wb deploy` invocation.
  */
-function tokenizeShellCommand(script: string): string[][] {
+function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredoc: boolean } {
   const segments: string[][] = [];
   let tokens: string[] = [];
   let current = '';
   let inToken = false;
   let quote: string | undefined;
+  // Whether the script uses any heredoc. Faithfully classifying which body lines are data (the
+  // delimiter word can be quoted/backslash-escaped, `<<-` strips leading tabs, terminators match
+  // exactly) is more than this parser models, so a heredoc anywhere makes the caller decline
+  // scaffolding instead of risking either reading a body line as a command or hiding a real one.
+  let sawHeredoc = false;
   // Heredoc delimiters whose bodies begin at the NEXT newline: `cat <<A <<B` queues A then B, and
   // the commands AFTER the `<<` header on the same line still execute, so the header is recorded
   // here and the bodies are skipped only when the line's newline is reached.
@@ -702,6 +719,7 @@ function tokenizeShellCommand(script: string): string[][] {
       if (delimiter) {
         // The `<<delim` header is a redirection (not a token); record the delimiter and keep
         // parsing the rest of this line — its body is skipped when the newline is reached.
+        sawHeredoc = true;
         endToken();
         pendingHeredocDelimiters.push(delimiter);
         index = cursor - 1;
@@ -735,7 +753,7 @@ function tokenizeShellCommand(script: string): string[][] {
     inToken = true;
   }
   endSegment();
-  return segments;
+  return { segments, sawHeredoc };
 }
 
 /**
@@ -747,17 +765,26 @@ function tokenizeShellCommand(script: string): string[][] {
  * it appears, since wb declares it globally.
  */
 function parseWbDeployArgs(deployScript: string): string[] | undefined {
-  for (const tokens of tokenizeShellCommand(deployScript)) {
+  const { segments, sawHeredoc } = tokenizeShellCommand(deployScript);
+  // A heredoc makes body-vs-command classification unreliable (see tokenizeShellCommand); decline.
+  if (sawHeredoc) return undefined;
+  for (const tokens of segments) {
     let index = 0;
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
     // Leading launchers run the following command: `env` (with options + KEY=value assignments)
-    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options).
+    // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Command-position shell
+    // reserved words and other launchers (`if`/`then`/`for`/`time`/`exec`/`!`/brace groups, …) are
+    // NOT modeled: they leave a non-`wb` first token, so the segment simply does not match and
+    // scaffolding is declined — a deliberate false-negative (safe for guidance) over guessing.
     if (tokens[index] === 'env') {
       index++;
       while (index < tokens.length) {
         const token = tokens[index] ?? '';
         if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token)) index++;
-        else if (token === '-u' || token === '-C') index += 2;
+        // env's `-C`/`--chdir` relocates the working directory, so `wb`'s `-w` and wrangler paths
+        // resolve from a directory this parser cannot recover: decline rather than mis-resolve.
+        else if (token === '-C' || token === '--chdir') return undefined;
+        else if (token === '-u') index += 2;
         else if (token.startsWith('-')) index++;
         else break;
       }
@@ -783,14 +810,20 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
     // `npm run wb deploy` executes the script named `wb`, not the wb binary, and must be rejected.
     if (['npm', 'pnpm', 'yarn', 'bun'].includes(tokens[index] ?? '')) {
       const runner = tokens[index] ?? '';
-      index = skipRunnerOptions(tokens, index + 1);
+      const runnerScan = skipRunnerOptions(tokens, index + 1);
+      // A cwd-changing runner option (`--cwd`/`-C`/`--prefix`/`--dir`) moves where `wb -w` resolves,
+      // which this parser cannot recover, so decline rather than scaffold a wrong target.
+      if (runnerScan.sawCwdChange) return undefined;
+      index = runnerScan.index;
       const subcommand = tokens[index] ?? '';
       if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
       if (['x', 'dlx', 'exec'].includes(subcommand))
         index++; // binary runner (pnpm dlx, bun x, …)
       else if (runner === 'npm') continue; // bare `npm wb` never runs a binary
     } else if (['bunx', 'npx'].includes(tokens[index] ?? '')) {
-      index = skipRunnerOptions(tokens, index + 1);
+      const runnerScan = skipRunnerOptions(tokens, index + 1);
+      if (runnerScan.sawCwdChange) return undefined;
+      index = runnerScan.index;
     }
     if (tokens[index] !== 'wb') continue;
     const wbArgs = tokens.slice(index + 1);

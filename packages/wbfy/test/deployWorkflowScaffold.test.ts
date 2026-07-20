@@ -70,6 +70,23 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'command -V wb deploy',
       // `npx -p wb deploy` runs the `deploy` binary from package `wb`, not `wb deploy`.
       'npx -p wb deploy',
+      // A cwd-changing runner option relocates where `wb -w` resolves, which this static parser
+      // cannot recover, so scaffolding is declined rather than pointed at the wrong directory.
+      'bun --cwd packages/api wb deploy',
+      'pnpm -C packages/api wb deploy',
+      'bun --cwd=packages/api wb deploy',
+      'env -C packages/api bun wb deploy',
+      'env --chdir packages/api bun wb deploy',
+      // Any heredoc makes body-vs-command classification unreliable, so the whole script declines —
+      // whether the delimiter form would otherwise hide the invocation (an escaped `<<\EOF` body)
+      // or expose one (a `+`-suffixed delimiter word the earlier regex could not match).
+      'cat <<\\EOF\nwb deploy\nEOF',
+      'cat <<EOF+\ndata\nEOF+\nbun wb deploy -w packages/api',
+      // Command-position shell reserved words are not modeled; the segment does not match, so a real
+      // deployment inside a control construct is a deliberate (safe) false-negative.
+      'if true; then bun wb deploy -w packages/api; fi',
+      'time bun wb deploy -w packages/api',
+      'exec bun wb deploy -w packages/api',
     ]) {
       expect(generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig)).toBeUndefined();
     }
