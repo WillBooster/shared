@@ -585,6 +585,7 @@ const runnerValueOptions = new Set([
   '--filter',
   '-F',
   '--workspace',
+  '-w',
   '--dir',
   '-p',
   '--package',
@@ -605,6 +606,7 @@ const contextChangingRunnerOptions = new Set([
   '--filter',
   '-F',
   '--workspace',
+  '-w',
   '--workspaces',
   '--ws',
 ]);
@@ -803,8 +805,10 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
         if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token)) index++;
         // env's `-C`/`--chdir` relocates the working directory, so `wb`'s `-w` and wrangler paths
         // resolve from a directory this parser cannot recover: decline rather than mis-resolve.
-        else if (token === '-C' || token === '--chdir') return undefined;
-        else if (token === '-u') index += 2;
+        // The value may be attached (`-Cdir`, `--chdir=dir`).
+        else if (token === '-C' || token.startsWith('-C') || token === '--chdir' || token.startsWith('--chdir=')) {
+          return undefined;
+        } else if (token === '-u') index += 2;
         else if (token.startsWith('-')) index++;
         else break;
       }

@@ -87,6 +87,11 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'pnpm --filter api exec wb deploy',
       'pnpm -F api exec wb deploy',
       'npm --workspace api exec wb deploy',
+      // npm's `-w` workspace alias and attached-value option forms are also context changes.
+      'npm -w packages/api exec wb deploy',
+      'npm -w=packages/api exec wb deploy',
+      'env -Cpackages/api bun wb deploy',
+      'env --chdir=packages/api bun wb deploy',
       // Any heredoc makes body-vs-command classification unreliable, so the whole script declines —
       // whether the delimiter form would otherwise hide the invocation (an escaped `<<\EOF` body)
       // or expose one (a `+`-suffixed delimiter word the earlier regex could not match).
