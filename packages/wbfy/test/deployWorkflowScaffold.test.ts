@@ -112,6 +112,9 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'if true; then bun wb deploy -w packages/api; fi',
       'time bun wb deploy -w packages/api',
       'exec bun wb deploy -w packages/api',
+      // A preceding `cd`/`pushd` changes the directory the later `wb deploy` resolves from.
+      'cd packages/api && wb deploy',
+      'pushd packages/api && bun wb deploy',
     ]) {
       expect(generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig)).toBeUndefined();
     }
@@ -219,15 +222,22 @@ test('declines when a package script named `wb` shadows the wb binary in a bare 
       } as unknown as PackageConfig;
       expect(generateCloudflareDeployWorkflow(config), runner).toBeUndefined();
     }
-    // A `dlx`/`exec` script shadows Yarn Classic's would-be executor, so `yarn dlx wb deploy` runs
-    // that script (not the wb binary) and must not scaffold.
-    for (const executor of ['dlx', 'exec']) {
-      const config = {
+    // Only `yarn dlx` is ambiguous (a Berry built-in but a Yarn Classic script), so a declared `dlx`
+    // script makes `yarn dlx wb deploy` run that script (not the wb binary) and must not scaffold.
+    expect(
+      generateCloudflareDeployWorkflow({
         dirPath,
-        packageJson: { scripts: { deploy: `yarn ${executor} wb deploy -w packages/api`, [executor]: 'echo shadow' } },
-      } as unknown as PackageConfig;
-      expect(generateCloudflareDeployWorkflow(config), executor).toBeUndefined();
-    }
+        packageJson: { scripts: { deploy: 'yarn dlx wb deploy -w packages/api', dlx: 'echo shadow' } },
+      } as unknown as PackageConfig)
+    ).toBeUndefined();
+    // `yarn exec` is a genuine built-in that takes precedence over a same-named script, so it still
+    // scaffolds even when an `exec` script exists.
+    expect(
+      generateCloudflareDeployWorkflow({
+        dirPath,
+        packageJson: { scripts: { deploy: 'yarn exec wb deploy -w packages/api', exec: 'echo shadow' } },
+      } as unknown as PackageConfig)?.jobs.deploy?.with?.file_path_1
+    ).toBe('packages/api/.env.cloudflare');
     // Without a shadowing script, a real Berry executor form scaffolds normally.
     expect(
       generateCloudflareDeployWorkflow(createConfig(dirPath, 'yarn dlx wb deploy -w packages/api') as PackageConfig)

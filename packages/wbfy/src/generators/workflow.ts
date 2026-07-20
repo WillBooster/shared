@@ -813,6 +813,10 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
   for (const tokens of segments) {
     let index = 0;
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
+    // A preceding `cd`/`pushd`/`popd` segment (`cd packages/api && wb deploy`) changes the working
+    // directory the later `wb deploy` resolves `-w` and wrangler paths from, which this per-segment
+    // parser cannot recover, so decline rather than resolve from the repo root.
+    if (['cd', 'pushd', 'popd'].includes(tokens[index] ?? '')) return undefined;
     // Leading launchers run the following command: `env` (with options + KEY=value assignments)
     // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Command-position shell
     // reserved words and other launchers (`if`/`then`/`for`/`time`/`exec`/`!`/brace groups, …) are
@@ -864,10 +868,12 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
       const subcommand = tokens[index] ?? '';
       if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
       // Executor subcommands are runner-SPECIFIC: bun reserves only `x` (`bun dlx`/`bun exec` run a
-      // package script named dlx/exec). A declared script of the SAME name shadows the executor
-      // (Yarn Classic's `dlx`/`exec` are scripts, not built-ins), so treat it as an executor only
-      // when no such script exists; otherwise it falls through to the package-script checks.
-      if (runnerExecutorSubcommandsByRunner[runner]?.has(subcommand) && !scriptNames.has(subcommand)) {
+      // package script named dlx/exec). Real built-in executors (`exec`/`x`, and `dlx` for pnpm)
+      // take precedence over a same-named script, so they are NOT shadow-checked. Only `yarn dlx` is
+      // ambiguous — a Berry built-in but a package SCRIPT in Yarn Classic — so a declared `dlx`
+      // script makes `yarn dlx` decline (fall through to the package-script checks).
+      const isYarnDlxShadowedByScript = runner === 'yarn' && subcommand === 'dlx' && scriptNames.has('dlx');
+      if (runnerExecutorSubcommandsByRunner[runner]?.has(subcommand) && !isYarnDlxShadowedByScript) {
         index++; // binary runner (pnpm dlx, bun x, `npm exec -- wb …`)
         if (tokens[index] === '--') index++; // the executor's optional `--` before the command
       } else if (runner === 'npm') {
