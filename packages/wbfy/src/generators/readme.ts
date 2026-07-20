@@ -140,15 +140,23 @@ function rewriteBadgeBlock(readme: string, transform: (badges: string[]) => stri
 
 /** The line index of the README's title, which the badge block follows. */
 function findTitleIndex(lines: string[]): number | undefined {
-  let inFence = false;
+  let fence: string | undefined;
   for (const [index, line] of lines.entries()) {
     // The one piece of Markdown structure worth tracking: a leading fenced example may contain a
     // `#` line, and anchoring to it would write the badges inside the code block.
-    if (/^ {0,3}(?:`{3,}|~{3,})/u.test(line)) {
-      inFence = !inFence;
+    const [, delimiter, info] = /^ {0,3}(`{3,}|~{3,})(.*)$/u.exec(line) ?? [];
+    if (fence) {
+      // Only the same character, at least as long, with nothing but spaces after it, closes a fence;
+      // toggling on any delimiter line ended the block early at an example like ```` ```not-a-close ````.
+      if (delimiter && delimiter[0] === fence[0] && delimiter.length >= fence.length && !info?.trim()) {
+        fence = undefined;
+      }
       continue;
     }
-    if (inFence) continue;
+    if (delimiter) {
+      fence = delimiter;
+      continue;
+    }
 
     if (/^ {0,3}#{1,6}(?:[ \t]|$)/u.test(line)) return index;
     // A centered `<h1 align="center">…</h1>` is a title too; it may close on a later line.

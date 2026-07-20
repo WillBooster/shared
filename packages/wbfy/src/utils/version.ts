@@ -58,14 +58,31 @@ function isWbfyRepository(gitRootDirPath: string): boolean {
   // Every remote counts, not just `origin`: a fork checkout carries the canonical repository as
   // `upstream`, and it is still a genuine wbfy checkout whose commit identifies the build.
   const remoteUrls = runGit(['remote', '-v'], gitRootDirPath);
-  return !!remoteUrls
-    ?.split('\n')
-    // The host is anchored: unanchored, `notgithub.com/WillBooster/shared` also matched, letting a
-    // vendored tree with a lookalike remote claim to be a genuine wbfy checkout. An explicit port is
-    // allowed too, since git accepts `ssh://git@github.com:22/WillBooster/shared.git`.
-    .some((line) =>
-      /(?:^|@|\/\/)github\.com(?::\d+)?[:/]WillBooster\/shared(?:\.git)?$/iu.test(line.split(/[ \t]+/u)[1] ?? '')
-    );
+  return !!remoteUrls?.split('\n').some((line) => isCanonicalRemoteUrl(line.split(/[ \t]+/u)[1] ?? ''));
+}
+
+const canonicalRepositoryPath = /^\/?WillBooster\/shared(?:\.git)?$/iu;
+
+/**
+ * Whether the remote URL points at wbfy's own repository. The host is compared after PARSING rather
+ * than matched inside the string: any pattern loose enough to accept every URL form git supports
+ * also accepted a lookalike that merely contains the host, such as
+ * `https://evil.example//github.com/WillBooster/shared.git`, letting an unrelated checkout claim to
+ * be a genuine wbfy build.
+ */
+function isCanonicalRemoteUrl(url: string): boolean {
+  // scp-style (`git@github.com:WillBooster/shared.git`) is not a URL, so it is matched separately.
+  // The lookahead keeps a scheme's `://` from being read as the `host:path` separator.
+  const scpMatch = /^(?:[^@/]+@)?([^/:]+):(?!\/)(.*)$/u.exec(url);
+  if (scpMatch) {
+    return scpMatch[1]!.toLowerCase() === 'github.com' && canonicalRepositoryPath.test(scpMatch[2]!);
+  }
+  try {
+    const { hostname, pathname } = new URL(url);
+    return hostname.toLowerCase() === 'github.com' && canonicalRepositoryPath.test(pathname);
+  } catch {
+    return false;
+  }
 }
 
 function getGitDirtyState(gitRootDirPath: string): boolean | undefined {

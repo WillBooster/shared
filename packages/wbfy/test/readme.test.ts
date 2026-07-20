@@ -103,6 +103,11 @@ test.each([
     expected: `\`\`\`md\n# Example\n\`\`\`\n\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
   },
   {
+    name: 'a fence containing a non-closing fence line',
+    input: '```md\n```not-a-close\n# still code\n```\n\n# Project\n\nDescription.\n',
+    expected: `\`\`\`md\n\`\`\`not-a-close\n# still code\n\`\`\`\n\n# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
     name: 'no title at all',
     input: 'Just a description.\n',
     expected: `${badgeOf('1.2.3')}\n\nJust a description.\n`,
