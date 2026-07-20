@@ -1,6 +1,7 @@
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * The version wbfy's own package.json carries in the repository. `@semantic-release/npm` rewrites
@@ -40,9 +41,15 @@ function runGit(args: string[], cwd: string): string | undefined {
 }
 
 function readWbfyPackageJson(): { version: string; dirPath: string } {
-  let dirPath = path.dirname(new URL(import.meta.url).pathname);
+  // fileURLToPath, not URL.pathname: the latter keeps percent-encoding, so an installation path
+  // containing e.g. a space would resolve to a nonexistent directory and the search would walk up
+  // to an unrelated package.
+  let dirPath = path.dirname(fileURLToPath(import.meta.url));
   while (!fs.existsSync(path.join(dirPath, 'package.json'))) {
-    dirPath = path.dirname(dirPath);
+    const parentDirPath = path.dirname(dirPath);
+    // path.dirname('/') === '/', so the search must stop explicitly at the filesystem root.
+    if (parentDirPath === dirPath) throw new Error("wbfy's own package.json is missing.");
+    dirPath = parentDirPath;
   }
   const packageJson = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')) as { version: string };
   return { version: packageJson.version, dirPath };

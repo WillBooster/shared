@@ -79,16 +79,16 @@ test('keeps an existing README that cannot be read', async () => {
   await withTempDir(async (dirPath) => {
     const filePath = path.resolve(dirPath, 'README.md');
     fs.writeFileSync(filePath, '# example\n\nImportant content.\n');
-    fs.chmodSync(filePath, 0o200);
-    try {
-      // generateReadme swallows the read failure, so the unreadable README must stay untouched
-      // instead of being overwritten with the generated stub.
-      await runGenerateReadme(dirPath, '1.2.3').catch(() => {});
-      fs.chmodSync(filePath, 0o600);
-      expect(fs.readFileSync(filePath, 'utf8')).toBe('# example\n\nImportant content.\n');
-    } finally {
-      fs.chmodSync(filePath, 0o600);
-    }
+    // Injected rather than provoked through permission bits: root bypasses those, so a chmod-based
+    // test would silently exercise the success path instead in a root container.
+    const error: NodeJS.ErrnoException = new Error('EACCES: permission denied');
+    error.code = 'EACCES';
+    vi.spyOn(fsUtil, 'readFileIfExists').mockRejectedValue(error);
+
+    // generateReadme swallows the read failure, so the unreadable README must stay untouched
+    // instead of being overwritten with the generated stub.
+    await runGenerateReadme(dirPath, '1.2.3');
+    expect(fs.readFileSync(filePath, 'utf8')).toBe('# example\n\nImportant content.\n');
   });
 });
 
