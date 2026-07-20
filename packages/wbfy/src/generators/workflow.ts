@@ -576,8 +576,21 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env', '--check-env']);
 
 // Runner options that consume the FOLLOWING token as their value, so it is not the wb executable
-// (e.g. `bun --cwd dir wb deploy`). A conservative superset across npm/pnpm/yarn/bun.
-const runnerValueOptions = new Set(['--cwd', '-C', '--prefix', '--filter', '-F', '--workspace', '--dir']);
+// (e.g. `bun --cwd dir wb deploy`, `npx -p pkg wb deploy`). A conservative superset across
+// npm/pnpm/yarn/bun and the npx/bunx package executors.
+const runnerValueOptions = new Set([
+  '--cwd',
+  '-C',
+  '--prefix',
+  '--filter',
+  '-F',
+  '--workspace',
+  '--dir',
+  '-p',
+  '--package',
+  '-c',
+  '--call',
+]);
 
 /** Advance past a runner's `-`-prefixed options, consuming a separate value token where one applies. */
 function skipRunnerOptions(tokens: string[], startIndex: number): number {
@@ -604,6 +617,25 @@ function tokenizeShellCommand(script: string): string[][] {
   let current = '';
   let inToken = false;
   let quote: string | undefined;
+  // Heredoc delimiters whose bodies begin at the NEXT newline: `cat <<A <<B` queues A then B, and
+  // the commands AFTER the `<<` header on the same line still execute, so the header is recorded
+  // here and the bodies are skipped only when the line's newline is reached.
+  let pendingHeredocDelimiters: string[] = [];
+  const skipHeredocBodies = (fromIndex: number): number => {
+    let cursor = fromIndex;
+    for (const delimiter of pendingHeredocDelimiters) {
+      while (cursor < script.length) {
+        const lineStart = cursor + 1;
+        let lineEnd = lineStart;
+        while (lineEnd < script.length && script[lineEnd] !== '\n') lineEnd++;
+        cursor = lineEnd;
+        if (script.slice(lineStart, lineEnd).trim() === delimiter) break;
+        if (lineEnd >= script.length) break;
+      }
+    }
+    pendingHeredocDelimiters = [];
+    return cursor;
+  };
   const endToken = (): void => {
     if (inToken) tokens.push(current);
     current = '';
@@ -668,21 +700,11 @@ function tokenizeShellCommand(script: string): string[][] {
         cursor++;
       }
       if (delimiter) {
+        // The `<<delim` header is a redirection (not a token); record the delimiter and keep
+        // parsing the rest of this line — its body is skipped when the newline is reached.
         endToken();
-        // Skip to the newline that begins the body, then consume body lines until the delimiter.
-        while (cursor < script.length && script[cursor] !== '\n') cursor++;
-        while (cursor < script.length) {
-          const lineStart = cursor + 1;
-          let lineEnd = lineStart;
-          while (lineEnd < script.length && script[lineEnd] !== '\n') lineEnd++;
-          if (script.slice(lineStart, lineEnd).trim() === delimiter) {
-            cursor = lineEnd;
-            break;
-          }
-          cursor = lineEnd;
-          if (lineEnd >= script.length) break;
-        }
-        index = cursor;
+        pendingHeredocDelimiters.push(delimiter);
+        index = cursor - 1;
         continue;
       }
     }
@@ -696,6 +718,9 @@ function tokenizeShellCommand(script: string): string[][] {
     if (character === '&' || character === '|' || character === ';' || character === '\n') {
       endSegment();
       if ((character === '&' || character === '|') && script[index + 1] === character) index++;
+      // A newline that closes a heredoc header line consumes the queued bodies before the next
+      // command.
+      if (character === '\n' && pendingHeredocDelimiters.length > 0) index = skipHeredocBodies(index);
       continue;
     }
     if (character === '(' || character === ')') {
@@ -737,10 +762,21 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
         else break;
       }
     }
+    // `command CMD` executes CMD, but `command -v`/`-V CMD` only QUERY its availability without
+    // running it, so a deploy behind them does not run.
     while (tokens[index] === 'command') {
       index++;
-      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) index++;
+      let queriesOnly = false;
+      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
+        if (tokens[index] === '-v' || tokens[index] === '-V') queriesOnly = true;
+        index++;
+      }
+      if (queriesOnly) {
+        index = -1;
+        break;
+      }
     }
+    if (index < 0) continue;
     // Resolve a runner prefix to whether the following token is a BINARY (the wb executable) or a
     // package SCRIPT name. `bunx`/`npx` and `<pm> x|dlx|exec` run a binary; `<pm> run|run-script`
     // (and bare `npm <name>`, or any runner followed by `--`) run a package script — so

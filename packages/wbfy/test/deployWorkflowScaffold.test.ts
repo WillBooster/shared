@@ -65,6 +65,11 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun --cwd wb deploy',
       // A heredoc body is data, not a command.
       "cat <<'EOF'\nbun wb deploy\nEOF",
+      // `command -v`/`-V` only query availability; they do not run wb.
+      'command -v wb deploy',
+      'command -V wb deploy',
+      // `npx -p wb deploy` runs the `deploy` binary from package `wb`, not `wb deploy`.
+      'npx -p wb deploy',
     ]) {
       expect(generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig)).toBeUndefined();
     }
