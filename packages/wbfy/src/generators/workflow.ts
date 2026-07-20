@@ -694,8 +694,11 @@ function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredo
       continue;
     }
     // A `<<`/`<<-` heredoc redirection: its body lines (up to the delimiter line) are DATA, not
-    // commands, so `cat <<'EOF'\nwb deploy\nEOF` must not read `wb deploy` as an invocation.
+    // commands, so `cat <<'EOF'\nwb deploy\nEOF` must not read `wb deploy` as an invocation. Since
+    // the caller declines on ANY heredoc, flag it the instant `<<` appears — before parsing the
+    // delimiter word — so an exotic delimiter (`<<+`) the word scanner cannot read still declines.
     if (character === '<' && script[index + 1] === '<') {
+      sawHeredoc = true;
       let cursor = index + 2;
       if (script[cursor] === '-') cursor++;
       while (/[ \t]/u.test(script[cursor] ?? '')) cursor++;
@@ -725,7 +728,6 @@ function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredo
       if (delimiter) {
         // The `<<delim` header is a redirection (not a token); record the delimiter and keep
         // parsing the rest of this line — its body is skipped when the newline is reached.
-        sawHeredoc = true;
         endToken();
         pendingHeredocDelimiters.push(delimiter);
         index = cursor - 1;
@@ -770,7 +772,7 @@ function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredo
  * grouping are honored. Returning both sides lets the worker-directory resolver read `-w` wherever
  * it appears, since wb declares it globally.
  */
-function parseWbDeployArgs(deployScript: string): string[] | undefined {
+function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string>): string[] | undefined {
   const { segments, sawHeredoc } = tokenizeShellCommand(deployScript);
   // A heredoc makes body-vs-command classification unreliable (see tokenizeShellCommand); decline.
   if (sawHeredoc) return undefined;
@@ -796,12 +798,13 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
       }
     }
     // `command CMD` executes CMD, but `command -v`/`-V CMD` only QUERY its availability without
-    // running it, so a deploy behind them does not run.
+    // running it, so a deploy behind them does not run. The `v`/`V` flag may be clustered with
+    // other option letters (`command -pv wb`), so match any option letter cluster containing it.
     while (tokens[index] === 'command') {
       index++;
       let queriesOnly = false;
       while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
-        if (tokens[index] === '-v' || tokens[index] === '-V') queriesOnly = true;
+        if (/^-[A-Za-z]*[vV][A-Za-z]*$/u.test(tokens[index] ?? '')) queriesOnly = true;
         index++;
       }
       if (queriesOnly) {
@@ -823,9 +826,16 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
       index = runnerScan.index;
       const subcommand = tokens[index] ?? '';
       if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
-      if (['x', 'dlx', 'exec'].includes(subcommand))
-        index++; // binary runner (pnpm dlx, bun x, …)
-      else if (runner === 'npm') continue; // bare `npm wb` never runs a binary
+      if (['x', 'dlx', 'exec'].includes(subcommand)) {
+        index++; // binary runner (pnpm dlx, bun x, `npm exec -- wb …`)
+        if (tokens[index] === '--') index++; // the executor's optional `--` before the command
+      } else if (runner === 'npm') {
+        continue; // bare `npm wb` never runs a binary
+      } else if (tokens[index] === 'wb' && scriptNames.has('wb')) {
+        // Bare `bun/pnpm/yarn wb` runs a package SCRIPT named `wb` when one exists (passing `deploy`
+        // as its argument), not the wb binary, so decline rather than mis-scaffold.
+        continue;
+      }
     } else if (['bunx', 'npx'].includes(tokens[index] ?? '')) {
       const runnerScan = skipRunnerOptions(tokens, index + 1);
       if (runnerScan.sawCwdChange) return undefined;
@@ -850,8 +860,8 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
 }
 
 /** Whether a deploy script invokes `wb … deploy` at command position. */
-export function invokesWbDeploy(deployScript: string): boolean {
-  return parseWbDeployArgs(deployScript) !== undefined;
+export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
+  return parseWbDeployArgs(deployScript, scriptNames) !== undefined;
 }
 
 /** The `-w`/`--working-dir` value among the wb invocation's tokens (either side of `deploy`), or `.`. */
@@ -914,7 +924,7 @@ function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath'
   // segments, so isolate the shell segment that actually INVOKES wb (as a command token — not a
   // word inside `echo wb deploy` or an env value) and read the working directory from ITS parsed
   // argument tokens, never a raw-text regex (which could match `-w` inside an env value).
-  const deployArgs = parseWbDeployArgs(deployScript);
+  const deployArgs = parseWbDeployArgs(deployScript, new Set(Object.keys(rootConfig.packageJson?.scripts ?? {})));
   if (!deployArgs) return;
   // Normalize spellings such as `./packages/api` and `packages/api/` before the layout check.
   const workerDirPath = path.posix.normalize(workerDirPathFromDeployArgs(deployArgs)).replace(/\/+$/u, '') || '.';

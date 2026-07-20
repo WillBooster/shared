@@ -61,7 +61,10 @@ function generateAgentInstruction(
   const hasDeployWorkflow = hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
   const usesWbDeploy = allConfigs.some((config) => {
     const deployScript = config.packageJson?.scripts?.['deploy'];
-    return typeof deployScript === 'string' && invokesWbDeploy(deployScript);
+    return (
+      typeof deployScript === 'string' &&
+      invokesWbDeploy(deployScript, new Set(Object.keys(config.packageJson?.scripts ?? {})))
+    );
   });
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.

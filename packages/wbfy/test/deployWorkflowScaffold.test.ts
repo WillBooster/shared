@@ -47,9 +47,12 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'env WB_ENV=production bun wb deploy -w packages/api',
       // The `command` builtin launcher.
       'command bun wb deploy -w packages/api',
+      // `npm exec -- wb deploy` runs the wb binary; the optional `--` separator is skipped.
+      'npm exec -- wb deploy -w packages/api',
+      'bun x wb deploy -w packages/api',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
-      expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');
+      expect(parsed?.jobs.deploy?.with?.file_path_1, script).toBe('packages/api/.env.cloudflare');
     }
     // Quoted or commented-out operators/text, and a package SCRIPT named wb, must NOT be read as a
     // live wb-binary deploy invocation.
@@ -65,9 +68,11 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'bun --cwd wb deploy',
       // A heredoc body is data, not a command.
       "cat <<'EOF'\nbun wb deploy\nEOF",
-      // `command -v`/`-V` only query availability; they do not run wb.
+      // `command -v`/`-V` only query availability; they do not run wb — including clustered forms.
       'command -v wb deploy',
       'command -V wb deploy',
+      'command -pv wb deploy',
+      'command -pV wb deploy',
       // `npx -p wb deploy` runs the `deploy` binary from package `wb`, not `wb deploy`.
       'npx -p wb deploy',
       // A cwd-changing runner option relocates where `wb -w` resolves, which this static parser
@@ -82,6 +87,9 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       // or expose one (a `+`-suffixed delimiter word the earlier regex could not match).
       'cat <<\\EOF\nbun wb deploy -w packages/api\nEOF',
       'cat <<EOF+\ndata\nEOF+\nbun wb deploy -w packages/api',
+      // A non-word heredoc delimiter (`<<+`) the delimiter scanner cannot read still declines,
+      // because any `<<` flags a heredoc immediately.
+      'cat <<+\nbun wb deploy -w packages/api\n+',
       // Command-position shell reserved words are not modeled; the segment does not match, so a real
       // deployment inside a control construct is a deliberate (safe) false-negative.
       'if true; then bun wb deploy -w packages/api; fi',
@@ -174,6 +182,31 @@ test('scaffolds a root-level worker without a custom domain and skips non-wb dep
       generateCloudflareDeployWorkflow(createConfig(dirPath, 'wb deploy -w services/worker') as PackageConfig)
     ).toBeUndefined();
     expect(generateCloudflareDeployWorkflow(createConfig(dirPath, undefined) as PackageConfig)).toBeUndefined();
+  } finally {
+    await fs.promises.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('declines when a package script named `wb` shadows the wb binary in a bare runner shorthand', async () => {
+  const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wbfy-deploy-scaffold-wbscript-'));
+  try {
+    const workerDirPath = path.join(dirPath, 'packages', 'api');
+    await fs.promises.mkdir(workerDirPath, { recursive: true });
+    await fs.promises.writeFile(path.join(workerDirPath, 'wrangler.jsonc'), '{ "name": "app" }');
+    // `bun/pnpm/yarn wb deploy` runs the package SCRIPT `wb` (passing `deploy`), not the wb binary,
+    // so with a `wb` script present nothing must be scaffolded.
+    for (const runner of ['bun', 'pnpm', 'yarn']) {
+      const config = {
+        dirPath,
+        packageJson: { scripts: { deploy: `${runner} wb deploy -w packages/api`, wb: 'node ./scripts/wb.js' } },
+      } as unknown as PackageConfig;
+      expect(generateCloudflareDeployWorkflow(config), runner).toBeUndefined();
+    }
+    // Without a `wb` script, the same shorthand invokes the wb binary and scaffolds normally.
+    expect(
+      generateCloudflareDeployWorkflow(createConfig(dirPath, 'bun wb deploy -w packages/api') as PackageConfig)?.jobs
+        .deploy?.with?.file_path_1
+    ).toBe('packages/api/.env.cloudflare');
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
   }
