@@ -94,6 +94,6 @@ test('keeps an existing README that cannot be read', async () => {
 
 test('resolves a real version label from wbfy itself', () => {
   vi.restoreAllMocks();
-  // Either a released version or `<commit hash>-local`, never the unreleased placeholder.
-  expect(version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{7,}-local)/u);
+  // Either a released version or `<commit hash>[-dirty]-local`, never the unreleased placeholder.
+  expect(version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{7,}(?:-dirty)?-local)$/u);
 });

@@ -32,7 +32,12 @@ export function getWbfyVersionLabel(): string | undefined {
     return undefined;
   }
   const commitHash = runGit(['rev-parse', '--short', 'HEAD'], dirPath);
-  return commitHash ? `${commitHash}-local` : undefined;
+  if (!commitHash) return undefined;
+  // The commit alone would misidentify a build made from an edited checkout, so an uncommitted
+  // change anywhere in the repository (it is a monorepo: wbfy's behavior depends on its workspace
+  // dependencies too) is reported as well.
+  const isDirty = !!runGit(['status', '--porcelain'], dirPath);
+  return isDirty ? `${commitHash}-dirty-local` : `${commitHash}-local`;
 }
 
 function runGit(args: string[], cwd: string): string | undefined {
