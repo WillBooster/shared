@@ -16,7 +16,6 @@ import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
-import { remixScripts } from '../scripts/execution/remixScripts.js';
 import { vinextScripts } from '../scripts/execution/vinextScripts.js';
 import { viteScripts } from '../scripts/execution/viteScripts.js';
 import { workersScripts } from '../scripts/execution/workersScripts.js';
@@ -124,8 +123,6 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
       scripts = vinextScripts;
     } else if (deps.next) {
       scripts = nextScripts;
-    } else if (devDeps['@remix-run/dev']) {
-      scripts = remixScripts;
     } else if (devDeps.vite) {
       scripts = viteScripts;
     } else if (findWranglerConfigPath(project)) {
@@ -216,7 +213,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
         continue;
       }
     }
-    if (deps.blitz || deps.next || devDeps['@remix-run/dev'] || devDeps.vite) {
+    if (deps.blitz || deps.next || devDeps.vite) {
       switch (testArgv.e2e) {
         case 'headed': {
           const exitCode = await runTestCommand(

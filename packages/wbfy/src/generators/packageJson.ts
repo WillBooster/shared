@@ -169,7 +169,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
 
   if (!skipAddingDeps) {
-    installDependencyUpdates(config, jsonObj, dependencyUpdates, 'bun');
+    installDependencyUpdates(config, jsonObj, dependencyUpdates);
     formatPackageJsonWithProjectFormatter(config, 'bun', filePath);
   }
 }
@@ -1384,6 +1384,11 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   const requiredWbfyPackages = [
     ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
+    // These git-dependency builds import packages they do not declare (e.g. zod), which the
+    // global-store layout places beyond their walk-up; a project-local copy under
+    // node_modules/.bun resolves them (observed in WillBooster/prompt-study).
+    ...(declaredDependencies.has('@willbooster/judge') ? ['@willbooster/judge'] : []),
+    ...(declaredDependencies.has('@willbooster/llm-proxy') ? ['@willbooster/llm-proxy'] : []),
   ];
 
   // wbfy fully owns this field: a package whose lifecycle scripts must run gets added to wbfy
@@ -1421,7 +1426,13 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
 
 // The packages wbfy itself may write into trustedDependencies; their removal is managed cleanup,
 // never a loss of user policy.
-const wbfyManagedTrustedDependencies = new Set(['@chakra-ui/react', 'drizzle-kit', lefthookDependency]);
+const wbfyManagedTrustedDependencies = new Set([
+  '@chakra-ui/react',
+  '@willbooster/judge',
+  '@willbooster/llm-proxy',
+  'drizzle-kit',
+  lefthookDependency,
+]);
 
 function warnAboutRemovedTrustedDependencies(
   config: PackageConfig,
@@ -1709,14 +1720,13 @@ function removeEmptyDependencySections(jsonObj: PackageJson): void {
 function installDependencyUpdates(
   config: PackageConfig,
   jsonObj: PackageJson,
-  dependencyUpdates: DependencyUpdates,
-  packageManager: 'bun' | 'yarn'
+  dependencyUpdates: DependencyUpdates
 ): void {
   const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-  installNpmDependencies(config, packageManager, dependencies, false);
+  installNpmDependencies(config, dependencies, false);
 
   const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-  installNpmDependencies(config, packageManager, devDependencies, true);
+  installNpmDependencies(config, devDependencies, true);
 
   const pythonPackageManager = getPythonPackageManager(config);
   if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
@@ -1736,21 +1746,23 @@ function getPythonPackageManager(config: PackageConfig): 'poetry' | 'uv' | undef
 
 function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
   if (packageManager === 'uv') return 'uv sync --frozen';
-  return 'poetry config virtualenvs.in-project true && poetry env use $(mise current python) && poetry run pip install --upgrade pip && poetry install';
+  // `mise which python` yields the single active interpreter path; `mise current python` can
+  // print multiple space-separated versions (mise supports multi-version pins), which would pass
+  // extra positional arguments to `poetry env use`. When mise is missing or python is
+  // unconfigured, skip `poetry env use` and fall back to poetry's default interpreter instead of
+  // aborting the chain.
+  // The `|| true` covers only the mise resolution: a missing/unconfigured mise falls back to
+  // poetry's default interpreter, while a failing `poetry env use` still aborts the chain.
+  return 'poetry config virtualenvs.in-project true && { python_path="$(mise which python 2>/dev/null)" || true; } && { [ -z "$python_path" ] || poetry env use "$python_path"; } && poetry run pip install --upgrade pip && poetry install';
 }
 
-function installNpmDependencies(
-  config: PackageConfig,
-  packageManager: 'bun' | 'yarn',
-  dependencies: string[],
-  dev: boolean
-): void {
+function installNpmDependencies(config: PackageConfig, dependencies: string[], dev: boolean): void {
   if (dependencies.length === 0) return;
 
   const dependencySpecifiers = [
     ...new Set(dependencies.map((dependency) => getInstallDependencySpecifier(config, dependency))),
   ];
-  spawnSync(packageManager, ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
+  spawnSync('bun', ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
 }
 
 function addPackageJsonDependencies(
@@ -2417,27 +2429,26 @@ async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void
   const packageNames = new Set([...Object.keys(jsonObj.dependencies), ...Object.keys(jsonObj.devDependencies)]);
   const privatePackages: {
     packageName: string;
+    org: string;
     repo: string;
     target: 'dependencies' | 'devDependencies';
   }[] = [
-    { packageName: '@willbooster/auth', repo: 'auth', target: 'dependencies' },
-    { packageName: '@discord-bot/shared', repo: 'discord-bot', target: 'dependencies' },
-    { packageName: '@willbooster/code-analyzer', repo: 'code-analyzer', target: 'devDependencies' },
-    { packageName: '@willbooster/judge', repo: 'judge', target: 'dependencies' },
-    { packageName: '@willbooster/llm-proxy', repo: 'llm-proxy', target: 'dependencies' },
+    { packageName: '@willbooster/code-analyzer', org: 'WillBooster', repo: 'code-analyzer', target: 'devDependencies' },
+    { packageName: '@willbooster/judge', org: 'WillBoosterLab', repo: 'judge', target: 'dependencies' },
+    { packageName: '@willbooster/llm-proxy', org: 'WillBoosterLab', repo: 'llm-proxy', target: 'dependencies' },
   ];
 
   await Promise.all(
-    privatePackages.map(async ({ packageName, repo, target }) => {
+    privatePackages.map(async ({ org, packageName, repo, target }) => {
       if (!packageNames.has(packageName) || isWorkspacePackage(jsonObj, packageName)) return;
 
       const existingSpecifier = jsonObj.dependencies[packageName] ?? jsonObj.devDependencies[packageName];
       const otherTarget = target === 'dependencies' ? 'devDependencies' : 'dependencies';
       // The lint rule disallows `delete` with computed package names; Reflect has the same deletion semantics here.
       Reflect.deleteProperty(jsonObj[otherTarget], packageName);
-      jsonObj[target][packageName] = isPinnedPrivatePackageSpecifier(existingSpecifier, repo)
+      jsonObj[target][packageName] = isPinnedPrivatePackageSpecifier(existingSpecifier, org, repo)
         ? existingSpecifier
-        : await getLatestPrivatePackageSpecifier(repo);
+        : await getLatestPrivatePackageSpecifier(org, repo);
     })
   );
 }
@@ -2448,14 +2459,18 @@ async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void
  * would otherwise change the dependency's version as a side effect (updating pins is Renovate's
  * job), possibly to a commit whose prebuilt artifacts are missing.
  */
-function isPinnedPrivatePackageSpecifier(specifier: string | undefined, repo: string): specifier is string {
+function isPinnedPrivatePackageSpecifier(
+  specifier: string | undefined,
+  org: string,
+  repo: string
+): specifier is string {
   if (!specifier) return false;
-  return new RegExp(String.raw`(?:^|[:/])WillBoosterLab/${repo}(?:\.git)?#\S+$`, 'u').test(specifier);
+  return new RegExp(String.raw`(?:^|[:/])${org}/${repo}(?:\.git)?#\S+$`, 'u').test(specifier);
 }
 
-async function getLatestPrivatePackageSpecifier(repo: string): Promise<string> {
-  const commitHash = await getLatestCommitHash('WillBoosterLab', repo);
-  return `git@github.com:WillBoosterLab/${repo}.git#${commitHash}`;
+async function getLatestPrivatePackageSpecifier(org: string, repo: string): Promise<string> {
+  const commitHash = await getLatestCommitHash(org, repo);
+  return `git@github.com:${org}/${repo}.git#${commitHash}`;
 }
 
 function isWorkspacePackage(jsonObj: PackageJson, packageName: string): boolean {

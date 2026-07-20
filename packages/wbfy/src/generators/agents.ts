@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('generateAgentInstructions', async () => {
@@ -49,7 +50,26 @@ function generateAgentInstruction(
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
-    ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -- <command>\` instead of expecting \`.env\` files.`
+    ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\` instead of expecting \`.env\` files. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) select it themselves, while \`wb dotenv\` and bare \`fnox run\` need an explicit \`WB_ENV=<profile>\` / \`-P <profile>\`.`
+    : '';
+  // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
+  // wrangler-config clause needs an actual config file (isCloudflare also matches a mere wrangler
+  // mention in a script or workflow), the workflow clause needs a live reusable-deploy caller
+  // (YAML-parsed jobs.*.uses, not a raw-text/comment match), and the `wb deploy` clause needs a
+  // deploy script whose command token is `wb … deploy`.
+  const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
+  const hasDeployWorkflow = hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
+  const usesWbDeploy = allConfigs.some((config) => {
+    const deployScript = config.packageJson?.scripts?.['deploy'];
+    return (
+      typeof deployScript === 'string' &&
+      invokesWbDeploy(deployScript, new Set(Object.keys(config.packageJson?.scripts ?? {})))
+    );
+  });
+  // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
+  // inspected, so the wb-deploy clause must not claim the workflow invokes it.
+  const cloudflareInstruction = ownsWranglerConfig
+    ? `\n- This project runs on Cloudflare Workers: the wrangler configuration file holds the Worker's configuration, including any bindings and per-environment overrides.${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''}`
     : '';
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway
@@ -83,7 +103,7 @@ function generateAgentInstruction(
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
-- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${fnoxInstruction}${railwayInstruction}${playwrightTestServerInstruction}
+- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
 ${generateAgentCodingStyle(allConfigs)}
 `

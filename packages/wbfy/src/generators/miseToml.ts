@@ -55,12 +55,20 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
     tools.node = pinConcreteToolVersion(
       'node',
-      liftOutdatedNodeVersion(tools.node ?? (await readNodeVersionFile(config.dirPath)), config.dirPath),
+      liftOutdatedToolVersionWithinMajor(
+        'node@lts',
+        tools.node ?? (await readNodeVersionFile(config.dirPath)),
+        config.dirPath
+      ),
       config.dirPath
     );
     tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      tools.fnox = pinConcreteToolVersion('fnox', tools.fnox, config.dirPath);
+      tools.fnox = pinConcreteToolVersion(
+        'fnox',
+        liftOutdatedToolVersionWithinMajor('fnox', tools.fnox, config.dirPath),
+        config.dirPath
+      );
     }
     settings.tools = tools;
 
@@ -108,20 +116,21 @@ function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string):
 }
 
 /**
- * Lifts an exact Node.js pin below the latest LTS — within the SAME major — to the latest LTS:
- * the repository-structure standard tracks the current LTS across repositories and Renovate does
- * not manage mise.toml pins, so patch/minor drift (e.g. 24.16.0 vs 24.18.0) never self-heals. A
- * pin on an older major is a deliberate compatibility choice and is kept, as are non-exact and
- * non-string forms. When mise cannot resolve the LTS (e.g. offline), the pin is kept.
+ * Lifts an exact tool pin below the latest resolvable version — within the SAME major — to that
+ * version (Node.js resolves against the latest LTS): the repository-structure standard tracks the
+ * current toolchain across repositories and Renovate does not manage mise.toml pins, so
+ * patch/minor drift (e.g. node 24.16.0 vs 24.18.0, fnox 1.30.0 vs 1.31.0) never self-heals. A pin
+ * on an older major is a deliberate compatibility choice and is kept, as are non-exact and
+ * non-string forms. When mise cannot resolve the selector (e.g. offline), the pin is kept.
  */
-function liftOutdatedNodeVersion(nodeVersion: unknown, cwd: string): unknown {
-  if (typeof nodeVersion !== 'string' || !semver.valid(nodeVersion)) return nodeVersion;
-  const latestLts = spawnSyncAndReturnStdout('mise', ['latest', 'node@lts'], cwd);
-  return semver.valid(latestLts) &&
-    semver.major(latestLts) === semver.major(nodeVersion) &&
-    semver.lt(nodeVersion, latestLts)
-    ? latestLts
-    : nodeVersion;
+function liftOutdatedToolVersionWithinMajor(selector: string, version: unknown, cwd: string): unknown {
+  if (typeof version !== 'string' || !semver.valid(version)) return version;
+  const latestVersion = spawnSyncAndReturnStdout('mise', ['latest', selector], cwd);
+  return semver.valid(latestVersion) &&
+    semver.major(latestVersion) === semver.major(version) &&
+    semver.lt(version, latestVersion)
+    ? latestVersion
+    : version;
 }
 
 /**

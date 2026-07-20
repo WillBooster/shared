@@ -27,7 +27,6 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
       await setupLabel(octokit, owner, repo, 'r: firebase', 'ffca28');
       await setupLabel(octokit, owner, repo, 'r: prisma', '0c344b');
       await setupLabel(octokit, owner, repo, 'r: react', '61dafb');
-      await setupLabel(octokit, owner, repo, 'r: svelte', 'ff3e00');
       await setupLabel(octokit, owner, repo, 'r: semantic-release', '494949');
       await setupLabel(octokit, owner, repo, 'ready :rocket:', '22C55E');
       await setupLabel(octokit, owner, repo, 'review requested :mag:', 'FBCA04');
@@ -72,6 +71,8 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
       await deleteLabel(octokit, owner, repo, 'gen-pr-claude :robot:');
       await deleteLabel(octokit, owner, repo, 'gen-pr-codex :robot:');
       await deleteLabel(octokit, owner, repo, 'gen-pr-gemini :robot:');
+      // No repository in the orgs uses Svelte anymore.
+      await deleteLabel(octokit, owner, repo, 'r: svelte');
     } catch (error) {
       console.warn('Skip setupLabels due to:', (error as Error | undefined)?.stack ?? error);
     }
