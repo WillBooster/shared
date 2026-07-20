@@ -576,56 +576,43 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env', '--check-env']);
 
 /**
- * Split a shell command line on `&&`/`||`/`;`/`|`/`&` that appear OUTSIDE quotes, so an operator
- * inside quoted text (e.g. `echo '; wb deploy ;'`) is not mistaken for a command boundary.
+ * Tokenize a shell command line into command segments, each a list of tokens with quotes removed.
+ * A new segment starts at an unquoted `&&`/`||`/`;`/`|`/`&`; an unquoted `#` starts a comment to
+ * end of line; a backslash escapes the next character (so `\;` is a literal, not a separator);
+ * grouping parentheses `(`/`)` are token separators, so `(wb deploy)` tokenizes as `wb deploy`.
+ * Segments/tokens model command structure precisely enough that quoted operators, escaped
+ * operators, comments, and subshell groups neither fabricate nor hide a `wb deploy` invocation.
  */
-function splitShellSegments(script: string): string[] {
-  const segments: string[] = [];
+function tokenizeShellCommand(script: string): string[][] {
+  const segments: string[][] = [];
+  let tokens: string[] = [];
   let current = '';
+  let inToken = false;
   let quote: string | undefined;
+  const endToken = (): void => {
+    if (inToken) tokens.push(current);
+    current = '';
+    inToken = false;
+  };
+  const endSegment = (): void => {
+    endToken();
+    segments.push(tokens);
+    tokens = [];
+  };
   for (let index = 0; index < script.length; index++) {
     const character = script[index] ?? '';
     if (quote) {
       if (character === '\\' && quote === '"') {
-        current += character + (script[++index] ?? '');
-        continue;
-      }
-      if (character === quote) quote = undefined;
-      current += character;
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      quote = character;
-      current += character;
-      continue;
-    }
-    if (character === '&' || character === '|' || character === ';') {
-      segments.push(current);
-      current = '';
-      if ((character === '&' || character === '|') && script[index + 1] === character) index++;
-      continue;
-    }
-    current += character;
-  }
-  segments.push(current);
-  return segments;
-}
-
-/** Whitespace-tokenize a shell segment, dropping quote delimiters so `"deploy"` yields `deploy`. */
-function tokenizeShellSegment(segment: string): string[] {
-  const tokens: string[] = [];
-  let current = '';
-  let inToken = false;
-  let quote: string | undefined;
-  for (let index = 0; index < segment.length; index++) {
-    const character = segment[index] ?? '';
-    if (quote) {
-      if (character === '\\' && quote === '"') {
-        current += segment[++index] ?? '';
+        current += script[++index] ?? '';
         continue;
       }
       if (character === quote) quote = undefined;
       else current += character;
+      continue;
+    }
+    if (character === '\\') {
+      current += script[++index] ?? '';
+      inToken = true;
       continue;
     }
     if (character === "'" || character === '"') {
@@ -633,33 +620,44 @@ function tokenizeShellSegment(segment: string): string[] {
       inToken = true;
       continue;
     }
+    if (character === '#' && !inToken) {
+      // Comment runs to end of line; the rest of this line is not executed.
+      while (index < script.length && script[index] !== '\n') index++;
+      continue;
+    }
+    if (character === '&' || character === '|' || character === ';' || character === '\n') {
+      endSegment();
+      if ((character === '&' || character === '|') && script[index + 1] === character) index++;
+      continue;
+    }
+    if (character === '(' || character === ')') {
+      endToken();
+      continue;
+    }
     if (/\s/u.test(character)) {
-      if (inToken) tokens.push(current);
-      current = '';
-      inToken = false;
+      endToken();
       continue;
     }
     current += character;
     inToken = true;
   }
-  if (inToken) tokens.push(current);
-  return tokens;
+  endSegment();
+  return segments;
 }
 
 /**
- * The shell segment of a deploy script that invokes `wb … deploy` as a command (not a word inside
- * `echo "wb deploy"` or an env value), or undefined. Env assignments, package runners, and global
- * yargs options (including their value tokens) may precede the deploy command; shell quoting is
- * honored so quoted operators/whitespace do not fabricate or hide invocations.
+ * The `wb … deploy` invocation in a deploy script, as its argument tokens AFTER `deploy` (empty
+ * array when there are none), or undefined when no segment runs `wb deploy` at command position.
+ * Env assignments, package runners, and global yargs options (with their value tokens) may
+ * precede the deploy command; shell quoting/escaping/comments/grouping are honored.
  */
-export function findWbDeploySegment(deployScript: string): string | undefined {
-  return splitShellSegments(deployScript).find((segment) => {
-    const tokens = tokenizeShellSegment(segment);
+function parseWbDeployArgs(deployScript: string): string[] | undefined {
+  for (const tokens of tokenizeShellCommand(deployScript)) {
     let index = 0;
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
     while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
       index++;
-    if (tokens[index] !== 'wb') return false;
+    if (tokens[index] !== 'wb') continue;
     index++;
     // Skip global options (and any value token a value-bearing option consumes) so the FIRST
     // command token decides: `wb --cascade-env production deploy` and `wb -w packages/api deploy`
@@ -670,8 +668,26 @@ export function findWbDeploySegment(deployScript: string): string | undefined {
       index++;
       if (wbGlobalValueOptions.has(flag) && index < tokens.length) index++;
     }
-    return tokens[index] === 'deploy';
-  });
+    if (tokens[index] !== 'deploy') continue;
+    return tokens.slice(index + 1);
+  }
+  return undefined;
+}
+
+/** Whether a deploy script invokes `wb … deploy` at command position. */
+export function invokesWbDeploy(deployScript: string): boolean {
+  return parseWbDeployArgs(deployScript) !== undefined;
+}
+
+/** The `-w`/`--working-dir` value among parsed `wb deploy` argument tokens, or `.`. */
+function workerDirPathFromDeployArgs(deployArgs: string[]): string {
+  for (let index = 0; index < deployArgs.length; index++) {
+    const token = deployArgs[index] ?? '';
+    if (token === '-w' || token === '--working-dir') return deployArgs[index + 1] ?? '.';
+    const inlineMatch = /^(?:--working-dir=|-w=?)(.+)$/u.exec(token);
+    if (inlineMatch) return inlineMatch[1] ?? '.';
+  }
+  return '.';
 }
 
 /**
@@ -718,19 +734,12 @@ function resolveCloudflareDeployTarget(rootConfig: Pick<PackageConfig, 'dirPath'
   if (typeof deployScript !== 'string') return;
   // Compound scripts (`bun run build && wb deploy -w …`) may carry unrelated options in other
   // segments, so isolate the shell segment that actually INVOKES wb (as a command token — not a
-  // word inside `echo wb deploy` or an env value) and parse only it. Env assignments and package
-  // runners may precede the wb token; global yargs options may precede the deploy command.
-  const deploySegment = findWbDeploySegment(deployScript);
-  if (!deploySegment) return;
-  // wb declares --working-dir with alias -w (yargs also accepts `=` separators, quoted values,
-  // and the attached short form `-wVALUE`).
-  const rawWorkerDirPath =
-    /(?:^|\s)(?:--working-dir(?:\s+|=)|-w(?:\s+|=)?)(?:"([^"]+)"|'([^']+)'|(\S+))/u
-      .exec(deploySegment)
-      ?.slice(1)
-      .find((group) => group !== undefined) ?? '.';
+  // word inside `echo wb deploy` or an env value) and read the working directory from ITS parsed
+  // argument tokens, never a raw-text regex (which could match `-w` inside an env value).
+  const deployArgs = parseWbDeployArgs(deployScript);
+  if (!deployArgs) return;
   // Normalize spellings such as `./packages/api` and `packages/api/` before the layout check.
-  const workerDirPath = path.posix.normalize(rawWorkerDirPath).replace(/\/+$/u, '') || '.';
+  const workerDirPath = path.posix.normalize(workerDirPathFromDeployArgs(deployArgs)).replace(/\/+$/u, '') || '.';
   // Restrict scaffolding to the layouts wbfy's secret verification also understands (the repo
   // root and direct packages/*, apps/* workspaces) so a generated workflow never references a
   // CLOUDFLARE_API_TOKEN that `wbfy --env` would not verify.

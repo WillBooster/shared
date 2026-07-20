@@ -5,7 +5,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { findWbDeploySegment, hasCloudflareDeployWorkflow } from './workflow.js';
+import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   return logger.functionIgnoringException('generateAgentInstructions', async () => {
@@ -61,7 +61,7 @@ function generateAgentInstruction(
   const hasDeployWorkflow = hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
   const usesWbDeploy = allConfigs.some((config) => {
     const deployScript = config.packageJson?.scripts?.['deploy'];
-    return typeof deployScript === 'string' && findWbDeploySegment(deployScript) !== undefined;
+    return typeof deployScript === 'string' && invokesWbDeploy(deployScript);
   });
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.
