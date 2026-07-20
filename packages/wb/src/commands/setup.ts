@@ -51,10 +51,17 @@ export async function setup(
       // `mise which python` resolves the project's ACTIVE interpreter to a single absolute path,
       // unlike `mise current python`, which prints every configured version (mise supports
       // multi-version pins) and would pass extra positional arguments to `poetry env use`.
-      const pythonPath = child_process.execSync('mise which python', { cwd: project.dirPath }).toString().trim();
-      // The command runs through a shell, so an interpreter path containing whitespace must stay
-      // one argument.
-      await runWithSpawnInParallel(`poetry env use "${pythonPath}"`, project, argv);
+      let pythonPath = '';
+      try {
+        pythonPath = child_process.execSync('mise which python', { cwd: project.dirPath }).toString().trim();
+      } catch {
+        // mise missing or python unconfigured; let poetry pick its default interpreter.
+      }
+      if (pythonPath) {
+        // The command runs through a shell, so an interpreter path containing whitespace must stay
+        // one argument (mise install paths cannot contain quote characters, so quoting suffices).
+        await runWithSpawnInParallel(`poetry env use "${pythonPath}"`, project, argv);
+      }
       await promisePool.promiseAll();
       await runWithSpawn('poetry run pip install --upgrade pip', project, argv);
       await runWithSpawn('poetry install --ansi', project, argv);

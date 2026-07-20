@@ -34,6 +34,8 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
         const pluginName = Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry;
         if (pluginName !== '@semantic-release/npm') return true;
         const options = (Array.isArray(pluginEntry) && (pluginEntry[1] as Record<string, unknown>)) || {};
+        // tarballDir entries still produce release assets even with npmPublish: false.
+        if (typeof options.tarballDir === 'string') return true;
         return typeof options.pkgRoot === 'string' && options.npmPublish !== false;
       });
       settings.plugins = plugins;
