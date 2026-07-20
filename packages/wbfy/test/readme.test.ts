@@ -109,6 +109,16 @@ test.each([
     expected: `- \`\`\`md\n  # Example\n  \`\`\`\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
   },
   {
+    name: 'a centered HTML title',
+    input: '<h1 align="center">Project</h1>\n\nDescription.\n',
+    expected: `<h1 align="center">Project</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    name: 'a multiline HTML title',
+    input: '<h1 align="center">\n  Project\n</h1>\n\nDescription.\n',
+    expected: `<h1 align="center">\n  Project\n</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,

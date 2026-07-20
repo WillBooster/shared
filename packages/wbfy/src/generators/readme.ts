@@ -138,6 +138,15 @@ function findBadgeInsertionAnchor(readme: string): number | undefined {
     if (line.isProtected) continue;
     if (/^ {0,3}#(?:[ \t]+|$)/u.test(line.content)) return line.end;
 
+    // A centered HTML title (`<h1 align="center">…</h1>`) is a title just as much as a Markdown
+    // heading; without this the badge is inserted ABOVE it. The closing tag may sit on a later line.
+    if (/^ {0,3}<h1(?:[ \t>]|$)/iu.test(line.content)) {
+      for (let closingIndex = index; closingIndex < analysis.lines.length; closingIndex++) {
+        const closingLine = analysis.lines[closingIndex]!;
+        if (hasRawHtmlClosingTag(closingLine.content, 'h1')) return closingLine.end;
+      }
+    }
+
     const previousLine = analysis.lines[index - 1];
     if (
       previousLine &&
