@@ -626,13 +626,23 @@ const contextChangingRunnerOptions = new Set([
  * `sawContextChange` reports whether any option relocates the execution directory/package (see
  * contextChangingRunnerOptions), so the caller can decline scaffolding it cannot resolve correctly.
  */
+// Short context-changing options whose value may be attached (`-Cdir`, `-Fpkg`, `-wpackages/api`).
+const shortContextChangingRunnerOptions = ['-C', '-F', '-w'];
+
 function skipRunnerOptions(tokens: string[], startIndex: number): { index: number; sawContextChange: boolean } {
   let index = startIndex;
   let sawContextChange = false;
   while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
     const option = tokens[index] ?? '';
     const bareOption = option.includes('=') ? option.slice(0, option.indexOf('=')) : option;
-    if (contextChangingRunnerOptions.has(bareOption)) sawContextChange = true;
+    // Detect both the exact form (`-C`, `--filter`, `--filter=x`) and a short option with its value
+    // attached (`-Cdir`) — the latter would otherwise slip past the set lookup and mis-resolve.
+    if (
+      contextChangingRunnerOptions.has(bareOption) ||
+      (!option.startsWith('--') && shortContextChangingRunnerOptions.some((short) => option.startsWith(short)))
+    ) {
+      sawContextChange = true;
+    }
     index++;
     if (!option.includes('=') && runnerValueOptions.has(option) && index < tokens.length) index++;
   }
@@ -854,9 +864,10 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
       const subcommand = tokens[index] ?? '';
       if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
       // Executor subcommands are runner-SPECIFIC: bun reserves only `x` (`bun dlx`/`bun exec` run a
-      // package script named dlx/exec), so classifying them generically would mis-scaffold from a
-      // shadowing script. An unrecognized subcommand falls through to the package-script checks.
-      if (runnerExecutorSubcommandsByRunner[runner]?.has(subcommand)) {
+      // package script named dlx/exec). A declared script of the SAME name shadows the executor
+      // (Yarn Classic's `dlx`/`exec` are scripts, not built-ins), so treat it as an executor only
+      // when no such script exists; otherwise it falls through to the package-script checks.
+      if (runnerExecutorSubcommandsByRunner[runner]?.has(subcommand) && !scriptNames.has(subcommand)) {
         index++; // binary runner (pnpm dlx, bun x, `npm exec -- wb …`)
         if (tokens[index] === '--') index++; // the executor's optional `--` before the command
       } else if (runner === 'npm') {

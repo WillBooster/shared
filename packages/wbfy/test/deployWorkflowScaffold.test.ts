@@ -96,6 +96,9 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       'npm -w=packages/api exec wb deploy',
       'env -Cpackages/api bun wb deploy',
       'env --chdir=packages/api bun wb deploy',
+      // Short context-changing options with an attached value (`-Cdir`, `-wpkg`) are context changes.
+      'npm -wpackages/api exec wb deploy',
+      'pnpm -Cpackages/api exec wb deploy',
       // Any heredoc makes body-vs-command classification unreliable, so the whole script declines —
       // whether the delimiter form would otherwise hide the invocation (an escaped `<<\EOF` body)
       // or expose one (a `+`-suffixed delimiter word the earlier regex could not match).
@@ -216,6 +219,20 @@ test('declines when a package script named `wb` shadows the wb binary in a bare 
       } as unknown as PackageConfig;
       expect(generateCloudflareDeployWorkflow(config), runner).toBeUndefined();
     }
+    // A `dlx`/`exec` script shadows Yarn Classic's would-be executor, so `yarn dlx wb deploy` runs
+    // that script (not the wb binary) and must not scaffold.
+    for (const executor of ['dlx', 'exec']) {
+      const config = {
+        dirPath,
+        packageJson: { scripts: { deploy: `yarn ${executor} wb deploy -w packages/api`, [executor]: 'echo shadow' } },
+      } as unknown as PackageConfig;
+      expect(generateCloudflareDeployWorkflow(config), executor).toBeUndefined();
+    }
+    // Without a shadowing script, a real Berry executor form scaffolds normally.
+    expect(
+      generateCloudflareDeployWorkflow(createConfig(dirPath, 'yarn dlx wb deploy -w packages/api') as PackageConfig)
+        ?.jobs.deploy?.with?.file_path_1
+    ).toBe('packages/api/.env.cloudflare');
     // Without a `wb` script, the same shorthand invokes the wb binary and scaffolds normally.
     expect(
       generateCloudflareDeployWorkflow(createConfig(dirPath, 'bun wb deploy -w packages/api') as PackageConfig)?.jobs
