@@ -43,6 +43,8 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       '(bun wb deploy -w packages/api)',
       // Backslash-newline inside double quotes is also a line continuation.
       'bun wb deploy -w "packages/\\\napi"',
+      // A leading `env` launcher with assignments precedes the real command.
+      'env WB_ENV=production bun wb deploy -w packages/api',
     ]) {
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');

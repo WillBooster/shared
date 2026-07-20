@@ -668,6 +668,18 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
   for (const tokens of tokenizeShellCommand(deployScript)) {
     let index = 0;
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
+    // A leading `env` launcher (`env WB_ENV=production bun wb deploy`) precedes the real command;
+    // skip it plus its options (`-i`, `-u NAME`, `-C dir`, `-S`) and its own KEY=value assignments.
+    if (tokens[index] === 'env') {
+      index++;
+      while (index < tokens.length) {
+        const token = tokens[index] ?? '';
+        if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token)) index++;
+        else if (token === '-u' || token === '-C') index += 2;
+        else if (token.startsWith('-')) index++;
+        else break;
+      }
+    }
     while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
       index++;
     if (tokens[index] !== 'wb') continue;
@@ -719,7 +731,11 @@ export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
   } catch {
     return false;
   }
-  const deployCallPattern = /\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/u;
+  // Case-insensitive owner/repository (GitHub treats them so), case-sensitive path/ref — matching
+  // parseOrgReusableWorkflowCall, used for the unparseable-YAML raw-text fallback only.
+  const deployCallPattern = /[^/]+\/reusable-workflows\/\.github\/workflows\/deploy\.ya?ml@/iu;
+  const callsDeployWorkflow = (uses: string | undefined): boolean =>
+    parseOrgReusableWorkflowCall(uses)?.workflowName === 'deploy';
   return entries.some((entry) => {
     if (!entry.isFile() || !/\.ya?ml$/u.test(entry.name)) return false;
     if (entry.name.startsWith('deploy')) return true;
@@ -732,9 +748,7 @@ export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
     try {
       const workflow = yaml.load(content) as Workflow | undefined;
       if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
-        return Object.values(workflow.jobs).some(
-          (job) => typeof job?.uses === 'string' && deployCallPattern.test(job.uses)
-        );
+        return Object.values(workflow.jobs).some((job) => callsDeployWorkflow(job?.uses));
       }
       return false;
     } catch {
