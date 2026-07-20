@@ -57,9 +57,13 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
         const options = (Array.isArray(pluginEntry) && (pluginEntry[1] as Record<string, unknown>)) || {};
         // tarballDir entries still produce release assets even with npmPublish: false.
         if (typeof options.tarballDir === 'string') return true;
-        // A pkgRoot entry acts on another manifest even with npmPublish: false (its prepare step
-        // still bumps that manifest's version), so keep it regardless of the publish setting.
-        return typeof options.pkgRoot === 'string';
+        // A pkgRoot entry pointing at ANOTHER manifest acts on it even with npmPublish: false (its
+        // prepare step still bumps that manifest's version), so keep it. But `.`/`./` is the root
+        // manifest itself (@semantic-release/npm's default), equivalent to the bare string form
+        // that is removable, so it does not count.
+        return (
+          typeof options.pkgRoot === 'string' && path.posix.normalize(options.pkgRoot).replace(/\/+$/u, '') !== '.'
+        );
       });
       settings.plugins = plugins;
     }

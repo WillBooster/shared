@@ -49,8 +49,17 @@ test('scaffolds a dispatch-only production deploy caller from the deploy script 
       const parsed = generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig);
       expect(parsed?.jobs.deploy?.with?.file_path_1).toBe('packages/api/.env.cloudflare');
     }
-    // Quoted or commented-out operators/text must NOT be read as a live wb deploy invocation.
-    for (const script of ['echo "; wb deploy ;"', 'echo prep # wb deploy -w packages/api', 'wb prisma deploy']) {
+    // Quoted or commented-out operators/text, and a package SCRIPT named wb, must NOT be read as a
+    // live wb-binary deploy invocation.
+    for (const script of [
+      'echo "; wb deploy ;"',
+      'echo prep # wb deploy -w packages/api',
+      'wb prisma deploy',
+      'npm run wb deploy',
+      'bun run wb -- deploy',
+      'yarn run wb deploy',
+      'npm wb deploy',
+    ]) {
       expect(generateCloudflareDeployWorkflow(createConfig(dirPath, script) as PackageConfig)).toBeUndefined();
     }
     // Only the config wb deploy selects contributes server_url: a stale wrangler.json sibling

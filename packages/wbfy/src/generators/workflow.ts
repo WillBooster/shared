@@ -680,8 +680,23 @@ function parseWbDeployArgs(deployScript: string): string[] | undefined {
         else break;
       }
     }
-    while (index < tokens.length && ['bun', 'bunx', 'npm', 'npx', 'pnpm', 'run', 'yarn'].includes(tokens[index] ?? ''))
+    // Resolve a runner prefix to whether the following token is a BINARY (the wb executable) or a
+    // package SCRIPT name. `bunx`/`npx` and `<pm> x|dlx|exec` run a binary; `<pm> run|run-script`
+    // (and bare `npm <name>`, or any runner followed by `--`) run a package script — so
+    // `npm run wb deploy` executes the script named `wb`, not the wb binary, and must be rejected.
+    if (['npm', 'pnpm', 'yarn', 'bun'].includes(tokens[index] ?? '')) {
+      const runner = tokens[index] ?? '';
       index++;
+      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) index++;
+      const subcommand = tokens[index] ?? '';
+      if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
+      if (['x', 'dlx', 'exec'].includes(subcommand))
+        index++; // binary runner (pnpm dlx, bun x, …)
+      else if (runner === 'npm') continue; // bare `npm wb` never runs a binary
+    } else if (['bunx', 'npx'].includes(tokens[index] ?? '')) {
+      index++;
+      while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) index++;
+    }
     if (tokens[index] !== 'wb') continue;
     const wbArgs = tokens.slice(index + 1);
     // Skip global options (and any value token a value-bearing option consumes) so the FIRST
