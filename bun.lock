@@ -37,7 +37,7 @@
         "@types/node": "25.6.0",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "15.0.3",
+        "@willbooster/wb": "15.0.4",
         "build-ts": "17.1.37",
         "oxfmt": "0.59.0",
         "oxlint": "1.74.0",
@@ -58,7 +58,7 @@
         "@types/node": "25.6.0",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "15.0.3",
+        "@willbooster/wb": "15.0.4",
         "blitz": "3.0.2",
         "build-ts": "17.1.37",
         "oxfmt": "0.59.0",
@@ -80,7 +80,7 @@
         "@types/node": "25.6.0",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "15.0.3",
+        "@willbooster/wb": "15.0.4",
         "build-ts": "17.1.37",
         "next": "16.2.6",
         "oxfmt": "0.59.0",
@@ -111,7 +111,7 @@
         "@types/node": "25.6.0",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "15.0.3",
+        "@willbooster/wb": "15.0.4",
         "build-ts": "17.1.37",
         "oxfmt": "0.59.0",
         "oxlint": "1.74.0",
@@ -144,7 +144,7 @@
         "@types/react-dom": "19.2.3",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "15.0.3",
+        "@willbooster/wb": "15.0.4",
         "babel-loader": "10.1.1",
         "build-ts": "17.1.37",
         "oxfmt": "0.59.0",
@@ -240,7 +240,7 @@
         "@types/yargs": "17.0.35",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "15.0.3",
+        "@willbooster/wb": "15.0.4",
         "build-ts": "17.1.37",
         "lefthook": "2.1.10",
         "oxfmt": "0.59.0",
@@ -3904,17 +3904,17 @@
 
     "@types/webpack-sources/source-map": ["source-map@0.7.6", "", {}, "sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ=="],
 
-    "@willbooster/shared-lib/@willbooster/wb": ["@willbooster/wb@15.0.3", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-m3D1Wete6AZXhAzil9rzFdKN0q9Ra9XV5cVSQL0VA7BAG5JZA+n7JOAdrHC85SZHfkTUGakQCuk/uVyW4d9WNw=="],
+    "@willbooster/shared-lib/@willbooster/wb": ["@willbooster/wb@15.0.4", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-auJTonRpE4/6MSpD0GIOqHxkrn6dDfarGD5j3sdC14xcT2m0PpW3u0GqwAwJjIJIgadwWSuttAsLyeH6RxwNjA=="],
 
-    "@willbooster/shared-lib-blitz-next/@willbooster/wb": ["@willbooster/wb@15.0.3", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-m3D1Wete6AZXhAzil9rzFdKN0q9Ra9XV5cVSQL0VA7BAG5JZA+n7JOAdrHC85SZHfkTUGakQCuk/uVyW4d9WNw=="],
+    "@willbooster/shared-lib-blitz-next/@willbooster/wb": ["@willbooster/wb@15.0.4", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-auJTonRpE4/6MSpD0GIOqHxkrn6dDfarGD5j3sdC14xcT2m0PpW3u0GqwAwJjIJIgadwWSuttAsLyeH6RxwNjA=="],
 
-    "@willbooster/shared-lib-next/@willbooster/wb": ["@willbooster/wb@15.0.3", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-m3D1Wete6AZXhAzil9rzFdKN0q9Ra9XV5cVSQL0VA7BAG5JZA+n7JOAdrHC85SZHfkTUGakQCuk/uVyW4d9WNw=="],
+    "@willbooster/shared-lib-next/@willbooster/wb": ["@willbooster/wb@15.0.4", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-auJTonRpE4/6MSpD0GIOqHxkrn6dDfarGD5j3sdC14xcT2m0PpW3u0GqwAwJjIJIgadwWSuttAsLyeH6RxwNjA=="],
 
-    "@willbooster/shared-lib-node/@willbooster/wb": ["@willbooster/wb@15.0.3", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-m3D1Wete6AZXhAzil9rzFdKN0q9Ra9XV5cVSQL0VA7BAG5JZA+n7JOAdrHC85SZHfkTUGakQCuk/uVyW4d9WNw=="],
+    "@willbooster/shared-lib-node/@willbooster/wb": ["@willbooster/wb@15.0.4", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-auJTonRpE4/6MSpD0GIOqHxkrn6dDfarGD5j3sdC14xcT2m0PpW3u0GqwAwJjIJIgadwWSuttAsLyeH6RxwNjA=="],
 
-    "@willbooster/shared-lib-react/@willbooster/wb": ["@willbooster/wb@15.0.3", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-m3D1Wete6AZXhAzil9rzFdKN0q9Ra9XV5cVSQL0VA7BAG5JZA+n7JOAdrHC85SZHfkTUGakQCuk/uVyW4d9WNw=="],
+    "@willbooster/shared-lib-react/@willbooster/wb": ["@willbooster/wb@15.0.4", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-auJTonRpE4/6MSpD0GIOqHxkrn6dDfarGD5j3sdC14xcT2m0PpW3u0GqwAwJjIJIgadwWSuttAsLyeH6RxwNjA=="],
 
-    "@willbooster/wbfy/@willbooster/wb": ["@willbooster/wb@15.0.3", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-m3D1Wete6AZXhAzil9rzFdKN0q9Ra9XV5cVSQL0VA7BAG5JZA+n7JOAdrHC85SZHfkTUGakQCuk/uVyW4d9WNw=="],
+    "@willbooster/wbfy/@willbooster/wb": ["@willbooster/wb@15.0.4", "", { "dependencies": { "chalk": "5.6.2", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.0", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.2", "semver": "7.8.5", "yargs": "18.0.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-auJTonRpE4/6MSpD0GIOqHxkrn6dDfarGD5j3sdC14xcT2m0PpW3u0GqwAwJjIJIgadwWSuttAsLyeH6RxwNjA=="],
 
     "@willbooster/wbfy/semver": ["semver@7.7.4", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-vFKC2IEtQnVhpT78h1Yp8wzwrf8CM+MzKMHGJZfBtzhZNycRFnXsHk6E5TxIkkMsgNS7mdX3AGB7x2QM2di4lA=="],
 

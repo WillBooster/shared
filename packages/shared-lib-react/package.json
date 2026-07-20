@@ -59,7 +59,7 @@
     "@types/react-dom": "19.2.3",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "15.0.3",
+    "@willbooster/wb": "15.0.4",
     "babel-loader": "10.1.1",
     "build-ts": "17.1.37",
     "oxfmt": "0.59.0",
