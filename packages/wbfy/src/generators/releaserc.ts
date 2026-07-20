@@ -25,7 +25,11 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     // `private` flag for exactly that shape — it never un-privates a single-package root, where
     // `@semantic-release/npm` skips publishing for private manifests anyway), and a pkgRoot entry
     // publishing another manifest regardless of the root's privacy (kept in the filter below).
+    // Only an EXPLICIT plugin array is filtered: assigning to an omitted `plugins` would replace
+    // semantic-release's default plugin list (which includes the GitHub release plugin) with an
+    // empty one, and the default npm plugin already skips private manifests.
     if (
+      Array.isArray(settings.plugins) &&
       rootConfig.packageJson?.private &&
       !rootConfig.packageJson.publishConfig &&
       !(rootConfig.doesContainSubPackageJsons && rootConfig.release.npmPublishesRoot)
