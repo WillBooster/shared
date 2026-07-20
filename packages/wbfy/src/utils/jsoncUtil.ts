@@ -1,5 +1,5 @@
 import type { ParseError } from 'jsonc-parser';
-import { createScanner, parse as parseJsonc } from 'jsonc-parser';
+import { applyEdits, createScanner, findNodeAtLocation, modify, parse as parseJsonc, parseTree } from 'jsonc-parser';
 
 // jsonc-parser declares SyntaxKind/ScanError as ambient const enums, which cannot be imported
 // under verbatimModuleSyntax; mirror the needed member values locally.
@@ -47,4 +47,166 @@ export const jsoncUtil = {
       ? value
       : undefined;
   },
+  /** Tells whether the content carries at least one comment, i.e. content JSON.stringify would drop. */
+  containsComment(content: string): boolean {
+    const scanner = createScanner(content.replace(/^\uFEFF/, ''));
+    for (let kind: number = scanner.scan(); kind !== syntaxKind.eof; kind = scanner.scan()) {
+      // A lexical error means the remaining tokens are unreliable; report no comment rather than
+      // guessing, since callers only use this to decide whether to warn about dropped comments.
+      if ((scanner.getTokenError() as number) !== scanErrorNone) return false;
+      if (kind === syntaxKind.lineCommentTrivia || kind === syntaxKind.blockCommentTrivia) return true;
+    }
+    return false;
+  },
+  /**
+   * Tells whether the object declares the same top-level property twice. Such content cannot be
+   * edited in place: this module's parser keeps the LAST occurrence (matching JSON.parse) while
+   * jsonc-parser's modify() rewrites the FIRST, so an edit would land on the occurrence that does
+   * not take effect and be re-applied on every run.
+   */
+  hasDuplicateTopLevelKey(content: string): boolean {
+    const keys = (parseTree(content.replace(/^\uFEFF/, ''))?.children ?? []).map(
+      (property) => property.children?.[0]?.value as unknown
+    );
+    return new Set(keys).size !== keys.length;
+  },
+  /**
+   * Serializes `settings` into `oldContent`, editing only the top-level properties whose values
+   * changed so the comments and formatting of an existing file survive. Callers never drop
+   * properties (generated settings are merged ON TOP of the existing ones), so removals are not
+   * handled: a property missing from `settings` is left untouched rather than deleted.
+   *
+   * Trivia-only content keeps its comments as a header above the generated object, rather than
+   * being replaced outright or run through modify() (which would move the object in front of them).
+   */
+  stringifyPreservingTrivia(
+    oldContent: string | undefined,
+    settings: Record<string, unknown>
+  ): { content: string; keysLosingComments: string[] } {
+    if (oldContent === undefined) {
+      return { content: JSON.stringify(settings, undefined, 2), keysLosingComments: [] };
+    }
+
+    const oldSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(oldContent);
+    // Drop a leading BOM: modify() inserts the generated object BEFORE any leading trivia, which
+    // would leave the BOM stranded mid-file where it is a syntax error rather than an ignored mark.
+    let content = oldContent.replace(/^\uFEFF/, '');
+    if (jsoncUtil.isTriviaOnly(content)) {
+      const header = content.trim();
+      return {
+        content: `${header ? header + '\n' : ''}${JSON.stringify(settings, undefined, 2)}`,
+        keysLosingComments: [],
+      };
+    }
+    const modifyOptions = { formattingOptions: detectFormattingOptions(content) };
+    const keysLosingComments: string[] = [];
+    const newEntries: [string, unknown][] = [];
+    for (const [key, value] of Object.entries(settings)) {
+      const oldValue = oldSettings?.[key];
+      // Compare serialized forms so deep-equal values (e.g. a re-merged `extends` array) do not
+      // rewrite the property and reflow its formatting.
+      if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
+      if (oldValue === undefined) {
+        newEntries.push([key, value]);
+        continue;
+      }
+      // Replacing a whole array would discard the comments between its elements, so grow it with
+      // per-element insertions whenever the new value only adds to it.
+      const insertions = Array.isArray(oldValue) && Array.isArray(value) ? findInsertions(oldValue, value) : undefined;
+      for (const insertion of insertions ?? []) {
+        content = applyEdits(
+          content,
+          modify(content, [key, insertion.index], insertion.value, { ...modifyOptions, isArrayInsertion: true })
+        );
+        content = restoreTrailingComment(content, key, insertion.index);
+      }
+      if (insertions) continue;
+      // Rewriting the whole value is the only option left (the new one drops or reorders elements),
+      // and it takes any comment nested inside it along. Report that rather than losing it quietly.
+      const replacedText = valueTextOf(content, key);
+      if (replacedText !== undefined && jsoncUtil.containsComment(replacedText)) keysLosingComments.push(key);
+      content = applyEdits(content, modify(content, [key], value, modifyOptions));
+    }
+    // Prepend rather than append the properties that are new: appending detaches a trailing
+    // same-line comment from the last property, leaving it to describe the generated value
+    // instead. Inserting in reverse keeps the order the settings declare them in.
+    for (const [key, value] of newEntries.toReversed()) {
+      content = applyEdits(content, modify(content, [key], value, { ...modifyOptions, getInsertionIndex: () => 0 }));
+    }
+    return { content, keysLosingComments };
+  },
 };
+
+/** Returns the source text of a top-level property's value, comments and all. */
+function valueTextOf(content: string, key: string): string | undefined {
+  const root = parseTree(content);
+  const node = root && findNodeAtLocation(root, [key]);
+  return node && content.slice(node.offset, node.offset + node.length);
+}
+
+// The whole same-line comment sequence, not just the first one: a line comment ends it (it runs to
+// the newline), but any number of block comments can precede it, and moving only the first would
+// leave the rest describing the wrong element.
+const trailingCommentPattern = /^(?:[^\S\n]*\/\*[\S\s]*?\*\/)*(?:[^\S\n]*\/\/[^\n]*)?/u;
+
+/**
+ * Reattaches a same-line comment to the element it describes. Inserting into an array places the
+ * new element BEFORE the trivia that follows its predecessor, so appending after
+ * `{ ... } // why this rule exists` leaves that comment explaining the generated element instead.
+ * A freshly serialized element never carries a comment of its own, so anything trailing the
+ * insertion belonged to the element before it.
+ */
+function restoreTrailingComment(content: string, key: string, insertedIndex: number): string {
+  if (insertedIndex === 0) return content;
+  const root = parseTree(content);
+  const elements = (root && findNodeAtLocation(root, [key]))?.children;
+  const inserted = elements?.[insertedIndex];
+  const previous = elements?.[insertedIndex - 1];
+  if (!inserted || !previous) return content;
+  const insertedEnd = inserted.offset + inserted.length;
+  const comment = trailingCommentPattern.exec(content.slice(insertedEnd))?.[0];
+  if (!comment) return content;
+  // Land the comment after the separating comma so the element keeps its own line intact.
+  const previousEnd = previous.offset + previous.length;
+  const restoreOffset = previousEnd + (/^\s*,/u.exec(content.slice(previousEnd))?.[0].length ?? 0);
+  return (
+    content.slice(0, restoreOffset) +
+    comment +
+    content.slice(restoreOffset, insertedEnd) +
+    content.slice(insertedEnd + comment.length)
+  );
+}
+
+/**
+ * Mirrors the indentation the file already uses, so a semantic change does not reindent unrelated
+ * lines. The first property is measured rather than the first indented line, because a decorated
+ * block comment (` * ...`) would otherwise pass for the file's indentation. Falls back to the two
+ * spaces every generated config uses.
+ */
+function detectFormattingOptions(content: string): { insertSpaces: boolean; tabSize: number } {
+  const firstProperty = parseTree(content)?.children?.[0];
+  const indentation =
+    firstProperty && content.slice(content.lastIndexOf('\n', firstProperty.offset) + 1, firstProperty.offset);
+  if (!indentation || !/^[\t ]+$/u.test(indentation)) return { insertSpaces: true, tabSize: 2 };
+  if (indentation.startsWith('\t')) return { insertSpaces: false, tabSize: 1 };
+  return { insertSpaces: true, tabSize: indentation.length };
+}
+
+/**
+ * Returns the elements to insert into `oldValue` to turn it into `newValue`, or undefined when
+ * that is impossible because `newValue` drops or reorders an existing element (the caller must
+ * then replace the array wholesale). Indices address the array as it grows, so applying the
+ * insertions left to right yields `newValue`.
+ */
+function findInsertions(oldValue: unknown[], newValue: unknown[]): { index: number; value: unknown }[] | undefined {
+  const insertions: { index: number; value: unknown }[] = [];
+  let oldIndex = 0;
+  for (const [newIndex, element] of newValue.entries()) {
+    if (oldIndex < oldValue.length && JSON.stringify(oldValue[oldIndex]) === JSON.stringify(element)) {
+      oldIndex++;
+      continue;
+    }
+    insertions.push({ index: newIndex, value: element });
+  }
+  return oldIndex === oldValue.length ? insertions : undefined;
+}

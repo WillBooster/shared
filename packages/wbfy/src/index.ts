@@ -35,7 +35,7 @@ import { generatePyrightConfigJson } from './generators/pyrightConfig.js';
 import { fixRailwayignore } from './generators/railwayignore.js';
 import { generateReadme } from './generators/readme.js';
 import { generateReleaserc } from './generators/releaserc.js';
-import { generateRenovateJson } from './generators/renovateJson.js';
+import { generateRenovateJsonc } from './generators/renovateJsonc.js';
 import { installAgentSkills } from './generators/skills.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { fixVscodeExtensions, generateVscodeSettings } from './generators/vscodeSettings.js';
@@ -276,7 +276,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       generateGitHubTemplates(rootConfig),
       generateIdeaSettings(rootConfig),
       fixRailwayignore(rootConfig),
-      generateRenovateJson(rootConfig),
+      generateRenovateJsonc(rootConfig),
       generateReleaserc(rootConfig),
       ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
       setupLabels(rootConfig),
