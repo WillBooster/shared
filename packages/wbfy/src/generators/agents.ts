@@ -51,16 +51,25 @@ function generateAgentInstruction(
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
     ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -- <command>\` instead of expecting \`.env\` files.`
     : '';
-  // Gate on an actual wrangler config file (isCloudflare also matches a mere wrangler mention in
-  // a script or workflow), and promise `wb deploy` only when a deploy script really uses it.
+  // Every clause states only a verified fact: the wrangler-config clause needs an actual config
+  // file (isCloudflare also matches a mere wrangler mention in a script or workflow), the
+  // workflow clause needs an existing deploy workflow file, and the `wb deploy` clause needs a
+  // deploy script that starts with that command.
   const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
-  const usesWbDeploy = allConfigs.some((config) =>
-    Object.values(config.packageJson?.scripts ?? {}).some(
-      (script) => typeof script === 'string' && /\bwb deploy\b/u.test(script)
-    )
-  );
+  let hasDeployWorkflow = false;
+  try {
+    hasDeployWorkflow = fs
+      .readdirSync(path.resolve(rootConfig.dirPath, '.github/workflows'))
+      .some((fileName) => /^deploy.*\.ya?ml$/u.test(fileName));
+  } catch {
+    // No workflows directory.
+  }
+  const usesWbDeploy = allConfigs.some((config) => {
+    const deployScript = config.packageJson?.scripts?.['deploy'];
+    return typeof deployScript === 'string' && /^\s*(?:bun\s+(?:run\s+)?)?wb deploy\b/u.test(deployScript);
+  });
   const cloudflareInstruction = ownsWranglerConfig
-    ? `\n- This project deploys to Cloudflare Workers: the wrangler configuration file defines bindings and per-environment settings, and the deploy workflows under \`.github/workflows\` perform deployments${usesWbDeploy ? ' via `wb deploy`' : ''}.`
+    ? `\n- This project runs on Cloudflare Workers: the wrangler configuration file defines bindings and per-environment settings.${hasDeployWorkflow ? ` The deploy workflows under \`.github/workflows\` perform deployments${usesWbDeploy ? ' via `wb deploy`' : ''}.` : ''}`
     : '';
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway

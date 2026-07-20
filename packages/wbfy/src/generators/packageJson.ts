@@ -1735,7 +1735,10 @@ function getPythonPackageManager(config: PackageConfig): 'poetry' | 'uv' | undef
 
 function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
   if (packageManager === 'uv') return 'uv sync --frozen';
-  return 'poetry config virtualenvs.in-project true && poetry env use $(mise current python) && poetry run pip install --upgrade pip && poetry install';
+  // `mise which python` yields the single active interpreter path; `mise current python` can
+  // print multiple space-separated versions (mise supports multi-version pins), which would pass
+  // extra positional arguments to `poetry env use`.
+  return 'poetry config virtualenvs.in-project true && poetry env use "$(mise which python)" && poetry run pip install --upgrade pip && poetry install';
 }
 
 function installNpmDependencies(config: PackageConfig, dependencies: string[], dev: boolean): void {

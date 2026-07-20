@@ -20,14 +20,15 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
     let plugins = settings.plugins ?? [];
     // A private package without publishConfig releases only to GitHub (e.g. a deployed web app),
     // so a leftover npm plugin is dead configuration from a published-package template — but only
-    // when the plugin provably publishes nothing: an entry that publishes the root keeps working
-    // because generatePackageJson later removes the stale `private` flag for exactly that shape
-    // (npmPublishesRoot), and a pkgRoot entry publishes another manifest regardless of the root's
-    // privacy, so both must be kept.
+    // when the plugin provably publishes nothing. Two shapes still publish and must be kept: a
+    // MONOREPO root whose entry publishes the root (generatePackageJson later removes the stale
+    // `private` flag for exactly that shape — it never un-privates a single-package root, where
+    // `@semantic-release/npm` skips publishing for private manifests anyway), and a pkgRoot entry
+    // publishing another manifest regardless of the root's privacy (kept in the filter below).
     if (
       rootConfig.packageJson?.private &&
       !rootConfig.packageJson.publishConfig &&
-      !rootConfig.release.npmPublishesRoot
+      !(rootConfig.doesContainSubPackageJsons && rootConfig.release.npmPublishesRoot)
     ) {
       plugins = plugins.filter((pluginEntry) => {
         const pluginName = Array.isArray(pluginEntry) ? pluginEntry[0] : pluginEntry;

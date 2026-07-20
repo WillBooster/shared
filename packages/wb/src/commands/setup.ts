@@ -52,7 +52,9 @@ export async function setup(
       // unlike `mise current python`, which prints every configured version (mise supports
       // multi-version pins) and would pass extra positional arguments to `poetry env use`.
       const pythonPath = child_process.execSync('mise which python', { cwd: project.dirPath }).toString().trim();
-      await runWithSpawnInParallel(`poetry env use ${pythonPath}`, project, argv);
+      // The command runs through a shell, so an interpreter path containing whitespace must stay
+      // one argument.
+      await runWithSpawnInParallel(`poetry env use "${pythonPath}"`, project, argv);
       await promisePool.promiseAll();
       await runWithSpawn('poetry run pip install --upgrade pip', project, argv);
       await runWithSpawn('poetry install --ansi', project, argv);
