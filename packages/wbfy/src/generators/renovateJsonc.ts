@@ -74,7 +74,6 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
     }
 
     const existingConfigs = await readExistingConfigs(config);
-    if (existingConfigs === undefined) return;
 
     // Renovate reads only the highest-priority config, so it alone carries the live settings.
     // A shadowed one winning means renovate.jsonc would outrank (and silently replace) the config
@@ -83,6 +82,23 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
     const liveConfig = existingConfigs[0];
     if (liveConfig?.role === 'shadowed') return;
     if (!liveConfig && config.packageJson?.['renovate']) return;
+
+    // Only the live config must be understood: the lower-priority ones are dead config that this
+    // run overwrites or deletes, so a malformed leftover must not block the migration.
+    let liveSettings: Settings | undefined;
+    if (liveConfig) {
+      if (liveConfig.content === undefined) {
+        console.warn(`Skipped generating ${filePath} because ${liveConfig.filePath} cannot be read safely.`);
+        return;
+      }
+      liveSettings = jsoncUtil.isTriviaOnly(liveConfig.content)
+        ? {}
+        : parseRenovateConfig(liveConfig.isEditableSyntax, liveConfig.content);
+      if (!liveSettings) {
+        console.warn(`Skipped generating ${filePath} because ${liveConfig.filePath} is not parsable.`);
+        return;
+      }
+    }
 
     const oldContent = existingConfigs.find((existing) => existing.role === 'managed')?.content;
     // Edit the live config in place so its comments and formatting survive. A JSON5 source cannot
@@ -94,7 +110,7 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
       return;
     }
 
-    const newSettings = buildSettings(config, liveConfig?.settings);
+    const newSettings = buildSettings(config, liveSettings);
     const newContent = jsoncUtil.stringifyPreservingTrivia(baseContent, newSettings as Record<string, unknown>);
     // Compare against the managed file the same way generateFile normalizes its writes, so an
     // unchanged repository is left completely untouched. Await the write directly: the superseded
@@ -109,12 +125,20 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
 
     const supersededConfigs = existingConfigs.filter((existing) => existing.role === 'superseded');
     for (const superseded of supersededConfigs) {
-      // Comments survive only when the source doubled as the editing base above.
-      if (superseded.content !== baseContent && jsoncUtil.containsComment(superseded.content)) {
+      if (superseded.content === undefined || !jsoncUtil.containsComment(superseded.content)) continue;
+      // The live source's comments came along whenever it doubled as the editing base, so only a
+      // re-serialized (JSON5) one loses them. A dead config's comments describe settings that were
+      // never in effect, so telling the user to copy those would be actively misleading.
+      if (superseded === liveConfig) {
+        if (superseded.content === baseContent) continue;
         console.warn(
           `Comments in ${superseded.filePath} were dropped while migrating it into ${filePath}; copy them over manually.`
         );
+        continue;
       }
+      console.warn(
+        `${superseded.filePath} was deleted with its comments: ${liveConfig?.filePath} took precedence, so Renovate never read it.`
+      );
     }
     await promisePool.run(() =>
       fsUtil.removeConfined(path.resolve(config.dirPath, '.dependabot'), { recursive: true })
@@ -154,18 +178,18 @@ function buildSettings(config: PackageConfig, liveSettings: Settings | undefined
 
 interface ExistingConfig {
   filePath: string;
-  content: string;
-  settings: Settings;
+  /** undefined when the file exists but the confined read refused it (e.g. an outside symlink). */
+  content: string | undefined;
   role: (typeof configLocations)[number]['role'];
   isEditableSyntax: boolean;
 }
 
 /**
- * Returns every existing config in Renovate's resolution order, or undefined when one exists but
- * cannot be read or parsed — the caller must then leave the repository untouched, since the
- * unreadable file may be the one currently in effect.
+ * Returns every existing config in Renovate's resolution order, without parsing any of them: only
+ * the live one (the first entry) has to be understood, and a malformed lower-priority leftover
+ * must not block the migration.
  */
-async function readExistingConfigs(config: PackageConfig): Promise<ExistingConfig[] | undefined> {
+async function readExistingConfigs(config: PackageConfig): Promise<ExistingConfig[]> {
   const existingConfigs: ExistingConfig[] = [];
   for (const { relativePath, role, isEditableSyntax } of configLocations) {
     const filePath = path.resolve(config.dirPath, relativePath);
@@ -174,30 +198,17 @@ async function readExistingConfigs(config: PackageConfig): Promise<ExistingConfi
     // location that would resurface once its target is restored.
     if (role === 'shadowed') {
       if (await fs.promises.lstat(filePath).catch(() => {})) {
-        existingConfigs.push({ filePath, content: '', settings: {}, role, isEditableSyntax });
+        existingConfigs.push({ filePath, content: undefined, role, isEditableSyntax });
       }
       continue;
     }
     // Confined read: a committed symlink pointing outside the repository must not get its
     // target's content copied into the tracked renovate.jsonc.
     const content = await fsUtil.readFileConfinedIfExists(filePath);
-    if (content === undefined) {
-      // Distinguish "absent" (fine) from "present but refused by the confined read" (fatal).
-      if (await fs.promises.lstat(filePath).catch(() => {})) {
-        console.warn(`Skipped generating ${managedFileName} because ${filePath} cannot be read safely.`);
-        return undefined;
-      }
-      continue;
-    }
-    // An empty or comment-only file holds no settings, but it still occupies its slot in the
-    // resolution order (an empty renovate.json makes Renovate ignore renovate.jsonc entirely), so
-    // it is recorded with empty settings to be deleted like any other superseded config.
-    const settings = jsoncUtil.isTriviaOnly(content) ? {} : parseRenovateConfig(isEditableSyntax, content);
-    if (!settings) {
-      console.warn(`Skipped generating ${managedFileName} because ${filePath} is not parsable.`);
-      return undefined;
-    }
-    existingConfigs.push({ filePath, content, settings, role, isEditableSyntax });
+    // Distinguish "absent" (skip it) from "present but refused by the confined read", which still
+    // occupies its slot in the resolution order and must be recorded.
+    if (content === undefined && !(await fs.promises.lstat(filePath).catch(() => {}))) continue;
+    existingConfigs.push({ filePath, content, role, isEditableSyntax });
   }
   return existingConfigs;
 }

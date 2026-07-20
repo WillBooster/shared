@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { parse } from 'jsonc-parser';
 import { expect, test } from 'vitest';
 
 import { generateRenovateJsonc } from '../src/generators/renovateJsonc.js';
@@ -31,7 +32,7 @@ const preset = 'github>WillBooster/willbooster-configs:renovate.json5';
 test('generates renovate.jsonc in a repository without any Renovate config', async () => {
   await withRepo({}, async (dirPath) => {
     const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
-    expect(JSON.parse(content).extends).toEqual([preset]);
+    expect(parseSettings(content).extends).toEqual([preset]);
   });
 });
 
@@ -40,7 +41,7 @@ test('migrates renovate.json and deletes it so it stops outranking renovate.json
     { 'renovate.json': JSON.stringify({ extends: [preset], labels: ['dependencies'] }) },
     async (dirPath) => {
       const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
-      expect(JSON.parse(content).labels).toEqual(['dependencies']);
+      expect(parseSettings(content).labels).toEqual(['dependencies']);
       expect(fs.existsSync(path.join(dirPath, 'renovate.json'))).toBe(false);
     }
   );
@@ -58,7 +59,7 @@ test('migrates renovate.json5, whose unquoted keys and single quotes plain JSONC
 `,
     },
     async (dirPath) => {
-      const settings = JSON.parse(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
+      const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
       expect(settings.npmrc).toBe('@willbooster-private:registry=https://example.test/');
       expect(settings.extends).toEqual([preset]);
       expect(fs.existsSync(path.join(dirPath, 'renovate.json5'))).toBe(false);
@@ -78,7 +79,7 @@ test('keeps comments in renovate.jsonc while adding a generated property', async
     async (dirPath) => {
       const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
       expect(content).toContain('// Keep the private registry mapping close to the preset it complements.');
-      expect(JSON.parse(stripComments(content)).extends).toEqual([preset]);
+      expect(parseSettings(content).extends).toEqual([preset]);
     }
   );
 });
@@ -91,7 +92,7 @@ test('lets the config Renovate actually reads win over a dead lower-priority one
       'renovate.json5': "{ timezone: 'UTC' }",
     },
     async (dirPath) => {
-      const settings = JSON.parse(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
+      const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
       expect(settings.timezone).toBe('Asia/Tokyo');
       expect(fs.existsSync(path.join(dirPath, 'renovate.json5'))).toBe(false);
     }
@@ -106,7 +107,7 @@ test('keeps a pre-existing renovate.jsonc winning over a superseded config ranke
       'renovate.json5': "{ timezone: 'UTC' }",
     },
     async (dirPath) => {
-      const settings = JSON.parse(stripComments(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')));
+      const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
       expect(settings.timezone).toBe('Asia/Tokyo');
       expect(fs.existsSync(path.join(dirPath, 'renovate.json5'))).toBe(false);
     }
@@ -120,7 +121,7 @@ test('lets renovate.json override a pre-existing renovate.jsonc, since it outran
       'renovate.json': JSON.stringify({ timezone: 'UTC' }),
     },
     async (dirPath) => {
-      const settings = JSON.parse(stripComments(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')));
+      const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
       expect(settings.timezone).toBe('UTC');
       expect(fs.existsSync(path.join(dirPath, 'renovate.json'))).toBe(false);
     }
@@ -148,7 +149,7 @@ test('keeps a comment nested inside extends while adding the generated preset', 
     async (dirPath) => {
       const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
       expect(content).toContain('// Keep the local preset last so it overrides the organization defaults.');
-      expect(JSON.parse(stripComments(content)).extends).toEqual([preset, 'local>team/config']);
+      expect(parseSettings(content).extends).toEqual([preset, 'local>team/config']);
     }
   );
 });
@@ -184,7 +185,7 @@ test('does not resurrect settings that only a dead lower-priority config declare
       'renovate.json5': '{ automerge: true }',
     },
     async (dirPath) => {
-      const settings = JSON.parse(stripComments(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')));
+      const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
       expect(settings.automerge).toBeUndefined();
       expect(settings.timezone).toBe('Asia/Tokyo');
       expect(fs.existsSync(path.join(dirPath, 'renovate.json5'))).toBe(false);
@@ -204,7 +205,7 @@ test('keeps comments while migrating a renovate.json, whose syntax is editable i
     async (dirPath) => {
       const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
       expect(content).toContain('// Tokyo business hours keep the noise out of the night.');
-      expect(JSON.parse(stripComments(content)).timezone).toBe('Asia/Tokyo');
+      expect(parseSettings(content).timezone).toBe('Asia/Tokyo');
       expect(fs.existsSync(path.join(dirPath, 'renovate.json'))).toBe(false);
     }
   );
@@ -228,6 +229,31 @@ test("matches the file's existing indentation instead of reindenting it", async 
   });
 });
 
+test('keeps a BOM-prefixed comment-only file parsable after generation', async () => {
+  // modify() inserts the generated object before leading trivia, which would strand the BOM
+  // mid-file where it is a syntax error rather than an ignored mark.
+  await withRepo({ 'renovate.jsonc': '\uFEFF// preserve me\n' }, async (dirPath) => {
+    const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
+    expect(content).toContain('// preserve me');
+    expect(content).not.toContain('\uFEFF');
+    expect(parseSettings(content).extends).toEqual([preset]);
+  });
+});
+
+test('migrates a valid live config even when a dead lower-priority one is malformed', async () => {
+  await withRepo(
+    {
+      'renovate.json': JSON.stringify({ timezone: 'Asia/Tokyo' }),
+      'renovate.jsonc': '{ "extends": [ }',
+    },
+    async (dirPath) => {
+      const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
+      expect(settings.timezone).toBe('Asia/Tokyo');
+      expect(fs.existsSync(path.join(dirPath, 'renovate.json'))).toBe(false);
+    }
+  );
+});
+
 test('bails instead of shadowing a config Renovate resolves after renovate.jsonc', async () => {
   await withRepo({ '.github/renovate.json': JSON.stringify({ extends: [preset] }) }, async (dirPath) => {
     expect(fs.existsSync(path.join(dirPath, 'renovate.jsonc'))).toBe(false);
@@ -241,6 +267,6 @@ test('leaves an unparsable renovate.jsonc untouched', async () => {
   });
 });
 
-function stripComments(content: string): string {
-  return content.replaceAll(/^\s*\/\/.*$/gmu, '');
+function parseSettings(content: string): Record<string, unknown> {
+  return parse(content, [], { allowTrailingComma: true }) as Record<string, unknown>;
 }

@@ -84,7 +84,9 @@ export const jsoncUtil = {
 
     const oldSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(oldContent);
     const modifyOptions = { formattingOptions: detectFormattingOptions(oldContent) };
-    let content = oldContent;
+    // Drop a leading BOM: modify() inserts the generated object BEFORE any leading trivia, which
+    // would leave the BOM stranded mid-file where it is a syntax error rather than an ignored mark.
+    let content = oldContent.replace(/^\uFEFF/, '');
     const newEntries: [string, unknown][] = [];
     for (const [key, value] of Object.entries(settings)) {
       const oldValue = oldSettings?.[key];
