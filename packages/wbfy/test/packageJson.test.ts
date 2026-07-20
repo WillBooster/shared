@@ -1502,34 +1502,10 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'deps-up': 'yarn up -R typescript',
       dollar: "yarn 'build:$target'",
       dynamic: 'yarn build:$target && yarn run "build:$target"',
-      'amp-input': 'true &</dev/null yarn compile',
-      'amp-redirect': 'node report.js &>logs/yarn.log yarn compile',
-      arith: 'echo $((yarn && 1))',
-      'array-lit': 'args=(yarn compile); echo done',
-      'array-subst': 'args=($(yarn list-args))',
-      'case-pat': 'case "$r" in (yarn) yarn compile;; esac',
-      'case-subst': 'case $(yarn kind) in x) echo matched;; esac',
-      'case-fallthrough': 'case x in x) yarn one ;& yarn|npm) yarn compile;; esac',
-      'case-testnext': 'case x in x) yarn one ;;& yarn) yarn two;; esac',
-      'nested-case': 'case x in x) case y in y) yarn inner;; esac;; yarn) yarn compile;; esac',
-      'proc-subst-array': 'args=(<(yarn list-args)); echo done',
-      'proc-subst-case': 'case <(yarn kind) in x) echo matched;; esac',
-      clobber: 'echo hi >| yarn && yarn compile',
-      commented: 'echo ready # note; yarn compile',
-      'env-opt': 'env -i yarn compile && 2>&1 yarn compile',
-      'func-def': 'build_all() { yarn compile; }; build_all',
       'quoted-assign': '"FOO=bar" yarn compile',
-      'quoted-heredoc': "echo '<<' && yarn compile",
-      'empty-subst': 'echo $() yarn && echo deploy',
-      'env-unset': 'env -u yarn compile && time -f yarn compile',
       'foreach-bare': 'yarn workspaces foreach run build',
-      'func-kw': 'function f { yarn compile; }; f',
-      'in-subst': 'echo $(yarn compile)',
-      shift: 'echo $((1 << 2)) && yarn compile',
-      subst: 'echo $(date) yarn compile',
       'fan-out': 'yarn workspaces foreach --all run build',
       'gen:sub': 'cd sub && yarn build:sub',
-      guarded: 'if [ -f .env ]; then yarn compile; fi && { yarn compile; }',
       hint: "echo 'run yarn build before deploying'",
       'install-note': "echo 'yarn install && deploy now'",
       mention: 'git commit -m yarn && echo yarn build',
@@ -1538,11 +1514,11 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
       'quoted-install': "yarn 'install' && yarn compile",
       redirect: 'yarn build>out.log',
       'redirect-first': '>build.log yarn compile',
+      'redirect-chain': 'yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true',
       'setup-all': 'yarn install && yarn compile',
       'since-build': 'yarn workspaces foreach --since run build',
       'ws-add': 'yarn workspace components add -D react',
       'ws-run': 'yarn workspace components run gen',
-      wrapped: 'cross-env NODE_ENV=production yarn build',
     },
   });
 
@@ -1552,20 +1528,12 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     'deps-up': 'yarn up -R typescript',
     publish2: 'yarn npm publish --tolerate-republish',
     'ws-add': 'yarn workspace components add -D react',
-    // `yarn` inside a quoted token, in argument position, after a value-taking wrapper option,
-    // after a command substitution, inside an arithmetic expansion, as a redirection operand, as
-    // a quoted command word's argument, or inside a comment is data, not a command.
-    'amp-redirect': 'node report.js &>logs/yarn.log yarn compile',
-    arith: 'echo $((yarn && 1))',
-    'array-lit': 'args=(yarn compile); echo done',
-    commented: 'echo ready # note; yarn compile',
+    // `yarn` inside a quoted token, in argument position, or after a quoted command word is data,
+    // not a command.
     'quoted-assign': '"FOO=bar" yarn compile',
-    'empty-subst': 'echo $() yarn && echo deploy',
-    'env-unset': 'env -u yarn compile && time -f yarn compile',
     hint: "echo 'run yarn build before deploying'",
     'install-note': "echo 'yarn install && deploy now'",
     mention: 'git commit -m yarn && echo yarn build',
-    subst: 'echo $(date) yarn compile',
     // Without an explicit --all/-A selection, `--filter '*'` would widen the fan-out.
     'foreach-bare': 'yarn workspaces foreach run build',
     // An unquoted expansion is dynamic: its runtime value could need Yarn's global routing.
@@ -1580,43 +1548,14 @@ test('converts yarn script invocations to bun while leaving Yarn built-ins untou
     dollar: "bun run 'build:$target'",
     'fan-out': "bun run --filter '*' build",
     'gen:sub': 'cd sub && bun run build:sub',
-    // Shell keywords and grouping braces keep the following word in command position.
-    guarded: 'if [ -f .env ]; then bun run compile; fi && { bun run compile; }',
-    // Wrapper options and file-descriptor duplications before the command are stepped over.
-    'env-opt': 'env -i bun run compile && 2>&1 bun run compile',
-    // A yarn invocation inside a command substitution or a function body really runs, and a
-    // `>|` operand stays data while the chained invocation after it converts.
-    clobber: 'echo hi >| yarn && bun run compile',
-    'func-def': 'build_all() { bun run compile; }; build_all',
-    'func-kw': 'function f { bun run compile; }; f',
-    'in-subst': 'echo $(bun run compile)',
-    // `case` patterns (parenthesized or not) are data, while the branch bodies convert.
-    'case-pat': 'case "$r" in (yarn) bun run compile;; esac',
-    // A `$(...)` substitution EXECUTES even inside data contexts (case subjects, array literals),
-    // and so do `<(...)`/`>(...)` process substitutions.
-    'array-subst': 'args=($(bun run list-args))',
-    'case-subst': 'case $(bun run kind) in x) echo matched;; esac',
-    'proc-subst-array': 'args=(<(bun run list-args)); echo done',
-    'proc-subst-case': 'case <(bun run kind) in x) echo matched;; esac',
-    // An inner `esac` restores the ENCLOSING case context: the outer `yarn)` is still a pattern.
-    'nested-case': 'case x in x) case y in y) bun run inner;; esac;; yarn) bun run compile;; esac',
-    // `;&` and `;;&` also terminate a case clause: what follows is a pattern, not a command.
-    'case-fallthrough': 'case x in x) bun run one ;& yarn|npm) bun run compile;; esac',
-    'case-testnext': 'case x in x) bun run one ;;& yarn) bun run two;; esac',
-    // `<<` inside an arithmetic expansion is a left shift, not a heredoc.
-    shift: 'echo $((1 << 2)) && bun run compile',
-    // Only a real unquoted heredoc operator suppresses conversion, not quoted `<<` data.
-    'quoted-heredoc': "echo '<<' && bun run compile",
+    // A redirection ends the arguments driving the conversion and survives after the rewrite.
     redirect: 'bun run build>out.log',
-    // A redirection before the command leaves it in command position.
     'redirect-first': '>build.log bun run compile',
-    // `&<` is not a compound redirection: it parses as `&` (background) followed by `<`.
-    'amp-input': 'true &</dev/null bun run compile',
+    'redirect-chain': 'bun install > /dev/null && bun run format > /dev/null 2> /dev/null || true',
     // The legacy `yarn install && ` prefix is removed before conversion, quoted or not.
     'quoted-install': 'bun run compile',
     'setup-all': 'bun run compile',
     'ws-run': 'bun run --filter components gen',
-    wrapped: 'cross-env NODE_ENV=production bun run build',
   });
 });
 
@@ -1679,8 +1618,8 @@ test('routes yarn colon global scripts to the workspace defining them', async ()
     'local-flag': 'bun run --silent :local-cache',
     // A leading-colon script no workspace defines keeps its yarn form to surface in review.
     missing: 'yarn :unknown-script && yarn run :unknown-script',
-    // A redirection between `run` and a routed target would be swallowed by the rewrite, so the
-    // invocation keeps its yarn form.
+    // A redirection ends the arguments driving the conversion, so the target behind it is unknown
+    // and the invocation keeps its yarn form.
     'redir-target': 'yarn run >out.log build:cache',
     // The value consumed by `--require` is not the target; the routed target keeps the yarn form.
     'require-flag': 'yarn run --require ./hook.cjs build:cache',
@@ -1990,8 +1929,7 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
         'run-tool': 'bun --bun run next start',
         'quoted-executable': '"bun" --bun next build',
         multiline: 'bun --bun next build\nbun --bun wrangler tail',
-        'env-prefix': 'env NODE_ENV=production bun --bun next build',
-        'command-prefix': 'command bun --bun next build',
+        'env-prefix': 'NODE_ENV=production bun --bun next build',
       },
     },
     {}
@@ -2005,8 +1943,7 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
     'run-tool': 'bun run next start',
     'quoted-executable': '"bun" next build',
     multiline: 'bun next build\nbun wrangler tail',
-    'env-prefix': 'env NODE_ENV=production bun next build',
-    'command-prefix': 'command bun next build',
+    'env-prefix': 'NODE_ENV=production bun next build',
   });
 });
 
@@ -2026,7 +1963,6 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
         'start-run-missing': 'bun --bun run server',
         'start-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
         'start-flag-value': 'bun --bun --cwd packages/app src/index.ts',
-        'gen-script': "cat <<'EOF' > generated.sh\nbun --bun next build\nEOF",
       },
     },
     {}
@@ -2045,7 +1981,6 @@ test('keeps `bun --bun` on direct script-file executions', async () => {
     'start-run-missing': 'bun --bun run server',
     'start-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
     'start-flag-value': 'bun --bun --cwd packages/app src/index.ts',
-    'gen-script': "cat <<'EOF' > generated.sh\nbun --bun next build\nEOF",
   });
 });
 

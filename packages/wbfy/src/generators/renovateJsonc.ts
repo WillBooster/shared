@@ -16,11 +16,8 @@ const jsonObj = {
   extends: ['github>WillBooster/willbooster-configs:renovate.json5'],
 };
 
-// $schema is optional: an existing config need not declare it, and an empty or comment-only
-// config file contributes no properties at all.
-type Settings = Partial<Omit<typeof jsonObj, 'extends'>> & {
-  // Renovate's schema allows a single preset string in addition to an array.
-  extends?: string | string[];
+// $schema is optional: an existing config need not declare it.
+type Settings = Partial<typeof jsonObj> & {
   packageRules?: { matchPackageNames: string[]; enabled?: boolean }[];
 };
 
@@ -37,9 +34,7 @@ const managedFileName = 'renovate.jsonc';
 // - `superseded`: consolidated into the managed file and deleted. Deleting them is what makes the
 //   migration take effect for the ones that outrank renovate.jsonc.
 // - `shadowed`: left alone. Generating renovate.jsonc beside a live one would shadow it, so wbfy
-//   bails instead. The list stays platform-agnostic (e.g. .gitlab): wbfy manages GitHub-hosted
-//   repositories, and bailing on another platform's config is a safe no-op, not a missed
-//   generation.
+//   bails instead.
 //
 // `jsonc` marks the syntax wbfy can both parse AND edit in place; a `json5` source can only be
 // re-serialized, which drops its comments.
@@ -50,12 +45,7 @@ const configLocations = [
   { relativePath: '.github/renovate.json', role: 'shadowed', isEditableSyntax: true },
   { relativePath: '.github/renovate.jsonc', role: 'shadowed', isEditableSyntax: true },
   { relativePath: '.github/renovate.json5', role: 'shadowed', isEditableSyntax: false },
-  { relativePath: '.gitlab/renovate.json', role: 'shadowed', isEditableSyntax: true },
-  { relativePath: '.gitlab/renovate.jsonc', role: 'shadowed', isEditableSyntax: true },
-  { relativePath: '.gitlab/renovate.json5', role: 'shadowed', isEditableSyntax: false },
-  { relativePath: '.renovaterc', role: 'shadowed', isEditableSyntax: true },
   { relativePath: '.renovaterc.json', role: 'superseded', isEditableSyntax: true },
-  { relativePath: '.renovaterc.jsonc', role: 'shadowed', isEditableSyntax: true },
   { relativePath: '.renovaterc.json5', role: 'shadowed', isEditableSyntax: false },
 ] as const;
 
@@ -105,10 +95,6 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
     // be edited (jsonc-parser rejects unquoted keys and single-quoted strings) and is re-serialized
     // instead, which the warning below reports.
     const baseContent = liveConfig?.isEditableSyntax ? liveConfig.content : undefined;
-    if (baseContent !== undefined && jsoncUtil.hasDuplicateTopLevelKey(baseContent)) {
-      console.warn(`Skipped generating ${filePath} because ${liveConfig?.filePath} declares the same property twice.`);
-      return;
-    }
 
     const newSettings = buildSettings(config, liveSettings);
     const { content: newContent, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
@@ -255,17 +241,13 @@ function parseRenovateConfig(isEditableSyntax: boolean, content: string): Settin
   }
 }
 
-function mergeRenovateExtends(generatedExtends: string[], existingExtends: Settings['extends']): string[] {
-  // Renovate's schema allows `extends` to be a single preset string; spreading a string would
-  // corrupt it into its individual characters, so normalize it to an array first.
-  const normalizedExtends =
-    existingExtends === undefined ? [] : Array.isArray(existingExtends) ? existingExtends : [existingExtends];
+function mergeRenovateExtends(generatedExtends: string[], existingExtends: string[] = []): string[] {
   // Only prepend the presets that are missing. Moving one that is already listed would reorder the
   // array, and a later preset overrides an earlier one in Renovate — so re-sorting silently flips
   // which config wins (and, being a reorder rather than an addition, also costs the array's
   // comments, which can only be preserved by insertion).
-  const missingExtends = generatedExtends.filter((preset) => !normalizedExtends.includes(preset));
-  return [...missingExtends, ...normalizedExtends].filter((item) => item !== '@willbooster');
+  const missingExtends = generatedExtends.filter((preset) => !existingExtends.includes(preset));
+  return [...missingExtends, ...existingExtends].filter((item) => item !== '@willbooster');
 }
 
 function normalize(content: string): string {

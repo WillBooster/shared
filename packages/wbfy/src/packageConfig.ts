@@ -115,9 +115,10 @@ const wbfyJsonSchema = z.object({
 });
 
 /**
- * cosmiconfig 9's default searchPlaces order for module "release" (what semantic-release 25
- * delegates to), minus the leading package.json entry, which the caller checks first. Places
- * whose format JSON.parse cannot read are statically uninspectable.
+ * The semantic-release config files wbfy expects, in cosmiconfig's resolution order (the leading
+ * package.json entry is checked by the caller). wbfy generates .releaserc.json; the other spellings
+ * are listed only to detect a hand-written config, whose format JSON.parse cannot read and whose
+ * plugin list is therefore statically uninspectable.
  */
 const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: boolean }[] = [
   { fileName: '.releaserc', jsonParseable: true },
@@ -125,21 +126,7 @@ const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: bool
   { fileName: '.releaserc.yaml', jsonParseable: false },
   { fileName: '.releaserc.yml', jsonParseable: false },
   { fileName: '.releaserc.js', jsonParseable: false },
-  { fileName: '.releaserc.ts', jsonParseable: false },
-  { fileName: '.releaserc.mjs', jsonParseable: false },
-  { fileName: '.releaserc.cjs', jsonParseable: false },
-  { fileName: '.config/releaserc', jsonParseable: true },
-  { fileName: '.config/releaserc.json', jsonParseable: true },
-  { fileName: '.config/releaserc.yaml', jsonParseable: false },
-  { fileName: '.config/releaserc.yml', jsonParseable: false },
-  { fileName: '.config/releaserc.js', jsonParseable: false },
-  { fileName: '.config/releaserc.ts', jsonParseable: false },
-  { fileName: '.config/releaserc.mjs', jsonParseable: false },
-  { fileName: '.config/releaserc.cjs', jsonParseable: false },
   { fileName: 'release.config.js', jsonParseable: false },
-  { fileName: 'release.config.ts', jsonParseable: false },
-  { fileName: 'release.config.mjs', jsonParseable: false },
-  { fileName: 'release.config.cjs', jsonParseable: false },
 ];
 
 export async function getPackageConfig(

@@ -146,15 +146,13 @@ export function reachesWranglerTypes(
     let invokedScriptName: string | undefined;
     if (scriptWrapperRunnerCommands.has(tokens[index] ?? '')) {
       index++;
-      let runnerFlags = consumeRunnerFlags(tokens, index);
-      if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) {
-        runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
+      let runnerIndex = consumeRunnerFlags(tokens, index);
+      if (['run', 'run-script'].includes(tokens[runnerIndex] ?? '')) {
+        runnerIndex = consumeRunnerFlags(tokens, runnerIndex + 1);
       }
-      // A runner directed at another directory (e.g. `yarn --cwd ../other gen-types`) runs that package's
-      // script, not one of these; forwarded arguments (`npm run gen-types -- --check`) change the effective
-      // invocation, so the wrapper cannot stand for the plain script either.
-      invokedScriptName =
-        runnerFlags.leavesPackage || tokens.length > runnerFlags.index + 1 ? undefined : tokens[runnerFlags.index];
+      // Forwarded arguments (`bun run gen-types -- --check`) change the effective invocation, so the wrapper
+      // cannot stand for the plain script.
+      invokedScriptName = tokens.length > runnerIndex + 1 ? undefined : tokens[runnerIndex];
     }
     if (!invokedScriptName || visitedScriptNames.has(invokedScriptName)) continue;
     visitedScriptNames.add(invokedScriptName);
@@ -251,13 +249,12 @@ export function isManagedGenCodeSegment(segment: string, scripts: PackageJson.Sc
   let isRunSubcommand = false;
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
-    let runnerFlags = consumeRunnerFlags(tokens, index);
-    if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[runnerFlags.index] ?? '')) {
-      isRunSubcommand = ['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '');
-      runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
+    let runnerIndex = consumeRunnerFlags(tokens, index);
+    if (['run', 'run-script', 'exec', 'dlx', 'x'].includes(tokens[runnerIndex] ?? '')) {
+      isRunSubcommand = ['run', 'run-script'].includes(tokens[runnerIndex] ?? '');
+      runnerIndex = consumeRunnerFlags(tokens, runnerIndex + 1);
     }
-    if (runnerFlags.leavesPackage) return false;
-    index = runnerFlags.index;
+    index = runnerIndex;
   }
   // Exact match only: `wb gen-code ; wrangler types --config ...` or `wb gen-code --flag` is not the plain
   // managed invocation and must not be discarded as one. After `run`/`run-script` only a package-script name
@@ -316,13 +313,13 @@ export function isUnmodeledWranglerTypesSegment(
   let index = skipEnvironmentAssignments(tokens);
   if (!scriptWrapperRunnerCommands.has(tokens[index] ?? '')) return false;
   index++;
-  let runnerFlags = consumeRunnerFlags(tokens, index);
-  if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) {
-    runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
+  let runnerIndex = consumeRunnerFlags(tokens, index);
+  if (['run', 'run-script'].includes(tokens[runnerIndex] ?? '')) {
+    runnerIndex = consumeRunnerFlags(tokens, runnerIndex + 1);
   }
-  const invokedScriptName = tokens[runnerFlags.index];
-  const forwardsArguments = tokens.length > runnerFlags.index + 1;
-  if (runnerFlags.leavesPackage || !invokedScriptName) return false;
+  const invokedScriptName = tokens[runnerIndex];
+  const forwardsArguments = tokens.length > runnerIndex + 1;
+  if (!invokedScriptName) return false;
   if (visitedScriptNames.has(invokedScriptName)) return false;
   visitedScriptNames.add(invokedScriptName);
   const invokedScript = scripts[invokedScriptName];
@@ -465,16 +462,14 @@ export function parseWranglerTypesInvocation(segment: string): string[] | undefi
   let index = skipEnvironmentAssignments(tokens);
   if (scriptRunnerCommands.has(tokens[index] ?? '')) {
     index++;
-    let runnerFlags = consumeRunnerFlags(tokens, index);
-    // `run`/`run-script` name a package script, never a binary: `npm run wrangler types` invokes the script
+    let runnerIndex = consumeRunnerFlags(tokens, index);
+    // `run`/`run-script` name a package script, never a binary: `bun run wrangler types` invokes the script
     // called `wrangler` with `types` as an argument, so it must go through wrapper resolution instead.
-    if (['run', 'run-script'].includes(tokens[runnerFlags.index] ?? '')) return;
-    if (['exec', 'dlx', 'x'].includes(tokens[runnerFlags.index] ?? '')) {
-      runnerFlags = consumeRunnerFlags(tokens, runnerFlags.index + 1, runnerFlags.leavesPackage);
+    if (['run', 'run-script'].includes(tokens[runnerIndex] ?? '')) return;
+    if (['exec', 'dlx', 'x'].includes(tokens[runnerIndex] ?? '')) {
+      runnerIndex = consumeRunnerFlags(tokens, runnerIndex + 1);
     }
-    // A runner directed at another directory runs that package's wrangler, not this one's.
-    if (runnerFlags.leavesPackage) return;
-    index = runnerFlags.index;
+    index = runnerIndex;
   }
   if (tokens[index] !== 'wrangler' || tokens[index + 1] !== 'types') return;
 
@@ -552,35 +547,15 @@ function skipEnvironmentAssignments(tokens: string[]): number {
   return index;
 }
 
-// Runner options that consume the following token as their value; the directory-changing ones make the runner
-// operate on another package when the value is not the package itself, and workspace/filter selectors always
-// may (npm runs `--workspace=other` commands inside that workspace).
-const runnerDirectoryValueFlags = new Set(['--cwd', '-C', '--prefix', '--dir']);
-const runnerWorkspaceValueFlags = new Set(['-w', '--workspace', '-F', '--filter']);
-// Bare selectors that run the command in every workspace instead of (only) this package.
-const runnerAllWorkspacesFlags = new Set(['--workspaces', '-ws', '--recursive', '-r']);
+// Runner options consuming the following token as their value; skipping that value too keeps the
+// command word (e.g. the wrapped script name) findable.
+const runnerValueFlags = new Set(['--cwd', '-C', '--prefix', '--dir', '-w', '--workspace', '-F', '--filter']);
 
-function consumeRunnerFlags(
-  tokens: string[],
-  index: number,
-  leavesPackage = false
-): { index: number; leavesPackage: boolean } {
+/** Skips the runner's own options (e.g. `bunx --yes wrangler types`) to reach the command word. */
+function consumeRunnerFlags(tokens: string[], index: number): number {
   while ((tokens[index] ?? '').startsWith('-')) {
-    const flag = tokens[index] ?? '';
+    if (runnerValueFlags.has(tokens[index] ?? '')) index++;
     index++;
-    let directoryValue: string | undefined;
-    if (runnerDirectoryValueFlags.has(flag)) {
-      directoryValue = tokens[index];
-      index++;
-    } else if (/^(?:--cwd|--prefix|--dir)=/u.test(flag)) {
-      directoryValue = flag.slice(flag.indexOf('=') + 1);
-    } else if (runnerWorkspaceValueFlags.has(flag)) {
-      index++;
-      leavesPackage = true;
-    } else if (/^(?:-w|--workspace|-F|--filter)=/u.test(flag) || runnerAllWorkspacesFlags.has(flag)) {
-      leavesPackage = true;
-    }
-    if (directoryValue !== undefined && directoryValue !== '.' && directoryValue !== './') leavesPackage = true;
   }
-  return { index, leavesPackage };
+  return index;
 }
