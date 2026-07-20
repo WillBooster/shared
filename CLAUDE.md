@@ -38,4 +38,5 @@
 - Use `project.env` instead of `process.env` on `wb` package.
 - Always drop any Windows support.
 - `wbfy` specializes in repositories of the WillBooster / WillBoosterLab organizations; support for other repositories is a best-effort extra.
-- `wbfy` assumes its target repositories have already been wbfy-applied; exceptional cases outside this assumption should be fixed manually as a rule.
+- `wbfy` is primarily a re-configuration tool: its input is almost always what `wbfy` itself generated in a previous run. Design and implement for that input format only; do NOT generalize parsers or generators to handle arbitrary hand-written or third-party files.
+- Files that deviate from `wbfy`-generated output are exceptional cases to be fixed manually in the target repository as a rule; do not add code to `wbfy` to accommodate them.
