@@ -210,6 +210,11 @@ test.each([
     expected: `<div data-prefix="<!--"></div>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
   },
   {
+    name: 'a raw block inside a block quote',
+    input: '# Project\n\n> <pre>\n> # Example\n> </pre>\n',
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n> <pre>\n> # Example\n> </pre>\n`,
+  },
+  {
     name: 'a raw HTML block',
     input: '<pre>\n# Example\n</pre>\n\n# Project\n',
     expected: `<pre>\n# Example\n</pre>\n\n# Project\n\n${badgeOf('1.2.3')}\n`,
@@ -358,6 +363,63 @@ test('supersedes a badge below an unmatched backtick in a heading', async () => 
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
+test('keeps a badge inside a link form the pattern does not cover', async () => {
+  await withTempDir(async (dirPath) => {
+    // Removing only the inner image would leave a wrecked `[](…)` link behind.
+    const titled = '[![wbfy](https://img.shields.io/badge/-wbfy-1e90ff.svg)](https://example.com "title")';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${titled}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(titled);
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
+  });
+});
+
+test('keeps a badge after a line-leading comment block ends', async () => {
+  await withTempDir(async (dirPath) => {
+    // A comment that BEGINS a line is a type-2 HTML block whose closing line is raw content in full.
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `<!-- note\n--> ${legacyBadge}\n\n# Project\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(legacyBadge);
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
+  });
+});
+
+test('keeps a badge in an HTML block whose comment spans lines', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `<div><!--\n--> ${legacyBadge}\n</div>\n\n# Project\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(legacyBadge);
+  });
+});
+
+test('supersedes a badge past a block that interrupts the paragraph', async () => {
+  await withTempDir(async (dirPath) => {
+    // The block quote ends the paragraph, so the two backticks are not one code span.
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\nText \`\n> # Quote\n${legacyBadge}\n\` close\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.split('img.shields.io/badge')).toHaveLength(2);
+  });
+});
+
+test('supersedes a workflow badge carrying query parameters', async () => {
+  await withTempDir(async (dirPath) => {
+    const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
+    fs.mkdirSync(workflowsPath, { recursive: true });
+    fs.writeFileSync(path.resolve(workflowsPath, 'test.yml'), 'name: test\n');
+    const staleBadge =
+      '[![Test](https://github.com/WillBooster/shared/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/WillBooster/shared/actions/workflows/test.yml)';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${staleBadge}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).not.toContain('?branch=main');
+    expect(content.split('actions/workflows/test.yml/badge.svg')).toHaveLength(2);
   });
 });
 

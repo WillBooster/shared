@@ -18,9 +18,12 @@ const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/
 // change again; keying on either alone leaves the superseded badge behind and duplicates it. The
 // alt text also keeps an unrelated image that merely links to wbfy (e.g. a diagram) from deletion.
 // The surrounding link is optional: an unlinked `![wbfy](…)` image is the same managed badge, and
-// leaving it behind put a second wbfy badge right under the generated one.
+// leaving it behind put a second wbfy badge right under the generated one. The bare-image
+// alternative must NOT match the image inside a link form this pattern does not otherwise cover
+// (a link title, or a reference link): removing just the inner image would leave the wrapping
+// `[](…)` behind and corrupt the README. A neighbouring `[` or `]` marks exactly those cases.
 const wbfyBadgePattern = new RegExp(
-  String.raw`\[!\[wbfy\]\(https://img\.shields\.io/badge/[^)\s]*\)\]\([^)\s]*\)|!\[wbfy\]\(https://img\.shields\.io/badge/[^)\s]*\)`,
+  String.raw`\[!\[wbfy\]\(https://img\.shields\.io/badge/[^)\s]*\)\]\([^)\s]*\)|(?<!\[)!\[wbfy\]\(https://img\.shields\.io/badge/[^)\s]*\)(?!\])`,
   'gu'
 );
 
@@ -178,7 +181,7 @@ function findBadgeInsertionAnchor(readme: string): number | undefined {
     // `<details>` must still be counted even though no badge may be inserted inside it.
     // Depth never goes negative: a stray `</details>` would otherwise bank a credit that cancels a
     // later real `<details>` and puts the badge under its hidden heading.
-    if (!line.isRawText) collapsedDepth = Math.max(0, collapsedDepth + countDetailsDepthDelta(visibleContentOf(line)));
+    if (!line.isRawText) collapsedDepth = nextDetailsDepth(visibleContentOf(line), collapsedDepth);
     if (line.isProtected || collapsedDepth > 0) continue;
     if (/^ {0,3}#(?:[ \t]+|$)/u.test(line.content)) return line.end;
     if (deeperHeadingEnd === undefined && /^ {0,3}#{2,6}(?:[ \t]+|$)/u.test(line.content)) deeperHeadingEnd = line.end;
@@ -239,8 +242,11 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     offset += fullLine.length;
     // A code span may continue onto later lines but never out of its own block, so an unmatched
     // backtick is only a span opener when its closer appears in the rest of THIS paragraph. A
-    // heading's inline content ends with its own line, so it never looks ahead at all.
-    const paragraphRest = isAtxHeading(content) ? '' : takeParagraphRest(rawLines, lineIndex + 1);
+    // heading's inline content ends with its own line, so it never looks ahead at all. The rest is
+    // gathered LAZILY: scanning ahead from every line made analysis quadratic (6000 lines took 1.6s).
+    let cachedParagraphRest: string | undefined;
+    const getParagraphRest = (): string =>
+      (cachedParagraphRest ??= isAtxHeading(content) ? '' : takeParagraphRest(rawLines, lineIndex + 1));
 
     if (start === 0 && (trimmedLine === '---' || trimmedLine === '+++') && hasFrontMatterEnd(readme, trimmedLine)) {
       frontMatterMarker = trimmedLine;
@@ -259,16 +265,6 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     // A code span cannot contain a blank line (it would end the paragraph), so one closes any span
     // still open — otherwise a stray backtick would silence badge removal for the rest of the file.
     if (openSpan?.kind === 'code' && !trimmedLine) openSpan = undefined;
-
-    // A span left open on the previous line keeps running here, so this line is split against that
-    // state rather than read as fresh Markdown. Only the part up to the closing delimiter stays
-    // protected: text after a `-->` is live Markdown, and a badge there must still be superseded.
-    if (openSpan) {
-      const split = splitProtectedSpans(content, openSpan, paragraphRest);
-      openSpan = split.openSpan;
-      lines.push(buildSpanLine(content, end, ending, split.spans));
-      continue;
-    }
 
     // Types 1 and 3-5 hold VERBATIM text and each run to their own terminator.
     if (rawTextTerminator) {
@@ -291,9 +287,19 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
       if (!trimmedLine) inHtmlBlock = false;
       // Attribute values are blanked first: a `<!--` written inside one is not a comment opener, and
       // treating it as one protected the rest of the README and stranded the badge above the title.
-      const split = splitProtectedSpans(stripAttributeValues(content), openSpan, paragraphRest);
+      const split = splitProtectedSpans(stripAttributeValues(content), openSpan, getParagraphRest);
       openSpan = split.openSpan;
       lines.push({ content, end, ending, isProtected: !!trimmedLine, isRawText: false, spans: split.spans });
+      continue;
+    }
+
+    // A span left open on the previous line keeps running here, so this line is split against that
+    // state rather than read as fresh Markdown. Only the part up to the closing delimiter stays
+    // protected: text after a `-->` is live Markdown, and a badge there must still be superseded.
+    if (openSpan) {
+      const split = splitProtectedSpans(content, openSpan, getParagraphRest);
+      openSpan = split.openSpan;
+      lines.push(buildSpanLine(content, end, ending, split.spans));
       continue;
     }
 
@@ -327,7 +333,11 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     // A type-1 block holds VERBATIM text and runs to its closing tag; a type-6 block holds markup and
     // runs to a blank line. `h1` is deliberately absent from both: the badge anchor treats a centered
     // `<h1>` as the title, which protecting it would hide.
-    const verbatimHtmlTag = content.match(/^ {0,3}<(pre|script|style|textarea)(?:[ \t>]|$)/iu)?.[1];
+    // Matched against the CONTAINER CONTENT: a `> <pre>` example inside a block quote is a raw
+    // block just as much as an unquoted one, and reading the raw line missed it and deleted its
+    // badge example.
+    const containerContent = getContainerContent(content);
+    const verbatimHtmlTag = containerContent.match(/^ {0,3}<(pre|script|style|textarea)(?:[ \t>]|$)/iu)?.[1];
     if (verbatimHtmlTag) {
       if (!hasRawHtmlClosingTag(content, verbatimHtmlTag)) rawHtmlTag = verbatimHtmlTag;
       lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
@@ -335,22 +345,24 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
     }
     // CommonMark HTML block types 3-5: a processing instruction, a declaration and a CDATA section.
     // Each holds verbatim text that the badge must not be inserted into.
-    const rawTextOpener = RAW_TEXT_BLOCKS.find(([opener]) => new RegExp(`^ {0,3}${opener}`, 'u').test(content));
+    const rawTextOpener = RAW_TEXT_BLOCKS.find(([opener]) =>
+      new RegExp(`^ {0,3}${opener}`, 'u').test(containerContent)
+    );
     if (rawTextOpener) {
       const [, terminator] = rawTextOpener;
-      if (!content.slice(content.indexOf('<')).includes(terminator)) rawTextTerminator = terminator;
+      if (!containerContent.slice(containerContent.indexOf('<')).includes(terminator)) rawTextTerminator = terminator;
       lines.push({ content, end, ending, isProtected: true, isRawText: true, spans: [] });
       continue;
     }
-    if (htmlBlockPattern.test(content)) {
+    if (htmlBlockPattern.test(containerContent)) {
       inHtmlBlock = true;
-      const split = splitProtectedSpans(stripAttributeValues(content), undefined, paragraphRest);
+      const split = splitProtectedSpans(stripAttributeValues(content), undefined, getParagraphRest);
       openSpan = split.openSpan;
       lines.push({ content, end, ending, isProtected: true, isRawText: false, spans: split.spans });
       continue;
     }
 
-    const split = splitProtectedSpans(content, undefined, paragraphRest);
+    const split = splitProtectedSpans(content, undefined, getParagraphRest);
     openSpan = split.openSpan;
     const line = buildSpanLine(content, end, ending, split.spans);
     lines.push(isIndentedCode(content) ? { ...line, isProtected: true, isRawText: true, spans: [] } : line);
@@ -360,6 +372,10 @@ function analyzeMarkdown(readme: string): MarkdownAnalysis {
 
 /** CommonMark HTML block types 3-5, as `[opening pattern, terminator]` pairs. */
 const RAW_TEXT_BLOCKS: [string, string][] = [
+  // A comment that BEGINS a line is a type-2 HTML block whose last line runs through `-->` in full,
+  // so badge-shaped text after the terminator is raw block content, not live Markdown. A comment
+  // opening mid-line is an ordinary inline span instead, and text after its `-->` stays live.
+  ['<!--', '-->'],
   [String.raw`<!\[CDATA\[`, ']]>'],
   [String.raw`<\?`, '?>'],
   [String.raw`<![A-Za-z]`, '>'],
@@ -374,7 +390,7 @@ function takeParagraphRest(rawLines: string[], from: number): string {
   const rest: string[] = [];
   for (let index = from; index < rawLines.length; index++) {
     const line = rawLines[index]!;
-    if (!getContainerContent(line).trim() || isAtxHeading(line)) break;
+    if (!getContainerContent(line).trim() || isParagraphInterrupter(line)) break;
     rest.push(line);
   }
   return rest.join('');
@@ -382,6 +398,21 @@ function takeParagraphRest(rawLines: string[], from: number): string {
 
 function isAtxHeading(content: string): boolean {
   return /^ {0,3}#{1,6}(?:[ \t]|$)/u.test(content);
+}
+
+/**
+ * Whether the line starts a block of its own rather than continuing the paragraph above. CommonMark
+ * settles block structure before inline spans, so a code span must not reach across one of these.
+ */
+function isParagraphInterrupter(content: string): boolean {
+  return (
+    isAtxHeading(content) ||
+    isContainerStart(content) ||
+    htmlBlockPattern.test(content) ||
+    /^ {0,3}(?:`{3,}|~{3,})/u.test(content) ||
+    /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/u.test(content) ||
+    /^ {0,3}<(?:pre|script|style|textarea|!|\?)/iu.test(content)
+  );
 }
 
 function leadingWhitespaceOf(content: string): number {
@@ -441,7 +472,7 @@ function removeMarkdownMatches(readme: string, pattern: RegExp): string {
 function splitProtectedSpans(
   content: string,
   openSpan: OpenSpan | undefined,
-  paragraphRest: string
+  getParagraphRest: () => string
 ): { spans: ProtectedSpan[]; openSpan: OpenSpan | undefined } {
   const spans: ProtectedSpan[] = [];
   let plainStart = 0;
@@ -495,7 +526,7 @@ function splitProtectedSpans(
       // A code span may continue onto later lines, but only when its closer actually appears in the
       // rest of the paragraph. Without that check a lone stray backtick protected everything after
       // it, so a stale badge below was never superseded and got duplicated instead.
-      if (findCodeEnd(paragraphRest, fence, 0) === undefined) {
+      if (findCodeEnd(getParagraphRest(), fence, 0) === undefined) {
         index += fence.length;
         continue;
       }
@@ -560,19 +591,19 @@ function hasRawHtmlClosingTag(line: string, tag: string): boolean {
 }
 
 /**
- * How much the line changes `<details>` nesting depth, scanning its opening and closing tags in
- * order. Quoted attribute values are blanked and backslash-escaped `<` is skipped, since neither
+ * The `<details>` nesting depth after the line, scanning its opening and closing tags in order. Quoted attribute values are blanked and backslash-escaped `<` is skipped, since neither
  * one is a tag — counting them let a literal `\<details>` or a `</details>` written in an attribute
  * hide the real title from the badge anchor.
  */
-function countDetailsDepthDelta(line: string): number {
+function nextDetailsDepth(line: string, depth: number): number {
   const stripped = stripAttributeValues(line);
-  let delta = 0;
   for (const match of stripped.matchAll(/<(\/?)details(?:[ \t>]|$)/giu)) {
     if (isEscaped(stripped, match.index)) continue;
-    delta += match[1] ? -1 : 1;
+    // Clamped per TAG, not per line: on `</details><details>` a net delta of zero would cancel the
+    // real opener against a stray closer and put the badge under the heading it hides.
+    depth = match[1] ? Math.max(0, depth - 1) : depth + 1;
   }
-  return delta;
+  return depth;
 }
 
 /**
@@ -597,7 +628,9 @@ export function removeGitHubActionsBadge(readme: string, badgeName: string, file
   return removeMarkdownMatches(
     readme,
     new RegExp(
-      String.raw`\[!\[${escapedBadgeName}\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}/badge\.svg\)\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}\)`,
+      // GitHub's UI hands out badge URLs carrying `?branch=…`/`?event=…`, so the query string is
+      // optional on both URLs; without it such a badge survived removal and was duplicated.
+      String.raw`\[!\[${escapedBadgeName}\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}/badge\.svg(?:\?[^)\s]*)?\)\]\(https://github\.com/[^/\s)]+/[^/\s)]+/actions/workflows/${escapedFileName}(?:\?[^)\s]*)?\)`,
       'gu'
     )
   );
