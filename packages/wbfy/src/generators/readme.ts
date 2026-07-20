@@ -23,8 +23,10 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateReadme', async () => {
     const filePath = path.resolve(config.dirPath, 'README.md');
     // The wbfy badge marks a repository as wbfied, so a repository without a README still gets one.
+    // readFileIfExists falls back ONLY on ENOENT: a README that exists but cannot be read (e.g.
+    // permissions, EMFILE) must abort the generator instead of being overwritten with the stub.
     let newContent =
-      (await fs.promises.readFile(filePath, 'utf8').catch(() => {})) ??
+      (await fsUtil.readFileIfExists(filePath)) ??
       `# ${config.packageJson?.name ?? path.basename(path.resolve(config.dirPath))}\n`;
 
     // Drop any previously inserted badge first, so a version or link change leaves no stale one.
@@ -106,17 +108,12 @@ export function insertBadge(readme: string, badge: string): string {
   return `${readme}\n${badge}\n`;
 }
 
-const wbfyBadgePattern = new RegExp(
-  String.raw`\[!\[[^\]]*\]\(${escapeRegExp(wbfyBadgeUrlPrefix)}(?<label>[^)\s]*?)-[^-)\s]*\.svg\)\]\([^)\s]*\)`,
-  'u'
-);
+// Matched by the badge's LINK, not by its image URL: every wbfy badge wbfy ever generated points
+// here, so a badge whose image URL changed (e.g. the version-less one this badge replaced) is still
+// recognized as managed and gets superseded instead of duplicated.
+const wbfyBadgePattern = new RegExp(String.raw`\[!\[[^\]]*\]\([^)\s]*\)\]\(${escapeRegExp(wbfyBadgeLink)}\)`, 'u');
 
-export function readWbfyBadgeLabel(readme: string): string | undefined {
-  const label = wbfyBadgePattern.exec(readme)?.groups?.label;
-  return label?.replaceAll('--', '-');
-}
-
-export function removeWbfyBadge(readme: string): string {
+function removeWbfyBadge(readme: string): string {
   return readme.replaceAll(new RegExp(`${wbfyBadgePattern.source}\n?`, 'gu'), '').replaceAll(/\n\n\n+/g, '\n\n');
 }
 

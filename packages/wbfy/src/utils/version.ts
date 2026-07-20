@@ -22,13 +22,21 @@ export function getWbfyVersionLabel(): string | undefined {
   const { version, dirPath } = readWbfyPackageJson();
   if (!version.startsWith(unreleasedVersionPrefix)) return version;
 
-  const proc = child_process.spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
-    cwd: dirPath,
-    encoding: 'utf8',
-    stdio: 'pipe',
-  });
-  const commitHash = proc.status === 0 ? proc.stdout.trim() : '';
+  // An unreleased build installed under a TARGET repository (e.g. a packed tarball in its
+  // node_modules) would make git resolve that repository's HEAD, stamping an unrelated commit as
+  // the applied wbfy build. Such an installation always sits below a node_modules directory of the
+  // discovered repository, so that path segment distinguishes it from a genuine wbfy checkout.
+  const gitRootDirPath = runGit(['rev-parse', '--show-toplevel'], dirPath);
+  if (!gitRootDirPath || path.relative(gitRootDirPath, dirPath).split(path.sep).includes('node_modules')) {
+    return undefined;
+  }
+  const commitHash = runGit(['rev-parse', '--short', 'HEAD'], dirPath);
   return commitHash ? `${commitHash}-local` : undefined;
+}
+
+function runGit(args: string[], cwd: string): string | undefined {
+  const proc = child_process.spawnSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' });
+  return proc.status === 0 ? proc.stdout.trim() || undefined : undefined;
 }
 
 function readWbfyPackageJson(): { version: string; dirPath: string } {
