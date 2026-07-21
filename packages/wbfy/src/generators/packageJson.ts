@@ -321,14 +321,24 @@ function updatePostinstallScript(
   // counts: `wrangler types --check` or a custom output path leaves the managed file absent on a fresh clone.
   if (postinstallGeneratesWorkerTypes(scripts)) return;
 
-  // A reachable non-generating invocation (e.g. `wrangler types --check`, which fails while the gitignored file
-  // is still absent) must see the generated file, and a directory-changing postinstall (`cd ../tools && ...`)
-  // would run an appended generator somewhere else — both need the generator first; otherwise append to keep
-  // the project's own order.
+  // The generator must run FIRST when the postinstall is only the managed `bun wb gen-code` — it consumes the
+  // Cloudflare `Env` types, so appending would fail on a fresh checkout — as well as for a reachable
+  // non-generating invocation (e.g. `wrangler types --check`, which fails while the gitignored file is absent)
+  // and a directory-changing postinstall (`cd ../tools && ...`) that would otherwise run an appended generator
+  // elsewhere. Otherwise APPEND: a project-owned step may generate `wrangler types`' own inputs (`.dev.vars`,
+  // `.env*`, a wrangler config), which a prepended generator would then miss, and wbfy cannot tell such a
+  // prerequisite apart from an independent step.
   const oldPostinstall = scripts.postinstall;
+  const postinstallIsOnlyManagedGenCode =
+    !!oldPostinstall &&
+    splitCommandSegments(oldPostinstall).every(
+      (segment) => segment === '' || isManagedGenCodeSegment(segment, scripts)
+    );
   scripts.postinstall =
     oldPostinstall &&
-    (reachesWranglerTypes(oldPostinstall, scripts, () => true) || scriptChangesWorkingDirectory(oldPostinstall))
+    (postinstallIsOnlyManagedGenCode ||
+      reachesWranglerTypes(oldPostinstall, scripts, () => true) ||
+      scriptChangesWorkingDirectory(oldPostinstall))
       ? `${wranglerTypes} && ${oldPostinstall}`
       : appendWranglerTypes(oldPostinstall ?? '', wranglerTypes).replace(/^ && /u, '');
 }
