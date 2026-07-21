@@ -69,6 +69,31 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
+  it.runIf(isFnoxAvailable())('loads development-profile fnox secrets when WB_ENV is unset', async () => {
+    // An unset WB_ENV must select the development profile (like wb's main loader), not the base
+    // `[secrets]` table alone: a repo keeping dev-only secrets in `[profiles.development.secrets]`
+    // would otherwise silently miss them (https://github.com/WillBooster/shared/issues covered here).
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nBASE_ONLY = { default = "base-value" }\n\n[profiles.development.secrets]\nDEV_ONLY = { default = "dev-value" }\n'
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$BASE_ONLY" "$DEV_ONLY"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        // A clean env (only PATH) leaves WB_ENV and NODE_ENV unset, so the cascade defaults to development.
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('base-value dev-value\n');
+    expect(result.status).toBe(0);
+  });
+
   it("restores yarn's temporary bin folder for Plug'n'Play projects without node_modules", async () => {
     // PnP installs create no node_modules/.bin, so the (otherwise stripped) BERRY_BIN_FOLDER
     // is the only source of dependency executables and must be restored.

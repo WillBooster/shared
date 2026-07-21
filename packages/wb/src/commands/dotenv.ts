@@ -118,17 +118,27 @@ function validateStandardWbEnv(value: string | undefined, fixTarget: string): vo
 // adopted the org env standard. A NON-EMPTY WB_ENV is still validated against the standard modes,
 // though — a typo like `prodcution` would otherwise silently select the base (development) values.
 function readAndApplyEnvironmentVariables(cwd: string): void {
+  // The mode is FORCED only when WB_ENV is explicitly exported; it drives the forced-mode override
+  // below and the validation at the end.
   const mode = process.env.WB_ENV;
+  // The cascade selects WHICH `.env.<cascade>` files and fnox profile to READ. Like wb's main loader
+  // (`WB_ENV || NODE_ENV || 'development'`, see readEnvironmentVariables) it defaults to development,
+  // so a repo that keeps dev-only secrets in `[profiles.development.secrets]` still loads them when
+  // WB_ENV is unset — reading only the base `[secrets]` table would silently drop them. NODE_ENV is
+  // read through an alias, never as the `process.env.NODE_ENV` member expression that the bundler
+  // inlines to 'production' (which would wrongly select the production profile).
+  const runtimeEnv = process.env;
+  const cascade = mode || runtimeEnv.NODE_ENV || 'development';
   const readEnvFile = (fileName: string): Record<string, string> =>
     config({ path: path.join(cwd, fileName), processEnv: {}, quiet: true }).parsed ?? {};
-  // Mode-specific sources drive the forced-mode override below.
+  // Mode-specific sources drive the forced-mode override below (only meaningful when the mode is forced).
   const modeVars = mode ? { ...readEnvFile(`.env.${mode}`), ...readEnvFile(`.env.${mode}.local`) } : {};
-  // Mirror the shared cascade's precedence: .env.<mode>.local > .env.local > .env.<mode> > .env.
+  // Mirror the shared cascade's precedence: .env.<cascade>.local > .env.local > .env.<cascade> > .env.
   const dotenvVars = {
     ...readEnvFile('.env'),
-    ...(mode ? readEnvFile(`.env.${mode}`) : {}),
+    ...readEnvFile(`.env.${cascade}`),
     ...readEnvFile('.env.local'),
-    ...(mode ? readEnvFile(`.env.${mode}.local`) : {}),
+    ...readEnvFile(`.env.${cascade}.local`),
   };
   // WB_ENV in process.env means the mode is explicitly forced, so values from the mode's own
   // sources (.env.<mode>[.local] and the fnox profile) win over variables inherited from the
@@ -136,7 +146,7 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
   // (see https://github.com/WillBooster/shared/issues/930).
   const modeFileOverridesProcessEnv = !!mode && !isCI(process.env.CI);
   // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
-  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, mode, dotenvVars, { modeFileOverridesProcessEnv });
+  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, cascade, dotenvVars, { modeFileOverridesProcessEnv });
   const parsed = { ...fnoxVars, ...dotenvVars };
   // Expand ${...} references against exported variables whose FILE value loses to the shell
   // (mirroring readEnvironmentVariables' effective-value semantics): a reference must resolve to
