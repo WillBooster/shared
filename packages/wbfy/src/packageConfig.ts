@@ -918,18 +918,29 @@ async function resolveLocalRepoIdentity(
     const origin = remotes.find((remote) => remote.name === 'origin');
     const remoteUrl = origin?.refs.fetch ?? origin?.refs.push;
     if (remoteUrl) {
-      const [org, name] = gitHubUtil.getOrgAndName(remoteUrl);
-      if (org && name) return [canonicalizeOwner(org), name];
+      const identity = readGitHubIdentity(remoteUrl);
+      if (identity) return identity;
     }
   } catch {
     // Not a git repository, or git is unavailable: fall through to the manifest.
   }
   const url = typeof packageJson.repository === 'string' ? packageJson.repository : packageJson.repository?.url;
   if (url) {
-    const [org, name] = gitHubUtil.getOrgAndName(url);
-    if (org && name) return [canonicalizeOwner(org), name];
+    const identity = readGitHubIdentity(url);
+    if (identity) return identity;
   }
   return [undefined, undefined];
+}
+
+/**
+ * `gitHubUtil.getOrgAndName` is host-agnostic, so it happily turns a GitLab URL into an `<org>/<repo>` pair.
+ * Everything downstream treats the resulting identity as GitHub (the `github:` repository field is rewritten
+ * into package.json), so the host must be verified first; a non-GitHub remote yields no identity, as before.
+ */
+function readGitHubIdentity(url: string): [string, string] | undefined {
+  if (!/(?:^|\W)github\.com[/:]/u.test(url)) return undefined;
+  const [org, name] = gitHubUtil.getOrgAndName(url);
+  return org && name ? [canonicalizeOwner(org), name] : undefined;
 }
 
 /**

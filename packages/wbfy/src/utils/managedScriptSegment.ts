@@ -162,14 +162,29 @@ export function hasCustomWranglerTypesInvocation(scripts: PackageJson.Scripts, d
  * preserve that command, so the script has to be left alone instead of silently losing it.
  */
 export function runsOnlyRedundantGeneration(script: string | undefined): boolean {
-  if (!script) return false;
+  return (
+    splitRedundantCommands(script)?.every(
+      (command) => genI18nTsSegmentPattern.test(command) || genCodeSegmentPattern.test(command)
+    ) === true
+  );
+}
+
+/**
+ * The narrower case: EVERY command is an argument-free `gen-i18n-ts`, and none is `wb gen-code`. Only then can
+ * the script be deleted outright — `wb gen-code` also runs prisma, drizzle-kit check, and chakra typegen, so
+ * removing it would silently stop those even when the worker-types generation is no longer wanted.
+ */
+export function runsOnlyRedundantI18nGeneration(script: string | undefined): boolean {
+  const commands = splitRedundantCommands(script);
+  return commands !== undefined && commands.every((command) => genI18nTsSegmentPattern.test(command));
+}
+
+function splitRedundantCommands(script: string | undefined): string[] | undefined {
+  if (!script) return undefined;
   const commands = script
     .replaceAll(/\s*>\s*\S+/gu, '')
     .split(/&&|;/u)
     .map((command) => command.trim().replaceAll(/\s+/gu, ' '))
     .filter(Boolean);
-  return (
-    commands.length > 0 &&
-    commands.every((command) => genI18nTsSegmentPattern.test(command) || genCodeSegmentPattern.test(command))
-  );
+  return commands.length > 0 ? commands : undefined;
 }

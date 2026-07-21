@@ -14,6 +14,7 @@ import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig 
 import {
   classifyScriptSegment,
   runsOnlyRedundantGeneration,
+  runsOnlyRedundantI18nGeneration,
   splitScriptSegments,
 } from '../utils/managedScriptSegment.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -287,7 +288,7 @@ function updatePostinstallScript(
       scripts.postinstall = 'wb gen-code';
     }
     // Any other unparseable postinstall is left to a human rather than rewritten from a wrong parse.
-  } else if (runsOnlyRedundantGeneration(scripts.postinstall)) {
+  } else if (runsOnlyRedundantI18nGeneration(scripts.postinstall)) {
     delete scripts.postinstall;
   } else if (hasOptedOutOfWorkerTypes && scripts.postinstall) {
     // The package genuinely opted out (its tsconfig no longer includes the declaration), and generateGitignore

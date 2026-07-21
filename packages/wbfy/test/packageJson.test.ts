@@ -398,6 +398,21 @@ test('preserves the position of a custom step after generation', async () => {
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run build-assets');
 });
 
+// `wb gen-code` also runs prisma, drizzle-kit check, and chakra typegen, so it must survive even where the
+// worker-types generation is no longer wanted.
+test('keeps a wb gen-code postinstall for an unmanaged worker package', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.69.0', 'drizzle-orm': '0.44.5' },
+    scripts: { postinstall: 'wb gen-code' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
 // Silently dropping a project's own install step (e.g. applying patches) would break its install.
 test('preserves custom postinstall segments', async () => {
   const packageJson = await generatePackageJsonFrom(
