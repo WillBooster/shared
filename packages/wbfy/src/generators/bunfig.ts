@@ -257,15 +257,6 @@ minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bu
 minimumReleaseAgeExcludes = [
 ${minimumReleaseAgeExcludes.join('\n')}
 ]
-${
-  linker === 'isolated' && config.depending.next
-    ? `
-[install.cache]
-# Turbopack rejects global-store symlinks outside the project filesystem root.
-dir = ".bun-cache"
-`
-    : ''
-}
 `;
 };
 

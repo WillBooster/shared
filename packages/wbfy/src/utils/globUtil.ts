@@ -1,9 +1,6 @@
 export const globIgnore = [
   '**/node_modules/**',
   '**/.antigravitycli/**',
-  // Next projects keep Bun's global virtual store inside the project so Turbopack accepts its
-  // symlinks. Package sources in that cache must never influence detection or be rewritten.
-  '**/.bun-cache/**',
   // Git's object store holds copies of tracked files (and `dot: true` makes them visible), so
   // scanning it would both slow every glob down and let stale blobs influence detection.
   '**/.git/**',

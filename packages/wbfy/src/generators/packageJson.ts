@@ -1142,12 +1142,6 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   );
   const requiredWbfyPackages = [
     ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
-    // Turbopack rejects the React Compiler loader when Bun's global store makes it a symlink
-    // outside the project filesystem root. Materializing the loader keeps Next builds inside the
-    // root without broadening Turbopack's filesystem access to the user's home directory.
-    ...(declaredDependencies.has('next') && declaredDependencies.has('babel-plugin-react-compiler')
-      ? ['babel-plugin-react-compiler']
-      : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
     // These git-dependency builds import packages they do not declare (e.g. zod), which the
     // global-store layout places beyond their walk-up; a project-local copy under
@@ -1195,7 +1189,6 @@ const wbfyManagedTrustedDependencies = new Set([
   '@chakra-ui/react',
   '@willbooster/judge',
   '@willbooster/llm-proxy',
-  'babel-plugin-react-compiler',
   'drizzle-kit',
   lefthookDependency,
 ]);
