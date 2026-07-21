@@ -23,6 +23,7 @@ import {
 } from '../utils/privateRegistry.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
+import { collectManifests, materializePrivatePackages } from './setupPrivatePackages.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 const sqliteFilePattern = /\.(?:sqlite3?|db)(?:[-.](?:journal|shm|wal))?$/i;
@@ -67,6 +68,16 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     if (!projects) {
       console.error(chalk.red('No project found.'));
       process.exit(1);
+    }
+
+    // Materialize private dependencies on the host first so the per-project rewrite below resolves
+    // them to file: paths and the Docker build needs no registry credentials. Only in --outside
+    // mode (the host preparation phase): the in-image second pass has no node_modules/registry to
+    // materialize from. `warn` on missing auth preserves the pre-existing behavior of continuing
+    // (and warning) when a package can be neither reused nor downloaded, so this stays a pure
+    // convenience that lets repositories drop the explicit `wb setup-private-packages` step.
+    if (argv.outside && !argv.dryRun) {
+      await materializePrivatePackages(projects.root.dirPath, collectManifests(projects), { onMissingAuth: 'warn' });
     }
 
     const optimizedProjects: Project[] = [];
