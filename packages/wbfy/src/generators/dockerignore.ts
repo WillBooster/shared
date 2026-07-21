@@ -12,6 +12,7 @@ const includedNodeModulesPatterns = ['@willbooster'];
 
 const commonContent = `
 **/.DS_Store
+**/.bun-cache
 **/.cache
 **/.claude
 **/.cursor

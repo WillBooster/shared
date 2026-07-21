@@ -98,6 +98,8 @@ packaged.yaml
     }
     if (config.depending.next) {
       names.push('nextjs');
+      headUserContent += `.bun-cache/
+`;
     }
     if (rootConfig.depending.firebase || config.depending.firebase) {
       names.push('firebase');

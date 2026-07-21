@@ -29,3 +29,20 @@ test('keeps maven and python ignore entries in multi-language repositories', asy
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
+
+test('ignores the project-local Bun cache used by Next Turbopack', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitignore-next-')));
+  try {
+    const config = createConfig({
+      dirPath: tempDirPath,
+      isRoot: true,
+      depending: { ...createConfig().depending, next: true },
+    });
+    await generateGitignore(config, config);
+    await promisePool.promiseAll();
+    const content = fs.readFileSync(path.join(tempDirPath, '.gitignore'), 'utf8');
+    expect(content).toMatch(/^\.bun-cache\/$/mu);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
