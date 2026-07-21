@@ -74,6 +74,50 @@ describe('materializePrivatePackages', () => {
       await fs.rm(rootDirPath, { force: true, recursive: true });
     }
   });
+
+  // The git and registry trees must commit as ONE transaction: a registry fetch failure used to
+  // leave the already-swapped @willbooster tree next to a stale @willbooster-private tree, so a
+  // registry manifest referencing file:../../@willbooster/<name> could dangle. The registry is made
+  // unreachable via a reserved `.invalid` host, so the download always fails without a live server.
+  it('leaves both materialized trees untouched when a registry download fails', async () => {
+    const rootDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-setup-private-'));
+    try {
+      await writeJson(path.join(rootDirPath, 'package.json'), {
+        name: '@test/root',
+        dependencies: {
+          '@willbooster/needed': 'git@github.com:WillBooster/needed.git#main',
+          '@willbooster-private/a': '1.0.0',
+        },
+      });
+      await fs.writeFile(
+        path.join(rootDirPath, '.npmrc'),
+        '@willbooster-private:registry=http://wb-unreachable-registry.invalid\n'
+      );
+      // Installed only for the git dependency: the registry package has no installed copy, so it
+      // must be downloaded — and that download fails.
+      await writeJson(path.join(rootDirPath, 'node_modules', '@willbooster', 'needed', 'package.json'), {
+        name: '@willbooster/needed',
+        version: '1.0.0',
+      });
+      // Pre-existing linked materializations that must both survive the failure.
+      const gitDirPath = path.join(rootDirPath, '@willbooster', 'needed');
+      await writeJson(path.join(gitDirPath, 'package.json'), { name: '@willbooster/needed', version: '0.9.0' });
+      const registryDirPath = path.join(rootDirPath, '@willbooster-private', 'a');
+      await writeJson(path.join(registryDirPath, 'package.json'), {
+        name: '@willbooster-private/a',
+        version: '0.9.0',
+        dependencies: { '@willbooster/needed': 'file:../../@willbooster/needed' },
+      });
+
+      const projects = await findDescendantProjects({}, false, rootDirPath);
+      await expect(materializePrivatePackages(projects!.root.dirPath, collectManifests(projects!))).rejects.toThrow();
+
+      expect(await readVersion(gitDirPath)).toBe('0.9.0');
+      expect(await readVersion(registryDirPath)).toBe('0.9.0');
+    } finally {
+      await fs.rm(rootDirPath, { force: true, recursive: true });
+    }
+  });
 });
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {
@@ -84,4 +128,9 @@ async function writeJson(filePath: string, value: unknown): Promise<void> {
 async function readName(packageDirPath: string): Promise<string | undefined> {
   const content = await fs.readFile(path.join(packageDirPath, 'package.json'), 'utf8');
   return (JSON.parse(content) as { name?: string }).name;
+}
+
+async function readVersion(packageDirPath: string): Promise<string | undefined> {
+  const content = await fs.readFile(path.join(packageDirPath, 'package.json'), 'utf8');
+  return (JSON.parse(content) as { version?: string }).version;
 }
