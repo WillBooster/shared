@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,9 +9,8 @@ import { getGenCodeScripts } from '../src/commands/genCode.js';
 import { Project } from '../src/project.js';
 
 describe('getGenCodeScripts', () => {
-  it('generates worker types first when a wrangler config and dependency exist', async () => {
-    const dirPath = await createProject({ devDependencies: { wrangler: '4.70.0' } });
-    await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{}');
+  it('generates worker types first when a wrangler config, dependency, and gitignore entry exist', async () => {
+    const dirPath = await createWorkerProject({ devDependencies: { wrangler: '4.70.0' } }, true);
 
     try {
       // Must come first: worker-configuration.d.ts is gitignored, and the later generators
@@ -22,8 +22,20 @@ describe('getGenCodeScripts', () => {
   });
 
   it('does not generate worker types without an own wrangler dependency', async () => {
-    const dirPath = await createProject({});
-    await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{}');
+    const dirPath = await createWorkerProject({}, true);
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not generate worker types the project does not consume', async () => {
+    // No gitignore entry means wbfy left the package unmanaged because its tsconfig cannot
+    // reference the file (e.g. a hand-maintained Env), so generating it would only leave an
+    // untracked ~500KB file behind.
+    const dirPath = await createWorkerProject({ devDependencies: { wrangler: '4.70.0' } }, false);
 
     try {
       expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
@@ -146,5 +158,19 @@ describe('getGenCodeScripts', () => {
 async function createProject(packageJson: Record<string, unknown>): Promise<string> {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-code-'));
   await fs.writeFile(path.join(dirPath, 'package.json'), JSON.stringify(packageJson));
+  return dirPath;
+}
+
+/**
+ * A git repository is required because the worker-types check asks git whether the generated file
+ * is ignored, which is the signal that the package consumes it.
+ */
+async function createWorkerProject(packageJson: Record<string, unknown>, ignoresWorkerTypes: boolean): Promise<string> {
+  const dirPath = await createProject(packageJson);
+  await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{}');
+  if (ignoresWorkerTypes) {
+    await fs.writeFile(path.join(dirPath, '.gitignore'), 'worker-configuration.d.ts\n');
+  }
+  spawnSync('git', ['init', '--quiet'], { cwd: dirPath, stdio: 'ignore' });
   return dirPath;
 }

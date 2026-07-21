@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -18,6 +19,9 @@ import type { PackageJson } from 'type-fest';
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
 import { findWranglerConfigPath } from './utils/wrangler.js';
+
+/** The file `wrangler types` writes by default. */
+const WORKER_TYPES_FILE_NAME = 'worker-configuration.d.ts';
 
 export type DatabaseOrm = 'prisma' | 'drizzle';
 
@@ -284,14 +288,21 @@ export class Project {
   }
 
   /**
-   * Whether `wrangler types` can generate `worker-configuration.d.ts` here. Both signals are
-   * required: wrangler exits non-zero without a config, and a package that does not declare
-   * wrangler itself cannot resolve the binary — in a mixed monorepo a root-level wrangler
-   * devDependency must not make every workspace package emit types it never consumes.
+   * Whether `wrangler types` should generate `worker-configuration.d.ts` here. A wrangler config
+   * and an own wrangler dependency are both required — wrangler exits non-zero without a config,
+   * and in a mixed monorepo a root-level wrangler devDependency must not make every workspace
+   * package emit types it never consumes.
+   *
+   * The gitignore entry is the third signal, and the one that says the package actually CONSUMES
+   * the file: wbfy writes that entry only for packages whose own tsconfig can reference
+   * `worker-configuration.d.ts`, and deliberately leaves alone packages that hand-maintain their
+   * `Env` instead. Without this check, such a package would gain an untracked ~500KB generated
+   * file on every install.
    */
   @memoizeOne
   get generatesWorkerTypes(): boolean {
-    return !!findWranglerConfigPath(this) && this.hasOwnDependency('wrangler');
+    if (!findWranglerConfigPath(this) || !this.hasOwnDependency('wrangler')) return false;
+    return isGitIgnored(path.join(this.dirPath, WORKER_TYPES_FILE_NAME), this.dirPath);
   }
 
   @memoizeOne
@@ -619,4 +630,18 @@ export async function findWorkspacePackageDirs(
     })
     .map((manifestPath) => path.join(project.dirPath, path.posix.dirname(manifestPath)));
   return [...new Set(workspaceDirPaths)].toSorted();
+}
+
+/**
+ * Asks git whether a path is ignored. `git check-ignore` is authoritative — it honors the whole
+ * `.gitignore` chain plus excludes — whereas parsing the files would have to reimplement it.
+ * Exit code 0 means ignored, 1 means not; anything else (no git, no repository) means unknown, and
+ * the safe answer there is "not ignored" so nothing generates an untracked file.
+ */
+function isGitIgnored(filePath: string, cwd: string): boolean {
+  const { status } = spawnSync('git', ['check-ignore', '--quiet', '--no-index', filePath], {
+    cwd,
+    stdio: 'ignore',
+  });
+  return status === 0;
 }
