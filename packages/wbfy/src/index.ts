@@ -56,7 +56,6 @@ import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
-import { isExcludedRepo } from './utils/excludedRepo.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
@@ -140,10 +139,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
         () =>
           JSON.parse(fs.readFileSync(path.resolve(rootDirPath, 'package.json'), 'utf8')) as PackageConfig['packageJson']
       ) ?? {};
-    if (isExcludedRepo(rootDirPath, rootPackageJson)) {
-      console.info(`Skip ${rootDirPath}: excluded from wbfy.`);
-      continue;
-    }
     // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
     // automatic Bun translation must abort the whole migration for this path, not just the file
     // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.
@@ -151,8 +146,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     if (unmigratableYarnSettings) {
       console.error(
         `Skip ${rootDirPath}: ${unmigratableYarnSettings}. ` +
-          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy, ' +
-          "or add the repository to wbfy's excludedRepoNames when it is deliberately kept off the standard."
+          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy.'
       );
       hasInvalidPackageConfig = true;
       continue;
