@@ -62,6 +62,12 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
     if (config.doesContainPackageJson) {
       names.push('node');
     }
+    if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
+      // fnox is the committed source of truth; deployment tooling may export its selected profile
+      // to a transient dotenv file for Docker, which must never be tracked.
+      headUserContent += `.env
+`;
+    }
     // Recursive detection (not just a root pom.xml): a multi-language repository keeps its Maven
     // modules in subdirectories, and dropping the maven template would let target/ get tracked.
     if (config.doesContainPomXmlAnywhere) {

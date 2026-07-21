@@ -46,3 +46,17 @@ test('ignores the project-local Bun cache used by Next Turbopack', async () => {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
+
+test('ignores transient dotenv exports in fnox repositories', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitignore-fnox-')));
+  try {
+    fs.writeFileSync(path.join(tempDirPath, 'fnox.toml'), '[profiles.development]\n');
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
+    await generateGitignore(config, config);
+    await promisePool.promiseAll();
+    const content = fs.readFileSync(path.join(tempDirPath, '.gitignore'), 'utf8');
+    expect(content).toMatch(/^\.env$/mu);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
