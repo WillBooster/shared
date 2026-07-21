@@ -436,3 +436,14 @@ test('ignores an <h1> inside an unclosed raw-text element', () => {
 
   expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
 });
+
+// Non-element HTML constructs render no tag written inside them.
+test.each([
+  ['a processing instruction', '<?php $example = "<h1>Not a title</h1>"; ?>'],
+  ['a CDATA section', '<![CDATA[<h1>Not a title</h1>]]>'],
+  ['a declaration', '<!DOCTYPE example "<h1>Not a title</h1>">'],
+])('ignores an <h1> inside %s', (_description, htmlBlock) => {
+  const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});

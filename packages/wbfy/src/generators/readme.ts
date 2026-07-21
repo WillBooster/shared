@@ -215,7 +215,12 @@ function isTitleNode(node: RootContent | undefined): boolean {
  */
 function containsRenderedH1(html: string): boolean {
   const withoutInertText = html
+    // The non-element HTML constructs CommonMark recognizes as blocks: comments, CDATA sections,
+    // processing instructions, and declarations. None of them renders a tag written inside.
     .replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, '')
+    .replaceAll(/<!\[CDATA\[[\s\S]*?(?:\]\]>|$)/gu, '')
+    .replaceAll(/<\?[\s\S]*?(?:\?>|$)/gu, '')
+    .replaceAll(/<![a-zA-Z][\s\S]*?(?:>|$)/gu, '')
     // HTML parses the content of these elements as raw text, RCDATA, or script data, so a tag
     // written inside one is not an element. The end tag is optional: an unclosed one stays in that
     // state through EOF, which is why the closing alternative includes `$`. Only their contents go,
