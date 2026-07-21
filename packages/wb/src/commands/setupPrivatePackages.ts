@@ -201,6 +201,9 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
       await fs.promises.mkdir(registryOutDirPath, { recursive: true });
     }
 
+    for (const privatePackage of privatePackages.values()) {
+      await stripDevDependenciesFromPackageTree(rootDirPath, privatePackage.targetDirPath);
+    }
     await replacePrivateDependencies(rootDirPath, privatePackages);
     console.info(
       `Ensure the Dockerfile COPYs ${path.relative(rootDirPath, outDirPath)}/ and ${PRIVATE_REGISTRY_SCOPE}/ into the image before installing dependencies.`
@@ -680,6 +683,17 @@ async function findPackageJsonPaths(dirPath: string): Promise<string[]> {
     }
   }
   return packageJsonPaths;
+}
+
+export async function stripDevDependenciesFromPackageTree(rootDirPath: string, dirPath: string): Promise<void> {
+  for (const packageJsonPath of await findPackageJsonPaths(dirPath)) {
+    const packageJson = await readPackageJson(packageJsonPath);
+    if (!packageJson.devDependencies) continue;
+
+    delete packageJson.devDependencies;
+    await fs.promises.writeFile(packageJsonPath, `${JSON.stringify(packageJson, undefined, 2)}\n`, 'utf8');
+    console.info(`Removed devDependencies from ${path.relative(rootDirPath, packageJsonPath)}`);
+  }
 }
 
 async function readPackageJson(packageJsonPath: string): Promise<PackageJson> {
