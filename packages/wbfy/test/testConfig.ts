@@ -48,6 +48,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       next: false,
       playwrightRuntime: false,
       playwrightTest: false,
+      prettierRuntime: false,
       prisma: false,
       pyright: false,
       react: false,

@@ -217,6 +217,17 @@ test('uses stable age-gated versions for generated dependencies when skipping in
   expect(packageJson.devDependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
 });
 
+test('keeps prettier for packages that import it as a runtime library but drops it otherwise', async () => {
+  const importing = await generatePackageJsonFrom(
+    { dependencies: { prettier: '3.9.5' } },
+    { depending: { ...createConfig().depending, prettierRuntime: true } }
+  );
+  expect(importing.dependencies?.prettier).toBe('3.9.5');
+
+  const notImporting = await generatePackageJsonFrom({ dependencies: { prettier: '3.9.5' } });
+  expect(notImporting.dependencies?.prettier).toBeUndefined();
+});
+
 test('appends wrangler types to gen-code and postinstall for Cloudflare projects', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(

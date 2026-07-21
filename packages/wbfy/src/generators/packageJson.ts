@@ -864,7 +864,10 @@ async function applyPackageJsonConventions(
   if (hasJava) {
     devDependencies.push('prettier');
   } else {
-    removePrettierArtifacts(jsonObj);
+    // Drop prettier-the-formatter (oxfmt replaces it), but keep `prettier` itself when the package
+    // imports it as a library — otherwise isolated installs turn the removed dependency into a
+    // phantom import (WillBoosterLab/judge #2042).
+    removePrettierArtifacts(jsonObj, config.depending.prettierRuntime);
   }
 
   delete jsonObj.devDependencies['lint-staged'];
@@ -2167,7 +2170,7 @@ function escapeRegExp(value: string): string {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
-function removePrettierArtifacts(jsonObj: WritablePackageJson): void {
+function removePrettierArtifacts(jsonObj: WritablePackageJson, keepPrettierDependency = false): void {
   delete jsonObj.prettier;
   const dependencySections: Array<Partial<Record<string, string>> | undefined> = [
     jsonObj.dependencies,
@@ -2176,7 +2179,7 @@ function removePrettierArtifacts(jsonObj: WritablePackageJson): void {
   ];
   for (const section of dependencySections) {
     if (!section) continue;
-    delete section.prettier;
+    if (!keepPrettierDependency) delete section.prettier;
     delete section['prettier-plugin-java'];
     delete section['prettier-plugin-prisma'];
     delete section['@willbooster/prettier-config'];

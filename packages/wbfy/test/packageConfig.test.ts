@@ -50,6 +50,35 @@ test('detects a nested Tauri application from a parent package', async () => {
   }
 });
 
+test('detects prettier imported as a runtime library, ignoring prefix-sharing packages', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    // The packages/root layout keeps getPackageConfig from looking up a GitHub repository.
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    const srcDirPath = path.join(packageDirPath, 'src');
+    fs.mkdirSync(srcDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(packageDirPath, 'package.json'), '{}');
+    const sourcePath = path.join(srcDirPath, 'format.ts');
+
+    // A package that only shares the `prettier` prefix must not count as importing prettier.
+    fs.writeFileSync(sourcePath, "import organizeAttributes from 'prettier-plugin-organize-attributes';\n");
+    const prefixOnlyConfig = await getPackageConfig(packageDirPath);
+    expect(prefixOnlyConfig?.depending.prettierRuntime).toBe(false);
+
+    fs.writeFileSync(sourcePath, "import { format } from 'prettier';\n");
+    const bareImportConfig = await getPackageConfig(packageDirPath);
+    expect(bareImportConfig?.depending.prettierRuntime).toBe(true);
+
+    // Subpath specifiers (e.g. the browser build) count too.
+    fs.writeFileSync(sourcePath, "import { format } from 'prettier/standalone';\n");
+    const subpathImportConfig = await getPackageConfig(packageDirPath);
+    expect(subpathImportConfig?.depending.prettierRuntime).toBe(true);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('detects @semantic-release/npm in both string and tuple plugin forms', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {

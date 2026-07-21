@@ -73,6 +73,7 @@ export interface PackageConfig {
     next: boolean;
     playwrightTest: boolean;
     playwrightRuntime: boolean;
+    prettierRuntime: boolean;
     prisma: boolean;
     pyright: boolean;
     react: boolean;
@@ -343,6 +344,7 @@ export async function getPackageConfig(
         playwrightTest:
           !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'] || !!devDependencies.playwright,
         playwrightRuntime: doesImportPlaywrightAtRuntime(dirPath),
+        prettierRuntime: doesImportPrettierAtRuntime(dirPath),
         prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
         pyright: !!devDependencies.pyright,
         reactNative: !!dependencies['react-native'],
@@ -806,17 +808,31 @@ function findCargoTomlDirPaths(dirPath: string): string[] {
 }
 
 function doesImportPlaywrightAtRuntime(dirPath: string): boolean {
+  return doesImportPackageAtRuntime(dirPath, 'playwright');
+}
+
+// `prettier` is normally stripped in favor of oxfmt, but a package that imports it as a library
+// (e.g. formatting HTML at runtime) must keep it declared, or isolated installs turn it into a
+// phantom dependency. Subpath specifiers like `prettier/standalone` count too.
+function doesImportPrettierAtRuntime(dirPath: string): boolean {
+  return doesImportPackageAtRuntime(dirPath, 'prettier');
+}
+
+function doesImportPackageAtRuntime(dirPath: string, packageName: string): boolean {
   const files = fg.globSync('{app,src}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}', {
     dot: true,
     cwd: dirPath,
     ignore: [...globIgnore, '**/__tests__/**', '**/*.spec.*', '**/*.test.*', '**/playwright.config.*'],
   });
-  return files.some((file) => {
-    const content = fs.readFileSync(path.resolve(dirPath, file), 'utf8');
-    return /\bfrom\s+['"]playwright['"]|\bimport\s*\(\s*['"]playwright['"]\s*\)|\brequire\s*\(\s*['"]playwright['"]\s*\)/u.test(
-      content
-    );
-  });
+  const escapedName = packageName.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
+  // Match the bare specifier or any subpath of it (`pkg` / `pkg/sub`), but never a different package
+  // that merely shares the prefix (`pkg-other`), since the char after the name must be `/` or a quote.
+  const specifier = String.raw`['"]${escapedName}(?:/[^'"]*)?['"]`;
+  const importRegExp = new RegExp(
+    String.raw`\bfrom\s+${specifier}|\bimport\s*\(\s*${specifier}\s*\)|\brequire\s*\(\s*${specifier}\s*\)`,
+    'u'
+  );
+  return files.some((file) => importRegExp.test(fs.readFileSync(path.resolve(dirPath, file), 'utf8')));
 }
 
 async function fetchRepoInfo(dirPath: string, packageJson: PackageJson): Promise<Record<string, unknown> | undefined> {
