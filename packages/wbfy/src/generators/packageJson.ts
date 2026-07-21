@@ -239,6 +239,30 @@ function removeLegacyYarnInstallPrefixes(script: string): string {
   return result;
 }
 
+/**
+ * Keeps the project's own segments in order, replacing the FIRST segment that `wb gen-code` subsumes (a managed
+ * gen-code spelling, a disposable `wrangler types`, an argument-free `gen-i18n-ts`) with `wb gen-code` and
+ * dropping the rest. Appends the generation only when the script contained none, so nothing is reordered.
+ */
+function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scripts, dirPath: string): string[] {
+  const kinds = segments.map((segment) => classifyScriptSegment(segment, scripts, true, dirPath));
+  // A wrapper around a customized gen-code already generates; adding another invocation would run every
+  // generator twice.
+  let generationPlaced = kinds.includes('genCodeWrapper');
+  const result: string[] = [];
+  for (const [index, segment] of segments.entries()) {
+    const kind = kinds[index];
+    if (kind === 'custom' || kind === 'genCodeWrapper') {
+      result.push(segment);
+    } else if (!generationPlaced) {
+      result.push('wb gen-code');
+      generationPlaced = true;
+    }
+  }
+  if (!generationPlaced) result.push('wb gen-code');
+  return result;
+}
+
 function updatePostinstallScript(
   scripts: PackageJson.Scripts,
   managesWorkerTypes: boolean,
@@ -249,23 +273,15 @@ function updatePostinstallScript(
   // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
   // scripts wrapping them) repositories used to carry are wbfy's to remove now that it owns the generation.
   if (scripts['gen-code'] || managesWorkerTypes) {
-    // A project-owned postinstall step may produce `wrangler types`' own inputs (a wrangler config, `.dev.vars`),
-    // so custom segments keep running FIRST and are never dropped — only the `wrangler types` invocations and the
-    // redundant `wb gen-code` spellings are wbfy's to replace, now that `wb gen-code` owns the generation.
+    // Project-owned steps are never dropped, and their POSITION relative to generation is preserved: a step
+    // before it may produce `wrangler types`' inputs (a wrangler config, `.dev.vars`), while one after it may
+    // consume the generated types. So the managed generation replaces the first managed segment in place, and is
+    // appended only when the script had none. A wrapper around a customized gen-code already performs the
+    // generation plus the project's own steps, so it suppresses the replacement entirely.
     const segments = scripts.postinstall === undefined ? [] : splitScriptSegments(scripts.postinstall);
-    // A wrapper around a customized gen-code already runs the managed generation plus the project's own steps,
-    // so it is kept verbatim and no second `wb gen-code` is appended.
-    const keptSegments = segments?.filter((segment) => {
-      const kind = classifyScriptSegment(segment, scripts, true, dirPath);
-      return kind === 'custom' || kind === 'genCodeWrapper';
-    });
-    const alreadyGenerates = keptSegments?.some(
-      (segment) => classifyScriptSegment(segment, scripts, true, dirPath) === 'genCodeWrapper'
-    );
+    const keptSegments = segments && rebuildPostinstallSegments(segments, scripts, dirPath);
     if (keptSegments) {
-      scripts.postinstall = alreadyGenerates
-        ? keptSegments.join(' && ')
-        : [...keptSegments, 'wb gen-code'].join(' && ');
+      scripts.postinstall = keptSegments.join(' && ');
     } else if (runsOnlyRedundantGeneration(scripts.postinstall)) {
       // Unparseable, but every command it names is one `wb gen-code` already runs, so normalizing loses nothing.
       scripts.postinstall = 'wb gen-code';

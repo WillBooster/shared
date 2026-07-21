@@ -385,6 +385,19 @@ test('preserves a customized gen-i18n-ts invocation appended to gen-code', async
   expect(packageJson.scripts?.['gen-code']).toBe(`bun wb gen-code && ${custom}`);
 });
 
+// A step placed AFTER generation may consume the generated types, so the rewrite must not move it in front.
+test('preserves the position of a custom step after generation', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: { 'gen-code': 'bun wb gen-code', postinstall: 'wb gen-code && bun run build-assets' },
+    },
+    { depending: genI18nTsDepending },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run build-assets');
+});
+
 // Silently dropping a project's own install step (e.g. applying patches) would break its install.
 test('preserves custom postinstall segments', async () => {
   const packageJson = await generatePackageJsonFrom(
