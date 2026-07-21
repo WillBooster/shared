@@ -700,7 +700,7 @@ function detectIsWillBoosterConfigs(dirPath: string, packageJsonPath: string, re
     }
     current = path.dirname(current);
   }
-  return packageJsonPath.includes('/willbooster-configs/');
+  return packageJsonPath.toLowerCase().includes('/willbooster-configs/');
 }
 
 function detectCloudflare(dirPath: string, packageJson: PackageJson): boolean {
