@@ -919,7 +919,7 @@ async function resolveLocalRepoIdentity(
     const remoteUrl = origin?.refs.fetch ?? origin?.refs.push;
     if (remoteUrl) {
       const [org, name] = gitHubUtil.getOrgAndName(remoteUrl);
-      if (org && name) return [org, name];
+      if (org && name) return [canonicalizeOwner(org), name];
     }
   } catch {
     // Not a git repository, or git is unavailable: fall through to the manifest.
@@ -927,7 +927,18 @@ async function resolveLocalRepoIdentity(
   const url = typeof packageJson.repository === 'string' ? packageJson.repository : packageJson.repository?.url;
   if (url) {
     const [org, name] = gitHubUtil.getOrgAndName(url);
-    if (org && name) return [org, name];
+    if (org && name) return [canonicalizeOwner(org), name];
   }
   return [undefined, undefined];
+}
+
+/**
+ * GitHub owner names are case-insensitive, and a remote or manifest URL may spell them any way, but the API's
+ * `full_name` always returned the canonical spelling — which the many exact `=== 'WillBooster'` policy checks
+ * (organization workflows, author metadata, the WillBoosterLab pre-push guard) depend on. Canonicalize here so
+ * the local fallback yields the same identity the API did, instead of silently skipping those policies.
+ */
+function canonicalizeOwner(owner: string): string {
+  const canonicalOwners = ['WillBooster', 'WillBoosterLab'];
+  return canonicalOwners.find((candidate) => candidate.toLowerCase() === owner.toLowerCase()) ?? owner;
 }
