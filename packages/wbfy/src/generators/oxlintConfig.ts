@@ -5,7 +5,10 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
+import {
+  isPublishedWillboosterConfigsPackage,
+  resolveWillboosterConfigModule,
+} from '../utils/willboosterConfigsUtil.js';
 
 import { normalizeConfigContent } from './configContent.js';
 import { ManagedConfigBlocks } from './managedConfigBlock.js';
@@ -16,7 +19,7 @@ const managedConfigBlocks = new ManagedConfigBlocks({
   toolName: 'oxlint',
 });
 
-export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
+export async function generateOxlintConfig(config: PackageConfig, rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     // willbooster-configs publishes config files as product code, so migration
     // must not remove package-provided linter settings. Generated files with
@@ -30,7 +33,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
       ? existingContent
       : replaceLegacyConfigReferences(
           managedConfigBlocks.getConfigContent({
-            desiredContent: getConfigContent(config),
+            desiredContent: getConfigContent(config, rootConfig),
             existingContent,
             filePath,
           })
@@ -70,9 +73,9 @@ function replaceLegacyConfigReferences(content: string): string {
   return content.replaceAll(/(?<![./])\bconfig\./gu, 'oxlintResolvedConfig.');
 }
 
-function getConfigContent(config: PackageConfig): string {
+function getConfigContent(config: PackageConfig, rootConfig: PackageConfig): string {
   const isRootConfig = config.isRoot;
-  const oxlintBaseConfigModule = getOxlintBaseConfigModule(config);
+  const oxlintBaseConfigModule = resolveWillboosterConfigModule(config, rootConfig, '@willbooster/oxlint-config');
 
   // Do not collapse this to a static import for every package. CommonJS packages
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
@@ -85,7 +88,7 @@ function getConfigContent(config: PackageConfig): string {
 import type { OxlintConfig } from 'oxlint';
 
 // oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
-const oxlintBaseConfig = require('@willbooster/oxlint-config');
+const oxlintBaseConfig = require('${oxlintBaseConfigModule}');
 
 ${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig)}`
     )}
@@ -105,10 +108,6 @@ ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
 
 ${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
 `;
-}
-
-function getOxlintBaseConfigModule(config: PackageConfig): string {
-  return config.packageJson?.name === '@willbooster/oxlint-config' ? './config.mjs' : '@willbooster/oxlint-config';
 }
 
 function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean): string {

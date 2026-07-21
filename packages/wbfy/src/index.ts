@@ -343,7 +343,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
         promises.push(generateTsconfig(config));
       }
       if (doesContainJsOrTs(config)) {
-        promises.push(generateOxfmtConfig(config));
+        promises.push(generateOxfmtConfig(config, rootConfig));
         promises.push(generateOxlintConfig(config, rootConfig));
       } else if (!config.isRoot && config.doesContainPackageJson && doesContainJsOrTs(rootConfig)) {
         // Monorepo verification can invoke oxlint from every workspace. Give
