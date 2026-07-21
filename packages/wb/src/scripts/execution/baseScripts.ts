@@ -178,19 +178,33 @@ export abstract class BaseScripts {
     ])}`;
   }
 
+  /**
+   * Just runs Playwright (plus the optional `test/e2e-additional` script), without launching the app.
+   * Use when Playwright's own `webServer` config builds and starts the app under test.
+   */
+  protected buildPlaywrightOnlyCommand(
+    project: Project,
+    argv: TestArgv,
+    { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
+  ): string {
+    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
+    return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
+  }
+
   async testE2EProtected(
     project: Project,
     argv: TestArgv,
     startCommand: string,
-    { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
+    options: TestE2EOptions
   ): Promise<string> {
     project.env.PORT ||= '3000';
     const port = await checkAndKillPortProcess(project.env.PORT, project);
+    if (project.skipLaunchingServerForPlaywright) {
+      return this.buildPlaywrightOnlyCommand(project, argv, options);
+    }
+    const { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] } = options;
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs);
-    if (project.skipLaunchingServerForPlaywright) {
-      return `${playwrightCommand}${suffix}`;
-    }
 
     return buildShellCommand([
       'YARN',

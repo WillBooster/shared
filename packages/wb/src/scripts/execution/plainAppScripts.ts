@@ -1,8 +1,10 @@
+import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import { SERVER_LOG_FILE } from '../../utils/log.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
+import type { TestE2EOptions } from './baseScripts.js';
 import { BaseScripts } from './baseScripts.js';
 
 /**
@@ -41,14 +43,32 @@ class PlainAppScripts extends BaseScripts {
     );
   }
 
-  override testE2EDev(): Promise<string> {
-    return Promise.resolve(`echo 'do nothing.'`);
+  override testE2EDev(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    return this.testE2EWithPlaywrightManagedServer(project, argv, options);
   }
-  override testE2EProduction(): Promise<string> {
-    return Promise.resolve(`echo 'do nothing.'`);
+  override testE2EProduction(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    return this.testE2EWithPlaywrightManagedServer(project, argv, options);
   }
   override testE2EDocker(): Promise<string> {
     return Promise.resolve(`echo 'do nothing.'`);
+  }
+
+  /**
+   * A library has no server of its own, but it may ship a self-contained Playwright fixture whose
+   * config builds and starts the app under test via a `webServer` block (e.g. a Next.js fixture that
+   * verifies the published package imports cleanly). Run Playwright directly in that case — including
+   * on CI, where Playwright's own `webServer` starts the fixture — otherwise there is nothing to run.
+   */
+  private testE2EWithPlaywrightManagedServer(
+    project: Project,
+    argv: TestArgv,
+    options: TestE2EOptions
+  ): Promise<string> {
+    return Promise.resolve(
+      project.hasPlaywrightWebServerConfig
+        ? this.buildPlaywrightOnlyCommand(project, argv, options)
+        : `echo 'do nothing.'`
+    );
   }
   override testStart(): Promise<string> {
     return Promise.resolve(`echo 'do nothing.'`);
