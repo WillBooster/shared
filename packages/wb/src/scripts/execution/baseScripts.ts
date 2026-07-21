@@ -178,19 +178,6 @@ export abstract class BaseScripts {
     ])}`;
   }
 
-  /**
-   * Just runs Playwright (plus the optional `test/e2e-additional` script), without launching the app.
-   * Use when Playwright's own `webServer` config builds and starts the app under test.
-   */
-  protected buildPlaywrightOnlyCommand(
-    project: Project,
-    argv: TestArgv,
-    { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
-  ): string {
-    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
-  }
-
   async testE2EProtected(
     project: Project,
     argv: TestArgv,
@@ -199,12 +186,10 @@ export abstract class BaseScripts {
   ): Promise<string> {
     project.env.PORT ||= '3000';
     const port = await checkAndKillPortProcess(project.env.PORT, project);
+    const playwrightCommand = this.buildPlaywrightOnlyCommand(project, argv, options);
     if (project.skipLaunchingServerForPlaywright) {
-      return this.buildPlaywrightOnlyCommand(project, argv, options);
+      return playwrightCommand;
     }
-    const { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] } = options;
-    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
-    const playwrightCommand = buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs);
 
     return buildShellCommand([
       'YARN',
@@ -216,8 +201,21 @@ export abstract class BaseScripts {
       'first',
       `${startCommand} && exit 1`,
       `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')}
-        && ${playwrightCommand}${suffix}`,
+        && ${playwrightCommand}`,
     ]);
+  }
+
+  /**
+   * Just runs Playwright (plus the optional `test/e2e-additional` script), without launching the app.
+   * Use when Playwright's own `webServer` config builds and starts the app under test.
+   */
+  protected buildPlaywrightOnlyCommand(
+    project: Project,
+    argv: TestArgv,
+    { forwardedPlaywrightArgs = [], playwrightArgs = ['test', 'test/e2e/'] }: TestE2EOptions
+  ): string {
+    const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
+    return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
   }
   // ------------ END: test (e2e) commands ------------
 
