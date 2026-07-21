@@ -62,9 +62,11 @@ function isDisposableWranglerTypes(segment: string, dirPath: string | undefined)
   return envFileWranglerTypesPattern.test(segment) && namesOnlyMissingEnvFiles(segment, dirPath);
 }
 
-// `wb gen-code` runs gen-i18n-ts itself, so a postinstall still invoking it (the script or the binary) is
-// redundant rather than a project-specific step worth preserving.
-const genI18nTsSegmentPattern = /^(?:(?:bun|bunx|yarn|pnpm|npm)\s+)?(?:run\s+)?gen-i18n-ts(?:\s|$)/u;
+// `wb gen-code` runs gen-i18n-ts itself, so an invocation EQUIVALENT to the one it runs is redundant rather than
+// a project-specific step. Equivalent means no arguments: `wb gen-code` either delegates to the package's own
+// `gen-i18n-ts` script or supplies its own fixed defaults, so a direct call carrying custom `-i`/`-o`/`-d`
+// arguments produces a DIFFERENT file and must be preserved.
+const genI18nTsSegmentPattern = /^(?:(?:bun|bunx|yarn|pnpm|npm)\s+)?(?:run\s+)?gen-i18n-ts$/u;
 
 // A runner delegating to one of this package's own scripts, e.g. `bun run gen-types`.
 const scriptRunnerPattern = /^(?:bun|bunx|yarn|pnpm|npm)\s+(?:run\s+)?(\S+)$/u;

@@ -673,10 +673,10 @@ function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefin
       .map((segment) => segment.trim().replaceAll(/\s+/gu, ' '))
       .some((segment) => {
         if (!wranglerTypesPattern.test(segment)) return false;
-        // Shell quoting is not modeled here (wbfy classifies it as custom outright), and a quoted path would be
-        // compared against a filename that still carries its quotes — so treat any quoted invocation as
-        // output-changing rather than risk overwriting a declaration inferred from the real file.
-        if (/['"]/u.test(segment)) return true;
+        // Shell syntax this does not model (wbfy classifies it as custom outright): a quoted path would be
+        // compared against a filename still carrying its quotes, and a pipeline or substitution could feed the
+        // invocation anything. Treat it as output-changing rather than risk overwriting the real declaration.
+        if (/[;|<>`$'"()]/u.test(segment)) return true;
         if (/(?:^|\s)(?:--help|-h)(?:\s|=|$)/u.test(segment)) return false;
         // `--check` compares the result FOR THE SUPPLIED OPTIONS, so it is only harmless when the rest of the
         // invocation is equivalent to the bare one.
@@ -685,7 +685,9 @@ function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefin
           .replaceAll(/\s+/gu, ' ')
           .trim();
         const candidate = withoutCheck === segment ? segment : withoutCheck;
-        if (!envFileOnlyPattern.test(candidate)) return withoutCheck === segment;
+        // Not equivalent to the bare invocation, with or without `--check`: `--check` compares the result FOR
+        // THE SUPPLIED OPTIONS, so `--check --strict-vars=false` still describes a different file.
+        if (!envFileOnlyPattern.test(candidate)) return true;
         return [...candidate.matchAll(/--env-file\s+(\S+)/gu)].some(
           (match) => !!match[1] && fs.existsSync(path.resolve(dirPath, match[1]))
         );

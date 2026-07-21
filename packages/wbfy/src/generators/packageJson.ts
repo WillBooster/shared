@@ -299,7 +299,10 @@ function updatePostinstallScript(
     classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false, dirPath) === 'wranglerTypes' &&
     // Package scripts compose, so another script (typically `build`) may run this one. Deleting a script that is
     // still referenced would leave `bun run build` failing on a missing script.
-    !Object.entries(scripts).some(([name, script]) => name !== 'gen-types' && script?.includes('gen-types'))
+    // Whole-token match: a `gen-types-foo` or `gen-types:db` script is a different script, not a reference.
+    !Object.entries(scripts).some(
+      ([name, script]) => name !== 'gen-types' && script !== undefined && /(?<![\w:-])gen-types(?![\w:-])/u.test(script)
+    )
   ) {
     delete scripts['gen-types'];
   }

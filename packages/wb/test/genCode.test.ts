@@ -72,6 +72,36 @@ describe('getGenCodeScripts', () => {
     }
   });
 
+  it.each([
+    ['strict vars', 'wrangler types --check --strict-vars=false'],
+    ['a custom output path', 'wrangler types --check --path src/env.d.ts'],
+    ['a quoted env file', 'wrangler types --env-file ".env.example"'],
+  ])('does not generate worker types when a script checks %s', async (_description, script) => {
+    const dirPath = await createWorkerProject(
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'check-types': script } },
+      true
+    );
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('still generates worker types alongside a plain freshness check', async () => {
+    const dirPath = await createWorkerProject(
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'check-types': 'wrangler types --check' } },
+      true
+    );
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
   it('runs the project gen-i18n-ts script when it exists', async () => {
     const dirPath = await createProject({
       scripts: {

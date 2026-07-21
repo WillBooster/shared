@@ -372,6 +372,19 @@ test('keeps a wrapper around a customized gen-code script', async () => {
   expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code && bun run build-assets');
 });
 
+// `wb gen-code` runs gen-i18n-ts with the package's own script or its own fixed defaults, so a direct call
+// carrying custom arguments generates a DIFFERENT file and must survive.
+test('preserves a customized gen-i18n-ts invocation appended to gen-code', async () => {
+  const custom = 'gen-i18n-ts -i locales -o src/customI18n.ts -d en-US';
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-code': `wb gen-code && ${custom}` }, dependencies: { 'gen-i18n-ts': '4.0.6' } },
+    { depending: genI18nTsDepending },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.['gen-code']).toBe(`bun wb gen-code && ${custom}`);
+});
+
 // Silently dropping a project's own install step (e.g. applying patches) would break its install.
 test('preserves custom postinstall segments', async () => {
   const packageJson = await generatePackageJsonFrom(
