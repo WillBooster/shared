@@ -20,6 +20,7 @@ export const FNOX_AGE_RECIPIENTS = [
   { name: 'ponharu1', publicKey: 'age18rugldf9htc6um5eplpx27k53ep4zn0lhzwffgnxzhrq0c7zgvyq3zccdy' },
   { name: 'ponharu2', publicKey: 'age1nz2n99crjr7np9xjglwfffc3dud45dhewqzqfzpztkdwu4hj74gq6el533' },
   { name: 'ci', publicKey: 'age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak' },
+  { name: 'remin', publicKey: 'age1mw4pz9dujy9dmhk0palqawjkj7m4k7zx78yr9fjt63sa5l3e43uq6nw004' },
 ];
 
 interface FnoxToml {
