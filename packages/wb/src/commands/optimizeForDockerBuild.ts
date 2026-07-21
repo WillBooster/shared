@@ -72,12 +72,27 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 
     // Materialize private dependencies on the host first so the per-project rewrite below resolves
     // them to file: paths and the Docker build needs no registry credentials. Only in --outside
-    // mode (the host preparation phase): the in-image second pass has no node_modules/registry to
-    // materialize from. `warn` on missing auth preserves the pre-existing behavior of continuing
-    // (and warning) when a package can be neither reused nor downloaded, so this stays a pure
-    // convenience that lets repositories drop the explicit `wb setup-private-packages` step.
-    if (argv.outside && !argv.dryRun) {
-      await materializePrivatePackages(projects.root.dirPath, collectManifests(projects), { onMissingAuth: 'warn' });
+    // mode (the in-image second pass has no node_modules/registry to materialize from) and only
+    // when a private dependency is actually declared, so repos without one are untouched — no empty
+    // output directories, no spurious "COPY" hint. Failures are non-fatal and non-destructive:
+    // materialize throws before deleting any existing output (and cleans up its staging on a failed
+    // download), so a repo lacking registry credentials keeps building exactly as before, with the
+    // per-project rewrite below emitting the existing "run wb setup-private-packages" hint. This
+    // keeps the step a pure convenience that lets repositories drop the explicit command.
+    if (argv.outside) {
+      const manifests = collectManifests(projects);
+      if (manifests.some(declaresPrivateDependency)) {
+        try {
+          await materializePrivatePackages(projects.root.dirPath, manifests, { dryRun: Boolean(argv.dryRun) });
+        } catch (error) {
+          console.warn(
+            chalk.yellow(
+              `Could not auto-materialize private packages (${error instanceof Error ? error.message : String(error)}); ` +
+                'run `wb setup-private-packages` if the Docker build needs them. Continuing.'
+            )
+          );
+        }
+      }
     }
 
     const optimizedProjects: Project[] = [];
@@ -111,6 +126,19 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
   },
 };
+
+/** Whether any dependency section declares a private git or `@willbooster-private/*` registry dependency. */
+function declaresPrivateDependency(packageJson: PackageJson): boolean {
+  return dependencySectionKeys.some((key) => {
+    const deps = packageJson[key];
+    return (
+      deps !== undefined &&
+      Object.entries(deps).some(
+        ([name, value]) => isPrivateGitDependency(value) || isPrivateRegistryDependency(name, value)
+      )
+    );
+  });
+}
 
 function rewritePrivateGitHubDependencies(project: Project, packageJson: PackageJson): string[] {
   return rewritePrivateGitHubDependenciesForDir(project.rootDirPath, project.dirPath, packageJson);

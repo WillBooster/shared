@@ -5,7 +5,7 @@ import chalk from 'chalk';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
-import { findDescendantProjects, type FoundProjects } from '../project.js';
+import { findDescendantProjects, findRootAndSelfProjects, type FoundProjects } from '../project.js';
 import type { PrivateRegistryAuth } from '../utils/privateRegistry.js';
 import {
   PRIVATE_REGISTRY_SCOPE,
@@ -49,7 +49,15 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     'The Dockerfile must COPY the generated directories (e.g. `COPY @willbooster/ @willbooster/` and `COPY @willbooster-private/ @willbooster-private/`) so the in-image install resolves the rewritten file: paths.',
   builder,
   async handler(argv) {
-    const projects = await findDescendantProjects(argv, false);
+    const rootAndSelf = findRootAndSelfProjects(argv, false);
+    if (!rootAndSelf) {
+      console.error(chalk.red('No project found.'));
+      process.exit(1);
+    }
+    // Resolve the descendant set from the repository ROOT (not the current directory) so the
+    // command scans the root manifest and every workspace manifest regardless of where it runs:
+    // findDescendantProjects returns only the current project when invoked from a workspace.
+    const projects = await findDescendantProjects(argv, false, rootAndSelf.root.dirPath);
     if (!projects) {
       console.error(chalk.red('No project found.'));
       process.exit(1);
@@ -58,10 +66,15 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
     // Scan the root manifest and every workspace manifest: a private dependency may be declared in
     // a sub-package (e.g. packages/server) rather than the root, yet it still materializes at the
     // repository root so `wb optimizeForDockerBuild` resolves it uniformly.
-    await materializePrivatePackages(projects.root.dirPath, collectManifests(projects), {
-      outDir: argv.outDir,
-      dryRun: Boolean(argv.dryRun),
-    });
+    try {
+      await materializePrivatePackages(projects.root.dirPath, collectManifests(projects), {
+        outDir: argv.outDir,
+        dryRun: Boolean(argv.dryRun),
+      });
+    } catch (error) {
+      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
+      process.exit(1);
+    }
   },
 };
 
@@ -69,14 +82,6 @@ export interface MaterializePrivatePackagesOptions {
   /** Directory (relative to the repository root) that git dependencies are copied into. */
   outDir?: string;
   dryRun?: boolean;
-  /**
-   * How to handle a registry package that must be downloaded when no registry auth is configured.
-   * `error` (the default, used by the explicit `wb setup-private-packages` command) fails; `warn`
-   * (used by the automatic `wb optimizeForDockerBuild --outside` step) leaves those packages
-   * un-materialized so the pre-existing "run wb setup-private-packages" warning path stays
-   * backward compatible.
-   */
-  onMissingAuth?: 'error' | 'warn';
 }
 
 /** The root manifest followed by each distinct workspace manifest. */
@@ -93,7 +98,7 @@ export async function materializePrivatePackages(
   manifestPackageJsons: PackageJson[],
   options: MaterializePrivatePackagesOptions = {}
 ): Promise<void> {
-  const { outDir = '@willbooster', dryRun = false, onMissingAuth = 'error' } = options;
+  const { outDir = '@willbooster', dryRun = false } = options;
 
   // Output paths are recursively DELETED before being recreated, so none of them may contain a
   // symlink component: a symlink (e.g. `escape -> node_modules`, or `@willbooster-private`
@@ -165,22 +170,17 @@ export async function materializePrivatePackages(
   // download actually happens (CI test steps deliberately receive no Verdaccio token).
   const downloadedPackages = [...privatePackages.values()].filter((p) => p.kind === 'registry' && !p.sourceDirPath);
   // Resolve required configuration BEFORE deleting the existing materializations, so a missing
-  // registry configuration cannot destroy a previously usable output tree.
+  // registry configuration cannot destroy a previously usable output tree. Throw (rather than
+  // exit) so callers can decide: `wb setup-private-packages` reports it and exits, while the
+  // automatic `wb optimizeForDockerBuild --outside` step catches it and continues, leaving the
+  // existing output untouched (nothing has been deleted yet at this point).
   const auth = downloadedPackages.length > 0 ? resolvePrivateRegistryAuth(rootDirPath) : undefined;
   if (downloadedPackages.length > 0 && !auth) {
-    const detail =
+    throw new Error(
       `Cannot download ${downloadedPackages.map((p) => p.name).join(', ')}: no registry configured for the ${PRIVATE_REGISTRY_SCOPE} scope; ` +
-      `add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to .npmrc or ~/.npmrc. Only installed copies satisfying an exact version or ` +
-      'semver range are reused without registry access; dist-tag specifiers (e.g. `latest`) always require it.';
-    if (onMissingAuth === 'error') {
-      console.error(chalk.red(detail));
-      process.exit(1);
-    }
-    // Automatic path (wb optimizeForDockerBuild --outside): leave these un-materialized instead of
-    // failing, mirroring the pre-existing behavior; the caller's per-project rewrite then warns
-    // and keeps the registry specifier so an in-image install with credentials can still resolve it.
-    console.warn(chalk.yellow(`${detail} Skipping; the Docker build will need registry credentials for them.`));
-    for (const skipped of downloadedPackages) privatePackages.delete(skipped.name);
+        `add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to .npmrc or ~/.npmrc. Only installed copies satisfying an exact version or ` +
+        'semver range are reused without registry access; dist-tag specifiers (e.g. `latest`) always require it.'
+    );
   }
 
   const copiedPackages = [...privatePackages.values()].filter((p) => p.kind === 'git');
@@ -275,7 +275,7 @@ async function collectPrivatePackages(
       }
       const narrower = narrowerCompatibleRequirement(queued, requested);
       if (narrower === undefined) {
-        assertNoVersionConflict(queued, requested, 'a workspace manifest');
+        assertNoVersionConflict(queued, requested, packageJson.name ?? 'a workspace manifest');
       } else {
         queued.versionSpecifier = narrower.versionSpecifier;
       }
