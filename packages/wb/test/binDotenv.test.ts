@@ -158,6 +158,27 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
+  it('does not let FNOX_PROFILE redirect the .env cascade in a repo without fnox.toml', async () => {
+    // FNOX_PROFILE is a fnox-only selector; in a legacy `.env`-only project it must NOT choose which
+    // `.env.<x>` files load — that stays `WB_ENV || NODE_ENV || development`.
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(path.join(projectDirPath, '.env.test'), 'SELECTED=test\n');
+    await fs.writeFile(path.join(projectDirPath, '.env.production'), 'SELECTED=production\n');
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$SELECTED"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, NODE_ENV: 'test', FNOX_PROFILE: 'production' },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('test\n');
+    expect(result.status).toBe(0);
+  });
+
   it("restores yarn's temporary bin folder for Plug'n'Play projects without node_modules", async () => {
     // PnP installs create no node_modules/.bin, so the (otherwise stripped) BERRY_BIN_FOLDER
     // is the only source of dependency executables and must be restored.
