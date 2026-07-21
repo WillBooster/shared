@@ -264,6 +264,35 @@ function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scr
   return result;
 }
 
+/**
+ * Removes the segments `wb gen-code` performs itself (its own spellings, `wrangler types`, argument-free
+ * `gen-i18n-ts`) from a script wbfy did not generate, keeping the first managed segment's POSITION so a custom
+ * step that consumes generated output still runs after it. Returns undefined when nothing should change or the
+ * script cannot be parsed.
+ */
+function stripSubsumedGenCodeSegments(
+  script: string,
+  scripts: PackageJson.Scripts,
+  dirPath: string
+): string | undefined {
+  const segments = splitScriptSegments(script);
+  if (!segments) return undefined;
+  const rebuilt: string[] = [];
+  let generationPlaced = false;
+  for (const segment of segments) {
+    const kind = classifyScriptSegment(segment, scripts, true, dirPath);
+    if (kind === 'custom' || kind === 'genCodeWrapper') {
+      rebuilt.push(segment);
+    } else if (!generationPlaced) {
+      rebuilt.push('bun wb gen-code');
+      generationPlaced = true;
+    }
+  }
+  if (!generationPlaced) return undefined;
+  const rebuiltScript = rebuilt.join(' && ');
+  return rebuiltScript === script ? undefined : rebuiltScript;
+}
+
 function updatePostinstallScript(
   scripts: PackageJson.Scripts,
   managesWorkerTypes: boolean,
@@ -1345,6 +1374,13 @@ async function normalizePackageMetadata(
     if (customSegments) {
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
     }
+  } else if (genCodeScript) {
+    // A hand-written gen-code script wbfy would not generate itself still has to lose the invocations `wb gen-code`
+    // now subsumes; without this the redundant `wrangler types` survives every future run, which is the drift this
+    // consolidation exists to remove. Only wbfy's own segments go — custom steps keep their position, and an
+    // unparseable script is left alone.
+    const stripped = stripSubsumedGenCodeSegments(genCodeScript, jsonObj.scripts, config.dirPath);
+    if (stripped !== undefined) jsonObj.scripts['gen-code'] = stripped;
   }
   normalizeGenI18nTsScript(config, jsonObj);
   updatePostinstallScript(
