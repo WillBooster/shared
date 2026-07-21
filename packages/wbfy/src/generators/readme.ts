@@ -209,28 +209,31 @@ function isTitleNode(node: RootContent | undefined): boolean {
 }
 
 /**
- * Whether the HTML block actually RENDERS an `<h1>`. Comments and quoted attribute values are
- * removed first: a documentation example or a `title="<h1>"` attribute mentions the tag without
- * rendering it, and treating that as the title buries the badges below the real heading.
+ * Whether the HTML block unambiguously RENDERS an `<h1>` — the centered-title layout many READMEs
+ * use (`<h1>`, or a `<div>`/`<p>` wrapping one).
+ *
+ * Deliberately NOT a general HTML parser. Deciding this exactly requires the real tokenizer's
+ * states — raw text, RCDATA, script data, attribute values, template contents, declarations — and
+ * approximating them with regexes is the same losing game the Markdown scanning this module
+ * replaced was playing. So the rule is: tokenize only the simple case, and treat anything carrying
+ * a construct whose parsing depends on those states as NOT a title. Being wrong that way puts the
+ * badges at the top of the file, which is merely unhelpful; being wrong the other way rewrites the
+ * user's README around the wrong anchor.
  */
 function containsRenderedH1(html: string): boolean {
-  const withoutInertText = html
-    // The non-element HTML constructs CommonMark recognizes as blocks: comments, CDATA sections,
-    // processing instructions, and declarations. None of them renders a tag written inside.
-    .replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, '')
-    .replaceAll(/<!\[CDATA\[[\s\S]*?(?:\]\]>|$)/gu, '')
-    .replaceAll(/<\?[\s\S]*?(?:\?>|$)/gu, '')
-    .replaceAll(/<![a-zA-Z][\s\S]*?(?:>|$)/gu, '')
-    // HTML parses the content of these elements as raw text, RCDATA, or script data, so a tag
-    // written inside one is not an element. The end tag is optional: an unclosed one stays in that
-    // state through EOF, which is why the closing alternative includes `$`. Only their contents go,
-    // since the elements' own tags are still tags.
-    .replaceAll(/(<(script|style|textarea|title|iframe|noframes|noembed|xmp)\b[^>]*>)[\s\S]*?(<\/\2\s*>|$)/giu, '$1$3');
-  // Quoting is only syntactically significant inside a start tag, so attribute values are consumed
-  // as part of their own tag while quotation marks in ordinary text stay text. That keeps
-  // `<div title="<h1>">` from counting while `"<h1>Project</h1>"` still does.
+  // Comments cannot nest and end unambiguously, so they are simply removed rather than disqualifying.
+  const withoutComments = html.replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, '');
+  // CDATA, processing instructions, declarations, elements whose content is raw text / RCDATA /
+  // script data, and `<template>` (whose contents are inert). A quoted attribute containing `<`
+  // makes even locating these unreliable, so it disqualifies the block too.
+  const ambiguousConstructPattern =
+    /<!\[CDATA\[|<\?|<![a-zA-Z]|<\/?(?:script|style|textarea|title|iframe|noframes|noembed|xmp|template)\b|"[^"]*<[^"]*"|'[^']*<[^']*'/iu;
+  if (ambiguousConstructPattern.test(withoutComments)) return false;
+  // Quoting is significant only inside a start tag, so an attribute value is consumed with its own
+  // tag while quotation marks in ordinary text stay text: `<div title="&lt;h1&gt;">` does not count,
+  // `"<h1>Project</h1>"` does.
   const startTagPattern = /<([a-zA-Z][^\s/>]*)(?:"[^"]*"|'[^']*'|[^>"'])*>/gu;
-  for (const match of withoutInertText.matchAll(startTagPattern)) {
+  for (const match of withoutComments.matchAll(startTagPattern)) {
     if (match[1]?.toLowerCase() === 'h1') return true;
   }
   return false;

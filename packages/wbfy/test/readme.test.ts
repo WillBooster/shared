@@ -406,12 +406,15 @@ test('leaves a user-authored badge block above the title', () => {
   expect(writeBadgeBlock(first, [badgeOf('1.2.3')])).toBe(first);
 });
 
-// Quoting is significant only inside a start tag; quotation marks in ordinary text are text.
-test('treats an <h1> surrounded by quotation marks in text as the title', () => {
+// A quoted span containing `<` is indistinguishable from an attribute value without the real
+// tokenizer, so the block is treated as ambiguous and the badges go to the top. Deliberately
+// conservative: mis-anchoring rewrites the user's README around the wrong heading, while this
+// merely puts the badges above an unusual title.
+test('does not anchor to an <h1> surrounded by quotation marks in text', () => {
   const htmlTitle = '<div>\n"<h1>Project</h1>"\n</div>';
   const result = writeBadgeBlock(`${htmlTitle}\n\nDescription.\n`, [badgeOf('1.2.3')]);
 
-  expect(result.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(result.indexOf(htmlTitle));
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlTitle));
 });
 
 // HTML parses these elements' content as raw text, so a tag written inside one is not an element.
@@ -443,6 +446,17 @@ test.each([
   ['a CDATA section', '<![CDATA[<h1>Not a title</h1>]]>'],
   ['a declaration', '<!DOCTYPE example "<h1>Not a title</h1>">'],
 ])('ignores an <h1> inside %s', (_description, htmlBlock) => {
+  const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
+
+// Constructs whose parsing depends on tokenizer state disqualify the block from being a title, so
+// the badges go to the top rather than being anchored to a heading that may not render.
+test.each([
+  ['a raw-text element in a quoted attribute', '<div data-example="<script>"><h1>Actual title</h1></div>'],
+  ['a template', '<template><h1>Not a title</h1></template>'],
+])('does not anchor to an HTML block carrying %s', (_description, htmlBlock) => {
   const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
 
   expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
