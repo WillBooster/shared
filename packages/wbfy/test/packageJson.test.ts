@@ -251,12 +251,48 @@ test('appends wrangler types to gen-code and postinstall for Cloudflare projects
 // flags would silently change the generated declarations. Both managed scripts must run the very same command, or the
 // file would depend on whether install or `run gen-code` happened to run last.
 test.each([
-  ['postinstall', { postinstall: 'wb gen-code && wrangler types --strict-vars=false' }],
-  ['a script of its own', { 'gen-types': 'wrangler types --strict-vars=false' }],
-])('preserves a project-specific wrangler types invocation kept in %s', async (_description, scripts) => {
+  // The generator already runs in postinstall, so it is reordered ahead of `wb gen-code` (which consumes the
+  // generated worker types).
+  [
+    'postinstall',
+    { postinstall: 'wb gen-code && wrangler types --strict-vars=false' },
+    'wrangler types --strict-vars=false && wb gen-code',
+  ],
+  // The generator lives in a script of its own, so wbfy appends the resolved command to postinstall.
+  [
+    'a script of its own',
+    { 'gen-types': 'wrangler types --strict-vars=false' },
+    'wb gen-code && wrangler types --strict-vars=false',
+  ],
+])(
+  'preserves a project-specific wrangler types invocation kept in %s',
+  async (_description, scripts, expectedPostinstall) => {
+    const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
+    const packageJson = await generatePackageJsonFrom(
+      { scripts, ...wranglerPackageJson },
+      {
+        depending: genI18nTsDepending,
+        isCloudflare: true,
+        doesContainWranglerConfig: true,
+        packageJson: wranglerPackageJson,
+      },
+      { createI18nDir: true }
+    );
+
+    expect(packageJson.scripts).toMatchObject({
+      'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
+      postinstall: expectedPostinstall,
+    });
+  }
+);
+
+// A project may append its own step to the managed `bun wb gen-code` (e.g. building extra deploy assets).
+// Regenerating gen-code must keep that step instead of discarding it: only the managed gen-code and the
+// wrangler-types invocation are wbfy's to rewrite.
+test('preserves project-specific steps appended to the managed gen-code script', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
-    { scripts, ...wranglerPackageJson },
+    { scripts: { 'gen-code': 'bun wb gen-code && bun run build-assets' }, ...wranglerPackageJson },
     {
       depending: genI18nTsDepending,
       isCloudflare: true,
@@ -266,10 +302,7 @@ test.each([
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts).toMatchObject({
-    'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
-    postinstall: 'wb gen-code && wrangler types --strict-vars=false',
-  });
+  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code && bun run build-assets && bunx wrangler types');
 });
 
 // A build script composing gen-code with a build step reaches the generator only through the managed gen-code
@@ -298,7 +331,7 @@ test('keeps management for a script composing gen-code with a build step', async
   expect(packageJson.scripts).toMatchObject({
     'build/core': 'bun run gen-code && vite build',
     'gen-code': 'bun wb gen-code && wrangler types --strict-vars=false',
-    postinstall: 'wb gen-code && wrangler types --strict-vars=false',
+    postinstall: 'wrangler types --strict-vars=false && wb gen-code',
   });
 });
 
@@ -390,7 +423,7 @@ test('preserves a wrangler types invocation with a custom config path when overw
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --config config/worker.jsonc');
+  expect(packageJson.scripts?.postinstall).toBe('wrangler types --config config/worker.jsonc && wb gen-code');
 });
 
 // The generated file is a pure function of committed inputs only when the `Env` inference source (.dev.vars,
@@ -734,7 +767,7 @@ test('prefers the generator postinstall already runs over other scripts', async 
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'bun wb gen-code && wrangler types --env-interface AppEnv',
-    postinstall: 'wb gen-code && wrangler types --env-interface AppEnv',
+    postinstall: 'wrangler types --env-interface AppEnv && wb gen-code',
   });
 });
 
@@ -859,7 +892,7 @@ test('keeps generation prerequisites when rewriting postinstall', async () => {
   );
 
   expect(packageJson.scripts?.postinstall).toBe(
-    'wb gen-code && node scripts/prepareTypes.js && wrangler types --strict-vars=false'
+    'node scripts/prepareTypes.js && wrangler types --strict-vars=false && wb gen-code'
   );
 });
 
@@ -915,7 +948,7 @@ test('skips worker-types management for a piped custom-config invocation', async
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe(`wb gen-code && ${postinstall}`);
+  expect(packageJson.scripts?.postinstall).toBe(`${postinstall} && wb gen-code`);
 });
 
 // `yarn --cwd . gen-types` runs this package's script; the option value must not be mistaken for the script name.
@@ -938,7 +971,7 @@ test('preserves a wrapper invoked through a runner option with a value', async (
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && yarn --cwd . gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('yarn --cwd . gen-types && wb gen-code');
 });
 
 // A gen-code wrapper is interchangeable with `wb gen-code` only when the gen-code script is the managed
@@ -958,7 +991,7 @@ test('preserves a gen-code wrapper whose script is a custom pipeline', async () 
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'node scripts/prepareTypes.js && wrangler types --strict-vars=false',
-    postinstall: 'wb gen-code && bun run gen-code',
+    postinstall: 'bun run gen-code && wb gen-code',
   });
 });
 
@@ -997,7 +1030,7 @@ test('preserves a gen-code wrapper whose script includes a custom-config invocat
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'wb gen-code && wrangler types --config config/worker.jsonc',
-    postinstall: 'wb gen-code && bun run gen-code',
+    postinstall: 'bun run gen-code && wb gen-code',
   });
 });
 
@@ -1058,7 +1091,7 @@ test('recognizes an exec-form wb gen-code segment when rewriting postinstall', a
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --strict-vars=false');
+  expect(packageJson.scripts?.postinstall).toBe('wrangler types --strict-vars=false && wb gen-code');
 });
 
 // Forwarded wrapper arguments (`npm run gen-types -- --check`) change the effective invocation, so the wrapper
@@ -1436,7 +1469,7 @@ test('preserves a wrapper script invoking wrangler types with a custom config wh
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run gen-types');
+  expect(packageJson.scripts?.postinstall).toBe('bun run gen-types && wb gen-code');
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {

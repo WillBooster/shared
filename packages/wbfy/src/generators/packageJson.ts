@@ -285,7 +285,32 @@ function updatePostinstallScript(
     const preservedSegments = involvesWranglerTypes
       ? postinstallSegments.filter((segment) => segment !== '' && !isManagedGenCodeSegment(segment, scripts))
       : [];
-    scripts.postinstall = ['wb gen-code', ...preservedSegments].join(' && ');
+    // worker-configuration.d.ts must be generated BEFORE `wb gen-code`: a types-consuming generator (e.g.
+    // chakra typegen against the Cloudflare `Env`) fails on a fresh checkout without it, and because install
+    // lifecycle failures are tolerated it then silently leaves the file ungenerated for the later type check.
+    // Insert `wb gen-code` right after the last segment that (re)generates the MANAGED worker types, keeping
+    // the project's own pipeline — prerequisites and their relative order — intact. Any invocation writing the
+    // default `worker-configuration.d.ts` counts (a bare generator, or one that only changes inputs like
+    // `--env-file`/`--config`); a `harmless` one does not (`--check`/`--help` generate nothing, and a custom
+    // output path writes a file `wb gen-code` does not consume), so it stays after gen-code as before. When
+    // none is present (e.g. an unmodeled or directory-changing pipeline) gen-code leads as it used to.
+    let lastTypesGeneratorIndex = -1;
+    for (const [index, segment] of preservedSegments.entries()) {
+      // A directory change runs the remaining segments elsewhere, so a generator past it writes another
+      // package's file — stop looking; `wb gen-code` then leads those trailing segments as before.
+      if (scriptChangesWorkingDirectory(segment)) break;
+      const generatesManagedTypes = reachesWranglerTypes(
+        segment,
+        scripts,
+        (invocationArgs) => classifyWranglerTypesInvocation(invocationArgs) !== 'harmless'
+      );
+      if (generatesManagedTypes) lastTypesGeneratorIndex = index;
+    }
+    scripts.postinstall = [
+      ...preservedSegments.slice(0, lastTypesGeneratorIndex + 1),
+      'wb gen-code',
+      ...preservedSegments.slice(lastTypesGeneratorIndex + 1),
+    ].join(' && ');
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
   }
@@ -1349,7 +1374,22 @@ async function normalizePackageMetadata(
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    jsonObj.scripts['gen-code'] = appendWranglerTypes('bun wb gen-code', wranglerTypes);
+    // Preserve project-specific steps a repo appended to the managed `bun wb gen-code` (e.g. building extra
+    // deploy assets) instead of discarding them: only the managed gen-code and the wrangler-types invocation
+    // are wbfy's to regenerate. Their relative order is kept, and the wrangler-types command is re-appended
+    // through the shared helper so it matches postinstall.
+    const customSegments = genCodeScript
+      ? splitCommandSegments(genCodeScript).filter(
+          (segment) =>
+            segment !== '' &&
+            !isManagedGenCodeSegment(segment, jsonObj.scripts) &&
+            !reachesWranglerTypes(segment, jsonObj.scripts, () => true)
+        )
+      : [];
+    jsonObj.scripts['gen-code'] = appendWranglerTypes(
+      ['bun wb gen-code', ...customSegments].join(' && '),
+      wranglerTypes
+    );
   } else if (
     genCodeScript &&
     wranglerTypes &&
