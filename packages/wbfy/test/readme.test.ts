@@ -413,3 +413,11 @@ test('treats an <h1> surrounded by quotation marks in text as the title', () => 
 
   expect(result.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(result.indexOf(htmlTitle));
 });
+
+// HTML parses these elements' content as raw text, so a tag written inside one is not an element.
+test.each(['script', 'style', 'textarea', 'title'])('ignores an <h1> inside <%s>', (element) => {
+  const htmlBlock = `<${element}>const example = "<h1>Not a title</h1>";</${element}>`;
+  const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
