@@ -8,7 +8,7 @@ import type { PackageJson } from 'type-fest';
  * worker-configuration.d.ts generated. It only needs to recognize the two segments it owns — the managed
  * `wb gen-code` and a plain `wrangler types` invocation — and to leave everything else alone.
  */
-export type ScriptSegmentKind = 'custom' | 'genCode' | 'genI18nTs' | 'wranglerTypes';
+export type ScriptSegmentKind = 'custom' | 'genCode' | 'genCodeWrapper' | 'genI18nTs' | 'wranglerTypes';
 
 // Runner spellings wbfy has generated over time (`wb gen-code`, `bun wb gen-code`) plus wrappers around the
 // package's own `gen-code` script.
@@ -92,8 +92,12 @@ export function classifyScriptSegment(
   // generation, so it counts as gen-code; treating it as custom would append a second `wb gen-code` and run every
   // generator twice per install.
   if (segments?.length !== 1) {
+    // A wrapper around a CUSTOMIZED gen-code (`bun wb gen-code && bun run build-assets`) already performs the
+    // managed generation AND the project's own steps, so it is the install-time entry point: it must be kept as
+    // written. Replacing it with a bare `wb gen-code` would drop those steps; appending one would run every
+    // generator twice.
     return segments?.some((inner) => genCodeSegmentPattern.test(inner.trim().replaceAll(/\s+/gu, ' ')))
-      ? 'genCode'
+      ? 'genCodeWrapper'
       : 'custom';
   }
   return classifyScriptSegment(segments[0] ?? '', scripts, false, dirPath);
@@ -105,7 +109,10 @@ export function classifyScriptSegment(
 export function runsManagedGenCode(script: string | undefined, scripts: PackageJson.Scripts): boolean {
   if (!script) return false;
   const segments = splitScriptSegments(script);
-  return !!segments?.some((segment) => classifyScriptSegment(segment, scripts) === 'genCode');
+  return !!segments?.some((segment) => {
+    const kind = classifyScriptSegment(segment, scripts);
+    return kind === 'genCode' || kind === 'genCodeWrapper';
+  });
 }
 
 /**

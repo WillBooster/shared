@@ -172,7 +172,7 @@ function buildSettings(config: PackageConfig, liveSettings: Settings | undefined
       }) as Settings)
     : generatedSettings;
   newSettings.extends = mergeRenovateExtends(generatedExtends, liveSettings?.extends).filter(
-    (preset) => !config.isWillBoosterConfigs || preset !== sharedPreset
+    (preset) => !config.isWillBoosterConfigs || preset.toLowerCase() !== sharedPreset.toLowerCase()
   );
   return newSettings;
 }

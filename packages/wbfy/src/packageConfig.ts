@@ -309,7 +309,9 @@ export async function getPackageConfig(
       // Keyed on the git remote rather than the checkout path: ghq and manual clones are free to
       // name the directory anything, and any unrelated path containing "willbooster-configs" would
       // otherwise be misdetected.
-      isWillBoosterConfigs: repoAuthor === 'WillBooster' && repoName === 'willbooster-configs',
+      // GitHub owner and repository names are case-insensitive, and a remote may spell them either way.
+      isWillBoosterConfigs:
+        repoAuthor?.toLowerCase() === 'willbooster' && repoName?.toLowerCase() === 'willbooster-configs',
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
       // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in

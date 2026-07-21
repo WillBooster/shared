@@ -244,11 +244,19 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerType
     // so custom segments keep running FIRST and are never dropped — only the `wrangler types` invocations and the
     // redundant `wb gen-code` spellings are wbfy's to replace, now that `wb gen-code` owns the generation.
     const segments = scripts.postinstall === undefined ? [] : splitScriptSegments(scripts.postinstall);
-    const customSegments = segments?.filter(
-      (segment) => classifyScriptSegment(segment, scripts, true, dirPath) === 'custom'
+    // A wrapper around a customized gen-code already runs the managed generation plus the project's own steps,
+    // so it is kept verbatim and no second `wb gen-code` is appended.
+    const keptSegments = segments?.filter((segment) => {
+      const kind = classifyScriptSegment(segment, scripts, true, dirPath);
+      return kind === 'custom' || kind === 'genCodeWrapper';
+    });
+    const alreadyGenerates = keptSegments?.some(
+      (segment) => classifyScriptSegment(segment, scripts, true, dirPath) === 'genCodeWrapper'
     );
-    if (customSegments) {
-      scripts.postinstall = [...customSegments, 'wb gen-code'].join(' && ');
+    if (keptSegments) {
+      scripts.postinstall = alreadyGenerates
+        ? keptSegments.join(' && ')
+        : [...keptSegments, 'wb gen-code'].join(' && ');
     } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
       // Unparseable, but the only command it names is one `wb gen-code` already runs (these are legacy shapes
       // carrying redirections and empty segments), so normalizing loses nothing.
@@ -1301,7 +1309,9 @@ async function normalizePackageMetadata(
     // assets) instead of discarding them; only the managed gen-code and the `wrangler types` invocations it now
     // subsumes are wbfy's to regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
     const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
-    const customSegments = segments?.filter((segment) => classifyScriptSegment(segment, jsonObj.scripts) === 'custom');
+    const customSegments = segments?.filter(
+      (segment) => classifyScriptSegment(segment, jsonObj.scripts, true, config.dirPath) === 'custom'
+    );
     if (customSegments) {
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
     }

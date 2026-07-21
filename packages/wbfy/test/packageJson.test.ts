@@ -342,9 +342,10 @@ test('keeps managing a package whose extra script only checks the types', async 
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
-// A wrapper around a CUSTOMIZED gen-code already performs the managed generation; appending another
-// `wb gen-code` would run every generator twice per install.
-test('does not schedule gen-code twice through a wrapper', async () => {
+// A wrapper around a CUSTOMIZED gen-code is the install-time entry point for BOTH the managed generation and the
+// project's own steps. Replacing it with a bare `wb gen-code` would stop `build-assets` running on install;
+// appending one would run every generator twice.
+test('keeps a wrapper around a customized gen-code script', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: { 'gen-code': 'bun wb gen-code && bun run build-assets', postinstall: 'bun run gen-code' },
@@ -353,7 +354,8 @@ test('does not schedule gen-code twice through a wrapper', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('bun run gen-code');
+  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code && bun run build-assets');
 });
 
 // Silently dropping a project's own install step (e.g. applying patches) would break its install.
