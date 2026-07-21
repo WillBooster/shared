@@ -55,11 +55,11 @@
     "@types/node": "25.6.0",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "15.1.1",
+    "@willbooster/wb": "15.3.0",
     "build-ts": "19.0.0",
     "oxfmt": "0.59.0",
     "oxlint": "1.74.0",
-    "oxlint-tsgolint": "0.25.0",
+    "oxlint-tsgolint": "7.0.2001",
     "sort-package-json": "4.0.0",
     "typescript": "7.0.2",
     "vitest": "4.1.5"
