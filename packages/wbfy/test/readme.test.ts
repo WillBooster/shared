@@ -87,11 +87,58 @@ test.each([
     expected: `# Project\r\n\r\n${badgeOf('1.2.3')}\r\n\r\nDescription.\r\n`,
   },
   {
-    // Only the `# <name>` heading wbfy writes anchors the badges; any other title construct sends
-    // them to the top rather than making this generator parse Markdown.
+    // A Setext heading is a heading to the parser, so the badges land under it like they do under
+    // the `# <name>` form wbfy writes.
     name: 'a Setext heading',
     input: 'Project\n=======\nDescription.\n',
-    expected: `${badgeOf('1.2.3')}\n\nProject\n=======\nDescription.\n`,
+    expected: `Project\n=======\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    // Many READMEs center their title in HTML; the badges follow the whole HTML block.
+    name: 'an HTML title',
+    input: '<h1 align="center">Project</h1>\n\nDescription.\n',
+    expected: `<h1 align="center">Project</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    // A BOM is not Markdown: left in the text it hid the `#` from the title check, so the badges
+    // were prepended ahead of the marker and the heading stopped being a heading.
+    name: 'a UTF-8 BOM before the title',
+    input: '﻿# Project\n\nDescription.\n',
+    expected: `﻿# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    // An indented code block reads exactly like a badge line once trimmed, so the line-based scan
+    // consumed it and the example was deleted from the README.
+    name: 'an indented code block under the title',
+    input: `# Project\n\n    ${legacyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n    ${legacyBadge}\n`,
+  },
+  {
+    name: 'a badge example inside a multiline code span',
+    input: `# Project\n\n\`example:\n${legacyBadge}\`\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n\`example:\n${legacyBadge}\`\n`,
+  },
+  {
+    // CommonMark allows a block quote marker with no following space.
+    name: 'a fenced example inside a compact block quote',
+    input: `# Project\n\n>\`\`\`\n>${legacyBadge}\n>\`\`\`\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n>\`\`\`\n>${legacyBadge}\n>\`\`\`\n`,
+  },
+  {
+    name: 'an indented code block inside a block quote',
+    input: `# Project\n\n>     ${legacyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n>     ${legacyBadge}\n`,
+  },
+  {
+    // HTML blocks are recognized by CommonMark's start/end conditions, not by a list of known tags.
+    name: 'a badge inside an HTML block with an unknown tag',
+    input: `# Project\n\n<custom-card>\n${legacyBadge}\n</custom-card>\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n<custom-card>\n${legacyBadge}\n</custom-card>\n`,
+  },
+  {
+    name: 'a badge quoted below the title',
+    input: `# Project\n\n> ${legacyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n> ${legacyBadge}\n`,
   },
   {
     // A README that opens with something other than a title has no anchor to sit under, so the

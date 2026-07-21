@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import type { Paragraph, PhrasingContent, RootContent } from 'mdast';
+import { fromMarkdown } from 'mdast-util-from-markdown';
+
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -13,9 +16,6 @@ const semanticReleaseBadge =
 
 const wbfyBadgeUrlPrefix = 'https://img.shields.io/badge/wbfy-';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
-
-/** One `[![alt](image)](link)` badge, the only shape wbfy ever writes. */
-const badgePattern = /\[!\[[^\]]*\]\([^\s)]*\)\]\([^\s)]*\)/gu;
 
 /**
  * The badges wbfy owns, matched by what identifies each one regardless of the version that wrote it:
@@ -109,64 +109,89 @@ async function hasAnyWorkflowRun(
 }
 
 /**
- * Replaces the badge block — the run of badge-only lines wbfy keeps directly under the title — with
- * `managedBadges`, keeping any badge there that wbfy does not manage, and reassembles the README
- * around it with exactly one blank line on each side.
+ * Replaces the badge block — the badges wbfy keeps directly under the title — with `managedBadges`,
+ * keeping any badge there that wbfy does not manage, and reassembles the README around it with
+ * exactly one blank line on each side.
  *
- * This is the module's whole job. Because the block is the only region ever read or written, the
- * rest of the README needs no understanding at all: prose, fenced examples, HTML and comments are
- * never touched, so none of the constructs a Markdown parser exists to recognize matter here.
+ * Both the title and the block are located in a CommonMark syntax tree rather than by scanning
+ * lines: only a real parser knows whether a line that looks like a badge is a badge (a paragraph of
+ * linked images) or content that merely reads like one (an indented code block, a block quote, a
+ * fenced example, a multiline code span, an HTML block). Everything outside the block is copied back
+ * verbatim from the original text through the parser's positional offsets, so no reformatting of the
+ * user's content is possible.
  */
 export function writeBadgeBlock(readme: string, managedBadges: string[]): string {
   const lineEnding = getLineEnding(readme);
-  // The final newline is set aside rather than split into a trailing empty line, which the blank-line
+  // A BOM is not Markdown: left in the text it hides the `#` of the title from the parser, and
+  // prepending the block ahead of it would strip the marker from the file's first byte.
+  const byteOrderMark = readme.startsWith('﻿') ? '﻿' : '';
+  // Front matter is delimited by the same `---` a Setext heading and a thematic break use, so it is
+  // detached before parsing instead of being told apart afterwards; it also has to stay first in the
+  // file, which makes it a prefix in exactly the same way the BOM is.
+  const withoutMark = readme.slice(byteOrderMark.length);
+  const frontMatter = withoutMark.startsWith('---')
+    ? (/^---[ \t]*\r?\n[\s\S]*?^---[ \t]*(?:\r?\n|$)/mu.exec(withoutMark)?.[0] ?? '')
+    : '';
+  const prefix = `${byteOrderMark}${frontMatter}`;
+  // The final newline is set aside rather than parsed as trailing blank space, which the blank-line
   // trimming below would otherwise swallow.
   const endsWithNewline = /\r?\n$/u.test(readme);
-  const lines = readme.replace(/\r?\n$/u, '').split(/\r?\n/u);
+  const content = withoutMark.slice(frontMatter.length).replace(/\r?\n$/u, '');
 
-  const titleEndIndex = findTitleEndIndex(lines);
+  const nodes = fromMarkdown(content).children;
+  const titleIndex = isTitleNode(nodes[0]) ? 0 : -1;
   // Without a recognizable title the block sits at the very top, above everything.
-  const head = titleEndIndex === undefined ? [] : lines.slice(0, titleEndIndex + 1);
-  let index = head.length;
-  while (index < lines.length && !lines[index]!.trim()) index++;
-  const existing: string[] = [];
-  while (index < lines.length && isBadgeLine(lines[index]!)) {
-    existing.push(...(lines[index++]!.match(badgePattern) ?? []));
-  }
-  while (index < lines.length && !lines[index]!.trim()) index++;
-  const body = lines.slice(index);
+  const head = titleIndex === -1 ? '' : content.slice(0, nodes[0]!.position!.end.offset);
+
+  const blockNode = nodes[titleIndex + 1];
+  const existing = blockNode && isBadgeBlockNode(blockNode) ? readBadges(blockNode, content) : undefined;
+  const bodyNode = existing ? nodes[titleIndex + 2] : blockNode;
+  const body = bodyNode ? content.slice(bodyNode.position!.start.offset) : '';
 
   // Superseding a managed badge is just dropping the old one: a version, URL or workflow change
   // leaves no stale copy, while a badge someone else added to the block is kept.
-  const badges = [...managedBadges, ...existing.filter((badge) => !isManagedBadge(badge))];
-  const result = [
-    ...head,
-    ...(head.length > 0 && badges.length > 0 ? [''] : []),
-    ...badges,
-    ...(body.length > 0 && head.length + badges.length > 0 ? [''] : []),
-    ...body,
-  ].join(lineEnding);
+  const badges = [...managedBadges, ...(existing ?? []).filter((badge) => !isManagedBadge(badge))];
+  const result = prefix + [head, badges.join(lineEnding), body].filter(Boolean).join(`${lineEnding}${lineEnding}`);
   return endsWithNewline ? `${result}${lineEnding}` : result;
 }
 
 /**
- * The line index the badge block follows. Only the FIRST piece of content is examined, never the
- * whole file: a title is what a README opens with, and scanning further would mean recognizing every
- * construct a `#` could be hiding inside — exactly the Markdown parsing this module does without.
+ * Whether the node opens the README with a title. Only the FIRST piece of content can be one: a
+ * title is what a README opens with, and anchoring the badges to a heading further down would bury
+ * them below content the author put first.
  */
-function findTitleEndIndex(lines: string[]): number | undefined {
-  let index = 0;
-  // Front matter has to stay first in the file, so the badges go after it rather than above it.
-  if (lines[0]?.trim() === '---') {
-    const closingIndex = lines.findIndex((line, lineIndex) => lineIndex > 0 && line.trim() === '---');
-    if (closingIndex !== -1) index = closingIndex + 1;
-  }
-  while (index < lines.length && !lines[index]!.trim()) index++;
+function isTitleNode(node: RootContent | undefined): boolean {
+  if (!node) return false;
+  if (node.type === 'heading') return true;
+  // Many READMEs center their title in HTML (`<h1>`, or a `<div>`/`<p>` wrapping one), which the
+  // parser reports as one opaque HTML block; the badges go after the whole block.
+  return node.type === 'html' && /<h1[\s>]/iu.test(node.value);
+}
 
-  const line = lines[index];
-  if (line === undefined) return undefined;
-  // wbfy writes `# <name>`; any other title construct is left for manual placement.
-  return /^ {0,3}#{1,6}[ \t]/u.test(line) ? index : undefined;
+/** Whether the node is a paragraph of badges and nothing else — the only content wbfy puts in the block. */
+function isBadgeBlockNode(node: RootContent): node is Paragraph {
+  return (
+    node.type === 'paragraph' &&
+    node.children.some((child) => isBadgeNode(child)) &&
+    node.children.every(
+      (child) => isBadgeNode(child) || child.type === 'break' || (child.type === 'text' && !child.value.trim())
+    )
+  );
+}
+
+/** A badge is one `[![alt](image)](link)`, the only shape wbfy ever writes. */
+function isBadgeNode(node: RootContent | PhrasingContent): boolean {
+  return node.type === 'link' && node.children.length === 1 && node.children[0]?.type === 'image';
+}
+
+/**
+ * The badges in the block, as the exact source text that produced them: a badge wbfy does not manage
+ * is written back byte for byte instead of being re-serialized from the tree.
+ */
+function readBadges(node: Paragraph, content: string): string[] {
+  return node.children
+    .filter((child) => isBadgeNode(child))
+    .map((child) => content.slice(child.position!.start.offset, child.position!.end.offset));
 }
 
 /**
@@ -181,12 +206,6 @@ function encodeUrlPath(value: string): string {
 /** Whether the badge is one wbfy generates, in any version it has ever written. */
 function isManagedBadge(badge: string): boolean {
   return managedBadgePatterns.some((pattern) => pattern.test(badge));
-}
-
-/** Whether the line holds badges and nothing else — the only content wbfy puts in the block. */
-function isBadgeLine(line: string): boolean {
-  const trimmed = line.trim();
-  return !!trimmed && !trimmed.replaceAll(badgePattern, '').trim();
 }
 
 function getLineEnding(content: string): '\n' | '\r\n' {
