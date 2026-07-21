@@ -139,19 +139,37 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   const content = withoutMark.slice(frontMatter.length).replace(/\r?\n$/u, '');
 
   const nodes = fromMarkdown(content).children;
-  const titleIndex = isTitleNode(nodes[0]) ? 0 : -1;
+  // An earlier wbfy run is the normal input, and older versions recognized neither Setext nor HTML
+  // titles — so they stamped the block ABOVE such a title. That leading block must not hide the
+  // title from this run, or the badges stay above it forever and the new placement only ever
+  // applies to READMEs wbfy has never touched.
+  const leadingBlockIndex = nodes[0] && isBadgeBlockNode(nodes[0]) ? 0 : -1;
+  const firstContentIndex = leadingBlockIndex + 1;
+  const titleIndex = isTitleNode(nodes[firstContentIndex]) ? firstContentIndex : -1;
   // Without a recognizable title the block sits at the very top, above everything.
-  const head = titleIndex === -1 ? '' : content.slice(0, nodes[0]!.position!.end.offset);
+  const head =
+    titleIndex === -1
+      ? ''
+      : content.slice(nodes[titleIndex]!.position!.start.offset, nodes[titleIndex]!.position!.end.offset);
 
-  const blockNode = nodes[titleIndex + 1];
+  const blockNode = nodes[titleIndex === -1 ? firstContentIndex : titleIndex + 1];
   const existing = blockNode && isBadgeBlockNode(blockNode) ? readBadges(blockNode, content) : undefined;
-  const bodyNode = existing ? nodes[titleIndex + 2] : blockNode;
+  const bodyNode = existing && blockNode ? nodes[nodes.indexOf(blockNode) + 1] : blockNode;
   const body = bodyNode ? content.slice(bodyNode.position!.start.offset) : '';
 
   // Superseding a managed badge is just dropping the old one: a version, URL or workflow change
-  // leaves no stale copy, while a badge someone else added to the block is kept.
-  const badges = [...managedBadges, ...(existing ?? []).filter((badge) => !isManagedBadge(badge))];
-  const result = prefix + [head, badges.join(lineEnding), body].filter(Boolean).join(`${lineEnding}${lineEnding}`);
+  // leaves no stale copy, while a badge someone else added to the block is kept. A block the older
+  // layout left above the title is carried down here rather than dropped, so unrelated badges in it
+  // survive the move.
+  const relocated = leadingBlockIndex === 0 && titleIndex !== -1 ? readBadges(nodes[0] as Paragraph, content) : [];
+  const badges = [...managedBadges, ...[...(existing ?? []), ...relocated].filter((badge) => !isManagedBadge(badge))];
+  // Content is sliced from its node's start offset, so whatever blank space followed the front
+  // matter is gone; exactly one blank line is restored here. A closing delimiter that ended at EOF
+  // carries no newline of its own and needs both, or `---` would fuse with the first badge and
+  // destroy them both. A BOM needs no separator: it is a byte marker, not a line.
+  const separator = frontMatter ? (/\r?\n$/u.test(frontMatter) ? lineEnding : `${lineEnding}${lineEnding}`) : '';
+  const result =
+    prefix + separator + [head, badges.join(lineEnding), body].filter(Boolean).join(`${lineEnding}${lineEnding}`);
   return endsWithNewline ? `${result}${lineEnding}` : result;
 }
 

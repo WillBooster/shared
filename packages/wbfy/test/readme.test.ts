@@ -325,3 +325,47 @@ test('treats a rendered HTML <h1> as the title', async () => {
     expect(content.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(content.indexOf(htmlTitle));
   });
 });
+
+// The normal input is an earlier wbfy run's output. Older versions recognized neither Setext nor
+// HTML titles, so they stamped the block ABOVE such a title; upgrading must move it below, or the
+// new placement would only ever apply to READMEs wbfy has never touched.
+test.each([
+  ['a Setext title', 'Project\n=======\n'],
+  ['an HTML title', '<div align="center"><h1>Project</h1></div>\n'],
+])('moves a legacy block below %s on upgrade', async (_description, title) => {
+  await withTempDir(async (dirPath) => {
+    const legacyLayout = `${badgeOf('1.0.0')}\n\n${title}\nDescription.\n`;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), legacyLayout);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(content.indexOf('Project'));
+    expect(content).not.toContain('1.0.0');
+    // Idempotent from the upgraded layout too.
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
+  });
+});
+
+// A badge someone else put in the legacy block must survive the move rather than be dropped with it.
+test('carries an unrelated badge down when relocating a legacy block', async () => {
+  await withTempDir(async (dirPath) => {
+    const unrelated = '[![custom](https://example.test/b.svg)](https://example.test)';
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      `${badgeOf('1.0.0')}\n${unrelated}\n\nProject\n=======\n\nDescription.\n`
+    );
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(unrelated);
+    expect(content.indexOf(unrelated)).toBeGreaterThan(content.indexOf('Project'));
+  });
+});
+
+// Front matter whose closing delimiter ends at EOF carries no newline of its own.
+test('separates front matter ending at EOF from the badge block', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '---\ntitle: Project\n---');
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain('---\n\n[![wbfy]');
+  });
+});
