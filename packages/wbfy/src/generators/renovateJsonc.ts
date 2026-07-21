@@ -241,13 +241,24 @@ function parseRenovateConfig(isEditableSyntax: boolean, content: string): Settin
   }
 }
 
+/** GitHub owner and repository names are case-insensitive, so the same preset may be spelled either way. */
+function isSamePreset(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 function mergeRenovateExtends(generatedExtends: string[], existingExtends: string[] = []): string[] {
   // Only prepend the presets that are missing. Moving one that is already listed would reorder the
   // array, and a later preset overrides an earlier one in Renovate — so re-sorting silently flips
   // which config wins (and, being a reorder rather than an addition, also costs the array's
   // comments, which can only be preserved by insertion).
-  const missingExtends = generatedExtends.filter((preset) => !existingExtends.includes(preset));
-  return [...missingExtends, ...existingExtends].filter((item) => !legacyPresets.has(item));
+  // Case-insensitively: GitHub owner and repository names are case-insensitive, so a differently-spelled copy of
+  // the same preset would otherwise be duplicated, and a lowercase legacy preset would survive the migration.
+  const missingExtends = generatedExtends.filter(
+    (preset) => !existingExtends.some((existing) => isSamePreset(existing, preset))
+  );
+  return [...missingExtends, ...existingExtends].filter(
+    (item) => ![...legacyPresets].some((legacy) => isSamePreset(legacy, item))
+  );
 }
 
 function normalize(content: string): string {

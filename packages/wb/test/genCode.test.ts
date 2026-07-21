@@ -43,6 +43,35 @@ describe('getGenCodeScripts', () => {
     }
   });
 
+  it('does not generate worker types when an env-file invocation would be overwritten', async () => {
+    // The named file exists, so the project's own invocation infers Env members from it that the bare
+    // invocation here would drop.
+    const dirPath = await createWorkerProject(
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --env-file .env.example' } },
+      true
+    );
+    await fs.writeFile(path.join(dirPath, '.env.example'), 'API_KEY=\n');
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('generates worker types when the named env file is gone', async () => {
+    const dirPath = await createWorkerProject(
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --env-file .env' } },
+      true
+    );
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
   it('runs the project gen-i18n-ts script when it exists', async () => {
     const dirPath = await createProject({
       scripts: {

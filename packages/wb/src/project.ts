@@ -304,7 +304,7 @@ export class Project {
     // Defense in depth against wbfy's gitignore rule and this predicate drifting apart: if the package still
     // runs its own output-changing `wrangler types` (e.g. `--strict-vars=false`), the bare invocation here would
     // overwrite that file with a different `Env`.
-    if (hasOutputChangingWranglerTypes(this.packageJson.scripts ?? {})) return false;
+    if (hasOutputChangingWranglerTypes(this.packageJson.scripts ?? {}, this.dirPath)) return false;
     return hasManagedGitignoreRule(this.dirPath, WORKER_TYPES_FILE_NAME);
   }
 
@@ -657,20 +657,27 @@ function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
 
 /**
  * Whether a package script runs a `wrangler types` that would write something other than what the bare
- * invocation writes. `--check`/`--help` validate or print and write nothing, so they do not count. Mirrors
- * wbfy's `hasCustomWranglerTypesInvocation`; the two must agree, since wbfy's answer decides the gitignore rule.
+ * invocation writes. `--check`/`--help` validate or print and write nothing, so they do not count. `--env-file`
+ * counts whenever a file it names EXISTS: the flag selects what wrangler reads to infer local vars and secrets,
+ * so the bare invocation here would regenerate a smaller `Env`. Mirrors wbfy's `hasCustomWranglerTypesInvocation`
+ * (including its `namesOnlyMissingEnvFiles` rule); the two must agree, since wbfy's answer decides the
+ * gitignore rule this predicate keys on.
  */
-function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefined>): boolean {
+function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefined>, dirPath: string): boolean {
+  const wranglerTypesPattern = /(?:^|\s)wrangler\s+types(?:\s|$)/u;
+  const nonGeneratingPattern = /(?:^|\s)(?:--check|--help|-h)(?:\s|=|$)/u;
+  const envFileOnlyPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
   return Object.values(scripts).some((script) => {
-    if (!script || !/(?:^|\s)wrangler\s+types(?:\s|$)/u.test(script)) return false;
+    if (!script || !wranglerTypesPattern.test(script)) return false;
     return script
       .split('&&')
       .map((segment) => segment.trim().replaceAll(/\s+/gu, ' '))
-      .some(
-        (segment) =>
-          /(?:^|\s)wrangler\s+types(?:\s|$)/u.test(segment) &&
-          !/(?:^|\s)(?:--check|--help|-h)(?:\s|=|$)/u.test(segment) &&
-          !/^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u.test(segment)
-      );
+      .some((segment) => {
+        if (!wranglerTypesPattern.test(segment) || nonGeneratingPattern.test(segment)) return false;
+        if (!envFileOnlyPattern.test(segment)) return true;
+        return [...segment.matchAll(/--env-file\s+(\S+)/gu)].some(
+          (match) => !!match[1] && fs.existsSync(path.resolve(dirPath, match[1]))
+        );
+      });
   });
 }
