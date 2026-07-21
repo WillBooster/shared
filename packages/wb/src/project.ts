@@ -668,15 +668,15 @@ function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefin
   const envFileOnlyPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
   return Object.values(scripts).some((script) => {
     if (!script || !wranglerTypesPattern.test(script)) return false;
+    // Checked on the WHOLE script, before splitting: `cd sub && wrangler types` runs the generator in another
+    // directory against another config, but its second segment alone looks like a plain invocation. wbfy
+    // classifies any script carrying this syntax as custom, and the two predicates must agree.
+    if (/[;|<>`$'"()]|\bcd\s/u.test(script)) return true;
     return script
       .split('&&')
       .map((segment) => segment.trim().replaceAll(/\s+/gu, ' '))
       .some((segment) => {
         if (!wranglerTypesPattern.test(segment)) return false;
-        // Shell syntax this does not model (wbfy classifies it as custom outright): a quoted path would be
-        // compared against a filename still carrying its quotes, and a pipeline or substitution could feed the
-        // invocation anything. Treat it as output-changing rather than risk overwriting the real declaration.
-        if (/[;|<>`$'"()]/u.test(segment)) return true;
         if (/(?:^|\s)(?:--help|-h)(?:\s|=|$)/u.test(segment)) return false;
         // `--check` compares the result FOR THE SUPPLIED OPTIONS, so it is only harmless when the rest of the
         // invocation is equivalent to the bare one.

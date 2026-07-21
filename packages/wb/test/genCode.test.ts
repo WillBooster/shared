@@ -76,6 +76,7 @@ describe('getGenCodeScripts', () => {
     ['strict vars', 'wrangler types --check --strict-vars=false'],
     ['a custom output path', 'wrangler types --check --path src/env.d.ts'],
     ['a quoted env file', 'wrangler types --env-file ".env.example"'],
+    ['a directory change', 'cd sub && wrangler types'],
   ])('does not generate worker types when a script checks %s', async (_description, script) => {
     const dirPath = await createWorkerProject(
       { devDependencies: { wrangler: '4.70.0' }, scripts: { 'check-types': script } },
