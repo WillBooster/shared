@@ -89,8 +89,9 @@ function readAndApplyEnvironmentVariables(cwd) {
   // The cascade selects WHICH `.env.<cascade>` files and fnox profile to READ. Like wb's main loader
   // (`WB_ENV || NODE_ENV || 'development'`) it defaults to development, so a repo that keeps dev-only
   // secrets in `[profiles.development.secrets]` still loads them when WB_ENV is unset — reading only
-  // the base `[secrets]` table would silently drop them.
-  const cascade = mode || process.env.NODE_ENV || 'development';
+  // the base `[secrets]` table would silently drop them. An explicit FNOX_PROFILE still wins over
+  // that default, because fnox honors it and `wb dotenv` without WB_ENV is documented to as well.
+  const cascade = mode || process.env.FNOX_PROFILE || process.env.NODE_ENV || 'development';
   // Mode-specific sources drive the forced-mode override below (only meaningful when the mode is forced).
   const modeVars = mode
     ? { ...readEnvFile(path.join(cwd, `.env.${mode}`)), ...readEnvFile(path.join(cwd, `.env.${mode}.local`)) }
@@ -146,18 +147,20 @@ function readAndApplyEnvironmentVariables(cwd) {
   // child will see.
   validateStandardWbEnv(mode, 'the exported variable');
   validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
-  // The exported mode selected the cascade, so a mode file silently replacing it with a DIFFERENT
-  // valid mode (e.g. `.env.production` containing `WB_ENV=development`) must be rejected as well.
+  // The cascade selected the profile/.env sources, so an env source silently resolving WB_ENV to a
+  // DIFFERENT value must be rejected: the child would run labeled one environment while carrying
+  // another's secrets. This covers both a forced `.env.production` containing `WB_ENV=development` and
+  // the default-development path (`.env.development`, read even when WB_ENV is unset, containing
+  // `WB_ENV=production`), so it compares against `cascade`, not just the forced `mode`.
   if (
-    mode &&
     process.env.WB_ENV &&
-    process.env.WB_ENV !== mode &&
+    process.env.WB_ENV !== cascade &&
     process.env.WB_SKIP_ENV_CHECK !== '1' &&
     process.env.WB_SKIP_ENV_CHECK !== 'true'
   ) {
     console.error(
-      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${mode}" environment was selected. ` +
-        `Fix the WB_ENV defined in the mode's env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${cascade}" environment was selected. ` +
+        `Fix the WB_ENV defined in the env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
     );
     process.exit(1);
   }
@@ -204,8 +207,8 @@ function runFnoxExport(cwd, cascade, options) {
   if (options.ignoreProfileEnvVar) {
     // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must
     // read the BASE secrets, so the inherited profile selection is cleared for it — and only for
-    // it: a profile-less PRIMARY export (e.g. `wb dotenv` without WB_ENV) keeps honoring
-    // FNOX_PROFILE.
+    // it. A PRIMARY export still honors FNOX_PROFILE: it either stays profile-less (fnox reads the
+    // variable) or folds it into the `--profile` it passes (see wb dotenv's cascade).
     delete env.FNOX_PROFILE;
   }
   const result = childProcess.spawnSync('fnox', args, {

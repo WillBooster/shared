@@ -72,7 +72,7 @@ describe('bin/index.js dotenv fast path', () => {
   it.runIf(isFnoxAvailable())('loads development-profile fnox secrets when WB_ENV is unset', async () => {
     // An unset WB_ENV must select the development profile (like wb's main loader), not the base
     // `[secrets]` table alone: a repo keeping dev-only secrets in `[profiles.development.secrets]`
-    // would otherwise silently miss them (https://github.com/WillBooster/shared/issues covered here).
+    // would otherwise silently miss them.
     await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
     await fs.writeFile(
       path.join(projectDirPath, 'fnox.toml'),
@@ -92,6 +92,50 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('base-value dev-value\n');
     expect(result.status).toBe(0);
+  });
+
+  it.runIf(isFnoxAvailable())('honors an explicit FNOX_PROFILE when WB_ENV is unset', async () => {
+    // Defaulting to development must not override an explicitly selected FNOX_PROFILE: fnox honors it,
+    // so `wb dotenv` without WB_ENV must too (the profile still folds into the `--profile` it passes).
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nSELECTED = { default = "base" }\n\n[profiles.development.secrets]\nSELECTED = { default = "development" }\n\n[profiles.test.secrets]\nSELECTED = { default = "test" }\n'
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$SELECTED"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, FNOX_PROFILE: 'test' },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('test\n');
+    expect(result.status).toBe(0);
+  });
+
+  it('rejects an env source whose WB_ENV disagrees with the default development cascade', async () => {
+    // `.env.development` is read even when WB_ENV is unset (cascade defaults to development); a WB_ENV
+    // it defines that disagrees with that cascade would run the child labeled one environment while
+    // carrying another's secrets, so it must fail fast (matching the forced-mode mismatch guard).
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(path.join(projectDirPath, '.env.development'), 'WB_ENV=production\n');
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo should-not-run'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stdout).not.toContain('should-not-run');
+    expect(result.stderr).toContain('WB_ENV resolves to "production"');
+    expect(result.status).toBe(1);
   });
 
   it("restores yarn's temporary bin folder for Plug'n'Play projects without node_modules", async () => {

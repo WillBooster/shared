@@ -124,11 +124,13 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
   // The cascade selects WHICH `.env.<cascade>` files and fnox profile to READ. Like wb's main loader
   // (`WB_ENV || NODE_ENV || 'development'`, see readEnvironmentVariables) it defaults to development,
   // so a repo that keeps dev-only secrets in `[profiles.development.secrets]` still loads them when
-  // WB_ENV is unset — reading only the base `[secrets]` table would silently drop them. NODE_ENV is
-  // read through an alias, never as the `process.env.NODE_ENV` member expression that the bundler
-  // inlines to 'production' (which would wrongly select the production profile).
+  // WB_ENV is unset — reading only the base `[secrets]` table would silently drop them. An explicit
+  // FNOX_PROFILE still wins over that default, because fnox honors it and `wb dotenv` without WB_ENV
+  // is documented to as well (see runFnoxExport's ignoreProfileEnvVar note). NODE_ENV is read through
+  // an alias, never as the `process.env.NODE_ENV` member expression that the bundler inlines to
+  // 'production' (which would wrongly select the production profile).
   const runtimeEnv = process.env;
-  const cascade = mode || runtimeEnv.NODE_ENV || 'development';
+  const cascade = mode || runtimeEnv.FNOX_PROFILE || runtimeEnv.NODE_ENV || 'development';
   const readEnvFile = (fileName: string): Record<string, string> =>
     config({ path: path.join(cwd, fileName), processEnv: {}, quiet: true }).parsed ?? {};
   // Mode-specific sources drive the forced-mode override below (only meaningful when the mode is forced).
@@ -186,18 +188,20 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
   // `WB_ENV=prodcution`), and a forced mode's files may even override a VALID exported value.
   validateStandardWbEnv(mode, 'the exported variable');
   validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
-  // The exported mode selected the cascade, so a mode file silently replacing it with a DIFFERENT
-  // valid mode (e.g. `.env.production` containing `WB_ENV=development`) must be rejected as well.
+  // The cascade selected the profile/.env sources, so an env source silently resolving WB_ENV to a
+  // DIFFERENT value must be rejected: the child would run labeled one environment while carrying
+  // another's secrets. This covers both a forced `.env.production` containing `WB_ENV=development` and
+  // the default-development path (`.env.development`, read even when WB_ENV is unset, containing
+  // `WB_ENV=production`), so it compares against `cascade`, not just the forced `mode`.
   if (
-    mode &&
     process.env.WB_ENV &&
-    process.env.WB_ENV !== mode &&
+    process.env.WB_ENV !== cascade &&
     process.env.WB_SKIP_ENV_CHECK !== '1' &&
     process.env.WB_SKIP_ENV_CHECK !== 'true'
   ) {
     console.error(
-      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${mode}" environment was selected. ` +
-        `Fix the WB_ENV defined in the mode's env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${cascade}" environment was selected. ` +
+        `Fix the WB_ENV defined in the env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
     );
     process.exit(1);
   }
