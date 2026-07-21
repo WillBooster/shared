@@ -13,8 +13,12 @@ import { promisePool } from '../utils/promisePool.js';
 
 const jsonObj = {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  extends: ['github>WillBooster/willbooster-configs:renovate.json5'],
+  extends: ['github>WillBooster/willbooster-configs:renovate.jsonc'],
 };
+
+// The preset used to live in renovate.json5; it was renamed to renovate.jsonc, so the old reference
+// now fails to resolve ("Cannot find preset's package"). Drop it while migrating, like @willbooster.
+const legacyPresets = new Set(['@willbooster', 'github>WillBooster/willbooster-configs:renovate.json5']);
 
 // $schema is optional: an existing config need not declare it.
 type Settings = Partial<typeof jsonObj> & {
@@ -247,7 +251,7 @@ function mergeRenovateExtends(generatedExtends: string[], existingExtends: strin
   // which config wins (and, being a reorder rather than an addition, also costs the array's
   // comments, which can only be preserved by insertion).
   const missingExtends = generatedExtends.filter((preset) => !existingExtends.includes(preset));
-  return [...missingExtends, ...existingExtends].filter((item) => item !== '@willbooster');
+  return [...missingExtends, ...existingExtends].filter((item) => !legacyPresets.has(item));
 }
 
 function normalize(content: string): string {

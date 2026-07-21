@@ -28,7 +28,8 @@ async function withRepo(files: Record<string, string>, run: (dirPath: string) =>
   }
 }
 
-const preset = 'github>WillBooster/willbooster-configs:renovate.json5';
+const preset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
+const legacyPreset = 'github>WillBooster/willbooster-configs:renovate.json5';
 
 test('generates renovate.jsonc in a repository without any Renovate config', async () => {
   await withRepo({}, async (dirPath) => {
@@ -133,6 +134,13 @@ test('deletes an empty superseded config, which would otherwise keep outranking 
   await withRepo({ 'renovate.json': '' }, async (dirPath) => {
     expect(fs.existsSync(path.join(dirPath, 'renovate.json'))).toBe(false);
     expect(fs.existsSync(path.join(dirPath, 'renovate.jsonc'))).toBe(true);
+  });
+});
+
+test('replaces the renamed legacy preset so Renovate can resolve it again', async () => {
+  await withRepo({ 'renovate.jsonc': JSON.stringify({ extends: [legacyPreset] }) }, async (dirPath) => {
+    const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
+    expect(settings.extends).toEqual([preset]);
   });
 });
 
