@@ -1766,6 +1766,22 @@ test('manages trustedDependencies correctly when store-incompatible packages are
   expect(packageJson.trustedDependencies).toEqual([...(packageJson.trustedDependencies ?? [])].toSorted());
 });
 
+test('keeps the React Compiler project-local for Next Turbopack with the global store', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      dependencies: {
+        next: '16.2.6',
+      },
+      devDependencies: {
+        'babel-plugin-react-compiler': '1.0.0',
+      },
+    },
+    { isRoot: true }
+  );
+
+  expect(packageJson.trustedDependencies).toEqual(expect.arrayContaining(['babel-plugin-react-compiler', 'lefthook']));
+});
+
 // wbfy fully owns trustedDependencies: packages whose lifecycle scripts must run get added to
 // wbfy itself, so unmanaged entries are removed and the field is deleted when wbfy needs nothing.
 test('removes custom trustedDependencies and deletes the field when wbfy needs no entries', async () => {
