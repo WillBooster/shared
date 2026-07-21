@@ -154,9 +154,8 @@ export const bunMinimumReleaseAgeExcludes = [
   'next',
   'react',
   'react-dom',
-  // Repos pin react-is via resolutions in lockstep with react, so a fresh react release must
-  // resolve immediately like react/react-dom above.
   'react-is',
+  'react-server-dom-webpack',
 ];
 
 export type BunLinker = 'isolated' | 'hoisted';
