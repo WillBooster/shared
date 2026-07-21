@@ -18,7 +18,7 @@ export function resolveWillboosterConfigModule(config: PackageConfig, configPack
   if (!config.isWillBoosterConfigs) return configPackageName;
 
   // e.g. '@willbooster/oxlint-config' -> 'oxlint-config', which is its directory under `packages/`.
-  const configPackageDir = configPackageName.slice(configPackageName.indexOf('/') + 1);
+  const configPackageDir = configPackageName.split('/').pop() ?? '';
   // Derive the willbooster-configs root from the package being generated, not from the CLI entry
   // path: `wbfy <repo>/packages/<pkg>` is a supported invocation whose entry config is the child
   // package rather than the repo root, so relying on the entry would emit a nested, unresolvable
