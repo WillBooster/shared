@@ -413,6 +413,35 @@ test('keeps a wb gen-code postinstall for an unmanaged worker package', async ()
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
+// A hand-written gen-code script wbfy would not generate itself still has to lose what `wb gen-code` subsumes,
+// or the redundant invocation survives every future run.
+test('strips a subsumed wrangler types from a gen-code script wbfy does not generate', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.69.0' },
+    scripts: { 'gen-code': 'wb gen-code && bunx wrangler types' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code');
+});
+
+// Its custom steps must keep running, and keep their position relative to the generation.
+test('keeps custom steps when stripping an unmanaged gen-code script', async () => {
+  const wranglerPackageJson = {
+    devDependencies: { wrangler: '4.69.0' },
+    scripts: { 'gen-code': 'wb gen-code && bunx wrangler types && bun run build-assets' },
+  };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code && bun run build-assets');
+});
+
 // Silently dropping a project's own install step (e.g. applying patches) would break its install.
 test('preserves custom postinstall segments', async () => {
   const packageJson = await generatePackageJsonFrom(
