@@ -270,7 +270,9 @@ export async function getPackageConfig(
     if (!repoAuthor || !repoName) {
       [repoAuthor, repoName] = await resolveLocalRepoIdentity(dirPath, packageJson);
     }
-    const repository = repoFullName ? `github:${repoFullName}` : undefined;
+    // Built from the RESOLVED identity so workspace packages and offline runs also get it; consumers derive
+    // the owner from this field (e.g. to set `author`).
+    const repository = repoAuthor && repoName ? `github:${repoAuthor}/${repoName}` : undefined;
     // Tauri officially supports JSON, JSON5, and TOML configuration formats.
     const doesContainTauriConfig = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
       fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))

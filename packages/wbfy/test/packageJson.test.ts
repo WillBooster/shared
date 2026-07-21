@@ -84,8 +84,9 @@ test('keeps custom gen-i18n-ts scripts while adding wb gen-code', async () => {
   });
 });
 
+// Unparseable legacy shapes (redirections, empty segments) whose every command `wb gen-code` already runs.
 test.each([
-  ['mixed commands around gen-i18n-ts', 'echo before && yarn run gen-i18n-ts > /dev/null && echo after'],
+  ['redirections around gen-i18n-ts', 'yarn run gen-i18n-ts > /dev/null'],
   ['empty command segments around gen-i18n-ts', ' && yarn gen-i18n-ts && bun   run   gen-i18n-ts>/dev/null && '],
 ])('replaces %s with managed wb gen-code postinstall', async (_description, postinstall) => {
   const packageJson = await generatePackageJsonFrom(
@@ -102,6 +103,19 @@ test.each([
   );
 
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// The same shapes but mixing in the project's OWN command. The parser cannot preserve it across the unsupported
+// shell syntax, so the script is left alone rather than silently losing that command.
+test('leaves an unparseable postinstall carrying a project command alone', async () => {
+  const postinstall = 'patch-package > /dev/null && bun run gen-i18n-ts';
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { postinstall }, dependencies: { 'gen-i18n-ts': '4.0.6' } },
+    { depending: genI18nTsDepending },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe(postinstall);
 });
 
 test('keeps build-ts as a runtime dependency when prisma seed uses it', async () => {

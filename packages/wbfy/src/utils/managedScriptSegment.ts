@@ -28,8 +28,21 @@ const envFileArgumentPattern = /--env-file\s+(\S+)/gu;
 // Any `wrangler types` invocation, whatever its flags.
 const anyWranglerTypesPattern = /(?:^|\s)wrangler\s+types(?:\s|$)/u;
 
-// Modes that validate or print instead of writing, so they cannot conflict with the managed generator.
-const nonGeneratingWranglerTypesPattern = /(?:^|\s)(?:--check|--help|-h)(?:\s|=|$)/u;
+// `--help` prints and exits, so it can never conflict.
+const helpFlagPattern = /(?:^|\s)(?:--help|-h)(?:\s|=|$)/u;
+const checkFlagPattern = /(?:^|\s)--check(?:\s|=|$)/u;
+
+/**
+ * Whether the invocation writes nothing that could conflict with the managed generator. `--check` compares the
+ * result FOR THE SUPPLIED OPTIONS, so `--check --strict-vars=false` still describes a different file than the bare
+ * generation and would start failing once the managed bare output replaced it; only a check equivalent to the
+ * bare invocation is harmless.
+ */
+function isNonConflictingWranglerTypes(segment: string, dirPath: string | undefined): boolean {
+  if (helpFlagPattern.test(segment)) return true;
+  if (!checkFlagPattern.test(segment)) return false;
+  return isDisposableWranglerTypes(segment.replace(checkFlagPattern, ' ').replaceAll(/\s+/gu, ' ').trim(), dirPath);
+}
 
 /** Whether every file the segment's `--env-file` arguments name is absent, so dropping the flag changes nothing. */
 function namesOnlyMissingEnvFiles(segment: string, dirPath: string | undefined): boolean {
@@ -134,8 +147,27 @@ export function hasCustomWranglerTypesInvocation(scripts: PackageJson.Scripts, d
     return segments.some((segment) => {
       const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
       if (!anyWranglerTypesPattern.test(normalized)) return false;
-      if (nonGeneratingWranglerTypesPattern.test(normalized)) return false;
+      if (isNonConflictingWranglerTypes(normalized, dirPath)) return false;
       return !isDisposableWranglerTypes(normalized, dirPath);
     });
   });
+}
+
+/**
+ * Whether an UNPARSEABLE script names nothing but generation `wb gen-code` already performs. These are legacy
+ * wbfy shapes carrying redirections and empty segments; normalizing them loses nothing. A script mixing in a
+ * project's own command (e.g. `patch-package > /dev/null && gen-i18n-ts`) must NOT match — the parser cannot
+ * preserve that command, so the script has to be left alone instead of silently losing it.
+ */
+export function runsOnlyRedundantGeneration(script: string | undefined): boolean {
+  if (!script) return false;
+  const commands = script
+    .replaceAll(/\s*>\s*\S+/gu, '')
+    .split(/&&|;/u)
+    .map((command) => command.trim().replaceAll(/\s+/gu, ' '))
+    .filter(Boolean);
+  return (
+    commands.length > 0 &&
+    commands.every((command) => genI18nTsSegmentPattern.test(command) || genCodeSegmentPattern.test(command))
+  );
 }

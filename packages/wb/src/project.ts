@@ -665,7 +665,6 @@ function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
  */
 function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefined>, dirPath: string): boolean {
   const wranglerTypesPattern = /(?:^|\s)wrangler\s+types(?:\s|$)/u;
-  const nonGeneratingPattern = /(?:^|\s)(?:--check|--help|-h)(?:\s|=|$)/u;
   const envFileOnlyPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
   return Object.values(scripts).some((script) => {
     if (!script || !wranglerTypesPattern.test(script)) return false;
@@ -673,9 +672,21 @@ function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefin
       .split('&&')
       .map((segment) => segment.trim().replaceAll(/\s+/gu, ' '))
       .some((segment) => {
-        if (!wranglerTypesPattern.test(segment) || nonGeneratingPattern.test(segment)) return false;
-        if (!envFileOnlyPattern.test(segment)) return true;
-        return [...segment.matchAll(/--env-file\s+(\S+)/gu)].some(
+        if (!wranglerTypesPattern.test(segment)) return false;
+        // Shell quoting is not modeled here (wbfy classifies it as custom outright), and a quoted path would be
+        // compared against a filename that still carries its quotes — so treat any quoted invocation as
+        // output-changing rather than risk overwriting a declaration inferred from the real file.
+        if (/['"]/u.test(segment)) return true;
+        if (/(?:^|\s)(?:--help|-h)(?:\s|=|$)/u.test(segment)) return false;
+        // `--check` compares the result FOR THE SUPPLIED OPTIONS, so it is only harmless when the rest of the
+        // invocation is equivalent to the bare one.
+        const withoutCheck = segment
+          .replace(/(?:^|\s)--check(?:\s|=|$)/u, ' ')
+          .replaceAll(/\s+/gu, ' ')
+          .trim();
+        const candidate = withoutCheck === segment ? segment : withoutCheck;
+        if (!envFileOnlyPattern.test(candidate)) return withoutCheck === segment;
+        return [...candidate.matchAll(/--env-file\s+(\S+)/gu)].some(
           (match) => !!match[1] && fs.existsSync(path.resolve(dirPath, match[1]))
         );
       });

@@ -10,8 +10,12 @@ import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
-import { generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
-import { classifyScriptSegment, splitScriptSegments } from '../utils/managedScriptSegment.js';
+import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
+import {
+  classifyScriptSegment,
+  runsOnlyRedundantGeneration,
+  splitScriptSegments,
+} from '../utils/managedScriptSegment.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
@@ -235,7 +239,12 @@ function removeLegacyYarnInstallPrefixes(script: string): string {
   return result;
 }
 
-function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerTypes: boolean, dirPath: string): void {
+function updatePostinstallScript(
+  scripts: PackageJson.Scripts,
+  managesWorkerTypes: boolean,
+  hasOptedOutOfWorkerTypes: boolean,
+  dirPath: string
+): void {
   // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a code-generation or
   // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
   // scripts wrapping them) repositories used to carry are wbfy's to remove now that it owns the generation.
@@ -257,18 +266,19 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerType
       scripts.postinstall = alreadyGenerates
         ? keptSegments.join(' && ')
         : [...keptSegments, 'wb gen-code'].join(' && ');
-    } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
-      // Unparseable, but the only command it names is one `wb gen-code` already runs (these are legacy shapes
-      // carrying redirections and empty segments), so normalizing loses nothing.
+    } else if (runsOnlyRedundantGeneration(scripts.postinstall)) {
+      // Unparseable, but every command it names is one `wb gen-code` already runs, so normalizing loses nothing.
       scripts.postinstall = 'wb gen-code';
     }
     // Any other unparseable postinstall is left to a human rather than rewritten from a wrong parse.
-  } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
+  } else if (runsOnlyRedundantGeneration(scripts.postinstall)) {
     delete scripts.postinstall;
-  } else if (scripts.postinstall) {
-    // The package opted out of managed worker types (e.g. its tsconfig no longer includes the declaration), and
-    // generateGitignore drops the ignore rule and the untracked file with it. A leftover default-output
-    // `wrangler types` would then recreate that ~500KB file as workspace noise on every install.
+  } else if (hasOptedOutOfWorkerTypes && scripts.postinstall) {
+    // The package genuinely opted out (its tsconfig no longer includes the declaration), and generateGitignore
+    // drops the ignore rule and the untracked file with it. A leftover default-output `wrangler types` would then
+    // recreate that ~500KB file as workspace noise on every install. Only a real opt-out qualifies: the other
+    // unmanaged reasons (irreproducible inference, an output-changing command, a missing dependency) leave the
+    // project's own generator as the ONLY one, so deleting it there would break generation outright.
     const segments = splitScriptSegments(scripts.postinstall);
     const remaining = segments?.filter(
       (segment) => classifyScriptSegment(segment, scripts, true, dirPath) !== 'wranglerTypes'
@@ -1317,7 +1327,12 @@ async function normalizePackageMetadata(
     }
   }
   normalizeGenI18nTsScript(config, jsonObj);
-  updatePostinstallScript(jsonObj.scripts, generatesWorkerTypes(config), config.dirPath);
+  updatePostinstallScript(
+    jsonObj.scripts,
+    generatesWorkerTypes(config),
+    config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config),
+    config.dirPath
+  );
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
