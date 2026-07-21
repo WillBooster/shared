@@ -143,8 +143,15 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   // titles — so they stamped the block ABOVE such a title. That leading block must not hide the
   // title from this run, or the badges stay above it forever and the new placement only ever
   // applies to READMEs wbfy has never touched.
-  const leadingBlockIndex = nodes[0] && isBadgeBlockNode(nodes[0]) ? 0 : -1;
-  const firstContentIndex = leadingBlockIndex + 1;
+  // Only a block carrying one of wbfy's OWN badges can be output from an older version; a paragraph
+  // of purely user-authored badges is that user's layout and must not be relocated.
+  const legacyBlock =
+    nodes[0] && isBadgeBlockNode(nodes[0]) && readBadges(nodes[0], content).some((badge) => isManagedBadge(badge))
+      ? nodes[0]
+      : undefined;
+  // ...and only when a title actually follows it, since relocating is the whole point of skipping it.
+  const relocatesLegacyBlock = !!legacyBlock && isTitleNode(nodes[1]);
+  const firstContentIndex = relocatesLegacyBlock ? 1 : 0;
   const titleIndex = isTitleNode(nodes[firstContentIndex]) ? firstContentIndex : -1;
   // Without a recognizable title the block sits at the very top, above everything.
   const head =
@@ -161,7 +168,7 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   // leaves no stale copy, while a badge someone else added to the block is kept. A block the older
   // layout left above the title is carried down here rather than dropped, so unrelated badges in it
   // survive the move.
-  const relocated = leadingBlockIndex === 0 && titleIndex !== -1 ? readBadges(nodes[0] as Paragraph, content) : [];
+  const relocated = relocatesLegacyBlock ? readBadges(legacyBlock, content) : [];
   const badges = [...managedBadges, ...[...(existing ?? []), ...relocated].filter((badge) => !isManagedBadge(badge))];
   // Content is sliced from its node's start offset, so whatever blank space followed the front
   // matter is gone; exactly one blank line is restored here. A closing delimiter that ended at EOF
@@ -203,11 +210,15 @@ function isTitleNode(node: RootContent | undefined): boolean {
  * rendering it, and treating that as the title buries the badges below the real heading.
  */
 function containsRenderedH1(html: string): boolean {
-  const withoutInertText = html
-    .replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, '')
-    .replaceAll(/"[^"]*"/gu, '""')
-    .replaceAll(/'[^']*'/gu, "''");
-  return /<h1[\s>]/iu.test(withoutInertText);
+  const withoutComments = html.replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, '');
+  // Quoting is only syntactically significant inside a start tag, so attribute values are consumed
+  // as part of their own tag while quotation marks in ordinary text stay text. That keeps
+  // `<div title="<h1>">` from counting while `"<h1>Project</h1>"` still does.
+  const startTagPattern = /<([a-zA-Z][^\s/>]*)(?:"[^"]*"|'[^']*'|[^>"'])*>/gu;
+  for (const match of withoutComments.matchAll(startTagPattern)) {
+    if (match[1]?.toLowerCase() === 'h1') return true;
+  }
+  return false;
 }
 
 /** Whether the node is a paragraph of badges and nothing else — the only content wbfy puts in the block. */

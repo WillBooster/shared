@@ -384,3 +384,28 @@ test.each([
     expect(result).toContain(line);
   }
 });
+
+// A title-less README's leading block is the badge block itself, not something to skip past.
+test('keeps an unrelated badge in a title-less leading block', () => {
+  const unrelated = '[![custom](https://example.test/b.svg)](https://example.test)';
+  const result = writeBadgeBlock(`${badgeOf('1.0.0')}\n${unrelated}\n\nDescription.\n`, [badgeOf('1.2.3')]);
+
+  expect(result).toContain(unrelated);
+  expect(result).not.toContain('1.0.0');
+});
+
+// Only wbfy's own output is migratable; a user's custom-only badge layout stays where they put it.
+test('leaves a user-authored badge block above the title', () => {
+  const custom = '[![custom](https://example.test/b.svg)](https://example.test)';
+  const result = writeBadgeBlock(`${custom}\n\n# Project\n\nDescription.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(custom)).toBeLessThan(result.indexOf('# Project'));
+});
+
+// Quoting is significant only inside a start tag; quotation marks in ordinary text are text.
+test('treats an <h1> surrounded by quotation marks in text as the title', () => {
+  const htmlTitle = '<div>\n"<h1>Project</h1>"\n</div>';
+  const result = writeBadgeBlock(`${htmlTitle}\n\nDescription.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(result.indexOf(htmlTitle));
+});
