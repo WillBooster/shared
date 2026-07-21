@@ -5,7 +5,10 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
+import {
+  isPublishedWillboosterConfigsPackage,
+  resolveWillboosterConfigModule,
+} from '../utils/willboosterConfigsUtil.js';
 
 import { normalizeConfigContent } from './configContent.js';
 import { ManagedConfigBlocks } from './managedConfigBlock.js';
@@ -72,7 +75,7 @@ function replaceLegacyConfigReferences(content: string): string {
 
 function getConfigContent(config: PackageConfig): string {
   const isRootConfig = config.isRoot;
-  const oxlintBaseConfigModule = getOxlintBaseConfigModule(config);
+  const oxlintBaseConfigModule = resolveWillboosterConfigModule(config, '@willbooster/oxlint-config');
 
   // Do not collapse this to a static import for every package. CommonJS packages
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
@@ -85,7 +88,7 @@ function getConfigContent(config: PackageConfig): string {
 import type { OxlintConfig } from 'oxlint';
 
 // oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
-const oxlintBaseConfig = require('@willbooster/oxlint-config');
+const oxlintBaseConfig = require('${oxlintBaseConfigModule}');
 
 ${getResolvedConfigContent('oxlintBaseConfig.default ?? oxlintBaseConfig', isRootConfig)}`
     )}
@@ -105,10 +108,6 @@ ${getResolvedConfigContent('oxlintBaseConfig', isRootConfig)}`
 
 ${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')}
 `;
-}
-
-function getOxlintBaseConfigModule(config: PackageConfig): string {
-  return config.packageJson?.name === '@willbooster/oxlint-config' ? './config.mjs' : '@willbooster/oxlint-config';
 }
 
 function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean): string {
