@@ -300,7 +300,10 @@ export async function getPackageConfig(
       doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
       isEsmPackage: esmPackage,
-      isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
+      // Match the directory segment exactly (trailing slash) so a sibling repository whose name
+      // merely starts with willbooster-configs (e.g. willbooster-configs-fork) is not misclassified;
+      // both the root and its sub-package paths still contain `/willbooster-configs/`.
+      isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs/'),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
       // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in
