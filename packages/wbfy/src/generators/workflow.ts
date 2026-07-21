@@ -61,6 +61,7 @@ interface Types {
 
 interface Job {
   'runs-on'?: string;
+  env?: Record<string, string>;
   permissions?: Record<string, string>;
   steps?: Step[];
   uses?: string;
@@ -1125,14 +1126,12 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
 }
 
 function generateAutofixWorkflow(config: PackageConfig): Workflow {
-  // No fnox setup or FNOX_AGE_KEY here on purpose: autofix only runs cleanup/build (never app
-  // code needing secrets), it has never received DOT_ENV either, and public-repo autofix runs on
-  // fork PRs where exposing a decryption secret would be unsafe. wb degrades gracefully (warns
-  // and proceeds without fnox variables) when fnox is unavailable.
+  // No FNOX_AGE_KEY here on purpose: public-repo autofix runs on fork PRs where exposing a
+  // decryption secret would be unsafe. mise still installs fnox so plaintext defaults load, and
+  // WB_ENV satisfies wb's CI environment guard while encrypted values remain unavailable.
   const steps: Step[] = [
     { uses: 'actions/checkout@v7' },
-    { uses: 'actions/setup-node@v7', with: { 'check-latest': true, 'node-version': 'lts/*' } },
-    { uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } },
+    { uses: 'jdx/mise-action@v4.2.0', with: { cache: true } },
     { run: 'bun install' },
     { run: 'bun run cleanup' },
   ];
@@ -1143,7 +1142,7 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
 
   const autofixWorkflow = structuredClone(publicRepoAutofixWorkflow);
   const autofixJob = autofixWorkflow.jobs.autofix ?? { 'runs-on': 'ubuntu-latest' };
-  autofixWorkflow.jobs.autofix = { ...autofixJob, steps };
+  autofixWorkflow.jobs.autofix = { ...autofixJob, env: { WB_ENV: 'development' }, steps };
   return autofixWorkflow;
 }
 
