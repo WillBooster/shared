@@ -22,7 +22,7 @@
     "format": "bun wb lint --format",
     "lint": "bun wb lint",
     "lint-fix": "bun wb lint --fix",
-    "start": "bun src/index.ts --",
+    "start": "bun src/index.ts",
     "start-prod": "bun run build && bun wb",
     "test": "bun wb test",
     "typecheck": "bun wb typecheck",
