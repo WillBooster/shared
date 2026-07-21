@@ -1376,8 +1376,10 @@ async function normalizePackageMetadata(
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
     // Preserve project-specific steps a repo appended to the managed `bun wb gen-code` (e.g. building extra
     // deploy assets) instead of discarding them: only the managed gen-code and the wrangler-types invocation
-    // are wbfy's to regenerate. Their relative order is kept, and the wrangler-types command is re-appended
-    // through the shared helper so it matches postinstall.
+    // are wbfy's to regenerate. The wrangler-types command stays directly after `bun wb gen-code`, with the
+    // custom segments after it, so a re-run re-parses to the same string — a custom segment BETWEEN gen-code
+    // and the generator would otherwise read as a non-transplantable prerequisite, drop the generator, and
+    // make wbfy oscillate across runs.
     const customSegments = genCodeScript
       ? splitCommandSegments(genCodeScript).filter(
           (segment) =>
@@ -1386,9 +1388,8 @@ async function normalizePackageMetadata(
             !reachesWranglerTypes(segment, jsonObj.scripts, () => true)
         )
       : [];
-    jsonObj.scripts['gen-code'] = appendWranglerTypes(
-      ['bun wb gen-code', ...customSegments].join(' && '),
-      wranglerTypes
+    jsonObj.scripts['gen-code'] = [appendWranglerTypes('bun wb gen-code', wranglerTypes), ...customSegments].join(
+      ' && '
     );
   } else if (
     genCodeScript &&

@@ -291,18 +291,28 @@ test.each([
 // wrangler-types invocation are wbfy's to rewrite.
 test('preserves project-specific steps appended to the managed gen-code script', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
-  const packageJson = await generatePackageJsonFrom(
+  const config = {
+    depending: genI18nTsDepending,
+    isCloudflare: true,
+    doesContainWranglerConfig: true,
+    packageJson: wranglerPackageJson,
+  };
+  const first = await generatePackageJsonFrom(
     { scripts: { 'gen-code': 'bun wb gen-code && bun run build-assets' }, ...wranglerPackageJson },
-    {
-      depending: genI18nTsDepending,
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    },
+    config,
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code && bun run build-assets && bunx wrangler types');
+  // The wrangler-types command stays directly after `bun wb gen-code`, with the custom step after it.
+  const expected = 'bun wb gen-code && bunx wrangler types && bun run build-assets';
+  expect(first.scripts?.['gen-code']).toBe(expected);
+
+  // wbfy consumes its own output, so a second run must be a no-op: the custom step must not read as a
+  // generator prerequisite and drop the wrangler-types command (which would make gen-code oscillate).
+  const second = await generatePackageJsonFrom({ scripts: { ...first.scripts }, ...wranglerPackageJson }, config, {
+    createI18nDir: true,
+  });
+  expect(second.scripts?.['gen-code']).toBe(expected);
 });
 
 // A build script composing gen-code with a build step reaches the generator only through the managed gen-code
