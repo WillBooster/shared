@@ -16,6 +16,7 @@ import { lintCommand } from './commands/lint.js';
 import { maintenanceCommand } from './commands/maintenance.js';
 import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
 import { prismaCommand } from './commands/prisma.js';
+import { railwayEnvCommand } from './commands/railwayEnv.js';
 import { releaseCommand } from './commands/release.js';
 import { retryCommand } from './commands/retry.js';
 import { setupCommand } from './commands/setup.js';
@@ -61,6 +62,7 @@ await yargs(hideBin(process.argv))
   .command(maintenanceCommand)
   .command(optimizeForDockerBuildCommand)
   .command(prismaCommand)
+  .command(railwayEnvCommand)
   .command(releaseCommand)
   .command(retryCommand)
   .command(setupCommand)
