@@ -19,6 +19,15 @@ function isNonRailwayKey(key: string): boolean {
 }
 
 /**
+ * The keys actually declared in the project's fnox/.env sources. `mise env` is reported as a
+ * pseudo-source that mixes in host/tool variables (PATH, CARGO_HOME, RUSTUP_*, ...); those must
+ * never be pushed to Railway, so they are excluded here (mirrors wb deploy).
+ */
+export function selectDotenvSourcedKeys(envSources: ReadonlyArray<readonly [string, readonly string[]]>): Set<string> {
+  return new Set(envSources.filter(([source]) => !source.startsWith('mise env')).flatMap(([, keys]) => keys));
+}
+
+/**
  * Pick the variables to push to Railway from a resolved environment: drop empty/undefined values
  * (so a `KEY=` placeholder never blanks a real Railway variable) and Railway-managed keys, sorted
  * for a stable command and log line.
@@ -56,19 +65,26 @@ export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions>
       process.exit(1);
     }
 
-    // Restrict to variables declared in .env / .env.example (wb's environment contract); ignore
-    // process.env so Railway's own injected variables never leak in. The effective values come
-    // from project.env (fnox-resolved for WB_ENV). Mirrors wb gen-dev-vars.
-    const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
+    // Restrict to variables declared in the project's fnox/.env sources; ignore process.env so
+    // Railway's own injected variables never leak in. The effective values come from project.env
+    // (fnox-resolved for WB_ENV). Mirrors wb deploy.
+    const [envVars, envSources] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
+    // `mise env` is reported as a pseudo-source that mixes in host/tool variables such as PATH and
+    // CARGO_HOME; those must never be pushed to Railway, so keep only fnox/.env-declared keys.
+    const dotenvKeys = selectDotenvSourcedKeys(envSources);
     for (const key of Object.keys(envVars)) {
-      const effectiveValue = project.env[key];
-      if (effectiveValue !== undefined) envVars[key] = effectiveValue;
+      if (!dotenvKeys.has(key)) delete envVars[key];
     }
     // fnox repos keep values out of committed files, so the declared key list lives in
     // .env.example; CI also supplies these as workflow env. project.env carries the resolved value.
     for (const key of [...readEnvExampleKeys(project), 'WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
       const effectiveValue = project.env[key];
       if (envVars[key] === undefined && effectiveValue !== undefined) envVars[key] = effectiveValue;
+    }
+    // Exported environment variables win over file values (matches wb deploy / gen-dev-vars).
+    for (const key of Object.keys(envVars)) {
+      const effectiveValue = project.env[key];
+      if (effectiveValue !== undefined) envVars[key] = effectiveValue;
     }
 
     const entries = selectRailwayVariables(envVars);
