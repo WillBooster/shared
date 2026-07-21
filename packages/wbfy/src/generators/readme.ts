@@ -165,7 +165,20 @@ function isTitleNode(node: RootContent | undefined): boolean {
   if (node.type === 'heading') return true;
   // Many READMEs center their title in HTML (`<h1>`, or a `<div>`/`<p>` wrapping one), which the
   // parser reports as one opaque HTML block; the badges go after the whole block.
-  return node.type === 'html' && /<h1[\s>]/iu.test(node.value);
+  return node.type === 'html' && containsRenderedH1(node.value);
+}
+
+/**
+ * Whether the HTML block actually RENDERS an `<h1>`. Comments and quoted attribute values are
+ * removed first: a documentation example or a `title="<h1>"` attribute mentions the tag without
+ * rendering it, and treating that as the title buries the badges below the real heading.
+ */
+function containsRenderedH1(html: string): boolean {
+  const withoutInertText = html
+    .replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, '')
+    .replaceAll(/"[^"]*"/gu, '""')
+    .replaceAll(/'[^']*'/gu, "''");
+  return /<h1[\s>]/iu.test(withoutInertText);
 }
 
 /** Whether the node is a paragraph of badges and nothing else — the only content wbfy puts in the block. */

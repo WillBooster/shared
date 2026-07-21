@@ -300,3 +300,28 @@ test('resolves a real version label from wbfy itself', () => {
   // Either a released version or `<commit hash>[-dirty]-local`, never the unreleased placeholder.
   expect(version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{8,}(?:-dirty)?-local)$/u);
 });
+
+// An `<h1>` mentioned in a comment or an attribute is not a rendered title, so anchoring the badges
+// to it would bury them below the real heading.
+test.each([
+  ['a comment', '<!-- documentation example: <h1>Example</h1> -->'],
+  ['an attribute', '<div title="<h1>"></div>'],
+])('does not treat an <h1> inside %s as the title', async (_description, htmlBlock) => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${htmlBlock}\n\n# Real title\n\nDescription.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.indexOf(badgeOf('1.2.3'))).toBeLessThan(content.indexOf(htmlBlock));
+  });
+});
+
+// A genuinely rendered HTML title still anchors the block.
+test('treats a rendered HTML <h1> as the title', async () => {
+  await withTempDir(async (dirPath) => {
+    const htmlTitle = '<div align="center"><h1>Example</h1></div>';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${htmlTitle}\n\nDescription.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(content.indexOf(htmlTitle));
+  });
+});
