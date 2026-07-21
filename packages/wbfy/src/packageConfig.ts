@@ -308,12 +308,7 @@ export async function getPackageConfig(
       doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
       isEsmPackage: esmPackage,
-      // Keyed on the git remote rather than the checkout path: ghq and manual clones are free to
-      // name the directory anything, and any unrelated path containing "willbooster-configs" would
-      // otherwise be misdetected.
-      // GitHub owner and repository names are case-insensitive, and a remote may spell them either way.
-      isWillBoosterConfigs:
-        repoAuthor?.toLowerCase() === 'willbooster' && repoName?.toLowerCase() === 'willbooster-configs',
+      isWillBoosterConfigs: detectIsWillBoosterConfigs(dirPath, packageJsonPath, repoName),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
       // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in
@@ -694,6 +689,25 @@ export function detectWranglerConfig(dirPath: string): boolean {
   return ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
     fs.existsSync(path.resolve(dirPath, fileName))
   );
+}
+
+/**
+ * Detects whether dirPath belongs to the willbooster-configs repository. Prefers the authoritative
+ * GitHub repo name, which is immune to the local directory layout. That name is fetched only for the
+ * root, so sub-packages (and offline roots) walk up to the nearest git root and match its directory
+ * name: a sibling repo cloned under a parent directory named willbooster-configs stops at its own
+ * `.git`, so it is not misclassified. The path segment remains a last resort when no git root exists.
+ */
+function detectIsWillBoosterConfigs(dirPath: string, packageJsonPath: string, repoName: string | undefined): boolean {
+  if (repoName) return repoName.toLowerCase() === 'willbooster-configs';
+  let current = path.resolve(dirPath);
+  while (current !== path.dirname(current)) {
+    if (fs.existsSync(path.join(current, '.git'))) {
+      return path.basename(current).toLowerCase() === 'willbooster-configs';
+    }
+    current = path.dirname(current);
+  }
+  return packageJsonPath.toLowerCase().includes('/willbooster-configs/');
 }
 
 function detectCloudflare(dirPath: string, packageJson: PackageJson): boolean {

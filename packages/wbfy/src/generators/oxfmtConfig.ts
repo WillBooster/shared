@@ -5,6 +5,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { resolveWillboosterConfigModule } from '../utils/willboosterConfigsUtil.js';
 
 import { normalizeConfigContent } from './configContent.js';
 import { ManagedConfigBlocks } from './managedConfigBlock.js';
@@ -38,6 +39,8 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
 }
 
 function getConfigContent(config: PackageConfig): string {
+  const oxfmtBaseConfigModule = resolveWillboosterConfigModule(config, '@willbooster/oxfmt-config');
+
   // CommonJS packages need require/module.exports here: oxfmt config files are
   // only auto-discovered as .ts, and the shared config package is ESM-only.
   if (!config.isEsmPackage) {
@@ -47,7 +50,7 @@ function getConfigContent(config: PackageConfig): string {
 import type { OxfmtConfig } from 'oxfmt';
 
 // oxlint-disable unicorn/prefer-module -- Oxfmt config files are only auto-discovered as .ts, and CommonJS avoids ESM package loading issues.
-const oxfmtConfig = require('@willbooster/oxfmt-config');
+const oxfmtConfig = require('${oxfmtBaseConfigModule}');
 
 const oxfmtResolvedConfig: OxfmtConfig = oxfmtConfig.default ?? oxfmtConfig;`
     )}
@@ -60,7 +63,7 @@ ${managedConfigBlocks.getBlock('export', 'module.exports = oxfmtResolvedConfig;'
     'base',
     `import type { OxfmtConfig } from 'oxfmt';
 
-import config from '@willbooster/oxfmt-config';
+import config from '${oxfmtBaseConfigModule}';
 
 const oxfmtResolvedConfig: OxfmtConfig = config;`
   )}

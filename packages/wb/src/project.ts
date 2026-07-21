@@ -394,15 +394,27 @@ export class Project {
     }
   }
 
+  /**
+   * Whether the Playwright config declares a `webServer` block, i.e. Playwright itself builds and
+   * starts the app under test. Unlike {@link skipLaunchingServerForPlaywright} this ignores CI, so
+   * it also holds for library fixtures whose only server is the one Playwright manages.
+   */
   @memoizeOne
-  get skipLaunchingServerForPlaywright(): boolean {
-    if (isCI(this.env.CI)) return false;
+  get hasPlaywrightWebServerConfig(): boolean {
     try {
       const configPath = this.findFile('playwright.config.ts');
       return /\bwebServer\b/.test(fs.readFileSync(configPath, 'utf8'));
     } catch {
       return false;
     }
+  }
+
+  @memoizeOne
+  get skipLaunchingServerForPlaywright(): boolean {
+    // On CI wb launches the app itself so the run does not depend on Playwright's `reuseExistingServer`
+    // (which is disabled on CI); locally, a `webServer` block means Playwright already owns the server.
+    if (isCI(this.env.CI)) return false;
+    return this.hasPlaywrightWebServerConfig;
   }
 
   @memoizeOne
