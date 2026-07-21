@@ -257,7 +257,7 @@ function mergeRenovateExtends(
   // willbooster-configs is the shared preset itself: never inject the self-reference, and strip it
   // if a previous run (or a hand edit) left it in place.
   const presetsToAdd = config.isWillBoosterConfigs ? [] : generatedExtends;
-  const presetsToDrop = config.isWillBoosterConfigs ? new Set([...legacyPresets, sharedPreset]) : legacyPresets;
+  const presetsToDrop = config.isWillBoosterConfigs ? new Set(legacyPresets).add(sharedPreset) : legacyPresets;
 
   // Only prepend the presets that are missing. Moving one that is already listed would reorder the
   // array, and a later preset overrides an earlier one in Renovate — so re-sorting silently flips

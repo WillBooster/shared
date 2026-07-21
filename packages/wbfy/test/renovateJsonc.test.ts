@@ -371,28 +371,19 @@ test('leaves an unparsable renovate.jsonc untouched', async () => {
   });
 });
 
-test('strips the self-referencing preset when regenerating willbooster-configs itself', async () => {
+test.each([
+  {
+    name: 'strips the self-referencing preset when regenerating willbooster-configs itself',
+    extends: [preset, 'config:recommended'],
+  },
+  {
+    name: 'does not inject the shared preset when generating renovate.jsonc for willbooster-configs',
+    extends: ['config:recommended'],
+  },
+])('$name', async ({ extends: initialExtends }) => {
   const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-renovate-')));
   try {
-    fs.writeFileSync(
-      path.join(tempDirPath, 'renovate.jsonc'),
-      JSON.stringify({ extends: [preset, 'config:recommended'] })
-    );
-    fsUtil.setRootDirPath(tempDirPath);
-    await generateRenovateJsonc(createConfig({ dirPath: tempDirPath, isRoot: true, isWillBoosterConfigs: true }));
-    await promisePool.promiseAll();
-    const settings = parseSettings(fs.readFileSync(path.join(tempDirPath, 'renovate.jsonc'), 'utf8'));
-    expect(settings.extends).toEqual(['config:recommended']);
-  } finally {
-    fsUtil.setRootDirPath(undefined);
-    fs.rmSync(tempDirPath, { force: true, recursive: true });
-  }
-});
-
-test('does not inject the shared preset when generating renovate.jsonc for willbooster-configs', async () => {
-  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-renovate-')));
-  try {
-    fs.writeFileSync(path.join(tempDirPath, 'renovate.jsonc'), JSON.stringify({ extends: ['config:recommended'] }));
+    fs.writeFileSync(path.join(tempDirPath, 'renovate.jsonc'), JSON.stringify({ extends: initialExtends }));
     fsUtil.setRootDirPath(tempDirPath);
     await generateRenovateJsonc(createConfig({ dirPath: tempDirPath, isRoot: true, isWillBoosterConfigs: true }));
     await promisePool.promiseAll();
