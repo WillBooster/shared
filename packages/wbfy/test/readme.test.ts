@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, expect, test, vi } from 'vitest';
 
-import { generateReadme } from '../src/generators/readme.js';
+import { generateReadme, writeBadgeBlock } from '../src/generators/readme.js';
 import { fsUtil } from '../src/utils/fsUtil.js';
 import { promisePool } from '../src/utils/promisePool.js';
 import * as version from '../src/utils/version.js';
@@ -368,4 +368,19 @@ test('separates front matter ending at EOF from the badge block', async () => {
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).toContain('---\n\n[![wbfy]');
   });
+});
+
+// mdast reports a node's offset AFTER CommonMark's optional one-to-three-space indentation, so
+// slicing from it would silently reindent content this generator promises to copy verbatim.
+// Asserted on writeBadgeBlock directly: generateFile separately trims the file's leading whitespace,
+// which would mask the first-line cases.
+test.each([
+  ['before an untitled body', '   intro\n'],
+  ['before the title', ' # Heading\n\nBody\n'],
+  ['before the body', '# Heading\n\n   body\n'],
+])('preserves leading indentation %s', (_description, input) => {
+  const result = writeBadgeBlock(input, [badgeOf('1.2.3')]);
+  for (const line of input.split('\n').filter((candidate) => candidate.trim())) {
+    expect(result).toContain(line);
+  }
 });

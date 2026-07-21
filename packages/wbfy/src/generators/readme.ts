@@ -150,12 +150,12 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   const head =
     titleIndex === -1
       ? ''
-      : content.slice(nodes[titleIndex]!.position!.start.offset, nodes[titleIndex]!.position!.end.offset);
+      : content.slice(startOffsetWithIndent(content, nodes[titleIndex]!), nodes[titleIndex]!.position!.end.offset);
 
   const blockNode = nodes[titleIndex === -1 ? firstContentIndex : titleIndex + 1];
   const existing = blockNode && isBadgeBlockNode(blockNode) ? readBadges(blockNode, content) : undefined;
   const bodyNode = existing && blockNode ? nodes[nodes.indexOf(blockNode) + 1] : blockNode;
-  const body = bodyNode ? content.slice(bodyNode.position!.start.offset) : '';
+  const body = bodyNode ? content.slice(startOffsetWithIndent(content, bodyNode)) : '';
 
   // Superseding a managed badge is just dropping the old one: a version, URL or workflow change
   // leaves no stale copy, while a badge someone else added to the block is kept. A block the older
@@ -171,6 +171,17 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   const result =
     prefix + separator + [head, badges.join(lineEnding), body].filter(Boolean).join(`${lineEnding}${lineEnding}`);
   return endsWithNewline ? `${result}${lineEnding}` : result;
+}
+
+/**
+ * A node's start offset, extended back over the leading whitespace on its own line. CommonMark
+ * allows one to three spaces of indentation before a block, and mdast reports the offset AFTER
+ * them — so slicing from it silently reindents content this generator promises to copy verbatim.
+ */
+function startOffsetWithIndent(content: string, node: RootContent): number {
+  const start = node.position!.start.offset!;
+  const lineStart = content.lastIndexOf('\n', start - 1) + 1;
+  return /^[ \t]*$/u.test(content.slice(lineStart, start)) ? lineStart : start;
 }
 
 /**
