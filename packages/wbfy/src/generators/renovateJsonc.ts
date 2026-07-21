@@ -11,9 +11,11 @@ import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
+const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
+
 const jsonObj = {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  extends: ['github>WillBooster/willbooster-configs:renovate.jsonc'],
+  extends: [sharedPreset],
 };
 
 // The preset used to live in renovate.json5; it was renamed to renovate.jsonc, so the old reference
@@ -160,24 +162,18 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
 /** Merges the generated settings on top of the live ones, leaving the live values in place. */
 function buildSettings(config: PackageConfig, liveSettings: Settings | undefined): Settings {
   const generatedSettings = structuredClone(jsonObj) as Settings;
+  // willbooster-configs' renovate.jsonc IS the shared preset, so extending it there is a
+  // self-reference: it says nothing, and Renovate is one recursion-guard change away from failing
+  // to resolve the preset for every repository in both orgs.
+  const generatedExtends = config.isWillBoosterConfigs ? [] : jsonObj.extends;
   const newSettings = liveSettings
     ? (merge.all([generatedSettings, liveSettings, generatedSettings], {
         arrayMerge: overwriteMerge,
       }) as Settings)
     : generatedSettings;
-  newSettings.extends = mergeRenovateExtends(jsonObj.extends, liveSettings?.extends);
-
-  // Don't upgrade Next.js automatically
-  if (config.depending.blitz) {
-    newSettings.packageRules ??= [];
-    if (
-      !newSettings.packageRules.some((rule: { matchPackageNames?: string[] }) =>
-        rule.matchPackageNames?.includes('next')
-      )
-    ) {
-      newSettings.packageRules.push({ matchPackageNames: ['next'], enabled: false });
-    }
-  }
+  newSettings.extends = mergeRenovateExtends(generatedExtends, liveSettings?.extends).filter(
+    (preset) => !config.isWillBoosterConfigs || preset !== sharedPreset
+  );
   return newSettings;
 }
 

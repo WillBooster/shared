@@ -17,6 +17,7 @@ import type { PackageJson } from 'type-fest';
 
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
+import { findWranglerConfigPath } from './utils/wrangler.js';
 
 export type DatabaseOrm = 'prisma' | 'drizzle';
 
@@ -280,6 +281,17 @@ export class Project {
   @memoizeOne
   get packageJsonPath(): string {
     return path.join(this.dirPath, 'package.json');
+  }
+
+  /**
+   * Whether `wrangler types` can generate `worker-configuration.d.ts` here. Both signals are
+   * required: wrangler exits non-zero without a config, and a package that does not declare
+   * wrangler itself cannot resolve the binary — in a mixed monorepo a root-level wrangler
+   * devDependency must not make every workspace package emit types it never consumes.
+   */
+  @memoizeOne
+  get generatesWorkerTypes(): boolean {
+    return !!findWranglerConfigPath(this) && this.hasOwnDependency('wrangler');
   }
 
   @memoizeOne

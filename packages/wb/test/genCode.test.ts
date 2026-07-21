@@ -8,6 +8,30 @@ import { getGenCodeScripts } from '../src/commands/genCode.js';
 import { Project } from '../src/project.js';
 
 describe('getGenCodeScripts', () => {
+  it('generates worker types first when a wrangler config and dependency exist', async () => {
+    const dirPath = await createProject({ devDependencies: { wrangler: '4.70.0' } });
+    await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{}');
+
+    try {
+      // Must come first: worker-configuration.d.ts is gitignored, and the later generators
+      // type-check against the Cloudflare `Env` it declares.
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))[0]).toBe('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not generate worker types without an own wrangler dependency', async () => {
+    const dirPath = await createProject({});
+    await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{}');
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
   it('runs the project gen-i18n-ts script when it exists', async () => {
     const dirPath = await createProject({
       scripts: {

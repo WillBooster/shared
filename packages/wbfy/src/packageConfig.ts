@@ -13,7 +13,6 @@ import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
-import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
@@ -300,7 +299,10 @@ export async function getPackageConfig(
       doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
       isEsmPackage: esmPackage,
-      isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
+      // Keyed on the git remote rather than the checkout path: ghq and manual clones are free to
+      // name the directory anything, and any unrelated path containing "willbooster-configs" would
+      // otherwise be misdetected.
+      isWillBoosterConfigs: repoAuthor === 'WillBooster' && repoName === 'willbooster-configs',
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
       // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in
@@ -394,7 +396,7 @@ export async function getPackageConfig(
 
 /**
  * Tells whether wbfy manages worker-configuration.d.ts for the package. The file is gitignored and untracked on the
- * assumption that `wrangler types` regenerates it on install, so all three steps must agree: the package has to own a
+ * assumption that the `wb gen-code` postinstall regenerates it on install, so all three steps must agree: the package has to own a
  * wrangler config (`wrangler types` exits non-zero without one), to depend on wrangler (a package deploying via a
  * CI action cannot resolve the command), and to regenerate the same file on every checkout. Otherwise wbfy would
  * ignore and delete a file that nothing recreates identically.
@@ -404,11 +406,6 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
   return (
     config.doesContainWranglerConfig &&
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
-    // A project invocation that writes the managed default file from inputs wbfy cannot validate (e.g.
-    // `wrangler types -c wrangler.jsonc -c ../bound-worker/wrangler.jsonc` for RPC types) would fight a managed
-    // fallback generator over the same file, and several distinct flagged generators leave no deterministic
-    // choice, so such packages stay unmanaged.
-    !selectProjectWranglerTypesGenerator(packageJson?.scripts ?? {}).conflicting &&
     consumesGeneratedWorkerTypes(config) &&
     hasReproducibleWorkerTypesInference(config)
   );

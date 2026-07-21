@@ -31,6 +31,24 @@ async function withRepo(files: Record<string, string>, run: (dirPath: string) =>
 const preset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
 const legacyPreset = 'github>WillBooster/willbooster-configs:renovate.json5';
 
+test('never makes willbooster-configs extend its own preset', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-renovate-')));
+  try {
+    // The repository's renovate.jsonc IS the shared preset, so extending it is a self-reference.
+    fs.writeFileSync(path.join(tempDirPath, 'renovate.jsonc'), `{ "extends": ["${preset}", "config:recommended"] }\n`);
+    fsUtil.setRootDirPath(tempDirPath);
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
+    config.isWillBoosterConfigs = true;
+    await generateRenovateJsonc(config);
+    await promisePool.promiseAll();
+    const content = fs.readFileSync(path.join(tempDirPath, 'renovate.jsonc'), 'utf8');
+    expect(parseSettings(content).extends).toEqual(['config:recommended']);
+  } finally {
+    fsUtil.setRootDirPath(undefined);
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
 test('generates renovate.jsonc in a repository without any Renovate config', async () => {
   await withRepo({}, async (dirPath) => {
     const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
@@ -185,29 +203,6 @@ test('leaves extends untouched when the generated preset is already listed out o
       expect(content).toContain('// Organization defaults.');
     }
   );
-});
-
-test('keeps a trailing comment on the array element it describes when appending', async () => {
-  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-renovate-')));
-  try {
-    fs.writeFileSync(
-      path.join(tempDirPath, 'renovate.jsonc'),
-      '{\n  "packageRules": [\n    { "matchPackageNames": ["foo"], "enabled": false } // Disable foo because it breaks production.\n  ]\n}\n'
-    );
-    fsUtil.setRootDirPath(tempDirPath);
-    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
-    config.depending.blitz = true;
-    await generateRenovateJsonc(config);
-    await promisePool.promiseAll();
-    const content = fs.readFileSync(path.join(tempDirPath, 'renovate.jsonc'), 'utf8');
-    const rules = parseSettings(content).packageRules as { matchPackageNames: string[] }[];
-    expect(rules.map((rule) => rule.matchPackageNames)).toEqual([['foo'], ['next']]);
-    // The comment must stay with the foo rule rather than describe the generated next rule.
-    expect(content.indexOf('// Disable foo')).toBeLessThan(content.indexOf('next'));
-  } finally {
-    fsUtil.setRootDirPath(undefined);
-    fs.rmSync(tempDirPath, { force: true, recursive: true });
-  }
 });
 
 test('reports the comments lost when dropping the legacy preset forces a rewrite', async () => {
