@@ -938,7 +938,9 @@ async function resolveLocalRepoIdentity(
  * into package.json), so the host must be verified first; a non-GitHub remote yields no identity, as before.
  */
 function readGitHubIdentity(url: string): [string, string] | undefined {
-  if (!/(?:^|\W)github\.com[/:]/u.test(url)) return undefined;
+  // `github:owner/repo` is npm's GitHub shorthand and names no host, so it must be recognized before the host
+  // check; normalizeRepositoryUrlForPackageJson accepts the same shorthand.
+  if (!url.startsWith('github:') && !/(?:^|\W)github\.com[/:]/u.test(url)) return undefined;
   const [org, name] = gitHubUtil.getOrgAndName(url);
   return org && name ? [canonicalizeOwner(org), name] : undefined;
 }
