@@ -138,6 +138,26 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(1);
   });
 
+  it('allows a non-standard cascade suffix (NODE_ENV=qa) to carry a standard WB_ENV', async () => {
+    // `NODE_ENV=qa` selects `.env.qa` while WB_ENV stays a standard mode — a supported cascade the
+    // mismatch guard must not reject (it enforces only standard cascades, like the main loader).
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(path.join(projectDirPath, '.env.qa'), 'WB_ENV=development\nSELECTED=qa-file\n');
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$WB_ENV" "$SELECTED"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, NODE_ENV: 'qa' },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('development qa-file\n');
+    expect(result.status).toBe(0);
+  });
+
   it("restores yarn's temporary bin folder for Plug'n'Play projects without node_modules", async () => {
     // PnP installs create no node_modules/.bin, so the (otherwise stripped) BERRY_BIN_FOLDER
     // is the only source of dependency executables and must be restored.

@@ -151,9 +151,13 @@ function readAndApplyEnvironmentVariables(cwd) {
   // DIFFERENT value must be rejected: the child would run labeled one environment while carrying
   // another's secrets. This covers both a forced `.env.production` containing `WB_ENV=development` and
   // the default-development path (`.env.development`, read even when WB_ENV is unset, containing
-  // `WB_ENV=production`), so it compares against `cascade`, not just the forced `mode`.
+  // `WB_ENV=production`), so it compares against `cascade`, not just the forced `mode`. Only a
+  // STANDARD cascade is enforced (mirroring Project.completeAndValidateWbEnv): a custom suffix such as
+  // `NODE_ENV=qa` legitimately selects `.env.qa` while WB_ENV stays a standard mode, so erroring on it
+  // would reject a supported cascade.
   if (
     process.env.WB_ENV &&
+    ['development', 'test', 'staging', 'production'].includes(cascade) &&
     process.env.WB_ENV !== cascade &&
     process.env.WB_SKIP_ENV_CHECK !== '1' &&
     process.env.WB_SKIP_ENV_CHECK !== 'true'
