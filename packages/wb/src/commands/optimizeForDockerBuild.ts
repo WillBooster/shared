@@ -23,6 +23,7 @@ import {
 } from '../utils/privateRegistry.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
+import { collectManifests, materializePrivatePackages } from './setupPrivatePackages.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 const sqliteFilePattern = /\.(?:sqlite3?|db)(?:[-.](?:journal|shm|wal))?$/i;
@@ -69,6 +70,34 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       process.exit(1);
     }
 
+    // Materialize private dependencies on the host first so the per-project rewrite below resolves
+    // them to file: paths and the Docker build needs no registry credentials. Only in --outside
+    // mode (the in-image second pass has no node_modules/registry to materialize from) and only
+    // when a private dependency is actually declared, so repos without one are untouched — no empty
+    // output directories, no spurious "COPY" hint. Failures are non-fatal and non-destructive:
+    // materialize throws before deleting any existing output (and cleans up its staging on a failed
+    // download), so a repo lacking registry credentials keeps building exactly as before, with the
+    // per-project rewrite below emitting the existing "run wb setup-private-packages" hint. This
+    // keeps the step a pure convenience that lets repositories drop the explicit command.
+    if (argv.outside) {
+      // Resolve the full workspace set from the repository root so a private dependency declared in
+      // any sibling workspace is materialized even when optimize runs from a subpackage directory.
+      const rootProjects = await findDescendantProjects(argv, false, projects.root.dirPath);
+      const manifests = collectManifests(rootProjects ?? projects);
+      if (manifests.some(declaresPrivateDependency)) {
+        try {
+          await materializePrivatePackages(projects.root.dirPath, manifests, { dryRun: Boolean(argv.dryRun) });
+        } catch (error) {
+          console.warn(
+            chalk.yellow(
+              `Could not auto-materialize private packages (${error instanceof Error ? error.message : String(error)}); ` +
+                'run `wb setup-private-packages` if the Docker build needs them. Continuing.'
+            )
+          );
+        }
+      }
+    }
+
     const optimizedProjects: Project[] = [];
     for (const project of prepareForRunningCommand('optimizeForDockerBuild', projects.descendants)) {
       const packageJson: PackageJson = project.packageJson;
@@ -100,6 +129,19 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
   },
 };
+
+/** Whether any dependency section declares a private git or `@willbooster-private/*` registry dependency. */
+function declaresPrivateDependency(packageJson: PackageJson): boolean {
+  return dependencySectionKeys.some((key) => {
+    const deps = packageJson[key];
+    return (
+      deps !== undefined &&
+      Object.entries(deps).some(
+        ([name, value]) => isPrivateGitDependency(value) || isPrivateRegistryDependency(name, value)
+      )
+    );
+  });
+}
 
 function rewritePrivateGitHubDependencies(project: Project, packageJson: PackageJson): string[] {
   return rewritePrivateGitHubDependenciesForDir(project.rootDirPath, project.dirPath, packageJson);
