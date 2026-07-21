@@ -19,7 +19,7 @@ const managedConfigBlocks = new ManagedConfigBlocks({
   toolName: 'oxlint',
 });
 
-export async function generateOxlintConfig(config: PackageConfig, rootConfig: PackageConfig): Promise<void> {
+export async function generateOxlintConfig(config: PackageConfig, _rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxlintConfig', async () => {
     // willbooster-configs publishes config files as product code, so migration
     // must not remove package-provided linter settings. Generated files with
@@ -33,7 +33,7 @@ export async function generateOxlintConfig(config: PackageConfig, rootConfig: Pa
       ? existingContent
       : replaceLegacyConfigReferences(
           managedConfigBlocks.getConfigContent({
-            desiredContent: getConfigContent(config, rootConfig),
+            desiredContent: getConfigContent(config),
             existingContent,
             filePath,
           })
@@ -73,9 +73,9 @@ function replaceLegacyConfigReferences(content: string): string {
   return content.replaceAll(/(?<![./])\bconfig\./gu, 'oxlintResolvedConfig.');
 }
 
-function getConfigContent(config: PackageConfig, rootConfig: PackageConfig): string {
+function getConfigContent(config: PackageConfig): string {
   const isRootConfig = config.isRoot;
-  const oxlintBaseConfigModule = resolveWillboosterConfigModule(config, rootConfig, '@willbooster/oxlint-config');
+  const oxlintBaseConfigModule = resolveWillboosterConfigModule(config, '@willbooster/oxlint-config');
 
   // Do not collapse this to a static import for every package. CommonJS packages
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM

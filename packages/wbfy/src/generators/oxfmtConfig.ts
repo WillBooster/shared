@@ -17,13 +17,13 @@ const managedConfigBlocks = new ManagedConfigBlocks({
   toolName: 'oxfmt',
 });
 
-export async function generateOxfmtConfig(config: PackageConfig, rootConfig: PackageConfig): Promise<void> {
+export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
     const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
     const existingContent = await fsUtil.readFileIfExists(filePath);
     const desiredContent = managedConfigBlocks.getConfigContent({
-      desiredContent: getConfigContent(config, rootConfig),
+      desiredContent: getConfigContent(config),
       existingContent,
       filePath,
     });
@@ -39,8 +39,8 @@ export async function generateOxfmtConfig(config: PackageConfig, rootConfig: Pac
   });
 }
 
-function getConfigContent(config: PackageConfig, rootConfig: PackageConfig): string {
-  const oxfmtBaseConfigModule = resolveWillboosterConfigModule(config, rootConfig, '@willbooster/oxfmt-config');
+function getConfigContent(config: PackageConfig): string {
+  const oxfmtBaseConfigModule = resolveWillboosterConfigModule(config, '@willbooster/oxfmt-config');
 
   // CommonJS packages need require/module.exports here: oxfmt config files are
   // only auto-discovered as .ts, and the shared config package is ESM-only.
