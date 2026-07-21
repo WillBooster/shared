@@ -397,9 +397,13 @@ test('keeps an unrelated badge in a title-less leading block', () => {
 // Only wbfy's own output is migratable; a user's custom-only badge layout stays where they put it.
 test('leaves a user-authored badge block above the title', () => {
   const custom = '[![custom](https://example.test/b.svg)](https://example.test)';
-  const result = writeBadgeBlock(`${custom}\n\n# Project\n\nDescription.\n`, [badgeOf('1.2.3')]);
+  const first = writeBadgeBlock(`${custom}\n\n# Project\n\nDescription.\n`, [badgeOf('1.2.3')]);
 
-  expect(result.indexOf(custom)).toBeLessThan(result.indexOf('# Project'));
+  expect(first.indexOf(custom)).toBeLessThan(first.indexOf('# Project'));
+  // wbfy's own block goes BELOW the title, so the next run does not see a managed badge in the
+  // user's block and relocate the whole thing.
+  expect(first.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(first.indexOf('# Project'));
+  expect(writeBadgeBlock(first, [badgeOf('1.2.3')])).toBe(first);
 });
 
 // Quoting is significant only inside a start tag; quotation marks in ordinary text are text.

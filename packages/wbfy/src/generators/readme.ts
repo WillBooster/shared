@@ -151,15 +151,19 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
       : undefined;
   // ...and only when a title actually follows it, since relocating is the whole point of skipping it.
   const relocatesLegacyBlock = !!legacyBlock && isTitleNode(nodes[1]);
-  const firstContentIndex = relocatesLegacyBlock ? 1 : 0;
-  const titleIndex = isTitleNode(nodes[firstContentIndex]) ? firstContentIndex : -1;
+  // A leading block WITHOUT a managed badge is the user's own layout: it stays above the title, and
+  // wbfy's block goes below, which is also what keeps this idempotent — writing wbfy's badge into
+  // that block instead would make the next run see a managed badge there and relocate the lot.
+  const keepsLeadingBlock = !!nodes[0] && !legacyBlock && isBadgeBlockNode(nodes[0]) && isTitleNode(nodes[1]);
+  const titleIndex = relocatesLegacyBlock || keepsLeadingBlock ? 1 : isTitleNode(nodes[0]) ? 0 : -1;
   // Without a recognizable title the block sits at the very top, above everything.
+  const headStartNode = keepsLeadingBlock ? nodes[0]! : nodes[titleIndex];
   const head =
     titleIndex === -1
       ? ''
-      : content.slice(startOffsetWithIndent(content, nodes[titleIndex]!), nodes[titleIndex]!.position!.end.offset);
+      : content.slice(startOffsetWithIndent(content, headStartNode!), nodes[titleIndex]!.position!.end.offset);
 
-  const blockNode = nodes[titleIndex === -1 ? firstContentIndex : titleIndex + 1];
+  const blockNode = nodes[titleIndex + 1];
   const existing = blockNode && isBadgeBlockNode(blockNode) ? readBadges(blockNode, content) : undefined;
   const bodyNode = existing && blockNode ? nodes[nodes.indexOf(blockNode) + 1] : blockNode;
   const body = bodyNode ? content.slice(startOffsetWithIndent(content, bodyNode)) : '';
