@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -293,16 +292,16 @@ export class Project {
    * and in a mixed monorepo a root-level wrangler devDependency must not make every workspace
    * package emit types it never consumes.
    *
-   * The gitignore entry is the third signal, and the one that says the package actually CONSUMES
-   * the file: wbfy writes that entry only for packages whose own tsconfig can reference
-   * `worker-configuration.d.ts`, and deliberately leaves alone packages that hand-maintain their
-   * `Env` instead. Without this check, such a package would gain an untracked ~500KB generated
-   * file on every install.
+   * The package's own committed gitignore rule is the third signal, and the one that says the
+   * package actually CONSUMES the file: wbfy writes that rule only for packages whose own tsconfig
+   * can reference `worker-configuration.d.ts`, and deliberately leaves alone packages that
+   * hand-maintain their `Env` instead. Without this check, such a package would gain an untracked
+   * ~500KB generated file on every install.
    */
   @memoizeOne
   get generatesWorkerTypes(): boolean {
     if (!findWranglerConfigPath(this) || !this.hasOwnDependency('wrangler')) return false;
-    return isGitIgnored(path.join(this.dirPath, WORKER_TYPES_FILE_NAME), this.dirPath);
+    return hasManagedGitignoreRule(this.dirPath, WORKER_TYPES_FILE_NAME);
   }
 
   @memoizeOne
@@ -633,15 +632,21 @@ export async function findWorkspacePackageDirs(
 }
 
 /**
- * Asks git whether a path is ignored. `git check-ignore` is authoritative — it honors the whole
- * `.gitignore` chain plus excludes — whereas parsing the files would have to reimplement it.
- * Exit code 0 means ignored, 1 means not; anything else (no git, no repository) means unknown, and
- * the safe answer there is "not ignored" so nothing generates an untracked file.
+ * Whether the package's own committed .gitignore carries wbfy's managed rule for the file.
+ *
+ * Deliberately NOT `git check-ignore`: that also honors `.git/info/exclude` and the user's global
+ * excludes, which a fresh clone and CI do not have. A developer with a personal
+ * `worker-configuration.d.ts` exclude would otherwise turn generation on for a package wbfy
+ * deliberately left unmanaged, and the resulting file would be invisible in `git status`.
+ * `packages/wbfy/src/fixers/workerTypes.ts` gates on the same committed rule.
  */
-function isGitIgnored(filePath: string, cwd: string): boolean {
-  const { status } = spawnSync('git', ['check-ignore', '--quiet', '--no-index', filePath], {
-    cwd,
-    stdio: 'ignore',
-  });
-  return status === 0;
+function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
+  try {
+    return fs
+      .readFileSync(path.join(dirPath, '.gitignore'), 'utf8')
+      .split('\n')
+      .some((line) => line.trim() === `/${fileName}`);
+  } catch {
+    return false;
+  }
 }

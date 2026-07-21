@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
+import { hasCustomWranglerTypesInvocation } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import {
   getDeclaredWorkspacePatterns,
@@ -263,6 +264,12 @@ export async function getPackageConfig(
         repoName = repoParts[1];
       }
     }
+    // Only the root fetches repo info, and that fetch needs network and a token, so identity-derived
+    // flags below would otherwise be false for every workspace package and for every offline or
+    // rate-limited run. The git remote answers the same question locally, for every package.
+    if (!repoAuthor || !repoName) {
+      [repoAuthor, repoName] = await resolveLocalRepoIdentity(dirPath, packageJson);
+    }
     const repository = repoFullName ? `github:${repoFullName}` : undefined;
     // Tauri officially supports JSON, JSON5, and TOML configuration formats.
     const doesContainTauriConfig = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
@@ -406,6 +413,10 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
   return (
     config.doesContainWranglerConfig &&
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
+    // `wb gen-code` runs a bare `wrangler types`, so a package whose own scripts pass flags that change the
+    // generated file (e.g. `--strict-vars=false`, repeated `-c` for RPC types) must stay unmanaged: managing it
+    // would delete the only record of that choice and regenerate a different `Env`.
+    !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}) &&
     consumesGeneratedWorkerTypes(config) &&
     hasReproducibleWorkerTypesInference(config)
   );
@@ -885,4 +896,34 @@ function getRedirectedRepoFullName(error: unknown): string | undefined {
   if (!org || !name) return;
 
   return `${org}/${name}`;
+}
+
+/**
+ * Resolves `<org>/<name>` from the git remote (falling back to package.json's `repository`) without
+ * calling the GitHub API. It works for every workspace package, not just the root — only the root
+ * fetches repo info — and it keeps working offline or rate-limited, where an undefined identity
+ * would silently reclassify the repository (e.g. making wbfy write willbooster-configs' Renovate
+ * preset into the preset itself again).
+ */
+async function resolveLocalRepoIdentity(
+  dirPath: string,
+  packageJson: PackageJson
+): Promise<[string | undefined, string | undefined]> {
+  try {
+    const remotes = await simpleGit(dirPath).getRemotes(true);
+    const origin = remotes.find((remote) => remote.name === 'origin');
+    const remoteUrl = origin?.refs.fetch ?? origin?.refs.push;
+    if (remoteUrl) {
+      const [org, name] = gitHubUtil.getOrgAndName(remoteUrl);
+      if (org && name) return [org, name];
+    }
+  } catch {
+    // Not a git repository, or git is unavailable: fall through to the manifest.
+  }
+  const url = typeof packageJson.repository === 'string' ? packageJson.repository : packageJson.repository?.url;
+  if (url) {
+    const [org, name] = gitHubUtil.getOrgAndName(url);
+    if (org && name) return [org, name];
+  }
+  return [undefined, undefined];
 }

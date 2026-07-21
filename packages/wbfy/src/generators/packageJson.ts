@@ -239,20 +239,27 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerType
   // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a code-generation or
   // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
   // scripts wrapping them) repositories used to carry are wbfy's to remove now that it owns the generation.
-  if (scripts['gen-code']) {
-    scripts.postinstall = 'wb gen-code';
-  } else if (managesWorkerTypes) {
-    // Without a gen-code script `wb gen-code` still has to run on install, but a project-owned postinstall step
-    // may produce `wrangler types`' own inputs (a wrangler config, `.dev.vars`), so it keeps running FIRST.
+  if (scripts['gen-code'] || managesWorkerTypes) {
+    // A project-owned postinstall step may produce `wrangler types`' own inputs (a wrangler config, `.dev.vars`),
+    // so custom segments keep running FIRST and are never dropped — only the `wrangler types` invocations and the
+    // redundant `wb gen-code` spellings are wbfy's to replace, now that `wb gen-code` owns the generation.
     const segments = scripts.postinstall === undefined ? [] : splitScriptSegments(scripts.postinstall);
     const customSegments = segments?.filter((segment) => classifyScriptSegment(segment, scripts) === 'custom');
-    // An unparseable postinstall (undefined segments) is left to a human rather than rewritten from a wrong parse.
-    scripts.postinstall = customSegments ? [...customSegments, 'wb gen-code'].join(' && ') : scripts.postinstall;
+    if (customSegments) {
+      scripts.postinstall = [...customSegments, 'wb gen-code'].join(' && ');
+    } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
+      // Unparseable, but the only command it names is one `wb gen-code` already runs (these are legacy shapes
+      // carrying redirections and empty segments), so normalizing loses nothing.
+      scripts.postinstall = 'wb gen-code';
+    }
+    // Any other unparseable postinstall is left to a human rather than rewritten from a wrong parse.
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
   }
-  // A `gen-types` script that is only a `wrangler types` invocation is now dead weight: `wb gen-code` runs it.
-  if (scripts['gen-types'] && classifyScriptSegment(scripts['gen-types'], scripts, false) === 'wranglerTypes') {
+  // A `gen-types` script that is only a `wrangler types` invocation is dead weight ONLY where `wb gen-code`
+  // actually regenerates the file. For an unmanaged package it is the sole generator, and deleting it would also
+  // break any `postinstall: bun run gen-types` still pointing at it.
+  if (managesWorkerTypes && classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false) === 'wranglerTypes') {
     delete scripts['gen-types'];
   }
 }

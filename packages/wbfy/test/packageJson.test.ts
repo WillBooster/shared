@@ -249,14 +249,15 @@ test('normalizes managed scripts of a Cloudflare project to wb gen-code', async 
   });
 });
 
-// The shapes the repositories actually carried before `wb gen-code` learned to run `wrangler types`. None of the
-// flags survive: --strict-vars=false is not the intended output, and --env-file is a legacy `.env` idiom.
+// The shapes the repositories actually carried before `wb gen-code` learned to run `wrangler types`. Only the
+// invocations equivalent to the bare one go: `--env-file` names a file fnox repositories no longer have, and it
+// does not change what is generated. Flags that DO change the output are covered by the next test.
 test.each([
-  ['a generator appended to gen-code', { 'gen-code': 'wb gen-code && wrangler types --strict-vars=false' }],
-  ['a bare generator in postinstall', { postinstall: 'wrangler types --strict-vars=false' }],
+  ['a generator appended to gen-code', { 'gen-code': 'wb gen-code && wrangler types' }],
+  ['a bare generator in postinstall', { postinstall: 'wrangler types' }],
   ['an env-file generator', { postinstall: 'wrangler types --env-file .env.example' }],
   ['a bunx generator', { postinstall: 'wb gen-code && bunx wrangler types' }],
-  ['a gen-types script', { 'gen-types': 'wrangler types --strict-vars=false' }],
+  ['a gen-types script', { 'gen-types': 'wrangler types' }],
   [
     'a gen-types wrapper',
     { 'gen-types': 'wrangler types --env-file .env', postinstall: 'bun run gen-types && wb gen-code' },
@@ -279,6 +280,40 @@ test.each([
     postinstall: 'wb gen-code',
   });
   expect(packageJson.scripts?.['gen-types']).toBeUndefined();
+});
+
+// `wb gen-code` runs a BARE `wrangler types`, so a package whose own scripts pass flags that change the generated
+// file must stay unmanaged: managing it would delete the only record of that choice and regenerate a different
+// `Env`. --strict-vars=false widens `vars` to string; repeated -c pulls in service-binding/Durable Object RPC types.
+test.each([
+  ['strict-vars', { 'gen-types': 'wrangler types --strict-vars=false' }],
+  ['multiple configs', { 'gen-types': 'wrangler types -c wrangler.jsonc -c ../bound/wrangler.jsonc' }],
+  ['a custom output path', { 'gen-types': 'wrangler types --path src/env.d.ts' }],
+])('leaves a package carrying %s unmanaged', async (_description, scripts) => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.['gen-types']).toBe(Object.values(scripts)[0]);
+});
+
+// Silently dropping a project's own install step (e.g. applying patches) would break its install.
+test('preserves custom postinstall segments', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'gen-code': 'bun wb gen-code', postinstall: 'patch-package && bun run gen-code' } },
+    { depending: genI18nTsDepending },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('patch-package && wb gen-code');
 });
 
 // A project may append its own step to the managed `bun wb gen-code` (e.g. building extra deploy assets).

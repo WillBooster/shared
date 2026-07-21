@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -162,15 +161,14 @@ async function createProject(packageJson: Record<string, unknown>): Promise<stri
 }
 
 /**
- * A git repository is required because the worker-types check asks git whether the generated file
- * is ignored, which is the signal that the package consumes it.
+ * The package's committed gitignore rule is the signal that it consumes the generated file.
  */
 async function createWorkerProject(packageJson: Record<string, unknown>, ignoresWorkerTypes: boolean): Promise<string> {
   const dirPath = await createProject(packageJson);
   await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{}');
   if (ignoresWorkerTypes) {
-    await fs.writeFile(path.join(dirPath, '.gitignore'), 'worker-configuration.d.ts\n');
+    // The exact rule wbfy generates; an anchored path is what marks the package as managed.
+    await fs.writeFile(path.join(dirPath, '.gitignore'), '/worker-configuration.d.ts\n');
   }
-  spawnSync('git', ['init', '--quiet'], { cwd: dirPath, stdio: 'ignore' });
   return dirPath;
 }
