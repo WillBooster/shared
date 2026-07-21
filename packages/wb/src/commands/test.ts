@@ -12,7 +12,6 @@ import { toDevNull } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
 import { findExplicitPlaywrightTargetIndexes } from '../scripts/execution/baseScripts.js';
-import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
@@ -116,9 +115,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;
-    if (deps.blitz) {
-      scripts = blitzScripts;
-    } else if (deps.vinext || devDeps.vinext) {
+    if (deps.vinext || devDeps.vinext) {
       // vinext apps also depend on next, so this check must come first.
       scripts = vinextScripts;
     } else if (deps.next) {
@@ -213,7 +210,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
         continue;
       }
     }
-    if (deps.blitz || deps.next || devDeps.vite) {
+    if (deps.next || devDeps.vite) {
       switch (testArgv.e2e) {
         case 'headed': {
           const exitCode = await runTestCommand(

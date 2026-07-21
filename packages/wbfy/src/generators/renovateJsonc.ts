@@ -170,18 +170,6 @@ function buildSettings(config: PackageConfig, liveSettings: Settings | undefined
       }) as Settings)
     : generatedSettings;
   newSettings.extends = mergeRenovateExtends(config, jsonObj.extends, liveSettings?.extends);
-
-  // Don't upgrade Next.js automatically
-  if (config.depending.blitz) {
-    newSettings.packageRules ??= [];
-    if (
-      !newSettings.packageRules.some((rule: { matchPackageNames?: string[] }) =>
-        rule.matchPackageNames?.includes('next')
-      )
-    ) {
-      newSettings.packageRules.push({ matchPackageNames: ['next'], enabled: false });
-    }
-  }
   return newSettings;
 }
 
@@ -249,6 +237,11 @@ function parseRenovateConfig(isEditableSyntax: boolean, content: string): Settin
   }
 }
 
+/** GitHub owner and repository names are case-insensitive, so the same preset may be spelled either way. */
+function isSamePreset(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
 function mergeRenovateExtends(
   config: PackageConfig,
   generatedExtends: string[],
@@ -263,8 +256,14 @@ function mergeRenovateExtends(
   // array, and a later preset overrides an earlier one in Renovate — so re-sorting silently flips
   // which config wins (and, being a reorder rather than an addition, also costs the array's
   // comments, which can only be preserved by insertion).
-  const missingExtends = presetsToAdd.filter((preset) => !existingExtends.includes(preset));
-  return [...missingExtends, ...existingExtends].filter((item) => !presetsToDrop.has(item));
+  // Compared case-insensitively: GitHub owner and repository names are case-insensitive, so a differently-spelled
+  // copy of the same preset would otherwise be duplicated, and a lowercase legacy preset would survive migration.
+  const missingExtends = presetsToAdd.filter(
+    (preset) => !existingExtends.some((existing) => isSamePreset(existing, preset))
+  );
+  return [...missingExtends, ...existingExtends].filter(
+    (item) => ![...presetsToDrop].some((dropped) => isSamePreset(dropped, item))
+  );
 }
 
 function normalize(content: string): string {

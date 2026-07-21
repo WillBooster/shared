@@ -12,16 +12,11 @@ import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
 import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
 import {
-  classifyWranglerTypesInvocation,
-  isManagedGenCodeSegment,
-  isUnmodeledWranglerTypesSegment,
-  parseWranglerTypesInvocation,
-  postinstallGeneratesWorkerTypes,
-  reachesWranglerTypes,
-  scriptChangesWorkingDirectory,
-  selectProjectWranglerTypesGenerator,
-  splitCommandSegments,
-} from '../utils/wranglerTypesCommand.js';
+  classifyScriptSegment,
+  runsOnlyRedundantGeneration,
+  runsOnlyRedundantI18nGeneration,
+  splitScriptSegments,
+} from '../utils/managedScriptSegment.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
@@ -245,131 +240,89 @@ function removeLegacyYarnInstallPrefixes(script: string): string {
   return result;
 }
 
+/**
+ * Keeps the project's own segments in order, replacing the FIRST segment that `wb gen-code` subsumes (a managed
+ * gen-code spelling, a disposable `wrangler types`, an argument-free `gen-i18n-ts`) with `wb gen-code` and
+ * dropping the rest. Appends the generation only when the script contained none, so nothing is reordered.
+ */
+function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scripts, dirPath: string): string[] {
+  const kinds = segments.map((segment) => classifyScriptSegment(segment, scripts, true, dirPath));
+  // A wrapper around a customized gen-code already generates; adding another invocation would run every
+  // generator twice.
+  let generationPlaced = kinds.includes('genCodeWrapper');
+  const result: string[] = [];
+  for (const [index, segment] of segments.entries()) {
+    const kind = kinds[index];
+    if (kind === 'custom' || kind === 'genCodeWrapper') {
+      result.push(segment);
+    } else if (!generationPlaced) {
+      result.push('wb gen-code');
+      generationPlaced = true;
+    }
+  }
+  if (!generationPlaced) result.push('wb gen-code');
+  return result;
+}
+
 function updatePostinstallScript(
   scripts: PackageJson.Scripts,
-  wranglerTypes: string | undefined,
-  removesObsoleteWranglerTypes: boolean
+  managesWorkerTypes: boolean,
+  hasOptedOutOfWorkerTypes: boolean,
+  dirPath: string
 ): void {
-  // On a worker-types opt-out (a wrangler package whose TypeScript project no longer consumes the
-  // generated file), strip the generating default-output invocations wbfy used to manage from
-  // postinstall — otherwise every install keeps recreating the now-unignored ~500KB file. Custom
-  // pipelines (non-default output, wrappers, unmodeled shells) are classified differently and stay.
-  if (removesObsoleteWranglerTypes && scripts.postinstall) {
-    const remaining = splitCommandSegments(scripts.postinstall).filter((segment) => {
-      if (segment === '') return false;
-      const invocationArgs = parseWranglerTypesInvocation(segment);
-      return !invocationArgs || classifyWranglerTypesInvocation(invocationArgs) !== 'reusableGenerator';
-    });
-    if (remaining.length > 0) {
-      scripts.postinstall = remaining.join(' && ');
-    } else {
-      delete scripts.postinstall;
+  // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a code-generation or
+  // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
+  // scripts wrapping them) repositories used to carry are wbfy's to remove now that it owns the generation.
+  if (scripts['gen-code'] || managesWorkerTypes) {
+    // Project-owned steps are never dropped, and their POSITION relative to generation is preserved: a step
+    // before it may produce `wrangler types`' inputs (a wrangler config, `.dev.vars`), while one after it may
+    // consume the generated types. So the managed generation replaces the first managed segment in place, and is
+    // appended only when the script had none. A wrapper around a customized gen-code already performs the
+    // generation plus the project's own steps, so it suppresses the replacement entirely.
+    const segments = scripts.postinstall === undefined ? [] : splitScriptSegments(scripts.postinstall);
+    const keptSegments = segments && rebuildPostinstallSegments(segments, scripts, dirPath);
+    if (keptSegments) {
+      scripts.postinstall = keptSegments.join(' && ');
+    } else if (runsOnlyRedundantGeneration(scripts.postinstall)) {
+      // Unparseable, but every command it names is one `wb gen-code` already runs, so normalizing loses nothing.
+      scripts.postinstall = 'wb gen-code';
     }
-  }
-  if (scripts['gen-code']) {
-    // Keep the project's own worker-types pipeline (prerequisites included — e.g. `node scripts/prepareTypes.js
-    // && wrangler types ...`) when rewriting postinstall: dropping a prerequisite would leave fresh checkouts
-    // unable to regenerate the file, and dropping the invocation itself (e.g. `wrangler types --config
-    // config/worker.jsonc`, which wbfy does not manage, possibly behind a wrapper script) would drop the
-    // generation entirely.
-    const postinstallSegments = scripts.postinstall ? splitCommandSegments(scripts.postinstall) : [];
-    const involvesWranglerTypes =
-      reachesWranglerTypes(scripts.postinstall, scripts, () => true) ||
-      // Shell forms the parser cannot model (e.g. `node scripts/prepare.js; wrangler types --config ...`,
-      // a wrapper forwarding arguments) still generate on install and must survive the rewrite verbatim —
-      // hence splitCommandSegments, which never truncates at a `cd`. A generator behind a real `cd` parses
-      // in isolation but runs elsewhere, so it counts as involved too.
-      postinstallSegments.some((segment) => isUnmodeledWranglerTypesSegment(segment, scripts)) ||
-      (scriptChangesWorkingDirectory(scripts.postinstall ?? '') &&
-        postinstallSegments.some((segment) => !!parseWranglerTypesInvocation(segment)));
-    const preservedSegments = involvesWranglerTypes
-      ? postinstallSegments.filter((segment) => segment !== '' && !isManagedGenCodeSegment(segment, scripts))
-      : [];
-    // worker-configuration.d.ts must be generated BEFORE `wb gen-code`: a types-consuming generator (e.g.
-    // chakra typegen against the Cloudflare `Env`) fails on a fresh checkout without it, and because install
-    // lifecycle failures are tolerated it then silently leaves the file ungenerated for the later type check.
-    // Insert `wb gen-code` right after the last segment that (re)generates the MANAGED worker types, keeping
-    // the project's own pipeline — prerequisites and their relative order — intact. Any invocation writing the
-    // default `worker-configuration.d.ts` counts (a bare generator, or one that only changes inputs like
-    // `--env-file`/`--config`); a `harmless` one does not (`--check`/`--help` generate nothing, and a custom
-    // output path writes a file `wb gen-code` does not consume), so it stays after gen-code as before. When
-    // none is present (e.g. an unmodeled or directory-changing pipeline) gen-code leads as it used to.
-    let lastTypesGeneratorIndex = -1;
-    for (const [index, segment] of preservedSegments.entries()) {
-      // A directory change runs the remaining segments elsewhere, so a generator past it writes another
-      // package's file — stop looking; `wb gen-code` then leads those trailing segments as before.
-      if (scriptChangesWorkingDirectory(segment)) break;
-      const generatesManagedTypes = reachesWranglerTypes(
-        segment,
-        scripts,
-        (invocationArgs) => classifyWranglerTypesInvocation(invocationArgs) !== 'harmless'
-      );
-      if (generatesManagedTypes) lastTypesGeneratorIndex = index;
-    }
-    scripts.postinstall = [
-      ...preservedSegments.slice(0, lastTypesGeneratorIndex + 1),
-      'wb gen-code',
-      ...preservedSegments.slice(lastTypesGeneratorIndex + 1),
-    ].join(' && ');
-  } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
+    // Any other unparseable postinstall is left to a human rather than rewritten from a wrong parse.
+  } else if (runsOnlyRedundantI18nGeneration(scripts.postinstall)) {
     delete scripts.postinstall;
-  }
-  if (!wranglerTypes) return;
-  // A Worker package without a gen-code script still needs worker-configuration.d.ts before type checking.
-  // Wrapper invocations (e.g. `"postinstall": "yarn gen:types"`) already generate it, so adding the resolved
-  // command would generate the ~15k-line file twice per install. Only a generating default-output invocation
-  // counts: `wrangler types --check` or a custom output path leaves the managed file absent on a fresh clone.
-  if (postinstallGeneratesWorkerTypes(scripts)) return;
-
-  // The generator must run FIRST when the postinstall is only the managed `bun wb gen-code` — it consumes the
-  // Cloudflare `Env` types, so appending would fail on a fresh checkout — as well as for a reachable
-  // non-generating invocation (e.g. `wrangler types --check`, which fails while the gitignored file is absent)
-  // and a directory-changing postinstall (`cd ../tools && ...`) that would otherwise run an appended generator
-  // elsewhere. Otherwise APPEND: a project-owned step may generate `wrangler types`' own inputs (`.dev.vars`,
-  // `.env*`, a wrangler config), which a prepended generator would then miss, and wbfy cannot tell such a
-  // prerequisite apart from an independent step.
-  const oldPostinstall = scripts.postinstall;
-  const postinstallIsOnlyManagedGenCode =
-    !!oldPostinstall &&
-    splitCommandSegments(oldPostinstall).every(
-      (segment) => segment === '' || isManagedGenCodeSegment(segment, scripts)
+  } else if (hasOptedOutOfWorkerTypes && scripts.postinstall) {
+    // The package genuinely opted out (its tsconfig no longer includes the declaration), and generateGitignore
+    // drops the ignore rule and the untracked file with it. A leftover default-output `wrangler types` would then
+    // recreate that ~500KB file as workspace noise on every install. Only a real opt-out qualifies: the other
+    // unmanaged reasons (irreproducible inference, an output-changing command, a missing dependency) leave the
+    // project's own generator as the ONLY one, so deleting it there would break generation outright.
+    const segments = splitScriptSegments(scripts.postinstall);
+    const remaining = segments?.filter(
+      (segment) => classifyScriptSegment(segment, scripts, true, dirPath) !== 'wranglerTypes'
     );
-  scripts.postinstall =
-    oldPostinstall &&
-    (postinstallIsOnlyManagedGenCode ||
-      reachesWranglerTypes(oldPostinstall, scripts, () => true) ||
-      scriptChangesWorkingDirectory(oldPostinstall))
-      ? `${wranglerTypes} && ${oldPostinstall}`
-      : appendWranglerTypes(oldPostinstall ?? '', wranglerTypes).replace(/^ && /u, '');
-}
-
-/**
- * Resolves the single `wrangler types` command that every managed script must run, or undefined when wbfy does not
- * manage worker-configuration.d.ts for the package.
- *
- * Scanning every script (not just postinstall) matters because projects keep the flagged invocation in a script of
- * their own, e.g. `"gen-types": "wrangler types --strict-vars=false"`. Reusing it keeps the declarations wbfy
- * regenerates identical to the ones the project intended: --strict-vars=false widens `vars` to string, whereas the
- * default emits literal union types. Both managed scripts get the same command so the file cannot depend on which of
- * them ran last. Only a generating default-output invocation qualifies (see
- * classifyWranglerTypesInvocation); anything else falls back to the managed default command.
- */
-function resolveWranglerTypesCommand(config: PackageConfig, scripts: PackageJson.Scripts): string | undefined {
-  if (!generatesWorkerTypes(config)) return;
-
-  // Only an invocation passing flags is worth preserving; a bare one is normalized to the managed command.
-  const { command } = selectProjectWranglerTypesGenerator(scripts);
-  return command ?? 'bunx wrangler types';
-}
-
-/**
- * Cloudflare Workers projects rely on `wrangler types` to (re)generate the gitignored worker-configuration.d.ts.
- * Because `wb gen-code` does not produce it, append the command to code-generation scripts; otherwise a fresh
- * checkout (e.g. CI) would fail type checking.
- */
-function appendWranglerTypes(script: string, wranglerTypes: string | undefined): string {
-  if (!wranglerTypes) return script;
-  return `${script} && ${wranglerTypes}`;
+    if (remaining && remaining.length !== segments?.length) {
+      if (remaining.length > 0) {
+        scripts.postinstall = remaining.join(' && ');
+      } else {
+        delete scripts.postinstall;
+      }
+    }
+  }
+  // A `gen-types` script that is only a `wrangler types` invocation is dead weight ONLY where `wb gen-code`
+  // actually regenerates the file. For an unmanaged package it is the sole generator, and deleting it would also
+  // break any `postinstall: bun run gen-types` still pointing at it.
+  if (
+    managesWorkerTypes &&
+    classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false, dirPath) === 'wranglerTypes' &&
+    // Package scripts compose, so another script (typically `build`) may run this one. Deleting a script that is
+    // still referenced would leave `bun run build` failing on a missing script.
+    // Whole-token match: a `gen-types-foo` or `gen-types:db` script is a different script, not a reference.
+    !Object.entries(scripts).some(
+      ([name, script]) => name !== 'gen-types' && script !== undefined && /(?<![\w:-])gen-types(?![\w:-])/u.test(script)
+    )
+  ) {
+    delete scripts['gen-types'];
+  }
 }
 
 // Yarn CLI built-ins (v1 and Berry) that are not package scripts; converting them to
@@ -1378,52 +1331,27 @@ async function normalizePackageMetadata(
     jsonObj.repository = formatRepositoryForPackageJson(config.repository ?? jsonObj.repository, jsonObj.repository);
   }
 
-  // Resolved before the managed scripts are overwritten, so a project-specific invocation is still visible.
-  const wranglerTypes = resolveWranglerTypesCommand(config, jsonObj.scripts);
   const genCodeScript = jsonObj.scripts['gen-code'];
   if (genCodeScript?.includes('No code generation needed')) {
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
-    // Preserve project-specific steps a repo appended to the managed `bun wb gen-code` (e.g. building extra
-    // deploy assets) instead of discarding them: only the managed gen-code and the wrangler-types invocation
-    // are wbfy's to regenerate. The wrangler-types command stays directly after `bun wb gen-code`, with the
-    // custom segments after it, so a re-run re-parses to the same string — a custom segment BETWEEN gen-code
-    // and the generator would otherwise read as a non-transplantable prerequisite, drop the generator, and
-    // make wbfy oscillate across runs.
-    const customSegments = genCodeScript
-      ? splitCommandSegments(genCodeScript).filter(
-          (segment) =>
-            segment !== '' &&
-            !isManagedGenCodeSegment(segment, jsonObj.scripts) &&
-            !reachesWranglerTypes(segment, jsonObj.scripts, () => true)
-        )
-      : [];
-    jsonObj.scripts['gen-code'] = [appendWranglerTypes('bun wb gen-code', wranglerTypes), ...customSegments].join(
-      ' && '
+    // Preserve project-specific steps a repo appended to the managed `bun wb gen-code` (e.g. building extra deploy
+    // assets) instead of discarding them; only the managed gen-code and the `wrangler types` invocations it now
+    // subsumes are wbfy's to regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
+    const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
+    const customSegments = segments?.filter(
+      (segment) => classifyScriptSegment(segment, jsonObj.scripts, true, config.dirPath) === 'custom'
     );
-  } else if (
-    genCodeScript &&
-    wranglerTypes &&
-    !reachesWranglerTypes(
-      genCodeScript,
-      jsonObj.scripts,
-      (invocationArgs) => classifyWranglerTypesInvocation(invocationArgs) === 'reusableGenerator'
-    )
-  ) {
-    // A project-specific gen-code must produce the same declarations as postinstall, or running the documented
-    // code-generation entry point would leave the generated worker types stale. Like the postinstall rewrite,
-    // a reachable non-generating invocation (e.g. `wrangler types --check`) or a directory change needs the
-    // generator first.
-    jsonObj.scripts['gen-code'] =
-      reachesWranglerTypes(genCodeScript, jsonObj.scripts, () => true) || scriptChangesWorkingDirectory(genCodeScript)
-        ? `${wranglerTypes} && ${genCodeScript}`
-        : appendWranglerTypes(genCodeScript, wranglerTypes);
+    if (customSegments) {
+      jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
+    }
   }
   normalizeGenI18nTsScript(config, jsonObj);
   updatePostinstallScript(
     jsonObj.scripts,
-    wranglerTypes,
-    config.doesContainWranglerConfig && !wranglerTypes && !consumesGeneratedWorkerTypes(config)
+    generatesWorkerTypes(config),
+    config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config),
+    config.dirPath
   );
 
   if (!jsonObj.dependencies.prettier) {

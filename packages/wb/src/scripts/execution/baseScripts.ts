@@ -164,7 +164,7 @@ export abstract class BaseScripts {
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     project.env.PORT ||= '3000';
     await checkAndKillPortProcess(project.env.PORT, project);
-    // Use empty NODE_ENV to avoid "production" mode in some frameworks like Blitz.js.
+    // Use empty NODE_ENV to avoid "production" mode in some frameworks.
     return `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildShellCommand([
       'YARN',
       'wb',

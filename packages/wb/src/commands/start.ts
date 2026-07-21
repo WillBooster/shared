@@ -4,7 +4,6 @@ import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 import { findDescendantProjects } from '../project.js';
 import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
-import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
@@ -47,9 +46,7 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
       const deps = project.packageJson.dependencies ?? {};
       const devDeps = project.packageJson.devDependencies ?? {};
       let scripts: BaseScripts;
-      if (deps.blitz) {
-        scripts = blitzScripts;
-      } else if (deps.vinext || devDeps.vinext) {
+      if (deps.vinext || devDeps.vinext) {
         // vinext apps also depend on next, so this check must come first.
         scripts = vinextScripts;
       } else if (deps.next) {

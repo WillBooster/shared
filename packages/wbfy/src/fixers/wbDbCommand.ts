@@ -27,7 +27,8 @@ const migrationTargets = [
 ];
 
 export async function fixWbDbCommand(rootConfig: PackageConfig, packageConfigs = [rootConfig]): Promise<void> {
-  if (rootConfig.repoAuthor === 'WillBooster' && rootConfig.repoName === 'shared') return;
+  // Case-insensitive: GitHub repository names are, and this guard keeps wbfy from rewriting wb's own sources.
+  if (rootConfig.repoAuthor === 'WillBooster' && rootConfig.repoName?.toLowerCase() === 'shared') return;
 
   const promisePool = new PromisePool<void>();
   // `run()` resolves after a task enters the pool, while `promiseAll()` waits

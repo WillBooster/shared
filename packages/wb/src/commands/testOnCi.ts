@@ -8,7 +8,6 @@ import { findDescendantProjects } from '../project.js';
 import { toDevNull } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
-import { blitzScripts } from '../scripts/execution/blitzScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
 import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
@@ -63,9 +62,7 @@ export async function testOnCi(
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
     let scripts: BaseScripts;
-    if (deps.blitz) {
-      scripts = blitzScripts;
-    } else if (deps.vinext || devDeps.vinext) {
+    if (deps.vinext || devDeps.vinext) {
       // vinext apps also depend on next, so this check must come first.
       scripts = vinextScripts;
     } else if (deps.next) {

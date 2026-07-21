@@ -8,6 +8,101 @@ import { getGenCodeScripts } from '../src/commands/genCode.js';
 import { Project } from '../src/project.js';
 
 describe('getGenCodeScripts', () => {
+  it('generates worker types first when a wrangler config, dependency, and gitignore entry exist', async () => {
+    const dirPath = await createWorkerProject({ devDependencies: { wrangler: '4.70.0' } }, true);
+
+    try {
+      // Must come first: worker-configuration.d.ts is gitignored, and the later generators
+      // type-check against the Cloudflare `Env` it declares.
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))[0]).toBe('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not generate worker types without an own wrangler dependency', async () => {
+    const dirPath = await createWorkerProject({}, true);
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not generate worker types the project does not consume', async () => {
+    // No gitignore entry means wbfy left the package unmanaged because its tsconfig cannot
+    // reference the file (e.g. a hand-maintained Env), so generating it would only leave an
+    // untracked ~500KB file behind.
+    const dirPath = await createWorkerProject({ devDependencies: { wrangler: '4.70.0' } }, false);
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not generate worker types when an env-file invocation would be overwritten', async () => {
+    // The named file exists, so the project's own invocation infers Env members from it that the bare
+    // invocation here would drop.
+    const dirPath = await createWorkerProject(
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --env-file .env.example' } },
+      true
+    );
+    await fs.writeFile(path.join(dirPath, '.env.example'), 'API_KEY=\n');
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('generates worker types when the named env file is gone', async () => {
+    const dirPath = await createWorkerProject(
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --env-file .env' } },
+      true
+    );
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it.each([
+    ['strict vars', 'wrangler types --check --strict-vars=false'],
+    ['a custom output path', 'wrangler types --check --path src/env.d.ts'],
+    ['a quoted env file', 'wrangler types --env-file ".env.example"'],
+    ['a directory change', 'cd sub && wrangler types'],
+  ])('does not generate worker types when a script checks %s', async (_description, script) => {
+    const dirPath = await createWorkerProject(
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'check-types': script } },
+      true
+    );
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('still generates worker types alongside a plain freshness check', async () => {
+    const dirPath = await createWorkerProject(
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'check-types': 'wrangler types --check' } },
+      true
+    );
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('YARN wrangler types');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
   it('runs the project gen-i18n-ts script when it exists', async () => {
     const dirPath = await createProject({
       scripts: {
@@ -122,5 +217,18 @@ describe('getGenCodeScripts', () => {
 async function createProject(packageJson: Record<string, unknown>): Promise<string> {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-code-'));
   await fs.writeFile(path.join(dirPath, 'package.json'), JSON.stringify(packageJson));
+  return dirPath;
+}
+
+/**
+ * The package's committed gitignore rule is the signal that it consumes the generated file.
+ */
+async function createWorkerProject(packageJson: Record<string, unknown>, ignoresWorkerTypes: boolean): Promise<string> {
+  const dirPath = await createProject(packageJson);
+  await fs.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{}');
+  if (ignoresWorkerTypes) {
+    // The exact rule wbfy generates; an anchored path is what marks the package as managed.
+    await fs.writeFile(path.join(dirPath, '.gitignore'), '/worker-configuration.d.ts\n');
+  }
   return dirPath;
 }

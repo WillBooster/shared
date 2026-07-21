@@ -9,9 +9,9 @@ import { initializeProjectDirectory, tempDir } from './shared.js';
 
 describe('setup', () => {
   it(
-    'blitz',
+    'app',
     async () => {
-      const dirPath = path.join(tempDir, 'blitz');
+      const dirPath = path.join(tempDir, 'app');
       await initializeProjectDirectory(dirPath);
       child_process.spawnSync('bun install', {
         shell: true,

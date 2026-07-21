@@ -17,7 +17,6 @@ import { initializeProjectDirectory, tempDir } from './shared.js';
 describe('project', () => {
   it.each([
     { dirName: 'app', expected: 1 },
-    { dirName: 'blitz', expected: 1 },
     { dirName: 'monorepo', expected: 3 },
     { dirName: 'unusual-monorepo', expected: 3 },
   ])(

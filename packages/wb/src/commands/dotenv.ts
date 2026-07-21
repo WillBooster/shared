@@ -28,10 +28,6 @@ export const dotenvCommand: CommandModule = {
   },
 };
 
-export async function runDotenvCommand(args: string[]): Promise<void> {
-  await runParsedDotenvCommand(parseDotenvArgs(args));
-}
-
 async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<void> {
   if (command.length === 0) {
     console.error('Usage: wb dotenv -- <command> [args...]');
@@ -94,11 +90,6 @@ function getParsedDotenvArgsFromYargs(argv: ArgumentsCamelCase): ParsedDotenvArg
       ...((argv['--'] as unknown[] | undefined) ?? []).map(String),
     ],
   };
-}
-
-function parseDotenvArgs(args: string[]): ParsedDotenvArgs {
-  const separatorIndex = args.indexOf('--');
-  return { command: separatorIndex === -1 ? args : args.slice(separatorIndex + 1) };
 }
 
 function validateStandardWbEnv(value: string | undefined, fixTarget: string): void {

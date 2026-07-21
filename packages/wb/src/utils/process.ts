@@ -77,10 +77,6 @@ export async function removeStaleProcess(pid: number): Promise<void> {
   }
 }
 
-export async function stopDockerContainerByImageName(imageName: string, project: Project): Promise<void> {
-  await removeDockerContainers(['--filter', `name=${imageName}`], project);
-}
-
 export async function stopDockerContainerByPort(port: number, project: Project): Promise<void> {
   await removeDockerContainers(['--filter', `publish=${port}`], project);
 }
