@@ -5,7 +5,6 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-
 import { resolveWillboosterConfigModule } from '../utils/willboosterConfigsUtil.js';
 
 import { normalizeConfigContent } from './configContent.js';
