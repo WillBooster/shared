@@ -306,7 +306,7 @@ export async function getPackageConfig(
       // path segment only offline (no remote/repository metadata), where both the root and its
       // sub-package paths still contain `/willbooster-configs/`.
       isWillBoosterConfigs: repoName
-        ? repoName === 'willbooster-configs'
+        ? repoName.toLowerCase() === 'willbooster-configs'
         : packageJsonPath.includes('/willbooster-configs/'),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
