@@ -43,6 +43,37 @@ describe('materializePrivatePackages', () => {
       await fs.rm(rootDirPath, { force: true, recursive: true });
     }
   });
+
+  // A failed git-package copy (e.g. a dangling symlink in the installed source) must not leave a
+  // half-populated @willbooster tree: git packages stage and swap in only after every copy
+  // succeeds, so a previously materialized copy survives the failure.
+  it('throws without destroying an existing materialization when a git-package copy fails', async () => {
+    const rootDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-setup-private-'));
+    try {
+      await writeJson(path.join(rootDirPath, 'package.json'), {
+        name: '@test/root',
+        dependencies: { '@willbooster/broken': 'git@github.com:WillBooster/broken.git#main' },
+      });
+      // The installed source contains a dangling symlink, so copying it (with dereference) fails.
+      const installedDirPath = path.join(rootDirPath, 'node_modules', '@willbooster', 'broken');
+      await writeJson(path.join(installedDirPath, 'package.json'), { name: '@willbooster/broken', version: '1.0.0' });
+      await fs.symlink(path.join(installedDirPath, 'missing-target'), path.join(installedDirPath, 'dangling'));
+      // A previously materialized copy that must survive the failed refresh.
+      const materializedDirPath = path.join(rootDirPath, '@willbooster', 'broken');
+      await writeJson(path.join(materializedDirPath, 'package.json'), {
+        name: '@willbooster/broken',
+        version: '0.9.0',
+      });
+
+      const projects = await findDescendantProjects({}, false, rootDirPath);
+      await expect(materializePrivatePackages(projects!.root.dirPath, collectManifests(projects!))).rejects.toThrow();
+
+      // The pre-existing materialization is untouched (staging never swapped in).
+      expect(await readName(materializedDirPath)).toBe('@willbooster/broken');
+    } finally {
+      await fs.rm(rootDirPath, { force: true, recursive: true });
+    }
+  });
 });
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {

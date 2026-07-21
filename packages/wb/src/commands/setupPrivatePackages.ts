@@ -104,14 +104,15 @@ export async function materializePrivatePackages(
   // symlink component: a symlink (e.g. `escape -> node_modules`, or `@willbooster-private`
   // itself linking elsewhere) would either smuggle the delete past the lexical overlap guards
   // or destroy the symlink's target. Rejecting canonical/lexical mismatches keeps every
-  // destructive operation on the intended lexical location.
+  // destructive operation on the intended lexical location. These guards THROW (not process.exit)
+  // so the automatic `wb optimizeForDockerBuild --outside` caller can catch them and continue
+  // non-fatally; the explicit command's handler catches and exits.
   const rootDirPath = canonicalizePath(rootProjectDirPath);
   const resolveOutputDirPath = (relativeOrAbsolutePath: string, label: string): string => {
     const lexicalPath = path.resolve(rootDirPath, relativeOrAbsolutePath);
     const canonicalPath = canonicalizePath(lexicalPath);
     if (canonicalPath !== lexicalPath) {
-      console.error(chalk.red(`${label} must not contain symlinks (${lexicalPath} resolves to ${canonicalPath}).`));
-      process.exit(1);
+      throw new Error(`${label} must not contain symlinks (${lexicalPath} resolves to ${canonicalPath}).`);
     }
     return lexicalPath;
   };
@@ -127,23 +128,29 @@ export async function materializePrivatePackages(
     // e.g. `--out-dir @willbooster-private` or `--out-dir @willbooster-private/sub`: the
     // registry step recursively deletes registryOutDirPath, which would destroy the git
     // packages copied into an equal or NESTED directory moments earlier.
-    console.error(chalk.red(`--out-dir must not overlap the ${PRIVATE_REGISTRY_SCOPE} registry output directory.`));
-    process.exit(1);
+    throw new Error(`--out-dir must not overlap the ${PRIVATE_REGISTRY_SCOPE} registry output directory.`);
   }
   const stagingDirPath = resolveOutputDirPath(
     path.join('.tmp', 'wb-private-registry-staging'),
-    'The staging directory'
+    'The registry staging directory'
+  );
+  const gitStagingDirPath = resolveOutputDirPath(
+    path.join('.tmp', 'wb-private-git-staging'),
+    'The git staging directory'
   );
   if (pathsOverlap(outDirPath, canonicalizePath(path.join(rootDirPath, 'node_modules')))) {
     // The recursive delete of outDirPath would destroy the installed sources the copies read.
-    console.error(chalk.red('--out-dir must not overlap node_modules.'));
-    process.exit(1);
+    throw new Error('--out-dir must not overlap node_modules.');
   }
-  if (pathsOverlap(outDirPath, stagingDirPath)) {
-    // The registry step recreates the staging directory, silently discarding anything copied
-    // into an equal or nested --out-dir moments earlier.
-    console.error(chalk.red(`--out-dir must not overlap the staging directory (${stagingDirPath}).`));
-    process.exit(1);
+  for (const [stagingLabel, stagingPath] of [
+    ['registry', stagingDirPath],
+    ['git', gitStagingDirPath],
+  ] as const) {
+    if (pathsOverlap(outDirPath, stagingPath)) {
+      // Each staging step recreates its directory, silently discarding anything copied into an
+      // equal or nested --out-dir moments earlier.
+      throw new Error(`--out-dir must not overlap the ${stagingLabel} staging directory (${stagingPath}).`);
+    }
   }
   if (path.relative(rootDirPath, outDirPath) !== '@willbooster') {
     // Pre-existing limitation of the option: the Docker manifest rewrite has no access to it.
@@ -186,12 +193,27 @@ export async function materializePrivatePackages(
   const copiedPackages = [...privatePackages.values()].filter((p) => p.kind === 'git');
   const registryPackages = [...privatePackages.values()].filter((p) => p.kind === 'registry');
 
-  await fs.promises.rm(outDirPath, { recursive: true, force: true });
-  // Both output directories always exist afterwards: Dockerfiles COPY them unconditionally,
-  // and a missing source path fails the build.
-  await fs.promises.mkdir(outDirPath, { recursive: true });
-  for (const privatePackage of copiedPackages) {
-    await copyInstalledPackage(rootDirPath, privatePackage, privatePackage.targetDirPath);
+  // Copy git packages into a staging directory and swap it in only after every copy succeeded,
+  // mirroring the registry staging below: a copy that fails partway (e.g. a dangling symlink in
+  // the installed source) must not leave a half-populated @willbooster tree that the automatic
+  // optimizeForDockerBuild caller — which catches the failure and continues — would then rewrite
+  // dependencies against. Both output directories always exist afterwards: Dockerfiles COPY them
+  // unconditionally, and a missing source path fails the build.
+  await fs.promises.rm(gitStagingDirPath, { recursive: true, force: true });
+  await fs.promises.mkdir(gitStagingDirPath, { recursive: true });
+  try {
+    for (const privatePackage of copiedPackages) {
+      await copyInstalledPackage(
+        rootDirPath,
+        privatePackage,
+        path.join(gitStagingDirPath, path.relative(outDirPath, privatePackage.targetDirPath))
+      );
+    }
+    await fs.promises.rm(outDirPath, { recursive: true, force: true });
+    await fs.promises.rename(gitStagingDirPath, outDirPath);
+  } catch (error) {
+    await fs.promises.rm(gitStagingDirPath, { recursive: true, force: true });
+    throw error;
   }
 
   if (registryPackages.length > 0) {
@@ -531,8 +553,7 @@ function assertSubdirectory(rootDirPath: string, outDirPath: string): void {
   const relativePath = path.relative(rootDirPath, outDirPath);
   if (relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)) return;
 
-  console.error(chalk.red(`Output directory must be a subdirectory of the project root: ${outDirPath}`));
-  process.exit(1);
+  throw new Error(`Output directory must be a subdirectory of the project root: ${outDirPath}`);
 }
 
 function findInstalledPackageDir(rootDirPath: string, packageName: string): string {

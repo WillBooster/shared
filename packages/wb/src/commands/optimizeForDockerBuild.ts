@@ -80,7 +80,10 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     // per-project rewrite below emitting the existing "run wb setup-private-packages" hint. This
     // keeps the step a pure convenience that lets repositories drop the explicit command.
     if (argv.outside) {
-      const manifests = collectManifests(projects);
+      // Resolve the full workspace set from the repository root so a private dependency declared in
+      // any sibling workspace is materialized even when optimize runs from a subpackage directory.
+      const rootProjects = await findDescendantProjects(argv, false, projects.root.dirPath);
+      const manifests = collectManifests(rootProjects ?? projects);
       if (manifests.some(declaresPrivateDependency)) {
         try {
           await materializePrivatePackages(projects.root.dirPath, manifests, { dryRun: Boolean(argv.dryRun) });
