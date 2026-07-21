@@ -421,3 +421,18 @@ test.each(['script', 'style', 'textarea', 'title'])('ignores an <h1> inside <%s>
 
   expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
 });
+
+// The end tag is optional: an unclosed raw-text element stays in that state through EOF.
+test.each(['iframe', 'noframes', 'noembed', 'xmp'])('ignores an <h1> inside <%s>', (element) => {
+  const htmlBlock = `<${element}><h1>Not a title</h1></${element}>`;
+  const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
+
+test('ignores an <h1> inside an unclosed raw-text element', () => {
+  const htmlBlock = '<script>const example = "<h1>Not a title</h1>";';
+  const result = writeBadgeBlock(`${htmlBlock}\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});

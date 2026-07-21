@@ -216,9 +216,11 @@ function isTitleNode(node: RootContent | undefined): boolean {
 function containsRenderedH1(html: string): boolean {
   const withoutInertText = html
     .replaceAll(/<!--[\s\S]*?(?:-->|$)/gu, '')
-    // HTML parses the content of these elements as raw text, so a tag written inside one is not an
-    // element; only their contents go, since the elements themselves are still tags.
-    .replaceAll(/(<(script|style|textarea|title)\b[^>]*>)[\s\S]*?(<\/\2\s*>)/giu, '$1$3');
+    // HTML parses the content of these elements as raw text, RCDATA, or script data, so a tag
+    // written inside one is not an element. The end tag is optional: an unclosed one stays in that
+    // state through EOF, which is why the closing alternative includes `$`. Only their contents go,
+    // since the elements' own tags are still tags.
+    .replaceAll(/(<(script|style|textarea|title|iframe|noframes|noembed|xmp)\b[^>]*>)[\s\S]*?(<\/\2\s*>|$)/giu, '$1$3');
   // Quoting is only syntactically significant inside a start tag, so attribute values are consumed
   // as part of their own tag while quotation marks in ordinary text stay text. That keeps
   // `<div title="<h1>">` from counting while `"<h1>Project</h1>"` still does.
