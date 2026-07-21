@@ -11,9 +11,13 @@ import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
+// The shared preset every WillBooster / WillBoosterLab repository extends. willbooster-configs IS
+// this preset, so injecting it there would make the preset extend itself.
+const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
+
 const jsonObj = {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  extends: ['github>WillBooster/willbooster-configs:renovate.jsonc'],
+  extends: [sharedPreset],
 };
 
 // The preset used to live in renovate.json5; it was renamed to renovate.jsonc, so the old reference
@@ -165,7 +169,7 @@ function buildSettings(config: PackageConfig, liveSettings: Settings | undefined
         arrayMerge: overwriteMerge,
       }) as Settings)
     : generatedSettings;
-  newSettings.extends = mergeRenovateExtends(jsonObj.extends, liveSettings?.extends);
+  newSettings.extends = mergeRenovateExtends(config, jsonObj.extends, liveSettings?.extends);
 
   // Don't upgrade Next.js automatically
   if (config.depending.blitz) {
@@ -245,13 +249,22 @@ function parseRenovateConfig(isEditableSyntax: boolean, content: string): Settin
   }
 }
 
-function mergeRenovateExtends(generatedExtends: string[], existingExtends: string[] = []): string[] {
+function mergeRenovateExtends(
+  config: PackageConfig,
+  generatedExtends: string[],
+  existingExtends: string[] = []
+): string[] {
+  // willbooster-configs is the shared preset itself: never inject the self-reference, and strip it
+  // if a previous run (or a hand edit) left it in place.
+  const presetsToAdd = config.isWillBoosterConfigs ? [] : generatedExtends;
+  const presetsToDrop = config.isWillBoosterConfigs ? new Set([...legacyPresets, sharedPreset]) : legacyPresets;
+
   // Only prepend the presets that are missing. Moving one that is already listed would reorder the
   // array, and a later preset overrides an earlier one in Renovate — so re-sorting silently flips
   // which config wins (and, being a reorder rather than an addition, also costs the array's
   // comments, which can only be preserved by insertion).
-  const missingExtends = generatedExtends.filter((preset) => !existingExtends.includes(preset));
-  return [...missingExtends, ...existingExtends].filter((item) => !legacyPresets.has(item));
+  const missingExtends = presetsToAdd.filter((preset) => !existingExtends.includes(preset));
+  return [...missingExtends, ...existingExtends].filter((item) => !presetsToDrop.has(item));
 }
 
 function normalize(content: string): string {
