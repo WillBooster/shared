@@ -305,6 +305,57 @@ test.each([
   expect(packageJson.scripts?.['gen-types']).toBe(Object.values(scripts)[0]);
 });
 
+// Package scripts compose: deleting one another script runs would leave `bun run build` failing.
+test('keeps a gen-types script another script references', async () => {
+  const scripts = { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.['gen-types']).toBe('wrangler types');
+});
+
+// `--check` validates freshness and writes nothing, so it cannot conflict with the managed generator and must
+// not strip the managed setup from the package.
+test('keeps managing a package whose extra script only checks the types', async () => {
+  const scripts = { 'check-types': 'wrangler types --check' };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      depending: genI18nTsDepending,
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+// A wrapper around a CUSTOMIZED gen-code already performs the managed generation; appending another
+// `wb gen-code` would run every generator twice per install.
+test('does not schedule gen-code twice through a wrapper', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: { 'gen-code': 'bun wb gen-code && bun run build-assets', postinstall: 'bun run gen-code' },
+    },
+    { depending: genI18nTsDepending },
+    { createI18nDir: true }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
 // Silently dropping a project's own install step (e.g. applying patches) would break its install.
 test('preserves custom postinstall segments', async () => {
   const packageJson = await generatePackageJsonFrom(

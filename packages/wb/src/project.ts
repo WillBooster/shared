@@ -301,6 +301,10 @@ export class Project {
   @memoizeOne
   get generatesWorkerTypes(): boolean {
     if (!findWranglerConfigPath(this) || !this.hasOwnDependency('wrangler')) return false;
+    // Defense in depth against wbfy's gitignore rule and this predicate drifting apart: if the package still
+    // runs its own output-changing `wrangler types` (e.g. `--strict-vars=false`), the bare invocation here would
+    // overwrite that file with a different `Env`.
+    if (hasOutputChangingWranglerTypes(this.packageJson.scripts ?? {})) return false;
     return hasManagedGitignoreRule(this.dirPath, WORKER_TYPES_FILE_NAME);
   }
 
@@ -649,4 +653,24 @@ function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Whether a package script runs a `wrangler types` that would write something other than what the bare
+ * invocation writes. `--check`/`--help` validate or print and write nothing, so they do not count. Mirrors
+ * wbfy's `hasCustomWranglerTypesInvocation`; the two must agree, since wbfy's answer decides the gitignore rule.
+ */
+function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefined>): boolean {
+  return Object.values(scripts).some((script) => {
+    if (!script || !/(?:^|\s)wrangler\s+types(?:\s|$)/u.test(script)) return false;
+    return script
+      .split('&&')
+      .map((segment) => segment.trim().replaceAll(/\s+/gu, ' '))
+      .some(
+        (segment) =>
+          /(?:^|\s)wrangler\s+types(?:\s|$)/u.test(segment) &&
+          !/(?:^|\s)(?:--check|--help|-h)(?:\s|=|$)/u.test(segment) &&
+          !/^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u.test(segment)
+      );
+  });
 }

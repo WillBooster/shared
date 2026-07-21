@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import type { PackageJson } from 'type-fest';
 
 /**
@@ -11,16 +14,40 @@ export type ScriptSegmentKind = 'custom' | 'genCode' | 'genI18nTs' | 'wranglerTy
 // package's own `gen-code` script.
 const genCodeSegmentPattern = /^(?:(?:bun|bunx|yarn|pnpm|npm)\s+)?(?:run\s+)?wb\s+gen-code$/u;
 
-// `wrangler types` spellings wbfy drops: bare, and `--env-file` (a legacy `.env` idiom — these repositories read
-// environment variables through fnox, so the flag only names a file that no longer exists). Every OTHER flag
-// changes what the generated file contains — `--strict-vars=false` widens `vars` from literal unions to string,
-// repeated `-c/--config` pulls in service-binding and Durable Object RPC types, `--path` moves the output — so
-// such an invocation is semantically significant and must survive; see isCustomWranglerTypesInvocation.
-const wranglerTypesSegmentPattern =
-  /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
+// A bare `wrangler types`, which is exactly what `wb gen-code` runs.
+const bareWranglerTypesPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types$/u;
+
+// The same, plus only `--env-file` arguments. The flag names the files wrangler reads to infer local variables
+// and secrets, so it changes the generated `Env` WHENEVER A NAMED FILE EXISTS — dropping it would then shrink
+// the declaration. It is disposable only once every named file is gone, which is the state fnox migration leaves
+// behind (the `.env` cascade is deleted) and the case this normalization is for.
+const envFileWranglerTypesPattern =
+  /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+(\S+))+$/u;
+const envFileArgumentPattern = /--env-file\s+(\S+)/gu;
 
 // Any `wrangler types` invocation, whatever its flags.
 const anyWranglerTypesPattern = /(?:^|\s)wrangler\s+types(?:\s|$)/u;
+
+// Modes that validate or print instead of writing, so they cannot conflict with the managed generator.
+const nonGeneratingWranglerTypesPattern = /(?:^|\s)(?:--check|--help|-h)(?:\s|=|$)/u;
+
+/** Whether every file the segment's `--env-file` arguments name is absent, so dropping the flag changes nothing. */
+function namesOnlyMissingEnvFiles(segment: string, dirPath: string | undefined): boolean {
+  const matches = [...segment.matchAll(envFileArgumentPattern)].map((match) => match[1]);
+  if (matches.length === 0) return true;
+  // Without a directory to resolve against, assume the files exist: keeping a flag is recoverable, silently
+  // regenerating a smaller `Env` is not.
+  if (dirPath === undefined) return false;
+  return matches.every(
+    (relativePath) => relativePath !== undefined && !fs.existsSync(path.resolve(dirPath, relativePath))
+  );
+}
+
+/** Whether the segment is a `wrangler types` invocation equivalent to the bare one `wb gen-code` runs. */
+function isDisposableWranglerTypes(segment: string, dirPath: string | undefined): boolean {
+  if (bareWranglerTypesPattern.test(segment)) return true;
+  return envFileWranglerTypesPattern.test(segment) && namesOnlyMissingEnvFiles(segment, dirPath);
+}
 
 // `wb gen-code` runs gen-i18n-ts itself, so a postinstall still invoking it (the script or the binary) is
 // redundant rather than a project-specific step worth preserving.
@@ -48,11 +75,12 @@ export function splitScriptSegments(script: string): string[] | undefined {
 export function classifyScriptSegment(
   segment: string,
   scripts: PackageJson.Scripts,
-  followsWrapper = true
+  followsWrapper = true,
+  dirPath?: string
 ): ScriptSegmentKind {
   const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
   if (genCodeSegmentPattern.test(normalized)) return 'genCode';
-  if (wranglerTypesSegmentPattern.test(normalized)) return 'wranglerTypes';
+  if (isDisposableWranglerTypes(normalized, dirPath)) return 'wranglerTypes';
   if (genI18nTsSegmentPattern.test(normalized)) return 'genI18nTs';
   // A one-level wrapper lookup covers `"postinstall": "bun run gen-types"`, the shape these repositories use;
   // deeper chains stay custom so wbfy cannot loop on a self-referential script.
@@ -60,8 +88,15 @@ export function classifyScriptSegment(
   const target = scriptName === undefined ? undefined : scripts[scriptName];
   if (!target) return 'custom';
   const segments = splitScriptSegments(target);
-  if (segments?.length !== 1) return 'custom';
-  return classifyScriptSegment(segments[0] ?? '', scripts, false);
+  // A wrapper around a CUSTOMIZED gen-code (`bun wb gen-code && bun run build-assets`) still performs the managed
+  // generation, so it counts as gen-code; treating it as custom would append a second `wb gen-code` and run every
+  // generator twice per install.
+  if (segments?.length !== 1) {
+    return segments?.some((inner) => genCodeSegmentPattern.test(inner.trim().replaceAll(/\s+/gu, ' ')))
+      ? 'genCode'
+      : 'custom';
+  }
+  return classifyScriptSegment(segments[0] ?? '', scripts, false, dirPath);
 }
 
 /**
@@ -74,21 +109,26 @@ export function runsManagedGenCode(script: string | undefined, scripts: PackageJ
 }
 
 /**
- * Whether any of the package's scripts runs a `wrangler types` whose flags change the generated file (anything
- * beyond `--env-file`). `wb gen-code` runs a bare `wrangler types`, so managing such a package would overwrite
- * its intended output with the default one — wbfy leaves the whole package alone instead.
+ * Whether any of the package's scripts runs a `wrangler types` that would produce a DIFFERENT file from the bare
+ * one `wb gen-code` runs. Managing such a package would overwrite its intended output and delete the only record
+ * of the choice, so wbfy leaves the whole package alone instead.
+ *
+ * Non-generating modes (`--check`, `--help`) are excluded: they validate or print and write nothing, so they
+ * cannot conflict — and treating them as conflicts would strip the managed setup from a package that only
+ * happens to keep a freshness check around.
  */
-export function hasCustomWranglerTypesInvocation(scripts: PackageJson.Scripts): boolean {
+export function hasCustomWranglerTypesInvocation(scripts: PackageJson.Scripts, dirPath?: string): boolean {
   return Object.values(scripts).some((script) => {
     if (!script || !anyWranglerTypesPattern.test(script)) return false;
     const segments = splitScriptSegments(script);
     // An unparseable script containing `wrangler types` is treated as custom: wbfy cannot prove it is the plain
     // invocation, and guessing wrong silently replaces the project's generated types.
     if (!segments) return true;
-    return segments.some(
-      (segment) =>
-        anyWranglerTypesPattern.test(segment) &&
-        !wranglerTypesSegmentPattern.test(segment.trim().replaceAll(/\s+/gu, ' '))
-    );
+    return segments.some((segment) => {
+      const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
+      if (!anyWranglerTypesPattern.test(normalized)) return false;
+      if (nonGeneratingWranglerTypesPattern.test(normalized)) return false;
+      return !isDisposableWranglerTypes(normalized, dirPath);
+    });
   });
 }

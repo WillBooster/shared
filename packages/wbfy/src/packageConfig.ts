@@ -416,7 +416,7 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
     // `wb gen-code` runs a bare `wrangler types`, so a package whose own scripts pass flags that change the
     // generated file (e.g. `--strict-vars=false`, repeated `-c` for RPC types) must stay unmanaged: managing it
     // would delete the only record of that choice and regenerate a different `Env`.
-    !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}) &&
+    !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}, config.dirPath) &&
     consumesGeneratedWorkerTypes(config) &&
     hasReproducibleWorkerTypesInference(config)
   );

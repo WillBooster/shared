@@ -235,7 +235,7 @@ function removeLegacyYarnInstallPrefixes(script: string): string {
   return result;
 }
 
-function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerTypes: boolean): void {
+function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerTypes: boolean, dirPath: string): void {
   // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a code-generation or
   // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
   // scripts wrapping them) repositories used to carry are wbfy's to remove now that it owns the generation.
@@ -244,7 +244,9 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerType
     // so custom segments keep running FIRST and are never dropped — only the `wrangler types` invocations and the
     // redundant `wb gen-code` spellings are wbfy's to replace, now that `wb gen-code` owns the generation.
     const segments = scripts.postinstall === undefined ? [] : splitScriptSegments(scripts.postinstall);
-    const customSegments = segments?.filter((segment) => classifyScriptSegment(segment, scripts) === 'custom');
+    const customSegments = segments?.filter(
+      (segment) => classifyScriptSegment(segment, scripts, true, dirPath) === 'custom'
+    );
     if (customSegments) {
       scripts.postinstall = [...customSegments, 'wb gen-code'].join(' && ');
     } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
@@ -255,11 +257,32 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerType
     // Any other unparseable postinstall is left to a human rather than rewritten from a wrong parse.
   } else if (scripts.postinstall?.includes('gen-i18n-ts')) {
     delete scripts.postinstall;
+  } else if (scripts.postinstall) {
+    // The package opted out of managed worker types (e.g. its tsconfig no longer includes the declaration), and
+    // generateGitignore drops the ignore rule and the untracked file with it. A leftover default-output
+    // `wrangler types` would then recreate that ~500KB file as workspace noise on every install.
+    const segments = splitScriptSegments(scripts.postinstall);
+    const remaining = segments?.filter(
+      (segment) => classifyScriptSegment(segment, scripts, true, dirPath) !== 'wranglerTypes'
+    );
+    if (remaining && remaining.length !== segments?.length) {
+      if (remaining.length > 0) {
+        scripts.postinstall = remaining.join(' && ');
+      } else {
+        delete scripts.postinstall;
+      }
+    }
   }
   // A `gen-types` script that is only a `wrangler types` invocation is dead weight ONLY where `wb gen-code`
   // actually regenerates the file. For an unmanaged package it is the sole generator, and deleting it would also
   // break any `postinstall: bun run gen-types` still pointing at it.
-  if (managesWorkerTypes && classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false) === 'wranglerTypes') {
+  if (
+    managesWorkerTypes &&
+    classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false, dirPath) === 'wranglerTypes' &&
+    // Package scripts compose, so another script (typically `build`) may run this one. Deleting a script that is
+    // still referenced would leave `bun run build` failing on a missing script.
+    !Object.entries(scripts).some(([name, script]) => name !== 'gen-types' && script?.includes('gen-types'))
+  ) {
     delete scripts['gen-types'];
   }
 }
@@ -1284,7 +1307,7 @@ async function normalizePackageMetadata(
     }
   }
   normalizeGenI18nTsScript(config, jsonObj);
-  updatePostinstallScript(jsonObj.scripts, generatesWorkerTypes(config));
+  updatePostinstallScript(jsonObj.scripts, generatesWorkerTypes(config), config.dirPath);
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
