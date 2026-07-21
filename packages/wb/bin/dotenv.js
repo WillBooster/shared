@@ -152,24 +152,25 @@ function readAndApplyEnvironmentVariables(cwd) {
   // child will see.
   validateStandardWbEnv(mode, 'the exported variable');
   validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
-  // The fnoxCascade selected the environment (its profile provides WB_ENV in a compliant repo), so an
-  // env source silently resolving WB_ENV to a DIFFERENT value must be rejected: the child would run
-  // labeled one environment while carrying another's secrets. This covers both a forced
-  // `.env.production` containing `WB_ENV=development` and the default-development path
-  // (`.env.development`, read even when WB_ENV is unset, containing `WB_ENV=production`), so it
-  // compares against `fnoxCascade`, not just the forced `mode`. Only a STANDARD cascade is enforced
-  // (mirroring Project.completeAndValidateWbEnv): a custom suffix such as `NODE_ENV=qa` legitimately
-  // selects `.env.qa` while WB_ENV stays a standard mode, so erroring on it would reject a supported
-  // cascade.
+  // The selected environment is what an env source silently resolving WB_ENV to a DIFFERENT value must
+  // agree with, else the child runs labeled one environment while carrying another's secrets. The
+  // expectation is `fnoxCascade` only when a fnox config participates (its profile provides WB_ENV in a
+  // compliant repo); in a legacy `.env`-only project FNOX_PROFILE is irrelevant, so the expectation is
+  // `envCascade`. This covers both a forced `.env.production` containing `WB_ENV=development` and the
+  // default-development path (`.env.development`, read even when WB_ENV is unset, containing
+  // `WB_ENV=production`), comparing against the selected cascade rather than just the forced `mode`.
+  // Only a STANDARD cascade is enforced (mirroring Project.completeAndValidateWbEnv): a custom suffix
+  // such as `NODE_ENV=qa` legitimately selects `.env.qa` while WB_ENV stays a standard mode.
+  const expectedCascade = hasProjectFnoxConfig(cwd) ? fnoxCascade : envCascade;
   if (
     process.env.WB_ENV &&
-    ['development', 'test', 'staging', 'production'].includes(fnoxCascade) &&
-    process.env.WB_ENV !== fnoxCascade &&
+    ['development', 'test', 'staging', 'production'].includes(expectedCascade) &&
+    process.env.WB_ENV !== expectedCascade &&
     process.env.WB_SKIP_ENV_CHECK !== '1' &&
     process.env.WB_SKIP_ENV_CHECK !== 'true'
   ) {
     console.error(
-      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${fnoxCascade}" environment was selected. ` +
+      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${expectedCascade}" environment was selected. ` +
         `Fix the WB_ENV defined in the env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
     );
     process.exit(1);

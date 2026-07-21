@@ -158,16 +158,18 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it('does not let FNOX_PROFILE redirect the .env cascade in a repo without fnox.toml', async () => {
+  it('does not let FNOX_PROFILE redirect the .env cascade or the WB_ENV check without fnox.toml', async () => {
     // FNOX_PROFILE is a fnox-only selector; in a legacy `.env`-only project it must NOT choose which
-    // `.env.<x>` files load — that stays `WB_ENV || NODE_ENV || development`.
+    // `.env.<x>` files load (that stays `WB_ENV || NODE_ENV || development`) NOR the environment the
+    // WB_ENV mismatch guard expects — here `.env.test` correctly resolves WB_ENV=test even though
+    // FNOX_PROFILE names production.
     await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
-    await fs.writeFile(path.join(projectDirPath, '.env.test'), 'SELECTED=test\n');
-    await fs.writeFile(path.join(projectDirPath, '.env.production'), 'SELECTED=production\n');
+    await fs.writeFile(path.join(projectDirPath, '.env.test'), 'WB_ENV=test\nSELECTED=test\n');
+    await fs.writeFile(path.join(projectDirPath, '.env.production'), 'WB_ENV=production\nSELECTED=production\n');
 
     const result = childProcess.spawnSync(
       process.execPath,
-      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$SELECTED"'],
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$WB_ENV" "$SELECTED"'],
       {
         cwd: projectDirPath,
         encoding: 'utf8',
@@ -175,7 +177,7 @@ describe('bin/index.js dotenv fast path', () => {
       }
     );
     expect(result.stderr).toBe('');
-    expect(result.stdout).toBe('test\n');
+    expect(result.stdout).toBe('test test\n');
     expect(result.status).toBe(0);
   });
 
