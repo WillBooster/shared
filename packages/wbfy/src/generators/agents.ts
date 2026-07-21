@@ -50,7 +50,7 @@ function generateAgentInstruction(
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
-    ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\` instead of expecting \`.env\` files. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) select it themselves, while \`wb dotenv\` and bare \`fnox run\` need an explicit \`WB_ENV=<profile>\` / \`-P <profile>\`.`
+    ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\` instead of expecting \`.env\` files. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) and \`wb dotenv\` select it themselves (\`wb dotenv\` uses \`WB_ENV\`, else \`FNOX_PROFILE\`, else \`NODE_ENV\`, else the development profile; \`WB_ENV\` accepts only \`development\`/\`test\`/\`staging\`/\`production\`, so use \`FNOX_PROFILE\` for any other profile), while bare \`fnox run\` needs an explicit \`-P <profile>\`.`
     : '';
   // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
   // wrangler-config clause needs an actual config file (isCloudflare also matches a mere wrangler

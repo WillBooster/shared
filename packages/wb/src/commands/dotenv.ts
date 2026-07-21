@@ -1,7 +1,11 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
-import { readFnoxEnvironmentVariables, removeNpmAndYarnEnvironmentVariables } from '@willbooster/shared-lib-node/src';
+import {
+  hasProjectFnoxConfig,
+  readFnoxEnvironmentVariables,
+  removeNpmAndYarnEnvironmentVariables,
+} from '@willbooster/shared-lib-node/src';
 import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
@@ -118,17 +122,33 @@ function validateStandardWbEnv(value: string | undefined, fixTarget: string): vo
 // adopted the org env standard. A NON-EMPTY WB_ENV is still validated against the standard modes,
 // though — a typo like `prodcution` would otherwise silently select the base (development) values.
 function readAndApplyEnvironmentVariables(cwd: string): void {
+  // The mode is FORCED only when WB_ENV is explicitly exported; it drives the forced-mode override
+  // below and the validation at the end.
   const mode = process.env.WB_ENV;
+  // Two selectors, both defaulting to development like wb's main loader (`WB_ENV || NODE_ENV ||
+  // 'development'`, see readEnvironmentVariables) so a repo keeping dev-only secrets in
+  // `[profiles.development.secrets]` loads them when WB_ENV is unset instead of only the base table:
+  //   - envCascade picks the `.env.<envCascade>` files. It must NOT consult FNOX_PROFILE — that is a
+  //     fnox-only selector, and letting it redirect a legacy `.env`-only project's cascade would load
+  //     the wrong files.
+  //   - fnoxCascade picks the fnox `--profile` and gates the WB_ENV check below. It additionally honors
+  //     an explicit FNOX_PROFILE, because fnox honors it and `wb dotenv` without WB_ENV is documented
+  //     to as well (see runFnoxExport's ignoreProfileEnvVar note).
+  // NODE_ENV is read through the `runtimeEnv` alias, never as the `process.env.NODE_ENV` member
+  // expression that the bundler inlines to 'production' (which would wrongly select production).
+  const runtimeEnv = process.env;
+  const envCascade = mode || runtimeEnv.NODE_ENV || 'development';
+  const fnoxCascade = mode || runtimeEnv.FNOX_PROFILE || runtimeEnv.NODE_ENV || 'development';
   const readEnvFile = (fileName: string): Record<string, string> =>
     config({ path: path.join(cwd, fileName), processEnv: {}, quiet: true }).parsed ?? {};
-  // Mode-specific sources drive the forced-mode override below.
+  // Mode-specific sources drive the forced-mode override below (only meaningful when the mode is forced).
   const modeVars = mode ? { ...readEnvFile(`.env.${mode}`), ...readEnvFile(`.env.${mode}.local`) } : {};
-  // Mirror the shared cascade's precedence: .env.<mode>.local > .env.local > .env.<mode> > .env.
+  // Mirror the shared cascade's precedence: .env.<c>.local > .env.local > .env.<c> > .env (c = envCascade).
   const dotenvVars = {
     ...readEnvFile('.env'),
-    ...(mode ? readEnvFile(`.env.${mode}`) : {}),
+    ...readEnvFile(`.env.${envCascade}`),
     ...readEnvFile('.env.local'),
-    ...(mode ? readEnvFile(`.env.${mode}.local`) : {}),
+    ...readEnvFile(`.env.${envCascade}.local`),
   };
   // WB_ENV in process.env means the mode is explicitly forced, so values from the mode's own
   // sources (.env.<mode>[.local] and the fnox profile) win over variables inherited from the
@@ -136,7 +156,7 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
   // (see https://github.com/WillBooster/shared/issues/930).
   const modeFileOverridesProcessEnv = !!mode && !isCI(process.env.CI);
   // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
-  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, mode, dotenvVars, { modeFileOverridesProcessEnv });
+  const [fnoxVars] = readFnoxEnvironmentVariables(cwd, fnoxCascade, dotenvVars, { modeFileOverridesProcessEnv });
   const parsed = { ...fnoxVars, ...dotenvVars };
   // Expand ${...} references against exported variables whose FILE value loses to the shell
   // (mirroring readEnvironmentVariables' effective-value semantics): a reference must resolve to
@@ -176,18 +196,26 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
   // `WB_ENV=prodcution`), and a forced mode's files may even override a VALID exported value.
   validateStandardWbEnv(mode, 'the exported variable');
   validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
-  // The exported mode selected the cascade, so a mode file silently replacing it with a DIFFERENT
-  // valid mode (e.g. `.env.production` containing `WB_ENV=development`) must be rejected as well.
+  // The selected environment is what an env source silently resolving WB_ENV to a DIFFERENT value must
+  // agree with, else the child runs labeled one environment while carrying another's secrets. The
+  // expectation is `fnoxCascade` only when a fnox config participates (its profile provides WB_ENV in a
+  // compliant repo); in a legacy `.env`-only project FNOX_PROFILE is irrelevant, so the expectation is
+  // `envCascade`. This covers both a forced `.env.production` containing `WB_ENV=development` and the
+  // default-development path (`.env.development`, read even when WB_ENV is unset, containing
+  // `WB_ENV=production`), comparing against the selected cascade rather than just the forced `mode`.
+  // Only a STANDARD cascade is enforced (mirroring Project.completeAndValidateWbEnv): a custom suffix
+  // such as `NODE_ENV=qa` legitimately selects `.env.qa` while WB_ENV stays a standard mode.
+  const expectedCascade = hasProjectFnoxConfig(cwd) ? fnoxCascade : envCascade;
   if (
-    mode &&
     process.env.WB_ENV &&
-    process.env.WB_ENV !== mode &&
+    ['development', 'test', 'staging', 'production'].includes(expectedCascade) &&
+    process.env.WB_ENV !== expectedCascade &&
     process.env.WB_SKIP_ENV_CHECK !== '1' &&
     process.env.WB_SKIP_ENV_CHECK !== 'true'
   ) {
     console.error(
-      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${mode}" environment was selected. ` +
-        `Fix the WB_ENV defined in the mode's env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+      `WB_ENV resolves to "${process.env.WB_ENV}" although the "${expectedCascade}" environment was selected. ` +
+        `Fix the WB_ENV defined in the env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
     );
     process.exit(1);
   }

@@ -327,8 +327,8 @@ function runFnoxExport(
   if (options.ignoreProfileEnvVar) {
     // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must
     // read the BASE secrets, so the inherited profile selection is cleared for it — and only for
-    // it: a profile-less PRIMARY export (e.g. `wb dotenv` without WB_ENV) keeps honoring
-    // FNOX_PROFILE.
+    // it. A PRIMARY export still honors FNOX_PROFILE: it either stays profile-less (fnox reads the
+    // variable) or folds it into the `--profile` it passes (see wb dotenv's cascade).
     delete env.FNOX_PROFILE;
   }
   const result = childProcess.spawnSync('fnox', args, {
