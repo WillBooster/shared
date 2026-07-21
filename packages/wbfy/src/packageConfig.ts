@@ -938,11 +938,27 @@ async function resolveLocalRepoIdentity(
  * into package.json), so the host must be verified first; a non-GitHub remote yields no identity, as before.
  */
 function readGitHubIdentity(url: string): [string, string] | undefined {
-  // `github:owner/repo` is npm's GitHub shorthand and names no host, so it must be recognized before the host
-  // check; normalizeRepositoryUrlForPackageJson accepts the same shorthand.
-  if (!url.startsWith('github:') && !/(?:^|\W)github\.com[/:]/u.test(url)) return undefined;
+  if (!targetsGitHub(url)) return undefined;
   const [org, name] = gitHubUtil.getOrgAndName(url);
   return org && name ? [canonicalizeOwner(org), name] : undefined;
+}
+
+/**
+ * Whether the URL's HOST is github.com. Parsed rather than substring-matched: a path such as
+ * `https://gitlab.com/github.com/owner/repo.git` would otherwise be taken for GitHub, and an uppercase
+ * `GITHUB.COM` would be rejected. `github:owner/repo` is npm's shorthand and names no host, so it is
+ * recognized separately; normalizeRepositoryUrlForPackageJson accepts the same shorthand.
+ */
+function targetsGitHub(url: string): boolean {
+  if (/^github:/iu.test(url)) return true;
+  // scp-style remotes (`git@github.com:owner/repo.git`) are not valid URLs.
+  const scpHost = /^[^/@]*@([^:/]+):/u.exec(url)?.[1];
+  if (scpHost) return scpHost.toLowerCase() === 'github.com';
+  try {
+    return new URL(url.replace(/^git\+/u, '')).hostname.toLowerCase() === 'github.com';
+  } catch {
+    return false;
+  }
 }
 
 /**

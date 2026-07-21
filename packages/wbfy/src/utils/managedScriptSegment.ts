@@ -182,7 +182,9 @@ export function runsOnlyRedundantI18nGeneration(script: string | undefined): boo
 function splitRedundantCommands(script: string | undefined): string[] | undefined {
   if (!script) return undefined;
   const commands = script
-    .replaceAll(/\s*>\s*\S+/gu, '')
+    // The redirection TARGET only: shell control operators need no surrounding whitespace, so `\S+`
+    // would swallow `&&touch` and make a project command vanish from the script.
+    .replaceAll(/\s*>\s*[^\s;&|<>]+/gu, '')
     .split(/&&|;/u)
     .map((command) => command.trim().replaceAll(/\s+/gu, ' '))
     .filter(Boolean);
