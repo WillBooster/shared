@@ -4,10 +4,8 @@ import type { PackageConfig } from '../packageConfig.js';
 
 import { gitHubUtil } from './githubUtil.js';
 
-// Repositories deliberately kept off the standard, by GitHub repository name. exercode pins
-// dependencies through Yarn patches that have no Bun equivalent, so its migration is a manual
-// decision that must not be re-reported as an error on every run.
-const excludedRepoNames = new Set(['exercode']);
+// Repositories deliberately kept off the standard, by GitHub repository name.
+const excludedRepoNames = new Set<string>();
 
 /** Whether the repository is on the exclusion list, matched by its GitHub repository name. */
 export function isExcludedRepo(rootDirPath: string, packageJson: PackageConfig['packageJson']): boolean {
