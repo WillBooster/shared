@@ -64,12 +64,15 @@ function countOptionTokens(argv, index) {
     const equalsIndex = optionText.indexOf('=');
     const rawName = equalsIndex === -1 ? optionText : optionText.slice(0, equalsIndex);
     const name = rawName.startsWith('no-') ? rawName.slice(3) : rawName;
-    if (booleanOptionNames.has(name)) return 1;
+    if (booleanOptionNames.has(name)) {
+      return equalsIndex === -1 && isBooleanLiteral(argv[index + 1]) ? 2 : 1;
+    }
     if (!valueOptionNames.has(name)) return 0;
     return equalsIndex === -1 ? 2 : 1;
   }
 
   const shortOptions = arg.slice(1);
+  if (/^[dhv]=(false|true)$/.test(shortOptions)) return 1;
   for (let optionIndex = 0; optionIndex < shortOptions.length; optionIndex++) {
     const name = shortOptions[optionIndex];
     if (booleanOptionNames.has(name)) continue;
@@ -77,4 +80,8 @@ function countOptionTokens(argv, index) {
     return 0;
   }
   return 1;
+}
+
+function isBooleanLiteral(value) {
+  return value === 'false' || value === 'true';
 }

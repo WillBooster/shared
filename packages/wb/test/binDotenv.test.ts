@@ -377,6 +377,25 @@ describe('bin/index.js run command', () => {
     expect(attachedValueResult.status).toBe(0);
   });
 
+  it('recognizes explicit boolean option values before the script', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
+
+    for (const optionArgs of [['--dry-run', 'false'], ['-d=false']]) {
+      const result = childProcess.spawnSync(
+        process.execPath,
+        [binIndexPath, 'run', '--quiet-env', ...optionArgs, 'probe.js'],
+        {
+          cwd: projectDirPath,
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH },
+        }
+      );
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toBe('executed\n');
+      expect(result.status).toBe(0);
+    }
+  });
+
   it('preserves numeric-looking child arguments', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(JSON.stringify(process.argv.slice(2)));\n');
 
