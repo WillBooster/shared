@@ -729,13 +729,17 @@ function replacePackageJsonDependencies(
  * first so a failing rename can restore the previous state instead of leaving one tree replaced
  * and the other stale.
  */
-async function swapMaterializedTrees(
+export async function swapMaterializedTrees(
   outDirPaths: string[],
   toStagedPath: (targetDirPath: string) => string,
   backupRootDirPath: string
 ): Promise<void> {
   await fs.promises.rm(backupRootDirPath, { recursive: true, force: true });
+  // Recorded BEFORE the staged tree is renamed in: between setting the live tree aside and
+  // installing its replacement the previous materialization exists only in the backup, and a record
+  // added after the rename would leave that window unrecoverable.
   const swappedDirs: { outDirPath: string; backupDirPath: string; hadPreviousTree: boolean }[] = [];
+  let restoreFailed = false;
   try {
     for (const [index, outDirPath] of outDirPaths.entries()) {
       // Indexed (not named after the directory) so two output trees sharing a basename cannot
@@ -744,9 +748,9 @@ async function swapMaterializedTrees(
       await fs.promises.mkdir(backupRootDirPath, { recursive: true });
       const hadPreviousTree = fs.existsSync(outDirPath);
       if (hadPreviousTree) await fs.promises.rename(outDirPath, backupDirPath);
+      swappedDirs.push({ outDirPath, backupDirPath, hadPreviousTree });
       await fs.promises.mkdir(path.dirname(outDirPath), { recursive: true });
       await fs.promises.rename(toStagedPath(outDirPath), outDirPath);
-      swappedDirs.push({ outDirPath, backupDirPath, hadPreviousTree });
     }
   } catch (error) {
     // Reverse order: undo the most recent swap first.
@@ -756,13 +760,21 @@ async function swapMaterializedTrees(
         if (swapped.hadPreviousTree) await fs.promises.rename(swapped.backupDirPath, swapped.outDirPath);
       } catch (rollbackError) {
         // Reporting the original failure matters more, but a failed rollback leaves the tree
-        // missing, so it must not pass silently.
-        console.error(chalk.red(`Failed to restore ${swapped.outDirPath}: ${String(rollbackError)}`));
+        // missing, so it must not pass silently — and its backup is then the ONLY remaining copy.
+        restoreFailed = true;
+        console.error(
+          chalk.red(
+            `Failed to restore ${swapped.outDirPath}: ${String(rollbackError)}\n` +
+              `The previous materialization is kept at ${swapped.backupDirPath}; move it back by hand.`
+          )
+        );
       }
     }
     throw error;
   } finally {
-    await fs.promises.rm(backupRootDirPath, { recursive: true, force: true });
+    // Only when nothing is left to recover: deleting the backups after a failed restore would
+    // destroy the last copy of the previous materialization.
+    if (!restoreFailed) await fs.promises.rm(backupRootDirPath, { recursive: true, force: true });
   }
 }
 
