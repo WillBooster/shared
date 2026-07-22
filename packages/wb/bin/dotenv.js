@@ -9,8 +9,22 @@ const shutdownSignals = new Set(['SIGINT', 'SIGTERM', 'SIGQUIT']);
 
 export function runDotenvCommand(args) {
   const { command } = parseDotenvArgs(args);
+  runCommandWithEnvironment(command, 'wb dotenv -- <command> [args...]');
+}
+
+export function runRunCommand(args) {
+  const { command: scriptArgs } = parseDotenvArgs(args);
+  if (scriptArgs.length === 0) {
+    console.error('Usage: wb run <script> [args...]');
+    process.exit(1);
+  }
+  const command = usesBunRuntime(process.cwd()) ? ['bun', 'run', ...scriptArgs] : ['node', ...scriptArgs];
+  runCommandWithEnvironment(command, 'wb run <script> [args...]');
+}
+
+function runCommandWithEnvironment(command, usage) {
   if (command.length === 0) {
-    console.error('Usage: wb dotenv -- <command> [args...]');
+    console.error(`Usage: ${usage}`);
     process.exit(1);
   }
 
@@ -62,6 +76,41 @@ export function runDotenvCommand(args) {
     }
     process.exit(code ?? 1);
   });
+}
+
+function usesBunRuntime(dirPath) {
+  for (let currentPath = path.resolve(dirPath); ; currentPath = path.dirname(currentPath)) {
+    if (
+      ['bun.lock', 'bun.lockb'].some((fileName) => fs.existsSync(path.join(currentPath, fileName))) ||
+      hasBunPackageManager(path.join(currentPath, 'package.json')) ||
+      ['mise.toml', '.mise.toml'].some((fileName) =>
+        testFileContent(path.join(currentPath, fileName), /^\s*(?:"bun"|bun)\s*=/m)
+      ) ||
+      testFileContent(path.join(currentPath, '.tool-versions'), /(^|\n)bun\s/)
+    ) {
+      return true;
+    }
+    if (fs.existsSync(path.join(currentPath, '.git'))) return false;
+    const parentPath = path.dirname(currentPath);
+    if (parentPath === currentPath) return false;
+  }
+}
+
+function hasBunPackageManager(packageJsonPath) {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    return typeof packageJson.packageManager === 'string' && packageJson.packageManager.startsWith('bun@');
+  } catch {
+    return false;
+  }
+}
+
+function testFileContent(filePath, pattern) {
+  try {
+    return pattern.test(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return false;
+  }
 }
 
 // Mirrors src/commands/dotenv.ts (validateStandardWbEnv) for this startup fast path.

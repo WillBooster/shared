@@ -199,3 +199,64 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 });
+
+describe('bin/index.js run fast path', () => {
+  let projectDirPath: string;
+
+  beforeEach(async () => {
+    projectDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-bin-run-test-'));
+    await fs.mkdir(path.join(projectDirPath, '.git'));
+  });
+
+  afterEach(async () => {
+    await fs.rm(projectDirPath, { force: true, recursive: true });
+  });
+
+  it('runs TypeScript with Node and forwards environment variables and arguments', async () => {
+    await fs.writeFile(path.join(projectDirPath, '.env'), 'LOADED_BY_WB=from-dotenv\n');
+    await fs.writeFile(
+      path.join(projectDirPath, 'probe.ts'),
+      "const value: string = `${process.env.LOADED_BY_WB}:${process.argv.slice(2).join(',')}`;\nconsole.log(value);\n"
+    );
+
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'probe.ts', 'first', '--second'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH },
+    });
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('from-dotenv:first,--second\n');
+    expect(result.status).toBe(0);
+  });
+
+  it('runs package scripts with Bun in Bun projects', async () => {
+    await fs.writeFile(
+      path.join(projectDirPath, 'package.json'),
+      JSON.stringify({ packageManager: 'bun@1.3.14', scripts: { probe: 'node probe.js' } })
+    );
+    await fs.writeFile(
+      path.join(projectDirPath, 'probe.js'),
+      "console.log(`bun-script:${process.argv.slice(2).join(',')}`);\n"
+    );
+
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'probe', 'argument'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH },
+    });
+    expect(result.stderr).toContain('$ node probe.js argument');
+    expect(result.stdout).toBe('bun-script:argument\n');
+    expect(result.status).toBe(0);
+  });
+
+  it('prints usage instead of starting a runtime without a script', () => {
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH },
+    });
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('Usage: wb run <script> [args...]\n');
+    expect(result.status).toBe(1);
+  });
+});

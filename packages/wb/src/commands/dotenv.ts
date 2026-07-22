@@ -29,8 +29,12 @@ export const dotenvCommand: CommandModule = {
 };
 
 async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<void> {
+  await runCommandWithEnvironment(command, 'wb dotenv -- <command> [args...]');
+}
+
+export async function runCommandWithEnvironment(command: string[], usage: string): Promise<void> {
   if (command.length === 0) {
-    console.error('Usage: wb dotenv -- <command> [args...]');
+    console.error(`Usage: ${usage}`);
     process.exit(1);
   }
 

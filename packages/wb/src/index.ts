@@ -19,6 +19,7 @@ import { prismaCommand } from './commands/prisma.js';
 import { railwayEnvCommand } from './commands/railwayEnv.js';
 import { releaseCommand } from './commands/release.js';
 import { retryCommand } from './commands/retry.js';
+import { runCommand } from './commands/run.js';
 import { setupCommand } from './commands/setup.js';
 import { setupPrivatePackagesCommand } from './commands/setupPrivatePackages.js';
 import { startCommand } from './commands/start.js';
@@ -65,6 +66,7 @@ await yargs(hideBin(process.argv))
   .command(railwayEnvCommand)
   .command(releaseCommand)
   .command(retryCommand)
+  .command(runCommand)
   .command(setupCommand)
   .command(setupPrivatePackagesCommand)
   .command(startCommand)
