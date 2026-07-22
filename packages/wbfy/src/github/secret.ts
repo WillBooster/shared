@@ -429,7 +429,7 @@ async function fetchDefaultBranchFnoxConfigs(
 function readCiAgeSecretKey(): string | undefined {
   // The CI-dedicated identity is separate from the personal one (~/.config/fnox/age.txt) so that
   // the personal key never leaves the local machine and the CI key can be rotated independently.
-  const identityPath = path.join(os.homedir(), '.config', 'fnox', 'ci-age.txt');
+  const identityPath = path.join(os.homedir(), '.config', 'fnox', 'age-ci-wb.txt');
   let content: string;
   try {
     content = fs.readFileSync(identityPath, 'utf8');
