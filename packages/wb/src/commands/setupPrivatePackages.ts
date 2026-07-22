@@ -130,28 +130,30 @@ export async function materializePrivatePackages(
     // packages copied into an equal or NESTED directory moments earlier.
     throw new Error(`--out-dir must not overlap the ${PRIVATE_REGISTRY_SCOPE} registry output directory.`);
   }
-  const stagingDirPath = resolveOutputDirPath(
-    path.join('.tmp', 'wb-private-registry-staging'),
-    'The registry staging directory'
-  );
-  const gitStagingDirPath = resolveOutputDirPath(
-    path.join('.tmp', 'wb-private-git-staging'),
-    'The git staging directory'
-  );
+  const stagingRootDirPath = resolveOutputDirPath(path.join('.tmp', 'wb-private-staging'), 'The staging directory');
+  const backupRootDirPath = resolveOutputDirPath(path.join('.tmp', 'wb-private-backup'), 'The backup directory');
   if (pathsOverlap(outDirPath, canonicalizePath(path.join(rootDirPath, 'node_modules')))) {
     // The recursive delete of outDirPath would destroy the installed sources the copies read.
     throw new Error('--out-dir must not overlap node_modules.');
   }
-  for (const [stagingLabel, stagingPath] of [
-    ['registry', stagingDirPath],
-    ['git', gitStagingDirPath],
+  for (const [label, temporaryDirPath] of [
+    ['staging', stagingRootDirPath],
+    ['backup', backupRootDirPath],
   ] as const) {
-    if (pathsOverlap(outDirPath, stagingPath)) {
-      // Each staging step recreates its directory, silently discarding anything copied into an
-      // equal or nested --out-dir moments earlier.
-      throw new Error(`--out-dir must not overlap the ${stagingLabel} staging directory (${stagingPath}).`);
+    if (pathsOverlap(outDirPath, temporaryDirPath) || pathsOverlap(registryOutDirPath, temporaryDirPath)) {
+      // Both directories are recursively recreated, silently discarding anything materialized into
+      // an equal or nested output directory moments earlier.
+      throw new Error(`Output directories must not overlap the ${label} directory (${temporaryDirPath}).`);
     }
   }
+  // Staging MIRRORS each output tree's repository-root-relative location (e.g.
+  // `<root>/@willbooster-private/a` stages at `<staging>/@willbooster-private/a`), so the relative
+  // distance between any two staged trees equals the distance between their final locations. That
+  // makes cross-tree `file:` rewrites (e.g. `../../@willbooster/<name>`) computed against staging
+  // correct after the swap, which lets every failure-prone step — download, extraction, nested
+  // discovery, rewriting — finish before either live tree is touched.
+  const toStagedPath = (finalPath: string): string =>
+    path.join(stagingRootDirPath, path.relative(rootDirPath, finalPath));
   if (path.relative(rootDirPath, outDirPath) !== '@willbooster') {
     // Pre-existing limitation of the option: the Docker manifest rewrite has no access to it.
     console.warn(
@@ -193,83 +195,56 @@ export async function materializePrivatePackages(
   const copiedPackages = [...privatePackages.values()].filter((p) => p.kind === 'git');
   const registryPackages = [...privatePackages.values()].filter((p) => p.kind === 'registry');
 
-  // Copy git packages into a staging directory and swap it in only after every copy succeeded,
-  // mirroring the registry staging below: a copy that fails partway (e.g. a dangling symlink in
-  // the installed source) must not leave a half-populated @willbooster tree that the automatic
-  // optimizeForDockerBuild caller — which catches the failure and continues — would then rewrite
-  // dependencies against. Both output directories always exist afterwards: Dockerfiles COPY them
-  // unconditionally, and a missing source path fails the build.
-  await fs.promises.rm(gitStagingDirPath, { recursive: true, force: true });
-  await fs.promises.mkdir(gitStagingDirPath, { recursive: true });
+  // Materialize BOTH trees into staging and swap them in only after every failure-prone step
+  // succeeded: a registry fetch/extraction/nested-discovery/rewrite failure must leave both live
+  // trees exactly as they were. Otherwise the automatic `wb optimizeForDockerBuild --outside`
+  // caller — which catches the failure and continues — would rewrite dependencies against
+  // inconsistent trees (e.g. a registry manifest pointing at a deleted `@willbooster/<name>`).
+  await fs.promises.rm(stagingRootDirPath, { recursive: true, force: true });
   try {
+    // Both output directories always exist afterwards: Dockerfiles COPY them unconditionally, and
+    // a missing source path fails the build.
+    await fs.promises.mkdir(toStagedPath(outDirPath), { recursive: true });
+    await fs.promises.mkdir(toStagedPath(registryOutDirPath), { recursive: true });
     for (const privatePackage of copiedPackages) {
-      await copyInstalledPackage(
+      await copyInstalledPackage(rootDirPath, privatePackage, toStagedPath(privatePackage.targetDirPath));
+    }
+    for (const privatePackage of registryPackages) {
+      if (privatePackage.sourceDirPath) {
+        await copyInstalledPackage(rootDirPath, privatePackage, toStagedPath(privatePackage.targetDirPath));
+        continue;
+      }
+      await downloadAndExtractRegistryPackage(
+        // downloadedPackages is non-empty on this path, so the auth check above passed.
+        auth!,
+        privatePackage.name,
+        privatePackage.versionSpecifier ?? 'latest',
+        toStagedPath(privatePackage.targetDirPath)
+      );
+      privatePackage.resolvedVersion = readInstalledVersion(
+        toStagedPath(privatePackage.targetDirPath),
+        privatePackage.name
+      );
+      console.info(`Downloaded ${privatePackage.name} to ${path.relative(rootDirPath, privatePackage.targetDirPath)}`);
+      // A downloaded package may itself depend on private packages that were not visible before
+      // extraction; materialize them too. Installed copies were already deep-scanned by
+      // collectPrivatePackages.
+      await collectNestedPrivatePackages(
         rootDirPath,
+        auth!,
         privatePackage,
-        path.join(gitStagingDirPath, path.relative(outDirPath, privatePackage.targetDirPath))
+        privatePackages,
+        outDirPath,
+        registryOutDirPath,
+        toStagedPath
       );
     }
-    await fs.promises.rm(outDirPath, { recursive: true, force: true });
-    await fs.promises.rename(gitStagingDirPath, outDirPath);
-  } catch (error) {
-    await fs.promises.rm(gitStagingDirPath, { recursive: true, force: true });
-    throw error;
-  }
 
-  if (registryPackages.length > 0) {
-    // Download into a staging directory and swap it in only after every download succeeded, so
-    // a failing registry/token/extraction cannot destroy the last usable materialization.
-    const toStagedPath = (targetDirPath: string): string =>
-      path.join(stagingDirPath, path.relative(registryOutDirPath, targetDirPath));
-    await fs.promises.rm(stagingDirPath, { recursive: true, force: true });
-    await fs.promises.mkdir(stagingDirPath, { recursive: true });
-    try {
-      for (const privatePackage of registryPackages) {
-        if (privatePackage.sourceDirPath) {
-          await copyInstalledPackage(rootDirPath, privatePackage, toStagedPath(privatePackage.targetDirPath));
-        } else {
-          await downloadAndExtractRegistryPackage(
-            // downloadedPackages is non-empty on this path, so the auth check above passed.
-            auth!,
-            privatePackage.name,
-            privatePackage.versionSpecifier ?? 'latest',
-            toStagedPath(privatePackage.targetDirPath)
-          );
-          privatePackage.resolvedVersion = readInstalledVersion(
-            toStagedPath(privatePackage.targetDirPath),
-            privatePackage.name
-          );
-          console.info(
-            `Downloaded ${privatePackage.name} to ${path.relative(rootDirPath, privatePackage.targetDirPath)}`
-          );
-        }
-        // A downloaded package may itself depend on private packages that were not visible
-        // before extraction; materialize them too. Installed copies were already deep-scanned
-        // by collectPrivatePackages.
-        if (!privatePackage.sourceDirPath) {
-          await collectNestedPrivatePackages(
-            rootDirPath,
-            auth!,
-            privatePackage,
-            privatePackages,
-            outDirPath,
-            registryOutDirPath,
-            toStagedPath
-          );
-        }
-      }
-      await fs.promises.rm(registryOutDirPath, { recursive: true, force: true });
-      await fs.promises.rename(stagingDirPath, registryOutDirPath);
-    } catch (error) {
-      await fs.promises.rm(stagingDirPath, { recursive: true, force: true });
-      throw error;
-    }
-  } else {
-    await fs.promises.rm(registryOutDirPath, { recursive: true, force: true });
-    await fs.promises.mkdir(registryOutDirPath, { recursive: true });
+    await replacePrivateDependencies(stagingRootDirPath, privatePackages, toStagedPath);
+    await swapMaterializedTrees([outDirPath, registryOutDirPath], toStagedPath, backupRootDirPath);
+  } finally {
+    await fs.promises.rm(stagingRootDirPath, { recursive: true, force: true });
   }
-
-  await replacePrivateDependencies(rootDirPath, privatePackages);
   console.info(
     `Ensure the Dockerfile COPYs ${path.relative(rootDirPath, outDirPath)}/ and ${PRIVATE_REGISTRY_SCOPE}/ into the image before installing dependencies.`
   );
@@ -363,13 +338,9 @@ async function collectNestedPrivatePackages(
   registryOutDirPath: string,
   toStagedPath: (targetDirPath: string) => string
 ): Promise<void> {
-  // Registry packages still live in the staging directory at this point (they are swapped into
-  // place only after every download succeeded); git packages are copied straight to their final
-  // location, so their manifest must be read there.
-  const extractedDirPath =
-    extractedPackage.kind === 'registry'
-      ? toStagedPath(extractedPackage.targetDirPath)
-      : extractedPackage.targetDirPath;
+  // Every materialized package — including a late-discovered nested git dependency — lives in
+  // staging until the atomic swap, so its manifests must be read there.
+  const extractedDirPath = toStagedPath(extractedPackage.targetDirPath);
   // Scan EVERY manifest of the materialized package (org git dependencies are whole monorepo
   // checkouts with packages/*/package.json), mirroring collectPrivatePackages' deep scan — the
   // dependency-rewrite step walks the same set, so anything declared there must be materialized.
@@ -401,7 +372,7 @@ async function collectNestedPrivatePackages(
 
       if (nested.kind === 'git') {
         nested.sourceDirPath = findInstalledPackageDir(rootDirPath, nested.name);
-        await copyInstalledPackage(rootDirPath, nested, nested.targetDirPath);
+        await copyInstalledPackage(rootDirPath, nested, toStagedPath(nested.targetDirPath));
       } else {
         const installed = findInstalledRegistryPackage(rootDirPath, nested);
         nested.sourceDirPath = installed?.dirPath;
@@ -711,16 +682,18 @@ function narrowerCompatibleRequirement(
 }
 
 async function replacePrivateDependencies(
-  rootDirPath: string,
-  privatePackages: Map<string, PrivatePackage>
+  stagingRootDirPath: string,
+  privatePackages: Map<string, PrivatePackage>,
+  toStagedPath: (targetDirPath: string) => string
 ): Promise<void> {
   for (const privatePackage of privatePackages.values()) {
-    for (const packageJsonPath of await findPackageJsonPaths(privatePackage.targetDirPath)) {
+    for (const packageJsonPath of await findPackageJsonPaths(toStagedPath(privatePackage.targetDirPath))) {
       const packageJson = await readPackageJson(packageJsonPath);
-      if (!replacePackageJsonDependencies(packageJsonPath, packageJson, privatePackages)) continue;
+      if (!replacePackageJsonDependencies(packageJsonPath, packageJson, privatePackages, toStagedPath)) continue;
 
       await fs.promises.writeFile(packageJsonPath, `${JSON.stringify(packageJson, undefined, 2)}\n`, 'utf8');
-      console.info(`Rewrote private dependencies in ${path.relative(rootDirPath, packageJsonPath)}`);
+      // Staging mirrors the root-relative layout, so this is the manifest's post-swap location.
+      console.info(`Rewrote private dependencies in ${path.relative(stagingRootDirPath, packageJsonPath)}`);
     }
   }
 }
@@ -728,7 +701,8 @@ async function replacePrivateDependencies(
 function replacePackageJsonDependencies(
   packageJsonPath: string,
   packageJson: PackageJson,
-  privatePackages: Map<string, PrivatePackage>
+  privatePackages: Map<string, PrivatePackage>,
+  toStagedPath: (targetDirPath: string) => string
 ): boolean {
   let changed = false;
   for (const key of dependencyKeys) {
@@ -740,11 +714,78 @@ function replacePackageJsonDependencies(
       const targetPackage = privatePackages.get(name);
       if (!targetPackage) continue;
 
-      dependencies[name] = `file:${path.relative(path.dirname(packageJsonPath), targetPackage.targetDirPath)}`;
+      // Both sides are staged paths: staging mirrors the root-relative layout, so the relative
+      // specifier is identical to the one the final locations would produce.
+      dependencies[name] =
+        `file:${path.relative(path.dirname(packageJsonPath), toStagedPath(targetPackage.targetDirPath))}`;
       changed = true;
     }
   }
   return changed;
+}
+
+/**
+ * Move every staged tree onto its final location as one transaction: each live tree is set aside
+ * first so a failing rename can restore the previous state instead of leaving one tree replaced
+ * and the other stale.
+ */
+export async function swapMaterializedTrees(
+  outDirPaths: string[],
+  toStagedPath: (targetDirPath: string) => string,
+  backupRootDirPath: string
+): Promise<void> {
+  // A UNIQUE directory per invocation: when a rollback fails its backup is retained for manual
+  // recovery, and a fixed path would let the next run delete the only remaining copy.
+  await fs.promises.mkdir(path.dirname(backupRootDirPath), { recursive: true });
+  const backupDirRoot = await fs.promises.mkdtemp(`${backupRootDirPath}-`);
+  // Recorded BEFORE the staged tree is renamed in: between setting the live tree aside and
+  // installing its replacement the previous materialization exists only in the backup, and a record
+  // added after the rename would leave that window unrecoverable.
+  const swappedDirs: { outDirPath: string; backupDirPath: string; hadPreviousTree: boolean }[] = [];
+  let restoreFailed = false;
+  try {
+    for (const [index, outDirPath] of outDirPaths.entries()) {
+      // Indexed (not named after the directory) so two output trees sharing a basename cannot
+      // overwrite each other's backup.
+      const backupDirPath = path.join(backupDirRoot, String(index));
+      const hadPreviousTree = fs.existsSync(outDirPath);
+      if (hadPreviousTree) await fs.promises.rename(outDirPath, backupDirPath);
+      swappedDirs.push({ outDirPath, backupDirPath, hadPreviousTree });
+      await fs.promises.mkdir(path.dirname(outDirPath), { recursive: true });
+      await fs.promises.rename(toStagedPath(outDirPath), outDirPath);
+    }
+  } catch (error) {
+    // Reverse order: undo the most recent swap first.
+    for (const swapped of swappedDirs.toReversed()) {
+      try {
+        await fs.promises.rm(swapped.outDirPath, { recursive: true, force: true });
+        if (swapped.hadPreviousTree) await fs.promises.rename(swapped.backupDirPath, swapped.outDirPath);
+      } catch (rollbackError) {
+        // Reporting the original failure matters more, but a failed rollback leaves the tree
+        // missing, so it must not pass silently — and its backup is then the ONLY remaining copy.
+        restoreFailed = true;
+        console.error(
+          chalk.red(
+            `Failed to restore ${swapped.outDirPath}: ${String(rollbackError)}\n` +
+              `The previous materialization is kept at ${swapped.backupDirPath}; move it back by hand.`
+          )
+        );
+      }
+    }
+    throw error;
+  } finally {
+    // Only when nothing is left to recover: deleting the backups after a failed restore would
+    // destroy the last copy of the previous materialization. And by this point both trees are
+    // already committed, so a cleanup failure (e.g. a read-only directory `fs.cp` preserved) must
+    // not turn a successful materialization into a reported failure.
+    if (!restoreFailed) {
+      try {
+        await fs.promises.rm(backupDirRoot, { recursive: true, force: true });
+      } catch (cleanupError) {
+        console.warn(chalk.yellow(`Failed to remove ${backupDirRoot}: ${String(cleanupError)}`));
+      }
+    }
+  }
 }
 
 async function findPackageJsonPaths(dirPath: string): Promise<string[]> {
