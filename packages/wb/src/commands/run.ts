@@ -4,8 +4,8 @@ import path from 'node:path';
 import { readEnvironmentVariables, shouldSuppressEnvironmentOutput } from '@willbooster/shared-lib-node/src';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
+import { getRunScriptArgs } from '../../bin/runArgs.js';
 import { Project } from '../project.js';
-import { getRunScriptArgs } from '../utils/runArgs.js';
 import { usesBunRuntime } from '../utils/runtime.js';
 import { runCommandWithEnvironment } from './dotenv.js';
 

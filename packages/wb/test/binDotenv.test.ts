@@ -46,6 +46,20 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
+  it('does not rewrite dotenv child arguments containing run', async () => {
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'node', '-e', 'console.log(process.argv.slice(1).join(","))', 'run', 'first'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stdout).toBe('run,first\n');
+    expect(result.status).toBe(0);
+  });
+
   it.runIf(isFnoxAvailable())('loads fnox-provided environment variables preferring .env files', async () => {
     // The released `wb dotenv` routes through bin/dotenv.js (not dist), so fnox loading must be
     // exercised through bin/index.js to catch drift from the TypeScript implementation.
@@ -251,6 +265,23 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
+  it('distinguishes a global option value named run from the run command', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'run'), 'LOADED_BY_WB=custom\n');
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.env.LOADED_BY_WB);\n');
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, '--working-dir', projectDirPath, '--quiet-env', '--env', 'run', 'run', 'probe.js'],
+      {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('custom\n');
+    expect(result.status).toBe(0);
+  });
+
   it('enforces the project environment contract on the default path', async () => {
     await fs.writeFile(path.join(projectDirPath, 'package.json'), '{}');
     await fs.writeFile(path.join(projectDirPath, '.env'), 'LOADED_BY_WB=value\n');
@@ -296,6 +327,54 @@ describe('bin/index.js run command', () => {
     );
     expect(forwardedResult.stdout).toBe('executed:--dry-run\n');
     expect(forwardedResult.status).toBe(0);
+
+    const separatedResult = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', '--quiet-env', 'probe.js', '--dry-run', '--', '--child'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(separatedResult.stdout).toBe('executed:--dry-run,--child\n');
+    expect(separatedResult.status).toBe(0);
+  });
+
+  it('recognizes negated, grouped, and attached wb options before the script', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
+
+    const negatedResult = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', '--no-auto-cascade-env', '--quiet-env', 'probe.js'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(negatedResult.stdout).toBe('executed\n');
+    expect(negatedResult.status).toBe(0);
+
+    const groupedResult = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '-dv', 'probe.js'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH },
+    });
+    expect(groupedResult.stdout).toContain('Would run: node probe.js');
+    expect(groupedResult.stdout).not.toContain('executed');
+    expect(groupedResult.status).toBe(0);
+
+    const attachedValueResult = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', `-w${projectDirPath}`, '--quiet-env', 'probe.js'],
+      {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(attachedValueResult.stdout).toBe('executed\n');
+    expect(attachedValueResult.status).toBe(0);
   });
 
   it('preserves numeric-looking child arguments', async () => {

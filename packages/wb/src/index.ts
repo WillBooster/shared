@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { removeNpmAndYarnEnvironmentVariables, treeKill } from '@willbooster/shared-lib-node/src';
+import { protectRunScriptArgs } from '../bin/runArgs.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -29,7 +30,6 @@ import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { verifyCodeCommand } from './commands/verifyCode.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
-import { protectRunScriptArgs } from './utils/runArgs.js';
 
 protectRunScriptArgs(process.argv);
 
