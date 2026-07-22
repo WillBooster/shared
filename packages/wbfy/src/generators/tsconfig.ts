@@ -173,25 +173,34 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
 // and behaves the same. Their app sources therefore only type-check under their own config.
 const frameworkDependencyNames = ['blitz', 'next', 'vinext'];
 
+// A framework app lives in `app/` or, under the src-directory layout, `src/app/`. The root project
+// includes `<workspace>/src/**/*`, so `src/app` leaks in just as a repo-wide glob can pull in `app`.
+const frameworkAppDirNames = ['app', 'src/app'];
+
 /** Root `exclude` entries (posix, relative to the root) for every framework workspace's app directory. */
 function getFrameworkWorkspaceAppExcludes(config: PackageConfig): string[] {
   if (!config.doesContainSubPackageJsons) return [];
   const excludes: string[] = [];
   for (const workspaceDirPath of getWorkspaceSubDirPaths(config)) {
-    const appDirPath = path.resolve(workspaceDirPath, 'app');
-    if (!fs.existsSync(appDirPath) || !dependsOnFramework(path.resolve(workspaceDirPath, 'package.json'))) continue;
-    excludes.push(path.relative(config.dirPath, appDirPath).replaceAll('\\', '/'));
+    if (!dependsOnFramework(path.resolve(workspaceDirPath, 'package.json'))) continue;
+    for (const appDirName of frameworkAppDirNames) {
+      const appDirPath = path.resolve(workspaceDirPath, appDirName);
+      if (fs.existsSync(appDirPath)) excludes.push(path.relative(config.dirPath, appDirPath).replaceAll('\\', '/'));
+    }
   }
   return excludes;
 }
 
 function dependsOnFramework(manifestPath: string): boolean {
-  let manifest: PackageJson;
+  let manifest: PackageJson | null;
   try {
-    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as PackageJson;
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as PackageJson | null;
   } catch {
     return false;
   }
+  // A manifest that parses to a non-object (e.g. a file literally containing `null`) declares no
+  // dependencies; guard the property access, which would otherwise throw outside the try above.
+  if (!manifest || typeof manifest !== 'object') return false;
   const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
   return frameworkDependencyNames.some((dependencyName) => dependencies[dependencyName]);
 }

@@ -181,24 +181,29 @@ test('keeps a nested workspace in the root project when its ancestor package is 
   }
 });
 
-test('excludes a framework workspace app directory from the root project but not a plain one', async () => {
+test('excludes framework workspace app and src/app directories from the root project but not a plain one', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
   try {
     // A framework workspace (here vinext, the org's Next.js-equivalent) shims bare imports such as
     // `next/navigation` through its own tsconfig paths, so its app sources fail under the root
     // compiler options. A plain workspace's app directory carries no such requirement and must stay.
-    const workspaces = ['e2e/fixture', 'packages/plain'];
+    const workspaces = ['e2e/fixture', 'apps/src-layout', 'packages/plain', 'packages/broken'];
     fs.writeFileSync(
       path.join(tempDirPath, 'package.json'),
       JSON.stringify({ name: 'root', private: true, workspaces })
     );
-    for (const [workspaceDirName, dependencies] of [
-      ['e2e/fixture', { vinext: '1.0.0' }],
-      ['packages/plain', {}],
+    for (const [workspaceDirName, appDirName, manifest] of [
+      ['e2e/fixture', 'app', JSON.stringify({ dependencies: { vinext: '1.0.0' } })],
+      // The src-directory layout keeps the framework app under src/app, which the root project's
+      // managed `src/**/*` include would otherwise pull in.
+      ['apps/src-layout', 'src/app', JSON.stringify({ dependencies: { next: '15.0.0' } })],
+      ['packages/plain', 'app', JSON.stringify({ dependencies: {} })],
+      // A manifest that parses to a non-object must not crash framework detection.
+      ['packages/broken', 'app', 'null'],
     ] as const) {
-      const appDirPath = path.join(tempDirPath, workspaceDirName, 'app');
+      const appDirPath = path.join(tempDirPath, workspaceDirName, appDirName);
       fs.mkdirSync(appDirPath, { recursive: true });
-      fs.writeFileSync(path.join(tempDirPath, workspaceDirName, 'package.json'), JSON.stringify({ dependencies }));
+      fs.writeFileSync(path.join(tempDirPath, workspaceDirName, 'package.json'), manifest);
       fs.writeFileSync(path.join(appDirPath, 'page.tsx'), 'export default () => null;\n');
     }
     const config = createConfig({
@@ -214,7 +219,9 @@ test('excludes a framework workspace app directory from the root project but not
       exclude?: string[];
     };
     expect(tsconfig.exclude).toContain('e2e/fixture/app');
+    expect(tsconfig.exclude).toContain('apps/src-layout/src/app');
     expect(tsconfig.exclude).not.toContain('packages/plain/app');
+    expect(tsconfig.exclude).not.toContain('packages/broken/app');
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
