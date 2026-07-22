@@ -1,0 +1,9 @@
+[providers.age]
+type = "age"
+recipients = [
+  "age1j2354xhvm3fv9y77t5g6y3q8mexgk2mf00tgrkzgp73tynrvz55s8auayw", # exkazuu
+]
+
+[secrets]
+PUB_ONLY = { default = "public-value" }
+SECRET= { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBKZWM0VEUyRFJzNzR0ZkZ1cWtRZXJZc1ViS25kYnR1UjVvcEN0QTMvaTFFClJYcEt6d2V5UkpSWDNzLzdFenlsOERweVJHa3FLY2NsMG56dU0vRVJPRjAKLT4gamZ0ekVWLWdyZWFzZSAiKj0gNH1edXNAZwpDcnkxN2xLN3lnQTI5ZndYdDFvU0NpWFZueDhZQmdSQwotLS0gcGp2L3ROMklSWDdCVVY2V0JpL3Y4RHdvSUh1dXdOeThkMkF0ck1jeFlURQpHUS8rNJtE4yROdOkzGcv3jrJV3hRanmHKYQ/FS34VvU4gREufihcIOPs/3w==" }
