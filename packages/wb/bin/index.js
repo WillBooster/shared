@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
-if (process.argv[2] === 'dotenv' || process.argv[2] === 'run') {
+const commandName = process.argv[2];
+const commandArgs = process.argv.slice(3);
+const useRunFastPath = commandName === 'run' && (commandArgs[0] === undefined || !commandArgs[0].startsWith('-'));
+
+if (commandName === 'dotenv' || useRunFastPath) {
   const { runDotenvCommand, runRunCommand } = await import('./dotenv.js');
-  const command = process.argv[2] === 'dotenv' ? runDotenvCommand : runRunCommand;
-  await command(process.argv.slice(3));
+  const command = commandName === 'dotenv' ? runDotenvCommand : runRunCommand;
+  await command(commandArgs);
 } else {
   await import('../dist/index.js');
 }

@@ -17,6 +17,11 @@ interface ParsedDotenvArgs {
   command: string[];
 }
 
+interface CommandEnvironment {
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+}
+
 const shutdownSignals = new Set<NodeJS.Signals>(['SIGINT', 'SIGTERM', 'SIGQUIT']);
 
 export const dotenvCommand: CommandModule = {
@@ -32,16 +37,21 @@ async function runParsedDotenvCommand({ command }: ParsedDotenvArgs): Promise<vo
   await runCommandWithEnvironment(command, 'wb dotenv -- <command> [args...]');
 }
 
-export async function runCommandWithEnvironment(command: string[], usage: string): Promise<void> {
+export async function runCommandWithEnvironment(
+  command: string[],
+  usage: string,
+  commandEnvironment?: CommandEnvironment
+): Promise<void> {
   if (command.length === 0) {
     console.error(`Usage: ${usage}`);
     process.exit(1);
   }
 
-  const cwd = path.resolve(process.cwd());
-  readAndApplyEnvironmentVariables(cwd);
-  const berryBinFolderPath = process.env.BERRY_BIN_FOLDER;
-  removeNpmAndYarnEnvironmentVariables(process.env);
+  const cwd = path.resolve(commandEnvironment?.cwd ?? process.cwd());
+  const env = commandEnvironment?.env ?? process.env;
+  if (!commandEnvironment) readAndApplyEnvironmentVariables(cwd);
+  const berryBinFolderPath = env.BERRY_BIN_FOLDER;
+  removeNpmAndYarnEnvironmentVariables(env);
   // Stripping yarn's environment also removes its temporary bin folder — the ONLY place
   // yarn Berry exposes dependency executables — so restore the project's own
   // node_modules/.bin directories to keep bare binary names resolvable. Plug'n'Play installs
@@ -52,13 +62,13 @@ export async function runCommandWithEnvironment(command: string[], usage: string
   // for tools like wrangler/vinext. Child `yarn` invocations stay resolvable through the
   // launcher on the base PATH (mise/corepack), which every supported environment has —
   // nothing could have started `yarn run`/`wb dotenv` without it.
-  if (!prependNodeModulesBinToPath(cwd, process.env) && berryBinFolderPath) {
-    process.env.PATH = process.env.PATH ? `${berryBinFolderPath}:${process.env.PATH}` : berryBinFolderPath;
+  if (!prependNodeModulesBinToPath(cwd, env) && berryBinFolderPath) {
+    env.PATH = env.PATH ? `${berryBinFolderPath}:${env.PATH}` : berryBinFolderPath;
   }
 
   const child = spawn(command[0]!, command.slice(1), {
     cwd,
-    env: process.env,
+    env,
     stdio: 'inherit',
   });
   const signalHandlers = new Map<NodeJS.Signals, () => void>();

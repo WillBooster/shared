@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const binIndexPath = fileURLToPath(new URL('../bin/index.js', import.meta.url));
+const sourceIndexPath = fileURLToPath(new URL('../src/index.ts', import.meta.url));
 
 function isFnoxAvailable(): boolean {
   return childProcess.spawnSync('fnox', ['--version'], { stdio: 'ignore' }).status === 0;
@@ -219,13 +220,35 @@ describe('bin/index.js run fast path', () => {
       "const value: string = `${process.env.LOADED_BY_WB}:${process.argv.slice(2).join(',')}`;\nconsole.log(value);\n"
     );
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'probe.ts', 'first', '--second'], {
-      cwd: projectDirPath,
-      encoding: 'utf8',
-      env: { PATH: process.env.PATH },
-    });
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', 'probe.ts', 'first', '--', '--second'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('from-dotenv:first,--second\n');
+    expect(result.status).toBe(0);
+  });
+
+  it('honors environment-selection options through the full CLI path', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'package.json'), '{}');
+    await fs.writeFile(path.join(projectDirPath, 'custom.env'), 'LOADED_BY_WB=custom\n');
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.env.LOADED_BY_WB);\n');
+
+    const result = childProcess.spawnSync(
+      'bun',
+      [sourceIndexPath, '--working-dir', projectDirPath, '--env', 'custom.env', 'run', 'probe.js'],
+      {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('custom\n');
     expect(result.status).toBe(0);
   });
 

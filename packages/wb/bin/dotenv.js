@@ -13,13 +13,18 @@ export function runDotenvCommand(args) {
 }
 
 export function runRunCommand(args) {
-  const { command: scriptArgs } = parseDotenvArgs(args);
+  const scriptArgs = parseRunArgs(args);
   if (scriptArgs.length === 0) {
     console.error('Usage: wb run <script> [args...]');
     process.exit(1);
   }
   const command = usesBunRuntime(process.cwd()) ? ['bun', 'run', ...scriptArgs] : ['node', ...scriptArgs];
   runCommandWithEnvironment(command, 'wb run <script> [args...]');
+}
+
+function parseRunArgs(args) {
+  const separatorIndex = args.indexOf('--');
+  return separatorIndex === -1 ? args : [...args.slice(0, separatorIndex), ...args.slice(separatorIndex + 1)];
 }
 
 function runCommandWithEnvironment(command, usage) {

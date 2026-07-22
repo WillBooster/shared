@@ -17,9 +17,12 @@ export const runCommand: CommandModule = {
       console.error('Usage: wb run <script> [args...]');
       process.exit(1);
     }
-    const project = new Project(process.cwd(), argv, false);
+    const project = new Project(process.cwd(), argv, true);
     const command = project.usesBunPackageManager ? ['bun', 'run', ...args] : ['node', ...args];
-    await runCommandWithEnvironment(command, 'wb run <script> [args...]');
+    await runCommandWithEnvironment(command, 'wb run <script> [args...]', {
+      cwd: project.dirPath,
+      env: project.env,
+    });
   },
 };
 
