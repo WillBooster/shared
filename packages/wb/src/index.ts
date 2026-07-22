@@ -29,6 +29,9 @@ import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { verifyCodeCommand } from './commands/verifyCode.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
+import { protectRunScriptArgs } from './utils/runArgs.js';
+
+protectRunScriptArgs(process.argv);
 
 await yargs(hideBin(process.argv))
   .scriptName('wb')
@@ -49,7 +52,7 @@ await yargs(hideBin(process.argv))
       );
     }
 
-    removeNpmAndYarnEnvironmentVariables(process.env);
+    if (argv._[0] !== 'run') removeNpmAndYarnEnvironmentVariables(process.env);
   })
   .command(verifyCodeCommand)
   .command(buildIfNeededCommand)

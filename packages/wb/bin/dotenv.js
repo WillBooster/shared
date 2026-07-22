@@ -12,21 +12,6 @@ export function runDotenvCommand(args) {
   runCommandWithEnvironment(command, 'wb dotenv -- <command> [args...]');
 }
 
-export function runRunCommand(args) {
-  const scriptArgs = parseRunArgs(args);
-  if (scriptArgs.length === 0) {
-    console.error('Usage: wb run <script> [args...]');
-    process.exit(1);
-  }
-  const command = usesBunRuntime(process.cwd()) ? ['bun', 'run', ...scriptArgs] : ['node', ...scriptArgs];
-  runCommandWithEnvironment(command, 'wb run <script> [args...]');
-}
-
-function parseRunArgs(args) {
-  const separatorIndex = args.indexOf('--');
-  return separatorIndex === -1 ? args : [...args.slice(0, separatorIndex), ...args.slice(separatorIndex + 1)];
-}
-
 function runCommandWithEnvironment(command, usage) {
   if (command.length === 0) {
     console.error(`Usage: ${usage}`);
@@ -81,41 +66,6 @@ function runCommandWithEnvironment(command, usage) {
     }
     process.exit(code ?? 1);
   });
-}
-
-function usesBunRuntime(dirPath) {
-  for (let currentPath = path.resolve(dirPath); ; currentPath = path.dirname(currentPath)) {
-    if (
-      ['bun.lock', 'bun.lockb'].some((fileName) => fs.existsSync(path.join(currentPath, fileName))) ||
-      hasBunPackageManager(path.join(currentPath, 'package.json')) ||
-      ['mise.toml', '.mise.toml'].some((fileName) =>
-        testFileContent(path.join(currentPath, fileName), /^\s*(?:"bun"|bun)\s*=/m)
-      ) ||
-      testFileContent(path.join(currentPath, '.tool-versions'), /(^|\n)bun\s/)
-    ) {
-      return true;
-    }
-    if (fs.existsSync(path.join(currentPath, '.git'))) return false;
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) return false;
-  }
-}
-
-function hasBunPackageManager(packageJsonPath) {
-  try {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-    return typeof packageJson.packageManager === 'string' && packageJson.packageManager.startsWith('bun@');
-  } catch {
-    return false;
-  }
-}
-
-function testFileContent(filePath, pattern) {
-  try {
-    return pattern.test(fs.readFileSync(filePath, 'utf8'));
-  } catch {
-    return false;
-  }
 }
 
 // Mirrors src/commands/dotenv.ts (validateStandardWbEnv) for this startup fast path.

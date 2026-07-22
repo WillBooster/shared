@@ -201,7 +201,7 @@ describe('bin/index.js dotenv fast path', () => {
   });
 });
 
-describe('bin/index.js run fast path', () => {
+describe('bin/index.js run command', () => {
   let projectDirPath: string;
 
   beforeEach(async () => {
@@ -222,7 +222,7 @@ describe('bin/index.js run fast path', () => {
 
     const result = childProcess.spawnSync(
       process.execPath,
-      [binIndexPath, 'run', 'probe.ts', 'first', '--', '--second'],
+      [binIndexPath, 'run', '--quiet-env', 'probe.ts', 'first', '--', '--second'],
       {
         cwd: projectDirPath,
         encoding: 'utf8',
@@ -248,6 +248,101 @@ describe('bin/index.js run fast path', () => {
     );
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('custom\n');
+    expect(result.status).toBe(0);
+  });
+
+  it('enforces the project environment contract on the default path', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'package.json'), '{}');
+    await fs.writeFile(path.join(projectDirPath, '.env'), 'LOADED_BY_WB=value\n');
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
+
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'probe.js'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, CI: 'true' },
+    });
+    expect(result.stdout).not.toContain('executed');
+    expect(result.stderr).toContain('WB_ENV is not exported on CI');
+    expect(result.status).toBe(1);
+  });
+
+  it('dry-runs only when the option precedes the script', async () => {
+    await fs.writeFile(
+      path.join(projectDirPath, 'probe.js'),
+      "console.log(`executed:${process.argv.slice(2).join(',')}`);\n"
+    );
+
+    const dryRunResult = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', '--quiet-env', '--dry-run', 'probe.js'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(dryRunResult.stdout).toContain('Would run: node probe.js');
+    expect(dryRunResult.stdout).not.toContain('executed:');
+    expect(dryRunResult.status).toBe(0);
+
+    const forwardedResult = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', '--quiet-env', 'probe.js', '--dry-run'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(forwardedResult.stdout).toBe('executed:--dry-run\n');
+    expect(forwardedResult.status).toBe(0);
+  });
+
+  it('preserves numeric-looking child arguments', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(JSON.stringify(process.argv.slice(2)));\n');
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', '--quiet-env', 'probe.js', '001', '1e3', '0x10'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stdout).toBe('["001","1e3","0x10"]\n');
+    expect(result.status).toBe(0);
+  });
+
+  it("restores Yarn's temporary bin folder on the full CLI path", async () => {
+    const berryBinDirPath = path.join(projectDirPath, 'berry-bin');
+    await fs.mkdir(berryBinDirPath);
+    await fs.writeFile(path.join(berryBinDirPath, 'run-probe'), '#!/bin/sh\necho pnp-run-ok\n', { mode: 0o755 });
+    await fs.writeFile(
+      path.join(projectDirPath, 'probe.js'),
+      "import { execFileSync } from 'node:child_process';\nprocess.stdout.write(execFileSync('run-probe'));\n"
+    );
+
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: `${berryBinDirPath}:${process.env.PATH}`, BERRY_BIN_FOLDER: berryBinDirPath },
+    });
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('pnp-run-ok\n');
+    expect(result.status).toBe(0);
+  });
+
+  it('warns when a Bun node shim is present on PATH', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
+
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: `/tmp/bun-node-review:${process.env.PATH}` },
+    });
+    expect(result.stderr).toContain('Warning: PATH contains a bun-node shim');
+    expect(result.stdout).toContain('executed');
     expect(result.status).toBe(0);
   });
 
@@ -291,7 +386,7 @@ describe('bin/index.js run fast path', () => {
       "console.log(`bun-script:${process.argv.slice(2).join(',')}`);\n"
     );
 
-    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'probe', 'argument'], {
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
       cwd: projectDirPath,
       encoding: 'utf8',
       env: { PATH: process.env.PATH },
