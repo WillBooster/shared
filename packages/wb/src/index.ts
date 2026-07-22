@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { removeNpmAndYarnEnvironmentVariables, treeKill } from '@willbooster/shared-lib-node/src';
+import { protectRunScriptArgs } from '../bin/runArgs.js';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
@@ -19,6 +20,7 @@ import { prismaCommand } from './commands/prisma.js';
 import { railwayEnvCommand } from './commands/railwayEnv.js';
 import { releaseCommand } from './commands/release.js';
 import { retryCommand } from './commands/retry.js';
+import { runCommand } from './commands/run.js';
 import { setupCommand } from './commands/setup.js';
 import { setupPrivatePackagesCommand } from './commands/setupPrivatePackages.js';
 import { startCommand } from './commands/start.js';
@@ -28,6 +30,8 @@ import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { verifyCodeCommand } from './commands/verifyCode.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
+
+protectRunScriptArgs(process.argv);
 
 await yargs(hideBin(process.argv))
   .scriptName('wb')
@@ -48,7 +52,7 @@ await yargs(hideBin(process.argv))
       );
     }
 
-    removeNpmAndYarnEnvironmentVariables(process.env);
+    if (argv._[0] !== 'run') removeNpmAndYarnEnvironmentVariables(process.env);
   })
   .command(verifyCodeCommand)
   .command(buildIfNeededCommand)
@@ -65,6 +69,7 @@ await yargs(hideBin(process.argv))
   .command(railwayEnvCommand)
   .command(releaseCommand)
   .command(retryCommand)
+  .command(runCommand)
   .command(setupCommand)
   .command(setupPrivatePackagesCommand)
   .command(startCommand)
