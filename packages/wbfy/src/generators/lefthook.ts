@@ -85,10 +85,11 @@ exit "$failed"
       // Only willbooster-configs gets this job: every other repository's renovate.jsonc merely
       // extends the shared preset, and the validator does not resolve remote presets, so running it
       // there would validate two lines and catch nothing. `--no-global` validates the preset as a
-      // repo config instead of a self-hosted global config.
+      // repo config instead of a self-hosted global config, and `@latest` keeps npm from silently
+      // installing an ancient Renovate that cannot even parse JSONC when the local Node lags behind.
       name: 'validate-renovate-config',
       glob: 'renovate.jsonc',
-      run: 'npx --yes --package renovate -- renovate-config-validator --strict --no-global {staged_files}',
+      run: 'npx --yes --package renovate@latest -- renovate-config-validator --strict --no-global {staged_files}',
     },
   ],
 };
