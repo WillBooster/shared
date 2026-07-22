@@ -13,15 +13,27 @@ const booleanOptionNames = new Set([
   'version',
 ]);
 const valueOptionNames = new Set(['cascade-env', 'check-env', 'env', 'working-dir', 'w']);
-const insertedBoundaryMarker = '__WB_RUN_SCRIPT_ARGS__';
+const boundaryMarkerEnvName = 'WB_INTERNAL_RUN_BOUNDARY_MARKER';
 
 export function protectRunScriptArgs(argv) {
   const runIndex = findTopLevelRunIndex(argv);
   if (runIndex === -1) return;
 
   const scriptIndex = findRunScriptIndex(argv, runIndex + 1);
-  if (scriptIndex === undefined || argv[scriptIndex - 1] === '--' || argv[scriptIndex + 1] === '--') return;
-  argv.splice(scriptIndex + 1, 0, '--', insertedBoundaryMarker);
+  if (scriptIndex === undefined || argv[scriptIndex - 1] === '--') return;
+
+  const existingMarker = process.env[boundaryMarkerEnvName];
+  if (argv[scriptIndex + 1] === '--') {
+    if (existingMarker && argv[scriptIndex + 2] === existingMarker) return;
+    delete process.env[boundaryMarkerEnvName];
+    return;
+  }
+
+  let marker;
+  do marker = `__WB_RUN_SCRIPT_ARGS_${randomUUID()}__`;
+  while (argv.includes(marker));
+  process.env[boundaryMarkerEnvName] = marker;
+  argv.splice(scriptIndex + 1, 0, '--', marker);
 }
 
 export function getRunScriptArgs(argv) {
@@ -31,7 +43,9 @@ export function getRunScriptArgs(argv) {
   if (scriptIndex === undefined) return [];
 
   const args = argv.slice(scriptIndex);
-  if (args[1] === '--' && args[2] === insertedBoundaryMarker) args.splice(1, 2);
+  const marker = process.env[boundaryMarkerEnvName];
+  if (marker && args[1] === '--' && args[2] === marker) args.splice(1, 2);
+  delete process.env[boundaryMarkerEnvName];
   return args;
 }
 
@@ -70,6 +84,7 @@ function countOptionTokens(argv, index) {
 
   const shortOptions = arg.slice(1);
   if (/^[dhv]=(false|true)$/.test(shortOptions)) return 1;
+  if (/^[dhv]$/.test(shortOptions) && isBooleanLiteral(argv[index + 1])) return 2;
   for (let optionIndex = 0; optionIndex < shortOptions.length; optionIndex++) {
     const name = shortOptions[optionIndex];
     if (booleanOptionNames.has(name)) continue;
@@ -82,3 +97,4 @@ function countOptionTokens(argv, index) {
 function isBooleanLiteral(value) {
   return value === 'false' || value === 'true';
 }
+import { randomUUID } from 'node:crypto';

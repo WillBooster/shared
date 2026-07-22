@@ -49,5 +49,36 @@ function readStandaloneEnvironment(argv: ArgumentsCamelCase, cwd: string): NodeJ
       console.info(`Loaded ${names.length} environment variables from ${envPath}`);
     }
   }
-  return { ...process.env, ...envVars };
+  const env = { ...process.env, ...envVars };
+  validateStandaloneWbEnv(argv, env);
+  return env;
+}
+
+function validateStandaloneWbEnv(argv: ArgumentsCamelCase, env: NodeJS.ProcessEnv): void {
+  if (env.WB_SKIP_ENV_CHECK === '1' || env.WB_SKIP_ENV_CHECK === 'true') return;
+  const standardModes = new Set(['development', 'test', 'staging', 'production']);
+  if (env.WB_ENV && !standardModes.has(env.WB_ENV)) {
+    console.error(
+      `WB_ENV must be one of development, test, staging, or production, but is "${env.WB_ENV}". ` +
+        'Fix the env source or the exported variable, or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+    );
+    process.exit(1);
+  }
+
+  const runtimeEnv = process.env;
+  const selectedCascade =
+    typeof argv.cascadeEnv === 'string'
+      ? argv.cascadeEnv
+      : argv.cascadeNodeEnv
+        ? runtimeEnv.NODE_ENV || 'development'
+        : argv.autoCascadeEnv !== false
+          ? runtimeEnv.WB_ENV || runtimeEnv.NODE_ENV || 'development'
+          : undefined;
+  if (env.WB_ENV && selectedCascade && standardModes.has(selectedCascade) && env.WB_ENV !== selectedCascade) {
+    console.error(
+      `WB_ENV resolves to "${env.WB_ENV}" although the "${selectedCascade}" environment was selected. ` +
+        'Fix the WB_ENV defined in the env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+    );
+    process.exit(1);
+  }
 }

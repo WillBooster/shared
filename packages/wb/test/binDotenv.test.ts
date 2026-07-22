@@ -380,7 +380,7 @@ describe('bin/index.js run command', () => {
   it('recognizes explicit boolean option values before the script', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
-    for (const optionArgs of [['--dry-run', 'false'], ['-d=false']]) {
+    for (const optionArgs of [['--dry-run', 'false'], ['-d=false'], ['-d', 'false']]) {
       const result = childProcess.spawnSync(
         process.execPath,
         [binIndexPath, 'run', '--quiet-env', ...optionArgs, 'probe.js'],
@@ -394,6 +394,36 @@ describe('bin/index.js run command', () => {
       expect(result.stdout).toBe('executed\n');
       expect(result.status).toBe(0);
     }
+  });
+
+  it('preserves child arguments resembling an internal boundary marker', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.argv.slice(2).join(","));\n');
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', '--quiet-env', 'probe.js', '--', '__WB_RUN_SCRIPT_ARGS__', 'omega'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stdout).toBe('--,__WB_RUN_SCRIPT_ARGS__,omega\n');
+    expect(result.status).toBe(0);
+  });
+
+  it('rejects an invalid WB_ENV in a standalone script directory', async () => {
+    await fs.writeFile(path.join(projectDirPath, '.env'), 'WB_ENV=prodcution\n');
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
+
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH },
+    });
+    expect(result.stdout).not.toContain('executed');
+    expect(result.stderr).toContain('WB_ENV must be one of development, test, staging, or production');
+    expect(result.status).toBe(1);
   });
 
   it('preserves numeric-looking child arguments', async () => {
