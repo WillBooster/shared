@@ -14,7 +14,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 // machine ran wbfy. To grant a new member or environment access, append its public key here; the
 // next wbfy run on each repository rewrites the recipients in fnox.toml and re-encrypts the
 // committed secrets. Only public keys may appear in this repository; CI's private key lives in
-// ~/.config/fnox/ci-age.txt and the FNOX_AGE_KEY repository secrets.
+// ~/.config/fnox/age-ci-wb.txt and the FNOX_AGE_KEY repository secrets.
 export const FNOX_AGE_RECIPIENTS = [
   { name: 'exkazuu', publicKey: 'age1j2354xhvm3fv9y77t5g6y3q8mexgk2mf00tgrkzgp73tynrvz55s8auayw' },
   { name: 'ponharu1', publicKey: 'age18rugldf9htc6um5eplpx27k53ep4zn0lhzwffgnxzhrq0c7zgvyq3zccdy' },
