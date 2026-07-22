@@ -40,7 +40,9 @@ const subJsonObj = {
 
 export async function generateTsconfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateTsconfig', async () => {
-    if (config.depending.blitz || config.depending.next) {
+    // vinext is the org's Next.js-equivalent framework and owns its tsconfig just like Next/Blitz,
+    // so it must skip the standard generation that would overwrite the framework's own settings.
+    if (config.depending.blitz || config.depending.next || config.depending.vinext) {
       await cleanupLegacyTsconfigModuleSettings(config);
       return;
     }
@@ -252,6 +254,17 @@ function removeStaleManagedWorkspaceEntries(
     if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
     if (entry.endsWith('/test/fixtures')) {
       return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
+    }
+    // A framework app exclude (`<workspace>/app`, `<workspace>/src/app`) for a still-declared
+    // workspace is pruned by coversWorkspaceDir below when no longer generated; this catches the
+    // remaining case, where the workspace itself was removed and its prefix is therefore stale.
+    // (A wrong suffix strip yields a prefix absent from stalePrefixes, so testing every name is safe.)
+    if (
+      frameworkAppDirNames.some(
+        (appDirName) => entry.endsWith(`/${appDirName}`) && stalePrefixes.has(entry.slice(0, -(appDirName.length + 1)))
+      )
+    ) {
+      return false;
     }
     return !coversWorkspaceDir(entry, workspaceDirPaths);
   });
