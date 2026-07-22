@@ -181,6 +181,91 @@ test('keeps a nested workspace in the root project when its ancestor package is 
   }
 });
 
+test('excludes framework workspace app and src/app directories from the root project but not a plain one', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
+  try {
+    // A framework workspace (here vinext, the org's Next.js-equivalent) shims bare imports such as
+    // `next/navigation` through its own tsconfig paths, so its app sources fail under the root
+    // compiler options. A plain workspace's app directory carries no such requirement and must stay.
+    const workspaces = ['e2e/fixture', 'apps/src-layout', 'packages/plain', 'packages/broken'];
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces })
+    );
+    for (const [workspaceDirName, appDirName, manifest] of [
+      ['e2e/fixture', 'app', JSON.stringify({ dependencies: { vinext: '1.0.0' } })],
+      // The src-directory layout keeps the framework app under src/app, which the root project's
+      // managed `src/**/*` include would otherwise pull in.
+      ['apps/src-layout', 'src/app', JSON.stringify({ dependencies: { next: '15.0.0' } })],
+      ['packages/plain', 'app', JSON.stringify({ dependencies: {} })],
+      // A manifest that parses to a non-object must not crash framework detection.
+      ['packages/broken', 'app', 'null'],
+    ] as const) {
+      const appDirPath = path.join(tempDirPath, workspaceDirName, appDirName);
+      fs.mkdirSync(appDirPath, { recursive: true });
+      fs.writeFileSync(path.join(tempDirPath, workspaceDirName, 'package.json'), manifest);
+      fs.writeFileSync(path.join(appDirPath, 'page.tsx'), 'export default () => null;\n');
+    }
+    const config = createConfig({
+      dirPath: tempDirPath,
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      doesContainTypeScript: true,
+      packageJson: { name: 'root', workspaces },
+    });
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+      exclude?: string[];
+    };
+    expect(tsconfig.exclude).toContain('e2e/fixture/app');
+    expect(tsconfig.exclude).toContain('apps/src-layout/src/app');
+    expect(tsconfig.exclude).not.toContain('packages/plain/app');
+    expect(tsconfig.exclude).not.toContain('packages/broken/app');
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('prunes a stale framework app exclude after its workspace is removed', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
+  try {
+    const appDirPath = path.join(tempDirPath, 'apps/web/app');
+    fs.mkdirSync(appDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'apps/web/package.json'), JSON.stringify({ dependencies: { next: '15' } }));
+    fs.writeFileSync(path.join(appDirPath, 'page.tsx'), 'export default () => null;\n');
+    fs.mkdirSync(path.join(tempDirPath, 'packages/plain/src'), { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'packages/plain/package.json'), JSON.stringify({}));
+
+    const generateWith = async (workspaces: string[]): Promise<string[]> => {
+      fs.writeFileSync(
+        path.join(tempDirPath, 'package.json'),
+        JSON.stringify({ name: 'root', private: true, workspaces })
+      );
+      const config = createConfig({
+        dirPath: tempDirPath,
+        isRoot: true,
+        doesContainSubPackageJsons: true,
+        doesContainTypeScript: true,
+        packageJson: { name: 'root', workspaces },
+      });
+      await generateTsconfig(config);
+      await promisePool.promiseAll();
+      const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+        exclude?: string[];
+      };
+      return tsconfig.exclude ?? [];
+    };
+
+    expect(await generateWith(['apps/web', 'packages/plain'])).toContain('apps/web/app');
+    // Removing apps/web from the workspaces makes its managed includes stale, so its now-orphaned
+    // app exclude must not survive into the regenerated root tsconfig.
+    expect(await generateWith(['packages/plain'])).not.toContain('apps/web/app');
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('keeps a commented Next tsconfig byte-identical when no cleanup is needed', async () => {
   const commentedContent = `{
   "compilerOptions": {
