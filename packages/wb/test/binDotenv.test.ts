@@ -426,6 +426,27 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(1);
   });
 
+  it('exposes the selected fallback WB_ENV in standalone script directories', async () => {
+    await fs.writeFile(path.join(projectDirPath, '.env.production'), 'EXPANDED_MODE=${WB_ENV}\n');
+    await fs.writeFile(
+      path.join(projectDirPath, 'probe.js'),
+      'console.log(`${process.env.WB_ENV}:${process.env.EXPANDED_MODE}`);\n'
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'run', '--quiet-env', '--cascade-env', 'production', 'probe.js'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('production:production\n');
+    expect(result.status).toBe(0);
+  });
+
   it('preserves numeric-looking child arguments', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(JSON.stringify(process.argv.slice(2)));\n');
 

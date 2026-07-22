@@ -1,7 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { readEnvironmentVariables, shouldSuppressEnvironmentOutput } from '@willbooster/shared-lib-node/src';
+import {
+  readEnvironmentVariables,
+  resolveFallbackWbEnv,
+  shouldSuppressEnvironmentOutput,
+} from '@willbooster/shared-lib-node/src';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { getRunScriptArgs } from '../../bin/runArgs.js';
@@ -50,6 +54,7 @@ function readStandaloneEnvironment(argv: ArgumentsCamelCase, cwd: string): NodeJ
     }
   }
   const env = { ...process.env, ...envVars };
+  env.WB_ENV ||= resolveFallbackWbEnv(argv);
   validateStandaloneWbEnv(argv, env);
   return env;
 }
