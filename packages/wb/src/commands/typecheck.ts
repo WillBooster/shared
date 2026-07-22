@@ -61,14 +61,8 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
   });
   const exitCodes = await Promise.all(promises);
   let finalExitCode = 0;
-  for (const [i, exitCode] of exitCodes.entries()) {
-    if (exitCode) {
-      const deps = projects.descendants[i]?.packageJson.dependencies ?? {};
-      if (deps.blitz) {
-        console.info(chalk.yellow('Please try "yarn gen-code" if you face unknown type errors.'));
-      }
-      finalExitCode = exitCode;
-    }
+  for (const exitCode of exitCodes) {
+    if (exitCode) finalExitCode = exitCode;
   }
   if (!finalExitCode)
     console.info(

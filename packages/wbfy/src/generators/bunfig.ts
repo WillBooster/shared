@@ -154,16 +154,8 @@ export const bunMinimumReleaseAgeExcludes = [
   'next',
   'react',
   'react-dom',
-  // Repos pin react-is via resolutions in lockstep with react, so a fresh react release must
-  // resolve immediately like react/react-dom above.
   'react-is',
-  // vinext is still pre-1.0 and its scoped packages release in lockstep, so the whole
-  // set must be listed: excluding only `vinext` still fails because Bun gates the
-  // transitive `@vinext/types`. Bun matches these names literally, so `@vinext/*`
-  // would not work here even though wbfy's own pattern matcher accepts globs.
-  '@vinext/cloudflare',
-  '@vinext/types',
-  'vinext',
+  'react-server-dom-webpack',
 ];
 
 export type BunLinker = 'isolated' | 'hoisted';

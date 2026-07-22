@@ -151,9 +151,9 @@ src-tauri/gen/schemas/
       headUserContent += `/worker-configuration.d.ts
 `;
     } else if (config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config)) {
-      // On a genuine worker-types opt-out (nothing consumes the generated file — the same gate as
-      // the postinstall strip; generatesWorkerTypes alone is false for unrelated reasons such as a
-      // missing local wrangler dependency, where the file may still be consumed) the ignore rule
+      // On a genuine worker-types opt-out (nothing consumes the generated file; generatesWorkerTypes
+      // alone is false for unrelated reasons such as a missing local wrangler dependency, where the
+      // file may still be consumed) the ignore rule
       // above disappears, so an already-generated file would surface as untracked noise on every
       // checkout — delete it, but only an UNTRACKED copy (a tracked one is the user's own file).
       const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');

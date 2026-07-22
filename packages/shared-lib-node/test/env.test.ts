@@ -1,4 +1,7 @@
 import childProcess from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -136,6 +139,30 @@ describe('readAndApplyEnvironmentVariables()', () => {
       REF: 'ref-base-fnox',
     });
   });
+
+  it.runIf(isFnoxAvailable())(
+    'should skip undecryptable fnox secrets under WB_ALLOW_MISSING_SECRETS instead of failing',
+    () => {
+      // Force a keyless fnox by pointing its config dir at an empty directory, so the fixture's
+      // age-encrypted SECRET cannot be decrypted on any developer machine or CI runner.
+      const emptyConfigDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fnox-nokey-'));
+      process.env.FNOX_CONFIG_DIR = emptyConfigDir;
+
+      // Default (strict `--if-missing error`): the failed decryption aborts the whole export, so no
+      // fnox values load — a declared secret must not be indistinguishable from an undeclared one.
+      const strict = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-fnox-undecryptable');
+      expect(strict.PUB_ONLY).toBeUndefined();
+
+      // Opt-in: load the resolvable (plaintext) values and skip only the undecryptable secret.
+      process.env.WB_ALLOW_MISSING_SECRETS = '1';
+      const lenient = readAndApplyEnvironmentVariables(
+        { autoCascadeEnv: true },
+        'test/fixtures/app-fnox-undecryptable'
+      );
+      expect(lenient.PUB_ONLY).toBe('public-value');
+      expect(lenient.SECRET).toBeUndefined();
+    }
+  );
 });
 
 describe('readEnvironmentVariables()', () => {

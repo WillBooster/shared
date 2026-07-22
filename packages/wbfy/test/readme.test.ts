@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, expect, test, vi } from 'vitest';
 
-import { generateReadme } from '../src/generators/readme.js';
+import { generateReadme, writeBadgeBlock } from '../src/generators/readme.js';
 import { fsUtil } from '../src/utils/fsUtil.js';
 import { promisePool } from '../src/utils/promisePool.js';
 import * as version from '../src/utils/version.js';
@@ -87,11 +87,58 @@ test.each([
     expected: `# Project\r\n\r\n${badgeOf('1.2.3')}\r\n\r\nDescription.\r\n`,
   },
   {
-    // Only the `# <name>` heading wbfy writes anchors the badges; any other title construct sends
-    // them to the top rather than making this generator parse Markdown.
+    // A Setext heading is a heading to the parser, so the badges land under it like they do under
+    // the `# <name>` form wbfy writes.
     name: 'a Setext heading',
     input: 'Project\n=======\nDescription.\n',
-    expected: `${badgeOf('1.2.3')}\n\nProject\n=======\nDescription.\n`,
+    expected: `Project\n=======\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    // Many READMEs center their title in HTML; the badges follow the whole HTML block.
+    name: 'an HTML title',
+    input: '<h1 align="center">Project</h1>\n\nDescription.\n',
+    expected: `<h1 align="center">Project</h1>\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    // A BOM is not Markdown: left in the text it hid the `#` from the title check, so the badges
+    // were prepended ahead of the marker and the heading stopped being a heading.
+    name: 'a UTF-8 BOM before the title',
+    input: '﻿# Project\n\nDescription.\n',
+    expected: `﻿# Project\n\n${badgeOf('1.2.3')}\n\nDescription.\n`,
+  },
+  {
+    // An indented code block reads exactly like a badge line once trimmed, so the line-based scan
+    // consumed it and the example was deleted from the README.
+    name: 'an indented code block under the title',
+    input: `# Project\n\n    ${legacyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n    ${legacyBadge}\n`,
+  },
+  {
+    name: 'a badge example inside a multiline code span',
+    input: `# Project\n\n\`example:\n${legacyBadge}\`\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n\`example:\n${legacyBadge}\`\n`,
+  },
+  {
+    // CommonMark allows a block quote marker with no following space.
+    name: 'a fenced example inside a compact block quote',
+    input: `# Project\n\n>\`\`\`\n>${legacyBadge}\n>\`\`\`\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n>\`\`\`\n>${legacyBadge}\n>\`\`\`\n`,
+  },
+  {
+    name: 'an indented code block inside a block quote',
+    input: `# Project\n\n>     ${legacyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n>     ${legacyBadge}\n`,
+  },
+  {
+    // HTML blocks are recognized by CommonMark's start/end conditions, not by a list of known tags.
+    name: 'a badge inside an HTML block with an unknown tag',
+    input: `# Project\n\n<custom-card>\n${legacyBadge}\n</custom-card>\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n<custom-card>\n${legacyBadge}\n</custom-card>\n`,
+  },
+  {
+    name: 'a badge quoted below the title',
+    input: `# Project\n\n> ${legacyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n> ${legacyBadge}\n`,
   },
   {
     // A README that opens with something other than a title has no anchor to sit under, so the
@@ -252,4 +299,165 @@ test('keeps an existing README that cannot be read', async () => {
 test('resolves a real version label from wbfy itself', () => {
   // Either a released version or `<commit hash>[-dirty]-local`, never the unreleased placeholder.
   expect(version.getWbfyVersionLabel()).toMatch(/^(?:\d+\.\d+\.\d+|[0-9a-f]{8,}(?:-dirty)?-local)$/u);
+});
+
+// An `<h1>` mentioned in a comment or an attribute is not a rendered title, so anchoring the badges
+// to it would bury them below the real heading.
+test.each([
+  ['a comment', '<!-- documentation example: <h1>Example</h1> -->'],
+  ['an attribute', '<div title="<h1>"></div>'],
+])('does not treat an <h1> inside %s as the title', async (_description, htmlBlock) => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${htmlBlock}\n\n# Real title\n\nDescription.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.indexOf(badgeOf('1.2.3'))).toBeLessThan(content.indexOf(htmlBlock));
+  });
+});
+
+// A genuinely rendered HTML title still anchors the block.
+test('treats a rendered HTML <h1> as the title', async () => {
+  await withTempDir(async (dirPath) => {
+    const htmlTitle = '<div align="center"><h1>Example</h1></div>';
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${htmlTitle}\n\nDescription.\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(content.indexOf(htmlTitle));
+  });
+});
+
+// The normal input is an earlier wbfy run's output. Older versions recognized neither Setext nor
+// HTML titles, so they stamped the block ABOVE such a title; upgrading must move it below, or the
+// new placement would only ever apply to READMEs wbfy has never touched.
+test.each([
+  ['a Setext title', 'Project\n=======\n'],
+  ['an HTML title', '<div align="center"><h1>Project</h1></div>\n'],
+])('moves a legacy block below %s on upgrade', async (_description, title) => {
+  await withTempDir(async (dirPath) => {
+    const legacyLayout = `${badgeOf('1.0.0')}\n\n${title}\nDescription.\n`;
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), legacyLayout);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(content.indexOf('Project'));
+    expect(content).not.toContain('1.0.0');
+    // Idempotent from the upgraded layout too.
+    expect(await runGenerateReadme(dirPath, '1.2.3')).toBe(content);
+  });
+});
+
+// A badge someone else put in the legacy block must survive the move rather than be dropped with it.
+test('carries an unrelated badge down when relocating a legacy block', async () => {
+  await withTempDir(async (dirPath) => {
+    const unrelated = '[![custom](https://example.test/b.svg)](https://example.test)';
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      `${badgeOf('1.0.0')}\n${unrelated}\n\nProject\n=======\n\nDescription.\n`
+    );
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain(unrelated);
+    expect(content.indexOf(unrelated)).toBeGreaterThan(content.indexOf('Project'));
+  });
+});
+
+// Front matter whose closing delimiter ends at EOF carries no newline of its own.
+test('separates front matter ending at EOF from the badge block', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '---\ntitle: Project\n---');
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain('---\n\n[![wbfy]');
+  });
+});
+
+// mdast reports a node's offset AFTER CommonMark's optional one-to-three-space indentation, so
+// slicing from it would silently reindent content this generator promises to copy verbatim.
+// Asserted on writeBadgeBlock directly: generateFile separately trims the file's leading whitespace,
+// which would mask the first-line cases.
+test.each([
+  ['before an untitled body', '   intro\n'],
+  ['before the title', ' # Heading\n\nBody\n'],
+  ['before the body', '# Heading\n\n   body\n'],
+])('preserves leading indentation %s', (_description, input) => {
+  const result = writeBadgeBlock(input, [badgeOf('1.2.3')]);
+  for (const line of input.split('\n').filter((candidate) => candidate.trim())) {
+    expect(result).toContain(line);
+  }
+});
+
+// A title-less README's leading block is the badge block itself, not something to skip past.
+test('keeps an unrelated badge in a title-less leading block', () => {
+  const unrelated = '[![custom](https://example.test/b.svg)](https://example.test)';
+  const result = writeBadgeBlock(`${badgeOf('1.0.0')}\n${unrelated}\n\nDescription.\n`, [badgeOf('1.2.3')]);
+
+  expect(result).toContain(unrelated);
+  expect(result).not.toContain('1.0.0');
+});
+
+// Only wbfy's own output is migratable; a user's custom-only badge layout stays where they put it.
+test('leaves a user-authored badge block above the title', () => {
+  const custom = '[![custom](https://example.test/b.svg)](https://example.test)';
+  const first = writeBadgeBlock(`${custom}\n\n# Project\n\nDescription.\n`, [badgeOf('1.2.3')]);
+
+  expect(first.indexOf(custom)).toBeLessThan(first.indexOf('# Project'));
+  // wbfy's own block goes BELOW the title, so the next run does not see a managed badge in the
+  // user's block and relocate the whole thing.
+  expect(first.indexOf(badgeOf('1.2.3'))).toBeGreaterThan(first.indexOf('# Project'));
+  expect(writeBadgeBlock(first, [badgeOf('1.2.3')])).toBe(first);
+});
+
+// A quoted span containing `<` is indistinguishable from an attribute value without the real
+// tokenizer, so the block is treated as ambiguous and the badges go to the top. Deliberately
+// conservative: mis-anchoring rewrites the user's README around the wrong heading, while this
+// merely puts the badges above an unusual title.
+test('does not anchor to an <h1> surrounded by quotation marks in text', () => {
+  const htmlTitle = '<div>\n"<h1>Project</h1>"\n</div>';
+  const result = writeBadgeBlock(`${htmlTitle}\n\nDescription.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlTitle));
+});
+
+// HTML parses these elements' content as raw text, so a tag written inside one is not an element.
+test.each(['script', 'style', 'textarea', 'title'])('ignores an <h1> inside <%s>', (element) => {
+  const htmlBlock = `<${element}>const example = "<h1>Not a title</h1>";</${element}>`;
+  const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
+
+// The end tag is optional: an unclosed raw-text element stays in that state through EOF.
+test.each(['iframe', 'noframes', 'noembed', 'xmp'])('ignores an <h1> inside <%s>', (element) => {
+  const htmlBlock = `<${element}><h1>Not a title</h1></${element}>`;
+  const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
+
+test('ignores an <h1> inside an unclosed raw-text element', () => {
+  const htmlBlock = '<script>const example = "<h1>Not a title</h1>";';
+  const result = writeBadgeBlock(`${htmlBlock}\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
+
+// Non-element HTML constructs render no tag written inside them.
+test.each([
+  ['a processing instruction', '<?php $example = "<h1>Not a title</h1>"; ?>'],
+  ['a CDATA section', '<![CDATA[<h1>Not a title</h1>]]>'],
+  ['a declaration', '<!DOCTYPE example "<h1>Not a title</h1>">'],
+])('ignores an <h1> inside %s', (_description, htmlBlock) => {
+  const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
+
+// Constructs whose parsing depends on tokenizer state disqualify the block from being a title, so
+// the badges go to the top rather than being anchored to a heading that may not render.
+test.each([
+  ['a raw-text element in a quoted attribute', '<div data-example="<script>"><h1>Actual title</h1></div>'],
+  ['a template', '<template><h1>Not a title</h1></template>'],
+])('does not anchor to an HTML block carrying %s', (_description, htmlBlock) => {
+  const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
+
+  expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
 });

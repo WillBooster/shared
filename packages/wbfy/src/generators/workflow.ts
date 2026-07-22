@@ -318,7 +318,9 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
 }
 
 export function isReusableWorkflowsRepo(repository?: string): boolean {
-  return repository?.endsWith('/reusable-workflows') ?? false;
+  // Case-insensitive: GitHub repository names are, and a remote may spell this one any way. Getting it wrong
+  // lets wbfy rewrite the repository that hosts the upstream workflow definitions.
+  return repository?.toLowerCase().endsWith('/reusable-workflows') ?? false;
 }
 
 /**

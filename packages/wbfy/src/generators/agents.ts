@@ -5,6 +5,8 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { generatesWorkerTypes } from '../packageConfig.js';
+import { readBunLinker } from './bunfig.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
@@ -50,14 +52,31 @@ function generateAgentInstruction(
   const packageManager = 'bun';
   const description = rootConfig.packageJson?.description;
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
-    ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\` instead of expecting \`.env\` files. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) and \`wb dotenv\` select it themselves (\`wb dotenv\` uses \`WB_ENV\`, else \`FNOX_PROFILE\`, else \`NODE_ENV\`, else the development profile; \`WB_ENV\` accepts only \`development\`/\`test\`/\`staging\`/\`production\`, so use \`FNOX_PROFILE\` for any other profile), while bare \`fnox run\` needs an explicit \`-P <profile>\`.`
+    ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\` instead of expecting \`.env\` files. Never create a \`.env\`, \`.env.*\`, or \`.dev.vars\` file: add the variable to \`fnox.toml\` instead. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) and \`wb dotenv\` select it themselves (\`wb dotenv\` uses \`WB_ENV\`, else \`FNOX_PROFILE\`, else \`NODE_ENV\`, else the development profile; \`WB_ENV\` accepts only \`development\`/\`test\`/\`staging\`/\`production\`, so use \`FNOX_PROFILE\` for any other profile), while bare \`fnox run\` needs an explicit \`-P <profile>\`.`
     : '';
+  // mise owns the toolchain versions, so a version mismatch is fixed by editing mise.toml — not by
+  // installing a different bun/node globally, which the next `mise install` silently overrides.
+  const miseInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'mise.toml'))
+    ? '\n- Tool versions (node, bun, and others) are pinned in `mise.toml`; run `mise install` after changing it, and never install those tools globally instead.'
+    : '';
+  // Isolated installs are the org standard and the most agent-hostile part of the stack: a package
+  // that is only reachable because a dependency hoisted it no longer resolves, and the reflex fix
+  // (switching the linker back) silently reintroduces the phantom dependencies the layout exists to
+  // catch.
+  const isolatedInstallInstruction =
+    readBunLinker(rootConfig.dirPath) === 'isolated'
+      ? `\n- \`bunfig.toml\` uses Bun's isolated linker with a global store, so only declared dependencies resolve. If an import fails to resolve, declare that package in the \`package.json\` that imports it; never switch \`linker\` to \`hoisted\` or add to \`publicHoistPattern\` to work around it.`
+      : '';
   // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
   // wrangler-config clause needs an actual config file (isCloudflare also matches a mere wrangler
   // mention in a script or workflow), the workflow clause needs a live reusable-deploy caller
   // (YAML-parsed jobs.*.uses, not a raw-text/comment match), and the `wb deploy` clause needs a
   // deploy script whose command token is `wb … deploy`.
   const ownsWranglerConfig = allConfigs.some((config) => config.doesContainWranglerConfig);
+  // Only claim the file is generated where it actually is: a package that hand-maintains its `Env` (e.g. under
+  // `types: ["bun"]`) is deliberately left unmanaged, and telling an agent to run `wb gen-code` there would send
+  // it after a file that never appears — and away from the `Env` it should be editing.
+  const ownsGeneratedWorkerTypes = allConfigs.some((config) => generatesWorkerTypes(config));
   const hasDeployWorkflow = hasCloudflareDeployWorkflow(path.resolve(rootConfig.dirPath, '.github/workflows'));
   const usesWbDeploy = allConfigs.some((config) => {
     const deployScript = config.packageJson?.scripts?.['deploy'];
@@ -69,7 +88,7 @@ function generateAgentInstruction(
   // Independent facts stay separate sentences: the workflow's own deploy mechanism is not
   // inspected, so the wb-deploy clause must not claim the workflow invokes it.
   const cloudflareInstruction = ownsWranglerConfig
-    ? `\n- This project runs on Cloudflare Workers: the wrangler configuration file holds the Worker's configuration, including any bindings and per-environment overrides.${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''}`
+    ? `\n- This project runs on Cloudflare Workers: the wrangler configuration file holds the Worker's configuration, including any bindings and per-environment overrides.${hasDeployWorkflow ? ' The deploy workflows under `.github/workflows` perform deployments.' : ''}${usesWbDeploy ? ' The `deploy` package script runs `wb deploy`.' : ''}${ownsGeneratedWorkerTypes ? `\n- \`worker-configuration.d.ts\` is generated by \`${packageManager} wb gen-code\` and is gitignored; after changing bindings or vars in the wrangler configuration, re-run it instead of editing that file by hand.` : ''}`
     : '';
   // WillBooster Railway project identifiers are managed in deploy workflow settings.
   const railwayInstruction = rootConfig.isRailway
@@ -103,7 +122,7 @@ function generateAgentInstruction(
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
-- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
+- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
 ${generateAgentCodingStyle(allConfigs)}
 `
@@ -149,14 +168,16 @@ ${
 }
 
 ${
-  allConfigs.some((c) => c.depending.react || c.depending.next)
+  allConfigs.some((c) => c.depending.react || c.depending.next || c.depending.vinext)
     ? `- Prefer lambda over \`function\` for React components, e.g., \`const Button: React.FC = () => {\`.
 - Prefer \`useImmer\` over \`useState\` for arrays and objects.
 - Use \`autoFocus\` where it reduces user effort.`
     : ''
 }
 ${
-  allConfigs.some((c) => c.depending.next)
+  // vinext is the org's current web-app framework and enables the React Compiler just as Next.js
+  // does, so it must not miss these rules.
+  allConfigs.some((c) => c.depending.next || c.depending.vinext)
     ? `
 - This project uses the React Compiler, so \`useCallback\` and \`useMemo\` are unnecessary for performance.
 - Assume a single server instance.

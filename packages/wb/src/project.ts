@@ -17,6 +17,10 @@ import type { PackageJson } from 'type-fest';
 
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
+import { findWranglerConfigPath } from './utils/wrangler.js';
+
+/** The file `wrangler types` writes by default. */
+const WORKER_TYPES_FILE_NAME = 'worker-configuration.d.ts';
 
 export type DatabaseOrm = 'prisma' | 'drizzle';
 
@@ -282,6 +286,28 @@ export class Project {
     return path.join(this.dirPath, 'package.json');
   }
 
+  /**
+   * Whether `wrangler types` should generate `worker-configuration.d.ts` here. A wrangler config
+   * and an own wrangler dependency are both required — wrangler exits non-zero without a config,
+   * and in a mixed monorepo a root-level wrangler devDependency must not make every workspace
+   * package emit types it never consumes.
+   *
+   * The package's own committed gitignore rule is the third signal, and the one that says the
+   * package actually CONSUMES the file: wbfy writes that rule only for packages whose own tsconfig
+   * can reference `worker-configuration.d.ts`, and deliberately leaves alone packages that
+   * hand-maintain their `Env` instead. Without this check, such a package would gain an untracked
+   * ~500KB generated file on every install.
+   */
+  @memoizeOne
+  get generatesWorkerTypes(): boolean {
+    if (!findWranglerConfigPath(this) || !this.hasOwnDependency('wrangler')) return false;
+    // Defense in depth against wbfy's gitignore rule and this predicate drifting apart: if the package still
+    // runs its own output-changing `wrangler types` (e.g. `--strict-vars=false`), the bare invocation here would
+    // overwrite that file with a different `Env`.
+    if (hasOutputChangingWranglerTypes(this.packageJson.scripts ?? {}, this.dirPath)) return false;
+    return hasManagedGitignoreRule(this.dirPath, WORKER_TYPES_FILE_NAME);
+  }
+
   @memoizeOne
   get hasPrisma(): boolean {
     return !!this.getOwnDependencyVersion('prisma');
@@ -368,15 +394,27 @@ export class Project {
     }
   }
 
+  /**
+   * Whether the Playwright config declares a `webServer` block, i.e. Playwright itself builds and
+   * starts the app under test. Unlike {@link skipLaunchingServerForPlaywright} this ignores CI, so
+   * it also holds for library fixtures whose only server is the one Playwright manages.
+   */
   @memoizeOne
-  get skipLaunchingServerForPlaywright(): boolean {
-    if (isCI(this.env.CI)) return false;
+  get hasPlaywrightWebServerConfig(): boolean {
     try {
       const configPath = this.findFile('playwright.config.ts');
       return /\bwebServer\b/.test(fs.readFileSync(configPath, 'utf8'));
     } catch {
       return false;
     }
+  }
+
+  @memoizeOne
+  get skipLaunchingServerForPlaywright(): boolean {
+    // On CI wb launches the app itself so the run does not depend on Playwright's `reuseExistingServer`
+    // (which is disabled on CI); locally, a `webServer` block means Playwright already owns the server.
+    if (isCI(this.env.CI)) return false;
+    return this.hasPlaywrightWebServerConfig;
   }
 
   @memoizeOne
@@ -607,4 +645,64 @@ export async function findWorkspacePackageDirs(
     })
     .map((manifestPath) => path.join(project.dirPath, path.posix.dirname(manifestPath)));
   return [...new Set(workspaceDirPaths)].toSorted();
+}
+
+/**
+ * Whether the package's own committed .gitignore carries wbfy's managed rule for the file.
+ *
+ * Deliberately NOT `git check-ignore`: that also honors `.git/info/exclude` and the user's global
+ * excludes, which a fresh clone and CI do not have. A developer with a personal
+ * `worker-configuration.d.ts` exclude would otherwise turn generation on for a package wbfy
+ * deliberately left unmanaged, and the resulting file would be invisible in `git status`.
+ * `packages/wbfy/src/fixers/workerTypes.ts` gates on the same committed rule.
+ */
+function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
+  try {
+    return fs
+      .readFileSync(path.join(dirPath, '.gitignore'), 'utf8')
+      .split('\n')
+      .some((line) => line.trim() === `/${fileName}`);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a package script runs a `wrangler types` that would write something other than what the bare
+ * invocation writes. `--check`/`--help` validate or print and write nothing, so they do not count. `--env-file`
+ * counts whenever a file it names EXISTS: the flag selects what wrangler reads to infer local vars and secrets,
+ * so the bare invocation here would regenerate a smaller `Env`. Mirrors wbfy's `hasCustomWranglerTypesInvocation`
+ * (including its `namesOnlyMissingEnvFiles` rule); the two must agree, since wbfy's answer decides the
+ * gitignore rule this predicate keys on.
+ */
+function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefined>, dirPath: string): boolean {
+  const wranglerTypesPattern = /(?:^|\s)wrangler\s+types(?:\s|$)/u;
+  const envFileOnlyPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
+  return Object.values(scripts).some((script) => {
+    if (!script || !wranglerTypesPattern.test(script)) return false;
+    // Checked on the WHOLE script, before splitting: `cd sub && wrangler types` runs the generator in another
+    // directory against another config, but its second segment alone looks like a plain invocation. wbfy
+    // classifies any script carrying this syntax as custom, and the two predicates must agree.
+    if (/[;|<>`$'"()]|\bcd\s/u.test(script)) return true;
+    return script
+      .split('&&')
+      .map((segment) => segment.trim().replaceAll(/\s+/gu, ' '))
+      .some((segment) => {
+        if (!wranglerTypesPattern.test(segment)) return false;
+        if (/(?:^|\s)(?:--help|-h)(?:\s|=|$)/u.test(segment)) return false;
+        // `--check` compares the result FOR THE SUPPLIED OPTIONS, so it is only harmless when the rest of the
+        // invocation is equivalent to the bare one.
+        const withoutCheck = segment
+          .replace(/(?:^|\s)--check(?:\s|=|$)/u, ' ')
+          .replaceAll(/\s+/gu, ' ')
+          .trim();
+        const candidate = withoutCheck === segment ? segment : withoutCheck;
+        // Not equivalent to the bare invocation, with or without `--check`: `--check` compares the result FOR
+        // THE SUPPLIED OPTIONS, so `--check --strict-vars=false` still describes a different file.
+        if (!envFileOnlyPattern.test(candidate)) return true;
+        return [...candidate.matchAll(/--env-file\s+(\S+)/gu)].some(
+          (match) => !!match[1] && fs.existsSync(path.resolve(dirPath, match[1]))
+        );
+      });
+  });
 }

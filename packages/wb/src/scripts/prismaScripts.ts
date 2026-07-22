@@ -4,6 +4,9 @@ import path from 'node:path';
 import type { Project } from '../project.js';
 import { FILE_SCHEMA, getFileDatabaseUrlPath } from '../project.js';
 
+/** Where the Prisma SQLite database is mounted, relative to the project directory. */
+const databaseDirPath = 'prisma/mount';
+
 const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
 const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
 
@@ -15,12 +18,12 @@ const POSSIBLE_PRISMA_PATHS = [
 
 /**
  * A collection of scripts for executing Prisma commands.
- * Note that `PRISMA` is replaced with `YARN prisma` or `YARN blitz prisma`
+ * Note that `PRISMA` is replaced with `YARN prisma`
  * and `YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
  */
 class PrismaScripts {
-  cleanUpLitestream(project: Project): string {
-    const dirPath = getDatabaseDirPath(project);
+  cleanUpLitestream(_: Project): string {
+    const dirPath = databaseDirPath;
     const cleanUpCommand = buildWalCheckpointAndRemoveSqliteSidecarFilesCommand(`${dirPath}/prod.sqlite3`);
     // Cleanup existing artifacts to avoid issues with Litestream replication.
     // Note that don't merge multiple rm commands into one, because if one fails, the subsequent ones won't run.
@@ -36,7 +39,7 @@ class PrismaScripts {
   }
 
   deployForce(project: Project): string {
-    const dirPath = getDatabaseDirPath(project);
+    const dirPath = databaseDirPath;
     const removeDbCommand = buildRemoveSqliteDbCommand(`${dirPath}/prod.sqlite3`);
     const litestreamConfigOption = getLitestreamConfigOption(project);
     // `prisma migrate reset` can fail depending on the state of the existing database, so we remove it first.
@@ -46,7 +49,7 @@ class PrismaScripts {
   }
 
   listBackups(project: Project, configPath?: string): string {
-    const dirPath = getDatabaseDirPath(project);
+    const dirPath = databaseDirPath;
     return `litestream ltx ${getLitestreamConfigOption(project, configPath)} ${dirPath}/prod.sqlite3`;
   }
 
@@ -65,20 +68,15 @@ class PrismaScripts {
     if (cleanupCommand) steps.push(cleanupCommand);
     const resetCommand = ['PRISMA migrate reset --force', additionalOptions].filter(Boolean).join(' ');
     steps.push(resetCommand);
-    if (project.packageJson.dependencies?.blitz) {
-      // Blitz does not trigger seed automatically, so we need to run it manually.
-      steps.push(this.seed(project));
-    }
     return steps.filter(Boolean).join(' && ');
   }
 
   restore(project: Project, outputPath: string, configPath?: string): string {
-    const dirPath = getDatabaseDirPath(project);
+    const dirPath = databaseDirPath;
     return `rm -Rf ${outputPath}*; litestream restore ${getLitestreamConfigOption(project, configPath)} -o ${outputPath} ${dirPath}/prod.sqlite3`;
   }
 
   seed(project: Project, scriptPath?: string): string {
-    if (project.packageJson.dependencies?.blitz) return `YARN blitz db seed${scriptPath ? ` -f ${scriptPath}` : ''}`;
     if (scriptPath) return `BUN build-ts run ${scriptPath}`;
     if ((project.packageJson.prisma as Record<string, string> | undefined)?.seed) return `YARN prisma db seed`;
     return `if [ -e "prisma/seeds.ts" ]; then BUN build-ts run prisma/seeds.ts; fi`;
@@ -104,10 +102,6 @@ class PrismaScripts {
     }
     return `${prefix}PRISMA studio ${additionalOptions}`;
   }
-}
-
-function getDatabaseDirPath(project: Project): string {
-  return project.packageJson.dependencies?.blitz ? 'db/mount' : 'prisma/mount';
 }
 
 function getPrismaBaseDir(project: Project): string | undefined {

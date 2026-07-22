@@ -41,22 +41,21 @@ export const genCodeCommand: CommandModule = {
 
 export function getGenCodeScripts(project: Project): string[] {
   const scripts: string[] = [];
+  // First: `worker-configuration.d.ts` is gitignored, so on a fresh checkout it does not exist yet,
+  // and the generators below type-check against the Cloudflare `Env` it declares.
+  const wranglerTypesScript = getWranglerTypesScript(project);
+  if (wranglerTypesScript) {
+    scripts.push(wranglerTypesScript);
+  }
   const prismaGenerateScript = getPrismaGenerateScript(project);
-  if (project.hasOwnDependency('blitz') && project.hasSourceCode) {
-    scripts.push('YARN blitz codegen');
-    if (prismaGenerateScript) {
-      scripts.push(prismaGenerateScript);
-    }
-  } else if (prismaGenerateScript) {
+  if (prismaGenerateScript) {
     scripts.push(prismaGenerateScript);
   }
-
   const chakraTypegenScript = getChakraScript(project);
   if (chakraTypegenScript) {
     scripts.push(chakraTypegenScript);
   }
-
-  const drizzleCheckScript = scripts.length === 0 ? getDrizzleCheckScript(project) : undefined;
+  const drizzleCheckScript = getDrizzleCheckScript(project);
   if (drizzleCheckScript) {
     scripts.push(drizzleCheckScript);
   }
@@ -65,6 +64,17 @@ export function getGenCodeScripts(project: Project): string[] {
     scripts.push(genI18nTsScript);
   }
   return scripts;
+}
+
+/**
+ * `YARN wrangler` rather than `bunx wrangler`: wrangler needs real Node.js, and `bunx` may resolve
+ * a version other than the lockfile's. Flags are deliberately omitted — `--env-file` is a legacy
+ * `.env` idiom that fnox repositories have no file for, and `--strict-vars` is a per-repository
+ * type-strictness choice that belongs in the wrangler config, not in every caller.
+ */
+function getWranglerTypesScript(project: Project): string | undefined {
+  if (!project.generatesWorkerTypes) return;
+  return 'YARN wrangler types';
 }
 
 function getGenI18nTsScript(project: Project): string | undefined {
@@ -90,14 +100,8 @@ function getPrismaGenerateScript(project: Project): string | undefined {
 
 function getChakraScript(project: Project): string | undefined {
   if (!project.hasOwnDependency('@chakra-ui/cli')) return;
-
-  if (getOwnDependencyMajor(project, '@chakra-ui/cli') === 2) {
-    return 'YARN chakra-cli tokens src/core/theme.ts';
-  }
-  if (fileExists(project, 'src/theme.ts')) {
-    return 'YARN chakra typegen src/theme.ts --strict';
-  }
-  return;
+  if (!fileExists(project, 'src/theme.ts')) return;
+  return 'YARN chakra typegen src/theme.ts --strict';
 }
 
 function getDrizzleCheckScript(project: Project): string | undefined {
@@ -106,17 +110,6 @@ function getDrizzleCheckScript(project: Project): string | undefined {
   if (!config) return;
   // Keep the explicit --config because drizzle-kit's default lookup misses some extensions (e.g. .mts).
   return `${wrapWithDrizzleConfigDir(project, `YARN drizzle-kit check --config ${config.fileName}`)} || true`;
-}
-
-function getOwnDependencyMajor(project: Project, packageName: string): number | undefined {
-  const packageJson = project.packageJson;
-  const version =
-    packageJson.dependencies?.[packageName] ??
-    packageJson.devDependencies?.[packageName] ??
-    packageJson.optionalDependencies?.[packageName] ??
-    packageJson.peerDependencies?.[packageName];
-  const major = version?.match(/\d+/u)?.[0];
-  return major === undefined ? undefined : Number(major);
 }
 
 function fileExists(project: Project, filePath: string): boolean {

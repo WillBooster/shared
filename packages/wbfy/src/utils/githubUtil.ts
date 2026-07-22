@@ -7,7 +7,8 @@ class GitHubUtil {
     const urlWithoutProtocol = urlOrFullName.split(':').at(-1);
     const names = urlWithoutProtocol?.split('/');
     const org = names?.at(-2) ?? '';
-    const name = names?.at(-1)?.replace(/.git$/, '') ?? '';
+    // The dot must be escaped: an unescaped `.` matches ANY character, so `legit` lost its `l` and `e`.
+    const name = names?.at(-1)?.replace(/\.git$/u, '') ?? '';
     return [org, name];
   }
 }

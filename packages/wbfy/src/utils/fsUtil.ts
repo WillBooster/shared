@@ -81,9 +81,12 @@ export const fsUtil = {
   async generateFile(filePath: string, content: string, lineEnding: '\n' | '\r\n' = '\n'): Promise<boolean> {
     if (!(await isConfinedWritablePath(filePath))) return false;
     await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    // `trim` treats a BOM as whitespace, so it is reattached at position 0: dropping it would
+    // rewrite the encoding marker of a file the generator was only asked to update.
+    const byteOrderMark = content.startsWith('﻿') ? '﻿' : '';
     let normalizedContent = content.trim();
     if (normalizedContent) {
-      normalizedContent += lineEnding;
+      normalizedContent = `${byteOrderMark}${normalizedContent}${lineEnding}`;
     }
     await fs.promises.writeFile(filePath, normalizedContent);
     console.log(`Generated/Updated ${filePath}`);

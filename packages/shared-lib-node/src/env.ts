@@ -316,10 +316,26 @@ function runFnoxExport(
   cascade: string | undefined,
   options: { quiet: boolean; ignoreProfileEnvVar?: boolean }
 ): Record<string, unknown> | undefined {
-  // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve
-  // (e.g. a missing age key), which would be indistinguishable from undeclared secrets.
+  // `--if-missing error` (default): fnox otherwise exits 0 and silently omits secrets it fails to
+  // resolve (e.g. a missing age key), which would be indistinguishable from undeclared secrets.
+  // Opt-in escape hatch `WB_ALLOW_MISSING_SECRETS=1`: switch to `warn` so a keyless context — e.g. a
+  // Docker/Railway image build that only inlines non-secret public values (`APP_TITLE`,
+  // `NEXT_PUBLIC_*`) while the age key is deliberately absent — still loads the resolvable values
+  // (plaintext defaults plus any secret that DID decrypt) instead of failing outright. `warn`, not
+  // `ignore`, keeps fnox reporting the skipped secret names on stderr (surfaced below), so relaxing
+  // the check stays auditable rather than silently dropping declared secrets.
   // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
-  const args = ['export', '--format', 'json', '--no-color', '--if-missing', 'error', '--non-interactive'];
+  const allowMissingSecrets =
+    process.env.WB_ALLOW_MISSING_SECRETS === '1' || process.env.WB_ALLOW_MISSING_SECRETS === 'true';
+  const args = [
+    'export',
+    '--format',
+    'json',
+    '--no-color',
+    '--if-missing',
+    allowMissingSecrets ? 'warn' : 'error',
+    '--non-interactive',
+  ];
   const env = { ...process.env };
   if (cascade) {
     args.push('--profile', cascade);
@@ -346,6 +362,12 @@ function runFnoxExport(
       );
     }
     return;
+  }
+
+  if (allowMissingSecrets && !options.quiet && result.stderr?.trim()) {
+    // With `--if-missing warn`, fnox exits 0 but reports the secrets it could not resolve on stderr.
+    // Surface them so relaxing the check via WB_ALLOW_MISSING_SECRETS does not hide a real gap.
+    console.warn(`WB_ALLOW_MISSING_SECRETS: continuing without unresolved fnox secrets.\n${result.stderr.trim()}`);
   }
 
   let parsed: unknown;

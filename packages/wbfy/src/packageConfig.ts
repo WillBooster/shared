@@ -12,8 +12,8 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
+import { hasCustomWranglerTypesInvocation } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
-import { selectProjectWranglerTypesGenerator } from './utils/wranglerTypesCommand.js';
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
@@ -264,7 +264,15 @@ export async function getPackageConfig(
         repoName = repoParts[1];
       }
     }
-    const repository = repoFullName ? `github:${repoFullName}` : undefined;
+    // Only the root fetches repo info, and that fetch needs network and a token, so identity-derived
+    // flags below would otherwise be false for every workspace package and for every offline or
+    // rate-limited run. The git remote answers the same question locally, for every package.
+    if (!repoAuthor || !repoName) {
+      [repoAuthor, repoName] = await resolveLocalRepoIdentity(dirPath, packageJson);
+    }
+    // Built from the RESOLVED identity so workspace packages and offline runs also get it; consumers derive
+    // the owner from this field (e.g. to set `author`).
+    const repository = repoAuthor && repoName ? `github:${repoAuthor}/${repoName}` : undefined;
     // Tauri officially supports JSON, JSON5, and TOML configuration formats.
     const doesContainTauriConfig = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
       fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
@@ -300,7 +308,7 @@ export async function getPackageConfig(
       doesContainWranglerConfig: detectWranglerConfig(dirPath),
       isRailway: detectRailway(dirPath, packageJson),
       isEsmPackage: esmPackage,
-      isWillBoosterConfigs: packageJsonPath.includes('/willbooster-configs'),
+      isWillBoosterConfigs: detectIsWillBoosterConfigs(dirPath, packageJsonPath, repoName),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
       // Also honor declared workspace patterns beyond packages/* (e.g. apps/*): treating an
       // apps/*-only monorepo as a plain package would delete its `workspaces` declaration in
@@ -394,7 +402,7 @@ export async function getPackageConfig(
 
 /**
  * Tells whether wbfy manages worker-configuration.d.ts for the package. The file is gitignored and untracked on the
- * assumption that `wrangler types` regenerates it on install, so all three steps must agree: the package has to own a
+ * assumption that the `wb gen-code` postinstall regenerates it on install, so all three steps must agree: the package has to own a
  * wrangler config (`wrangler types` exits non-zero without one), to depend on wrangler (a package deploying via a
  * CI action cannot resolve the command), and to regenerate the same file on every checkout. Otherwise wbfy would
  * ignore and delete a file that nothing recreates identically.
@@ -404,11 +412,10 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
   return (
     config.doesContainWranglerConfig &&
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
-    // A project invocation that writes the managed default file from inputs wbfy cannot validate (e.g.
-    // `wrangler types -c wrangler.jsonc -c ../bound-worker/wrangler.jsonc` for RPC types) would fight a managed
-    // fallback generator over the same file, and several distinct flagged generators leave no deterministic
-    // choice, so such packages stay unmanaged.
-    !selectProjectWranglerTypesGenerator(packageJson?.scripts ?? {}).conflicting &&
+    // `wb gen-code` runs a bare `wrangler types`, so a package whose own scripts pass flags that change the
+    // generated file (e.g. `--strict-vars=false`, repeated `-c` for RPC types) must stay unmanaged: managing it
+    // would delete the only record of that choice and regenerate a different `Env`.
+    !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}, config.dirPath) &&
     consumesGeneratedWorkerTypes(config) &&
     hasReproducibleWorkerTypesInference(config)
   );
@@ -684,6 +691,25 @@ export function detectWranglerConfig(dirPath: string): boolean {
   );
 }
 
+/**
+ * Detects whether dirPath belongs to the willbooster-configs repository. Prefers the authoritative
+ * GitHub repo name, which is immune to the local directory layout. That name is fetched only for the
+ * root, so sub-packages (and offline roots) walk up to the nearest git root and match its directory
+ * name: a sibling repo cloned under a parent directory named willbooster-configs stops at its own
+ * `.git`, so it is not misclassified. The path segment remains a last resort when no git root exists.
+ */
+function detectIsWillBoosterConfigs(dirPath: string, packageJsonPath: string, repoName: string | undefined): boolean {
+  if (repoName) return repoName.toLowerCase() === 'willbooster-configs';
+  let current = path.resolve(dirPath);
+  while (current !== path.dirname(current)) {
+    if (fs.existsSync(path.join(current, '.git'))) {
+      return path.basename(current).toLowerCase() === 'willbooster-configs';
+    }
+    current = path.dirname(current);
+  }
+  return packageJsonPath.toLowerCase().includes('/willbooster-configs/');
+}
+
 function detectCloudflare(dirPath: string, packageJson: PackageJson): boolean {
   const scripts = packageJson.scripts;
   if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('wrangler'))) {
@@ -888,4 +914,74 @@ function getRedirectedRepoFullName(error: unknown): string | undefined {
   if (!org || !name) return;
 
   return `${org}/${name}`;
+}
+
+/**
+ * Resolves `<org>/<name>` from the git remote (falling back to package.json's `repository`) without
+ * calling the GitHub API. It works for every workspace package, not just the root — only the root
+ * fetches repo info — and it keeps working offline or rate-limited, where an undefined identity
+ * would silently reclassify the repository (e.g. making wbfy write willbooster-configs' Renovate
+ * preset into the preset itself again).
+ */
+async function resolveLocalRepoIdentity(
+  dirPath: string,
+  packageJson: PackageJson
+): Promise<[string | undefined, string | undefined]> {
+  try {
+    const remotes = await simpleGit(dirPath).getRemotes(true);
+    const origin = remotes.find((remote) => remote.name === 'origin');
+    const remoteUrl = origin?.refs.fetch ?? origin?.refs.push;
+    if (remoteUrl) {
+      const identity = readGitHubIdentity(remoteUrl);
+      if (identity) return identity;
+    }
+  } catch {
+    // Not a git repository, or git is unavailable: fall through to the manifest.
+  }
+  const url = typeof packageJson.repository === 'string' ? packageJson.repository : packageJson.repository?.url;
+  if (url) {
+    const identity = readGitHubIdentity(url);
+    if (identity) return identity;
+  }
+  return [undefined, undefined];
+}
+
+/**
+ * `gitHubUtil.getOrgAndName` is host-agnostic, so it happily turns a GitLab URL into an `<org>/<repo>` pair.
+ * Everything downstream treats the resulting identity as GitHub (the `github:` repository field is rewritten
+ * into package.json), so the host must be verified first; a non-GitHub remote yields no identity, as before.
+ */
+function readGitHubIdentity(url: string): [string, string] | undefined {
+  if (!targetsGitHub(url)) return undefined;
+  const [org, name] = gitHubUtil.getOrgAndName(url);
+  return org && name ? [canonicalizeOwner(org), name] : undefined;
+}
+
+/**
+ * Whether the URL's HOST is github.com. Parsed rather than substring-matched: a path such as
+ * `https://gitlab.com/github.com/owner/repo.git` would otherwise be taken for GitHub, and an uppercase
+ * `GITHUB.COM` would be rejected. `github:owner/repo` is npm's shorthand and names no host, so it is
+ * recognized separately; normalizeRepositoryUrlForPackageJson accepts the same shorthand.
+ */
+function targetsGitHub(url: string): boolean {
+  if (/^github:/iu.test(url)) return true;
+  // scp-style remotes (`git@github.com:owner/repo.git`) are not valid URLs.
+  const scpHost = /^[^/@]*@([^:/]+):/u.exec(url)?.[1];
+  if (scpHost) return scpHost.toLowerCase() === 'github.com';
+  try {
+    return new URL(url.replace(/^git\+/u, '')).hostname.toLowerCase() === 'github.com';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * GitHub owner names are case-insensitive, and a remote or manifest URL may spell them any way, but the API's
+ * `full_name` always returned the canonical spelling — which the many exact `=== 'WillBooster'` policy checks
+ * (organization workflows, author metadata, the WillBoosterLab pre-push guard) depend on. Canonicalize here so
+ * the local fallback yields the same identity the API did, instead of silently skipping those policies.
+ */
+function canonicalizeOwner(owner: string): string {
+  const canonicalOwners = ['WillBooster', 'WillBoosterLab'];
+  return canonicalOwners.find((candidate) => candidate.toLowerCase() === owner.toLowerCase()) ?? owner;
 }

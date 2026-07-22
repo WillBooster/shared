@@ -11,9 +11,13 @@ import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
+// The shared preset every WillBooster / WillBoosterLab repository extends. willbooster-configs IS
+// this preset, so injecting it there would make the preset extend itself.
+const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
+
 const jsonObj = {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
-  extends: ['github>WillBooster/willbooster-configs:renovate.jsonc'],
+  extends: [sharedPreset],
 };
 
 // The preset used to live in renovate.json5; it was renamed to renovate.jsonc, so the old reference
@@ -165,19 +169,7 @@ function buildSettings(config: PackageConfig, liveSettings: Settings | undefined
         arrayMerge: overwriteMerge,
       }) as Settings)
     : generatedSettings;
-  newSettings.extends = mergeRenovateExtends(jsonObj.extends, liveSettings?.extends);
-
-  // Don't upgrade Next.js automatically
-  if (config.depending.blitz) {
-    newSettings.packageRules ??= [];
-    if (
-      !newSettings.packageRules.some((rule: { matchPackageNames?: string[] }) =>
-        rule.matchPackageNames?.includes('next')
-      )
-    ) {
-      newSettings.packageRules.push({ matchPackageNames: ['next'], enabled: false });
-    }
-  }
+  newSettings.extends = mergeRenovateExtends(config, jsonObj.extends, liveSettings?.extends);
   return newSettings;
 }
 
@@ -245,13 +237,33 @@ function parseRenovateConfig(isEditableSyntax: boolean, content: string): Settin
   }
 }
 
-function mergeRenovateExtends(generatedExtends: string[], existingExtends: string[] = []): string[] {
+/** GitHub owner and repository names are case-insensitive, so the same preset may be spelled either way. */
+function isSamePreset(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+function mergeRenovateExtends(
+  config: PackageConfig,
+  generatedExtends: string[],
+  existingExtends: string[] = []
+): string[] {
+  // willbooster-configs is the shared preset itself: never inject the self-reference, and strip it
+  // if a previous run (or a hand edit) left it in place.
+  const presetsToAdd = config.isWillBoosterConfigs ? [] : generatedExtends;
+  const presetsToDrop = config.isWillBoosterConfigs ? new Set(legacyPresets).add(sharedPreset) : legacyPresets;
+
   // Only prepend the presets that are missing. Moving one that is already listed would reorder the
   // array, and a later preset overrides an earlier one in Renovate — so re-sorting silently flips
   // which config wins (and, being a reorder rather than an addition, also costs the array's
   // comments, which can only be preserved by insertion).
-  const missingExtends = generatedExtends.filter((preset) => !existingExtends.includes(preset));
-  return [...missingExtends, ...existingExtends].filter((item) => !legacyPresets.has(item));
+  // Compared case-insensitively: GitHub owner and repository names are case-insensitive, so a differently-spelled
+  // copy of the same preset would otherwise be duplicated, and a lowercase legacy preset would survive migration.
+  const missingExtends = presetsToAdd.filter(
+    (preset) => !existingExtends.some((existing) => isSamePreset(existing, preset))
+  );
+  return [...missingExtends, ...existingExtends].filter(
+    (item) => ![...presetsToDrop].some((dropped) => isSamePreset(dropped, item))
+  );
 }
 
 function normalize(content: string): string {
