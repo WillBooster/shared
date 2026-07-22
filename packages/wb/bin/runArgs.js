@@ -13,17 +13,15 @@ const booleanOptionNames = new Set([
   'version',
 ]);
 const valueOptionNames = new Set(['cascade-env', 'check-env', 'env', 'working-dir', 'w']);
+const insertedBoundaryMarker = '__WB_RUN_SCRIPT_ARGS__';
 
 export function protectRunScriptArgs(argv) {
   const runIndex = findTopLevelRunIndex(argv);
   if (runIndex === -1) return;
 
   const scriptIndex = findRunScriptIndex(argv, runIndex + 1);
-  if (scriptIndex === undefined || argv[scriptIndex - 1] === '--') return;
-
-  const laterSeparatorIndex = argv.indexOf('--', scriptIndex + 1);
-  if (laterSeparatorIndex !== -1) argv.splice(laterSeparatorIndex, 1);
-  argv.splice(scriptIndex + 1, 0, '--');
+  if (scriptIndex === undefined || argv[scriptIndex - 1] === '--' || argv[scriptIndex + 1] === '--') return;
+  argv.splice(scriptIndex + 1, 0, '--', insertedBoundaryMarker);
 }
 
 export function getRunScriptArgs(argv) {
@@ -33,8 +31,7 @@ export function getRunScriptArgs(argv) {
   if (scriptIndex === undefined) return [];
 
   const args = argv.slice(scriptIndex);
-  const separatorIndex = args.indexOf('--');
-  if (separatorIndex !== -1) args.splice(separatorIndex, 1);
+  if (args[1] === '--' && args[2] === insertedBoundaryMarker) args.splice(1, 2);
   return args;
 }
 

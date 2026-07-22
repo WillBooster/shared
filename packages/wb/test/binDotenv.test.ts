@@ -244,7 +244,7 @@ describe('bin/index.js run command', () => {
       }
     );
     expect(result.stderr).toBe('');
-    expect(result.stdout).toBe('from-dotenv:first,--second\n');
+    expect(result.stdout).toBe('from-dotenv:first,--,--second\n');
     expect(result.status).toBe(0);
   });
 
@@ -337,7 +337,7 @@ describe('bin/index.js run command', () => {
         env: { PATH: process.env.PATH },
       }
     );
-    expect(separatedResult.stdout).toBe('executed:--dry-run,--child\n');
+    expect(separatedResult.stdout).toBe('executed:--dry-run,--,--child\n');
     expect(separatedResult.status).toBe(0);
   });
 
