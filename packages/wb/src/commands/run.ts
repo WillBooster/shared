@@ -1,6 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
+import { readEnvironmentVariables, shouldSuppressEnvironmentOutput } from '@willbooster/shared-lib-node/src';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { Project } from '../project.js';
+import { usesBunRuntime } from '../utils/runtime.js';
 import { runCommandWithEnvironment } from './dotenv.js';
 
 interface ParsedRunArgs {
@@ -17,14 +22,29 @@ export const runCommand: CommandModule = {
       console.error('Usage: wb run <script> [args...]');
       process.exit(1);
     }
-    const project = new Project(process.cwd(), argv, true);
-    const command = project.usesBunPackageManager ? ['bun', 'run', ...args] : ['node', ...args];
+    const cwd = process.cwd();
+    const env = fs.existsSync(path.join(cwd, 'package.json'))
+      ? new Project(cwd, argv, true).env
+      : readStandaloneEnvironment(argv, cwd);
+    const command = usesBunRuntime(cwd) ? ['bun', 'run', ...args] : ['node', ...args];
     await runCommandWithEnvironment(command, 'wb run <script> [args...]', {
-      cwd: project.dirPath,
-      env: project.env,
+      cwd,
+      env,
     });
   },
 };
+
+function readStandaloneEnvironment(argv: ArgumentsCamelCase, cwd: string): NodeJS.ProcessEnv {
+  const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(argv, cwd, {
+    expandFallbackWbEnv: true,
+  });
+  if (!shouldSuppressEnvironmentOutput(argv)) {
+    for (const [envPath, names] of envPathAndLoadedEnvVarNamePairs) {
+      console.info(`Loaded ${names.length} environment variables from ${envPath}`);
+    }
+  }
+  return { ...process.env, ...envVars };
+}
 
 function getParsedRunArgs(argv: ArgumentsCamelCase): ParsedRunArgs {
   return {

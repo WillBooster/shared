@@ -66,34 +66,37 @@ export async function runCommandWithEnvironment(
     env.PATH = env.PATH ? `${berryBinFolderPath}:${env.PATH}` : berryBinFolderPath;
   }
 
-  const child = spawn(command[0]!, command.slice(1), {
-    cwd,
-    env,
-    stdio: 'inherit',
-  });
-  const signalHandlers = new Map<NodeJS.Signals, () => void>();
-  child.on('error', (error) => {
-    console.error(error);
-    process.exit(1);
-  });
-  for (const signal of shutdownSignals) {
-    const signalHandler = (): void => {
-      child.kill(signal);
-    };
-    signalHandlers.set(signal, signalHandler);
-    process.once(signal, signalHandler);
-  }
-  child.on('exit', (code, signal) => {
-    for (const [shutdownSignal, signalHandler] of signalHandlers) {
-      process.off(shutdownSignal, signalHandler);
+  await new Promise<void>((resolve) => {
+    const child = spawn(command[0]!, command.slice(1), {
+      cwd,
+      env,
+      stdio: 'inherit',
+    });
+    const signalHandlers = new Map<NodeJS.Signals, () => void>();
+    child.on('error', (error) => {
+      console.error(error);
+      process.exit(1);
+    });
+    for (const signal of shutdownSignals) {
+      const signalHandler = (): void => {
+        child.kill(signal);
+      };
+      signalHandlers.set(signal, signalHandler);
+      process.once(signal, signalHandler);
     }
-    if (signal) {
-      // Re-raise even for forwarded shutdown signals so callers observe the conventional
-      // signal exit status (e.g. 130 for SIGINT) instead of a misleading success.
-      process.kill(process.pid, signal);
-      return;
-    }
-    process.exit(code ?? 1);
+    child.on('exit', (code, signal) => {
+      for (const [shutdownSignal, signalHandler] of signalHandlers) {
+        process.off(shutdownSignal, signalHandler);
+      }
+      if (signal) {
+        // Re-raise even for forwarded shutdown signals so callers observe the conventional
+        // signal exit status (e.g. 130 for SIGINT) instead of a misleading success.
+        process.kill(process.pid, signal);
+        return;
+      }
+      process.exitCode = code ?? 1;
+      resolve();
+    });
   });
 }
 

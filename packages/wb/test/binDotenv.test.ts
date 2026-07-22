@@ -235,7 +235,6 @@ describe('bin/index.js run fast path', () => {
   });
 
   it('honors environment-selection options through the full CLI path', async () => {
-    await fs.writeFile(path.join(projectDirPath, 'package.json'), '{}');
     await fs.writeFile(path.join(projectDirPath, 'custom.env'), 'LOADED_BY_WB=custom\n');
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.env.LOADED_BY_WB);\n');
 
@@ -250,6 +249,36 @@ describe('bin/index.js run fast path', () => {
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('custom\n');
     expect(result.status).toBe(0);
+  });
+
+  it('preserves shutdown signals through the full CLI path', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'wait.js'), "console.log('ready');\nsetInterval(() => {}, 1_000);\n");
+
+    const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+      const child = childProcess.spawn(
+        'bun',
+        [sourceIndexPath, '--working-dir', projectDirPath, '--quiet-env', 'run', 'wait.js'],
+        {
+          env: { PATH: process.env.PATH },
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }
+      );
+      const timeout = setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error('Timed out waiting for the run child process'));
+      }, 5000);
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (output: string) => {
+        if (output.includes('ready')) child.kill('SIGINT');
+      });
+      child.on('error', reject);
+      child.on('close', (code, signal) => {
+        clearTimeout(timeout);
+        resolve({ code, signal });
+      });
+    });
+    expect(result.code).toBeNull();
+    expect(result.signal).toBe('SIGINT');
   });
 
   it('runs package scripts with Bun in Bun projects', async () => {
