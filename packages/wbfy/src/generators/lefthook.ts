@@ -81,6 +81,15 @@ done
 exit "$failed"
 `.trim(),
     },
+    {
+      // Only willbooster-configs gets this job: every other repository's renovate.jsonc merely
+      // extends the shared preset, and the validator does not resolve remote presets, so running it
+      // there would validate two lines and catch nothing. `--no-global` validates the preset as a
+      // repo config instead of a self-hosted global config.
+      name: 'validate-renovate-config',
+      glob: 'renovate.jsonc',
+      run: 'npx --yes --package renovate -- renovate-config-validator --strict --no-global {staged_files}',
+    },
   ],
 };
 
@@ -179,15 +188,17 @@ ${quietLintCommand}
 }
 
 function getPreCommitJobs(config: PackageConfig): LefthookJob[] {
-  return preCommitSettings.jobs.map((job) =>
-    job.name === 'cleanup'
-      ? {
-          ...job,
-          glob: getCleanupGlobs(config),
-          run: getCleanupCommand(config),
-        }
-      : job
-  );
+  return preCommitSettings.jobs
+    .filter((job) => job.name !== 'validate-renovate-config' || config.isWillBoosterConfigs)
+    .map((job) =>
+      job.name === 'cleanup'
+        ? {
+            ...job,
+            glob: getCleanupGlobs(config),
+            run: getCleanupCommand(config),
+          }
+        : job
+    );
 }
 
 function getCleanupGlobs(config: PackageConfig): string {
