@@ -87,6 +87,9 @@ exit "$failed"
       // there would validate two lines and catch nothing. `--no-global` validates the preset as a
       // repo config instead of a self-hosted global config, and `@latest` keeps npm from silently
       // installing an ancient Renovate that cannot even parse JSONC when the local Node lags behind.
+      // Staging a deletion of renovate.jsonc leaves no file for inspection, so Lefthook skips this
+      // job instead of running the validator on a missing path — deliberately, because deleting the
+      // shared preset is not an operation this hook needs to guard.
       name: 'validate-renovate-config',
       glob: 'renovate.jsonc',
       run: 'npx --yes --package renovate@latest -- renovate-config-validator --strict --no-global {staged_files}',
