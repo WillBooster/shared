@@ -734,7 +734,10 @@ export async function swapMaterializedTrees(
   toStagedPath: (targetDirPath: string) => string,
   backupRootDirPath: string
 ): Promise<void> {
-  await fs.promises.rm(backupRootDirPath, { recursive: true, force: true });
+  // A UNIQUE directory per invocation: when a rollback fails its backup is retained for manual
+  // recovery, and a fixed path would let the next run delete the only remaining copy.
+  await fs.promises.mkdir(path.dirname(backupRootDirPath), { recursive: true });
+  const backupDirRoot = await fs.promises.mkdtemp(`${backupRootDirPath}-`);
   // Recorded BEFORE the staged tree is renamed in: between setting the live tree aside and
   // installing its replacement the previous materialization exists only in the backup, and a record
   // added after the rename would leave that window unrecoverable.
@@ -744,8 +747,7 @@ export async function swapMaterializedTrees(
     for (const [index, outDirPath] of outDirPaths.entries()) {
       // Indexed (not named after the directory) so two output trees sharing a basename cannot
       // overwrite each other's backup.
-      const backupDirPath = path.join(backupRootDirPath, String(index));
-      await fs.promises.mkdir(backupRootDirPath, { recursive: true });
+      const backupDirPath = path.join(backupDirRoot, String(index));
       const hadPreviousTree = fs.existsSync(outDirPath);
       if (hadPreviousTree) await fs.promises.rename(outDirPath, backupDirPath);
       swappedDirs.push({ outDirPath, backupDirPath, hadPreviousTree });
@@ -773,8 +775,16 @@ export async function swapMaterializedTrees(
     throw error;
   } finally {
     // Only when nothing is left to recover: deleting the backups after a failed restore would
-    // destroy the last copy of the previous materialization.
-    if (!restoreFailed) await fs.promises.rm(backupRootDirPath, { recursive: true, force: true });
+    // destroy the last copy of the previous materialization. And by this point both trees are
+    // already committed, so a cleanup failure (e.g. a read-only directory `fs.cp` preserved) must
+    // not turn a successful materialization into a reported failure.
+    if (!restoreFailed) {
+      try {
+        await fs.promises.rm(backupDirRoot, { recursive: true, force: true });
+      } catch (cleanupError) {
+        console.warn(chalk.yellow(`Failed to remove ${backupDirRoot}: ${String(cleanupError)}`));
+      }
+    }
   }
 }
 
