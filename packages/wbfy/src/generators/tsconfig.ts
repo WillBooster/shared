@@ -146,6 +146,13 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
       // whose directory is an ancestor of a workspace yields package-owned subpath entries
       // instead of the whole subtree (see getWorkspaceDirPatterns).
       ...workspacePatterns.excludes,
+      // The managed includes above deliberately omit framework `app/**` directories (see
+      // subJsonObj.include's comment), but a repo-authored broad include such as `e2e/**\/*`
+      // can still drag a framework workspace's app sources into the root project, where they
+      // fail under the root compiler options — their bare `next/*` imports resolve only through
+      // the framework workspace's own tsconfig `paths`. Exclude those app directories so the
+      // root project never type-checks them, no matter how broad the repo's include globs are.
+      ...getFrameworkWorkspaceAppExcludes(config),
       ...(settings.exclude ?? []),
     ]),
   ].toSorted();
@@ -159,6 +166,34 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
     ]),
   ];
   return settings;
+}
+
+// Framework packages own their tsconfig (generateTsconfig skips them) and shim bare imports such as
+// `next/navigation` through package-local `paths`; vinext is the org's Next.js-equivalent framework
+// and behaves the same. Their app sources therefore only type-check under their own config.
+const frameworkDependencyNames = ['blitz', 'next', 'vinext'];
+
+/** Root `exclude` entries (posix, relative to the root) for every framework workspace's app directory. */
+function getFrameworkWorkspaceAppExcludes(config: PackageConfig): string[] {
+  if (!config.doesContainSubPackageJsons) return [];
+  const excludes: string[] = [];
+  for (const workspaceDirPath of getWorkspaceSubDirPaths(config)) {
+    const appDirPath = path.resolve(workspaceDirPath, 'app');
+    if (!fs.existsSync(appDirPath) || !dependsOnFramework(path.resolve(workspaceDirPath, 'package.json'))) continue;
+    excludes.push(path.relative(config.dirPath, appDirPath).replaceAll('\\', '/'));
+  }
+  return excludes;
+}
+
+function dependsOnFramework(manifestPath: string): boolean {
+  let manifest: PackageJson;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as PackageJson;
+  } catch {
+    return false;
+  }
+  const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
+  return frameworkDependencyNames.some((dependencyName) => dependencies[dependencyName]);
 }
 
 const managedWorkspaceIncludeSuffixes = ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'];

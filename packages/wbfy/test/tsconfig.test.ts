@@ -181,6 +181,45 @@ test('keeps a nested workspace in the root project when its ancestor package is 
   }
 });
 
+test('excludes a framework workspace app directory from the root project but not a plain one', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-tsconfig-'));
+  try {
+    // A framework workspace (here vinext, the org's Next.js-equivalent) shims bare imports such as
+    // `next/navigation` through its own tsconfig paths, so its app sources fail under the root
+    // compiler options. A plain workspace's app directory carries no such requirement and must stay.
+    const workspaces = ['e2e/fixture', 'packages/plain'];
+    fs.writeFileSync(
+      path.join(tempDirPath, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces })
+    );
+    for (const [workspaceDirName, dependencies] of [
+      ['e2e/fixture', { vinext: '1.0.0' }],
+      ['packages/plain', {}],
+    ] as const) {
+      const appDirPath = path.join(tempDirPath, workspaceDirName, 'app');
+      fs.mkdirSync(appDirPath, { recursive: true });
+      fs.writeFileSync(path.join(tempDirPath, workspaceDirName, 'package.json'), JSON.stringify({ dependencies }));
+      fs.writeFileSync(path.join(appDirPath, 'page.tsx'), 'export default () => null;\n');
+    }
+    const config = createConfig({
+      dirPath: tempDirPath,
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      doesContainTypeScript: true,
+      packageJson: { name: 'root', workspaces },
+    });
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+      exclude?: string[];
+    };
+    expect(tsconfig.exclude).toContain('e2e/fixture/app');
+    expect(tsconfig.exclude).not.toContain('packages/plain/app');
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('keeps a commented Next tsconfig byte-identical when no cleanup is needed', async () => {
   const commentedContent = `{
   "compilerOptions": {
