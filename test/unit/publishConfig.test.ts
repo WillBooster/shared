@@ -5,7 +5,10 @@ import { describe, expect, test } from 'bun:test';
 const packageDirectories = await readdir('packages');
 const packageVisibilities = await Promise.all(
   packageDirectories.map(async (name) => {
-    const packageJson = await Bun.file(`packages/${name}/package.json`).json();
+    const packageJsonFile = Bun.file(`packages/${name}/package.json`);
+    // Tolerate stray entries in packages/ (e.g. .DS_Store or a scratch directory).
+    if (!(await packageJsonFile.exists())) return [];
+    const packageJson = await packageJsonFile.json();
     return packageJson.private ? [] : [name];
   })
 );
