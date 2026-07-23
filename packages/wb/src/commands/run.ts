@@ -32,7 +32,7 @@ export const runCommand: CommandModule = {
     const env = fs.existsSync(path.join(cwd, 'package.json'))
       ? new Project(cwd, argv, true).env
       : readStandaloneEnvironment(argv, cwd);
-    const command = buildRunCommand(cwd, args);
+    const command = buildRunCommand(cwd, args, env);
     if (argv.dryRun) {
       console.info(`Would run: ${command.join(' ')}`);
       return;
@@ -44,14 +44,32 @@ export const runCommand: CommandModule = {
   },
 };
 
-function buildRunCommand(cwd: string, args: readonly string[]): string[] {
+function buildRunCommand(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): string[] {
   if (!usesBunRuntime(cwd)) return ['node', ...args];
   // `bun run` resolves package.json scripts before local binaries, so a script that invokes
   // `wb run <its own name>` (e.g. "vitest": "wb run vitest run") would respawn itself forever.
-  // When invoked from the same-named lifecycle script, bypass script resolution and execute the
-  // binary directly; runCommandWithEnvironment prepends node_modules/.bin to PATH.
-  if (args[0] === process.env.npm_lifecycle_event) return [...args];
+  // Bypass script resolution only for genuine self-recursion: the target names the lifecycle
+  // script that spawned this process AND the current package declares that very script text —
+  // a cross-package delegation via --working-dir reaches a different script text, so it still
+  // runs the destination's script. runCommandWithEnvironment prepends node_modules/.bin to
+  // PATH, resolving the direct execution to the local binary.
+  const target = args[0];
+  if (target && target === env.npm_lifecycle_event) {
+    const script = readPackageScript(cwd, target);
+    if (script !== undefined && script === env.npm_lifecycle_script) return [...args];
+  }
   return ['bun', 'run', ...args];
+}
+
+function readPackageScript(cwd: string, name: string): string | undefined {
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    return packageJson.scripts?.[name];
+  } catch {
+    return undefined;
+  }
 }
 
 function readStandaloneEnvironment(argv: ArgumentsCamelCase, cwd: string): NodeJS.ProcessEnv {

@@ -546,9 +546,10 @@ describe('bin/index.js run command', () => {
   });
 
   it('bypasses the same-named package script and runs the local binary instead', async () => {
+    const probeScript = 'wb run probe argument';
     await fs.writeFile(
       path.join(projectDirPath, 'package.json'),
-      JSON.stringify({ packageManager: 'bun@1.3.14', scripts: { probe: 'wb run probe argument' } })
+      JSON.stringify({ packageManager: 'bun@1.3.14', scripts: { probe: probeScript } })
     );
     const binDirPath = path.join(projectDirPath, 'node_modules', '.bin');
     await fs.mkdir(binDirPath, { recursive: true });
@@ -559,10 +560,41 @@ describe('bin/index.js run command', () => {
       encoding: 'utf8',
       // Simulate being spawned from the "probe" package script, where `bun run probe` would
       // re-enter the script itself forever.
-      env: { PATH: process.env.PATH, npm_lifecycle_event: 'probe' },
+      env: { PATH: process.env.PATH, npm_lifecycle_event: 'probe', npm_lifecycle_script: probeScript },
     });
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('bin:argument\n');
+    expect(result.status).toBe(0);
+  });
+
+  it('still runs the destination package script when a same-named script delegates across packages', async () => {
+    const childDirPath = path.join(projectDirPath, 'cross-package');
+    await fs.mkdir(childDirPath, { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'package.json'),
+      JSON.stringify({ packageManager: 'bun@1.3.14', scripts: { probe: 'wb --working-dir cross-package run probe' } })
+    );
+    await fs.writeFile(
+      path.join(childDirPath, 'package.json'),
+      JSON.stringify({ packageManager: 'bun@1.3.14', scripts: { probe: 'node -e "console.log(\'child-probe-ran\')"' } })
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, '--working-dir', childDirPath, '--quiet-env', 'run', 'probe'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        // Simulate delegation from the outer package's "probe" script: the lifecycle event
+        // matches the target, but the destination declares a different script text.
+        env: {
+          PATH: process.env.PATH,
+          npm_lifecycle_event: 'probe',
+          npm_lifecycle_script: 'wb --working-dir cross-package run probe',
+        },
+      }
+    );
+    expect(result.stdout).toContain('child-probe-ran');
     expect(result.status).toBe(0);
   });
 
