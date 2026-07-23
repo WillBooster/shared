@@ -33,10 +33,11 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       process.exit(1);
     }
 
-    // Restrict to the variables loaded from .env files (wb's environment contract) so that
+    // Restrict to variables loaded from the project's declared environment sources so that
     // unrelated process environment variables never leak into the generated file. Ignore
     // process.env because the parent wb process injects the .env values into it, which would
-    // otherwise suppress loading them here.
+    // otherwise suppress loading them here. wbfy declares the WB_ENV-family keys in fnox, so
+    // they are already included; process-only keys are intentionally outside this allowlist.
     const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
     // Explicitly exported environment variables must win over dotenv values for file-defined
     // keys (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve
