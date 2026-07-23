@@ -19,8 +19,6 @@ import { findWranglerConfigPath } from '../utils/wrangler.js';
 import type { ResolvedWranglerConfig, WranglerD1Database } from '../utils/wranglerConfig.js';
 import { resolveWranglerConfigForEnv, usesWranglerNativeMigrations } from '../utils/wranglerConfig.js';
 
-import { readEnvExampleKeys } from './genDevVars.js';
-
 /**
  * Keys that drive the deploy itself (or are meaningful only locally) and thus must never be
  * pushed to the Worker as secrets. `WB_ENV` / `NEXT_PUBLIC_WB_ENV` belong in wrangler `vars`.
@@ -224,10 +222,6 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     for (const key of Object.keys(envVars)) {
       if (!dotenvKeys.has(key)) delete envVars[key];
     }
-    const requiredKeys = readEnvExampleKeys(project);
-    for (const key of requiredKeys) {
-      envVars[key] ??= project.env[key] ?? '';
-    }
     // Names declared via wrangler `secrets.required` may likewise be supplied purely as
     // exported environment variables (e.g. CI workflow env) instead of dotenv values.
     for (const key of resolvedConfig.requiredSecretNames) {
@@ -240,11 +234,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       const effectiveValue = project.env[key];
       if (effectiveValue !== undefined) envVars[key] = effectiveValue;
     }
-    const { missingKeys, secrets } = selectWorkerSecrets(
-      envVars,
-      [...resolvedConfig.varKeys, ...resolvedConfig.bindingNames],
-      requiredKeys
-    );
+    const secrets = selectWorkerSecrets(envVars, [...resolvedConfig.varKeys, ...resolvedConfig.bindingNames]);
     // `--var WB_VERSION:...` takes precedence over configuration values on deploy, so a
     // resource binding of that name would silently become a string variable.
     if (project.env.WB_VERSION && resolvedConfig.bindingNames.includes('WB_VERSION')) {
@@ -257,14 +247,6 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
       console.warn(
         chalk.yellow(`Skipping env keys that collide with Worker binding names: ${bindingCollisions.join(', ')}`)
       );
-    }
-    if (missingKeys.length > 0) {
-      console.error(
-        chalk.red(
-          `Missing required environment variables (from .env.example or wrangler secrets.required): ${missingKeys.join(', ')}`
-        )
-      );
-      process.exit(1);
     }
     // Wrangler validates `secrets.required` only during the real upload — after migrations —
     // so wb checks upfront: each required name must be a key in the outgoing payload (presence,
@@ -573,14 +555,8 @@ export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string | un
  * every explicitly set value — including empty strings, which clear stale remote secrets
  * since `wrangler deploy --secrets-file` is additive — except wrangler `vars` (a secret may
  * not share a name with a var), deploy-control keys, and local `file:` DATABASE_URLs.
- * Returns the required keys (from .env.example) that are still empty so the deploy can
- * abort before any remote mutation.
  */
-export function selectWorkerSecrets(
-  envVars: Record<string, string>,
-  configVarKeys: string[],
-  requiredKeys: string[]
-): { missingKeys: string[]; secrets: Record<string, string> } {
+export function selectWorkerSecrets(envVars: Record<string, string>, configVarKeys: string[]): Record<string, string> {
   const configKeys = new Set(configVarKeys);
   const secrets: Record<string, string> = {};
   // No runtime undefined check on `value`: envVars is built exclusively from dotenv-parsed
@@ -591,8 +567,7 @@ export function selectWorkerSecrets(
     if (key === 'DATABASE_URL' && value.startsWith('file:')) continue;
     secrets[key] = value;
   }
-  const missingKeys = requiredKeys.filter((key) => !configKeys.has(key) && !isNonSecretKey(key) && !envVars[key]);
-  return { missingKeys, secrets };
+  return secrets;
 }
 
 /**

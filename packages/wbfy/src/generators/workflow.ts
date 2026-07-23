@@ -104,6 +104,9 @@ const workflows = {
       push: {
         branches: ['main', 'wbfy'],
       },
+      // The reusable test workflow re-runs this caller via workflow_dispatch after its autofix
+      // push-back (a GITHUB_TOKEN push triggers no workflows by itself).
+      workflow_dispatch: null,
     },
     // cf. https://docs.github.com/en/actions/using-jobs/using-concurrency#example-only-cancel-in-progress-jobs-or-runs-for-the-current-workflow
     concurrency: {
@@ -111,10 +114,14 @@ const workflows = {
       'cancel-in-progress': true,
     },
     permissions: {
+      // for dispatching this workflow again after the autofix push-back
+      actions: 'write',
       // for linter fix
       contents: 'write',
       // for pkg-preflight PR file listing
       'pull-requests': 'read',
+      // for the commit status the reusable test workflow posts on workflow_dispatch runs
+      statuses: 'write',
     },
     jobs: {
       test: {
@@ -493,8 +500,11 @@ async function writeWorkflowYaml(
     case 'test':
     case 'test-rust': {
       // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
-      // The reusable test workflow no longer needs Actions write access.
-      delete newSettings.permissions?.actions;
+      // test-rust never pushes back, so it needs no Actions write access; test needs it again to
+      // dispatch itself after the autofix push-back (reusable-workflows#466).
+      if (kind === 'test-rust') {
+        delete newSettings.permissions?.actions;
+      }
       if (newSettings.on?.pull_request) {
         delete newSettings.on.pull_request['paths-ignore'];
       }
@@ -558,7 +568,7 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 
 // wb's global options that consume a following value token (from sharedOptionsBuilder plus
 // yargsOptionsBuilderForEnv); every other `-`-prefixed token before the subcommand is a boolean.
-const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env', '--check-env']);
+const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env']);
 
 // Subcommands that run a BINARY (so the following token can be the wb executable), per runner: bun
 // reserves only `x` (`bun dlx`/`bun exec` run a package script of that name), npm has `exec`/`x`,
@@ -1038,6 +1048,10 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
+    // The callee routes public (default-registry) installs through the Takumi Guard
+    // malicious-package-blocking proxy when this token resolves; an unset organization secret
+    // expands to '' and the callee treats that as "feature off", so passing it is always safe.
+    secrets.TAKUMI_GUARD_TOKEN = '${{ secrets.TAKUMI_GUARD_TOKEN }}';
     // The callee generates the workspace .npmrc for @willbooster-private/* from VERDACCIO_TOKEN
     // before installing dependencies, which every repository needs regardless of its fnox
     // migration state.
@@ -1149,6 +1163,12 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
 }
 
 async function writeYaml(newSettings: Workflow, filePath: string): Promise<void> {
+  // A permissions object emptied by the per-kind deletions (e.g. an existing test-rust caller
+  // whose only entry was `actions`) must be dropped entirely: `permissions: {}` strips EVERY
+  // token permission from the workflow, unlike the absent key which keeps the defaults.
+  if (newSettings.permissions && Object.keys(newSettings.permissions).length === 0) {
+    delete newSettings.permissions;
+  }
   const yamlText = removeTrailingSpaces(
     yaml.dump(newSettings, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } })
   );

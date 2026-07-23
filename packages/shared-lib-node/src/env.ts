@@ -31,11 +31,6 @@ export const yargsOptionsBuilderForEnv = {
     type: 'boolean',
     default: true,
   },
-  'check-env': {
-    description: 'Check whether the keys of the loaded .env files are same with the given .env file.',
-    type: 'string',
-    default: '.env.example',
-  },
   'quiet-env': {
     description: 'Suppress .env file loading information.',
     type: 'boolean',
@@ -211,13 +206,6 @@ export function readEnvironmentVariables(
     );
   }
 
-  if (argv.checkEnv) {
-    const exampleKeys = Object.keys(readEnvFile(path.join(cwd, argv.checkEnv)));
-    const missingKeys = exampleKeys.filter((key) => !(key in envVars) && !(key in process.env));
-    if (missingKeys.length > 0) {
-      throw new Error(`Missing environment variables in [${envPaths.join(', ')}]: [${missingKeys.join(', ')}]`);
-    }
-  }
   // Expand references against the live environment for keys NOT loaded from files, so that a
   // reference to an exported key (excluded from envVars by process-env precedence) resolves to
   // the effective value instead of an empty string. Loaded keys are deliberately absent from

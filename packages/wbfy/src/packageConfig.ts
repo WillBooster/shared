@@ -233,7 +233,12 @@ export async function getPackageConfig(
     const isRoot = options?.isRoot ?? !isWorkspaceOfEnclosingRoot(dirPath);
 
     let repoInfo: Record<string, unknown> | undefined;
-    if (isRoot) {
+    // Fetch visibility for the CLI entry even when it is a workspace child (`wbfy
+    // <repo>/packages/<app>`): generators read isPublicRepo from their rootConfig parameter,
+    // which IS the child config in that invocation, so a stub `false` there would drop the
+    // public-repo publishConfig handling. Discovered children (options.isRoot === false) still
+    // skip the fetch — they inherit the enclosing root's visibility via rootConfig instead.
+    if (options?.isRoot !== false) {
       repoInfo = await fetchRepoInfo(dirPath, packageJson);
     }
 
@@ -862,10 +867,14 @@ function doesImportPackageAtRuntime(dirPath: string, packageName: string): boole
 }
 
 async function fetchRepoInfo(dirPath: string, packageJson: PackageJson): Promise<Record<string, unknown> | undefined> {
-  const git = simpleGit(dirPath);
-  const remotes = await git.getRemotes(true);
-  const origin = remotes.find((r) => r.name === 'origin');
-  const remoteUrl = origin?.refs.fetch ?? origin?.refs.push;
+  let remoteUrl: string | undefined;
+  try {
+    const remotes = await simpleGit(dirPath).getRemotes(true);
+    const origin = remotes.find((r) => r.name === 'origin');
+    remoteUrl = origin?.refs.fetch ?? origin?.refs.push;
+  } catch {
+    // Not a git repository (e.g. a scratch directory); fall back to package.json's repository.
+  }
   if (typeof remoteUrl === 'string') {
     const json = await requestRepoInfo(remoteUrl);
     if (json) return json;

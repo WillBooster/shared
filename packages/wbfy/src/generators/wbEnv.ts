@@ -185,8 +185,12 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
   // the corrected wording instead of keeping the stale claim forever.
   const outdatedWbEnvCommentPattern =
     /^# CI sets WB_ENV as a process env var, which wins over fnox;(?! when loaded through wb).*$/mu;
+  const obsoleteRequiredKeysCommentPattern =
+    /^# \(wb's required-keys check treats every \.env\.example key, including WB_ENV, as required\)\.\n?/mu;
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
-  let updatedContent = content.replace(outdatedWbEnvCommentPattern, wbEnvComment);
+  let updatedContent = content
+    .replace(outdatedWbEnvCommentPattern, wbEnvComment)
+    .replace(obsoleteRequiredKeysCommentPattern, '');
   for (const mode of wbEnvModes) {
     // The staging mode is optional: complete it only when the repository already declares the profile.
     if (mode === 'staging' && !settings.profiles?.staging) continue;

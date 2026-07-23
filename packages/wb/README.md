@@ -51,9 +51,6 @@ Options:
       --include-root-env  Include .env files in root directory if the project is
                           in a monorepo and --env option is not used.
                                                        [boolean] [default: true]
-      --check-env         Check whether the keys of the loaded .env files are
-                          same with the given .env file.
-                                              [string] [default: ".env.example"]
   -v, --verbose           Whether to show verbose information          [boolean]
   -w, --working-dir       A working directory                           [string]
   -d, --dry-run, --dry    Whether to skip actual command execution     [boolean]
