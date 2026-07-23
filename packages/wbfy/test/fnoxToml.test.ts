@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { generateFnoxToml } from '../src/generators/fnoxToml.js';
+import { generateFnoxToml, hasFnoxSyncFailed } from '../src/generators/fnoxToml.js';
 import { createConfig } from './testConfig.js';
 
 test('keeps the age recipients of a repository outside the WillBooster organizations', async () => {
@@ -23,7 +23,10 @@ recipients = [
     await generateFnoxToml(createConfig({ dirPath, repository: 'github:example/example', isWillBoosterRepo: false }));
 
     expect(fs.readFileSync(path.join(dirPath, 'fnox.toml'), 'utf8')).toBe(originalContent);
-    expect(process.exitCode ?? 0).toBe(0);
+    // Assert the synchronization flag itself, which generateFnoxToml resets on every call. The
+    // process-global process.exitCode is never reset and every failure path of this module writes
+    // it, so a failure-path test added to this file would contaminate that assertion.
+    expect(hasFnoxSyncFailed()).toBe(false);
   } finally {
     fs.rmSync(dirPath, { force: true, recursive: true });
   }
