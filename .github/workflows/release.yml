@@ -17,4 +17,5 @@ jobs:
       github_hosted_runner: true
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAKUMI_GUARD_TOKEN: ${{ secrets.TAKUMI_GUARD_TOKEN }}
       VERDACCIO_TOKEN: ${{ secrets.VERDACCIO_TOKEN }}
