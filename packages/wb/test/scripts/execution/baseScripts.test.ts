@@ -182,8 +182,6 @@ describe('BaseScripts.testE2E', () => {
         '.env.test',
         '--include-root-env=false',
         '--cascade-env=staging',
-        '--check-env',
-        '.env.custom',
         '--verbose',
         'start',
         `semi;colon`,
@@ -241,7 +239,6 @@ describe('BaseScripts.testE2E', () => {
         '.env.local.test',
         '--include-root-env=false',
         '--auto-cascade-env=false',
-        '--check-env=.env.required',
         'start',
       ]) as unknown as ScriptArgv;
     normalizeArgs(argv);
@@ -251,7 +248,6 @@ describe('BaseScripts.testE2E', () => {
       '--env=.env.local.test',
       '--auto-cascade-env=false',
       '--include-root-env=false',
-      '--check-env=.env.required',
     ]);
 
     const command = await scriptsWithWait.startProduction(project, argv);
@@ -260,7 +256,6 @@ describe('BaseScripts.testE2E', () => {
     expect(command).toContain('--env=.env.local.test');
     expect(command).toContain('--include-root-env=false');
     expect(command).toContain('--auto-cascade-env=false');
-    expect(command).toContain('--check-env=.env.required');
   });
 
   it('resets file-based Drizzle databases before test starts', async () => {

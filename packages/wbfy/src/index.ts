@@ -13,6 +13,7 @@ import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
 import { fixWbDbCommand } from './fixers/wbDbCommand.js';
 import { untrackCloudflareEnv } from './fixers/cloudflareEnv.js';
+import { removeEnvExample } from './fixers/envExample.js';
 import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import type { BunLinker } from './generators/bunfig.js';
@@ -221,6 +222,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       }
     }
     assertSafeDependencySources(allPackageConfigs);
+    for (const config of allPackageConfigs) await removeEnvExample(config);
 
     // Managed repositories use Bun with mise (and optionally fnox); Yarn artifacts are removed.
     // Deciding the linker requires running installs, so --skip-deps keeps the previous linker

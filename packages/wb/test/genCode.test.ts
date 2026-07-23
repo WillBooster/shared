@@ -47,10 +47,10 @@ describe('getGenCodeScripts', () => {
     // The named file exists, so the project's own invocation infers Env members from it that the bare
     // invocation here would drop.
     const dirPath = await createWorkerProject(
-      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --env-file .env.example' } },
+      { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --env-file custom.env' } },
       true
     );
-    await fs.writeFile(path.join(dirPath, '.env.example'), 'API_KEY=\n');
+    await fs.writeFile(path.join(dirPath, 'custom.env'), 'API_KEY=\n');
 
     try {
       expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
@@ -75,7 +75,7 @@ describe('getGenCodeScripts', () => {
   it.each([
     ['strict vars', 'wrangler types --check --strict-vars=false'],
     ['a custom output path', 'wrangler types --check --path src/env.d.ts'],
-    ['a quoted env file', 'wrangler types --env-file ".env.example"'],
+    ['a quoted env file', 'wrangler types --env-file "custom.env"'],
     ['a directory change', 'cd sub && wrangler types'],
   ])('does not generate worker types when a script checks %s', async (_description, script) => {
     const dirPath = await createWorkerProject(

@@ -558,7 +558,7 @@ export function generateCloudflareDeployWorkflow(rootConfig: PackageConfig): Wor
 
 // wb's global options that consume a following value token (from sharedOptionsBuilder plus
 // yargsOptionsBuilderForEnv); every other `-`-prefixed token before the subcommand is a boolean.
-const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env', '--check-env']);
+const wbGlobalValueOptions = new Set(['--working-dir', '-w', '--env', '--cascade-env']);
 
 // Subcommands that run a BINARY (so the following token can be the wb executable), per runner: bun
 // reserves only `x` (`bun dlx`/`bun exec` run a package script of that name), npm has `exec`/`x`,

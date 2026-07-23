@@ -113,9 +113,7 @@ test('rewrites the outdated precedence comment variant without a trailing period
   const migrated = insertWbEnvIntoFnoxToml(withOutdatedVariant, false) ?? '';
   expect(migrated).not.toContain('these defaults only fill it locally');
   expect(migrated).toContain('bare fnox run/export uses the fnox value, so pass -P <profile>');
-  expect(migrated).toContain(
-    "# (wb's required-keys check treats every .env.example key, including WB_ENV, as required)."
-  );
+  expect(migrated).not.toContain('required-keys check');
   expect(migrated.split('# CI sets WB_ENV').length - 1).toBe(1);
   expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
 });

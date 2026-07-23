@@ -269,7 +269,7 @@ test('normalizes managed scripts of a Cloudflare project to wb gen-code', async 
 test.each([
   ['a generator appended to gen-code', { 'gen-code': 'wb gen-code && wrangler types' }],
   ['a bare generator in postinstall', { postinstall: 'wrangler types' }],
-  ['an env-file generator', { postinstall: 'wrangler types --env-file .env.example' }],
+  ['an env-file generator', { postinstall: 'wrangler types --env-file custom.env' }],
   ['a bunx generator', { postinstall: 'wb gen-code && bunx wrangler types' }],
   ['a gen-types script', { 'gen-types': 'wrangler types' }],
   [
