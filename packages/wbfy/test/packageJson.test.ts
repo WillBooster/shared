@@ -12,6 +12,7 @@ interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
   devDependencies?: Record<string, string | undefined>;
   private?: boolean;
+  publishConfig?: { access?: string; registry?: string };
   scripts?: Record<string, string | undefined>;
   trustedDependencies?: string[];
 }
@@ -1035,6 +1036,31 @@ test('removes stale private from a monorepo root with a publishConfig', async ()
   );
 
   expect(packageJson.private).toBeUndefined();
+});
+
+test('pins the publish registry of a public-repo package to npmjs', async () => {
+  const packageJson = await generatePackageJsonFrom({ name: 'public-lib', license: 'Apache-2.0' });
+
+  expect(packageJson.publishConfig).toEqual({ access: 'public', registry: 'https://registry.npmjs.org/' });
+});
+
+test('keeps a deliberately different publish registry', async () => {
+  const packageJson = await generatePackageJsonFrom({
+    name: 'public-lib',
+    license: 'Apache-2.0',
+    publishConfig: { registry: 'https://npm.example.com/' },
+  });
+
+  expect(packageJson.publishConfig?.registry).toBe('https://npm.example.com/');
+});
+
+test('adds no publishConfig in a private repository', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { name: 'private-repo-lib', license: 'Apache-2.0' },
+    { isPublicRepo: false }
+  );
+
+  expect(packageJson.publishConfig).toBeUndefined();
 });
 
 test('strips `bun --bun` from user-authored scripts invoking Node-based tools', async () => {
