@@ -48,6 +48,12 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
     // The failure flag is per repository: wbfy can process multiple working directories in one
     // invocation, and an earlier repository's failure must not veto a later repository's upload.
     fnoxSyncFailed = false;
+    // FNOX_AGE_RECIPIENTS is the WillBooster organizations' roster (developers + the shared CI
+    // identity). A repository outside WillBooster/WillBoosterLab manages its own recipient set
+    // (e.g. a personal repository with its own CI identity), so rewriting it to the org roster
+    // would grant org members access and re-encrypt secrets for a CI key that repository does not
+    // use. setupSecrets never uploads secrets for such repositories either, so skip entirely.
+    if (!rootConfig.isWillBoosterRepo) return;
     const rootDirPath = path.resolve(rootConfig.dirPath);
     if (!fs.existsSync(path.resolve(rootDirPath, 'fnox.toml'))) {
       // A nested-only fnox layout is unsupported: setupSecrets would take the dotenv path and
