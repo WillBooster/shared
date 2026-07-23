@@ -135,4 +135,5 @@ minimumReleaseAgeExcludes = [
   "react",
   "react-dom",
   "react-is",
+  "react-server-dom-webpack",
 ]
