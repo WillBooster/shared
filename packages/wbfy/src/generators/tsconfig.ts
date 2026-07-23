@@ -40,7 +40,9 @@ const subJsonObj = {
 
 export async function generateTsconfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateTsconfig', async () => {
-    if (config.depending.blitz || config.depending.next) {
+    // vinext is the org's Next.js-equivalent framework and owns its tsconfig just like Next/Blitz,
+    // so it must skip the standard generation that would overwrite the framework's own settings.
+    if (config.depending.blitz || config.depending.next || config.depending.vinext) {
       await cleanupLegacyTsconfigModuleSettings(config);
       return;
     }
@@ -146,6 +148,13 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
       // whose directory is an ancestor of a workspace yields package-owned subpath entries
       // instead of the whole subtree (see getWorkspaceDirPatterns).
       ...workspacePatterns.excludes,
+      // The managed includes above deliberately omit framework `app/**` directories (see
+      // subJsonObj.include's comment), but a repo-authored broad include such as `e2e/**\/*`
+      // can still drag a framework workspace's app sources into the root project, where they
+      // fail under the root compiler options — their bare `next/*` imports resolve only through
+      // the framework workspace's own tsconfig `paths`. Exclude those app directories so the
+      // root project never type-checks them, no matter how broad the repo's include globs are.
+      ...getFrameworkWorkspaceAppExcludes(config),
       ...(settings.exclude ?? []),
     ]),
   ].toSorted();
@@ -159,6 +168,43 @@ function buildRootJsonObj(config: PackageConfig): TsConfigJson {
     ]),
   ];
   return settings;
+}
+
+// Framework packages own their tsconfig (generateTsconfig skips them) and shim bare imports such as
+// `next/navigation` through package-local `paths`; vinext is the org's Next.js-equivalent framework
+// and behaves the same. Their app sources therefore only type-check under their own config.
+const frameworkDependencyNames = ['blitz', 'next', 'vinext'];
+
+// A framework app lives in `app/` or, under the src-directory layout, `src/app/`. The root project
+// includes `<workspace>/src/**/*`, so `src/app` leaks in just as a repo-wide glob can pull in `app`.
+const frameworkAppDirNames = ['app', 'src/app'];
+
+/** Root `exclude` entries (posix, relative to the root) for every framework workspace's app directory. */
+function getFrameworkWorkspaceAppExcludes(config: PackageConfig): string[] {
+  if (!config.doesContainSubPackageJsons) return [];
+  const excludes: string[] = [];
+  for (const workspaceDirPath of getWorkspaceSubDirPaths(config)) {
+    if (!dependsOnFramework(path.resolve(workspaceDirPath, 'package.json'))) continue;
+    for (const appDirName of frameworkAppDirNames) {
+      const appDirPath = path.resolve(workspaceDirPath, appDirName);
+      if (fs.existsSync(appDirPath)) excludes.push(path.relative(config.dirPath, appDirPath).replaceAll('\\', '/'));
+    }
+  }
+  return excludes;
+}
+
+function dependsOnFramework(manifestPath: string): boolean {
+  let manifest: PackageJson | null;
+  try {
+    manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as PackageJson | null;
+  } catch {
+    return false;
+  }
+  // A manifest that parses to a non-object (e.g. a file literally containing `null`) declares no
+  // dependencies; guard the property access, which would otherwise throw outside the try above.
+  if (!manifest || typeof manifest !== 'object') return false;
+  const dependencies = { ...manifest.dependencies, ...manifest.devDependencies };
+  return frameworkDependencyNames.some((dependencyName) => dependencies[dependencyName]);
 }
 
 const managedWorkspaceIncludeSuffixes = ['*.config.ts', 'scripts/**/*', 'src/**/*', 'test/**/*'];
@@ -208,6 +254,17 @@ function removeStaleManagedWorkspaceEntries(
     if (typeof entry !== 'string' || generatedExclude.has(entry)) return true;
     if (entry.endsWith('/test/fixtures')) {
       return !stalePrefixes.has(entry.slice(0, -'/test/fixtures'.length));
+    }
+    // A framework app exclude (`<workspace>/app`, `<workspace>/src/app`) for a still-declared
+    // workspace is pruned by coversWorkspaceDir below when no longer generated; this catches the
+    // remaining case, where the workspace itself was removed and its prefix is therefore stale.
+    // (A wrong suffix strip yields a prefix absent from stalePrefixes, so testing every name is safe.)
+    if (
+      frameworkAppDirNames.some(
+        (appDirName) => entry.endsWith(`/${appDirName}`) && stalePrefixes.has(entry.slice(0, -(appDirName.length + 1)))
+      )
+    ) {
+      return false;
     }
     return !coversWorkspaceDir(entry, workspaceDirPaths);
   });

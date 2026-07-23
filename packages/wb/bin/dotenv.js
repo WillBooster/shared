@@ -9,8 +9,12 @@ const shutdownSignals = new Set(['SIGINT', 'SIGTERM', 'SIGQUIT']);
 
 export function runDotenvCommand(args) {
   const { command } = parseDotenvArgs(args);
+  runCommandWithEnvironment(command, 'wb dotenv -- <command> [args...]');
+}
+
+function runCommandWithEnvironment(command, usage) {
   if (command.length === 0) {
-    console.error('Usage: wb dotenv -- <command> [args...]');
+    console.error(`Usage: ${usage}`);
     process.exit(1);
   }
 
