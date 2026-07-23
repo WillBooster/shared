@@ -6,7 +6,6 @@ import chalk from 'chalk';
 import { parse as parseDotenv } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
-import type { Project } from '../project.js';
 import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -34,10 +33,11 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       process.exit(1);
     }
 
-    // Restrict to the variables loaded from .env files (wb's environment contract) so that
+    // Restrict to variables loaded from the project's declared environment sources so that
     // unrelated process environment variables never leak into the generated file. Ignore
     // process.env because the parent wb process injects the .env values into it, which would
-    // otherwise suppress loading them here.
+    // otherwise suppress loading them here. wbfy declares the WB_ENV-family keys in fnox, so
+    // they are already included; process-only keys are intentionally outside this allowlist.
     const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
     // Explicitly exported environment variables must win over dotenv values for file-defined
     // keys (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve
@@ -51,16 +51,6 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
       envVars[key] = effectiveValue;
     }
-    // Supplement with process environment values for the keys named in .env.example: CI often
-    // provides them as workflow env instead of .env files (still an allowlist, so unrelated
-    // process environment variables cannot leak).
-    for (const key of [...readEnvExampleKeys(project), 'WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
-      const effectiveValue = project.env[key];
-      if (envVars[key] || effectiveValue === undefined) continue;
-      if (envVars[key] === undefined && effectiveValue === '') explicitlyEmptiedKeys.add(key);
-      envVars[key] = effectiveValue;
-    }
-
     const lines = Object.entries(envVars)
       .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))
       .toSorted(([a], [b]) => a.localeCompare(b))
@@ -76,18 +66,6 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     console.info(chalk.green(`Generated ${outputPath} with ${lines.length} environment variables.`));
   },
 };
-
-export function readEnvExampleKeys(project: Project): string[] {
-  let envExamplePath: string;
-  try {
-    envExamplePath = project.findFile('.env.example');
-  } catch {
-    return [];
-  }
-  // dotenv's own parser covers `export KEY=` prefixes and whitespace around `=`,
-  // which a line regex would silently miss.
-  return Object.keys(parseDotenv(fs.readFileSync(envExamplePath, 'utf8')));
-}
 
 /**
  * Quote a value for dotenv (which wrangler uses for .dev.vars). Every candidate representation

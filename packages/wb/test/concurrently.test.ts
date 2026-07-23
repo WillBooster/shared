@@ -276,7 +276,6 @@ describe('concurrentlyCommand', () => {
         '.env.test',
         '--include-root-env=false',
         '--cascade-env=staging',
-        '--check-env=.env.required',
         'echo first',
         'echo second',
       ]);
@@ -284,7 +283,6 @@ describe('concurrentlyCommand', () => {
     expect(argv.env).toEqual(['.env.test']);
     expect(argv.includeRootEnv).toBe(false);
     expect(argv.cascadeEnv).toBe('staging');
-    expect(argv.checkEnv).toBe('.env.required');
     expect(argv.commands).toEqual(['echo first', 'echo second']);
     expect(command.handler).toHaveBeenCalledOnce();
   });

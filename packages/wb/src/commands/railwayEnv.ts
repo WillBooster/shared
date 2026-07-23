@@ -5,12 +5,10 @@ import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } fro
 import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
-import { readEnvExampleKeys } from './genDevVars.js';
-
 // Railway injects its own system variables and platform-managed values; never mirror those back,
 // and skip local-only keys. App variables (including DATABASE_URL, PORT) stay eligible because
 // fnox is the source of truth — a repo that must NOT own a value (e.g. a Railway reference
-// variable pointing at a linked database service) simply keeps it out of fnox/.env.example.
+// variable pointing at a linked database service) simply keeps it out of fnox.
 const NON_RAILWAY_KEYS = new Set(['CI']);
 const NON_RAILWAY_KEY_PREFIXES = ['RAILWAY_', 'NIXPACKS_'];
 
@@ -74,12 +72,6 @@ export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions>
     const dotenvKeys = selectDotenvSourcedKeys(envSources);
     for (const key of Object.keys(envVars)) {
       if (!dotenvKeys.has(key)) delete envVars[key];
-    }
-    // fnox repos keep values out of committed files, so the declared key list lives in
-    // .env.example; CI also supplies these as workflow env. project.env carries the resolved value.
-    for (const key of [...readEnvExampleKeys(project), 'WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
-      const effectiveValue = project.env[key];
-      if (envVars[key] === undefined && effectiveValue !== undefined) envVars[key] = effectiveValue;
     }
     // Exported environment variables win over file values (matches wb deploy / gen-dev-vars).
     for (const key of Object.keys(envVars)) {

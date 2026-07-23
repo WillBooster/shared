@@ -111,7 +111,6 @@ describe('HttpServerScripts.testE2E', () => {
         '.env.local.test',
         '--include-root-env=false',
         '--auto-cascade-env=false',
-        '--check-env=.env.required',
         'test',
       ]) as unknown as TestArgv;
     normalizeArgs(argv);
@@ -123,12 +122,10 @@ describe('HttpServerScripts.testE2E', () => {
       '--env=.env.local.test',
       '--auto-cascade-env=false',
       '--include-root-env=false',
-      '--check-env=.env.required',
     ]);
     expect(command).toContain('--env=.env.test');
     expect(command).toContain('--env=.env.local.test');
     expect(command).toContain('--include-root-env=false');
     expect(command).toContain('--auto-cascade-env=false');
-    expect(command).toContain('--check-env=.env.required');
   });
 });

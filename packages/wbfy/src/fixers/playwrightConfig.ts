@@ -187,7 +187,7 @@ async function doesDefineNextPublicBaseUrl(dirPath: string): Promise<boolean> {
 }
 
 function getEnvFilePaths(dirPath: string): string[] {
-  const envFileNames = ['.env', '.env.test', '.env.example', 'mise.toml', 'mise.test.toml'];
+  const envFileNames = ['.env', '.env.test', 'fnox.toml', 'mise.toml', 'mise.test.toml'];
   const envFilePaths: string[] = [];
 
   for (let currentDirPath = path.resolve(dirPath); ; currentDirPath = path.dirname(currentDirPath)) {

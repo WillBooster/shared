@@ -246,7 +246,7 @@ describe('readCloudflareEnvFiles', () => {
 
 describe('selectWorkerSecrets', () => {
   it('excludes wrangler vars, deploy-control keys, and file: DATABASE_URL, but keeps empty values', () => {
-    const { missingKeys, secrets } = selectWorkerSecrets(
+    const secrets = selectWorkerSecrets(
       {
         AUTH_SECRET: 'auth',
         NEXT_PUBLIC_BASE_URL: 'https://example.com',
@@ -258,8 +258,7 @@ describe('selectWorkerSecrets', () => {
         OPTIONAL_FEATURE_TOKEN: '',
         PORT: '8080',
       },
-      ['NEXT_PUBLIC_BASE_URL'],
-      []
+      ['NEXT_PUBLIC_BASE_URL']
     );
     expect(secrets).toEqual({ AUTH_SECRET: 'auth', OPTIONAL_FEATURE_TOKEN: '' });
     // Wrangler system/authentication variables never become Worker secrets.
@@ -279,23 +278,16 @@ describe('selectWorkerSecrets', () => {
           WRANGLER_R2_SQL_AUTH_TOKEN: 't',
           CLOUDFLARE_R2_ACCESS_KEY_ID: 'app-key',
         },
-        [],
         []
-      ).secrets
+      )
     ).toEqual({ CLOUDFLARE_R2_ACCESS_KEY_ID: 'app-key' });
-    expect(missingKeys).toEqual([]);
   });
 
-  it('keeps a non-file DATABASE_URL and reports missing required keys', () => {
-    const { missingKeys, secrets } = selectWorkerSecrets(
-      { DATABASE_URL: 'postgres://db.example.com/app', AUTH_SECRET: '' },
-      [],
-      ['DATABASE_URL', 'AUTH_SECRET', 'PORT']
-    );
-    expect(secrets).toEqual({ DATABASE_URL: 'postgres://db.example.com/app', AUTH_SECRET: '' });
-    // PORT is a local-only key, so it is not required even when .env.example lists it;
-    // a required key that resolves to empty is reported as missing.
-    expect(missingKeys).toEqual(['AUTH_SECRET']);
+  it('keeps a non-file DATABASE_URL and explicitly empty secrets', () => {
+    expect(selectWorkerSecrets({ DATABASE_URL: 'postgres://db.example.com/app', AUTH_SECRET: '' }, [])).toEqual({
+      DATABASE_URL: 'postgres://db.example.com/app',
+      AUTH_SECRET: '',
+    });
   });
 });
 
