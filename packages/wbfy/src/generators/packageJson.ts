@@ -1290,6 +1290,10 @@ async function normalizePackageMetadata(
   if (!jsonObj.private && jsonObj.license !== 'UNLICENSED' && rootConfig.isPublicRepo) {
     jsonObj.publishConfig ??= {};
     jsonObj.publishConfig.access ??= 'public';
+    // Without an explicit registry, npm resolves the publish target from the workspace .npmrc,
+    // whose default registry on CI may be the Takumi Guard install proxy — which rejects
+    // `npm publish` with 405 (shared#1072). `??=` keeps a deliberately different registry.
+    jsonObj.publishConfig.registry ??= 'https://registry.npmjs.org/';
   }
   const [owner] = gitHubUtil.getOrgAndName(config.repository ?? '');
   if (owner === 'WillBooster' || owner === 'WillBoosterLab') {

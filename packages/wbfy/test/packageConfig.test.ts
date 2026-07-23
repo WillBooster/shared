@@ -6,6 +6,15 @@ import { expect, test } from 'vitest';
 
 import { getPackageConfig } from '../src/packageConfig.js';
 
+// Regression test for the direct workspace-child invocation (`wbfy <repo>/packages/<app>`):
+// the entry keeps its child classification, but repository visibility must still be fetched
+// because generators read isPublicRepo from this config as their rootConfig.
+test('fetches repository visibility when the CLI entry is a workspace child', async () => {
+  const config = await getPackageConfig(path.resolve(import.meta.dirname, '..', '..', 'shared-lib'));
+  expect(config?.isRoot).toBe(false);
+  expect(config?.isPublicRepo).toBe(true);
+});
+
 test('detects Tauri packages from every supported signal', async () => {
   expect(await detectTauri({ packageJson: { dependencies: { '@tauri-apps/api': '2.0.0' } } })).toBe(true);
   expect(await detectTauri({ packageJson: { devDependencies: { '@tauri-apps/api': '2.0.0' } } })).toBe(true);
