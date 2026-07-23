@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-  # Allows re-triggering a release whose publish failed (e.g. run 30050778519).
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}
