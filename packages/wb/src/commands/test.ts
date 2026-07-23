@@ -137,9 +137,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     const defaultUnitTargets = getDefaultUnitTargets(project);
     if (shouldRunUnit && defaultUnitTargets !== false) {
       const unitTargets = testTargets.filter((target) => target.includes('/unit'));
-      const targets =
-        unitTargets.length > 0 ? unitTargets : defaultUnitTargets.length > 0 ? defaultUnitTargets : undefined;
-      const unitArgv = { ...testArgv, targets };
+      const unitArgv = { ...testArgv, targets: unitTargets.length > 0 ? unitTargets : defaultUnitTargets };
       const exitCode = await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, testArgv, {
         exitIfFailed: options.exitIfFailed,
         timeout: testArgv.unitTimeout,
@@ -310,14 +308,20 @@ export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArg
   return { ...argv, cascadeEnv: 'test' };
 }
 
-function getDefaultUnitTargets(project: Project): string[] | false {
-  if (fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) {
-    return [];
+/**
+ * Resolves the default unit-test targets so that every non-e2e test under `test/` runs, regardless of
+ * whether the project keeps them directly under `test/`, under `test/unit/`, or both. Returns `false`
+ * when the project has no unit tests to run, and `[]` to let the runner apply its own default.
+ */
+export function getDefaultUnitTargets(project: Pick<Project, 'dirPath' | 'hasVitest'>): string[] | false {
+  if (!fs.existsSync(path.join(project.dirPath, 'test'))) return false;
+  const hasE2e = fs.existsSync(path.join(project.dirPath, 'test', 'e2e'));
+  if (project.hasVitest) {
+    return hasE2e ? ['test', '--exclude', 'test/e2e/**'] : ['test'];
   }
-  if (project.hasVitest && fs.existsSync(path.join(project.dirPath, 'test'))) {
-    return fs.existsSync(path.join(project.dirPath, 'test', 'e2e')) ? ['test', '--exclude', 'test/e2e/**'] : ['test'];
-  }
-  return false;
+  if (!fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) return false;
+  // `bun test` cannot exclude paths, so it can cover the whole `test/` directory only without e2e specs.
+  return hasE2e ? ['test/unit/'] : ['test'];
 }
 
 async function testOnDocker(

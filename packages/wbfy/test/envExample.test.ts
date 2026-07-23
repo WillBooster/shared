@@ -4,9 +4,9 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { removeEnvExample } from '../../src/fixers/envExample.js';
-import { fsUtil } from '../../src/utils/fsUtil.js';
-import { createConfig } from '../testConfig.js';
+import { removeEnvExample } from '../src/fixers/envExample.js';
+import { fsUtil } from '../src/utils/fsUtil.js';
+import { createConfig } from './testConfig.js';
 
 test('removes .env.example from a managed package', async () => {
   const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-env-example-'));
