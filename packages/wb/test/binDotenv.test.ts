@@ -567,6 +567,34 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
+  it('bypasses the same-named package script when run from a manifest-less subdirectory', async () => {
+    const probeScript = 'wb --working-dir subdir run probe argument';
+    await fs.writeFile(
+      path.join(projectDirPath, 'package.json'),
+      JSON.stringify({ packageManager: 'bun@1.3.14', scripts: { probe: probeScript } })
+    );
+    const subDirPath = path.join(projectDirPath, 'subdir');
+    await fs.mkdir(subDirPath, { recursive: true });
+    const binDirPath = path.join(projectDirPath, 'node_modules', '.bin');
+    await fs.mkdir(binDirPath, { recursive: true });
+    await fs.writeFile(path.join(binDirPath, 'probe'), '#!/bin/sh\necho "bin:$@"\n', { mode: 0o755 });
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, '--working-dir', subDirPath, '--quiet-env', 'run', 'probe', 'argument'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        // `bun run probe` from the manifest-less subdirectory would still find and re-enter the
+        // ancestor package's script, so the guard must match the nearest ancestor manifest.
+        env: { PATH: process.env.PATH, npm_lifecycle_event: 'probe', npm_lifecycle_script: probeScript },
+      }
+    );
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('bin:argument\n');
+    expect(result.status).toBe(0);
+  });
+
   it('still runs the destination package script when a same-named script delegates across packages', async () => {
     const childDirPath = path.join(projectDirPath, 'cross-package');
     await fs.mkdir(childDirPath, { recursive: true });

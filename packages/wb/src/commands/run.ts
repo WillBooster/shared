@@ -62,13 +62,21 @@ function buildRunCommand(cwd: string, args: readonly string[], env: NodeJS.Proce
 }
 
 function readPackageScript(cwd: string, name: string): string | undefined {
-  try {
-    const packageJson = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')) as {
-      scripts?: Record<string, string>;
-    };
-    return packageJson.scripts?.[name];
-  } catch {
-    return undefined;
+  // `bun run` resolves scripts from the nearest ancestor package.json, so match that scope
+  // (e.g. --working-dir may point to a manifest-less subdirectory of the recursing package).
+  for (let currentPath = path.resolve(cwd); ; currentPath = path.dirname(currentPath)) {
+    const packageJsonPath = path.join(currentPath, 'package.json');
+    if (fs.existsSync(packageJsonPath)) {
+      try {
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
+          scripts?: Record<string, string>;
+        };
+        return packageJson.scripts?.[name];
+      } catch {
+        return undefined;
+      }
+    }
+    if (path.dirname(currentPath) === currentPath) return undefined;
   }
 }
 
