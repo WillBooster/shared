@@ -56,7 +56,6 @@ import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
-import { isExcludedRepo } from './utils/excludedRepo.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
@@ -135,15 +134,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     // Confine every generated file to this repository (see fsUtil.generateFile). Set BEFORE any
     // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
     fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
-    const rootPackageJson =
-      ignoreError(
-        () =>
-          JSON.parse(fs.readFileSync(path.resolve(rootDirPath, 'package.json'), 'utf8')) as PackageConfig['packageJson']
-      ) ?? {};
-    if (isExcludedRepo(rootDirPath, rootPackageJson)) {
-      console.info(`Skip ${rootDirPath}: excluded from wbfy.`);
-      continue;
-    }
     // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
     // automatic Bun translation must abort the whole migration for this path, not just the file
     // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.
@@ -151,8 +141,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     if (unmigratableYarnSettings) {
       console.error(
         `Skip ${rootDirPath}: ${unmigratableYarnSettings}. ` +
-          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy, ' +
-          "or add the repository to wbfy's excludedRepoNames when it is deliberately kept off the standard."
+          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy.'
       );
       hasInvalidPackageConfig = true;
       continue;
@@ -165,6 +154,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       .map((d) => path.resolve(packagesDirPath, d.name));
     // Also cover workspaces declared outside packages/* (e.g. apps/*): they receive the same
     // managed configs (tsconfig.json, package.json conventions, …) as packages/* children.
+    const rootPackageJson =
+      ignoreError(
+        () =>
+          JSON.parse(fs.readFileSync(path.resolve(rootDirPath, 'package.json'), 'utf8')) as PackageConfig['packageJson']
+      ) ?? {};
     const workspaceSubDirPaths = getWorkspaceSubDirPaths({
       dirPath: rootDirPath,
       packageJson: rootPackageJson,
