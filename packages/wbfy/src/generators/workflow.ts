@@ -1163,6 +1163,12 @@ function generateAutofixWorkflow(config: PackageConfig): Workflow {
 }
 
 async function writeYaml(newSettings: Workflow, filePath: string): Promise<void> {
+  // A permissions object emptied by the per-kind deletions (e.g. an existing test-rust caller
+  // whose only entry was `actions`) must be dropped entirely: `permissions: {}` strips EVERY
+  // token permission from the workflow, unlike the absent key which keeps the defaults.
+  if (newSettings.permissions && Object.keys(newSettings.permissions).length === 0) {
+    delete newSettings.permissions;
+  }
   const yamlText = removeTrailingSpaces(
     yaml.dump(newSettings, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } })
   );
