@@ -545,6 +545,27 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
+  it('bypasses the same-named package script and runs the local binary instead', async () => {
+    await fs.writeFile(
+      path.join(projectDirPath, 'package.json'),
+      JSON.stringify({ packageManager: 'bun@1.3.14', scripts: { probe: 'wb run probe argument' } })
+    );
+    const binDirPath = path.join(projectDirPath, 'node_modules', '.bin');
+    await fs.mkdir(binDirPath, { recursive: true });
+    await fs.writeFile(path.join(binDirPath, 'probe'), '#!/bin/sh\necho "bin:$@"\n', { mode: 0o755 });
+
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe', 'argument'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      // Simulate being spawned from the "probe" package script, where `bun run probe` would
+      // re-enter the script itself forever.
+      env: { PATH: process.env.PATH, npm_lifecycle_event: 'probe' },
+    });
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('bin:argument\n');
+    expect(result.status).toBe(0);
+  });
+
   it('prints usage instead of starting a runtime without a script', () => {
     const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run'], {
       cwd: projectDirPath,

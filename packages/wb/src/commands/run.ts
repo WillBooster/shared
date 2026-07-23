@@ -32,7 +32,7 @@ export const runCommand: CommandModule = {
     const env = fs.existsSync(path.join(cwd, 'package.json'))
       ? new Project(cwd, argv, true).env
       : readStandaloneEnvironment(argv, cwd);
-    const command = usesBunRuntime(cwd) ? ['bun', 'run', ...args] : ['node', ...args];
+    const command = buildRunCommand(cwd, args);
     if (argv.dryRun) {
       console.info(`Would run: ${command.join(' ')}`);
       return;
@@ -43,6 +43,16 @@ export const runCommand: CommandModule = {
     });
   },
 };
+
+function buildRunCommand(cwd: string, args: readonly string[]): string[] {
+  if (!usesBunRuntime(cwd)) return ['node', ...args];
+  // `bun run` resolves package.json scripts before local binaries, so a script that invokes
+  // `wb run <its own name>` (e.g. "vitest": "wb run vitest run") would respawn itself forever.
+  // When invoked from the same-named lifecycle script, bypass script resolution and execute the
+  // binary directly; runCommandWithEnvironment prepends node_modules/.bin to PATH.
+  if (args[0] === process.env.npm_lifecycle_event) return [...args];
+  return ['bun', 'run', ...args];
+}
 
 function readStandaloneEnvironment(argv: ArgumentsCamelCase, cwd: string): NodeJS.ProcessEnv {
   const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(argv, cwd, {
