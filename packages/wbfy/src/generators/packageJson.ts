@@ -1996,6 +1996,9 @@ function shouldUpdateExistingManagedDependency(
 // installing it into a repository that has not migrated (no root fnox.toml) would silently drop
 // every .env-configured variable from its builds, tests, and deploys.
 const minimumFnoxOnlyWbVersion = '19.0.0';
+// The newest release below minimumFnoxOnlyWbVersion at the time this guard shipped; used only
+// when the registry lookup for the actual newest pre-fnox-only release fails.
+const lastKnownPreFnoxOnlyWbVersion = '18.0.1';
 
 /**
  * The version wbfy materializes for a managed dependency: the latest release, except that
@@ -2025,10 +2028,9 @@ export function selectManagedWbVersion(
   if (hasRootFnoxToml) return latestVersion;
   const validLatestVersion = semver.valid(latestVersion);
   if (!validLatestVersion || semver.lt(validLatestVersion, minimumFnoxOnlyWbVersion)) return latestVersion;
-  // Fail open on a failed registry lookup: the regular no-downgrade logic still protects existing
-  // pins, and a hard failure here would block every other wbfy fix for the repository.
-  const preFnoxVersion = getLatestPreFnoxVersion();
-  if (!preFnoxVersion) return latestVersion;
+  // A failed registry lookup must not fail open to a fnox-only release (that would silently drop
+  // the repository's .env-configured variables); fall back to the last known compatible release.
+  const preFnoxVersion = getLatestPreFnoxVersion() ?? lastKnownPreFnoxOnlyWbVersion;
   if (!warnedPreFnoxOnlyWbRootDirPaths.has(rootDirPath)) {
     warnedPreFnoxOnlyWbRootDirPaths.add(rootDirPath);
     console.warn(

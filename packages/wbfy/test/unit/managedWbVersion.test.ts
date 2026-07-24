@@ -36,8 +36,8 @@ describe('selectManagedWbVersion', () => {
     ).toBe('18.0.1');
   });
 
-  it('falls back to the latest version when the pre-fnox-only lookup fails', () => {
-    expect(selectManagedWbVersion('19.0.0', false, () => {}, '/repo')).toBe('19.0.0');
+  it('falls back to the last known pre-fnox-only release when the lookup fails', () => {
+    expect(selectManagedWbVersion('19.0.0', false, () => {}, '/repo')).toBe('18.0.1');
   });
 
   it('passes through a non-semver latest marker', () => {

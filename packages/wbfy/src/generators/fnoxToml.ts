@@ -656,9 +656,15 @@ function declaresFnoxAgeProvider(filePath: string): boolean {
  * check in repositories without a root fnox.toml.
  */
 export function isTestFixtureFnoxPath(filePath: string): boolean {
-  return filePath
-    .split('/')
-    .some((segment) => segment === 'fixtures' || segment === 'test-fixtures' || segment === '__tests__');
+  // `fixtures` counts only directly under a test directory: wbfy supports arbitrary workspaces,
+  // so a legitimate `packages/fixtures/` workspace must stay managed and verified.
+  const segments = filePath.split('/');
+  return segments.some(
+    (segment, index) =>
+      segment === 'test-fixtures' ||
+      segment === '__tests__' ||
+      (segment === 'fixtures' && (segments[index - 1] === 'test' || segments[index - 1] === 'tests'))
+  );
 }
 
 function listFnoxLikeFilePaths(rootDirPath: string): string[] {
