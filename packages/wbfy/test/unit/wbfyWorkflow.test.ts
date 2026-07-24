@@ -9,9 +9,9 @@ import {
   getWbfyWorkflowCron,
   isWbfyWorkflowDenied,
   wbfyWorkflowDenyList,
-} from '../src/generators/workflow.js';
-import { promisePool } from '../src/utils/promisePool.js';
-import { createConfig } from './testConfig.js';
+} from '../../src/generators/workflow.js';
+import { promisePool } from '../../src/utils/promisePool.js';
+import { createConfig } from '../helpers/testConfig.js';
 
 interface WbfyCallerWorkflow {
   name?: string;
