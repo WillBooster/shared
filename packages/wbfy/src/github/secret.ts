@@ -258,7 +258,10 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   // Actions secrets, so the uploaded value must be a least-privilege PAT (fine-grained, Contents
   // and Workflows write only) rather than the bot PAT that can also administer settings,
   // rulesets, and secrets across the organization. Deny-listed repositories get no caller
-  // workflow, so they need no push token either.
+  // workflow, so they need no push token either. Known accepted risk: the SAME least-privilege
+  // PAT value reaches every allowed repository, so one compromised repository exposes push access
+  // to the others — replacing it with per-repository short-lived GitHub App tokens is tracked in
+  // https://github.com/WillBooster/shared/issues/1077.
   const wbfyGhToken = isWbfyWorkflowDenied(config.repository)
     ? undefined
     : process.env.WBFY_GH_TOKEN_FOR_WILLBOOSTERLAB;
