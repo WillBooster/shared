@@ -25,7 +25,7 @@
     "verify-full": "bun wb verify --full"
   },
   "overrides": {
-    "@types/glob": "8.1.0"
+    "@types/glob": "9.0.0"
   },
   "devDependencies": {
     "@anolilab/multi-semantic-release": "4.4.1",
