@@ -6,6 +6,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     dockerfile: '',
     isRoot: false,
     isPublicRepo: true,
+    isRepoVisibilityKnown: true,
     isReferredByOtherRepo: false,
     repository: 'github:WillBooster/example',
     isWillBoosterRepo: true,

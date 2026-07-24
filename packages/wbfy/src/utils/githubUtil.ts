@@ -17,7 +17,9 @@ export const gitHubUtil = new GitHubUtil();
 const octokitCache = new Map<string, Octokit>();
 
 export function getOctokit(owner?: string): Octokit {
-  const key = owner ?? '';
+  // GitHub owner names are case-insensitive, so credential selection (and the cache key) must
+  // not depend on how a remote URL happens to spell the organization.
+  const key = owner?.toLowerCase() ?? '';
   const cached = octokitCache.get(key);
   if (cached) return cached;
 
@@ -33,10 +35,15 @@ export function hasGitHubToken(owner: string): boolean {
 }
 
 function getGitHubToken(owner?: string): string | undefined {
-  if (owner === 'WillBooster') {
+  // Case-insensitive on purpose: a noncanonically cased remote (e.g. github.com/willboosterlab/…)
+  // must still select the organization's own PAT — falling through to the generic branch would
+  // prefer the OTHER organization's PAT, which cannot read this organization's private
+  // repositories.
+  const normalizedOwner = owner?.toLowerCase();
+  if (normalizedOwner === 'willbooster') {
     return process.env.GH_BOT_PAT_FOR_WILLBOOSTER || getGitHubCliToken();
   }
-  if (owner === 'WillBoosterLab') {
+  if (normalizedOwner === 'willboosterlab') {
     return process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB || getGitHubCliToken();
   }
   return (
