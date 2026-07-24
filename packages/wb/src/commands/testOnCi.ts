@@ -20,7 +20,7 @@ import { findWranglerConfigPath } from '../utils/wrangler.js';
 import { promisePool } from '../utils/promisePool.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
-import { getDefaultUnitTargets, warnIfPlaywrightSpecsAreUndiscoverable } from './test.js';
+import { findTestStructureViolations, getDefaultUnitTargets, printTestStructureViolations } from './test.js';
 
 const testOnCiBuilder = {
   silent: {
@@ -80,6 +80,13 @@ export async function testOnCi(
 
     console.info(`Running "test-on-ci" for ${project.name} ...`);
 
+    const structureViolations = findTestStructureViolations(project);
+    if (structureViolations.length > 0) {
+      printTestStructureViolations(project.name, structureViolations);
+      process.exitCode = 1;
+      continue;
+    }
+
     const hasDockerfile = project.hasDockerfile;
     if (hasDockerfile) {
       await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
@@ -113,8 +120,6 @@ export async function testOnCi(
       if (hasDockerfile) {
         await runWithSpawn(dockerScripts.stop(project), project, argv);
       }
-    } else {
-      warnIfPlaywrightSpecsAreUndiscoverable(project);
     }
   }
 }

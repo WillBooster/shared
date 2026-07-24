@@ -133,11 +133,18 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
 
     console.info(`Running "test" for ${project.name} ...`);
 
+    const structureViolations = findTestStructureViolations(project);
+    if (structureViolations.length > 0) {
+      printTestStructureViolations(project.name, structureViolations);
+      return 1;
+    }
+
     // Run unit tests if needed
     const defaultUnitTargets = getDefaultUnitTargets(project);
-    if (shouldRunUnit && defaultUnitTargets !== false) {
-      const unitTargets = testTargets.filter((target) => !target.includes('/e2e'));
-      const unitArgv = { ...testArgv, targets: unitTargets.length > 0 ? unitTargets : defaultUnitTargets };
+    const explicitUnitTargets = testTargets.filter((target) => !target.includes('/e2e'));
+    const unitTargets = explicitUnitTargets.length > 0 ? explicitUnitTargets : defaultUnitTargets;
+    if (shouldRunUnit && unitTargets !== false) {
+      const unitArgv = { ...testArgv, targets: unitTargets };
       const exitCode = await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, testArgv, {
         exitIfFailed: options.exitIfFailed,
         timeout: testArgv.unitTimeout,
@@ -148,7 +155,6 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     }
     // Skip e2e tests if not needed or no e2e directory exists
     if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
-      if (shouldRunE2e) warnIfPlaywrightSpecsAreUndiscoverable(project);
       continue;
     }
 
@@ -274,27 +280,50 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
   return 0;
 }
 
-/**
- * Warn when a project has a Playwright config but no test/e2e directory.
- * wb discovers e2e tests only under test/e2e/, so such projects would otherwise have their
- * Playwright specs silently skipped and `wb test` / `wb verify --full` would report success
- * without running any tests.
- */
-export function warnIfPlaywrightSpecsAreUndiscoverable(
-  project: Pick<Project, 'dirPath' | 'name' | 'packageJson'>
-): void {
-  // Callers invoke this only after establishing that test/e2e is missing, so it is not re-checked
-  // here. A workspace root delegates e2e to its packages, so it never warns (checked first to skip
-  // the filesystem lookup below). Only a project's OWN Playwright config counts: `hasPlaywrightConfig`
-  // walks up to the monorepo root, so reusing it would false-positive on library packages and the
-  // root itself, which legitimately share a root-level playwright.config.ts but keep e2e specs in a
-  // single app package.
-  if (project.packageJson.workspaces) return;
-  if (!fs.existsSync(path.join(project.dirPath, 'playwright.config.ts'))) return;
+const ALLOWED_TEST_DIRECTORY_NAMES = new Set(['unit', 'e2e', 'debug', 'helpers', 'fixtures']);
+const TEST_FILE_NAME_REGEXP = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
-  console.warn(
-    chalk.yellow(
-      `Skipping e2e tests for ${project.name}: a Playwright config exists but the test/e2e directory is missing. wb only discovers Playwright specs under test/e2e/, so move them there to run e2e tests.`
+/**
+ * Enforces the test-layout convention with no fallback: `test/` may contain only the `unit`, `e2e`,
+ * `debug`, `helpers`, and `fixtures` directories, and test files may exist only under `unit`, `e2e`,
+ * and `debug` — never under `test/helpers/` or `src/`, where wb would silently skip them. A project's
+ * own Playwright config also requires `test/e2e` for the same reason. `test/fixtures/` is exempt from
+ * the test-file check because fixtures may contain test files as data.
+ */
+export function findTestStructureViolations(project: Pick<Project, 'dirPath' | 'packageJson'>): string[] {
+  const violations: string[] = [];
+  const testDirPath = path.join(project.dirPath, 'test');
+  if (fs.existsSync(testDirPath)) {
+    for (const entry of fs.readdirSync(testDirPath, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !ALLOWED_TEST_DIRECTORY_NAMES.has(entry.name)) {
+        violations.push(`test/${entry.name}`);
+      }
+    }
+  }
+  for (const dirName of ['test/helpers', 'src']) {
+    const dirPath = path.join(project.dirPath, dirName);
+    if (!fs.existsSync(dirPath)) continue;
+    for (const filePath of fs.readdirSync(dirPath, { recursive: true }) as string[]) {
+      if (TEST_FILE_NAME_REGEXP.test(filePath)) violations.push(path.join(dirName, filePath));
+    }
+  }
+  // Only a project's OWN Playwright config counts: a workspace root legitimately shares a root-level
+  // playwright.config.ts while keeping e2e specs in a single app package.
+  if (
+    !project.packageJson.workspaces &&
+    fs.existsSync(path.join(project.dirPath, 'playwright.config.ts')) &&
+    !fs.existsSync(path.join(testDirPath, 'e2e'))
+  ) {
+    violations.push('playwright.config.ts');
+  }
+  return violations;
+}
+
+export function printTestStructureViolations(projectName: string, violations: string[]): void {
+  console.error(
+    chalk.red(
+      `Invalid test layout in ${projectName}. test/ may contain only the unit, e2e, debug, helpers, and fixtures directories, test files may exist only under test/unit/, test/e2e/, and test/debug/, and a Playwright config requires test/e2e/:\n` +
+        violations.map((violation) => `  ${violation}`).join('\n')
     )
   );
 }
@@ -309,20 +338,11 @@ export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArg
 }
 
 /**
- * Resolves the default unit-test targets so that every non-e2e test under `test/` runs, regardless of
- * whether the project keeps them directly under `test/`, under `test/unit/`, or both. Returns `false`
- * when the project has no unit tests to run.
+ * Unit tests live only under `test/unit/`; `test/debug/` runs only when explicitly targeted. Both
+ * vitest and `bun test` treat a bare `test` as a filename filter, which also matches e.g.
+ * `src/foo.test.ts`, so the trailing slash that limits the target to the directory is required.
  */
-export function getDefaultUnitTargets(project: Pick<Project, 'dirPath' | 'hasVitest'>): string[] | false {
-  if (!fs.existsSync(path.join(project.dirPath, 'test'))) return false;
-  const hasE2e = fs.existsSync(path.join(project.dirPath, 'test', 'e2e'));
-  // Both vitest and `bun test` treat a bare `test` as a filename filter, which also matches e.g.
-  // `src/foo.test.ts`, so the trailing slash that limits the target to the directory is required.
-  if (project.hasVitest) {
-    return hasE2e ? ['./test/', '--exclude', 'test/e2e/**'] : ['./test/'];
-  }
-  // `bun test` cannot exclude paths, so it can cover the whole `test/` directory only without e2e specs.
-  if (!hasE2e) return ['./test/'];
+export function getDefaultUnitTargets(project: Pick<Project, 'dirPath'>): string[] | false {
   return fs.existsSync(path.join(project.dirPath, 'test', 'unit')) ? ['./test/unit/'] : false;
 }
 
@@ -458,7 +478,7 @@ export function resolveTestExecutionTargets(
   forwardedPlaywrightArgs: string[] = []
 ): { shouldRunUnit: boolean; shouldRunE2e: boolean } {
   const hasE2eTargets = testTargets.some((target) => target.includes('/e2e'));
-  // Unit tests live directly under `test/` as well as under `test/unit/`, so every non-e2e target is a unit target.
+  // Non-e2e targets (test/unit/ and test/debug/) run through the unit-test runner.
   const hasUnitTargets = testTargets.some((target) => !target.includes('/e2e'));
   const shouldRunAllTests = testTargets.length === 0 && forwardedPlaywrightArgs.length === 0;
 
