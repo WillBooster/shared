@@ -6,9 +6,11 @@ import type { CommandModule } from 'yargs';
 
 import type { Project } from '../project.js';
 import { findDescendantProjects } from '../project.js';
+import type { ScriptArgv } from '../scripts/builder.js';
 import { findDrizzleConfig, wrapWithDrizzleConfigDir } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
+import { buildGenDevVarsCommand } from '../utils/wrangler.js';
 
 const builder = {} as const;
 
@@ -24,7 +26,7 @@ export const genCodeCommand: CommandModule = {
     }
 
     const genCodeTargets = projects.descendants
-      .map((project) => ({ project, scripts: getGenCodeScripts(project) }))
+      .map((project) => ({ project, scripts: getGenCodeScripts(project, argv) }))
       .filter(({ scripts }) => scripts.length > 0);
     if (genCodeTargets.length === 0) {
       console.info(chalk.green('No code generation needed.'));
@@ -39,13 +41,17 @@ export const genCodeCommand: CommandModule = {
   },
 };
 
-export function getGenCodeScripts(project: Project): string[] {
+export function getGenCodeScripts(project: Project, argv: ScriptArgv): string[] {
   const scripts: string[] = [];
   // First: `worker-configuration.d.ts` is gitignored, so on a fresh checkout it does not exist yet,
   // and the generators below type-check against the Cloudflare `Env` it declares.
   const wranglerTypesScript = getWranglerTypesScript(project);
   if (wranglerTypesScript) {
-    scripts.push(wranglerTypesScript);
+    // `wrangler types` infers the secret members of the Cloudflare `Env` only from a .dev.vars file
+    // (it never reads process.env), so regenerate it from the wb-managed environment variables first.
+    // Without this, a fresh checkout with no .dev.vars (e.g. CI) yields an `Env` missing every secret,
+    // and the type-aware generators/linters below fail (e.g. "Property 'AUTH_SECRET' does not exist").
+    scripts.push(buildGenDevVarsCommand(argv, '.dev.vars'), wranglerTypesScript);
   }
   const prismaGenerateScript = getPrismaGenerateScript(project);
   if (prismaGenerateScript) {

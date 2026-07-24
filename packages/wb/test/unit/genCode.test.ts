@@ -8,13 +8,17 @@ import { getGenCodeScripts } from '../../src/commands/genCode.js';
 import { Project } from '../../src/project.js';
 
 describe('getGenCodeScripts', () => {
-  it('generates worker types first when a wrangler config, dependency, and gitignore entry exist', async () => {
+  it('generates the .dev.vars file, then worker types, before the other generators', async () => {
     const dirPath = await createWorkerProject({ devDependencies: { wrangler: '4.70.0' } }, true);
 
     try {
-      // Must come first: worker-configuration.d.ts is gitignored, and the later generators
-      // type-check against the Cloudflare `Env` it declares.
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))[0]).toBe('YARN wrangler types');
+      // `wrangler types` reads secret members of `Env` only from .dev.vars (never process.env), so it
+      // must be regenerated first; and worker types must precede the later generators because
+      // worker-configuration.d.ts is gitignored and they type-check against the `Env` it declares.
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {}).slice(0, 2)).toStrictEqual([
+        'YARN wb gen-dev-vars .dev.vars',
+        'YARN wrangler types',
+      ]);
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -24,7 +28,10 @@ describe('getGenCodeScripts', () => {
     const dirPath = await createWorkerProject({}, true);
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+      const scripts = getGenCodeScripts(new Project(dirPath, {}, false), {});
+      expect(scripts).not.toContain('YARN wrangler types');
+      // .dev.vars is only needed to type `wrangler types`; skip it when worker types aren't generated.
+      expect(scripts).not.toContain('YARN wb gen-dev-vars .dev.vars');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -37,7 +44,7 @@ describe('getGenCodeScripts', () => {
     const dirPath = await createWorkerProject({ devDependencies: { wrangler: '4.70.0' } }, false);
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).not.toContain('YARN wrangler types');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -53,7 +60,7 @@ describe('getGenCodeScripts', () => {
     await fs.writeFile(path.join(dirPath, 'custom.env'), 'API_KEY=\n');
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).not.toContain('YARN wrangler types');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -66,7 +73,7 @@ describe('getGenCodeScripts', () => {
     );
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('YARN wrangler types');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).toContain('YARN wrangler types');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -84,7 +91,7 @@ describe('getGenCodeScripts', () => {
     );
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN wrangler types');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).not.toContain('YARN wrangler types');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -97,7 +104,7 @@ describe('getGenCodeScripts', () => {
     );
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('YARN wrangler types');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).toContain('YARN wrangler types');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -112,7 +119,7 @@ describe('getGenCodeScripts', () => {
     await fs.mkdir(path.join(dirPath, 'src'));
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('YARN run gen-i18n-ts');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).toContain('YARN run gen-i18n-ts');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -128,7 +135,7 @@ describe('getGenCodeScripts', () => {
     await fs.mkdir(path.join(dirPath, 'src'));
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain(
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).toContain(
         'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP'
       );
     } finally {
@@ -144,7 +151,7 @@ describe('getGenCodeScripts', () => {
     });
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).not.toContain(
         'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP'
       );
     } finally {
@@ -161,7 +168,7 @@ describe('getGenCodeScripts', () => {
     await fs.mkdir(path.join(dirPath, 'i18n'));
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).not.toContain(
         'YARN gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP'
       );
     } finally {
@@ -177,7 +184,7 @@ describe('getGenCodeScripts', () => {
     });
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN run gen-i18n-ts');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).not.toContain('YARN run gen-i18n-ts');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -193,7 +200,7 @@ describe('getGenCodeScripts', () => {
     await fs.writeFile(path.join(dirPath, 'prisma', 'schema.prisma'), '');
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain('PRISMA generate');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).toContain('PRISMA generate');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -207,7 +214,7 @@ describe('getGenCodeScripts', () => {
     });
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('PRISMA generate');
+      expect(getGenCodeScripts(new Project(dirPath, {}, false), {})).not.toContain('PRISMA generate');
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
