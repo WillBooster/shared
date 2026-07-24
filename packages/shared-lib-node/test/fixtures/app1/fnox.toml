@@ -1,0 +1,15 @@
+[secrets]
+NAME = { default = "app1" }
+PORT = { default = "3000" }
+
+[profiles.development.secrets]
+ENV = { default = "development1" }
+PORT = { default = "3001" }
+
+[profiles.test.secrets]
+ENV = { default = "test1" }
+PORT = { default = "3002" }
+
+[profiles.production.secrets]
+ENV = { default = "production1" }
+PORT = { default = "3003" }

@@ -164,7 +164,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
 
   if (!skipAddingDeps) {
-    installDependencyUpdates(config, jsonObj, dependencyUpdates);
+    installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
     formatPackageJsonWithProjectFormatter(config, 'bun', filePath);
   }
 }
@@ -1500,14 +1500,15 @@ function removeEmptyDependencySections(jsonObj: PackageJson): void {
 
 function installDependencyUpdates(
   config: PackageConfig,
+  rootConfig: PackageConfig,
   jsonObj: PackageJson,
   dependencyUpdates: DependencyUpdates
 ): void {
   const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-  installNpmDependencies(config, dependencies, false);
+  installNpmDependencies(config, rootConfig, dependencies, false);
 
   const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-  installNpmDependencies(config, devDependencies, true);
+  installNpmDependencies(config, rootConfig, devDependencies, true);
 
   const pythonPackageManager = getPythonPackageManager(config);
   if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
@@ -1537,11 +1538,16 @@ function getPythonSetupCommand(packageManager: 'poetry' | 'uv'): string {
   return 'poetry config virtualenvs.in-project true && { python_path="$(mise which python 2>/dev/null)" || true; } && { [ -z "$python_path" ] || poetry env use "$python_path"; } && poetry run pip install --upgrade pip && poetry install';
 }
 
-function installNpmDependencies(config: PackageConfig, dependencies: string[], dev: boolean): void {
+function installNpmDependencies(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  dependencies: string[],
+  dev: boolean
+): void {
   if (dependencies.length === 0) return;
 
   const dependencySpecifiers = [
-    ...new Set(dependencies.map((dependency) => getInstallDependencySpecifier(config, dependency))),
+    ...new Set(dependencies.map((dependency) => getInstallDependencySpecifier(config, rootConfig, dependency))),
   ];
   spawnSync('bun', ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
 }
@@ -1588,6 +1594,7 @@ function addPackageJsonDependencies(
     }
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       config,
+      rootConfig,
       dependency,
       packageJsonDependencies[dependency]
     );
@@ -1601,7 +1608,7 @@ function addPackageJsonDependencies(
       packageJsonDependencies[dependency] !== '*'
     )
       continue;
-    const latestVersion = getLatestDependencyVersion(config, dependency);
+    const latestVersion = getManagedDependencyVersion(config, rootConfig, dependency);
     if (latestVersion === '*' && packageJsonDependencies[dependency]) continue;
     packageJsonDependencies[dependency] = latestVersion;
   }
@@ -1888,8 +1895,9 @@ function getRawDependencyVersionFromNpm(dependency: string): string {
   return spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
 }
 
-function getInstallDependencySpecifier(config: PackageConfig, dependency: string): string {
-  if (dependency === wbDependency) return `${dependency}@${getLatestDependencyVersion(config, dependency)}`;
+function getInstallDependencySpecifier(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
+  if (dependency === wbDependency)
+    return `${dependency}@${getManagedDependencyVersion(config, rootConfig, dependency)}`;
   return dependency;
 }
 
@@ -1969,20 +1977,126 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
 
 function shouldUpdateExistingManagedDependency(
   config: PackageConfig,
+  rootConfig: PackageConfig,
   dependency: string,
   currentVersion: string | undefined
 ): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
+  if (!managedDependencyNames.has(dependency)) return false;
+  const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
+  // An existing fnox-only wb pin in a non-fnox repository is an incompatible state (wb >= 19
+  // ignores the repository's .env configuration), so the general no-downgrade rule below must
+  // not preserve it: rewrite it to the capped compatible release. Restricted to fnox-only
+  // MAJORS of the current pin so a merely-newer compatible pin (e.g. 18.0.2 while the registry
+  // lookup lags at 18.0.1) keeps the no-downgrade protection.
+  const currentValidVersion = semver.valid(currentVersion);
+  if (
+    dependency === wbDependency &&
+    currentValidVersion &&
+    semver.major(currentValidVersion) >= semver.major(minimumFnoxOnlyWbVersion) &&
+    semver.valid(managedVersion) &&
+    isNewerPackageVersion(currentVersion, managedVersion) &&
+    !hasFnoxConfigForRepository(rootConfig.dirPath)
+  ) {
+    return true;
+  }
   // wbfy owns these tool dependencies, but applying wbfy should not downgrade a
   // repository that already pins a newer reviewed release.
-  return managedDependencyNames.has(dependency) && isNewerManagedDependencyVersion(config, dependency, currentVersion);
+  return isNewerPackageVersion(managedVersion, currentVersion);
 }
 
-function isNewerManagedDependencyVersion(config: PackageConfig, dependency: string, currentVersion: string): boolean {
+// wb >= 19 reads environment variables exclusively from fnox (the .env cascade was removed), so
+// installing it into a repository that has not migrated (no root fnox.toml) would silently drop
+// every .env-configured variable from its builds, tests, and deploys.
+const minimumFnoxOnlyWbVersion = '19.0.0';
+// The newest release below minimumFnoxOnlyWbVersion at the time this guard shipped; used only
+// when the registry lookup for the actual newest pre-fnox-only release fails.
+const lastKnownPreFnoxOnlyWbVersion = '18.0.1';
+
+/**
+ * The version wbfy materializes for a managed dependency: the latest release, except that
+ * `@willbooster/wb` is capped to the latest pre-fnox-only release for repositories without a
+ * root fnox.toml (see minimumFnoxOnlyWbVersion). Capping at the version source covers every
+ * path — upgrades of an existing pin, `*`/missing specifiers, and fresh installs.
+ */
+function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
   const latestVersion = getLatestDependencyVersion(config, dependency);
-  return isNewerPackageVersion(latestVersion, currentVersion);
+  if (dependency !== wbDependency) return latestVersion;
+  return selectManagedWbVersion(
+    hasFnoxConfigForRepository(rootConfig.dirPath),
+    latestVersion,
+    getLatestPreFnoxOnlyWbVersion,
+    rootConfig.dirPath
+  );
+}
+
+/**
+ * Whether fnox configures this repository: wbfy may be invoked directly on a workspace CHILD
+ * (`wbfy <repo>/packages/<app>`), whose fnox migration lives in an ancestor's fnox.toml that
+ * fnox resolves hierarchically — so walk up to the git repository boundary instead of checking
+ * only the invoked directory.
+ */
+export function hasFnoxConfigForRepository(rootDirPath: string): boolean {
+  for (let dirPath = path.resolve(rootDirPath); ; dirPath = path.dirname(dirPath)) {
+    if (fs.existsSync(path.join(dirPath, 'fnox.toml'))) return true;
+    // Stop at the repository boundary: a fnox.toml outside the repository must not count.
+    if (fs.existsSync(path.join(dirPath, '.git')) || path.dirname(dirPath) === dirPath) return false;
+  }
+}
+
+const warnedPreFnoxOnlyWbRootDirPaths = new Set<string>();
+
+export function selectManagedWbVersion(
+  hasFnoxConfig: boolean,
+  latestVersion: string,
+  getLatestPreFnoxVersion: () => string | undefined,
+  rootDirPath: string
+): string {
+  if (hasFnoxConfig) return latestVersion;
+  const validLatestVersion = semver.valid(latestVersion);
+  // Compare majors so a 19.x PRE-release (semver-less-than 19.0.0) is capped too.
+  if (validLatestVersion && semver.major(validLatestVersion) < semver.major(minimumFnoxOnlyWbVersion)) {
+    return latestVersion;
+  }
+  // Reached for a fnox-only latest release AND for a failed lookup (the '*' marker): both must
+  // resolve to a known-compatible release — `bun add wb@*` could otherwise install a fnox-only
+  // release that silently drops the repository's .env-configured variables. When the secondary
+  // registry lookup fails too, fall back to the last known compatible release.
+  const preFnoxVersion = getLatestPreFnoxVersion() ?? lastKnownPreFnoxOnlyWbVersion;
+  if (!warnedPreFnoxOnlyWbRootDirPaths.has(rootDirPath)) {
+    warnedPreFnoxOnlyWbRootDirPaths.add(rootDirPath);
+    console.warn(
+      `Capped ${wbDependency} at ${preFnoxVersion} in ${rootDirPath}: wb >= ${minimumFnoxOnlyWbVersion} loads environment variables only from fnox, and this repository has no root fnox.toml. Migrate to fnox (see migrate-env-to-fnox), then rerun wbfy to upgrade.`
+    );
+  }
+  return preFnoxVersion;
+}
+
+let cachedPreFnoxOnlyWbVersion: string | undefined | false = false;
+
+function getLatestPreFnoxOnlyWbVersion(): string | undefined {
+  if (cachedPreFnoxOnlyWbVersion === false) {
+    const output = spawnSyncAndReturnStdout(
+      'npm',
+      ['show', `${wbDependency}@<${minimumFnoxOnlyWbVersion}`, 'version', '--json', '--workspaces=false'],
+      process.cwd()
+    );
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(output);
+    } catch {
+      parsed = undefined;
+    }
+    // `npm show pkg@<range> version --json` prints an array for multiple matches and a bare
+    // string for a single match.
+    const versions = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+      (version): version is string => typeof version === 'string' && !!semver.valid(version)
+    );
+    cachedPreFnoxOnlyWbVersion = versions.toSorted(semver.compare).at(-1);
+  }
+  return cachedPreFnoxOnlyWbVersion;
 }
 
 function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {

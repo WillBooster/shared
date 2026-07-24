@@ -23,8 +23,8 @@ Commands:
                                 image
   wb prisma                     Run database commands              [aliases: db]
   wb retry [command] [args...]  Retry the given command until it succeeds
-  wb setup                      Setup development environment. .env files are
-                                ignored.
+  wb setup                      Setup development environment. Environment
+                                variables are not loaded.
   wb setup-private-packages     Materialize private git and registry
                                 dependencies for Docker builds (installed
                                 registry packages satisfying an exact version
@@ -35,22 +35,19 @@ Commands:
   wb test [targets...]          Test project. If you pass no arguments, it will
                                 run all tests.
   wb test-on-ci                 Test project on CI with no options.
-  wb typecheck                  Run type checking. .env files are ignored.
-  wb tc                         Run type checking. .env files are ignored.
+  wb typecheck                  Run type checking. Environment variables are not
+                                loaded.
+  wb tc                         Run type checking. Environment variables are not
+                                loaded.
 
 Options:
-      --env               .env files to be loaded.                       [array]
-      --cascade-env       Environment to load cascading .env files (e.g.,
-                          `.env`, `.env.<environment>`, `.env.local` and
-                          `.env.<environment>.local`). Preferred over
+      --cascade-env       Environment (fnox profile / mise env) to load
+                          environment variables for. Preferred over
                           `cascade-node-env` and `auto-cascade-env`.    [string]
       --cascade-node-env  Same with --cascade-env=<NODE_ENV || "development">.
                           Preferred over `auto-cascade-env`.           [boolean]
       --auto-cascade-env  Same with --cascade-env=<WB_ENV || NODE_ENV ||
                           "development">.              [boolean] [default: true]
-      --include-root-env  Include .env files in root directory if the project is
-                          in a monorepo and --env option is not used.
-                                                       [boolean] [default: true]
   -v, --verbose           Whether to show verbose information          [boolean]
   -w, --working-dir       A working directory                           [string]
   -d, --dry-run, --dry    Whether to skip actual command execution     [boolean]

@@ -60,7 +60,7 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it.runIf(isFnoxAvailable())('loads fnox-provided environment variables preferring .env files', async () => {
+  it.runIf(isFnoxAvailable())('loads fnox-provided environment variables', async () => {
     // The released `wb dotenv` routes through bin/dotenv.js (not dist), so fnox loading must be
     // exercised through bin/index.js to catch drift from the TypeScript implementation.
     await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
@@ -68,7 +68,6 @@ describe('bin/index.js dotenv fast path', () => {
       path.join(projectDirPath, 'fnox.toml'),
       '[secrets]\nENV = { default = "fnox-value" }\nFNOX_ONLY = { default = "fnox-only" }\n'
     );
-    await fs.writeFile(path.join(projectDirPath, '.env'), 'ENV=dotenv-value\n');
 
     const result = childProcess.spawnSync(
       process.execPath,
@@ -80,7 +79,7 @@ describe('bin/index.js dotenv fast path', () => {
       }
     );
     expect(result.stderr).toBe('');
-    expect(result.stdout).toBe('dotenv-value fnox-only\n');
+    expect(result.stdout).toBe('fnox-value fnox-only\n');
     expect(result.status).toBe(0);
   });
 
@@ -132,32 +131,40 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
-  it('rejects an env source whose WB_ENV disagrees with the default development cascade', async () => {
-    // `.env.development` is read even when WB_ENV is unset (cascade defaults to development); a WB_ENV
-    // it defines that disagrees with that cascade would run the child labeled one environment while
-    // carrying another's secrets, so it must fail fast (matching the forced-mode mismatch guard).
-    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
-    await fs.writeFile(path.join(projectDirPath, '.env.development'), 'WB_ENV=production\n');
+  it.runIf(isFnoxAvailable())(
+    'rejects an env source whose WB_ENV disagrees with the default development cascade',
+    async () => {
+      // The development profile is selected even when WB_ENV is unset (the cascade defaults to
+      // development); a WB_ENV the fnox sources define that disagrees with that cascade would run the
+      // child labeled one environment while carrying another's secrets, so it must fail fast
+      // (matching the forced-mode mismatch guard).
+      await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+      await fs.writeFile(path.join(projectDirPath, 'fnox.toml'), '[secrets]\nWB_ENV = { default = "production" }\n');
 
-    const result = childProcess.spawnSync(
-      process.execPath,
-      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo should-not-run'],
-      {
-        cwd: projectDirPath,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH },
-      }
+      const result = childProcess.spawnSync(
+        process.execPath,
+        [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo should-not-run'],
+        {
+          cwd: projectDirPath,
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH },
+        }
+      );
+      expect(result.stdout).not.toContain('should-not-run');
+      expect(result.stderr).toContain('WB_ENV resolves to "production"');
+      expect(result.status).toBe(1);
+    }
+  );
+
+  it.runIf(isFnoxAvailable())('allows a non-standard profile (NODE_ENV=qa) to carry a standard WB_ENV', async () => {
+    // `NODE_ENV=qa` selects the `qa` fnox profile while WB_ENV stays a standard mode — a supported
+    // selection the mismatch guard must not reject (it enforces only standard cascades, like the
+    // main loader).
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[profiles.qa.secrets]\nWB_ENV = { default = "development" }\nSELECTED = { default = "qa-profile" }\n'
     );
-    expect(result.stdout).not.toContain('should-not-run');
-    expect(result.stderr).toContain('WB_ENV resolves to "production"');
-    expect(result.status).toBe(1);
-  });
-
-  it('allows a non-standard cascade suffix (NODE_ENV=qa) to carry a standard WB_ENV', async () => {
-    // `NODE_ENV=qa` selects `.env.qa` while WB_ENV stays a standard mode — a supported cascade the
-    // mismatch guard must not reject (it enforces only standard cascades, like the main loader).
-    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
-    await fs.writeFile(path.join(projectDirPath, '.env.qa'), 'WB_ENV=development\nSELECTED=qa-file\n');
 
     const result = childProcess.spawnSync(
       process.execPath,
@@ -169,30 +176,7 @@ describe('bin/index.js dotenv fast path', () => {
       }
     );
     expect(result.stderr).toBe('');
-    expect(result.stdout).toBe('development qa-file\n');
-    expect(result.status).toBe(0);
-  });
-
-  it('does not let FNOX_PROFILE redirect the .env cascade or the WB_ENV check without fnox.toml', async () => {
-    // FNOX_PROFILE is a fnox-only selector; in a legacy `.env`-only project it must NOT choose which
-    // `.env.<x>` files load (that stays `WB_ENV || NODE_ENV || development`) NOR the environment the
-    // WB_ENV mismatch guard expects — here `.env.test` correctly resolves WB_ENV=test even though
-    // FNOX_PROFILE names production.
-    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
-    await fs.writeFile(path.join(projectDirPath, '.env.test'), 'WB_ENV=test\nSELECTED=test\n');
-    await fs.writeFile(path.join(projectDirPath, '.env.production'), 'WB_ENV=production\nSELECTED=production\n');
-
-    const result = childProcess.spawnSync(
-      process.execPath,
-      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$WB_ENV" "$SELECTED"'],
-      {
-        cwd: projectDirPath,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH, NODE_ENV: 'test', FNOX_PROFILE: 'production' },
-      }
-    );
-    expect(result.stderr).toBe('');
-    expect(result.stdout).toBe('test test\n');
+    expect(result.stdout).toBe('development qa-profile\n');
     expect(result.status).toBe(0);
   });
 
@@ -227,64 +211,53 @@ describe('bin/index.js run command', () => {
     await fs.rm(projectDirPath, { force: true, recursive: true });
   });
 
-  it('runs TypeScript with Node and forwards environment variables and arguments', async () => {
-    await fs.writeFile(path.join(projectDirPath, '.env'), 'LOADED_BY_WB=from-dotenv\n');
-    await fs.writeFile(
-      path.join(projectDirPath, 'probe.ts'),
-      "const value: string = `${process.env.LOADED_BY_WB}:${process.argv.slice(2).join(',')}`;\nconsole.log(value);\n"
-    );
+  it.runIf(isFnoxAvailable())(
+    'runs TypeScript with Node and forwards environment variables and arguments',
+    async () => {
+      await fs.writeFile(
+        path.join(projectDirPath, 'fnox.toml'),
+        '[secrets]\nLOADED_BY_WB = { default = "from-fnox" }\n'
+      );
+      await fs.writeFile(
+        path.join(projectDirPath, 'probe.ts'),
+        "const value: string = `${process.env.LOADED_BY_WB}:${process.argv.slice(2).join(',')}`;\nconsole.log(value);\n"
+      );
 
-    const result = childProcess.spawnSync(
-      process.execPath,
-      [binIndexPath, 'run', '--quiet-env', 'probe.ts', 'first', '--', '--second'],
-      {
-        cwd: projectDirPath,
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH },
-      }
-    );
-    expect(result.stderr).toBe('');
-    expect(result.stdout).toBe('from-dotenv:first,--,--second\n');
-    expect(result.status).toBe(0);
-  });
-
-  it('honors environment-selection options through the full CLI path', async () => {
-    await fs.writeFile(path.join(projectDirPath, 'custom.env'), 'LOADED_BY_WB=custom\n');
-    await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.env.LOADED_BY_WB);\n');
-
-    const result = childProcess.spawnSync(
-      'bun',
-      [sourceIndexPath, '--working-dir', projectDirPath, '--env', 'custom.env', 'run', 'probe.js'],
-      {
-        encoding: 'utf8',
-        env: { PATH: process.env.PATH },
-      }
-    );
-    expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('custom\n');
-    expect(result.status).toBe(0);
-  });
+      const result = childProcess.spawnSync(
+        process.execPath,
+        [binIndexPath, 'run', '--quiet-env', 'probe.ts', 'first', '--', '--second'],
+        {
+          cwd: projectDirPath,
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH },
+        }
+      );
+      expect(result.stderr).toBe('');
+      expect(result.stdout).toBe('from-fnox:first,--,--second\n');
+      expect(result.status).toBe(0);
+    }
+  );
 
   it('distinguishes a global option value named run from the run command', async () => {
-    await fs.writeFile(path.join(projectDirPath, 'run'), 'LOADED_BY_WB=custom\n');
-    await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.env.LOADED_BY_WB);\n');
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const result = childProcess.spawnSync(
       process.execPath,
-      [binIndexPath, '--working-dir', projectDirPath, '--quiet-env', '--env', 'run', 'run', 'probe.js'],
+      [binIndexPath, '--working-dir', projectDirPath, '--quiet-env', '--cascade-env', 'run', 'run', 'probe.js'],
       {
         encoding: 'utf8',
-        env: { PATH: process.env.PATH },
+        // An explicit --cascade-env becomes WB_ENV, and "run" is deliberately non-standard here.
+        env: { PATH: process.env.PATH, WB_SKIP_ENV_CHECK: '1' },
       }
     );
     expect(result.stderr).toBe('');
-    expect(result.stdout).toBe('custom\n');
+    expect(result.stdout).toBe('executed\n');
     expect(result.status).toBe(0);
   });
 
-  it('enforces the project environment contract on the default path', async () => {
+  it.runIf(isFnoxAvailable())('enforces the project environment contract on the default path', async () => {
     await fs.writeFile(path.join(projectDirPath, 'package.json'), '{}');
-    await fs.writeFile(path.join(projectDirPath, '.env'), 'LOADED_BY_WB=value\n');
+    await fs.writeFile(path.join(projectDirPath, 'fnox.toml'), '[secrets]\nLOADED_BY_WB = { default = "value" }\n');
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', 'probe.js'], {
@@ -412,8 +385,8 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
-  it('rejects an invalid WB_ENV in a standalone script directory', async () => {
-    await fs.writeFile(path.join(projectDirPath, '.env'), 'WB_ENV=prodcution\n');
+  it.runIf(isFnoxAvailable())('rejects an invalid WB_ENV in a standalone script directory', async () => {
+    await fs.writeFile(path.join(projectDirPath, 'fnox.toml'), '[secrets]\nWB_ENV = { default = "prodcution" }\n');
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
@@ -427,11 +400,7 @@ describe('bin/index.js run command', () => {
   });
 
   it('exposes the selected fallback WB_ENV in standalone script directories', async () => {
-    await fs.writeFile(path.join(projectDirPath, '.env.production'), 'EXPANDED_MODE=${WB_ENV}\n');
-    await fs.writeFile(
-      path.join(projectDirPath, 'probe.js'),
-      'console.log(`${process.env.WB_ENV}:${process.env.EXPANDED_MODE}`);\n'
-    );
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), 'console.log(process.env.WB_ENV);\n');
 
     const result = childProcess.spawnSync(
       process.execPath,
@@ -443,7 +412,7 @@ describe('bin/index.js run command', () => {
       }
     );
     expect(result.stderr).toBe('');
-    expect(result.stdout).toBe('production:production\n');
+    expect(result.stdout).toBe('production\n');
     expect(result.status).toBe(0);
   });
 

@@ -17,11 +17,11 @@ function isNonRailwayKey(key: string): boolean {
 }
 
 /**
- * The keys actually declared in the project's fnox/.env sources. `mise env` is reported as a
+ * The keys actually declared in the project's fnox sources. `mise env` is reported as a
  * pseudo-source that mixes in host/tool variables (PATH, CARGO_HOME, RUSTUP_*, ...); those must
  * never be pushed to Railway, so they are excluded here (mirrors wb deploy).
  */
-export function selectDotenvSourcedKeys(envSources: ReadonlyArray<readonly [string, readonly string[]]>): Set<string> {
+export function selectFnoxSourcedKeys(envSources: ReadonlyArray<readonly [string, readonly string[]]>): Set<string> {
   return new Set(envSources.filter(([source]) => !source.startsWith('mise env')).flatMap(([, keys]) => keys));
 }
 
@@ -47,7 +47,7 @@ type RailwayEnvCommandArgv = ArgumentsCamelCase<RailwayEnvCommandOptions>;
 export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions> = {
   command: 'railway-env',
   describe:
-    'Sync the environment variables declared for the current WB_ENV (resolved from fnox/.env) to the Railway service, keeping fnox the single source of truth. Railway-managed keys (RAILWAY_*, NIXPACKS_*, CI) are never pushed.',
+    'Sync the environment variables declared for the current WB_ENV (resolved from fnox) to the Railway service, keeping fnox the single source of truth. Railway-managed keys (RAILWAY_*, NIXPACKS_*, CI) are never pushed.',
   builder: (yargs) => yargs as unknown as Argv<RailwayEnvCommandOptions>,
   async handler(argv: RailwayEnvCommandArgv) {
     const project = findSelfProject(argv);
@@ -63,17 +63,17 @@ export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions>
       process.exit(1);
     }
 
-    // Restrict to variables declared in the project's fnox/.env sources; ignore process.env so
+    // Restrict to variables declared in the project's fnox sources; ignore process.env so
     // Railway's own injected variables never leak in. The effective values come from project.env
     // (fnox-resolved for WB_ENV). Mirrors wb deploy.
     const [envVars, envSources] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
     // `mise env` is reported as a pseudo-source that mixes in host/tool variables such as PATH and
-    // CARGO_HOME; those must never be pushed to Railway, so keep only fnox/.env-declared keys.
-    const dotenvKeys = selectDotenvSourcedKeys(envSources);
+    // CARGO_HOME; those must never be pushed to Railway, so keep only fnox-declared keys.
+    const fnoxKeys = selectFnoxSourcedKeys(envSources);
     for (const key of Object.keys(envVars)) {
-      if (!dotenvKeys.has(key)) delete envVars[key];
+      if (!fnoxKeys.has(key)) delete envVars[key];
     }
-    // Exported environment variables win over file values (matches wb deploy / gen-dev-vars).
+    // Exported environment variables win over configured values (matches wb deploy / gen-dev-vars).
     for (const key of Object.keys(envVars)) {
       const effectiveValue = project.env[key];
       if (effectiveValue !== undefined) envVars[key] = effectiveValue;

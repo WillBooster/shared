@@ -107,14 +107,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // (the environment wb itself reads and passes explicitly); the latter is a cached snapshot
     // taken before this point, so writing only to process.env would leave wb's own preflight —
     // and any command spawned with project.env — without the token.
-    // Only --include-root-env gates the root lookup, not an explicit --env: --env replaces the
-    // dotenv VARIABLE sources, while .env.cloudflare is a credential sidecar read outside that
-    // cascade (the project's own copy is read regardless of --env, as it always has been).
-    // Gating on --env would make `wb deploy --env <file>` silently stop finding the repo's token.
-    const cloudflareEnvVars = readCloudflareEnvFiles(
-      project.dirPath,
-      argv.includeRootEnv ? project.rootDirPath : undefined
-    );
+    const cloudflareEnvVars = readCloudflareEnvFiles(project.dirPath, project.rootDirPath);
     for (const [key, value] of Object.entries(cloudflareEnvVars)) {
       // ??= so that an explicitly exported empty value still wins over the file.
       process.env[key] ??= value;
@@ -213,17 +206,17 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     // 1. Resolve and validate all secrets before any build or remote mutation, so a missing
     //    secret aborts the deploy instead of leaving a migrated database behind an old Worker.
     const [envVars, envSources] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
-    // Restrict the secrets domain to keys defined in the project's .env files: `mise env`
+    // Restrict the secrets domain to keys the project's fnox configuration declares: `mise env`
     // output (reported as a pseudo-source) mixes in host/tool variables such as CARGO_HOME,
     // which must never be uploaded as Worker secrets.
-    const dotenvKeys = new Set(
+    const fnoxKeys = new Set(
       envSources.filter(([source]) => !source.startsWith('mise env')).flatMap(([, keys]) => keys)
     );
     for (const key of Object.keys(envVars)) {
-      if (!dotenvKeys.has(key)) delete envVars[key];
+      if (!fnoxKeys.has(key)) delete envVars[key];
     }
     // Names declared via wrangler `secrets.required` may likewise be supplied purely as
-    // exported environment variables (e.g. CI workflow env) instead of dotenv values.
+    // exported environment variables (e.g. CI workflow env) instead of fnox values.
     for (const key of resolvedConfig.requiredSecretNames) {
       const exportedValue = project.env[key];
       if (envVars[key] === undefined && exportedValue !== undefined) envVars[key] = exportedValue;
@@ -531,9 +524,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
  * Read the Cloudflare API token that CI drops in a `.env.cloudflare` file (e.g. the reusable
  * deploy workflow's `file_path_1`), looking beside the Worker's wrangler config and at the
  * monorepo root — `file_path_1` is repo-relative, so both spellings occur in practice.
- * Nearer files win, mirroring the `.env` cascade: a workspace may override the root token,
- * never the reverse. Pass `rootDirPath` as undefined to read the workspace alone, so that
- * `--include-root-env=false` isolates this file from the root just as it does the cascade.
+ * Nearer files win: a workspace may override the root token, never the reverse.
  * `CLOUDFLARE_ENV` is dropped; it would double-apply the environment suffix.
  */
 export function readCloudflareEnvFiles(dirPath: string, rootDirPath: string | undefined): Record<string, string> {

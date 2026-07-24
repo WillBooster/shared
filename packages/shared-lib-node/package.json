@@ -43,7 +43,6 @@
   },
   "dependencies": {
     "@types/yargs": "17.0.35",
-    "dotenv": "17.4.2",
     "dotenv-expand": "13.0.0",
     "fast-glob": "3.3.3"
   },
@@ -55,7 +54,7 @@
     "@types/node": "25.6.0",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
-    "@willbooster/wb": "17.0.0",
+    "@willbooster/wb": "18.0.1",
     "build-ts": "20.0.0",
     "oxfmt": "0.60.0",
     "oxlint": "1.75.0",

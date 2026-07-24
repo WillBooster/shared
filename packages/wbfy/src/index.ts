@@ -7,13 +7,13 @@ import yargs from 'yargs';
 
 import { fixNextConfigJson } from './fixers/nextConfig.js';
 import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
-import { fixPrismaEnvFiles } from './fixers/prisma.js';
 import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js';
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
 import { fixWbDbCommand } from './fixers/wbDbCommand.js';
 import { untrackCloudflareEnv } from './fixers/cloudflareEnv.js';
 import { removeEnvExample } from './fixers/envExample.js';
+import { removeEnvFiles } from './fixers/envFiles.js';
 import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import type { BunLinker } from './generators/bunfig.js';
@@ -244,6 +244,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     // After generateFnoxToml so the insertion can never race the transactional recipient
     // migration (which snapshots and may restore every fnox.toml).
     await ensureWbEnvDefinitions(rootConfig, allPackageConfigs);
+    // After ensureWbEnvDefinitions so a repository whose fnox.toml is being completed in the same
+    // run still gets its leftover committed .env files removed (fnox is the single source now).
+    await removeEnvFiles(rootConfig);
     // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
     // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
     await promisePool.promiseAll();
@@ -267,7 +270,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
       (rootConfig.repository?.startsWith('github:WillBooster/') ||
         rootConfig.repository?.startsWith('github:WillBoosterLab/'));
     await Promise.all([
-      fixPrismaEnvFiles(rootConfig),
       abbreviationPromise.then(() => generateReadme(rootConfig)),
       generateDockerignore(rootConfig),
       generateEditorconfig(rootConfig),

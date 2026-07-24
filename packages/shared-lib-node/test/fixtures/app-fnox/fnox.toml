@@ -3,6 +3,8 @@ ENV = { default = "fnox-development" }
 PORT = { default = "6001" }
 NAME = { default = "app-fnox" }
 FNOX_ONLY = { default = "base-fnox" }
+# Bare `$VAR` passes through fnox, so this exercises the reader's own expansion of loaded keys.
+REF = { default = "ref-$FNOX_ONLY" }
 
 [profiles.test.secrets]
 ENV = { default = "fnox-test" }

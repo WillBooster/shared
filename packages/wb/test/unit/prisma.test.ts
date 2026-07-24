@@ -23,8 +23,8 @@ describe('prisma command unknown options', () => {
         '--verbose',
         '--dry-run',
         'false',
-        '--env',
-        '.env.test',
+        '--cascade-env',
+        'staging',
         '--some-custom-flag',
         'custom-value',
         '--another-flag',
@@ -42,7 +42,7 @@ describe('prisma command unknown options', () => {
     // Should not include known options
     expect(result).not.toContain('--verbose');
     expect(result).not.toContain('--dry-run');
-    expect(result).not.toContain('--env');
+    expect(result).not.toContain('--cascade-env');
   });
 
   it('should avoid duplicating kebab-case and camelCase options', () => {

@@ -104,28 +104,13 @@ describe('HttpServerScripts.testE2E', () => {
     } as unknown as Project;
     const argv = yargs()
       .options(sharedOptionsBuilder)
-      .parseSync([
-        '--env',
-        '.env.test',
-        '--env',
-        '.env.local.test',
-        '--include-root-env=false',
-        '--auto-cascade-env=false',
-        'test',
-      ]) as unknown as TestArgv;
+      .parseSync(['--cascade-env=staging', '--auto-cascade-env=false', 'test']) as unknown as TestArgv;
     normalizeArgs(argv);
 
     const command = await httpServerScripts.testE2EProduction(project, argv, {});
 
-    expect(buildEnvReaderOptionArgs(argv)).toEqual([
-      '--env=.env.test',
-      '--env=.env.local.test',
-      '--auto-cascade-env=false',
-      '--include-root-env=false',
-    ]);
-    expect(command).toContain('--env=.env.test');
-    expect(command).toContain('--env=.env.local.test');
-    expect(command).toContain('--include-root-env=false');
+    expect(buildEnvReaderOptionArgs(argv)).toEqual(['--cascade-env=staging', '--auto-cascade-env=false']);
+    expect(command).toContain('--cascade-env=staging');
     expect(command).toContain('--auto-cascade-env=false');
   });
 });

@@ -177,16 +177,7 @@ describe('BaseScripts.testE2E', () => {
     const scriptsWithWait = new TestScriptsWithWait();
     const argv = yargs()
       .options(sharedOptionsBuilder)
-      .parseSync([
-        '--env',
-        '.env.test',
-        '--include-root-env=false',
-        '--cascade-env=staging',
-        '--verbose',
-        'start',
-        `semi;colon`,
-        `quo'te`,
-      ]) as unknown as ScriptArgv;
+      .parseSync(['--cascade-env=staging', '--verbose', 'start', `semi;colon`, `quo'te`]) as unknown as ScriptArgv;
     normalizeArgs(argv);
 
     const command = await scriptsWithWait.startDev(project, argv);
@@ -208,7 +199,7 @@ describe('BaseScripts.testE2E', () => {
     const scriptsWithWait = new TestScriptsWithWait();
     const argv = yargs()
       .options(sharedOptionsBuilder)
-      .parseSync(['--env', '.env.test', '--include-root-env=false', 'start', `quo'te`]) as unknown as ScriptArgv;
+      .parseSync(['--cascade-env=staging', 'start', `quo'te`]) as unknown as ScriptArgv;
     normalizeArgs(argv);
 
     const command = await scriptsWithWait.testStart(project, argv);
@@ -232,29 +223,14 @@ describe('BaseScripts.testE2E', () => {
     const scriptsWithWait = new TestScriptsWithWait();
     const argv = yargs()
       .options(sharedOptionsBuilder)
-      .parseSync([
-        '--env',
-        '.env.test',
-        '--env',
-        '.env.local.test',
-        '--include-root-env=false',
-        '--auto-cascade-env=false',
-        'start',
-      ]) as unknown as ScriptArgv;
+      .parseSync(['--cascade-env=staging', '--auto-cascade-env=false', 'start']) as unknown as ScriptArgv;
     normalizeArgs(argv);
 
-    expect(buildEnvReaderOptionArgs(argv)).toEqual([
-      '--env=.env.test',
-      '--env=.env.local.test',
-      '--auto-cascade-env=false',
-      '--include-root-env=false',
-    ]);
+    expect(buildEnvReaderOptionArgs(argv)).toEqual(['--cascade-env=staging', '--auto-cascade-env=false']);
 
     const command = await scriptsWithWait.startProduction(project, argv);
 
-    expect(command).toContain('--env=.env.test');
-    expect(command).toContain('--env=.env.local.test');
-    expect(command).toContain('--include-root-env=false');
+    expect(command).toContain('--cascade-env=staging');
     expect(command).toContain('--auto-cascade-env=false');
   });
 

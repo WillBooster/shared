@@ -1,0 +1,18 @@
+name: Willboosterify
+on:
+  schedule:
+    - cron: 5 16 * * *
+  workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  wbfy:
+    uses: WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main
+    with:
+      github_hosted_runner: true
+    secrets:
+      VERDACCIO_TOKEN: ${{ secrets.VERDACCIO_TOKEN }}
+      WBFY_GH_TOKEN: ${{ secrets.WBFY_GH_TOKEN }}

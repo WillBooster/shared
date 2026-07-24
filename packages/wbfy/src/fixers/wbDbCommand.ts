@@ -12,8 +12,6 @@ const wbDatabaseCommandRegex = /\bwb\s+(?:db|prisma)\b/gu;
 const maxTextFileBytes = 1024 * 1024;
 const migrationTargets = [
   '**/*.{cjs,cts,js,json,jsx,md,mdc,mjs,mts,sh,tsx,ts,toml,txt,yaml,yml}',
-  '**/.env',
-  '**/.env.*',
   '**/.github/workflows/*',
   '**/.gitignore',
   '**/.dockerignore',
