@@ -150,13 +150,22 @@ test('deny list decisions are case-insensitive and cover unknown repositories', 
   expect(wbfyWorkflowDenyList.has('reusable-workflows')).toBe(true);
 });
 
-test('the staggered cron is deterministic, case-insensitive, and stays within the hour', () => {
+test('the staggered cron is deterministic, case-insensitive, and stays within the safe window', () => {
   const cron = getWbfyWorkflowCron('github:WillBooster/example');
   expect(cron).toBe(getWbfyWorkflowCron('github:willbooster/EXAMPLE'));
-  const match = /^(\d{1,2}) 16 \* \* \*$/.exec(cron);
-  expect(match).not.toBeNull();
-  expect(Number(match![1])).toBeGreaterThanOrEqual(0);
-  expect(Number(match![1])).toBeLessThan(60);
-  // Different repositories should usually get different minutes (spot-check two known names).
+  // Different repositories should usually get different slots (spot-check two known names).
   expect(getWbfyWorkflowCron('github:WillBooster/shared')).not.toBe(getWbfyWorkflowCron('github:WillBooster/judge'));
+  // Every slot must start between 16:00 and 18:29 UTC: with the 30-minute job timeout, the run
+  // then always finishes before the 19:00 UTC (04:00 JST) self-hosted Ubuntu runner reboot and
+  // before the 20:00 UTC wbfy-merge run.
+  for (const seed of ['example', 'shared', 'judge', 'exercode', 'a', 'zz', 'agentic-workflows', 'website']) {
+    const match = /^(\d{1,2}) (\d{2}) \* \* \*$/.exec(getWbfyWorkflowCron(`github:WillBooster/${seed}`));
+    expect(match, seed).not.toBeNull();
+    const minute = Number(match![1]);
+    const hour = Number(match![2]);
+    expect(minute).toBeGreaterThanOrEqual(0);
+    expect(minute).toBeLessThan(60);
+    expect(hour).toBeGreaterThanOrEqual(16);
+    expect(hour * 60 + minute).toBeLessThanOrEqual(18 * 60 + 29);
+  }
 });

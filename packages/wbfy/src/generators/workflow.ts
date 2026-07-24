@@ -306,17 +306,23 @@ export function isWbfyWorkflowDenied(repository: string | undefined): boolean {
   return !repoName || wbfyWorkflowDenyList.has(repoName);
 }
 
-/**
- * Deterministic nightly cron for the wbfy caller: minute staggered by repository name within
- * 16:00 UTC (01:00 JST), the hour the retired self-host-utils fan-out used — comfortably before
- * the 20:00 UTC wbfy-merge run that opens PRs from the pushed `wbfy` branches.
- */
+// The self-applying wbfy callers start between 16:00 and 18:29 UTC (01:00-03:29 JST), staggered
+// per repository so the whole organization neither hammers GitHub/npm/Verdaccio at one instant
+// (which reads like a DDoS to rate limiters) nor queues on the self-hosted runners at once. The
+// window is bounded by two org constraints: with the 30-minute job timeout, the latest start
+// (18:29 UTC) still finishes before 19:00 UTC (04:00 JST), when the self-hosted Ubuntu runners
+// reboot themselves (self-host-utils setup-ubuntu.yml crontab), and every run completes before
+// the 20:00 UTC wbfy-merge run that opens PRs from the pushed `wbfy` branches.
+const wbfyCronWindowStartHourUtc = 16;
+const wbfyCronWindowMinutes = 150;
+
+/** Deterministic staggered nightly cron for the wbfy caller (see the window rationale above). */
 export function getWbfyWorkflowCron(repository: string): string {
   let hash = 0;
   for (const ch of repository.toLowerCase()) {
-    hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) % 60;
+    hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) % wbfyCronWindowMinutes;
   }
-  return `${hash} 16 * * *`;
+  return `${hash % 60} ${wbfyCronWindowStartHourUtc + Math.floor(hash / 60)} * * *`;
 }
 
 type KnownKind = keyof typeof workflows | 'deploy' | 'autofix';
