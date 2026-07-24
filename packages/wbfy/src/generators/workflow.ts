@@ -413,6 +413,12 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       if (wbfyFileName && jobsAllCallReusableWorkflow(workflowsPath, wbfyFileName, 'wbfy')) {
         await fsUtil.removeConfined(path.join(workflowsPath, wbfyFileName));
       }
+    } else if (!rootConfig.isRepoVisibilityKnown) {
+      // Unknown visibility (failed GitHub lookup) collapses isPublicRepo to false, which would
+      // generate a caller WITHOUT github_hosted_runner and schedule a possibly-public repository
+      // onto the self-hosted runners. Leave any existing caller untouched and retry next run.
+      console.warn('Skipped generating the wbfy caller workflow because the repository visibility is unknown.');
+      fileNamesByKind.delete('wbfy');
     } else {
       mandatoryKinds.push('wbfy');
     }

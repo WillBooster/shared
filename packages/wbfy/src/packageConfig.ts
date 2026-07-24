@@ -25,6 +25,10 @@ export interface PackageConfig {
   dockerfile: string;
   isRoot: boolean;
   isPublicRepo: boolean;
+  // Whether isPublicRepo comes from an actual GitHub API response: a failed lookup (offline,
+  // rate-limited, bad credential) collapses to isPublicRepo=false, which visibility-sensitive
+  // generators must not mistake for a confirmed private repository.
+  isRepoVisibilityKnown: boolean;
   isReferredByOtherRepo: boolean;
   repository?: string;
   repoAuthor?: string;
@@ -302,6 +306,7 @@ export async function getPackageConfig(
       dockerfile,
       isRoot,
       isPublicRepo: repoInfo?.private === false,
+      isRepoVisibilityKnown: typeof repoInfo?.private === 'boolean',
       isReferredByOtherRepo: !!packageJson.files,
       repository,
       repoAuthor,

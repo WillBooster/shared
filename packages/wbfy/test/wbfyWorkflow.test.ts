@@ -142,6 +142,30 @@ jobs:
   });
 });
 
+test('skips generating (but does not delete) the caller when the repository visibility is unknown', async () => {
+  await withTempRepo(async (dirPath, workflowsPath) => {
+    const config = createConfig({ dirPath, isRoot: true, isPublicRepo: false, isRepoVisibilityKnown: false });
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+    // A failed GitHub lookup collapses isPublicRepo to false; generating from that state would
+    // schedule a possibly-public repository onto the self-hosted runners.
+    expect(fs.existsSync(path.join(workflowsPath, 'wbfy.yml'))).toBe(false);
+  });
+
+  await withTempRepo(async (dirPath, workflowsPath) => {
+    const existingContent = `on: workflow_dispatch
+jobs:
+  wbfy:
+    uses: WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main
+`;
+    await fs.promises.writeFile(path.join(workflowsPath, 'wbfy.yml'), existingContent);
+    const config = createConfig({ dirPath, isRoot: true, isPublicRepo: false, isRepoVisibilityKnown: false });
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+    expect(await fs.promises.readFile(path.join(workflowsPath, 'wbfy.yml'), 'utf8')).toBe(existingContent);
+  });
+});
+
 test('deny list decisions are case-insensitive and cover unknown repositories', () => {
   expect(isWbfyWorkflowDenied('github:WillBooster/self-host-utils')).toBe(true);
   expect(isWbfyWorkflowDenied('github:WillBoosterLab/Seamzip')).toBe(true);

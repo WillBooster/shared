@@ -134,6 +134,23 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
       verified = false;
     }
   }
+  // A deny-listed repository must not keep the write-capable push PAT visible: its wbfy caller
+  // workflow is removed, so retained visibility only exposes the broad credential to whatever
+  // workflows the (possibly externally maintained) repository still runs.
+  if (isWbfyWorkflowDenied(config.repository)) {
+    if (assignedOrgNames.includes('WBFY_GH_TOKEN')) {
+      console.error(
+        `The organization secret WBFY_GH_TOKEN is still assigned to the deny-listed repository ${owner}/${repo}. Ask a WillBooster org admin to remove this repository from the secret's repository access.`
+      );
+      verified = false;
+    }
+    if (repoLevelNames.has('WBFY_GH_TOKEN')) {
+      console.error(
+        `The deny-listed repository ${owner}/${repo} still has a repository-level WBFY_GH_TOKEN secret. Delete it manually (e.g. \`gh secret delete WBFY_GH_TOKEN --repo ${owner}/${repo}\`).`
+      );
+      verified = false;
+    }
+  }
   // A repository secret silently overrides a same-named organization secret, so a stale
   // repository-level copy would keep winning even after the admin rotates the org value. Only a
   // genuinely workflow-usable organization secret justifies deleting the repository fallback.
@@ -219,6 +236,10 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   // PAT wbfy itself uses for WillBoosterLab API access. Deny-listed repositories get no caller
   // workflow, so they need no push token either.
   const wbfyGhToken = isWbfyWorkflowDenied(config.repository) ? undefined : process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB;
+  // A deny-listed repository must not keep the write-capable PAT either: delete an existing
+  // repository secret and, through the pre-upload deletion below, drop any stale copy a .env file
+  // still carries (uploading it would re-install the credential wbfy just decided to remove).
+  const wbfyObsoleteSecretNames = isWbfyWorkflowDenied(config.repository) ? ['WBFY_GH_TOKEN'] : [];
   if (!isWbfyWorkflowDenied(config.repository) && !wbfyGhToken) {
     console.error(
       'Set the GH_BOT_PAT_FOR_WILLBOOSTERLAB environment variable (a PAT with contents:write and workflow scope) so wbfy --env can upload the WBFY_GH_TOKEN secret. Secrets were neither verified nor uploaded.'
@@ -312,7 +333,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       VERDACCIO_TOKEN: verdaccioToken,
       ...(wbfyGhToken ? { WBFY_GH_TOKEN: wbfyGhToken } : {}),
     };
-    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
+    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, ...wbfyObsoleteSecretNames, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
   } else {
     // dotenv.config would also inject the values into process.env, leaking this repository's
     // secrets to every later subprocess and repository handled in the same wbfy invocation.
@@ -327,7 +348,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     }
     // A repository that migrated away from fnox must not keep the shared CI decryption key, even
     // when there are no replacement secrets to upload — so no early return on an empty .env.
-    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'FNOX_AGE_KEY'];
+    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, ...wbfyObsoleteSecretNames, 'FNOX_AGE_KEY'];
   }
 
   // Never upload a secret that is about to be deleted: a .env could still contain e.g.
