@@ -72,6 +72,9 @@ function collectEnvFileKeyNames(dirPath: string): string[] {
   }
   for (const fileName of fileNames) {
     if (!/^\.env(?:\.|$)/u.test(fileName)) continue;
+    // `.env.cloudflare*` is a deployment-credential sidecar (CLOUDFLARE_API_TOKEN) that deploy consumes
+    // separately — not a dotenv cascade file and never a Worker binding, so it must not enter `Env`.
+    if (/^\.env\.cloudflare(?:\.|$)/u.test(fileName)) continue;
     const filePath = path.join(dirPath, fileName);
     if (!fs.statSync(filePath).isFile()) continue;
     for (const keyName of Object.keys(parseDotenv(fs.readFileSync(filePath, 'utf8')))) keyNames.push(keyName);

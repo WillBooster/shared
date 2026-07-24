@@ -62,6 +62,19 @@ describe('collectWorkerBindingKeyNames', () => {
     }
   });
 
+  it('excludes the .env.cloudflare deploy-credential sidecar from bindings', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-worker-types-'));
+    await fs.writeFile(path.join(dirPath, '.env'), 'REAL_BINDING=x\n');
+    await fs.writeFile(path.join(dirPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=secret\n');
+
+    try {
+      // CLOUDFLARE_API_TOKEN is a deploy credential, not a Worker binding, and must never enter Env.
+      expect(collectWorkerBindingKeyNames(dirPath, dirPath)).toStrictEqual(['REAL_BINDING']);
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
   it('writes a placeholder-valued stub (no real secret) for wrangler types', async () => {
     const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-worker-types-'));
     await fs.writeFile(path.join(dirPath, 'fnox.toml'), FNOX_TOML);
