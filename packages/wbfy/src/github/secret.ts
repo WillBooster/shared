@@ -11,6 +11,7 @@ import {
   FNOX_AGE_RECIPIENTS,
   findFnoxLayoutIssue,
   hasFnoxSyncFailed,
+  isTestFixtureFnoxPath,
   readFnoxAgeRecipients,
   resolveFnoxCommand,
 } from '../generators/fnoxToml.js';
@@ -480,7 +481,16 @@ async function fetchDefaultBranchFnoxConfigs(
   const contents = new Map<string, string>();
   for (const entry of treeResponse.data.tree) {
     const entryPath = entry.path ?? '';
-    if (entry.type !== 'blob' || !/^\.?fnox(\..+)?\.toml$/u.test(path.basename(entryPath))) continue;
+    // Test-fixture configs are test inputs, not repository configuration (mirrors the local
+    // discovery in generateFnoxToml); counting them would e.g. misclassify a fixture-only
+    // repository as fnox-migrated.
+    if (
+      entry.type !== 'blob' ||
+      !/^\.?fnox(\..+)?\.toml$/u.test(path.basename(entryPath)) ||
+      isTestFixtureFnoxPath(entryPath)
+    ) {
+      continue;
+    }
     const fileResponse = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
       owner,
       repo,

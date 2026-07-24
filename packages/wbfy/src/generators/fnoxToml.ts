@@ -647,6 +647,20 @@ function declaresFnoxAgeProvider(filePath: string): boolean {
   }
 }
 
+/**
+ * Whether a fnox config path lies inside a test-fixture tree (test/fixtures, test-fixtures,
+ * __tests__): fixture configs are test INPUTS, not repository configuration. fnox never loads
+ * them for real commands (hierarchical loading only walks cwd ancestors), recipient
+ * synchronization must not rewrite or re-encrypt them (shared-lib-node's undecryptable fixture
+ * exists precisely to stay undecryptable), and a fixture must not fail the stray-nested-config
+ * check in repositories without a root fnox.toml.
+ */
+export function isTestFixtureFnoxPath(filePath: string): boolean {
+  return filePath
+    .split('/')
+    .some((segment) => segment === 'fixtures' || segment === 'test-fixtures' || segment === '__tests__');
+}
+
 function listFnoxLikeFilePaths(rootDirPath: string): string[] {
   // -z prints NUL-delimited verbatim paths; without it, core.quotePath C-quotes non-ASCII paths
   // (e.g. "\346\227\245..."), which would make the basename filter silently skip those configs.
@@ -662,7 +676,7 @@ function listFnoxLikeFilePaths(rootDirPath: string): string[] {
   }
   return proc.stdout
     .split('\0')
-    .filter((line) => /^\.?fnox(\..+)?\.toml$/u.test(path.basename(line)))
+    .filter((line) => /^\.?fnox(\..+)?\.toml$/u.test(path.basename(line)) && !isTestFixtureFnoxPath(line))
     .map((line) => path.resolve(rootDirPath, line));
 }
 
