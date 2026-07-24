@@ -1588,6 +1588,7 @@ function addPackageJsonDependencies(
     }
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
       config,
+      rootConfig,
       dependency,
       packageJsonDependencies[dependency]
     );
@@ -1969,15 +1970,40 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
 
 function shouldUpdateExistingManagedDependency(
   config: PackageConfig,
+  rootConfig: PackageConfig,
   dependency: string,
   currentVersion: string | undefined
 ): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
+  if (dependency === wbDependency && shouldKeepPreFnoxOnlyWb(config, rootConfig, currentVersion)) return false;
   // wbfy owns these tool dependencies, but applying wbfy should not downgrade a
   // repository that already pins a newer reviewed release.
   return managedDependencyNames.has(dependency) && isNewerManagedDependencyVersion(config, dependency, currentVersion);
+}
+
+// wb >= 19 reads environment variables exclusively from fnox (the .env cascade was removed), so
+// upgrading a repository that has not migrated (no root fnox.toml) across that boundary would
+// silently drop every .env-configured variable from its builds, tests, and deploys.
+const minimumFnoxOnlyWbVersion = '19.0.0';
+
+function shouldKeepPreFnoxOnlyWb(config: PackageConfig, rootConfig: PackageConfig, currentVersion: string): boolean {
+  if (fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))) return false;
+  let currentMinimumVersion: semver.SemVer | undefined;
+  try {
+    currentMinimumVersion = semver.minVersion(currentVersion) ?? undefined;
+  } catch {
+    // An unparsable specifier (e.g. a git URL) gives no version signal; fall through to the
+    // regular managed-dependency handling.
+  }
+  if (!currentMinimumVersion || semver.gte(currentMinimumVersion, minimumFnoxOnlyWbVersion)) return false;
+  const latestVersion = semver.valid(getLatestDependencyVersion(config, wbDependency));
+  if (!latestVersion || semver.lt(latestVersion, minimumFnoxOnlyWbVersion)) return false;
+  console.warn(
+    `Kept ${wbDependency}@${currentVersion} in ${config.dirPath}: wb >= ${minimumFnoxOnlyWbVersion} loads environment variables only from fnox, and this repository has no root fnox.toml. Migrate to fnox (see migrate-env-to-fnox), then rerun wbfy to upgrade.`
+  );
+  return true;
 }
 
 function isNewerManagedDependencyVersion(config: PackageConfig, dependency: string, currentVersion: string): boolean {
