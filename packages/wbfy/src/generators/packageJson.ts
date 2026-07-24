@@ -1984,12 +1984,27 @@ function shouldUpdateExistingManagedDependency(
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
+  if (!managedDependencyNames.has(dependency)) return false;
+  const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
+  // An existing fnox-only wb pin in a non-fnox repository is an incompatible state (wb >= 19
+  // ignores the repository's .env configuration), so the general no-downgrade rule below must
+  // not preserve it: rewrite it to the capped compatible release. Restricted to fnox-only
+  // MAJORS of the current pin so a merely-newer compatible pin (e.g. 18.0.2 while the registry
+  // lookup lags at 18.0.1) keeps the no-downgrade protection.
+  const currentValidVersion = semver.valid(currentVersion);
+  if (
+    dependency === wbDependency &&
+    currentValidVersion &&
+    semver.major(currentValidVersion) >= semver.major(minimumFnoxOnlyWbVersion) &&
+    semver.valid(managedVersion) &&
+    isNewerPackageVersion(currentVersion, managedVersion) &&
+    !fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
+  ) {
+    return true;
+  }
   // wbfy owns these tool dependencies, but applying wbfy should not downgrade a
   // repository that already pins a newer reviewed release.
-  return (
-    managedDependencyNames.has(dependency) &&
-    isNewerPackageVersion(getManagedDependencyVersion(config, rootConfig, dependency), currentVersion)
-  );
+  return isNewerPackageVersion(managedVersion, currentVersion);
 }
 
 // wb >= 19 reads environment variables exclusively from fnox (the .env cascade was removed), so
@@ -2027,7 +2042,10 @@ export function selectManagedWbVersion(
 ): string {
   if (hasRootFnoxToml) return latestVersion;
   const validLatestVersion = semver.valid(latestVersion);
-  if (validLatestVersion && semver.lt(validLatestVersion, minimumFnoxOnlyWbVersion)) return latestVersion;
+  // Compare majors so a 19.x PRE-release (semver-less-than 19.0.0) is capped too.
+  if (validLatestVersion && semver.major(validLatestVersion) < semver.major(minimumFnoxOnlyWbVersion)) {
+    return latestVersion;
+  }
   // Reached for a fnox-only latest release AND for a failed lookup (the '*' marker): both must
   // resolve to a known-compatible release — `bun add wb@*` could otherwise install a fnox-only
   // release that silently drops the repository's .env-configured variables. When the secondary

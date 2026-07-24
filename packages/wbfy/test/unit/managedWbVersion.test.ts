@@ -23,6 +23,10 @@ describe('selectManagedWbVersion', () => {
     expect(selectManagedWbVersion('19.1.0', false, () => '18.0.1', '/repo')).toBe('18.0.1');
   });
 
+  it('caps a fnox-only PRE-release version for non-fnox repositories', () => {
+    expect(selectManagedWbVersion('19.0.0-alpha.0', false, () => '18.0.1', '/repo')).toBe('18.0.1');
+  });
+
   it('keeps a pre-fnox-only latest version for non-fnox repositories', () => {
     expect(
       selectManagedWbVersion(
