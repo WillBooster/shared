@@ -11,9 +11,19 @@ const wranglerConfigFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.to
 /**
  * Build a command generating a .dev.vars file (via `wb gen-dev-vars`) so that
  * `wrangler dev` can see the wb-managed environment variables.
+ *
+ * With `forTypes`, generate a key-only stub (placeholder values) instead, for `wrangler types
+ * --env-file` — see the `--for-types` flag in gen-dev-vars.
  */
-export function buildGenDevVarsCommand(argv: ScriptArgv, outputPath: string): string {
-  return buildShellCommand(['YARN', 'wb', 'gen-dev-vars', ...buildEnvReaderOptionArgs(argv), outputPath]);
+export function buildGenDevVarsCommand(argv: ScriptArgv, outputPath: string, options?: { forTypes?: boolean }): string {
+  return buildShellCommand([
+    'YARN',
+    'wb',
+    'gen-dev-vars',
+    ...(options?.forTypes ? ['--for-types'] : []),
+    ...buildEnvReaderOptionArgs(argv),
+    outputPath,
+  ]);
 }
 
 /**

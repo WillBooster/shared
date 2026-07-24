@@ -47,11 +47,19 @@ export function getGenCodeScripts(project: Project, argv: ScriptArgv): string[] 
   // and the generators below type-check against the Cloudflare `Env` it declares.
   const wranglerTypesScript = getWranglerTypesScript(project);
   if (wranglerTypesScript) {
-    // `wrangler types` infers the secret members of the Cloudflare `Env` only from a .dev.vars file
-    // (it never reads process.env), so regenerate it from the wb-managed environment variables first.
-    // Without this, a fresh checkout with no .dev.vars (e.g. CI) yields an `Env` missing every secret,
-    // and the type-aware generators/linters below fail (e.g. "Property 'AUTH_SECRET' does not exist").
-    scripts.push(buildGenDevVarsCommand(argv, '.dev.vars'), wranglerTypesScript);
+    // `wrangler types` derives the Cloudflare `Env`'s secret/var members only from the KEY NAMES in
+    // a .dev.vars/.env file (never from process.env), and `--env-file` REPLACES that default file
+    // set. On a fresh checkout with no runtime .dev.vars (e.g. CI) a bare `wrangler types` yields an
+    // `Env` missing every secret, and the type-aware generators/linters below fail (e.g. "Property
+    // 'AUTH_SECRET' does not exist on type 'Env'"). So generate a throwaway key-only stub from the
+    // wb-managed environment variables and point wrangler at it: the runtime `.dev.vars` and any
+    // tracked `.env` stay untouched (no clobber, no lost `.env`-only keys), no real secret value is
+    // written to disk, and a value `quoteDotenvValue` cannot serialize can never fail the build.
+    const workerTypesEnvPath = path.join('.wrangler', 'worker-types.env');
+    scripts.push(
+      buildGenDevVarsCommand(argv, workerTypesEnvPath, { forTypes: true }),
+      `${wranglerTypesScript} --env-file ${workerTypesEnvPath}`
+    );
   }
   const prismaGenerateScript = getPrismaGenerateScript(project);
   if (prismaGenerateScript) {
@@ -74,9 +82,10 @@ export function getGenCodeScripts(project: Project, argv: ScriptArgv): string[] 
 
 /**
  * `YARN wrangler` rather than `bunx wrangler`: wrangler needs real Node.js, and `bunx` may resolve
- * a version other than the lockfile's. Flags are deliberately omitted — `--env-file` is a legacy
- * `.env` idiom that fnox repositories have no file for, and `--strict-vars` is a per-repository
- * type-strictness choice that belongs in the wrangler config, not in every caller.
+ * a version other than the lockfile's. Returns the base command; the caller appends `--env-file`
+ * pointing at a generated key-only stub (see getGenCodeScripts) because fnox repositories have no
+ * `.env` file for wrangler to infer the secret bindings from. `--strict-vars` is deliberately left
+ * out — it is a per-repository type-strictness choice that belongs in the wrangler config.
  */
 function getWranglerTypesScript(project: Project): string | undefined {
   if (!project.generatesWorkerTypes) return;

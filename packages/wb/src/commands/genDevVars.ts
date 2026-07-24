@@ -11,17 +11,31 @@ import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 // Cloudflare Workers don't see the process environment; wrangler dev reads vars from a .dev.vars
 // file next to its config file instead. This command bridges wb-managed .env files to that file.
-const builder = {} as const;
+const builder = {
+  // `wrangler types` derives the Cloudflare `Env` members from the KEY NAMES in the .dev.vars/.env
+  // files beside the wrangler config, never from their values. `--for-types` emits a stub for that
+  // sole purpose: every declared key (including `KEY=` placeholders) with a constant placeholder
+  // value. It never writes a real secret to disk, so it cannot leak one and cannot fail on a value
+  // `quoteDotenvValue` refuses to serialize — and it is written to a throwaway path (not the real
+  // .dev.vars) so `gen-code` can type a fresh checkout without clobbering the runtime file.
+  'for-types': {
+    description: 'Emit a key-only stub (placeholder values) for `wrangler types --env-file`, not a runtime .dev.vars.',
+    type: 'boolean',
+    default: false,
+  },
+} as const;
 
 type GenDevVarsCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 type GenDevVarsCommandArgv = ArgumentsCamelCase<GenDevVarsCommandOptions & { path?: string }>;
 
+const typeStubPlaceholderValue = '1';
+
 export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions> = {
   command: 'gen-dev-vars [path]',
   describe:
-    'Generate a .dev.vars file for `wrangler dev` from the environment variables loaded from .env files (plus WB_ENV and NEXT_PUBLIC_WB_ENV).',
+    'Generate a .dev.vars file for `wrangler dev` from the environment variables loaded from .env files (plus WB_ENV and NEXT_PUBLIC_WB_ENV). With --for-types, emit a key-only stub for `wrangler types` instead.',
   builder: (yargs) =>
-    yargs.positional('path', {
+    yargs.options(builder).positional('path', {
       description: 'Output path of the generated .dev.vars file.',
       type: 'string',
       default: '.dev.vars',
@@ -33,6 +47,7 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       process.exit(1);
     }
 
+    const forTypes = Boolean(argv.forTypes);
     // Restrict to variables loaded from the project's declared environment sources so that
     // unrelated process environment variables never leak into the generated file. Ignore
     // process.env because the parent wb process injects the .env values into it, which would
@@ -44,17 +59,23 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
     // the stale file value. An export that empties a non-empty file value is deliberate and
     // must survive the empty-value filter below (unlike `KEY=` placeholders in .env files,
     // which stay omitted so they cannot override wrangler `vars` with empty strings).
+    // A type stub needs only key names, so it skips this value adjudication entirely.
     const explicitlyEmptiedKeys = new Set<string>();
-    for (const key of Object.keys(envVars)) {
-      const effectiveValue = project.env[key];
-      if (effectiveValue === undefined) continue;
-      if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
-      envVars[key] = effectiveValue;
+    if (!forTypes) {
+      for (const key of Object.keys(envVars)) {
+        const effectiveValue = project.env[key];
+        if (effectiveValue === undefined) continue;
+        if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
+        envVars[key] = effectiveValue;
+      }
     }
     const lines = Object.entries(envVars)
-      .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))
+      // A type stub keeps every declared key — including empty `KEY=` placeholders — because
+      // `wrangler types` types a binding from the key's mere presence. A runtime .dev.vars instead
+      // drops empty placeholders so they cannot shadow wrangler `vars` with empty strings.
+      .filter(([key, value]) => forTypes || value !== '' || explicitlyEmptiedKeys.has(key))
       .toSorted(([a], [b]) => a.localeCompare(b))
-      .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
+      .map(([key, value]) => `${key}=${forTypes ? typeStubPlaceholderValue : quoteDotenvValue(key, value)}`);
     const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
     if (argv.dryRun) {
       console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} environment variables.`));
