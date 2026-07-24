@@ -93,7 +93,7 @@ describe('drizzle-kit commands', () => {
 
     try {
       const project = new Project(projectDirPath, {}, false);
-      expect(getGenCodeScripts(project, {})).toContain(
+      expect(getGenCodeScripts(project)).toContain(
         `(cd ${project.rootDirPath} && YARN drizzle-kit check --config drizzle.config.ts) || true`
       );
     } finally {
