@@ -62,6 +62,35 @@ function isDisposableWranglerTypes(segment: string, dirPath: string | undefined)
   return envFileWranglerTypesPattern.test(segment) && namesOnlyMissingEnvFiles(segment, dirPath);
 }
 
+/**
+ * Drops the `--env-file` arguments of a `wrangler types` invocation whose files are absent, returning the rewritten
+ * script (or undefined when nothing changed). wrangler exits non-zero on a `--env-file` naming a missing file, and
+ * removeEnvFiles deletes the `.env` cascade of a fnox repository in the very same run, so a surviving flag breaks
+ * every subsequent install. Normalizing to `wb gen-code` already drops these flags where wbfy owns the generation;
+ * this covers the packages it deliberately leaves unmanaged (e.g. an untracked local `.env.production` makes the
+ * inference irreproducible), which would otherwise be handed back unable to run `bun install` at all.
+ */
+export function stripMissingEnvFileArguments(script: string | undefined, dirPath: string): string | undefined {
+  if (!script) return undefined;
+  const segments = splitScriptSegments(script);
+  if (!segments) return undefined;
+  let changed = false;
+  const rebuilt = segments.map((segment) => {
+    const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
+    if (!anyWranglerTypesPattern.test(normalized)) return segment;
+    const stripped = normalized
+      .replaceAll(envFileArgumentPattern, (match, filePath: string) =>
+        fs.existsSync(path.resolve(dirPath, filePath)) ? match : ''
+      )
+      .replaceAll(/\s+/gu, ' ')
+      .trim();
+    if (stripped === normalized) return segment;
+    changed = true;
+    return stripped;
+  });
+  return changed ? rebuilt.join(' && ') : undefined;
+}
+
 // `wb gen-code` runs gen-i18n-ts itself, so an invocation EQUIVALENT to the one it runs is redundant rather than
 // a project-specific step. Equivalent means no arguments: `wb gen-code` either delegates to the package's own
 // `gen-i18n-ts` script or supplies its own fixed defaults, so a direct call carrying custom `-i`/`-o`/`-d`

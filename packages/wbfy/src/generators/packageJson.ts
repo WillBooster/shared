@@ -16,6 +16,7 @@ import {
   runsOnlyRedundantGeneration,
   runsOnlyRedundantI18nGeneration,
   splitScriptSegments,
+  stripMissingEnvFileArguments,
 } from '../utils/managedScriptSegment.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
@@ -1393,6 +1394,13 @@ async function normalizePackageMetadata(
     config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config),
     config.dirPath
   );
+  // After the normalization above, which removes these invocations wholesale wherever wbfy owns the generation. What
+  // is left belongs to an unmanaged package, and a `--env-file` naming a file removeEnvFiles just deleted would make
+  // every `wrangler types` — and therefore every install running it — exit non-zero.
+  for (const [scriptName, script] of Object.entries(jsonObj.scripts)) {
+    const stripped = stripMissingEnvFileArguments(script, config.dirPath);
+    if (stripped !== undefined) jsonObj.scripts[scriptName] = stripped;
+  }
 
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.

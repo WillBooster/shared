@@ -1148,6 +1148,45 @@ test('does not rewrite `bun --bun` outside a command position', async () => {
   });
 });
 
+// removeEnvFiles deletes the `.env` cascade before the package.json generation, so an unmanaged Cloudflare package
+// (here: the wrangler config is untracked, making the inference irreproducible) would keep a `--env-file` pointing at
+// a file that no longer exists and fail every `bun install` that runs it.
+test('drops `--env-file` arguments naming removed files from an unmanaged wrangler types script', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'gen-types': 'wrangler types --env-file .env.example',
+        postinstall: 'bun run gen-types',
+      },
+      devDependencies: { wrangler: '4.107.0' },
+    },
+    { doesContainWranglerConfig: true },
+    { files: { 'wrangler.jsonc': '{}' } }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'gen-types': 'wrangler types',
+    postinstall: 'bun run gen-types',
+  });
+});
+
+test('keeps `--env-file` arguments whose files still exist', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'gen-types': 'wrangler types --env-file .env.cloudflare',
+      },
+      devDependencies: { wrangler: '4.107.0' },
+    },
+    { doesContainWranglerConfig: true },
+    { files: { 'wrangler.jsonc': '{}', '.env.cloudflare': 'CLOUDFLARE_API_TOKEN=dummy\n' } }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'gen-types': 'wrangler types --env-file .env.cloudflare',
+  });
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},
