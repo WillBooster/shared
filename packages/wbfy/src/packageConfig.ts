@@ -897,8 +897,10 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
   if (!org || !name) return;
 
   try {
-    // Metadata permission
-    const response = await getOctokit().request('GET /repos/{owner}/{repo}', {
+    // Metadata permission. The owner MUST be passed: getOctokit() without it prefers the
+    // WillBooster PAT, which cannot read private WillBoosterLab repositories, collapsing their
+    // visibility to unknown (and e.g. skipping the wbfy caller generation indefinitely).
+    const response = await getOctokit(org).request('GET /repos/{owner}/{repo}', {
       owner: org,
       repo: name,
     });
@@ -906,6 +908,22 @@ async function requestRepoInfo(urlOrFullName: string): Promise<Record<string, un
   } catch (error) {
     const redirectedFullName = getRedirectedRepoFullName(error);
     if (redirectedFullName) {
+      // Re-fetch under the redirected identity so a renamed repository still gets complete
+      // metadata (visibility included) instead of a bare full_name that would leave
+      // isRepoVisibilityKnown false on every subsequent run with the stale remote URL.
+      const [redirectedOrg, redirectedName] = redirectedFullName.split('/');
+      if (redirectedOrg && redirectedName) {
+        try {
+          const response = await getOctokit(redirectedOrg).request('GET /repos/{owner}/{repo}', {
+            owner: redirectedOrg,
+            repo: redirectedName,
+          });
+          return response.data;
+        } catch {
+          // Fall back to the bare identity below: the repository is still canonicalized, only
+          // its visibility stays unknown.
+        }
+      }
       return { full_name: redirectedFullName };
     }
   }

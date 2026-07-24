@@ -198,6 +198,28 @@ function containsWranglerConfig(rootDirPath: string): boolean {
 }
 
 async function uploadSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
+  const octokit = getOctokit(owner);
+  // A deny-listed repository must lose the broad push PAT UNCONDITIONALLY: the revocation has no
+  // replacement credential to upload first, so it must not be gated on the fnox / Verdaccio
+  // validation below — any early return there would otherwise leave the PAT installed (it also
+  // stays in obsoleteSecretNames for the regular cleanup pass; the second delete just 404s).
+  if (isWbfyWorkflowDenied(config.repository)) {
+    try {
+      // Requires Secrets permission
+      await octokit.request('DELETE /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
+        owner,
+        repo,
+        secret_name: 'WBFY_GH_TOKEN',
+      });
+      console.info(`Deleted the WBFY_GH_TOKEN secret from the deny-listed repository ${owner}/${repo}.`);
+    } catch (error) {
+      // Most deny-listed repositories never had the secret, so its absence is the expected outcome.
+      if ((error as { status?: number } | undefined)?.status !== 404) {
+        console.error(`Failed to delete the WBFY_GH_TOKEN secret from ${owner}/${repo}:`, error);
+        process.exitCode = 1;
+      }
+    }
+  }
   // Covers the dotenv path too: a failed synchronization may mean an unsupported fnox layout
   // (e.g. nested configs without a root fnox.toml) whose FNOX_AGE_KEY must not be deleted.
   if (hasFnoxSyncFailed()) {
@@ -205,7 +227,6 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     process.exitCode = 1;
     return;
   }
-  const octokit = getOctokit(owner);
   // GitHub repository secrets are repository-wide and CI checks out the remote default branch,
   // so every fnox decision below is made from the REMOTE default-branch contents, not the local
   // working tree: verifying a local (or pushed-feature-branch, or fork) migration would rotate
@@ -232,17 +253,21 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   // with contents:write and workflow scope; a GITHUB_TOKEN push cannot touch workflow files, and
   // the push is atomic, so the PAT is required in practice). GitHub Free cannot share
   // organization secrets with private repositories, so WillBoosterLab repositories receive it as
-  // a repository secret, sourced from the operator's GH_BOT_PAT_FOR_WILLBOOSTERLAB — the same
-  // PAT wbfy itself uses for WillBoosterLab API access. Deny-listed repositories get no caller
+  // a repository secret. It is deliberately sourced from a DEDICATED environment variable, never
+  // from GH_BOT_PAT_FOR_WILLBOOSTERLAB: anyone with write access to one repository can read its
+  // Actions secrets, so the uploaded value must be a least-privilege PAT (fine-grained, Contents
+  // and Workflows write only) rather than the bot PAT that can also administer settings,
+  // rulesets, and secrets across the organization. Deny-listed repositories get no caller
   // workflow, so they need no push token either.
-  const wbfyGhToken = isWbfyWorkflowDenied(config.repository) ? undefined : process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB;
-  // A deny-listed repository must not keep the write-capable PAT either: delete an existing
-  // repository secret and, through the pre-upload deletion below, drop any stale copy a .env file
-  // still carries (uploading it would re-install the credential wbfy just decided to remove).
+  const wbfyGhToken = isWbfyWorkflowDenied(config.repository)
+    ? undefined
+    : process.env.WBFY_GH_TOKEN_FOR_WILLBOOSTERLAB;
+  // Also drop any stale WBFY_GH_TOKEN copy a .env file still carries on deny-listed repositories
+  // (uploading it would re-install the credential the early revocation above just removed).
   const wbfyObsoleteSecretNames = isWbfyWorkflowDenied(config.repository) ? ['WBFY_GH_TOKEN'] : [];
   if (!isWbfyWorkflowDenied(config.repository) && !wbfyGhToken) {
     console.error(
-      'Set the GH_BOT_PAT_FOR_WILLBOOSTERLAB environment variable (a PAT with contents:write and workflow scope) so wbfy --env can upload the WBFY_GH_TOKEN secret. Secrets were neither verified nor uploaded.'
+      'Set the WBFY_GH_TOKEN_FOR_WILLBOOSTERLAB environment variable (a least-privilege fine-grained PAT with only Contents and Workflows write on WillBoosterLab repositories — NOT the bot PAT) so wbfy --env can upload the WBFY_GH_TOKEN secret. Secrets were neither verified nor uploaded.'
     );
     process.exitCode = 1;
     return;
