@@ -49,12 +49,12 @@ test('generates a scheduled self-applying wbfy caller for a public repository', 
     expect(workflow.on?.schedule).toEqual([{ cron: getWbfyWorkflowCron('github:WillBooster/example') }]);
     // oxlint-disable-next-line unicorn/no-null -- GitHub Actions valueless events are YAML nulls.
     expect(workflow.on?.workflow_dispatch).toBeNull();
-    expect(workflow.permissions).toEqual({ contents: 'write' });
+    expect(workflow.permissions).toEqual({ contents: 'read' });
     const job = workflow.jobs.wbfy;
     expect(job?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
     expect(job?.secrets).toEqual({
-      GH_BOT_PAT: '${{ secrets.GH_BOT_PAT }}',
       VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}',
+      WBFY_GH_TOKEN: '${{ secrets.WBFY_GH_TOKEN }}',
     });
     // The runner-selection idiom sees github.event.repository.private as true on schedule events,
     // so a public repository must pin the GitHub-hosted runner explicitly.
@@ -80,7 +80,7 @@ test('generates a self-hosted wbfy caller for a private WillBoosterLab repositor
   });
 });
 
-test('rewrites a stale cron and drops a leftover NPM_TOKEN in an existing caller', async () => {
+test('rewrites a stale cron and drops leftover NPM_TOKEN / deprecated GH_BOT_PAT in an existing caller', async () => {
   await withTempRepo(async (dirPath, workflowsPath) => {
     await fs.promises.writeFile(
       path.join(workflowsPath, 'wbfy.yml'),
@@ -94,6 +94,7 @@ jobs:
     uses: WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main
     secrets:
       NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
+      GH_BOT_PAT: \${{ secrets.GH_BOT_PAT }}
 `
     );
     const config = createConfig({ dirPath, isRoot: true });
@@ -103,8 +104,8 @@ jobs:
     const workflow = await loadWbfyCaller(workflowsPath);
     expect(workflow.on?.schedule).toEqual([{ cron: getWbfyWorkflowCron('github:WillBooster/example') }]);
     expect(workflow.jobs.wbfy?.secrets).toEqual({
-      GH_BOT_PAT: '${{ secrets.GH_BOT_PAT }}',
       VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}',
+      WBFY_GH_TOKEN: '${{ secrets.WBFY_GH_TOKEN }}',
     });
   });
 });
@@ -155,9 +156,9 @@ test('the staggered cron is deterministic, case-insensitive, and stays within th
   expect(cron).toBe(getWbfyWorkflowCron('github:willbooster/EXAMPLE'));
   // Different repositories should usually get different slots (spot-check two known names).
   expect(getWbfyWorkflowCron('github:WillBooster/shared')).not.toBe(getWbfyWorkflowCron('github:WillBooster/judge'));
-  // Every slot must start between 16:00 and 18:29 UTC: with the 30-minute job timeout, the run
-  // then always finishes before the 19:00 UTC (04:00 JST) self-hosted Ubuntu runner reboot and
-  // before the 20:00 UTC wbfy-merge run.
+  // Every slot must start between 16:00 and 17:59 UTC: with the 30-minute job timeout, the run
+  // finishes by 18:29 UTC, keeping ~30 minutes of schedule-delay slack before the 19:00 UTC
+  // (04:00 JST) self-hosted Ubuntu runner reboot, and always before the 20:00 UTC wbfy-merge run.
   for (const seed of ['example', 'shared', 'judge', 'exercode', 'a', 'zz', 'agentic-workflows', 'website']) {
     const match = /^(\d{1,2}) (\d{2}) \* \* \*$/.exec(getWbfyWorkflowCron(`github:WillBooster/${seed}`));
     expect(match, seed).not.toBeNull();
@@ -166,6 +167,6 @@ test('the staggered cron is deterministic, case-insensitive, and stays within th
     expect(minute).toBeGreaterThanOrEqual(0);
     expect(minute).toBeLessThan(60);
     expect(hour).toBeGreaterThanOrEqual(16);
-    expect(hour * 60 + minute).toBeLessThanOrEqual(18 * 60 + 29);
+    expect(hour * 60 + minute).toBeLessThanOrEqual(17 * 60 + 59);
   }
 });

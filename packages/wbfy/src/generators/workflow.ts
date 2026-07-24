@@ -229,10 +229,11 @@ const workflows = {
       'cancel-in-progress': true,
     },
     permissions: {
-      // The push normally authenticates with the GH_BOT_PAT secret (wbfy rewrites files under
-      // .github/workflows/, which a GITHUB_TOKEN push cannot touch); contents: write keeps the
-      // GITHUB_TOKEN fallback able to push non-workflow changes when the secret is missing.
-      contents: 'write',
+      // Least privilege: the reusable workflow's wbfy job runs dependency lifecycle scripts, so
+      // its GITHUB_TOKEN must not be able to write repository contents; the push happens in a
+      // separate trusted job authenticated with the WBFY_GH_TOKEN PAT (wbfy rewrites files under
+      // .github/workflows/, which a GITHUB_TOKEN push could not touch anyway).
+      contents: 'read',
     },
     jobs: {
       wbfy: {
@@ -241,6 +242,11 @@ const workflows = {
     },
   },
 } as const;
+
+// The push PAT secret of the self-applying wbfy caller. Deliberately NOT the historical
+// GH_BOT_PAT: that name sits in secret.ts's DEPRECATED_SECRET_NAMES, so already-released wbfy
+// versions DELETE it during `wbfy --env` — reusing it would let an old wbfy wipe the new secret.
+export const wbfyGhTokenSecretName = 'WBFY_GH_TOKEN';
 
 /**
  * Repositories that must NOT get the self-applying wbfy caller workflow, by repository name
@@ -306,15 +312,16 @@ export function isWbfyWorkflowDenied(repository: string | undefined): boolean {
   return !repoName || wbfyWorkflowDenyList.has(repoName);
 }
 
-// The self-applying wbfy callers start between 16:00 and 18:29 UTC (01:00-03:29 JST), staggered
+// The self-applying wbfy callers start between 16:00 and 17:59 UTC (01:00-02:59 JST), staggered
 // per repository so the whole organization neither hammers GitHub/npm/Verdaccio at one instant
 // (which reads like a DDoS to rate limiters) nor queues on the self-hosted runners at once. The
-// window is bounded by two org constraints: with the 30-minute job timeout, the latest start
-// (18:29 UTC) still finishes before 19:00 UTC (04:00 JST), when the self-hosted Ubuntu runners
-// reboot themselves (self-host-utils setup-ubuntu.yml crontab), and every run completes before
-// the 20:00 UTC wbfy-merge run that opens PRs from the pushed `wbfy` branches.
+// window is bounded by two org constraints: the self-hosted Ubuntu runners reboot themselves at
+// 19:00 UTC (04:00 JST, self-host-utils setup-ubuntu.yml crontab), so with the 30-minute job
+// timeout the latest start (17:59 UTC) finishes by 18:29 UTC — leaving ~30 minutes of slack for
+// GitHub's documented schedule-event delays — and every run completes before the 20:00 UTC
+// wbfy-merge run that opens PRs from the pushed `wbfy` branches.
 const wbfyCronWindowStartHourUtc = 16;
-const wbfyCronWindowMinutes = 150;
+const wbfyCronWindowMinutes = 120;
 
 /** Deterministic staggered nightly cron for the wbfy caller (see the window rationale above). */
 export function getWbfyWorkflowCron(repository: string): string {
@@ -394,8 +401,10 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     if (rootConfig.cargoTomlDirPaths.length > 0) {
       mandatoryKinds.push('test-rust');
     }
-    // Every repository gets the self-applying nightly wbfy caller except deny-listed ones, where
-    // an existing caller is also removed (only when the file solely calls the reusable wbfy
+    // Every repository gets the self-applying nightly wbfy caller except deny-listed ones
+    // (generateWorkflows itself only runs for WillBooster/WillBoosterLab repositories — see
+    // shouldRunWorkflows in index.ts — so third-party repositories never reach this). On a
+    // deny-listed repository an existing caller is also removed (only when the file solely calls the reusable wbfy
     // workflow — a same-named custom workflow is left alone) so a repository that later turns out
     // to be unsupported stops willboosterifying itself after one manual wbfy run.
     if (isWbfyWorkflowDenied(rootConfig.repository)) {
@@ -1187,13 +1196,16 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // their secrets untouched.
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
-  // The reusable wbfy workflow declares exactly GH_BOT_PAT (a PAT that can push files under
+  // The reusable wbfy workflow declares exactly WBFY_GH_TOKEN (a PAT that can push files under
   // .github/workflows/, which GITHUB_TOKEN cannot) and VERDACCIO_TOKEN (wbfy's own bun install in
   // repositories with @willbooster-private/* dependencies) — NOT the install-capable trio, so it
   // gets its own injection instead of membership in installCapableReusableWorkflows.
   if (secrets && calledReusableWorkflow === 'wbfy') {
-    secrets.GH_BOT_PAT = '${{ secrets.GH_BOT_PAT }}';
+    secrets[wbfyGhTokenSecretName] = `\${{ secrets.${wbfyGhTokenSecretName} }}`;
     secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
+    // An early draft of the caller passed the deprecated GH_BOT_PAT name; the callee no longer
+    // declares it, and GitHub rejects callers passing undeclared secrets.
+    delete secrets.GH_BOT_PAT;
   }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
@@ -1268,6 +1280,9 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     if (config.isPublicRepo) {
       job.with.github_hosted_runner = true;
     }
+    // An existing github_hosted_runner on a PRIVATE repository is preserved on purpose: the input
+    // exists precisely so a private caller can opt into GitHub-hosted runners, and wbfy must not
+    // revert that manual choice (only the other kinds below never take the input).
   } else {
     delete job.with.github_hosted_runner;
   }

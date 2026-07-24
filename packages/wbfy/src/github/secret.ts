@@ -15,6 +15,7 @@ import {
   readFnoxAgeRecipients,
   resolveFnoxCommand,
 } from '../generators/fnoxToml.js';
+import { isWbfyWorkflowDenied } from '../generators/workflow.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -41,7 +42,7 @@ const require = createRequire(import.meta.url);
 // - WillBoosterLab (free plan): GitHub Free cannot share organization secrets with private
 //   repositories, so wbfy --env keeps provisioning FNOX_AGE_KEY / VERDACCIO_TOKEN as repository
 //   secrets automatically.
-const ORG_MANAGED_SECRET_NAMES = ['CLOUDFLARE_API_TOKEN', 'FNOX_AGE_KEY', 'VERDACCIO_TOKEN'];
+const ORG_MANAGED_SECRET_NAMES = ['CLOUDFLARE_API_TOKEN', 'FNOX_AGE_KEY', 'VERDACCIO_TOKEN', 'WBFY_GH_TOKEN'];
 
 export async function setupSecrets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupSecrets', async () => {
@@ -78,6 +79,10 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
 async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
   const octokit = getOctokit(owner);
   const requiredNames = ['VERDACCIO_TOKEN'];
+  // The self-applying wbfy caller pushes the `wbfy` branch with the WBFY_GH_TOKEN secret (a PAT
+  // with contents:write and workflow scope; a GITHUB_TOKEN push cannot touch workflow files, and
+  // the push is atomic, so the PAT is required in practice).
+  if (!isWbfyWorkflowDenied(config.repository)) requiredNames.push('WBFY_GH_TOKEN');
   // Both requirement checks are deliberately based on the LOCAL working tree: workflow generation
   // keys FNOX_AGE_KEY injection on the local root fnox.toml too, and a config added on a feature
   // branch will need its secret as soon as it merges — surfacing the missing org secret before
@@ -206,6 +211,21 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     process.exitCode = 1;
     return;
   }
+  // The self-applying wbfy caller pushes the `wbfy` branch with the WBFY_GH_TOKEN secret (a PAT
+  // with contents:write and workflow scope; a GITHUB_TOKEN push cannot touch workflow files, and
+  // the push is atomic, so the PAT is required in practice). GitHub Free cannot share
+  // organization secrets with private repositories, so WillBoosterLab repositories receive it as
+  // a repository secret, sourced from the operator's GH_BOT_PAT_FOR_WILLBOOSTERLAB — the same
+  // PAT wbfy itself uses for WillBoosterLab API access. Deny-listed repositories get no caller
+  // workflow, so they need no push token either.
+  const wbfyGhToken = isWbfyWorkflowDenied(config.repository) ? undefined : process.env.GH_BOT_PAT_FOR_WILLBOOSTERLAB;
+  if (!isWbfyWorkflowDenied(config.repository) && !wbfyGhToken) {
+    console.error(
+      'Set the GH_BOT_PAT_FOR_WILLBOOSTERLAB environment variable (a PAT with contents:write and workflow scope) so wbfy --env can upload the WBFY_GH_TOKEN secret. Secrets were neither verified nor uploaded.'
+    );
+    process.exitCode = 1;
+    return;
+  }
   let secretsToUpload: Record<string, string>;
   let obsoleteSecretNames: string[];
   // Choose fnox vs dotenv SOLELY from the remote default branch: an unmerged local migration
@@ -287,7 +307,11 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       process.exitCode = 1;
       return;
     }
-    secretsToUpload = { FNOX_AGE_KEY: ciAgeKey, VERDACCIO_TOKEN: verdaccioToken };
+    secretsToUpload = {
+      FNOX_AGE_KEY: ciAgeKey,
+      VERDACCIO_TOKEN: verdaccioToken,
+      ...(wbfyGhToken ? { WBFY_GH_TOKEN: wbfyGhToken } : {}),
+    };
     obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
   } else {
     // dotenv.config would also inject the values into process.env, leaking this repository's
@@ -296,6 +320,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     secretsToUpload = fs.existsSync(envPath) ? dotenv.parse(fs.readFileSync(envPath, 'utf8')) : {};
     // The decrypted token is the canonical value; a stale copy in .env must not win.
     secretsToUpload['VERDACCIO_TOKEN'] = verdaccioToken;
+    if (wbfyGhToken) secretsToUpload['WBFY_GH_TOKEN'] = wbfyGhToken;
     for (const name of ['GH_BOT_PAT', 'GH_BOT_PAT_FOR_WILLBOOSTER', 'GH_BOT_PAT_FOR_WILLBOOSTERLAB']) {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete secretsToUpload[name];
