@@ -79,10 +79,9 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
 async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
   const octokit = getOctokit(owner);
   const requiredNames = ['VERDACCIO_TOKEN'];
-  // The self-applying wbfy caller pushes the `wbfy` branch with the WBFY_GH_TOKEN secret (a PAT
-  // with contents:write and workflow scope; a GITHUB_TOKEN push cannot touch workflow files, and
-  // the push is atomic, so the PAT is required in practice).
-  if (!isWbfyWorkflowDenied(config.repository)) requiredNames.push('WBFY_GH_TOKEN');
+  // WBFY_GH_TOKEN is deliberately NOT required: the self-applying wbfy caller pushes non-workflow
+  // changes with GITHUB_TOKEN, and updating workflow files is opt-in (the secret, or a local wbfy
+  // run). The deny-listed and shadowing checks below still cover the secret where it exists.
   // Both requirement checks are deliberately based on the LOCAL working tree: workflow generation
   // keys FNOX_AGE_KEY injection on the local root fnox.toml too, and a config added on a feature
   // branch will need its secret as soon as it merges — surfacing the missing org secret before
@@ -249,18 +248,18 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     process.exitCode = 1;
     return;
   }
-  // The self-applying wbfy caller pushes the `wbfy` branch with the WBFY_GH_TOKEN secret (a PAT
-  // with contents:write and workflow scope; a GITHUB_TOKEN push cannot touch workflow files, and
-  // the push is atomic, so the PAT is required in practice). GitHub Free cannot share
-  // organization secrets with private repositories, so WillBoosterLab repositories receive it as
-  // a repository secret. It is deliberately sourced from a DEDICATED environment variable, never
-  // from GH_BOT_PAT_FOR_WILLBOOSTERLAB: anyone with write access to one repository can read its
-  // Actions secrets, so the uploaded value must be a least-privilege PAT (fine-grained, Contents
-  // and Workflows write only) rather than the bot PAT that can also administer settings,
-  // rulesets, and secrets across the organization. Deny-listed repositories get no caller
-  // workflow, so they need no push token either. Known accepted risk: the SAME least-privilege
-  // PAT value reaches every allowed repository, so one compromised repository exposes push access
-  // to the others — replacing it with per-repository short-lived GitHub App tokens is tracked in
+  // OPT-IN: the self-applying wbfy caller pushes non-workflow changes with GITHUB_TOKEN; the
+  // WBFY_GH_TOKEN secret (a PAT with contents:write and workflow scope) is only needed when a
+  // repository should have its workflow files updated automatically too. When the operator sets
+  // WBFY_GH_TOKEN_FOR_WILLBOOSTERLAB, it is uploaded as a repository secret (GitHub Free cannot
+  // share organization secrets with private repositories). It is deliberately sourced from a
+  // DEDICATED environment variable, never from GH_BOT_PAT_FOR_WILLBOOSTERLAB: anyone with write
+  // access to one repository can read its Actions secrets, so the uploaded value must be a
+  // least-privilege PAT (fine-grained, Contents and Workflows write only) rather than the bot
+  // PAT that can also administer settings, rulesets, and secrets across the organization.
+  // Deny-listed repositories get no caller workflow, so they need no push token either. Known
+  // accepted risk of opting in: the SAME least-privilege PAT value reaches every opted-in
+  // repository — replacing it with per-repository short-lived GitHub App tokens is tracked in
   // https://github.com/WillBooster/shared/issues/1077.
   const wbfyGhToken = isWbfyWorkflowDenied(config.repository)
     ? undefined
@@ -268,13 +267,6 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   // Also keep WBFY_GH_TOKEN in the obsolete set on deny-listed repositories so the regular
   // cleanup pass removes any stale copy the early revocation above missed.
   const wbfyObsoleteSecretNames = isWbfyWorkflowDenied(config.repository) ? ['WBFY_GH_TOKEN'] : [];
-  if (!isWbfyWorkflowDenied(config.repository) && !wbfyGhToken) {
-    console.error(
-      'Set the WBFY_GH_TOKEN_FOR_WILLBOOSTERLAB environment variable (a least-privilege fine-grained PAT with only Contents and Workflows write on WillBoosterLab repositories — NOT the bot PAT) so wbfy --env can upload the WBFY_GH_TOKEN secret. Secrets were neither verified nor uploaded.'
-    );
-    process.exitCode = 1;
-    return;
-  }
   let secretsToUpload: Record<string, string>;
   let obsoleteSecretNames: string[];
   // Decide the fnox migration state SOLELY from the remote default branch: an unmerged local
