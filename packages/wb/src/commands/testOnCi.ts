@@ -20,7 +20,7 @@ import { findWranglerConfigPath } from '../utils/wrangler.js';
 import { promisePool } from '../utils/promisePool.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
-import { warnIfPlaywrightSpecsAreUndiscoverable } from './test.js';
+import { getDefaultUnitTargets, warnIfPlaywrightSpecsAreUndiscoverable } from './test.js';
 
 const testOnCiBuilder = {
   silent: {
@@ -84,9 +84,11 @@ export async function testOnCi(
     if (hasDockerfile) {
       await runWithSpawnInParallel(dockerScripts.stopAll(), project, argv);
     }
-    if (fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) {
+    const defaultUnitTargets = getDefaultUnitTargets(project);
+    if (defaultUnitTargets !== false) {
       // CI mode disallows `only` to avoid including debug tests
-      await runWithSpawnInParallel(scripts.testUnit(project, argv).replaceAll(' --allowOnly', ''), project, argv);
+      const unitArgv = { ...argv, targets: defaultUnitTargets };
+      await runWithSpawnInParallel(scripts.testUnit(project, unitArgv).replaceAll(' --allowOnly', ''), project, argv);
     }
     if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       // Confirm dev server startup for consistency across projects with E2E tests.

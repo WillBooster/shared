@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import yargs from 'yargs';
 
 import { retryCommand } from '../src/commands/retry.js';
@@ -94,36 +94,56 @@ describe('resolveTestExecutionTargets', () => {
       shouldRunE2e: true,
     });
   });
+
+  // Unit tests may live directly under `test/`, so such a target must not be silently dropped.
+  it('runs unit tests when a target directly under test/ is requested', () => {
+    expect(resolveTestExecutionTargets(['test/example.test.ts'])).toEqual({
+      shouldRunUnit: true,
+      shouldRunE2e: false,
+    });
+  });
 });
 
-async function createProjectDir(subDirNames: string[]): Promise<string> {
-  const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-unit-targets-'));
-  for (const subDirName of subDirNames) {
-    await fs.mkdir(path.join(dirPath, subDirName), { recursive: true });
-  }
-  return dirPath;
-}
-
 describe('getDefaultUnitTargets', () => {
+  const dirPaths: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(dirPaths.splice(0).map((dirPath) => fs.rm(dirPath, { force: true, recursive: true })));
+  });
+
+  async function createProjectDir(subDirNames: string[]): Promise<string> {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-unit-targets-'));
+    dirPaths.push(dirPath);
+    for (const subDirName of subDirNames) {
+      await fs.mkdir(path.join(dirPath, subDirName), { recursive: true });
+    }
+    return dirPath;
+  }
+
   // The regression this guards: creating `test/unit` used to switch the target to `test/unit/`
   // exclusively, so the sibling tests directly under `test/` stopped running without any output.
   it('covers both test/ and test/unit/ for a vitest project', async () => {
     const dirPath = await createProjectDir(['test/unit']);
-    expect(getDefaultUnitTargets({ dirPath, hasVitest: true })).toEqual(['test']);
+    expect(getDefaultUnitTargets({ dirPath, hasVitest: true })).toEqual(['./test/']);
   });
 
   it('excludes e2e specs for a vitest project', async () => {
     const dirPath = await createProjectDir(['test/unit', 'test/e2e']);
-    expect(getDefaultUnitTargets({ dirPath, hasVitest: true })).toEqual(['test', '--exclude', 'test/e2e/**']);
+    expect(getDefaultUnitTargets({ dirPath, hasVitest: true })).toEqual(['./test/', '--exclude', 'test/e2e/**']);
+  });
+
+  it('covers the whole test directory for a non-vitest project without e2e specs', async () => {
+    const dirPath = await createProjectDir(['test']);
+    expect(getDefaultUnitTargets({ dirPath, hasVitest: false })).toEqual(['./test/']);
   });
 
   it('falls back to test/unit/ for a non-vitest project having e2e specs', async () => {
     const dirPath = await createProjectDir(['test/unit', 'test/e2e']);
-    expect(getDefaultUnitTargets({ dirPath, hasVitest: false })).toEqual(['test/unit/']);
+    expect(getDefaultUnitTargets({ dirPath, hasVitest: false })).toEqual(['./test/unit/']);
   });
 
-  it('runs nothing for a non-vitest project without test/unit', async () => {
-    const dirPath = await createProjectDir(['test']);
+  it('runs nothing for a non-vitest project having e2e specs but no test/unit', async () => {
+    const dirPath = await createProjectDir(['test/e2e']);
     expect(getDefaultUnitTargets({ dirPath, hasVitest: false })).toBe(false);
   });
 

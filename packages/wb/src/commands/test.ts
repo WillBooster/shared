@@ -136,7 +136,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     // Run unit tests if needed
     const defaultUnitTargets = getDefaultUnitTargets(project);
     if (shouldRunUnit && defaultUnitTargets !== false) {
-      const unitTargets = testTargets.filter((target) => target.includes('/unit'));
+      const unitTargets = testTargets.filter((target) => !target.includes('/e2e'));
       const unitArgv = { ...testArgv, targets: unitTargets.length > 0 ? unitTargets : defaultUnitTargets };
       const exitCode = await runUnitTestCommand(scripts.testUnit(project, unitArgv), project, testArgv, {
         exitIfFailed: options.exitIfFailed,
@@ -311,17 +311,19 @@ export function withDefaultTestCascadeEnv(argv: TestCommandArgv): TestCommandArg
 /**
  * Resolves the default unit-test targets so that every non-e2e test under `test/` runs, regardless of
  * whether the project keeps them directly under `test/`, under `test/unit/`, or both. Returns `false`
- * when the project has no unit tests to run, and `[]` to let the runner apply its own default.
+ * when the project has no unit tests to run.
  */
 export function getDefaultUnitTargets(project: Pick<Project, 'dirPath' | 'hasVitest'>): string[] | false {
   if (!fs.existsSync(path.join(project.dirPath, 'test'))) return false;
   const hasE2e = fs.existsSync(path.join(project.dirPath, 'test', 'e2e'));
+  // Both vitest and `bun test` treat a bare `test` as a filename filter, which also matches e.g.
+  // `src/foo.test.ts`, so the trailing slash that limits the target to the directory is required.
   if (project.hasVitest) {
-    return hasE2e ? ['test', '--exclude', 'test/e2e/**'] : ['test'];
+    return hasE2e ? ['./test/', '--exclude', 'test/e2e/**'] : ['./test/'];
   }
-  if (!fs.existsSync(path.join(project.dirPath, 'test', 'unit'))) return false;
   // `bun test` cannot exclude paths, so it can cover the whole `test/` directory only without e2e specs.
-  return hasE2e ? ['test/unit/'] : ['test'];
+  if (!hasE2e) return ['./test/'];
+  return fs.existsSync(path.join(project.dirPath, 'test', 'unit')) ? ['./test/unit/'] : false;
 }
 
 async function testOnDocker(
@@ -456,7 +458,8 @@ export function resolveTestExecutionTargets(
   forwardedPlaywrightArgs: string[] = []
 ): { shouldRunUnit: boolean; shouldRunE2e: boolean } {
   const hasE2eTargets = testTargets.some((target) => target.includes('/e2e'));
-  const hasUnitTargets = testTargets.some((target) => target.includes('/unit'));
+  // Unit tests live directly under `test/` as well as under `test/unit/`, so every non-e2e target is a unit target.
+  const hasUnitTargets = testTargets.some((target) => !target.includes('/e2e'));
   const shouldRunAllTests = testTargets.length === 0 && forwardedPlaywrightArgs.length === 0;
 
   return {
