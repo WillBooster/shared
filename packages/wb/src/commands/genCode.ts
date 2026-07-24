@@ -9,8 +9,14 @@ import { findDescendantProjects } from '../project.js';
 import { findDrizzleConfig, wrapWithDrizzleConfigDir } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
+import { writeWorkerTypesEnvStub } from '../utils/workerTypesEnv.js';
 
 const builder = {} as const;
+
+// `wrangler types` derives the Cloudflare `Env`'s secret/var members only from the KEY NAMES in a
+// .dev.vars/.env file (never from process.env), and `--env-file` REPLACES that default file set. So
+// gen-code types a Worker against a throwaway key-only stub written here from committed sources.
+const workerTypesEnvPath = path.join('.wrangler', 'worker-types.env');
 
 export const genCodeCommand: CommandModule = {
   command: 'gen-code',
@@ -32,6 +38,16 @@ export const genCodeCommand: CommandModule = {
     }
     for (const { project, scripts } of genCodeTargets) {
       console.info(`Running "gen-code" for ${project.name} ...`);
+      // Write the key stub the first script's `wrangler types --env-file` consumes. It is derived from
+      // committed sources (fnox.toml key names + any .env* file), so it needs no age key, never pulls in
+      // process.env / `mise env` host variables, and does not depend on which profile a run resolves.
+      if (!argv.dryRun && getWranglerTypesScript(project)) {
+        writeWorkerTypesEnvStub(
+          project.dirPath,
+          project.rootDirPath,
+          path.resolve(project.dirPath, workerTypesEnvPath)
+        );
+      }
       for (const script of scripts) {
         await runWithSpawn(script, project, argv);
       }
@@ -45,7 +61,11 @@ export function getGenCodeScripts(project: Project): string[] {
   // and the generators below type-check against the Cloudflare `Env` it declares.
   const wranglerTypesScript = getWranglerTypesScript(project);
   if (wranglerTypesScript) {
-    scripts.push(wranglerTypesScript);
+    // `--env-file` points wrangler at the key stub the handler writes (see writeWorkerTypesEnvStub),
+    // so a fresh checkout with no runtime .dev.vars (e.g. CI) still types every secret. Without it a
+    // bare `wrangler types` yields an `Env` missing every secret and the type-aware generators/linters
+    // below fail (e.g. "Property 'AUTH_SECRET' does not exist on type 'Env'").
+    scripts.push(`${wranglerTypesScript} --env-file ${workerTypesEnvPath}`);
   }
   const prismaGenerateScript = getPrismaGenerateScript(project);
   if (prismaGenerateScript) {
@@ -68,9 +88,10 @@ export function getGenCodeScripts(project: Project): string[] {
 
 /**
  * `YARN wrangler` rather than `bunx wrangler`: wrangler needs real Node.js, and `bunx` may resolve
- * a version other than the lockfile's. Flags are deliberately omitted — `--env-file` is a legacy
- * `.env` idiom that fnox repositories have no file for, and `--strict-vars` is a per-repository
- * type-strictness choice that belongs in the wrangler config, not in every caller.
+ * a version other than the lockfile's. Returns the base command; the caller appends `--env-file`
+ * pointing at a generated key-only stub (see getGenCodeScripts) because fnox repositories have no
+ * `.env` file for wrangler to infer the secret bindings from. `--strict-vars` is deliberately left
+ * out — it is a per-repository type-strictness choice that belongs in the wrangler config.
  */
 function getWranglerTypesScript(project: Project): string | undefined {
   if (!project.generatesWorkerTypes) return;
