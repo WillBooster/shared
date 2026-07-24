@@ -5,7 +5,7 @@ import path from 'node:path';
 import { expect, test } from 'vitest';
 
 import { generateFnoxToml, hasFnoxSyncFailed } from '../../src/generators/fnoxToml.js';
-import { createConfig } from '../testConfig.js';
+import { createConfig } from '../helpers/testConfig.js';
 
 test('keeps the age recipients of a repository outside the WillBooster organizations', async () => {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fnox-'));
