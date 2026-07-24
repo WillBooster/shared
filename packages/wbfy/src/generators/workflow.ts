@@ -215,7 +215,109 @@ const workflows = {
       },
     },
   },
+  wbfy: {
+    name: 'Willboosterify',
+    on: {
+      // The nightly cron is repository-specific (minutes staggered by repository name so the
+      // whole organization does not queue on the self-hosted runners at once); it is injected in
+      // writeWorkflowYaml AFTER the merge with existing content, so a stale minute never wins.
+      schedule: [],
+      workflow_dispatch: null,
+    },
+    concurrency: {
+      group: '${{ github.workflow }}',
+      'cancel-in-progress': true,
+    },
+    permissions: {
+      // The push normally authenticates with the GH_BOT_PAT secret (wbfy rewrites files under
+      // .github/workflows/, which a GITHUB_TOKEN push cannot touch); contents: write keeps the
+      // GITHUB_TOKEN fallback able to push non-workflow changes when the secret is missing.
+      contents: 'write',
+    },
+    jobs: {
+      wbfy: {
+        uses: 'WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main',
+      },
+    },
+  },
 } as const;
+
+/**
+ * Repositories that must NOT get the self-applying wbfy caller workflow, by repository name
+ * (case-insensitive, either organization). Deny-list based on purpose: wbfy should run nightly on
+ * every WillBooster/WillBoosterLab repository except the ones where it is known not to work, the
+ * ones maintained for/by external collaborators, and forks (mirrors the exclusions of the retired
+ * self-host-utils nightly fan-out, scripts/process-repos.sh).
+ */
+export const wbfyWorkflowDenyList: ReadonlySet<string> = new Set(
+  [
+    // wbfy doesn't support these repos.
+    'agent-skills-private',
+    'corporate_consulting',
+    'detect-phone-fraud',
+    'detect-phone-fraud-android',
+    'detect-phone-fraud-cache',
+    'development-guide',
+    'docker-utils',
+    'healthcare',
+    'openclaw-railway',
+    'openclaw-workspace',
+    'photo_management',
+    'prompt-study-courses',
+    'reusable-workflows',
+    'sample-of-one-way-git-sync',
+    'seamzip',
+    'self-host-utils',
+    'slide-reviewer',
+    'test-fixtures-for-wbfy',
+    'verdaccio',
+    // These repos are for externals, so don't touch them.
+    'agent-sandbox-backlog',
+    'agent-sandbox-sample-account-book',
+    'agent-sandbox-workflow',
+    'chofu-walking-ai',
+    'exercode-employee-courses',
+    'exercode-example-course',
+    'exercode-kawahara-courses',
+    'exercode-kawahara-teacher-courses',
+    'exercode-kcs-courses',
+    'exercode-oic-ok-courses',
+    'exercode-oic-wb-courses',
+    'exercode-public-courses',
+    'exercode-sakamoto-smartse-courses',
+    'exercode-sakamoto-topse-courses',
+    'exercode-sakamoto-waseda-courses',
+    'exercode-waseda-programming-a-cce',
+    'exercode-waseda-programming-a-cse',
+    'vibe-coding-examples',
+    // These repos are forks, so don't touch them.
+    'asdf-actions',
+    'react-frame-component',
+  ].map((name) => name.toLowerCase())
+);
+
+/**
+ * Whether the self-applying wbfy caller workflow must not be generated for this repository.
+ * An unknown repository is denied: without the repository identity there is no way to check the
+ * deny list (nor to stagger the schedule deterministically).
+ */
+export function isWbfyWorkflowDenied(repository: string | undefined): boolean {
+  const repoName = repository?.toLowerCase().split('/').at(-1);
+  return !repoName || wbfyWorkflowDenyList.has(repoName);
+}
+
+/**
+ * Deterministic nightly cron for the wbfy caller: minute staggered by repository name within
+ * 16:00 UTC (01:00 JST), the hour the retired self-host-utils fan-out used — comfortably before
+ * the 20:00 UTC wbfy-merge run that opens PRs from the pushed `wbfy` branches.
+ */
+export function getWbfyWorkflowCron(repository: string): string {
+  let hash = 0;
+  for (const ch of repository.toLowerCase()) {
+    hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) % 60;
+  }
+  return `${hash} 16 * * *`;
+}
 
 type KnownKind = keyof typeof workflows | 'deploy' | 'autofix';
 
@@ -286,6 +388,19 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     if (rootConfig.cargoTomlDirPaths.length > 0) {
       mandatoryKinds.push('test-rust');
     }
+    // Every repository gets the self-applying nightly wbfy caller except deny-listed ones, where
+    // an existing caller is also removed (only when the file solely calls the reusable wbfy
+    // workflow — a same-named custom workflow is left alone) so a repository that later turns out
+    // to be unsupported stops willboosterifying itself after one manual wbfy run.
+    if (isWbfyWorkflowDenied(rootConfig.repository)) {
+      const wbfyFileName = fileNamesByKind.get('wbfy');
+      fileNamesByKind.delete('wbfy');
+      if (wbfyFileName && jobsAllCallReusableWorkflow(workflowsPath, wbfyFileName, 'wbfy')) {
+        await fsUtil.removeConfined(path.join(workflowsPath, wbfyFileName));
+      }
+    } else {
+      mandatoryKinds.push('wbfy');
+    }
     for (const kind of mandatoryKinds) {
       if (!fileNamesByKind.has(kind)) {
         fileNamesByKind.set(kind, `${kind}.yml`);
@@ -338,6 +453,18 @@ export function isReusableWorkflowsRepo(repository?: string): boolean {
  */
 export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string): boolean {
   if (/^gen-pr(?:-.+)?\.yml$/u.test(fileName)) return true;
+  // Owner-restricted: only WillBooster's own reusable gen-pr workflow was retired, so a caller of
+  // some other organization's same-named workflow must not be deleted.
+  return jobsAllCallReusableWorkflow(workflowsPath, fileName, 'gen-pr');
+}
+
+/**
+ * Whether every job of the workflow file calls the named WillBooster reusable workflow (owner
+ * restricted via parseOrgReusableWorkflowCall). Used to decide whether wbfy owns a file enough to
+ * delete it: unparsable files and files with any other job return false — deleting a whole
+ * workflow on a loose match would be too aggressive.
+ */
+function jobsAllCallReusableWorkflow(workflowsPath: string, fileName: string, workflowName: string): boolean {
   if (!fileName.endsWith('.yml')) return false;
   let content: string;
   try {
@@ -345,18 +472,16 @@ export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string)
   } catch {
     return false;
   }
-  // Owner-restricted: only WillBooster's own reusable gen-pr workflow was retired, so a caller of
-  // some other organization's same-named workflow must not be deleted.
-  const isGenPrCall = (uses: unknown): boolean =>
-    typeof uses === 'string' && parseOrgReusableWorkflowCall(uses)?.workflowName === 'gen-pr';
+  const isTargetCall = (uses: unknown): boolean =>
+    typeof uses === 'string' && parseOrgReusableWorkflowCall(uses)?.workflowName === workflowName;
   try {
     const workflow = yaml.load(content) as Workflow | undefined;
     if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
       const jobs = Object.values(workflow.jobs);
-      return jobs.length > 0 && jobs.every((job) => isGenPrCall(job?.uses));
+      return jobs.length > 0 && jobs.every((job) => isTargetCall(job?.uses));
     }
   } catch {
-    // Fall through to the filename-only decision above.
+    // Unparsable content is not provably a caller of the named workflow.
   }
   return false;
 }
@@ -511,6 +636,15 @@ async function writeWorkflowYaml(
       if (newSettings.on?.push) {
         delete newSettings.on.push['paths-ignore'];
         newSettings.on.push.branches = newSettings.on.push.branches.filter((branch) => branch !== 'renovate/**');
+      }
+      break;
+    }
+    case 'wbfy': {
+      // Assigned after the merge so wbfy owns the schedule authoritatively: a hand-edited (or
+      // previously generated) cron never wins over the deterministic staggered one.
+      if (config.repository) {
+        newSettings.on ??= {};
+        newSettings.on.schedule = [{ cron: getWbfyWorkflowCron(config.repository) }];
       }
       break;
     }
@@ -1047,6 +1181,14 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // their secrets untouched.
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
+  // The reusable wbfy workflow declares exactly GH_BOT_PAT (a PAT that can push files under
+  // .github/workflows/, which GITHUB_TOKEN cannot) and VERDACCIO_TOKEN (wbfy's own bun install in
+  // repositories with @willbooster-private/* dependencies) — NOT the install-capable trio, so it
+  // gets its own injection instead of membership in installCapableReusableWorkflows.
+  if (secrets && calledReusableWorkflow === 'wbfy') {
+    secrets.GH_BOT_PAT = '${{ secrets.GH_BOT_PAT }}';
+    secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
+  }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
     // malicious-package-blocking proxy when this token resolves; an unset organization secret
@@ -1116,7 +1258,7 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     job.with.ci_label = 'large';
   }
   // Because github.event.repository.private is always true if job is scheduled
-  if (kind === 'release' || kind.startsWith('test') || kind.startsWith('deploy')) {
+  if (kind === 'release' || kind === 'wbfy' || kind.startsWith('test') || kind.startsWith('deploy')) {
     if (config.isPublicRepo) {
       job.with.github_hosted_runner = true;
     }
