@@ -103,6 +103,18 @@ describe('resolveTestExecutionTargets', () => {
       shouldRunE2e: false,
     });
   });
+
+  // The e2e classification must match the test/e2e path segment, not the '/e2e' substring.
+  it('treats a unit target whose file name starts with e2e as a unit target', () => {
+    expect(resolveTestExecutionTargets(['test/unit/e2eConfig.test.ts'])).toEqual({
+      shouldRunUnit: true,
+      shouldRunE2e: false,
+    });
+    expect(resolveTestExecutionTargets(['test/e2e/example.spec.ts'])).toEqual({
+      shouldRunUnit: false,
+      shouldRunE2e: true,
+    });
+  });
 });
 
 const dirPaths: string[] = [];
@@ -171,6 +183,24 @@ describe('findTestStructureViolations', () => {
 
   it('allows test files inside test/fixtures/', async () => {
     const dirPath = await createProjectDir([], ['test/fixtures/app/test/unit/example.test.ts']);
+    expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
+  });
+
+  it('ignores hidden entries such as .DS_Store', async () => {
+    const dirPath = await createProjectDir([], ['test/.DS_Store', 'test/unit/example.test.ts', '.tmp/a.test.ts']);
+    expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
+  });
+
+  it('rejects test files outside test/ such as the project root and scripts/', async () => {
+    const dirPath = await createProjectDir([], ['outside.test.ts', 'scripts/deploy.spec.ts']);
+    expect(findTestStructureViolations({ dirPath, packageJson }).toSorted()).toEqual([
+      'outside.test.ts',
+      'scripts/deploy.spec.ts',
+    ]);
+  });
+
+  it('skips nested packages, which are validated as their own projects', async () => {
+    const dirPath = await createProjectDir([], ['packages/app/package.json', 'packages/app/stray.test.ts']);
     expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
   });
 

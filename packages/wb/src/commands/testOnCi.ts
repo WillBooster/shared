@@ -108,7 +108,9 @@ export async function testOnCi(
       const script = hasDockerfile
         ? await scripts.testE2EDocker(project, argv, {})
         : await scripts.testE2EProduction(project, argv, {});
-      process.exitCode = await runWithSpawn(
+      // Preserve a nonzero exit code from an earlier project (e.g. a layout violation): a later
+      // successful project must not reset the failure.
+      const e2eExitCode = await runWithSpawn(
         // CI mode disallows `only` to avoid including debug tests
         script.replaceAll(' --allowOnly', ''),
         project,
@@ -117,6 +119,9 @@ export async function testOnCi(
           exitIfFailed: false,
         }
       );
+      if (e2eExitCode !== 0) {
+        process.exitCode = e2eExitCode;
+      }
       if (hasDockerfile) {
         await runWithSpawn(dockerScripts.stop(project), project, argv);
       }

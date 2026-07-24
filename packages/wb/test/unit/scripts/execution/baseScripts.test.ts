@@ -9,7 +9,7 @@ import { BaseScripts } from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
 
-vi.mock('../../../src/utils/port.js', () => ({
+vi.mock('../../../../src/utils/port.js', () => ({
   checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
 }));
 

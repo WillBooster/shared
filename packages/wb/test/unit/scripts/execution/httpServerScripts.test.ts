@@ -8,7 +8,7 @@ import { httpServerScripts } from '../../../../src/scripts/execution/httpServerS
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
 import { buildShellCommand } from '../../../../src/utils/shell.js';
 
-vi.mock('../../../src/utils/port.js', () => ({
+vi.mock('../../../../src/utils/port.js', () => ({
   checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
 }));
 
