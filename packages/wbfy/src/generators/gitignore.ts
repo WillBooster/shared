@@ -21,7 +21,7 @@ __generated__/
 .claude/*.local.*
 .claude/scheduled_tasks.lock
 .devcontainer/
-.env.production
+.env*
 .idea/AugmentWebviewStateStore.xml
 .idea/copilot.*
 .idea/copilot/chatSessions/
@@ -135,10 +135,11 @@ src-tauri/gen/schemas/
 `;
     }
     if (config.isCloudflare || rootConfig.isCloudflare) {
-      // .dev.vars* hold local secrets for wrangler dev and must never be committed,
-      // unlike the committed .env/.env.staging files of the WillBooster convention.
+      // .dev.vars* hold local secrets for wrangler dev and must never be committed.
       // .env.cloudflare carries CLOUDFLARE_API_TOKEN: CI writes it from a secret, and a local
       // `wb deploy` needs a real token in it, so committing it would leak account credentials.
+      // It is listed explicitly (although the common `.env*` rule covers it) because
+      // untrackCloudflareEnv verifies this exact managed rule before untracking.
       headUserContent += `.dev.vars*
 .env.cloudflare
 .wrangler/

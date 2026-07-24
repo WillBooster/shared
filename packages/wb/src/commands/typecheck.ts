@@ -16,7 +16,7 @@ export type TypeCheckCommandArgv = ArgumentsCamelCase<TypeCheckCommandOptions>;
 
 export const typeCheckCommand: CommandModule<unknown, TypeCheckCommandOptions> = {
   command: 'typecheck',
-  describe: 'Run type checking. .env files are ignored.',
+  describe: 'Run type checking. Environment variables are not loaded.',
   builder,
   async handler(argv) {
     process.exit(await typeCheck(argv));

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { selectDotenvSourcedKeys, selectRailwayVariables } from '../../src/commands/railwayEnv.js';
+import { selectFnoxSourcedKeys, selectRailwayVariables } from '../../src/commands/railwayEnv.js';
 
-describe('selectDotenvSourcedKeys', () => {
-  it('keeps fnox/.env-declared keys and drops mise-provided host/tool variables', () => {
-    const keys = selectDotenvSourcedKeys([
+describe('selectFnoxSourcedKeys', () => {
+  it('keeps fnox-declared keys and drops mise-provided host/tool variables', () => {
+    const keys = selectFnoxSourcedKeys([
       ['fnox export --profile production', ['DATABASE_URL', 'DISCORD_BOT_TOKEN', 'PORT']],
       ['mise env --env production', ['PATH', 'CARGO_HOME', 'RUSTUP_HOME', 'RUSTUP_TOOLCHAIN']],
     ]);

@@ -10,7 +10,7 @@ import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 // Cloudflare Workers don't see the process environment; wrangler dev reads vars from a .dev.vars
-// file next to its config file instead. This command bridges wb-managed .env files to that file.
+// file next to its config file instead. This command bridges the fnox-managed values to that file.
 const builder = {} as const;
 
 type GenDevVarsCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
@@ -19,7 +19,7 @@ type GenDevVarsCommandArgv = ArgumentsCamelCase<GenDevVarsCommandOptions & { pat
 export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions> = {
   command: 'gen-dev-vars [path]',
   describe:
-    'Generate a .dev.vars file for `wrangler dev` from the environment variables loaded from .env files (plus WB_ENV and NEXT_PUBLIC_WB_ENV).',
+    'Generate a .dev.vars file for `wrangler dev` from the environment variables loaded from fnox (plus WB_ENV and NEXT_PUBLIC_WB_ENV).',
   builder: (yargs) =>
     yargs.positional('path', {
       description: 'Output path of the generated .dev.vars file.',
@@ -35,15 +35,15 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
 
     // Restrict to variables loaded from the project's declared environment sources so that
     // unrelated process environment variables never leak into the generated file. Ignore
-    // process.env because the parent wb process injects the .env values into it, which would
+    // process.env because the parent wb process injects the fnox values into it, which would
     // otherwise suppress loading them here. wbfy declares the WB_ENV-family keys in fnox, so
     // they are already included; process-only keys are intentionally outside this allowlist.
     const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
-    // Explicitly exported environment variables must win over dotenv values for file-defined
-    // keys (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve
-    // the stale file value. An export that empties a non-empty file value is deliberate and
-    // must survive the empty-value filter below (unlike `KEY=` placeholders in .env files,
-    // which stay omitted so they cannot override wrangler `vars` with empty strings).
+    // Explicitly exported environment variables must win over fnox values for configured keys
+    // (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve the
+    // stale configured value. An export that empties a non-empty configured value is deliberate
+    // and must survive the empty-value filter below (unlike `KEY=` placeholders, which stay
+    // omitted so they cannot override wrangler `vars` with empty strings).
     const explicitlyEmptiedKeys = new Set<string>();
     for (const key of Object.keys(envVars)) {
       const effectiveValue = project.env[key];

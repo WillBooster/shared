@@ -2,7 +2,6 @@ import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
 
 const shutdownSignals = new Set(['SIGINT', 'SIGTERM', 'SIGQUIT']);
@@ -90,46 +89,27 @@ function readAndApplyEnvironmentVariables(cwd) {
   // The mode is FORCED only when WB_ENV is explicitly exported; it drives the forced-mode override
   // below and the validation at the end.
   const mode = process.env.WB_ENV;
-  // Two selectors, both defaulting to development like wb's main loader (`WB_ENV || NODE_ENV ||
-  // 'development'`) so a repo keeping dev-only secrets in `[profiles.development.secrets]` loads them
-  // when WB_ENV is unset instead of only the base table:
-  //   - envCascade picks the `.env.<envCascade>` files. It must NOT consult FNOX_PROFILE — that is a
-  //     fnox-only selector, and letting it redirect a legacy `.env`-only project's cascade would load
-  //     the wrong files.
-  //   - fnoxCascade picks the fnox `--profile` and gates the WB_ENV check below. It additionally honors
-  //     an explicit FNOX_PROFILE, because fnox honors it and `wb dotenv` without WB_ENV is documented
-  //     to as well.
-  const envCascade = mode || process.env.NODE_ENV || 'development';
+  // The fnox `--profile` selector, defaulting to development like wb's main loader (`WB_ENV ||
+  // NODE_ENV || 'development'`) so a repo keeping dev-only secrets in
+  // `[profiles.development.secrets]` loads them when WB_ENV is unset instead of only the base
+  // table. It additionally honors an explicit FNOX_PROFILE, because fnox honors it and
+  // `wb dotenv` without WB_ENV is documented to as well.
   const fnoxCascade = mode || process.env.FNOX_PROFILE || process.env.NODE_ENV || 'development';
-  // Mode-specific sources drive the forced-mode override below (only meaningful when the mode is forced).
-  const modeVars = mode
-    ? { ...readEnvFile(path.join(cwd, `.env.${mode}`)), ...readEnvFile(path.join(cwd, `.env.${mode}.local`)) }
-    : {};
-  // Mirror the shared cascade's precedence: .env.<c>.local > .env.local > .env.<c> > .env (c = envCascade).
-  const dotenvVars = {
-    ...readEnvFile(path.join(cwd, '.env')),
-    ...readEnvFile(path.join(cwd, `.env.${envCascade}`)),
-    ...readEnvFile(path.join(cwd, '.env.local')),
-    ...readEnvFile(path.join(cwd, `.env.${envCascade}.local`)),
-  };
-  // WB_ENV in process.env means the mode is explicitly forced, so values from the mode's own
-  // sources (.env.<mode>[.local] and the fnox profile) win over variables inherited from the
-  // parent shell — except on CI, where injected env vars must keep overriding committed files
+  // WB_ENV in process.env means the mode is explicitly forced, so values from the mode's own fnox
+  // profile win over variables inherited from the parent shell — except on CI, where injected env
+  // vars must keep overriding committed values
   // (see https://github.com/WillBooster/shared/issues/930).
   const modeFileOverridesProcessEnv = !!mode && !isCI(process.env.CI);
-  // fnox.toml is the committed, encrypted equivalent of .env files; local .env files still win over it.
-  const fnoxVars = readFnoxEnvironmentVariables(cwd, fnoxCascade, dotenvVars, modeFileOverridesProcessEnv);
-  const parsed = { ...fnoxVars, ...dotenvVars };
-  // Expand ${...} references against exported variables whose FILE value loses to the shell
+  const parsed = readFnoxEnvironmentVariables(cwd, fnoxCascade, modeFileOverridesProcessEnv);
+  // Expand ${...} references against exported variables whose fnox value loses to the shell
   // (mirroring readEnvironmentVariables' effective-value semantics): a reference must resolve to
-  // the value the child will actually see, so a shell-shadowed key expands to the shell value
-  // while a winning file/override value expands to the file value.
-  const fileValueWins = (key) =>
-    !(key in process.env) || (modeFileOverridesProcessEnv && (key in modeVars || key in fnoxVars));
+  // the value the child will actually see. readFnoxEnvironmentVariables returns a
+  // process.env-shadowed key only when the forced profile overrides it, so every parsed key's own
+  // value wins and is excluded from the reference set.
   const referenceEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     // Escape dollar signs so exported values substitute literally (pa$word stays pa$word).
-    if (value !== undefined && !(key in parsed && fileValueWins(key))) {
+    if (value !== undefined && !(key in parsed)) {
       referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
     }
   }
@@ -139,33 +119,27 @@ function readAndApplyEnvironmentVariables(cwd) {
       process.env[key] = value;
       continue;
     }
-    // readFnoxEnvironmentVariables returns a process.env-shadowed key only when the forced
-    // profile overrides it, so fnox-provided keys count as mode-specific here.
-    if (!(key in modeVars || key in fnoxVars) || process.env[key] === value) continue;
-
+    if (process.env[key] === value) continue;
+    // A process.env-shadowed key reaches here only when the forced profile overrides it (see
+    // readFnoxEnvironmentVariables); on CI such keys are never returned, so no branch is needed.
     if (modeFileOverridesProcessEnv) {
       console.warn(
         `Warning: ${key} in the "${mode}" mode's env sources overrides the value inherited from the parent environment because WB_ENV is explicitly set.`
       );
       process.env[key] = value;
     }
-    // On CI, inherited variables intentionally win; no warning is emitted.
   }
-  // Validate only AFTER applying the sources, so a WB_SKIP_ENV_CHECK defined in an env FILE is
-  // honored: both the captured exported mode (it selected the cascade) and the FINAL value the
+  // Validate only AFTER applying the sources, so a WB_SKIP_ENV_CHECK defined in an env SOURCE is
+  // honored: both the captured exported mode (it selected the profile) and the FINAL value the
   // child will see.
   validateStandardWbEnv(mode, 'the exported variable');
   validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
-  // The selected environment is what an env source silently resolving WB_ENV to a DIFFERENT value must
-  // agree with, else the child runs labeled one environment while carrying another's secrets. The
-  // expectation is `fnoxCascade` only when a fnox config participates (its profile provides WB_ENV in a
-  // compliant repo); in a legacy `.env`-only project FNOX_PROFILE is irrelevant, so the expectation is
-  // `envCascade`. This covers both a forced `.env.production` containing `WB_ENV=development` and the
-  // default-development path (`.env.development`, read even when WB_ENV is unset, containing
-  // `WB_ENV=production`), comparing against the selected cascade rather than just the forced `mode`.
-  // Only a STANDARD cascade is enforced (mirroring Project.completeAndValidateWbEnv): a custom suffix
-  // such as `NODE_ENV=qa` legitimately selects `.env.qa` while WB_ENV stays a standard mode.
-  const expectedCascade = hasProjectFnoxConfig(cwd) ? fnoxCascade : envCascade;
+  // The selected environment is what an env source silently resolving WB_ENV to a DIFFERENT value
+  // must agree with, else the child runs labeled one environment while carrying another's secrets.
+  // Only a STANDARD cascade is enforced (mirroring Project.completeAndValidateWbEnv): a custom
+  // selector such as `NODE_ENV=qa` legitimately selects the `qa` profile while WB_ENV stays a
+  // standard mode.
+  const expectedCascade = fnoxCascade;
   if (
     process.env.WB_ENV &&
     ['development', 'test', 'staging', 'production'].includes(expectedCascade) &&
@@ -182,7 +156,7 @@ function readAndApplyEnvironmentVariables(cwd) {
 }
 
 // Mirrors readFnoxEnvironmentVariables in @willbooster/shared-lib-node for this startup fast path.
-function readFnoxEnvironmentVariables(cwd, cascade, currentEnvVars, modeFileOverridesProcessEnv) {
+function readFnoxEnvironmentVariables(cwd, cascade, modeFileOverridesProcessEnv) {
   if (!hasProjectFnoxConfig(cwd)) return {};
 
   const secrets = runFnoxExport(cwd, cascade, { quiet: false });
@@ -200,7 +174,7 @@ function readFnoxEnvironmentVariables(cwd, cascade, currentEnvVars, modeFileOver
 
   const envVars = {};
   for (const [key, value] of Object.entries(secrets)) {
-    if (typeof value !== 'string' || key in currentEnvVars) continue;
+    if (typeof value !== 'string') continue;
     if (key in process.env) {
       const baseSecrets = modeFileOverridesProcessEnv && cascade ? getBaseSecrets() : undefined;
       const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
@@ -265,10 +239,6 @@ function hasProjectFnoxConfig(cwd) {
     const parentPath = path.dirname(currentPath);
     if (parentPath === currentPath) return false;
   }
-}
-
-function readEnvFile(filePath) {
-  return config({ path: path.resolve(filePath), processEnv: {}, quiet: true }).parsed ?? {};
 }
 
 function removeNpmAndYarnEnvironmentVariables(envVars) {

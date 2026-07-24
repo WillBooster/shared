@@ -15,7 +15,7 @@ const builder = {} as const;
 
 export const setupCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
   command: 'setup',
-  describe: 'Setup development environment. .env files are ignored.',
+  describe: 'Setup development environment. Environment variables are not loaded.',
   builder,
   async handler(argv) {
     await setup(argv);

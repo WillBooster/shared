@@ -224,11 +224,11 @@ export class Project {
       process.exit(1);
     }
     // A forced mode (an explicit/command-default --cascade-env, or an exported WB_ENV whose
-    // mode-specific files may override it locally per issue #930) must not be silently replaced
-    // by another mode a mode file defines: `wb test` resolving WB_ENV=development from a
-    // committed `.env` would run the tests against development values, and an exported
-    // WB_ENV=production overridden to development by `.env.production` would build/deploy the
-    // wrong environment while looking successful.
+    // profile values may override it locally per issue #930) must not be silently replaced by
+    // another mode an env source defines: `wb test` resolving WB_ENV=development from the base
+    // fnox secrets would run the tests against development values, and an exported
+    // WB_ENV=production overridden to development by the production profile would build/deploy
+    // the wrong environment while looking successful.
     // --cascade-node-env forces <NODE_ENV || development> (per its own documentation), read from
     // the AMBIENT environment like the cascade selection. Only a STANDARD forced mode is enforced:
     // a non-standard one (e.g. NODE_ENV=qa) already had its fallback clamped to development above,
@@ -237,7 +237,7 @@ export class Project {
       this.argv.cascadeEnv ??
       (this.argv.cascadeNodeEnv ? process.env.NODE_ENV || 'development' : process.env.WB_ENV || undefined);
     // The AUTO-selected mode counts as the expectation too: with nothing set anywhere, the
-    // development cascade's files are loaded, so a `.env.local` declaring WB_ENV=production would
+    // development values are loaded, so an env source declaring WB_ENV=production would
     // otherwise run development sources labeled as production.
     const expectedMode =
       forcedMode ?? (this.argv.autoCascadeEnv !== false ? resolveFallbackWbEnv(this.argv) : undefined);
@@ -252,7 +252,7 @@ export class Project {
       console.error(
         chalk.red(
           `WB_ENV resolves to "${env.WB_ENV}" although the "${expectedMode}" environment was selected. ` +
-            `Fix the WB_ENV defined in the mode's env source (e.g. .env.${expectedMode} or the fnox "${expectedMode}" profile), ` +
+            `Fix the WB_ENV defined in the mode's env source (e.g. the fnox "${expectedMode}" profile), ` +
             'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
         )
       );
@@ -260,7 +260,7 @@ export class Project {
     }
     if (this.requiresNextPublicWbEnv && env.NEXT_PUBLIC_WB_ENV !== env.WB_ENV) {
       // Assign unconditionally, not `||=`: the pair must agree by convention, and a stale value
-      // (e.g. a base `.env`'s development default while CI exports WB_ENV=test) would otherwise
+      // (e.g. the fnox base development default while CI exports WB_ENV=test) would otherwise
       // be baked into the client bundle even though the server side runs with the correct WB_ENV.
       if (env.NEXT_PUBLIC_WB_ENV && !shouldSuppressEnvironmentOutput(this.argv)) {
         console.info(`Overriding NEXT_PUBLIC_WB_ENV ("${env.NEXT_PUBLIC_WB_ENV}") with WB_ENV ("${env.WB_ENV}").`);

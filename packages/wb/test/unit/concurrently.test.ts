@@ -254,9 +254,8 @@ describe('runConcurrently', () => {
 describe('concurrentlyCommand', () => {
   it('registers shared env-loading options', () => {
     const builder = concurrentlyCommand.builder as Record<string, unknown>;
-    expect(builder.env).toBeDefined();
     expect(builder['cascade-env']).toBeDefined();
-    expect(builder['include-root-env']).toBeDefined();
+    expect(builder['auto-cascade-env']).toBeDefined();
     expect(builder.verbose).toBeDefined();
   });
 
@@ -270,18 +269,9 @@ describe('concurrentlyCommand', () => {
       .command(command)
       .demandCommand()
       .strict()
-      .parseSync([
-        'concurrently',
-        '--env',
-        '.env.test',
-        '--include-root-env=false',
-        '--cascade-env=staging',
-        'echo first',
-        'echo second',
-      ]);
+      .parseSync(['concurrently', '--auto-cascade-env=false', '--cascade-env=staging', 'echo first', 'echo second']);
 
-    expect(argv.env).toEqual(['.env.test']);
-    expect(argv.includeRootEnv).toBe(false);
+    expect(argv.autoCascadeEnv).toBe(false);
     expect(argv.cascadeEnv).toBe('staging');
     expect(argv.commands).toEqual(['echo first', 'echo second']);
     expect(command.handler).toHaveBeenCalledOnce();

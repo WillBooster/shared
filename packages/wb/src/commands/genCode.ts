@@ -39,7 +39,7 @@ export const genCodeCommand: CommandModule = {
     for (const { project, scripts } of genCodeTargets) {
       console.info(`Running "gen-code" for ${project.name} ...`);
       // Write the key stub the first script's `wrangler types --env-file` consumes. It is derived from
-      // committed sources (fnox.toml key names + any .env* file), so it needs no age key, never pulls in
+      // committed sources (fnox.toml key names), so it needs no age key, never pulls in
       // process.env / `mise env` host variables, and does not depend on which profile a run resolves.
       if (!argv.dryRun && getWranglerTypesScript(project)) {
         writeWorkerTypesEnvStub(

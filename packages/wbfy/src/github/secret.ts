@@ -4,7 +4,6 @@ import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 
-import dotenv from 'dotenv';
 import type sodiumModule from 'libsodium-wrappers';
 import { parse } from 'smol-toml';
 
@@ -220,7 +219,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       }
     }
   }
-  // Covers the dotenv path too: a failed synchronization may mean an unsupported fnox layout
+  // Covers the non-fnox path too: a failed synchronization may mean an unsupported fnox layout
   // (e.g. nested configs without a root fnox.toml) whose FNOX_AGE_KEY must not be deleted.
   if (hasFnoxSyncFailed()) {
     console.error('Skip uploading secrets because synchronizing the fnox age recipients failed earlier in this run.');
@@ -265,8 +264,8 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   const wbfyGhToken = isWbfyWorkflowDenied(config.repository)
     ? undefined
     : process.env.WBFY_GH_TOKEN_FOR_WILLBOOSTERLAB;
-  // Also drop any stale WBFY_GH_TOKEN copy a .env file still carries on deny-listed repositories
-  // (uploading it would re-install the credential the early revocation above just removed).
+  // Also keep WBFY_GH_TOKEN in the obsolete set on deny-listed repositories so the regular
+  // cleanup pass removes any stale copy the early revocation above missed.
   const wbfyObsoleteSecretNames = isWbfyWorkflowDenied(config.repository) ? ['WBFY_GH_TOKEN'] : [];
   if (!isWbfyWorkflowDenied(config.repository) && !wbfyGhToken) {
     console.error(
@@ -277,8 +276,8 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
   }
   let secretsToUpload: Record<string, string>;
   let obsoleteSecretNames: string[];
-  // Choose fnox vs dotenv SOLELY from the remote default branch: an unmerged local migration
-  // branch must neither block dotenv secret synchronization nor trigger a premature key upload.
+  // Decide the fnox migration state SOLELY from the remote default branch: an unmerged local
+  // migration branch must not trigger a premature key upload.
   if (remoteFnoxContents.size > 0) {
     // fnox.toml carries the age-encrypted app secrets in the repository itself; CI only needs
     // the age private key to decrypt them. The key is read from the local CI-dedicated fnox
@@ -363,25 +362,19 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     };
     obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, ...wbfyObsoleteSecretNames, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
   } else {
-    // dotenv.config would also inject the values into process.env, leaking this repository's
-    // secrets to every later subprocess and repository handled in the same wbfy invocation.
-    const envPath = path.resolve(config.dirPath, '.env');
-    secretsToUpload = fs.existsSync(envPath) ? dotenv.parse(fs.readFileSync(envPath, 'utf8')) : {};
-    // The decrypted token is the canonical value; a stale copy in .env must not win.
-    secretsToUpload['VERDACCIO_TOKEN'] = verdaccioToken;
-    if (wbfyGhToken) secretsToUpload['WBFY_GH_TOKEN'] = wbfyGhToken;
-    for (const name of ['GH_BOT_PAT', 'GH_BOT_PAT_FOR_WILLBOOSTER', 'GH_BOT_PAT_FOR_WILLBOOSTERLAB']) {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-      delete secretsToUpload[name];
-    }
-    // A repository that migrated away from fnox must not keep the shared CI decryption key, even
-    // when there are no replacement secrets to upload — so no early return on an empty .env.
+    // .env files are no longer synchronized into GitHub secrets: fnox is the org standard, and a
+    // repository without a default-branch fnox.toml only gets the fnox-independent secrets. Any
+    // existing DOT_ENV* secrets are left untouched until the repository migrates.
+    console.warn(
+      `${owner}/${repo} has no fnox.toml on its default branch; migrate it to fnox so app secrets are managed in the repository.`
+    );
+    secretsToUpload = { VERDACCIO_TOKEN: verdaccioToken, ...(wbfyGhToken ? { WBFY_GH_TOKEN: wbfyGhToken } : {}) };
+    // A repository that migrated away from fnox must not keep the shared CI decryption key.
     obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, ...wbfyObsoleteSecretNames, 'FNOX_AGE_KEY'];
   }
 
-  // Never upload a secret that is about to be deleted: a .env could still contain e.g.
-  // FNOX_AGE_KEY or a deprecated name, and a PUT followed by a failed DELETE would leave the
-  // obsolete credential freshly installed.
+  // Never upload a secret that is about to be deleted: a PUT followed by a failed DELETE would
+  // leave the obsolete credential freshly installed.
   for (const name of obsoleteSecretNames) {
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete secretsToUpload[name];

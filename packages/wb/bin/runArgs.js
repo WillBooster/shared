@@ -6,13 +6,12 @@ const booleanOptionNames = new Set([
   'd',
   'help',
   'h',
-  'include-root-env',
   'quiet-env',
   'verbose',
   'v',
   'version',
 ]);
-const valueOptionNames = new Set(['cascade-env', 'env', 'working-dir', 'w']);
+const valueOptionNames = new Set(['cascade-env', 'working-dir', 'w']);
 const boundaryMarkerEnvName = 'WB_INTERNAL_RUN_BOUNDARY_MARKER';
 
 export function protectRunScriptArgs(argv) {

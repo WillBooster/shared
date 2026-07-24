@@ -1,0 +1,5 @@
+# Bare `$VAR` references pass through fnox untouched (fnox only interpolates `${...}` against its
+# own secrets), so these exercise readEnvironmentVariables' dotenv-expand pass against process.env.
+[secrets]
+WORKER_SECRET = { default = "$EXPORTED_SECRET" }
+CALLBACK_URL = { default = "https://$API_HOST/cb" }

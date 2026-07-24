@@ -1193,9 +1193,9 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY repository secret.
   // Key the injection on the *called* reusable workflow, not the caller's filename: callers may have
   // arbitrary names (e.g. scheduled run-script callers), and GitHub rejects passing a secret that the
-  // callee does not declare. The legacy DOT_ENV pass-through is deliberately kept: FNOX_AGE_KEY
-  // provisioning can be skipped (no --env, missing token or age identity), and the pass-through keeps
-  // CI working from the still-existing DOT_ENV secret until the fnox migration completes.
+  // callee does not declare. In a not-yet-migrated repository the legacy DOT_ENV pass-through is
+  // kept so CI keeps working from the still-existing DOT_ENV secret until the fnox migration
+  // completes; once fnox.toml exists, the pass-through (and dot_env_path) is removed below.
   // Only an @main callee is known to follow the current secret contract: a workflow pinned to an
   // older tag or SHA may still declare NPM_TOKEN (and not VERDACCIO_TOKEN), and GitHub rejects a
   // caller whose secrets do not match the selected revision's declarations, so pinned callers keep
@@ -1224,6 +1224,11 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
+      // fnox.toml replaced the .env files (wb no longer reads them), so the legacy inputs would
+      // only keep dead configuration alive.
+      delete secrets.DOT_ENV;
+      delete secrets.DOT_ENV_PRODUCTION;
+      delete job.with.dot_env_path;
     }
   }
   // reusable-workflows replaced the NPM_TOKEN secret declaration with VERDACCIO_TOKEN; GitHub

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { readEnvironmentVariables, resolveFallbackWbEnv } from '../../src/env.js';
+import { isFnoxAvailable } from '../helpers/commandAvailability.js';
 
 const originalNodeEnv = process.env.NODE_ENV;
 
@@ -47,21 +48,20 @@ describe('readEnvironmentVariables with expandFallbackWbEnv', () => {
     }
   });
 
-  it('re-expands dependent references when the expansion empties WB_ENV', () => {
+  it.runIf(isFnoxAvailable())('re-expands dependent references when the expansion empties WB_ENV', () => {
     delete process.env.WB_ENV;
     const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-lib-node-wbenv-'));
     try {
       // WB_ENV is EMPTIED by the expansion itself; DEPENDENT must still receive the fallback the
-      // completed environment will carry.
+      // completed environment will carry. Bare `$VAR` passes through fnox untouched, so the
+      // reader's own dotenv-expand pass performs both expansions.
       fs.writeFileSync(
-        path.join(tempDirPath, '.env'),
-        'WB_ENV=${MISSING_MODE}\nDEPENDENT=prefix-${WB_ENV}\n' // eslint-disable-line no-template-curly-in-string
+        path.join(tempDirPath, 'fnox.toml'),
+        '[secrets]\nWB_ENV = { default = "$MISSING_MODE" }\nDEPENDENT = { default = "prefix-$WB_ENV" }\n'
       );
-      const [envVars] = readEnvironmentVariables(
-        { env: ['.env'], autoCascadeEnv: false, includeRootEnv: false },
-        tempDirPath,
-        { expandFallbackWbEnv: true }
-      );
+      const [envVars] = readEnvironmentVariables({ autoCascadeEnv: false }, tempDirPath, {
+        expandFallbackWbEnv: true,
+      });
       // The emptied WB_ENV is dropped here — wb's Project.completeAndValidateWbEnv fills it with
       // the same fallback afterwards — while dependent references already use that fallback.
       expect(envVars.WB_ENV).toBeUndefined();
@@ -71,23 +71,21 @@ describe('readEnvironmentVariables with expandFallbackWbEnv', () => {
     }
   });
 
-  it('re-expands with the exported value when a forced mode file empties WB_ENV', () => {
-    // A forced mode's files override the export locally, so the loaded key masks the ambient
-    // value even when it expands to empty; CI is cleared because that override is local-only.
+  it.runIf(isFnoxAvailable())('re-expands with the exported value when a forced mode profile empties WB_ENV', () => {
+    // A forced mode's fnox profile overrides the export locally, so the loaded key masks the
+    // ambient value even when it expands to empty; CI is cleared because that override is local-only.
     const originalCi = process.env.CI;
     process.env.WB_ENV = 'test';
     delete process.env.CI;
     const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'shared-lib-node-wbenv-'));
     try {
       fs.writeFileSync(
-        path.join(tempDirPath, '.env.test'),
-        'WB_ENV=${MISSING_MODE}\nDEPENDENT=prefix-${WB_ENV}\n' // eslint-disable-line no-template-curly-in-string
+        path.join(tempDirPath, 'fnox.toml'),
+        '[secrets]\nBASE_ONLY = { default = "base" }\n\n[profiles.test.secrets]\nWB_ENV = { default = "$MISSING_MODE" }\nDEPENDENT = { default = "prefix-$WB_ENV" }\n'
       );
-      const [envVars] = readEnvironmentVariables(
-        { env: ['.env'], cascadeEnv: 'test', includeRootEnv: false },
-        tempDirPath,
-        { expandFallbackWbEnv: true }
-      );
+      const [envVars] = readEnvironmentVariables({ cascadeEnv: 'test' }, tempDirPath, {
+        expandFallbackWbEnv: true,
+      });
       expect(envVars.WB_ENV).toBeUndefined();
       expect(envVars.DEPENDENT).toBe('prefix-test');
     } finally {

@@ -3,9 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { parse } from 'smol-toml';
-import { expect, test, vi } from 'vitest';
+import { expect, test } from 'vitest';
 
-import { ensureWbEnvDefinitions, insertWbEnvIntoEnvFile, insertWbEnvIntoFnoxToml } from '../../src/generators/wbEnv.js';
+import { ensureWbEnvDefinitions, insertWbEnvIntoFnoxToml } from '../../src/generators/wbEnv.js';
 
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -122,74 +122,22 @@ test('refuses to edit an unparsable fnox.toml', () => {
   expect(insertWbEnvIntoFnoxToml('[secrets\nbroken', false)).toBeUndefined();
 });
 
-test('appends missing WB_ENV assignments to legacy .env mode files', () => {
-  expect(insertWbEnvIntoEnvFile('PORT=3000\n', 'test', false)).toBe('PORT=3000\nWB_ENV=test\n');
-  expect(insertWbEnvIntoEnvFile('', 'production', true)).toBe('WB_ENV=production\nNEXT_PUBLIC_WB_ENV=production\n');
-});
-
-test('leaves existing legacy WB_ENV assignments untouched (idempotent)', () => {
-  const content = 'WB_ENV=custom\nexport NEXT_PUBLIC_WB_ENV=custom\n';
-  expect(insertWbEnvIntoEnvFile(content, 'staging', true)).toBe(content);
-  const inserted = insertWbEnvIntoEnvFile('PORT=3000\n', 'staging', true);
-  expect(insertWbEnvIntoEnvFile(inserted, 'staging', true)).toBe(inserted);
-});
-
-test('a WB_ENV line embedded in a quoted multiline value does not suppress the insertion', () => {
-  const content = 'CERT="line1\nWB_ENV=embedded\nline3"\n';
-  expect(insertWbEnvIntoEnvFile(content, 'test', false)).toBe(`${content}WB_ENV=test\n`);
-});
-
-test('ensureWbEnvDefinitions updates existing legacy mode files only', async () => {
+test('ensureWbEnvDefinitions updates the root fnox.toml and skips non-fnox repositories', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-wbenv-'));
   try {
     fs.writeFileSync(path.join(tempDirPath, '.env'), 'PORT=3000\n');
-    fs.writeFileSync(path.join(tempDirPath, '.env.development'), 'DEBUG=1\n');
-    fs.writeFileSync(path.join(tempDirPath, '.env.test'), '');
     const rootConfig = createConfig({ dirPath: tempDirPath, isRoot: true });
+
+    // Without a root fnox.toml, nothing happens (no fnox.toml is created, .env is untouched).
     await ensureWbEnvDefinitions(rootConfig, [rootConfig]);
-    // The shared `.env` loads in EVERY cascade, so wbfy never writes a mode value into it.
+    expect(fs.existsSync(path.join(tempDirPath, 'fnox.toml'))).toBe(false);
     expect(fs.readFileSync(path.join(tempDirPath, '.env'), 'utf8')).toBe('PORT=3000\n');
-    expect(fs.readFileSync(path.join(tempDirPath, '.env.development'), 'utf8')).toBe('DEBUG=1\nWB_ENV=development\n');
-    expect(fs.readFileSync(path.join(tempDirPath, '.env.test'), 'utf8')).toBe('WB_ENV=test\n');
-    expect(fs.existsSync(path.join(tempDirPath, '.env.production'))).toBe(false);
-    expect(fs.existsSync(path.join(tempDirPath, '.env.staging'))).toBe(false);
-  } finally {
-    fs.rmSync(tempDirPath, { recursive: true, force: true });
-  }
-});
 
-test('ensureWbEnvDefinitions warns on mismatched WB_ENV in higher-precedence cascade variants', async () => {
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-wbenv-'));
-  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-  try {
-    fs.writeFileSync(path.join(tempDirPath, '.env'), 'WB_ENV=development\n');
-    fs.writeFileSync(path.join(tempDirPath, '.env.development'), 'WB_ENV=production\n');
-    fs.writeFileSync(path.join(tempDirPath, '.env.production'), 'WB_ENV=production\n');
-    fs.writeFileSync(path.join(tempDirPath, '.env.production.local'), 'WB_ENV=development\n');
-    const rootConfig = createConfig({ dirPath: tempDirPath, isRoot: true });
-    await ensureWbEnvDefinitions(rootConfig, [rootConfig]);
-    const warnings = warnSpy.mock.calls.map(([message]) => String(message));
-    expect(warnings.some((message) => message.includes('.env.development'))).toBe(true);
-    expect(warnings.some((message) => message.includes('.env.production.local'))).toBe(true);
-    // The canonical files hold correct values and must not be warned about.
-    expect(warnings.some((message) => message.includes('"production"') && message.includes(' .env '))).toBe(false);
-  } finally {
-    warnSpy.mockRestore();
-    fs.rmSync(tempDirPath, { recursive: true, force: true });
-  }
-});
-
-test('ensureWbEnvDefinitions prefers fnox.toml over legacy .env files', async () => {
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-wbenv-'));
-  try {
     fs.writeFileSync(path.join(tempDirPath, 'fnox.toml'), fnoxTomlWithoutWbEnv);
-    fs.writeFileSync(path.join(tempDirPath, '.env'), 'PORT=3000\n');
-    const rootConfig = createConfig({ dirPath: tempDirPath, isRoot: true });
     await ensureWbEnvDefinitions(rootConfig, [rootConfig]);
     const settings = parse(fs.readFileSync(path.join(tempDirPath, 'fnox.toml'), 'utf8')) as FnoxSubtree;
     expect(settings.secrets?.WB_ENV).toEqual({ default: 'development' });
-    // Legacy files are left alone while fnox.toml exists.
-    expect(fs.readFileSync(path.join(tempDirPath, '.env'), 'utf8')).toBe('PORT=3000\n');
+    expect(settings.profiles?.production?.secrets?.WB_ENV).toEqual({ default: 'production' });
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }

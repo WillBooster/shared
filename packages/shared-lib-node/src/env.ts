@@ -2,19 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import childProcess from 'node:child_process';
 
-import { config } from 'dotenv';
 import { expand } from 'dotenv-expand';
 import type { ArgumentsCamelCase, InferredOptionTypes } from 'yargs';
 
 export const yargsOptionsBuilderForEnv = {
-  env: {
-    description: '.env files to be loaded.',
-    nargs: 1,
-    type: 'array',
-  },
   'cascade-env': {
     description:
-      'Environment to load cascading .env files (e.g., `.env`, `.env.<environment>`, `.env.local` and `.env.<environment>.local`). Preferred over `cascade-node-env` and `auto-cascade-env`.',
+      'Environment (fnox profile / mise env) to load environment variables for. Preferred over `cascade-node-env` and `auto-cascade-env`.',
     type: 'string',
   },
   'cascade-node-env': {
@@ -26,13 +20,8 @@ export const yargsOptionsBuilderForEnv = {
     type: 'boolean',
     default: true,
   },
-  'include-root-env': {
-    description: 'Include .env files in root directory if the project is in a monorepo and --env option is not used.',
-    type: 'boolean',
-    default: true,
-  },
   'quiet-env': {
-    description: 'Suppress .env file loading information.',
+    description: 'Suppress environment variable loading information.',
     type: 'boolean',
   },
   verbose: {
@@ -73,9 +62,9 @@ export function resolveFallbackWbEnv(argv: EnvReaderOptions): string {
 }
 
 /**
- * This function reads environment variables from `.env` files.
+ * This function reads environment variables from the repository's fnox configuration and mise.
  * Note it does not assign them in `process.env`.
- * @return [envVars, [envPaths, envVarNames][]]
+ * @return [envVars, [envSourceNames, envVarNames][]]
  * */
 export function readEnvironmentVariables(
   argv: EnvReaderOptions,
@@ -83,8 +72,8 @@ export function readEnvironmentVariables(
   options?: {
     /**
      * Load variables even if they already exist in process.env.
-     * Useful when a parent process has already injected the .env values into the environment
-     * and the file-defined variables themselves are needed (e.g. `wb gen-dev-vars`).
+     * Useful when a parent process has already injected the fnox values into the environment
+     * and the configured variables themselves are needed (e.g. `wb gen-dev-vars`).
      */
     ignoreProcessEnv?: boolean;
     /**
@@ -94,7 +83,6 @@ export function readEnvironmentVariables(
     expandFallbackWbEnv?: boolean;
   }
 ): [Record<string, string>, [string, string[]][]] {
-  let envPaths = (argv.env ?? []).map((envPath) => path.resolve(cwd, envPath.toString()));
   // Read NODE_ENV through an alias, never as the `process.env.NODE_ENV` member expression:
   // bundlers replace that exact expression at build time (rolldown/build-ts inline it as
   // 'production'), which constant-folds the fallback below and made the published wb select
@@ -107,78 +95,26 @@ export function readEnvironmentVariables(
       : argv.autoCascadeEnv
         ? runtimeEnv.WB_ENV || runtimeEnv.NODE_ENV || 'development'
         : undefined);
-  if (typeof cascade === 'string') {
-    if (envPaths.length === 0) {
-      envPaths.push(path.join(cwd, '.env'));
-      if (argv.includeRootEnv) {
-        const rootPath = path.resolve(cwd, '..', '..');
-        if (fs.existsSync(path.join(rootPath, 'package.json'))) {
-          envPaths.push(path.join(rootPath, '.env'));
-        }
-      }
-    }
-    envPaths = envPaths.flatMap((envPath) =>
-      cascade
-        ? [`${envPath}.${cascade}.local`, `${envPath}.local`, `${envPath}.${cascade}`, envPath]
-        : [`${envPath}.local`, envPath]
-    );
-  }
-  envPaths = envPaths.filter((envPath) => fs.existsSync(envPath)).map((envPath) => path.relative(cwd, envPath));
   const shouldSuppressOutput = shouldSuppressEnvironmentOutput(argv);
   if (argv.verbose && !shouldSuppressOutput) {
     console.info(`WB_ENV: ${runtimeEnv.WB_ENV}, NODE_ENV: ${runtimeEnv.NODE_ENV}`);
-    console.info('Reading env files:', envPaths.join(', '));
   }
 
   // When the caller explicitly forces a mode (--cascade-env / --cascade-node-env / an exported
-  // WB_ENV), values that the mode's own env files define must win over variables inherited from
-  // the parent shell: a stale `export DATABASE_URL=...` from a development shell must not leak
-  // into `wb test`'s test mode (cf. https://github.com/WillBooster/shared/issues/930). On CI the
-  // inherited variables keep winning — workflows deliberately inject env vars that override the
-  // committed files — and that shadowing is the designed behavior, so no warning is emitted.
+  // WB_ENV), values that the mode's own fnox profile defines must win over variables inherited
+  // from the parent shell: a stale `export DATABASE_URL=...` from a development shell must not
+  // leak into `wb test`'s test mode (cf. https://github.com/WillBooster/shared/issues/930). On CI
+  // the inherited variables keep winning — workflows deliberately inject env vars that override
+  // the committed values — and that shadowing is the designed behavior.
   const modeIsForced = Boolean(
     argv.cascadeEnv ??
     (argv.cascadeNodeEnv ? runtimeEnv.NODE_ENV || 'development' : argv.autoCascadeEnv ? runtimeEnv.WB_ENV : undefined)
   );
   const modeFileOverridesProcessEnv = modeIsForced && !isCIEnvironment(runtimeEnv.CI);
-  // Override eligibility is decided per KEY, not per file: `.env.local` outranks `.env.<mode>`
-  // in the cascade, so once the mode defines a key, the value winning the normal file precedence
-  // (which may come from `.env.local`) must be the one overriding the shell.
-  const modeSpecificEnvKeys = new Set<string>();
-  if (modeFileOverridesProcessEnv && typeof cascade === 'string' && cascade.length > 0) {
-    for (const envPath of envPaths) {
-      if (envPath.endsWith(`.${cascade}`) || envPath.endsWith(`.${cascade}.local`)) {
-        for (const key of Object.keys(readEnvFile(path.join(cwd, envPath)))) modeSpecificEnvKeys.add(key);
-      }
-    }
-  }
 
   const envPathAndLoadedEnvVarNames: [string, string[]][] = [];
   const envVars: Record<string, string> = {};
-  for (const envPath of envPaths) {
-    const keys: string[] = [];
-    for (const [key, value] of Object.entries(readEnvFile(path.join(cwd, envPath)))) {
-      if (key in envVars) continue;
-
-      const inheritedValue = process.env[key];
-      const shadowedByProcessEnv = !options?.ignoreProcessEnv && key in process.env;
-      if (shadowedByProcessEnv && !(modeFileOverridesProcessEnv && modeSpecificEnvKeys.has(key))) {
-        continue;
-      }
-      if (shadowedByProcessEnv && inheritedValue !== value && !shouldSuppressOutput) {
-        console.warn(
-          `Warning: ${key} in ${envPath} overrides the value inherited from the parent environment because the ${cascade} environment is explicitly forced.`
-        );
-      }
-      envVars[key] = value;
-      keys.push(key);
-    }
-    envPathAndLoadedEnvVarNames.push([envPath, keys]);
-    if (argv.verbose && !shouldSuppressOutput && keys.length > 0) {
-      console.info(`Read ${keys.length} environment variables from ${envPath}`);
-    }
-  }
-  const [fnoxEnvVars, fnoxEnvVarNames] = readFnoxEnvironmentVariables(cwd, cascade, envVars, {
+  const [fnoxEnvVars, fnoxEnvVarNames] = readFnoxEnvironmentVariables(cwd, cascade, {
     ...options,
     modeFileOverridesProcessEnv,
   });
@@ -202,7 +138,7 @@ export function readEnvironmentVariables(
   }
   if (!argv.verbose && !shouldSuppressOutput) {
     console.info(
-      `Read env files: ${envPathAndLoadedEnvVarNames.map(([envPath, keys]) => (keys.length > 0 ? `${envPath} (${keys.join(', ')})` : envPath)).join(', ') || 'nothing'}`
+      `Read env sources: ${envPathAndLoadedEnvVarNames.map(([envPath, keys]) => (keys.length > 0 ? `${envPath} (${keys.join(', ')})` : envPath)).join(', ') || 'nothing'}`
     );
   }
 
@@ -217,10 +153,10 @@ export function readEnvironmentVariables(
     // recursively re-expanding them (an exported `pa$word` must stay `pa$word`).
     if (value !== undefined && !(key in envVars)) referenceEnv[key] = value.replaceAll('$', String.raw`\$`);
   }
-  // dotenv-expand resolves references in key-insertion order, so a .env value referencing a
-  // fnox/mise-provided key would see an empty string if the fnox/mise entries stayed appended
-  // after the .env entries. Rebuild the expansion input with the lower-priority sources first;
-  // the values themselves already reflect the intended .env-over-fnox-over-mise precedence.
+  // dotenv-expand resolves references in key-insertion order, so a fnox value referencing a
+  // mise-provided key would see an empty string if the mise entries stayed appended after the
+  // fnox entries. Rebuild the expansion input with the lower-priority sources first; the values
+  // themselves already reflect the intended fnox-over-mise precedence.
   const orderedEnvVars: Record<string, string> = {};
   for (const key of [...miseEnvVarNames, ...fnoxEnvVarNames]) orderedEnvVars[key] = envVars[key]!;
   Object.assign(orderedEnvVars, envVars);
@@ -252,13 +188,12 @@ export function readEnvironmentVariables(
 
 /**
  * This function reads environment variables from the repository's fnox configuration (`fnox.toml`).
- * The base `[secrets]` table corresponds to `.env`, and `[profiles.<cascade>.secrets]` corresponds to
- * `.env.<cascade>`; an unknown profile falls back to the base secrets.
+ * The base `[secrets]` table carries the development values, and `[profiles.<cascade>.secrets]`
+ * overlays it; an unknown profile falls back to the base secrets.
  */
 export function readFnoxEnvironmentVariables(
   cwd: string,
   cascade: string | undefined,
-  currentEnvVars: Record<string, string>,
   options?: { ignoreProcessEnv?: boolean; modeFileOverridesProcessEnv?: boolean }
 ): [Record<string, string>, string[]] {
   if (!hasProjectFnoxConfig(cwd)) return [{}, []];
@@ -283,8 +218,8 @@ export function readFnoxEnvironmentVariables(
   const envVars: Record<string, string> = {};
   const keys: string[] = [];
   for (const [key, value] of Object.entries(secrets)) {
-    if (typeof value !== 'string' || key in currentEnvVars) continue;
-    // Explicitly exported environment variables win over fnox base values, mirroring the .env rule.
+    if (typeof value !== 'string') continue;
+    // Explicitly exported environment variables win over fnox base values.
     // (The mise reader below intentionally uses a value-equality check instead: `mise env` echoes
     // back variables the ambient mise activation already exported, and a differing value means the
     // requested cascade profile should win over the stale activation.)
@@ -450,7 +385,7 @@ export function shouldSuppressEnvironmentOutput(argv: EnvReaderOptions): boolean
 }
 
 /**
- * This function read environment variables from `.env` files and assign them in `process.env`.
+ * This function reads environment variables from fnox/mise and assigns them in `process.env`.
  * */
 export function readAndApplyEnvironmentVariables(
   argv: EnvReaderOptions,
@@ -466,17 +401,6 @@ export function readAndApplyEnvironmentVariables(
     }
   }
   return envVars;
-}
-
-const cachedEnvVars = new Map<string, Record<string, string>>();
-
-function readEnvFile(filePath: string): Record<string, string> {
-  const cached = cachedEnvVars.get(filePath);
-  if (cached) return cached;
-
-  const parsed = config({ path: path.resolve(filePath), processEnv: {}, quiet: true }).parsed ?? {};
-  cachedEnvVars.set(filePath, parsed);
-  return parsed;
 }
 
 /**
