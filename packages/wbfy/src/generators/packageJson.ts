@@ -1998,7 +1998,7 @@ function shouldUpdateExistingManagedDependency(
     semver.major(currentValidVersion) >= semver.major(minimumFnoxOnlyWbVersion) &&
     semver.valid(managedVersion) &&
     isNewerPackageVersion(currentVersion, managedVersion) &&
-    !fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
+    !hasFnoxConfigForRepository(rootConfig.dirPath)
   ) {
     return true;
   }
@@ -2025,22 +2025,36 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
   const latestVersion = getLatestDependencyVersion(config, dependency);
   if (dependency !== wbDependency) return latestVersion;
   return selectManagedWbVersion(
+    hasFnoxConfigForRepository(rootConfig.dirPath),
     latestVersion,
-    fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml')),
     getLatestPreFnoxOnlyWbVersion,
     rootConfig.dirPath
   );
 }
 
+/**
+ * Whether fnox configures this repository: wbfy may be invoked directly on a workspace CHILD
+ * (`wbfy <repo>/packages/<app>`), whose fnox migration lives in an ancestor's fnox.toml that
+ * fnox resolves hierarchically — so walk up to the git repository boundary instead of checking
+ * only the invoked directory.
+ */
+export function hasFnoxConfigForRepository(rootDirPath: string): boolean {
+  for (let dirPath = path.resolve(rootDirPath); ; dirPath = path.dirname(dirPath)) {
+    if (fs.existsSync(path.join(dirPath, 'fnox.toml'))) return true;
+    // Stop at the repository boundary: a fnox.toml outside the repository must not count.
+    if (fs.existsSync(path.join(dirPath, '.git')) || path.dirname(dirPath) === dirPath) return false;
+  }
+}
+
 const warnedPreFnoxOnlyWbRootDirPaths = new Set<string>();
 
 export function selectManagedWbVersion(
+  hasFnoxConfig: boolean,
   latestVersion: string,
-  hasRootFnoxToml: boolean,
   getLatestPreFnoxVersion: () => string | undefined,
   rootDirPath: string
 ): string {
-  if (hasRootFnoxToml) return latestVersion;
+  if (hasFnoxConfig) return latestVersion;
   const validLatestVersion = semver.valid(latestVersion);
   // Compare majors so a 19.x PRE-release (semver-less-than 19.0.0) is capped too.
   if (validLatestVersion && semver.major(validLatestVersion) < semver.major(minimumFnoxOnlyWbVersion)) {
