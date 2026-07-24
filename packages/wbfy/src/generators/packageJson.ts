@@ -2027,9 +2027,11 @@ export function selectManagedWbVersion(
 ): string {
   if (hasRootFnoxToml) return latestVersion;
   const validLatestVersion = semver.valid(latestVersion);
-  if (!validLatestVersion || semver.lt(validLatestVersion, minimumFnoxOnlyWbVersion)) return latestVersion;
-  // A failed registry lookup must not fail open to a fnox-only release (that would silently drop
-  // the repository's .env-configured variables); fall back to the last known compatible release.
+  if (validLatestVersion && semver.lt(validLatestVersion, minimumFnoxOnlyWbVersion)) return latestVersion;
+  // Reached for a fnox-only latest release AND for a failed lookup (the '*' marker): both must
+  // resolve to a known-compatible release — `bun add wb@*` could otherwise install a fnox-only
+  // release that silently drops the repository's .env-configured variables. When the secondary
+  // registry lookup fails too, fall back to the last known compatible release.
   const preFnoxVersion = getLatestPreFnoxVersion() ?? lastKnownPreFnoxOnlyWbVersion;
   if (!warnedPreFnoxOnlyWbRootDirPaths.has(rootDirPath)) {
     warnedPreFnoxOnlyWbRootDirPaths.add(rootDirPath);

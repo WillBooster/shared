@@ -40,11 +40,16 @@ describe('selectManagedWbVersion', () => {
     expect(selectManagedWbVersion('19.0.0', false, () => {}, '/repo')).toBe('18.0.1');
   });
 
-  it('passes through a non-semver latest marker', () => {
+  it('resolves a failed-lookup marker to a compatible release for non-fnox repositories', () => {
+    expect(selectManagedWbVersion('*', false, () => '18.0.1', '/repo')).toBe('18.0.1');
+    expect(selectManagedWbVersion('*', false, () => {}, '/repo')).toBe('18.0.1');
+  });
+
+  it('passes through a failed-lookup marker for fnox repositories', () => {
     expect(
       selectManagedWbVersion(
         '*',
-        false,
+        true,
         () => {
           throw new Error('must not be called');
         },
