@@ -1,13 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import { readEnvironmentVariables } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { parse as parseDotenv } from 'dotenv';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
-import type { Project } from '../project.js';
 import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -17,10 +15,6 @@ const builder = {} as const;
 
 type GenDevVarsCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 type GenDevVarsCommandArgv = ArgumentsCamelCase<GenDevVarsCommandOptions & { path?: string }>;
-
-// `wrangler types` derives the Cloudflare `Env` members from a key's mere presence, so a type stub
-// (see writeEnvVarsFile's `forTypes`) uses a constant placeholder value for every key.
-const typeStubPlaceholderValue = '1';
 
 export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions> = {
   command: 'gen-dev-vars [path]',
@@ -39,65 +33,39 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       process.exit(1);
     }
 
-    writeEnvVarsFile(project, argv, {
-      outputPath: path.resolve(project.dirPath, argv.path ?? '.dev.vars'),
-      forTypes: false,
-    });
-  },
-};
-
-/**
- * Write the wb-managed environment variables to a dotenv file.
- *
- * With `forTypes`, write a key-only stub for `wrangler types --env-file` instead of a runtime
- * .dev.vars: every declared key (including empty `KEY=` placeholders, which a binding still needs)
- * with a constant placeholder value. `wrangler types` reads only key names, so the stub carries no
- * real secret — it cannot leak one and cannot fail on a value `quoteDotenvValue` refuses to
- * serialize. Callers write it to a throwaway path so a fresh checkout can be typed without touching
- * the runtime .dev.vars.
- */
-export function writeEnvVarsFile(
-  project: Project,
-  argv: EnvReaderOptions & { dryRun?: boolean },
-  { outputPath, forTypes }: { outputPath: string; forTypes: boolean }
-): void {
-  // Restrict to variables loaded from the project's declared environment sources so that
-  // unrelated process environment variables never leak into the generated file. Ignore
-  // process.env because the parent wb process injects the .env values into it, which would
-  // otherwise suppress loading them here. wbfy declares the WB_ENV-family keys in fnox, so
-  // they are already included; process-only keys are intentionally outside this allowlist.
-  const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
-  // Explicitly exported environment variables must win over dotenv values for file-defined
-  // keys (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve
-  // the stale file value. An export that empties a non-empty file value is deliberate and
-  // must survive the empty-value filter below (unlike `KEY=` placeholders in .env files,
-  // which stay omitted so they cannot override wrangler `vars` with empty strings).
-  // A type stub needs only key names, so it skips this value adjudication entirely.
-  const explicitlyEmptiedKeys = new Set<string>();
-  if (!forTypes) {
+    // Restrict to variables loaded from the project's declared environment sources so that
+    // unrelated process environment variables never leak into the generated file. Ignore
+    // process.env because the parent wb process injects the .env values into it, which would
+    // otherwise suppress loading them here. wbfy declares the WB_ENV-family keys in fnox, so
+    // they are already included; process-only keys are intentionally outside this allowlist.
+    const [envVars] = readEnvironmentVariables(argv, project.dirPath, { ignoreProcessEnv: true });
+    // Explicitly exported environment variables must win over dotenv values for file-defined
+    // keys (project.env applies that precedence), or `AUTH_SECRET=... wb start` would serve
+    // the stale file value. An export that empties a non-empty file value is deliberate and
+    // must survive the empty-value filter below (unlike `KEY=` placeholders in .env files,
+    // which stay omitted so they cannot override wrangler `vars` with empty strings).
+    const explicitlyEmptiedKeys = new Set<string>();
     for (const key of Object.keys(envVars)) {
       const effectiveValue = project.env[key];
       if (effectiveValue === undefined) continue;
       if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
       envVars[key] = effectiveValue;
     }
-  }
-  const lines = Object.entries(envVars)
-    // A type stub keeps every declared key — including empty `KEY=` placeholders — because
-    // `wrangler types` types a binding from the key's mere presence. A runtime .dev.vars instead
-    // drops empty placeholders so they cannot shadow wrangler `vars` with empty strings.
-    .filter(([key, value]) => forTypes || value !== '' || explicitlyEmptiedKeys.has(key))
-    .toSorted(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${key}=${forTypes ? typeStubPlaceholderValue : quoteDotenvValue(key, value)}`);
-  if (argv.dryRun) {
-    console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} environment variables.`));
-    return;
-  }
+    const lines = Object.entries(envVars)
+      .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))
+      .toSorted(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}=${quoteDotenvValue(key, value)}`);
+    const outputPath = path.resolve(project.dirPath, argv.path ?? '.dev.vars');
+    if (argv.dryRun) {
+      console.info(chalk.cyan(`Would generate ${outputPath} with ${lines.length} environment variables.`));
+      return;
+    }
 
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, lines.join('\n') + '\n');
-  console.info(chalk.green(`Generated ${outputPath} with ${lines.length} environment variables.`));
-}
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, lines.join('\n') + '\n');
+    console.info(chalk.green(`Generated ${outputPath} with ${lines.length} environment variables.`));
+  },
+};
 
 /**
  * Quote a value for dotenv (which wrangler uses for .dev.vars). Every candidate representation

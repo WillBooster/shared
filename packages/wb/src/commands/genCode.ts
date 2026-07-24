@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule } from 'yargs';
 
@@ -10,14 +9,13 @@ import { findDescendantProjects } from '../project.js';
 import { findDrizzleConfig, wrapWithDrizzleConfigDir } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
-
-import { writeEnvVarsFile } from './genDevVars.js';
+import { writeWorkerTypesEnvStub } from '../utils/workerTypesEnv.js';
 
 const builder = {} as const;
 
 // `wrangler types` derives the Cloudflare `Env`'s secret/var members only from the KEY NAMES in a
 // .dev.vars/.env file (never from process.env), and `--env-file` REPLACES that default file set. So
-// gen-code types a Worker against a throwaway key-only stub written here — see generateWorkerTypesEnvStub.
+// gen-code types a Worker against a throwaway key-only stub written here from committed sources.
 const workerTypesEnvPath = path.join('.wrangler', 'worker-types.env');
 
 export const genCodeCommand: CommandModule = {
@@ -40,12 +38,11 @@ export const genCodeCommand: CommandModule = {
     }
     for (const { project, scripts } of genCodeTargets) {
       console.info(`Running "gen-code" for ${project.name} ...`);
-      // Write the wrangler-types key stub the first script consumes, in THIS process rather than via a
-      // nested `wb gen-dev-vars`: a child would re-resolve the cascade from its own (mode-file-modified)
-      // environment and could type the wrong profile, whereas an in-process write inherits gen-code's
-      // already-resolved environment.
-      if (getWranglerTypesScript(project)) {
-        generateWorkerTypesEnvStub(project, argv);
+      // Write the key stub the first script's `wrangler types --env-file` consumes. It is derived from
+      // committed sources (fnox.toml key names + any .env* file), so it needs no age key, never pulls in
+      // process.env / `mise env` host variables, and does not depend on which profile a run resolves.
+      if (!argv.dryRun && getWranglerTypesScript(project)) {
+        writeWorkerTypesEnvStub(project.dirPath, path.resolve(project.dirPath, workerTypesEnvPath));
       }
       for (const script of scripts) {
         await runWithSpawn(script, project, argv);
@@ -54,29 +51,16 @@ export const genCodeCommand: CommandModule = {
   },
 };
 
-/**
- * Write the key-only stub that `wrangler types --env-file` reads. `autoCascadeEnv` is forced on so
- * the base `.env` is always part of the typed key set even when the caller disabled cascading —
- * matching the keys wrangler would otherwise read natively, which `--env-file` replaces.
- */
-function generateWorkerTypesEnvStub(project: Project, argv: EnvReaderOptions & { dryRun?: boolean }): void {
-  writeEnvVarsFile(
-    project,
-    { ...argv, autoCascadeEnv: true },
-    { outputPath: path.resolve(project.dirPath, workerTypesEnvPath), forTypes: true }
-  );
-}
-
 export function getGenCodeScripts(project: Project): string[] {
   const scripts: string[] = [];
   // First: `worker-configuration.d.ts` is gitignored, so on a fresh checkout it does not exist yet,
   // and the generators below type-check against the Cloudflare `Env` it declares.
   const wranglerTypesScript = getWranglerTypesScript(project);
   if (wranglerTypesScript) {
-    // `--env-file` points wrangler at the key stub generateWorkerTypesEnvStub writes (from the
-    // wb-managed environment variables), so a fresh checkout with no runtime .dev.vars (e.g. CI) still
-    // types every secret. Without it a bare `wrangler types` yields an `Env` missing every secret and
-    // the type-aware generators/linters below fail (e.g. "Property 'AUTH_SECRET' does not exist").
+    // `--env-file` points wrangler at the key stub the handler writes (see writeWorkerTypesEnvStub),
+    // so a fresh checkout with no runtime .dev.vars (e.g. CI) still types every secret. Without it a
+    // bare `wrangler types` yields an `Env` missing every secret and the type-aware generators/linters
+    // below fail (e.g. "Property 'AUTH_SECRET' does not exist on type 'Env'").
     scripts.push(`${wranglerTypesScript} --env-file ${workerTypesEnvPath}`);
   }
   const prismaGenerateScript = getPrismaGenerateScript(project);

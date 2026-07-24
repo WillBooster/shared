@@ -10,6 +10,7 @@ export {
 } from './bunWorkspaces.js';
 export type { WorkspacesDeclaration } from './bunWorkspaces.js';
 export {
+  findProjectFnoxConfigPath,
   hasProjectFnoxConfig,
   readEnvironmentVariables,
   readAndApplyEnvironmentVariables,
