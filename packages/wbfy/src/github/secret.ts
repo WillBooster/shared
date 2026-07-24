@@ -149,6 +149,23 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
       );
       verified = false;
     }
+  } else {
+    // WBFY_GH_TOKEN is opt-in (its complete absence is fine), but a CONFIGURED token must still
+    // be usable — otherwise the repository looks opted into automatic workflow-file updates
+    // while the workflow silently keeps skipping them (or a policy-violating repository-level
+    // copy silently serves as the only source).
+    if (assignedButUnusableNames.has('WBFY_GH_TOKEN')) {
+      console.error(
+        `The organization secret WBFY_GH_TOKEN is assigned to ${owner}/${repo} but falls beyond the 100-organization-secret limit a workflow run can use (only the alphabetically first 100 are usable), so workflow-file updates are silently skipped. Ask a WillBooster org admin to prune the assigned organization secrets.`
+      );
+      verified = false;
+    }
+    if (repoLevelNames.has('WBFY_GH_TOKEN') && !usableOrgNames.has('WBFY_GH_TOKEN')) {
+      console.error(
+        `${owner}/${repo} has a repository-level WBFY_GH_TOKEN secret without a usable organization secret, which violates the WillBooster org-secret policy. Ask a WillBooster org admin to register the organization secret (or extend its repository access), then delete the repository-level copy manually (e.g. \`gh secret delete WBFY_GH_TOKEN --repo ${owner}/${repo}\`).`
+      );
+      verified = false;
+    }
   }
   // A repository secret silently overrides a same-named organization secret, so a stale
   // repository-level copy would keep winning even after the admin rotates the org value. Only a
