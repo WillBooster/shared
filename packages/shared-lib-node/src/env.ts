@@ -370,16 +370,12 @@ function runFnoxExport(
 }
 
 export function hasProjectFnoxConfig(cwd: string): boolean {
-  return findProjectFnoxConfigPath(cwd) !== undefined;
-}
-
-/** Path of the nearest `fnox.toml` at or above `cwd` (fnox searches parent directories), or undefined. */
-export function findProjectFnoxConfigPath(cwd: string): string | undefined {
   for (let currentPath = path.resolve(cwd); ; currentPath = path.dirname(currentPath)) {
-    const configPath = path.join(currentPath, 'fnox.toml');
-    if (fs.existsSync(configPath)) return configPath;
+    if (fs.existsSync(path.join(currentPath, 'fnox.toml'))) {
+      return true;
+    }
     const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) return undefined;
+    if (parentPath === currentPath) return false;
   }
 }
 

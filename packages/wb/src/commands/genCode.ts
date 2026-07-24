@@ -42,7 +42,11 @@ export const genCodeCommand: CommandModule = {
       // committed sources (fnox.toml key names + any .env* file), so it needs no age key, never pulls in
       // process.env / `mise env` host variables, and does not depend on which profile a run resolves.
       if (!argv.dryRun && getWranglerTypesScript(project)) {
-        writeWorkerTypesEnvStub(project.dirPath, path.resolve(project.dirPath, workerTypesEnvPath));
+        writeWorkerTypesEnvStub(
+          project.dirPath,
+          project.rootDirPath,
+          path.resolve(project.dirPath, workerTypesEnvPath)
+        );
       }
       for (const script of scripts) {
         await runWithSpawn(script, project, argv);

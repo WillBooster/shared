@@ -27,7 +27,7 @@ describe('collectWorkerBindingKeyNames', () => {
     try {
       // Sorted union of base + profile fnox secrets and .env keys. BUILD_ONLY (env = false) is excluded
       // because fnox never exports it; `recipients` is outside any secrets table.
-      expect(collectWorkerBindingKeyNames(dirPath)).toStrictEqual([
+      expect(collectWorkerBindingKeyNames(dirPath, dirPath)).toStrictEqual([
         'AUTH_SECRET',
         'BASIC_AUTH_USERNAME',
         'EMPTY_PLACEHOLDER',
@@ -39,13 +39,36 @@ describe('collectWorkerBindingKeyNames', () => {
     }
   });
 
+  it('unions ancestor fnox secrets and the monorepo-root .env for a nested Worker', async () => {
+    const rootDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-worker-types-'));
+    const workerDirPath = path.join(rootDirPath, 'packages', 'worker');
+    await fs.mkdir(workerDirPath, { recursive: true });
+    await fs.writeFile(path.join(rootDirPath, 'fnox.toml'), '[secrets]\nROOT_ONLY = { default = "root" }\n');
+    await fs.writeFile(path.join(rootDirPath, '.env'), 'ROOT_ENV_ONLY=root\n');
+    await fs.writeFile(path.join(workerDirPath, 'fnox.toml'), '[secrets]\nNESTED_ONLY = { default = "nested" }\n');
+    await fs.writeFile(path.join(workerDirPath, '.env'), 'WORKER_ENV_ONLY=worker\n');
+
+    try {
+      // fnox merges the ancestor chain and wb's reader includes the monorepo-root .env, so every
+      // ancestor and workspace declaration must reach the generated Env.
+      expect(collectWorkerBindingKeyNames(workerDirPath, rootDirPath)).toStrictEqual([
+        'NESTED_ONLY',
+        'ROOT_ENV_ONLY',
+        'ROOT_ONLY',
+        'WORKER_ENV_ONLY',
+      ]);
+    } finally {
+      await fs.rm(rootDirPath, { force: true, recursive: true });
+    }
+  });
+
   it('writes a placeholder-valued stub (no real secret) for wrangler types', async () => {
     const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-worker-types-'));
     await fs.writeFile(path.join(dirPath, 'fnox.toml'), FNOX_TOML);
     const outputPath = path.join(dirPath, '.wrangler', 'worker-types.env');
 
     try {
-      writeWorkerTypesEnvStub(dirPath, outputPath);
+      writeWorkerTypesEnvStub(dirPath, dirPath, outputPath);
 
       const content = await fs.readFile(outputPath, 'utf8');
       expect(content).toBe('AUTH_SECRET=1\nBASIC_AUTH_USERNAME=1\nPORT=1\n');

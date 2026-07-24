@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { findProjectFnoxConfigPath } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import { parse as parseDotenv } from 'dotenv';
 import { parse as parseToml } from 'smol-toml';
@@ -15,8 +14,8 @@ import { parse as parseToml } from 'smol-toml';
  * (`1`, not empty, so it cannot override a wrangler `vars` binding with an empty string). It writes no
  * real secret and needs no decryption.
  */
-export function writeWorkerTypesEnvStub(projectDirPath: string, outputPath: string): void {
-  const keyNames = collectWorkerBindingKeyNames(projectDirPath);
+export function writeWorkerTypesEnvStub(projectDirPath: string, rootDirPath: string, outputPath: string): void {
+  const keyNames = collectWorkerBindingKeyNames(projectDirPath, rootDirPath);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(
     outputPath,
@@ -26,26 +25,58 @@ export function writeWorkerTypesEnvStub(projectDirPath: string, outputPath: stri
 }
 
 /**
- * Collect the declared Worker binding key NAMES from committed sources — `fnox.toml` (base and every
- * profile) and any `.env*` file — without decrypting anything or invoking the environment reader.
- * This deliberately avoids process.env, `mise env` host/tool variables, and cascade/profile
- * selection, all of which would otherwise pollute or narrow the generated `Env`.
+ * Collect the declared Worker binding key NAMES from committed sources — `fnox.toml` and any `.env*`
+ * file — without decrypting anything or invoking the environment reader. This deliberately avoids
+ * process.env, `mise env` host/tool variables, and cascade/profile selection, all of which would
+ * otherwise pollute or narrow the generated `Env`.
  */
-export function collectWorkerBindingKeyNames(projectDirPath: string): string[] {
+export function collectWorkerBindingKeyNames(projectDirPath: string, rootDirPath: string): string[] {
   const keyNames = new Set<string>();
-  const fnoxConfigPath = findProjectFnoxConfigPath(projectDirPath);
-  if (fnoxConfigPath) {
-    for (const keyName of parseFnoxSecretKeyNames(fnoxConfigPath)) keyNames.add(keyName);
+  // fnox merges the whole ancestor config chain (a nested Worker inherits the monorepo root's
+  // secrets), so union every fnox.toml from the project directory up to the repository root.
+  for (const configPath of findAncestorFnoxConfigPaths(projectDirPath, rootDirPath)) {
+    for (const keyName of parseFnoxSecretKeyNames(configPath)) keyNames.add(keyName);
   }
   // Union any committed `.env*` file wrangler would otherwise read natively (`--env-file` replaces
-  // that reading). The gitignored, generated `.dev.vars*` runtime files are not a committed source.
-  for (const fileName of fs.readdirSync(projectDirPath)) {
-    if (!/^\.env(?:\.|$)/u.test(fileName)) continue;
-    const filePath = path.join(projectDirPath, fileName);
-    if (!fs.statSync(filePath).isFile()) continue;
-    for (const keyName of Object.keys(parseDotenv(fs.readFileSync(filePath, 'utf8')))) keyNames.add(keyName);
+  // that reading). wb's env reader defaults include-root-env=true, so also scan the monorepo root,
+  // deduped when it is the project directory. The gitignored, generated `.dev.vars*` runtime files
+  // are not a committed source.
+  for (const dirPath of new Set([path.resolve(projectDirPath), path.resolve(rootDirPath)])) {
+    for (const keyName of collectEnvFileKeyNames(dirPath)) keyNames.add(keyName);
   }
   return [...keyNames].toSorted((a, b) => a.localeCompare(b));
+}
+
+/** Every `fnox.toml` from `projectDirPath` up to (and including) `rootDirPath`, nearest first. */
+function findAncestorFnoxConfigPaths(projectDirPath: string, rootDirPath: string): string[] {
+  const configPaths: string[] = [];
+  const rootPath = path.resolve(rootDirPath);
+  for (let dirPath = path.resolve(projectDirPath); ; dirPath = path.dirname(dirPath)) {
+    const configPath = path.join(dirPath, 'fnox.toml');
+    if (fs.existsSync(configPath)) configPaths.push(configPath);
+    // Stop at the repository root (its parent's secrets are not part of this repo) or, defensively,
+    // at the filesystem root when rootDirPath is not actually an ancestor.
+    if (dirPath === rootPath || path.dirname(dirPath) === dirPath) break;
+  }
+  return configPaths;
+}
+
+/** Key names declared in every `.env*` file directly under `dirPath` (values ignored). */
+function collectEnvFileKeyNames(dirPath: string): string[] {
+  const keyNames: string[] = [];
+  let fileNames: string[];
+  try {
+    fileNames = fs.readdirSync(dirPath);
+  } catch {
+    return keyNames;
+  }
+  for (const fileName of fileNames) {
+    if (!/^\.env(?:\.|$)/u.test(fileName)) continue;
+    const filePath = path.join(dirPath, fileName);
+    if (!fs.statSync(filePath).isFile()) continue;
+    for (const keyName of Object.keys(parseDotenv(fs.readFileSync(filePath, 'utf8')))) keyNames.push(keyName);
+  }
+  return keyNames;
 }
 
 interface FnoxSecretsTable {
