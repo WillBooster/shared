@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, expect, test, vi } from 'vitest';
 
-import { generateReadme, writeBadgeBlock } from '../../src/generators/readme.js';
+import { generateReadme, readAppliedWbfyVersionLabel, writeBadgeBlock } from '../../src/generators/readme.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import * as version from '../../src/utils/version.js';
@@ -270,6 +270,60 @@ test('marks a run from an unreleased checkout with its commit hash', async () =>
     const localContent = await runGenerateReadme(dirPath, 'abc1234-local');
     expect(localContent).toContain(badgeOf('abc1234--local'));
     expect(localContent).not.toContain('1.2.3');
+  });
+});
+
+// The already-applied check in the CLI compares this against the running build's label, so a label
+// that does not survive the badge round trip would either re-apply forever or skip a different build.
+test('reads back the version label the badge records', async () => {
+  await withTempDir(async (dirPath) => {
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
+
+    await runGenerateReadme(dirPath, '1.2.3');
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBe('1.2.3');
+
+    // Hyphens are escaped as `--` in the badge URL and must be unescaped back.
+    await runGenerateReadme(dirPath, 'abc1234-local');
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBe('abc1234-local');
+  });
+});
+
+// Content that merely mentions a badge is not an applied badge, and reading it as one would skip
+// every fixer for the repository.
+test.each([
+  ['a fenced example', `\`\`\`md\n${badgeOf('1.2.3')}\n\`\`\``],
+  ['a block quote', `> ${badgeOf('1.2.3')}`],
+  ['a list item', `- ${badgeOf('1.2.3')}`],
+])('ignores a wbfy badge inside %s', async (_, body) => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${body}\n`);
+
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
+  });
+});
+
+// The answer only suppresses work, so anything unreadable must leave the run to proceed instead of
+// aborting the CLI — including the paths it has not processed yet.
+test('reports no applied version when the README cannot be read', async () => {
+  await withTempDir(async (dirPath) => {
+    const error: NodeJS.ErrnoException = new Error('EACCES: permission denied');
+    error.code = 'EACCES';
+    vi.spyOn(fsUtil, 'readFileConfinedIfExists').mockRejectedValue(error);
+
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
+  });
+});
+
+test('ignores a README resolving outside the repository', async () => {
+  await withTempDir(async (dirPath) => {
+    await withTempDir(async (outsideDirPath) => {
+      const outsideFilePath = path.resolve(outsideDirPath, 'README.md');
+      fs.writeFileSync(outsideFilePath, `# outside\n\n${badgeOf('1.2.3')}\n`);
+      fs.symlinkSync(outsideFilePath, path.resolve(dirPath, 'README.md'));
+      fsUtil.setRootDirPath(dirPath);
+
+      expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
+    });
   });
 });
 

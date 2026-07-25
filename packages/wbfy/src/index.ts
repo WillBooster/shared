@@ -34,7 +34,7 @@ import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
 import { generatePyrightConfigJson } from './generators/pyrightConfig.js';
 import { fixRailwayignore } from './generators/railwayignore.js';
-import { generateReadme } from './generators/readme.js';
+import { generateReadme, readAppliedWbfyVersionLabel } from './generators/readme.js';
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
 import { generateTsconfig } from './generators/tsconfig.js';
@@ -62,7 +62,7 @@ import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
-import { getWbfyVersion } from './utils/version.js';
+import { getWbfyVersion, getWbfyVersionLabel } from './utils/version.js';
 import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
 async function main(): Promise<void> {
@@ -81,6 +81,12 @@ async function main(): Promise<void> {
         type: 'boolean',
         default: false,
         alias: 'e',
+      },
+      force: {
+        description: 'Apply wbfy even when the repository already records this wbfy version',
+        type: 'boolean',
+        default: false,
+        alias: 'f',
       },
       skipDeps: {
         description:
@@ -103,7 +109,7 @@ async function main(): Promise<void> {
 
   let hasInvalidPackageConfig = false;
   try {
-    hasInvalidPackageConfig = await willboosterifyPaths(argv.paths as string[], argv.skipDeps);
+    hasInvalidPackageConfig = await willboosterifyPaths(argv.paths as string[], argv.skipDeps, argv.force);
   } finally {
     // The TypeScript compiler server spawned for AST parsing keeps an open IPC
     // channel that would otherwise prevent the Node.js process from exiting.
@@ -114,12 +120,14 @@ async function main(): Promise<void> {
   }
 }
 
-async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<boolean> {
+async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: boolean): Promise<boolean> {
   // wbfy rewrites repositories to the Bun + mise toolchain and runs `bun add` / `bun install`;
   // proceeding without Bun would delete Yarn state and then fail to produce a Bun lockfile.
   // The version floor matters too: older Bun silently ignores the generated bunfig.toml options
   // (globalStore, publicHoistPattern) and would validate a different install layout than the one
-  // repositories get once mise upgrades them.
+  // repositories get once mise upgrades them. It stays unconditional even though the already-applied
+  // check below can make a run a no-op: a missing or outdated Bun is a broken environment wbfy must
+  // report, and hiding it whenever every path happens to be skipped would surface it only later.
   const bunVersion = spawnSyncAndReturnStdout('bun', ['--version'], '.');
   if (!semver.valid(bunVersion)) {
     console.error('wbfy requires Bun. Install Bun (e.g. via mise) and re-run.');
@@ -130,11 +138,26 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean): Promise<
     return true;
   }
 
+  // A `-dirty-local` label identifies an edited checkout, whose next build produces different files
+  // under the same label, so such a run is never treated as already applied.
+  const versionLabel = getWbfyVersionLabel();
+  const skippableVersionLabel =
+    !force && versionLabel && !versionLabel.endsWith('-dirty-local') ? versionLabel : undefined;
+
   let hasInvalidPackageConfig = false;
   for (const rootDirPath of paths) {
     // Confine every generated file to this repository (see fsUtil.generateFile). Set BEFORE any
     // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
     fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
+
+    // The badge records the build that generated the repository's configuration, so the same build
+    // would only rewrite what is already there. Skipping is a deliberate trade: the parts of a run
+    // that depend on state OUTSIDE the repository (GitHub settings, dependency updates, the fetched
+    // .gitignore) do get skipped too, which is what --force is for.
+    if (skippableVersionLabel && (await readAppliedWbfyVersionLabel(rootDirPath)) === skippableVersionLabel) {
+      console.info(`Skip ${rootDirPath}: wbfy ${skippableVersionLabel} is already applied. Pass --force to re-apply.`);
+      continue;
+    }
     // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
     // automatic Bun translation must abort the whole migration for this path, not just the file
     // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.

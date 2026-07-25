@@ -23,7 +23,7 @@ const wbfyDirPathInRepo = path.join('packages', 'wbfy');
  * neither is available (e.g. an unreleased build extracted from a source archive).
  */
 export function getWbfyVersionLabel(): string | undefined {
-  const { version, dirPath } = readWbfyPackageJson();
+  const { name, version, dirPath } = readWbfyPackageJson();
   if (!version.startsWith(unreleasedVersionPrefix)) return version;
 
   // git resolves the NEAREST enclosing repository, which for an unreleased build placed under a
@@ -51,7 +51,21 @@ export function getWbfyVersionLabel(): string | undefined {
   // The label is best-effort build provenance, not a reproducible-build attestation.
   const isDirty = getGitDirtyState(gitRootDirPath);
   if (isDirty === undefined) return undefined;
-  return isDirty ? `${commitHash}-dirty-local` : `${commitHash}-local`;
+  if (isDirty) return `${commitHash}-dirty-local`;
+  // An unmodified checkout sitting on a release tag runs exactly the code that was published under
+  // that version, so it is labeled with the version instead of the commit that only wbfy developers
+  // could resolve back to one.
+  return findReleasedVersionAtHead(name, dirPath) ?? `${commitHash}-local`;
+}
+
+/** `@semantic-release/npm` tags each release `<package name>@<version>`. */
+function findReleasedVersionAtHead(packageName: string, cwd: string): string | undefined {
+  const tagPrefix = `${packageName}@`;
+  // A commit carries at most one release tag per package, so the first match is the only match.
+  return runGit(['tag', '--points-at', 'HEAD'], cwd)
+    ?.split('\n')
+    .find((tag) => tag.startsWith(tagPrefix))
+    ?.slice(tagPrefix.length);
 }
 
 function isWbfyRepository(gitRootDirPath: string): boolean {
@@ -106,7 +120,7 @@ function runGit(args: string[], cwd: string): string | undefined {
   return proc.status === 0 ? proc.stdout.trim() || undefined : undefined;
 }
 
-function readWbfyPackageJson(): { version: string; dirPath: string } {
+function readWbfyPackageJson(): { name: string; version: string; dirPath: string } {
   // fileURLToPath, not URL.pathname: the latter keeps percent-encoding, so an installation path
   // containing e.g. a space would resolve to a nonexistent directory and the search would walk up
   // to an unrelated package.
@@ -117,6 +131,9 @@ function readWbfyPackageJson(): { version: string; dirPath: string } {
     if (parentDirPath === dirPath) throw new Error("wbfy's own package.json is missing.");
     dirPath = parentDirPath;
   }
-  const packageJson = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')) as { version: string };
-  return { version: packageJson.version, dirPath };
+  const packageJson = JSON.parse(fs.readFileSync(path.join(dirPath, 'package.json'), 'utf8')) as {
+    name: string;
+    version: string;
+  };
+  return { name: packageJson.name, version: packageJson.version, dirPath };
 }

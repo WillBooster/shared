@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import type { Paragraph, PhrasingContent, RootContent } from 'mdast';
+import type { Image, Link, Paragraph, PhrasingContent, RootContent } from 'mdast';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { logger } from '../logger.js';
@@ -15,6 +15,7 @@ const semanticReleaseBadge =
   '[![semantic-release](https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg)](https://github.com/semantic-release/semantic-release)';
 
 const wbfyBadgeUrlPrefix = 'https://img.shields.io/badge/wbfy-';
+const wbfyBadgeUrlSuffix = '-1e90ff.svg';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
 
 /**
@@ -33,7 +34,35 @@ const managedBadgePatterns = [
 
 function buildWbfyBadge(label: string): string {
   // Hyphens are escaped as `--` per shields.io's badge path syntax, so `v1.2.3-rc.1` stays intact.
-  return `[![wbfy](${wbfyBadgeUrlPrefix}${label.replaceAll('-', '--')}-1e90ff.svg)](${wbfyBadgeLink})`;
+  return `[![wbfy](${wbfyBadgeUrlPrefix}${label.replaceAll('-', '--')}${wbfyBadgeUrlSuffix})](${wbfyBadgeLink})`;
+}
+
+/** The version label the wbfy badge in the repository's README records, i.e. the build that wbfied it. */
+export async function readAppliedWbfyVersionLabel(dirPath: string): Promise<string | undefined> {
+  // Confined, and tolerant of any read failure: a README that resolves outside the repository (a
+  // committed symlink) or cannot be read at all says nothing about which build configured THIS
+  // repository, and the answer only ever suppresses work — so anything but a readable in-repository
+  // README means "not known to be applied" and the run proceeds.
+  const readme = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, 'README.md')).catch(() => {});
+  if (readme === undefined) return undefined;
+
+  // The README is parsed rather than scanned, for the same reason writeBadgeBlock parses it, and
+  // only the shape writeBadgeBlock itself writes counts as an applied badge: a top-level paragraph
+  // of badges. A badge anywhere else is content that merely mentions one — a fenced example (wbfy's
+  // own documentation has those), a block quote, a list item — and reading it as applied would skip
+  // every fixer for the repository. Every top-level block is examined rather than just the one after
+  // the title, because older versions stamped the block above it.
+  for (const node of fromMarkdown(readme).children) {
+    if (!isBadgeBlockNode(node)) continue;
+    for (const badge of node.children) {
+      if (!isBadgeNode(badge)) continue;
+      const { url } = badge.children[0];
+      if (url.startsWith(wbfyBadgeUrlPrefix) && url.endsWith(wbfyBadgeUrlSuffix)) {
+        return url.slice(wbfyBadgeUrlPrefix.length, -wbfyBadgeUrlSuffix.length).replaceAll('--', '-');
+      }
+    }
+  }
+  return undefined;
 }
 
 export async function generateReadme(config: PackageConfig): Promise<void> {
@@ -251,7 +280,7 @@ function isBadgeBlockNode(node: RootContent): node is Paragraph {
 }
 
 /** A badge is one `[![alt](image)](link)`, the only shape wbfy ever writes. */
-function isBadgeNode(node: RootContent | PhrasingContent): boolean {
+function isBadgeNode(node: RootContent | PhrasingContent): node is Link & { children: [Image] } {
   return node.type === 'link' && node.children.length === 1 && node.children[0]?.type === 'image';
 }
 
