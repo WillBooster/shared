@@ -39,6 +39,7 @@ interface Step {
   if?: string;
   uses?: string;
   run?: string;
+  'working-directory'?: string;
   with?: Record<string, unknown>;
   env?: Record<string, string>;
 }
@@ -48,10 +49,16 @@ interface Workflow {
   on: Record<string, unknown>;
   concurrency?: Record<string, unknown>;
   permissions?: Record<string, string>;
-  jobs: Record<string, { 'runs-on': string; env?: Record<string, string>; steps: Step[] }>;
+  jobs: Record<
+    string,
+    { 'runs-on': string; permissions?: Record<string, string>; env?: Record<string, string>; steps: Step[] }
+  >;
 }
 
-export async function generateSelfContainedWorkflows(rootConfig: PackageConfig): Promise<void> {
+export async function generateSelfContainedWorkflows(
+  rootConfig: PackageConfig,
+  allPackageConfigs: PackageConfig[] = [rootConfig]
+): Promise<void> {
   return logger.functionIgnoringException('generateSelfContainedWorkflows', async () => {
     const workflowsPath = path.resolve(rootConfig.dirPath, '.github', 'workflows');
     if (!(await fsUtil.isConfinedWritablePath(workflowsPath))) {
@@ -61,7 +68,7 @@ export async function generateSelfContainedWorkflows(rootConfig: PackageConfig):
     await fs.promises.mkdir(workflowsPath, { recursive: true });
 
     const workflowByFileName: Record<string, Workflow> = {
-      'test.yml': buildTestWorkflow(rootConfig),
+      'test.yml': buildTestWorkflow(rootConfig, allPackageConfigs),
       'semantic-pr.yml': buildSemanticPrWorkflow(),
     };
     for (const [fileName, workflow] of Object.entries(workflowByFileName)) {
@@ -75,7 +82,10 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
   // Unlike WillBooster-organization repositories, wbfy does not own arbitrary repositories' CI:
   // only files it generated (identified by the marker) are regenerated, and hand-written
   // workflows are never touched. Owners opt out permanently by removing the marker line.
-  if (oldContent !== undefined && !oldContent.startsWith(selfContainedWorkflowMarker)) return;
+  // An empty or whitespace-only file carries no hand-written content, so it is treated as absent.
+  if (oldContent !== undefined && oldContent.trim() !== '' && !oldContent.startsWith(selfContainedWorkflowMarker)) {
+    return;
+  }
 
   const header = `${selfContainedWorkflowMarker} Remove this line to stop wbfy from overwriting this file.\n`;
   const yamlText = yaml.dump(workflow, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } });
@@ -87,9 +97,20 @@ function removeTrailingSpaces(text: string): string {
   return text.replaceAll(/[ \t]+$/gm, '');
 }
 
-function buildTestWorkflow(config: PackageConfig): Workflow {
+function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConfig[]): Workflow {
   const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
-  const usesPlaywright = config.depending.playwrightTest;
+  // Playwright may be declared only in a workspace package; `wb test-on-ci` runs that package's
+  // e2e tests, so the workflow must still install browsers. Bun's isolated linker resolves the
+  // playwright binary only from the declaring package, hence the working-directory below. The
+  // browsers themselves land in ~/.cache/ms-playwright, shared across every workspace, so one
+  // install (keyed on the first declaring package's version) covers same-version siblings.
+  const playwrightConfig = [...allPackageConfigs]
+    .toSorted((a, b) => a.dirPath.localeCompare(b.dirPath))
+    .find((packageConfig) => packageConfig.depending.playwrightTest);
+  const playwrightDirPath = playwrightConfig && path.relative(config.dirPath, playwrightConfig.dirPath);
+  const playwrightDir: Pick<Step, 'working-directory'> = playwrightDirPath
+    ? { 'working-directory': playwrightDirPath }
+    : {};
   const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
   // Step-scoped like the reusable test workflow: dependency lifecycle scripts run by `bun install`
   // must not be able to read the long-lived age identity.
@@ -99,12 +120,13 @@ function buildTestWorkflow(config: PackageConfig): Workflow {
     { uses: checkoutAction },
     { uses: miseAction },
     { run: 'bun install' },
-    ...(usesPlaywright
+    ...(playwrightConfig
       ? ([
           {
             name: 'Get Playwright version',
             id: 'playwright-version',
             run: "echo \"version=$(bun -e \"const p = require('./package.json'); console.log(p.devDependencies?.['@playwright/test'] ?? p.dependencies?.['@playwright/test'] ?? '')\")\" >> \"$GITHUB_OUTPUT\"",
+            ...playwrightDir,
           },
           {
             name: 'Cache Playwright browsers',
@@ -118,24 +140,31 @@ function buildTestWorkflow(config: PackageConfig): Workflow {
           {
             if: "steps.playwright-cache.outputs.cache-hit != 'true'",
             run: 'bun run playwright install --with-deps',
+            ...playwrightDir,
           },
           {
             // The cached browsers still need their system dependencies on a fresh runner.
             if: "steps.playwright-cache.outputs.cache-hit == 'true'",
             run: 'bun run playwright install-deps',
+            ...playwrightDir,
           },
         ] satisfies Step[])
       : []),
     ...(hasTypecheck ? [{ run: 'bun run typecheck', ...fnoxEnv }] : []),
     { run: 'bun run lint', ...fnoxEnv },
     { run: 'bun run test/ci', ...fnoxEnv },
-    ...(usesPlaywright
+    ...(playwrightConfig
       ? [
           {
             name: 'Upload test results',
             if: '${{ always() }}',
             uses: uploadArtifactAction,
-            with: { name: 'test-results', path: 'test-results', 'if-no-files-found': 'ignore', 'retention-days': 14 },
+            with: {
+              name: 'test-results',
+              path: playwrightDirPath ? path.posix.join(playwrightDirPath, 'test-results') : 'test-results',
+              'if-no-files-found': 'ignore',
+              'retention-days': 14,
+            },
           },
         ]
       : []),
@@ -171,6 +200,9 @@ function buildSemanticPrWorkflow(): Workflow {
     jobs: {
       'semantic-pr': {
         'runs-on': 'ubuntu-latest',
+        // The action reads the pull request, and its `wip` support posts a commit status; neither
+        // permission is granted when the repository restricts default workflow permissions.
+        permissions: { 'pull-requests': 'read', statuses: 'write' },
         steps: [
           {
             uses: semanticPullRequestAction,

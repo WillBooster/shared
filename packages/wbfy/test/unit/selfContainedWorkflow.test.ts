@@ -14,7 +14,18 @@ import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 interface ParsedWorkflow {
-  jobs: Record<string, { steps: { run?: string; uses?: string; env?: Record<string, string> }[] }>;
+  jobs: Record<
+    string,
+    {
+      steps: {
+        run?: string;
+        uses?: string;
+        env?: Record<string, string>;
+        'working-directory'?: string;
+        with?: Record<string, unknown>;
+      }[];
+    }
+  >;
 }
 
 test('generates self-contained test and semantic-pr workflows without reusable-workflow callers', async () => {
@@ -72,6 +83,72 @@ test('includes typecheck, Playwright caching and step-scoped FNOX_AGE_KEY when t
     expect(installStep?.env).toBeUndefined();
     const testStep = steps.find((step) => step.run === 'bun run test/ci');
     expect(testStep?.env?.FNOX_AGE_KEY).toBe('${{ secrets.FNOX_AGE_KEY }}');
+  });
+});
+
+test('installs Playwright browsers from the declaring workspace package in a monorepo', async () => {
+  await withTempRepo(async (dirPath) => {
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+    });
+    const childConfig = createConfig({
+      dirPath: path.join(dirPath, 'packages', 'app'),
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+      depending: { ...createConfig().depending, playwrightTest: true },
+    });
+    await generateSelfContainedWorkflows(rootConfig, [rootConfig, childConfig]);
+    await promisePool.promiseAll();
+
+    const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
+    const workflow = yaml.load(content) as ParsedWorkflow;
+    const steps = workflow.jobs.test?.steps ?? [];
+    const installStep = steps.find((step) => step.run === 'bun run playwright install --with-deps');
+    expect(installStep?.['working-directory']).toBe('packages/app');
+    const uploadStep = steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
+    expect(uploadStep?.with?.path).toBe('packages/app/test-results');
+  });
+});
+
+test('semantic-pr workflow grants the permissions the action needs', async () => {
+  await withTempRepo(async (dirPath) => {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+    });
+    await generateSelfContainedWorkflows(config);
+    await promisePool.promiseAll();
+
+    const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'semantic-pr.yml'), 'utf8');
+    const workflow = yaml.load(content) as {
+      jobs: Record<string, { permissions?: Record<string, string> }>;
+    };
+    expect(workflow.jobs['semantic-pr']?.permissions).toEqual({ 'pull-requests': 'read', statuses: 'write' });
+  });
+});
+
+test('treats an empty workflow file as absent', async () => {
+  await withTempRepo(async (dirPath) => {
+    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    await fs.mkdir(workflowsPath, { recursive: true });
+    await fs.writeFile(path.join(workflowsPath, 'test.yml'), '\n');
+
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+    });
+    await generateSelfContainedWorkflows(config);
+    await promisePool.promiseAll();
+
+    const content = await fs.readFile(path.join(workflowsPath, 'test.yml'), 'utf8');
+    expect(content.startsWith(selfContainedWorkflowMarker)).toBe(true);
   });
 });
 

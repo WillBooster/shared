@@ -286,11 +286,14 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // Other owners cannot call the organization's reusable workflows (their secrets and runners
     // do not exist there), so any other GitHub-hosted Node.js repository gets self-contained
     // workflows instead — keyed on repository state, never on the owner's identity.
+    // rootConfig.isRoot: a direct workspace-child invocation (`wbfy <repo>/packages/<app>`) keeps
+    // isRoot false, and GitHub ignores workflow files nested under a package directory.
     const shouldRunSelfContainedWorkflows =
       !shouldRunWorkflows &&
       !isReusableWorkflowsRepo(rootConfig.repository) &&
       !!rootConfig.repository?.startsWith('github:') &&
-      rootConfig.doesContainPackageJson;
+      rootConfig.doesContainPackageJson &&
+      rootConfig.isRoot;
     await Promise.all([
       abbreviationPromise.then(() => generateReadme(rootConfig)),
       generateDockerignore(rootConfig),
@@ -304,7 +307,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       generateRenovateJsonc(rootConfig),
       generateReleaserc(rootConfig),
       ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
-      ...(shouldRunSelfContainedWorkflows ? [generateSelfContainedWorkflows(rootConfig)] : []),
+      ...(shouldRunSelfContainedWorkflows ? [generateSelfContainedWorkflows(rootConfig, allPackageConfigs)] : []),
       setupLabels(rootConfig),
       setupRepositoryRulesets(rootConfig),
       setupGitHubSettings(rootConfig),
