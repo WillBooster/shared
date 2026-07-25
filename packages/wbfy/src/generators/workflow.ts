@@ -688,8 +688,10 @@ async function writeWorkflowYaml(
     case 'test':
     case 'test-rust': {
       // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
-      // test-rust never pushes back, so it needs no Actions write access; test needs it again to
-      // dispatch itself after the autofix push-back (reusable-workflows#466).
+      // test-rust calls no action that needs Actions write access, so the template's grant is
+      // dropped for it; test keeps it for the reason stated on the test template's permissions
+      // above (skip-duplicate-actions with cancel_others: true) — NOT for the retired push-back
+      // dispatch, which the reusable test workflow no longer performs.
       if (kind === 'test-rust') {
         delete newSettings.permissions?.actions;
       }
