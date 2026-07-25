@@ -99,16 +99,22 @@ exit "$failed"
       name: 'normalize-bun-lockfile',
       glob: 'bun.lock',
       run: `
+# Abort on any failure: a partially written temp file must never replace the lockfile.
+set -e
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 for file in {staged_files}; do
-  normalized="$(mktemp)"
+  # A sibling temp file seeded with \`cp -p\` keeps the lockfile's original mode (a bare \`mktemp\`
+  # hands it 0600, and git tracks only the executable bit, so that would change silently) and
+  # makes the replacement an atomic same-directory rename.
+  normalized="$file.wbfy-normalizing"
+  trap 'rm -f "$normalized"' EXIT
+  cp -p "$file" "$normalized"
   sed -E 's#"https://npm\\.flatt\\.tech/[^"]*"#""#g' "$file" > "$normalized"
-  if cmp -s "$file" "$normalized"; then
-    rm -f "$normalized"
-  else
+  if ! cmp -s "$file" "$normalized"; then
     mv "$normalized" "$file"
     echo "Removed Takumi Guard proxy URLs from $file so the lockfile stays registry-agnostic."
   fi
+  rm -f "$normalized"
 done
 `.trim(),
       stage_fixed: true,
