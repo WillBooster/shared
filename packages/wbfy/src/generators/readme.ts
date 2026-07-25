@@ -40,21 +40,23 @@ function buildWbfyBadge(label: string): string {
 /** The version label the wbfy badge in the repository's README records, i.e. the build that wbfied it. */
 export async function readAppliedWbfyVersionLabel(dirPath: string): Promise<string | undefined> {
   const readme = await fsUtil.readFileIfExists(path.resolve(dirPath, 'README.md'));
-  // The README is parsed rather than scanned, for the same reason writeBadgeBlock parses it: a badge
-  // quoted in a fenced example (wbfy's own documentation does exactly that) is not an applied badge.
-  return readme === undefined ? undefined : findWbfyBadgeLabel(fromMarkdown(readme).children);
-}
+  if (readme === undefined) return undefined;
 
-function findWbfyBadgeLabel(nodes: RootContent[]): string | undefined {
-  for (const node of nodes) {
-    if (isBadgeNode(node)) {
-      const { url } = node.children[0];
+  // The README is parsed rather than scanned, for the same reason writeBadgeBlock parses it, and
+  // only the shape writeBadgeBlock itself writes counts as an applied badge: a top-level paragraph
+  // of badges. A badge anywhere else is content that merely mentions one — a fenced example (wbfy's
+  // own documentation has those), a block quote, a list item — and reading it as applied would skip
+  // every fixer for the repository. Every top-level block is examined rather than just the one after
+  // the title, because older versions stamped the block above it.
+  for (const node of fromMarkdown(readme).children) {
+    if (!isBadgeBlockNode(node)) continue;
+    for (const badge of node.children) {
+      if (!isBadgeNode(badge)) continue;
+      const { url } = badge.children[0];
       if (url.startsWith(wbfyBadgeUrlPrefix) && url.endsWith(wbfyBadgeUrlSuffix)) {
         return url.slice(wbfyBadgeUrlPrefix.length, -wbfyBadgeUrlSuffix.length).replaceAll('--', '-');
       }
     }
-    const label = 'children' in node ? findWbfyBadgeLabel(node.children as RootContent[]) : undefined;
-    if (label) return label;
   }
   return undefined;
 }

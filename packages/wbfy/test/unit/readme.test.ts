@@ -288,9 +288,15 @@ test('reads back the version label the badge records', async () => {
   });
 });
 
-test('ignores a wbfy badge that is only quoted in the README', async () => {
+// Content that merely mentions a badge is not an applied badge, and reading it as one would skip
+// every fixer for the repository.
+test.each([
+  ['a fenced example', `\`\`\`md\n${badgeOf('1.2.3')}\n\`\`\``],
+  ['a block quote', `> ${badgeOf('1.2.3')}`],
+  ['a list item', `- ${badgeOf('1.2.3')}`],
+])('ignores a wbfy badge inside %s', async (_, body) => {
   await withTempDir(async (dirPath) => {
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n\`\`\`md\n${badgeOf('1.2.3')}\n\`\`\`\n`);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${body}\n`);
 
     expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
   });
