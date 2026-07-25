@@ -163,6 +163,10 @@ function findTestProject(project: Project, argv: TestCommandArgv): Project {
  */
 async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup: string; typecheck?: string }> {
   const cleanup = 'lint --fix --format';
+  // Deliberately resolved with no explicit dirPath, exactly as `lint` (lint.ts) and `typeCheck`
+  // (typecheck.ts) resolve theirs, so the labels always describe the very project set those commands
+  // process. Threading a dirPath in — the self project's, say — would let the two diverge, which is
+  // the drift this function exists to prevent.
   const projects = await findDescendantProjects(argv, false);
   if (!projects) return { cleanup };
 
