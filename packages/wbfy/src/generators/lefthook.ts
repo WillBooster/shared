@@ -93,6 +93,9 @@ exit "$failed"
       // not depend on these URLs — with an empty `resolved`, bun derives the download URL from
       // the configured registry — so strip them. Only the Guard host is stripped: a scoped
       // registry such as Verdaccio legitimately records its own URL for private packages.
+      // Staging a DELETION of bun.lock leaves no file for inspection, so Lefthook skips this job
+      // rather than passing a missing path to the loop (verified); the rewrite therefore cannot
+      // resurrect a deleted lockfile as an empty file.
       name: 'normalize-bun-lockfile',
       glob: 'bun.lock',
       run: `
