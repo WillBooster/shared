@@ -126,17 +126,22 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   }
 
   const files = getLintTargetFiles(argv);
+  const shouldRunFormatters = Boolean(argv.format);
+  const shouldRunLinters = !argv.format || argv.fix;
   // The test layout is a static structural rule, so `wb lint` is its home: `wb verify` (via its
   // cleanup step) and CI's lint job then enforce it with no extra wiring, and a stray test file
   // surfaces here instead of at `wb test`, where `--passWithNoTests` would otherwise let the suite
   // pass while silently running none of it. Reported before the linters run so the diagnosis leads
   // the output, but never short-circuits them: `--fix --format` must still clean up what it can,
   // because a layout violation is not auto-fixable and would otherwise block every other fix.
-  // Explicit-path runs (e.g. the lefthook pre-commit hook) skip the check so a pre-existing
-  // violation in an untouched package cannot block an unrelated commit, and `--dry-run` skips it so
-  // this stays the one step that could fail a run whose whole contract is to execute nothing.
+  // Three run shapes opt out. Explicit-path runs (e.g. the lefthook pre-commit hook) skip it so a
+  // pre-existing violation in an untouched package cannot block an unrelated commit. `--dry-run`
+  // skips it so this stays the one step that could fail a run whose whole contract is to execute
+  // nothing. Formatter-only runs (`--format` without `--fix`) skip it because they lint nothing at
+  // all, and wbfy chains that script as `bun wb lint --format && bun run format-code` for Dart and
+  // Python repositories — failing it there would silently strip their only formatting pass.
   const violatesTestStructure =
-    !argv.dryRun && files.length === 0 && reportTestStructureViolations(projects.descendants);
+    shouldRunLinters && !argv.dryRun && files.length === 0 && reportTestStructureViolations(projects.descendants);
   const lintFilePathsByProject = new Map<Project, string[]>();
   const oxfmtFilePathsByProject = new Map<Project, string[]>();
   const pythonFilePathsByProject = new Map<Project, string[]>();
@@ -243,8 +248,6 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   const formatterCommands: LintRunCommand[] = [];
   const linterCommands: LintRunCommand[] = [];
   const lintRunOptions = { exitIfFailed: false, preserveColor: !argv.printAllOutput } as const;
-  const shouldRunFormatters = Boolean(argv.format);
-  const shouldRunLinters = !argv.format || argv.fix;
   if (files.length > 0) {
     if (shouldRunLinters) {
       for (const [project, lintFilePaths] of lintFilePathsByProject) {
