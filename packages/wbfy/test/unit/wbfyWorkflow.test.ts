@@ -49,7 +49,7 @@ test('generates a scheduled self-applying wbfy caller for a public repository', 
     expect(workflow.on?.schedule).toEqual([{ cron: getWbfyWorkflowCron('github:WillBooster/example') }]);
     // oxlint-disable-next-line unicorn/no-null -- GitHub Actions valueless events are YAML nulls.
     expect(workflow.on?.workflow_dispatch).toBeNull();
-    expect(workflow.permissions).toEqual({ contents: 'read' });
+    expect(workflow.permissions).toEqual({ actions: 'write', contents: 'write' });
     const job = workflow.jobs.wbfy;
     expect(job?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
     expect(job?.secrets).toEqual({

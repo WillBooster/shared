@@ -229,11 +229,13 @@ const workflows = {
       'cancel-in-progress': true,
     },
     permissions: {
-      // Least privilege: the reusable workflow's wbfy job runs dependency lifecycle scripts, so
-      // its GITHUB_TOKEN must not be able to write repository contents; the push happens in a
-      // separate trusted job authenticated with the WBFY_GH_TOKEN PAT (wbfy rewrites files under
-      // .github/workflows/, which a GITHUB_TOKEN push could not touch anyway).
-      contents: 'read',
+      // The reusable workflow's push job pushes the wbfy branch with GITHUB_TOKEN (workflow-file
+      // changes are skipped — updating them is opt-in via the WBFY_GH_TOKEN secret) and then
+      // dispatches test.yml on the pushed branch, since a GITHUB_TOKEN push triggers no
+      // workflows. Its wbfy job, which runs dependency lifecycle scripts, downgrades itself to a
+      // read-only token.
+      actions: 'write',
+      contents: 'write',
     },
     jobs: {
       wbfy: {
@@ -243,9 +245,11 @@ const workflows = {
   },
 } as const;
 
-// The push PAT secret of the self-applying wbfy caller. Deliberately NOT the historical
-// GH_BOT_PAT: that name sits in secret.ts's DEPRECATED_SECRET_NAMES, so already-released wbfy
-// versions DELETE it during `wbfy --env` — reusing it would let an old wbfy wipe the new secret.
+// The OPT-IN push PAT secret of the self-applying wbfy caller: without it the reusable workflow
+// pushes with GITHUB_TOKEN and skips workflow-file changes (GitHub rejects every GITHUB_TOKEN
+// write under .github/workflows/). Deliberately NOT the historical GH_BOT_PAT: that name sits in
+// secret.ts's DEPRECATED_SECRET_NAMES, so already-released wbfy versions DELETE it during
+// `wbfy --env` — reusing it would let an old wbfy wipe the new secret.
 export const wbfyGhTokenSecretName = 'WBFY_GH_TOKEN';
 
 /**

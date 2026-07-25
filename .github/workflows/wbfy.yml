@@ -7,7 +7,8 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
 permissions:
-  contents: read
+  actions: write
+  contents: write
 jobs:
   wbfy:
     uses: WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main
