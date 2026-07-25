@@ -50,7 +50,7 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       await verifyCodeFully(projects.self, argv, steps);
     } else {
       await verifyCode(projects.self, argv, steps);
-      printVerifySummary(steps);
+      printVerifySummary(steps, Boolean(argv.dryRun));
     }
   },
 };
@@ -59,9 +59,9 @@ async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv, st
   const reporter = startVerifyFullReporter(project);
   try {
     await verifyCode(project, argv, steps);
-    await runProjectTest(project, argv, steps);
+    await runStep(steps, { name: 'test' }, () => runProjectTest(project, argv));
     // Printed before the reporter finishes so the summary lands in verify-full.log too.
-    printVerifySummary(steps);
+    printVerifySummary(steps, Boolean(argv.dryRun));
     reporter.succeed();
   } catch (error) {
     reporter.fail(error);
@@ -105,13 +105,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   );
 }
 
-async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
-  const startedAt = Date.now();
-  await runProjectTestWithoutTiming(project, argv);
-  steps.push({ durationMs: Date.now() - startedAt, name: 'test' });
-}
-
-async function runProjectTestWithoutTiming(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
+async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
   const testArgv = withDefaultTestCascadeEnv({
     ...argv,
     _: ['test'],
@@ -180,11 +174,22 @@ async function runInProcessCommand(commandName: string, command: () => Promise<n
  * a passing run therefore gave no evidence that linting happened, so the recap lists each step that
  * ran, what it ran, and how long it took.
  */
-function printVerifySummary(steps: VerifyStep[]): void {
+function printVerifySummary(steps: VerifyStep[], dryRun: boolean): void {
   if (steps.length === 0) return;
 
-  const durations = steps.map((step) => formatStepDuration(step.durationMs));
   const nameWidth = Math.max(...steps.map((step) => step.name.length));
+  // `--dry-run` skips command execution, so every step took no time and verified nothing: a green
+  // "Verified" recap would claim exactly the work the flag suppressed. List what would run instead.
+  if (dryRun) {
+    console.info('\n' + chalk.cyan(chalk.bold('Dry run — nothing was executed. Steps that would run:')));
+    for (const step of steps) {
+      // Pad only when a detail follows, so a detail-less step does not emit trailing whitespace.
+      console.info(`  - ${step.detail ? step.name.padEnd(nameWidth) + chalk.gray(`  ${step.detail}`) : step.name}`);
+    }
+    return;
+  }
+
+  const durations = steps.map((step) => formatStepDuration(step.durationMs));
   const durationWidth = Math.max(...durations.map((duration) => duration.length));
   const totalDurationMs = steps.reduce((total, step) => total + step.durationMs, 0);
   console.info('\n' + chalk.green(chalk.bold(`Verified in ${formatStepDuration(totalDurationMs)}:`)));
