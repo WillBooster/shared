@@ -40,6 +40,7 @@ import { generateRenovateJsonc } from './generators/renovateJsonc.js';
 import { generateTsconfig } from './generators/tsconfig.js';
 import { fixVscodeExtensions, generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
+import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
 import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
 import {
@@ -282,6 +283,17 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       !isReusableWorkflowsRepo(rootConfig.repository) &&
       (rootConfig.repository?.startsWith('github:WillBooster/') ||
         rootConfig.repository?.startsWith('github:WillBoosterLab/'));
+    // Other owners cannot call the organization's reusable workflows (their secrets and runners
+    // do not exist there), so any other GitHub-hosted Node.js repository gets self-contained
+    // workflows instead — keyed on repository state, never on the owner's identity.
+    // rootConfig.isRoot: a direct workspace-child invocation (`wbfy <repo>/packages/<app>`) keeps
+    // isRoot false, and GitHub ignores workflow files nested under a package directory.
+    const shouldRunSelfContainedWorkflows =
+      !shouldRunWorkflows &&
+      !isReusableWorkflowsRepo(rootConfig.repository) &&
+      !!rootConfig.repository?.startsWith('github:') &&
+      rootConfig.doesContainPackageJson &&
+      rootConfig.isRoot;
     await Promise.all([
       abbreviationPromise.then(() => generateReadme(rootConfig)),
       generateDockerignore(rootConfig),
@@ -295,6 +307,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       generateRenovateJsonc(rootConfig),
       generateReleaserc(rootConfig),
       ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
+      ...(shouldRunSelfContainedWorkflows ? [generateSelfContainedWorkflows(rootConfig, allPackageConfigs)] : []),
       setupLabels(rootConfig),
       setupRepositoryRulesets(rootConfig),
       setupGitHubSettings(rootConfig),
