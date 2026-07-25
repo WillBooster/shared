@@ -32,13 +32,7 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
 
   let removedNextDir = false as boolean;
   const promises = projects.descendants.map(async (project) => {
-    const commands: string[] = [];
-    if (!project.packageJson.workspaces || project.hasSourceCode) {
-      commands.push(...buildTypeScriptTypeCheckCommands(project));
-    }
-    if (!project.packageJson.workspaces && project.hasOwnDependency('pyright')) {
-      commands.push('YARN pyright');
-    }
+    const commands = buildTypeCheckCommands(project);
     while (commands.length > 0) {
       const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {
         // Disable interactive mode
@@ -73,6 +67,22 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
       )
     );
   return finalExitCode;
+}
+
+/**
+ * Every type-check command this project runs, as `BUN`/`YARN`-prefixed scripts. Exported so
+ * `wb verify`'s step recap can name the same tools instead of re-deriving the conditions, which
+ * would silently go stale the next time this list changes.
+ */
+export function buildTypeCheckCommands(project: Project): string[] {
+  const commands: string[] = [];
+  if (!project.packageJson.workspaces || project.hasSourceCode) {
+    commands.push(...buildTypeScriptTypeCheckCommands(project));
+  }
+  if (!project.packageJson.workspaces && project.hasOwnDependency('pyright')) {
+    commands.push('YARN pyright');
+  }
+  return commands;
 }
 
 function buildTypeScriptTypeCheckCommands(project: Project): string[] {
