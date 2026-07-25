@@ -124,6 +124,16 @@ export abstract class BaseScripts {
   }
 
   protected buildProductionCommand(project: Project, argv: ScriptArgv, commands: string[]): string {
+    const migrationCommands = this.buildMigrationCommands(project);
+    // Splitting may cut through a `(cd … && …)` subshell, but rejoining with ' && ' and per-piece
+    // redirects keeps the script valid, and wb-generated paths never contain '&&'.
+    return [...migrationCommands.flatMap((cmd) => cmd.split('&&')), ...commands]
+      .filter(Boolean)
+      .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
+      .join(' && ');
+  }
+
+  protected buildMigrationCommands(project: Project): string[] {
     // Test-environment wrangler state is disposable; wipe it entirely (not just D1) before
     // migrating, since stale KV cache entries or Durable Object storage can break e2e tests.
     const wranglerStateWipeCommands =
@@ -135,19 +145,13 @@ export abstract class BaseScripts {
     // the same local D1 would apply the same SQL twice — drizzle's generated statements are not
     // idempotent (`CREATE INDEX` without IF NOT EXISTS) — so drizzle stays ORM-only there.
     const migratesD1WithWrangler = !!findD1MigrationsDirPath(project);
-    const migrationCommands = [
+    return [
       ...wranglerStateWipeCommands,
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
       ...(project.hasDrizzle && !migratesD1WithWrangler
         ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))]
         : []),
     ];
-    // Splitting may cut through a `(cd … && …)` subshell, but rejoining with ' && ' and per-piece
-    // redirects keeps the script valid, and wb-generated paths never contain '&&'.
-    return [...migrationCommands.flatMap((cmd) => cmd.split('&&')), ...commands]
-      .filter(Boolean)
-      .map((cmd) => `${cmd} ${toDevNull(argv)}`.trim())
-      .join(' && ');
   }
   // ------------ END: start commands ------------
 
@@ -164,8 +168,12 @@ export abstract class BaseScripts {
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     project.env.PORT ||= '3000';
     await checkAndKillPortProcess(project.env.PORT, project);
+    // In the test environment the dev server runs against fresh, disposable state (e.g. an empty
+    // local D1), so the schema must be migrated first — an app whose pages query the database
+    // would otherwise answer 500 and the startup check would never see a 2xx.
+    const migrationCommands = isProjectEnvironment(project, 'test') ? this.buildMigrationCommands(project) : [];
     // Use empty NODE_ENV to avoid "production" mode in some frameworks.
-    return `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildShellCommand([
+    const startupCheckCommand = `${buildShellEnvironmentAssignment('NODE_ENV', '')} ${buildShellCommand([
       'YARN',
       'wb',
       'concurrently',
@@ -176,6 +184,7 @@ export abstract class BaseScripts {
       this.startDevProtected(project, argv),
       this.waitApp(project),
     ])}`;
+    return [...migrationCommands, startupCheckCommand].join(' && ');
   }
 
   async testE2EProtected(
