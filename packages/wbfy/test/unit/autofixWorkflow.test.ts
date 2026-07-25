@@ -37,7 +37,8 @@ test('generates a public autofix workflow that can run wb with fnox on CI', asyn
 // nothing else in the build can check: a wrong choice silently leaves a repository with no working
 // autofix (or, worse, a public repository calling the private App-based one).
 test('a private repository gets the App-based apply workflow instead of autofix.ci', async () => {
-  const dirPath = await generateInto({ isPublicRepo: false });
+  // Seeded so the assertion below proves the obsolete workflow is DELETED, not merely skipped.
+  const dirPath = await generateInto({ isPublicRepo: false }, ['autofix.yml']);
   try {
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
     expect(fs.existsSync(path.join(workflowsPath, 'autofix.yml'))).toBe(false);
@@ -63,7 +64,7 @@ test('a private repository gets the App-based apply workflow instead of autofix.
 });
 
 test('a public repository keeps autofix.ci and gets no apply workflow', async () => {
-  const dirPath = await generateInto({ isPublicRepo: true });
+  const dirPath = await generateInto({ isPublicRepo: true }, ['autofix-apply.yml']);
   try {
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
     expect(fs.existsSync(path.join(workflowsPath, 'autofix.yml'))).toBe(true);
@@ -108,11 +109,19 @@ test('unknown repository visibility leaves both autofix workflows untouched', as
   }
 });
 
-async function generateInto(overrides: Partial<PackageConfig>): Promise<string> {
+/**
+ * `seedFileNames` are written before generating. Without them an "is absent afterwards" assertion
+ * passes on a file that was simply never created, which would leave the removal itself untested.
+ */
+async function generateInto(overrides: Partial<PackageConfig>, seedFileNames: string[] = []): Promise<string> {
   const tempRootPath = path.join(process.cwd(), '.tmp');
   await fs.promises.mkdir(tempRootPath, { recursive: true });
   const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'wbfy-autofix-'));
-  await fs.promises.mkdir(path.join(dirPath, '.github', 'workflows'), { recursive: true });
+  const workflowsPath = path.join(dirPath, '.github', 'workflows');
+  await fs.promises.mkdir(workflowsPath, { recursive: true });
+  for (const fileName of seedFileNames) {
+    await fs.promises.writeFile(path.join(workflowsPath, fileName), 'name: Seeded\non: push\njobs: {}\n');
+  }
   await generateWorkflows(createConfig({ dirPath, isRoot: true, ...overrides }));
   await promisePool.promiseAll();
   return dirPath;
