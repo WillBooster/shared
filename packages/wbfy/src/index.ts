@@ -125,7 +125,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // proceeding without Bun would delete Yarn state and then fail to produce a Bun lockfile.
   // The version floor matters too: older Bun silently ignores the generated bunfig.toml options
   // (globalStore, publicHoistPattern) and would validate a different install layout than the one
-  // repositories get once mise upgrades them.
+  // repositories get once mise upgrades them. It stays unconditional even though the already-applied
+  // check below can make a run a no-op: a missing or outdated Bun is a broken environment wbfy must
+  // report, and hiding it whenever every path happens to be skipped would surface it only later.
   const bunVersion = spawnSyncAndReturnStdout('bun', ['--version'], '.');
   if (!semver.valid(bunVersion)) {
     console.error('wbfy requires Bun. Install Bun (e.g. via mise) and re-run.');
