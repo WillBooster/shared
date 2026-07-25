@@ -103,10 +103,12 @@ exit "$failed"
 set -e
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 for file in {staged_files}; do
-  # A sibling temp file seeded with \`cp -p\` keeps the lockfile's original mode (a bare \`mktemp\`
-  # hands it 0600, and git tracks only the executable bit, so that would change silently) and
-  # makes the replacement an atomic same-directory rename.
-  normalized="$file.wbfy-normalizing"
+  # A sibling temp file makes the replacement an atomic same-directory rename, and \`cp -p\` gives
+  # it the lockfile's original mode (mktemp alone creates 0600, and git tracks only the executable
+  # bit, so that would change silently). The name must stay unpredictable and be created by
+  # mktemp: a repository-committed symlink at a fixed sibling path would otherwise be followed by
+  # \`cp\` and the redirection, and the \`mv\` would then turn bun.lock into that symlink.
+  normalized="$(mktemp "$file.wbfy-normalizing.XXXXXX")"
   trap 'rm -f "$normalized"' EXIT
   cp -p "$file" "$normalized"
   sed -E 's#"https://npm\\.flatt\\.tech/[^"]*"#""#g' "$file" > "$normalized"
