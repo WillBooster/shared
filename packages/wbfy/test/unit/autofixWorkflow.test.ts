@@ -79,9 +79,9 @@ test("the test caller keeps the permissions the reusable workflow's other steps 
   try {
     const content = await fs.promises.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
     const workflow = loadYaml(content) as { permissions: Record<string, string>; on: Record<string, unknown> };
-    // contents:write for semantic-release --dry-run's push check, actions:write for the test job's
-    // skip-duplicate-actions cancel_others and the autofix/wbfy dispatch. Dropping either because
-    // "test.yml no longer pushes" breaks callers.
+    // contents:write for semantic-release's unconditional push check, actions:write for the test
+    // job's skip-duplicate-actions cancel_others. Dropping either because "test.yml no longer
+    // pushes" breaks callers.
     expect(workflow.permissions).toMatchObject({ actions: 'write', contents: 'write', statuses: 'write' });
     expect(workflow.on).toHaveProperty('workflow_dispatch');
   } finally {
@@ -92,18 +92,36 @@ test("the test caller keeps the permissions the reusable workflow's other steps 
 // A failed GitHub lookup collapses isPublicRepo to false. Because this branch both deletes one
 // workflow and creates the other, guessing "private" would strip a public repository's autofix.ci
 // setup and hand it the App-based workflow that refuses fork pull requests.
-test('unknown repository visibility leaves both autofix workflows untouched', async () => {
+test('unknown repository visibility leaves existing autofix workflows byte-identical', async () => {
   const dirPath = await generateInto({ isPublicRepo: true });
   try {
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
     const publicAutofix = await fs.promises.readFile(path.join(workflowsPath, 'autofix.yml'), 'utf8');
+    // Sentinel content rather than a generated file: only an untouched file stays unequal to what
+    // the generator would have written, which is what proves nothing deleted or rewrote it.
+    const sentinel = 'name: Sentinel\non: push\njobs: {}\n';
+    await fs.promises.writeFile(path.join(workflowsPath, 'autofix-apply.yml'), sentinel);
 
     // Exactly what getPackageConfig produces for a public repository whose lookup failed.
     await generateWorkflows(createConfig({ dirPath, isRoot: true, isPublicRepo: false, isRepoVisibilityKnown: false }));
     await promisePool.promiseAll();
 
     expect(await fs.promises.readFile(path.join(workflowsPath, 'autofix.yml'), 'utf8')).toBe(publicAutofix);
+    expect(await fs.promises.readFile(path.join(workflowsPath, 'autofix-apply.yml'), 'utf8')).toBe(sentinel);
+  } finally {
+    await fs.promises.rm(dirPath, { recursive: true, force: true });
+  }
+});
+
+test('unknown repository visibility creates neither autofix workflow from scratch', async () => {
+  const dirPath = await generateInto({ isPublicRepo: false, isRepoVisibilityKnown: false });
+  try {
+    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    // Guessing either way would commit a workflow the repository may not be allowed to have.
+    expect(fs.existsSync(path.join(workflowsPath, 'autofix.yml'))).toBe(false);
     expect(fs.existsSync(path.join(workflowsPath, 'autofix-apply.yml'))).toBe(false);
+    // The rest of the mandatory set is unaffected by the visibility guard.
+    expect(fs.existsSync(path.join(workflowsPath, 'test.yml'))).toBe(true);
   } finally {
     await fs.promises.rm(dirPath, { recursive: true, force: true });
   }

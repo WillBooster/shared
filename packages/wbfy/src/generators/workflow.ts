@@ -104,10 +104,12 @@ const workflows = {
       push: {
         branches: ['main', 'wbfy'],
       },
-      // The reusable autofix and wbfy workflows re-run this caller via workflow_dispatch after
-      // their GITHUB_TOKEN push-back (such a push triggers no workflows by itself). The reusable
-      // TEST workflow no longer pushes at all — its fixes travel through autofix-apply.yml — but
-      // the trigger stays for those two.
+      // The reusable wbfy workflow re-runs this caller via workflow_dispatch after its
+      // GITHUB_TOKEN push-back (such a push triggers no workflows by itself), so the trigger has
+      // to stay. Being a dispatch TARGET needs only this trigger — the API call requires
+      // actions:write on the DISPATCHER's token, which wbfy.yml declares on its own push job.
+      // The reusable test workflow no longer pushes or dispatches at all; its fixes travel
+      // through autofix-apply.yml.
       workflow_dispatch: null,
     },
     // cf. https://docs.github.com/en/actions/using-jobs/using-concurrency#example-only-cancel-in-progress-jobs-or-runs-for-the-current-workflow
@@ -117,8 +119,8 @@ const workflows = {
     },
     // None of these may be narrowed just because the reusable test workflow stopped pushing:
     permissions: {
-      // for the test job's skip-duplicate-actions call with cancel_others: true, and for the
-      // workflow_dispatch the autofix/wbfy workflows issue after their push-back
+      // for the test job's skip-duplicate-actions call with cancel_others: true (the reusable
+      // test workflow declares no permissions of its own, so its jobs run on this token)
       actions: 'write',
       // for `semantic-release --dry-run`, which does a `git push --dry-run` to verify write
       // access and aborts with EGITNOPERMISSION without it
