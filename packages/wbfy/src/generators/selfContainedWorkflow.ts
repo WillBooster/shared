@@ -32,6 +32,8 @@ const cacheAction = 'actions/cache@v6.1.0';
 const uploadArtifactAction = 'actions/upload-artifact@v7.0.1';
 // v6.1.1; the same pin as the reusable semantic-pr workflow.
 const semanticPullRequestAction = 'amannn/action-semantic-pull-request@45b9ed7cf24087a2f7785bf55be97394ba87e1c2';
+// v3.0.3; deploys are network-heavy and benefit from retries with a long timeout.
+const retryAction = 'nick-fields/retry@dd56f1ca8ca991e2385c18ab6dd36ea7f9fdb55f';
 
 interface Step {
   name?: string;
@@ -71,6 +73,21 @@ export async function generateSelfContainedWorkflows(
       'test.yml': buildTestWorkflow(rootConfig, allPackageConfigs),
       'semantic-pr.yml': buildSemanticPrWorkflow(),
     };
+    // Deploy workflows are generated per deploy script the repository declares, so a repository
+    // without a staging environment simply gets no staging workflow. Only scripts that invoke
+    // `wb deploy` qualify: a bespoke deploy script may not be safe to trigger automatically
+    // (deploy-staging runs on every push to the default branch).
+    const scripts = rootConfig.packageJson?.scripts ?? {};
+    const hasProductionDeployWorkflow = isWbDeployScript(scripts['deploy']);
+    if (hasProductionDeployWorkflow) {
+      workflowByFileName['deploy-production.yml'] = buildDeployWorkflow(rootConfig, 'production', 'deploy');
+    }
+    if (isWbDeployScript(scripts['deploy:staging'])) {
+      workflowByFileName['deploy-staging.yml'] = buildDeployWorkflow(rootConfig, 'staging', 'deploy:staging');
+    }
+    if (rootConfig.depending.semanticRelease && rootConfig.release.branches.length > 0) {
+      workflowByFileName['release.yml'] = buildReleaseWorkflow(rootConfig, hasProductionDeployWorkflow);
+    }
     for (const [fileName, workflow] of Object.entries(workflowByFileName)) {
       await promisePool.run(() => writeSelfContainedWorkflow(path.join(workflowsPath, fileName), workflow));
     }
@@ -94,6 +111,10 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
 
 function workingDir(dirPath: string): Pick<Step, 'working-directory'> {
   return dirPath ? { 'working-directory': dirPath } : {};
+}
+
+function isWbDeployScript(script: unknown): boolean {
+  return typeof script === 'string' && /\bwb deploy\b/u.test(script);
 }
 
 function removeTrailingSpaces(text: string): string {
@@ -204,6 +225,127 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
         'runs-on': 'ubuntu-latest',
         env: { FORCE_COLOR: '3', WB_ENV: 'test' },
         steps,
+      },
+    },
+  };
+}
+
+function buildDeployWorkflow(
+  config: PackageConfig,
+  environment: 'staging' | 'production',
+  scriptName: string
+): Workflow {
+  const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
+  return {
+    name: `Deploy app on ${environment}`,
+    on: {
+      workflow_dispatch: null,
+      // Production deploys follow published releases (see the release workflow's trigger step);
+      // staging converges on every default-branch push.
+      ...(environment === 'production'
+        ? { release: { types: ['published'] } }
+        : { push: { branches: ['main'], 'paths-ignore': ['**.md', '**/docs/**'] } }),
+    },
+    concurrency: {
+      group: '${{ github.workflow }}',
+      'cancel-in-progress': false,
+    },
+    permissions: { contents: 'read' },
+    jobs: {
+      deploy: {
+        'runs-on': 'ubuntu-latest',
+        env: { WB_ENV: environment },
+        steps: [
+          // fetch-depth 0 so `git describe` sees the tags WB_VERSION is derived from.
+          { uses: checkoutAction, with: { 'fetch-depth': 0 } },
+          { uses: miseAction },
+          {
+            name: 'Set WB_VERSION',
+            run: 'set -euo pipefail\nWB_VERSION=$(git describe --always --tags)\necho "WB_VERSION=$WB_VERSION" >> "$GITHUB_ENV"',
+          },
+          { run: 'bun install' },
+          {
+            name: 'Deploy',
+            uses: retryAction,
+            with: {
+              timeout_minutes: 60,
+              max_attempts: 5,
+              command: `bun run ${scriptName}`,
+            },
+            // Step-scoped like the test workflow: dependency lifecycle scripts run by
+            // `bun install` must not be able to read the long-lived age identity.
+            ...(usesFnox ? { env: { FNOX_AGE_KEY: '${{ secrets.FNOX_AGE_KEY }}' } } : {}),
+          },
+        ],
+      },
+    },
+  };
+}
+
+function buildReleaseWorkflow(config: PackageConfig, hasProductionDeployWorkflow: boolean): Workflow {
+  const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
+  const fnoxEnv: Record<string, string> = usesFnox ? { FNOX_AGE_KEY: '${{ secrets.FNOX_AGE_KEY }}' } : {};
+  return {
+    name: 'Release',
+    on: {
+      push: { branches: [...config.release.branches] },
+    },
+    concurrency: {
+      group: '${{ github.workflow }}',
+      'cancel-in-progress': false,
+    },
+    permissions: {
+      // for semantic-release
+      contents: 'write',
+      // for dispatching the production deploy workflow after a release
+      ...(hasProductionDeployWorkflow ? { actions: 'write' } : {}),
+    },
+    jobs: {
+      release: {
+        'runs-on': 'ubuntu-latest',
+        steps: [
+          // fetch-depth 0: semantic-release reads the full history to compute the next version.
+          { uses: checkoutAction, with: { 'fetch-depth': 0 } },
+          { uses: miseAction },
+          { run: 'bun install' },
+          ...(hasProductionDeployWorkflow
+            ? [
+                {
+                  name: 'Get current latest tag',
+                  id: 'pre-release-tag',
+                  run: 'set -euo pipefail\necho "tag=$(git describe --tags --abbrev=0 2>/dev/null || echo \'\')" >> "$GITHUB_OUTPUT"',
+                },
+              ]
+            : []),
+          {
+            name: 'Release',
+            // Run semantic-release with Node because it checks Node.js runtime requirements.
+            run: 'node node_modules/semantic-release/bin/semantic-release.js',
+            env: {
+              GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
+              HUSKY: '0',
+              LEFTHOOK: '0',
+              ...fnoxEnv,
+            },
+          },
+          ...(hasProductionDeployWorkflow
+            ? ([
+                {
+                  name: 'Check for new release tag',
+                  id: 'post-release-tag',
+                  run: 'set -euo pipefail\ngit fetch --tags --force\nNEW_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo \'\')\necho "tag=$NEW_TAG" >> "$GITHUB_OUTPUT"\nif [[ -n "$NEW_TAG" && "$NEW_TAG" != "${{ steps.pre-release-tag.outputs.tag }}" ]]; then\n  echo "created=true" >> "$GITHUB_OUTPUT"\nfi',
+                },
+                {
+                  if: "steps.post-release-tag.outputs.created == 'true'",
+                  name: 'Trigger production deploy',
+                  // A GITHUB_TOKEN-created release does not fire the deploy workflow's
+                  // release-published trigger, so dispatch it explicitly on the new tag.
+                  run: 'gh workflow run deploy-production.yml --ref "${{ steps.post-release-tag.outputs.tag }}"',
+                  env: { GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}' },
+                },
+              ] satisfies Step[])
+            : []),
+        ],
       },
     },
   };

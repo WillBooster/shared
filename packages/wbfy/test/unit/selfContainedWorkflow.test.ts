@@ -163,6 +163,59 @@ test('treats an empty workflow file as absent', async () => {
   });
 });
 
+test('generates release and deploy workflows for wb-deploy scripts and semantic-release', async () => {
+  await withTempRepo(async (dirPath) => {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+      depending: { ...createConfig().depending, semanticRelease: true },
+      release: { branches: ['release'], github: true, npm: false, npmPublishesRoot: false },
+      packageJson: {
+        scripts: {
+          deploy: 'WB_ENV=production bun wb deploy',
+          'deploy:staging': 'WB_ENV=staging bun wb deploy',
+        },
+      },
+    });
+    await generateSelfContainedWorkflows(config);
+    await promisePool.promiseAll();
+
+    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    const production = await fs.readFile(path.join(workflowsPath, 'deploy-production.yml'), 'utf8');
+    expect(production).toContain('bun run deploy');
+    expect(production).toContain('nick-fields/retry@');
+    const staging = yaml.load(await fs.readFile(path.join(workflowsPath, 'deploy-staging.yml'), 'utf8')) as {
+      on: { push?: { branches: string[] } };
+    };
+    expect(staging.on.push?.branches).toEqual(['main']);
+    const release = await fs.readFile(path.join(workflowsPath, 'release.yml'), 'utf8');
+    expect(release).toContain('semantic-release');
+    expect(release).toContain('gh workflow run deploy-production.yml');
+    const releaseWorkflow = yaml.load(release) as { on: { push: { branches: string[] } } };
+    expect(releaseWorkflow.on.push.branches).toEqual(['release']);
+  });
+});
+
+test('does not generate deploy workflows for bespoke deploy scripts', async () => {
+  await withTempRepo(async (dirPath) => {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+      packageJson: { scripts: { deploy: 'bash scripts/deploy.sh' } },
+    });
+    await generateSelfContainedWorkflows(config);
+    await promisePool.promiseAll();
+
+    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    await expect(fs.access(path.join(workflowsPath, 'deploy-production.yml'))).rejects.toThrow();
+    await expect(fs.access(path.join(workflowsPath, 'release.yml'))).rejects.toThrow();
+  });
+});
+
 test('never overwrites a hand-written workflow and regenerates a marked one', async () => {
   await withTempRepo(async (dirPath) => {
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
