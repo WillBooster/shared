@@ -82,9 +82,10 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
       runPackageCommand(genCodeCommand, project, argv)
     );
   }
-  // Resolved after `install`, so a dependency the install added is reflected, and reused by both
-  // step details below. `lint` and `typecheck` each resolve the same set again internally; this
-  // extra resolution only reads the already-parsed package.json files.
+  // Resolved after `gen-code` so a generated `src` directory is already there for `hasSourceCode`,
+  // which is an existsSync check, and reused by both step details below. `Project` memoizes per
+  // instance and `getAllDescendantProjects` builds fresh ones, so this repeats the workspace glob
+  // and manifest parse that `lint` and `typecheck` each perform anyway — cheap, but not free.
   const stepDetails = await buildStepDetails(argv);
   // `lint --fix --format` prints nothing on success, so without the step summary a passing `verify`
   // looks like it never linted at all — and it silently rewrote the working tree while at it.
