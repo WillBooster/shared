@@ -155,8 +155,11 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
     // while the workflow silently keeps skipping them (or a policy-violating repository-level
     // copy silently serves as the only source).
     if (assignedButUnusableNames.has('WBFY_GH_TOKEN')) {
+      // A same-named repository secret takes precedence over the organization secret, so with one
+      // present the updates still run (from the policy-violating copy the next check flags) — only
+      // without it are they silently skipped.
       console.error(
-        `The organization secret WBFY_GH_TOKEN is assigned to ${owner}/${repo} but falls beyond the 100-organization-secret limit a workflow run can use (only the alphabetically first 100 are usable), so workflow-file updates are silently skipped. Ask a WillBooster org admin to prune the assigned organization secrets.`
+        `The organization secret WBFY_GH_TOKEN is assigned to ${owner}/${repo} but falls beyond the 100-organization-secret limit a workflow run can use (only the alphabetically first 100 are usable)${repoLevelNames.has('WBFY_GH_TOKEN') ? '' : ', so workflow-file updates are silently skipped'}. Ask a WillBooster org admin to prune the assigned organization secrets.`
       );
       verified = false;
     }
