@@ -100,16 +100,27 @@ test('installs Playwright browsers from the declaring workspace package in a mon
       repository: 'github:someone/example',
       depending: { ...createConfig().depending, playwrightTest: true },
     });
-    await generateSelfContainedWorkflows(rootConfig, [rootConfig, childConfig]);
+    const secondChildConfig = createConfig({
+      dirPath: path.join(dirPath, 'packages', 'web'),
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+      depending: { ...createConfig().depending, playwrightTest: true },
+    });
+    await generateSelfContainedWorkflows(rootConfig, [rootConfig, childConfig, secondChildConfig]);
     await promisePool.promiseAll();
 
     const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
     const workflow = yaml.load(content) as ParsedWorkflow;
     const steps = workflow.jobs.test?.steps ?? [];
-    const installStep = steps.find((step) => step.run === 'bun run playwright install --with-deps');
-    expect(installStep?.['working-directory']).toBe('packages/app');
+    // Every declaring package gets its own browser installation (versions may differ).
+    const installSteps = steps.filter((step) => step.run === 'bun run playwright install --with-deps');
+    expect(installSteps.map((step) => step['working-directory'])).toEqual(['packages/app', 'packages/web']);
+    const cacheStep = steps.find((step) => step.uses?.startsWith('actions/cache@'));
+    expect(cacheStep?.with?.key).toBe(
+      'playwright-${{ runner.os }}-${{ steps.playwright-version-0.outputs.version }}-${{ steps.playwright-version-1.outputs.version }}'
+    );
     const uploadStep = steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
-    expect(uploadStep?.with?.path).toBe('packages/app/test-results');
+    expect(uploadStep?.with?.path).toBe('packages/app/test-results\npackages/web/test-results');
   });
 });
 

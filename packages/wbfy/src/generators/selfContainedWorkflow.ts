@@ -92,6 +92,10 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
   await fsUtil.writeFileConfined(filePath, header + removeTrailingSpaces(yamlText));
 }
 
+function workingDir(dirPath: string): Pick<Step, 'working-directory'> {
+  return dirPath ? { 'working-directory': dirPath } : {};
+}
+
 function removeTrailingSpaces(text: string): string {
   // js-yaml emits valueless GitHub Actions events as `event: ` when using the empty null style.
   return text.replaceAll(/[ \t]+$/gm, '');
@@ -99,18 +103,16 @@ function removeTrailingSpaces(text: string): string {
 
 function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConfig[]): Workflow {
   const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
-  // Playwright may be declared only in a workspace package; `wb test-on-ci` runs that package's
-  // e2e tests, so the workflow must still install browsers. Bun's isolated linker resolves the
-  // playwright binary only from the declaring package, hence the working-directory below. The
-  // browsers themselves land in ~/.cache/ms-playwright, shared across every workspace, so one
-  // install (keyed on the first declaring package's version) covers same-version siblings.
-  const playwrightConfig = [...allPackageConfigs]
+  // Playwright may be declared only in workspace packages; `wb test-on-ci` runs every declaring
+  // package's e2e tests, so the workflow must install browsers for each of them (their versions
+  // may differ, and each library version requires its matching browser binaries). Bun's isolated
+  // linker resolves the playwright binary only from the declaring package, hence the
+  // working-directory on every step. The browsers land in ~/.cache/ms-playwright, shared across
+  // workspaces, so same-version installs naturally deduplicate.
+  const playwrightDirPaths = [...allPackageConfigs]
     .toSorted((a, b) => a.dirPath.localeCompare(b.dirPath))
-    .find((packageConfig) => packageConfig.depending.playwrightTest);
-  const playwrightDirPath = playwrightConfig && path.relative(config.dirPath, playwrightConfig.dirPath);
-  const playwrightDir: Pick<Step, 'working-directory'> = playwrightDirPath
-    ? { 'working-directory': playwrightDirPath }
-    : {};
+    .filter((packageConfig) => packageConfig.depending.playwrightTest)
+    .map((packageConfig) => path.relative(config.dirPath, packageConfig.dirPath));
   const hasTypecheck = config.doesContainTypeScript || config.doesContainTypeScriptInPackages;
   // Step-scoped like the reusable test workflow: dependency lifecycle scripts run by `bun install`
   // must not be able to read the long-lived age identity.
@@ -120,44 +122,52 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
     { uses: checkoutAction },
     { uses: miseAction },
     { run: 'bun install' },
-    ...(playwrightConfig
+    ...(playwrightDirPaths.length > 0
       ? ([
-          {
-            name: 'Get Playwright version',
-            // The INSTALLED version, not the package.json specifier: a range like `^1.45.0` stays
-            // unchanged across lockfile updates, so keying the cache on it would restore stale
-            // browsers that no longer match the library. Runs after `bun install`, so the package
-            // is resolvable from the declaring package's directory.
-            id: 'playwright-version',
-            run: 'echo "version=$(bun -e "try { console.log(require(\'@playwright/test/package.json\').version) } catch {}")" >> "$GITHUB_OUTPUT"',
-            ...playwrightDir,
-          },
+          ...playwrightDirPaths.map(
+            (dirPath, index): Step => ({
+              name: `Get Playwright version${dirPath ? ` (${dirPath})` : ''}`,
+              // The INSTALLED version, not the package.json specifier: a range like `^1.45.0`
+              // stays unchanged across lockfile updates, so keying the cache on it would restore
+              // stale browsers that no longer match the library. Runs after `bun install`, so the
+              // package is resolvable from the declaring package's directory.
+              id: `playwright-version-${index}`,
+              run: 'echo "version=$(bun -e "try { console.log(require(\'@playwright/test/package.json\').version) } catch {}")" >> "$GITHUB_OUTPUT"',
+              ...workingDir(dirPath),
+            })
+          ),
           {
             name: 'Cache Playwright browsers',
             id: 'playwright-cache',
             uses: cacheAction,
             with: {
               path: '~/.cache/ms-playwright',
-              key: 'playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}',
+              key: `playwright-\${{ runner.os }}-${playwrightDirPaths
+                .map((_, index) => `\${{ steps.playwright-version-${index}.outputs.version }}`)
+                .join('-')}`,
             },
           },
-          {
-            if: "steps.playwright-cache.outputs.cache-hit != 'true'",
-            run: 'bun run playwright install --with-deps',
-            ...playwrightDir,
-          },
-          {
-            // The cached browsers still need their system dependencies on a fresh runner.
-            if: "steps.playwright-cache.outputs.cache-hit == 'true'",
-            run: 'bun run playwright install-deps',
-            ...playwrightDir,
-          },
+          ...playwrightDirPaths.map(
+            (dirPath): Step => ({
+              if: "steps.playwright-cache.outputs.cache-hit != 'true'",
+              run: 'bun run playwright install --with-deps',
+              ...workingDir(dirPath),
+            })
+          ),
+          ...playwrightDirPaths.map(
+            (dirPath): Step => ({
+              // The cached browsers still need their system dependencies on a fresh runner.
+              if: "steps.playwright-cache.outputs.cache-hit == 'true'",
+              run: 'bun run playwright install-deps',
+              ...workingDir(dirPath),
+            })
+          ),
         ] satisfies Step[])
       : []),
     ...(hasTypecheck ? [{ run: 'bun run typecheck', ...fnoxEnv }] : []),
     { run: 'bun run lint', ...fnoxEnv },
     { run: 'bun run test/ci', ...fnoxEnv },
-    ...(playwrightConfig
+    ...(playwrightDirPaths.length > 0
       ? [
           {
             name: 'Upload test results',
@@ -165,7 +175,11 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
             uses: uploadArtifactAction,
             with: {
               name: 'test-results',
-              path: playwrightDirPath ? path.posix.join(playwrightDirPath, 'test-results') : 'test-results',
+              // Every declaring package writes its own test-results directory; a newline-separated
+              // list uploads them all.
+              path: playwrightDirPaths
+                .map((dirPath) => (dirPath ? path.posix.join(dirPath, 'test-results') : 'test-results'))
+                .join('\n'),
               'if-no-files-found': 'ignore',
               'retention-days': 14,
             },
