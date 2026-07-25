@@ -39,7 +39,11 @@ function buildWbfyBadge(label: string): string {
 
 /** The version label the wbfy badge in the repository's README records, i.e. the build that wbfied it. */
 export async function readAppliedWbfyVersionLabel(dirPath: string): Promise<string | undefined> {
-  const readme = await fsUtil.readFileIfExists(path.resolve(dirPath, 'README.md'));
+  // Confined, and tolerant of any read failure: a README that resolves outside the repository (a
+  // committed symlink) or cannot be read at all says nothing about which build configured THIS
+  // repository, and the answer only ever suppresses work — so anything but a readable in-repository
+  // README means "not known to be applied" and the run proceeds.
+  const readme = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, 'README.md')).catch(() => {});
   if (readme === undefined) return undefined;
 
   // The README is parsed rather than scanned, for the same reason writeBadgeBlock parses it, and

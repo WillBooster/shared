@@ -302,6 +302,31 @@ test.each([
   });
 });
 
+// The answer only suppresses work, so anything unreadable must leave the run to proceed instead of
+// aborting the CLI — including the paths it has not processed yet.
+test('reports no applied version when the README cannot be read', async () => {
+  await withTempDir(async (dirPath) => {
+    const error: NodeJS.ErrnoException = new Error('EACCES: permission denied');
+    error.code = 'EACCES';
+    vi.spyOn(fsUtil, 'readFileConfinedIfExists').mockRejectedValue(error);
+
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
+  });
+});
+
+test('ignores a README resolving outside the repository', async () => {
+  await withTempDir(async (dirPath) => {
+    await withTempDir(async (outsideDirPath) => {
+      const outsideFilePath = path.resolve(outsideDirPath, 'README.md');
+      fs.writeFileSync(outsideFilePath, `# outside\n\n${badgeOf('1.2.3')}\n`);
+      fs.symlinkSync(outsideFilePath, path.resolve(dirPath, 'README.md'));
+      fsUtil.setRootDirPath(dirPath);
+
+      expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
+    });
+  });
+});
+
 test('creates a missing README with a version-less badge', async () => {
   await withTempDir(async (dirPath) => {
     expect(await runGenerateReadme(dirPath, undefined)).toBe(`# example\n\n${badgeOf('applied')}\n`);
