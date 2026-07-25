@@ -15,7 +15,6 @@ import {
   readFnoxAgeRecipients,
   resolveFnoxCommand,
 } from '../generators/fnoxToml.js';
-import { isWbfyWorkflowDenied } from '../generators/workflow.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -79,9 +78,6 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
 async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
   const octokit = getOctokit(owner);
   const requiredNames = ['VERDACCIO_TOKEN'];
-  // WBFY_GH_TOKEN is deliberately absent: the self-applying wbfy caller pushes non-workflow
-  // changes with GITHUB_TOKEN, workflow-file updates happen through local wbfy runs, and wbfy
-  // does not manage that opt-in secret (only the deny-listed revocation below touches it).
   // Both requirement checks are deliberately based on the LOCAL working tree: workflow generation
   // keys FNOX_AGE_KEY injection on the local root fnox.toml too, and a config added on a feature
   // branch will need its secret as soon as it merges — surfacing the missing org secret before
@@ -129,23 +125,6 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
         assignedButUnusableNames.has(name)
           ? `The organization secret ${name} is assigned to ${owner}/${repo} but falls beyond the 100-organization-secret limit a workflow run can use (only the alphabetically first 100 are usable). Ask a WillBooster org admin to prune the assigned organization secrets.`
           : `The organization secret ${name} is not visible to ${owner}/${repo}. Ask a WillBooster org admin to register it as an organization secret (or extend its repository access to this repository) — do NOT create a repository-level copy.${repoLevelNames.has(name) ? ` A repository-level ${name} currently keeps CI working, but it violates the org-secret policy and must be deleted once the organization secret is visible.` : ''}`
-      );
-      verified = false;
-    }
-  }
-  // A deny-listed repository must not keep the write-capable push PAT visible: its wbfy caller
-  // workflow is removed, so retained visibility only exposes the broad credential to whatever
-  // workflows the (possibly externally maintained) repository still runs.
-  if (isWbfyWorkflowDenied(config.repository)) {
-    if (assignedOrgNames.includes('WBFY_GH_TOKEN')) {
-      console.error(
-        `The organization secret WBFY_GH_TOKEN is still assigned to the deny-listed repository ${owner}/${repo}. Ask a WillBooster org admin to remove this repository from the secret's repository access.`
-      );
-      verified = false;
-    }
-    if (repoLevelNames.has('WBFY_GH_TOKEN')) {
-      console.error(
-        `The deny-listed repository ${owner}/${repo} still has a repository-level WBFY_GH_TOKEN secret. Delete it manually (e.g. \`gh secret delete WBFY_GH_TOKEN --repo ${owner}/${repo}\`).`
       );
       verified = false;
     }
@@ -198,27 +177,6 @@ function containsWranglerConfig(rootDirPath: string): boolean {
 
 async function uploadSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
   const octokit = getOctokit(owner);
-  // A deny-listed repository must lose the broad push PAT UNCONDITIONALLY: the revocation has no
-  // replacement credential to upload first, so it must not be gated on the fnox / Verdaccio
-  // validation below — any early return there would otherwise leave the PAT installed (it also
-  // stays in obsoleteSecretNames for the regular cleanup pass; the second delete just 404s).
-  if (isWbfyWorkflowDenied(config.repository)) {
-    try {
-      // Requires Secrets permission
-      await octokit.request('DELETE /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
-        owner,
-        repo,
-        secret_name: 'WBFY_GH_TOKEN',
-      });
-      console.info(`Deleted the WBFY_GH_TOKEN secret from the deny-listed repository ${owner}/${repo}.`);
-    } catch (error) {
-      // Most deny-listed repositories never had the secret, so its absence is the expected outcome.
-      if ((error as { status?: number } | undefined)?.status !== 404) {
-        console.error(`Failed to delete the WBFY_GH_TOKEN secret from ${owner}/${repo}:`, error);
-        process.exitCode = 1;
-      }
-    }
-  }
   // Covers the non-fnox path too: a failed synchronization may mean an unsupported fnox layout
   // (e.g. nested configs without a root fnox.toml) whose FNOX_AGE_KEY must not be deleted.
   if (hasFnoxSyncFailed()) {
@@ -248,11 +206,6 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     process.exitCode = 1;
     return;
   }
-  // wbfy does not manage the opt-in WBFY_GH_TOKEN push PAT (workflow-file updates happen
-  // through local wbfy runs; a repository opting into automatic updates registers the secret
-  // manually) — except on DENY-LISTED repositories, where any stray copy is removed: the early
-  // revocation above plus this obsolete entry for the regular cleanup pass.
-  const wbfyObsoleteSecretNames = isWbfyWorkflowDenied(config.repository) ? ['WBFY_GH_TOKEN'] : [];
   let secretsToUpload: Record<string, string>;
   let obsoleteSecretNames: string[];
   // Decide the fnox migration state SOLELY from the remote default branch: an unmerged local
@@ -338,7 +291,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
       FNOX_AGE_KEY: ciAgeKey,
       VERDACCIO_TOKEN: verdaccioToken,
     };
-    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, ...wbfyObsoleteSecretNames, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
+    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
   } else {
     // .env files are no longer synchronized into GitHub secrets: fnox is the org standard, and a
     // repository without a default-branch fnox.toml only gets the fnox-independent secrets. Any
@@ -348,7 +301,7 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     );
     secretsToUpload = { VERDACCIO_TOKEN: verdaccioToken };
     // A repository that migrated away from fnox must not keep the shared CI decryption key.
-    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, ...wbfyObsoleteSecretNames, 'FNOX_AGE_KEY'];
+    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'FNOX_AGE_KEY'];
   }
 
   // Never upload a secret that is about to be deleted: a PUT followed by a failed DELETE would
