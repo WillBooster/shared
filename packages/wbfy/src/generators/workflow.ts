@@ -688,10 +688,11 @@ async function writeWorkflowYaml(
     case 'test':
     case 'test-rust': {
       // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
-      // test-rust calls no action that needs Actions write access, so the template's grant is
-      // dropped for it; test keeps it for the reason stated on the test template's permissions
-      // above (skip-duplicate-actions with cancel_others: true) — NOT for the retired push-back
-      // dispatch, which the reusable test workflow no longer performs.
+      // The test-rust template declares no permissions at all, so this delete only strips an
+      // `actions` grant merged in from an existing test-rust.yml an older wbfy generated — it is a
+      // no-op for a fresh one. test keeps its grant for the reason stated on the test template's
+      // permissions above (skip-duplicate-actions with cancel_others: true), NOT for the retired
+      // push-back dispatch, which the reusable test workflow no longer performs.
       if (kind === 'test-rust') {
         delete newSettings.permissions?.actions;
       }
