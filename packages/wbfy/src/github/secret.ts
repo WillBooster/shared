@@ -164,8 +164,11 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
       verified = false;
     }
     if (repoLevelNames.has('WBFY_GH_TOKEN') && !usableOrgNames.has('WBFY_GH_TOKEN')) {
+      // With an assigned-but-beyond-limit organization secret, "register it" would be wrong
+      // advice (it is already assigned) and deleting the fallback first would silently disable
+      // workflow-file updates — pruning must come first.
       console.error(
-        `${owner}/${repo} has a repository-level WBFY_GH_TOKEN secret without a usable organization secret, which violates the WillBooster org-secret policy. Ask a WillBooster org admin to register the organization secret (or extend its repository access), then delete the repository-level copy manually (e.g. \`gh secret delete WBFY_GH_TOKEN --repo ${owner}/${repo}\`).`
+        `${owner}/${repo} has a repository-level WBFY_GH_TOKEN secret without a usable organization secret, which violates the WillBooster org-secret policy. ${assignedButUnusableNames.has('WBFY_GH_TOKEN') ? 'Ask a WillBooster org admin to prune the assigned organization secrets FIRST (making the organization secret usable)' : 'Ask a WillBooster org admin to register the organization secret (or extend its repository access)'}, then delete the repository-level copy manually (e.g. \`gh secret delete WBFY_GH_TOKEN --repo ${owner}/${repo}\`).`
       );
       verified = false;
     }
