@@ -26,6 +26,14 @@ type VerifyCodeCommandOptions = InferredOptionTypes<typeof builder & typeof shar
 type VerifyCodeCommandArgv = ArgumentsCamelCase<VerifyCodeCommandOptions>;
 type PackageCommandArgv = Pick<VerifyCodeCommandArgv, 'dryRun' | 'verbose'>;
 
+/** A completed `wb verify` step, recorded so the final summary can prove every step actually ran. */
+interface VerifyStep {
+  /** What the step ran, e.g. `lint --fix --format`. Omitted when no single command describes it. */
+  detail?: string;
+  durationMs: number;
+  name: string;
+}
+
 export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions> = {
   command: 'verify',
   describe: 'Verify project code',
@@ -37,15 +45,23 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       process.exit(1);
     }
 
-    await (argv.full ? verifyCodeFully(projects.self, argv) : verifyCode(projects.self, argv));
+    const steps: VerifyStep[] = [];
+    if (argv.full) {
+      await verifyCodeFully(projects.self, argv, steps);
+    } else {
+      await verifyCode(projects.self, argv, steps);
+      printVerifySummary(steps, Boolean(argv.dryRun));
+    }
   },
 };
 
-async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
+async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
   const reporter = startVerifyFullReporter(project);
   try {
-    await verifyCode(project, argv);
-    await runProjectTest(project, argv);
+    await verifyCode(project, argv, steps);
+    await runStep(steps, { name: 'test' }, () => runProjectTest(project, argv));
+    // Printed before the reporter finishes so the summary lands in verify-full.log too.
+    printVerifySummary(steps, Boolean(argv.dryRun));
     reporter.succeed();
   } catch (error) {
     reporter.fail(error);
@@ -55,32 +71,37 @@ async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv): P
   }
 }
 
-async function verifyCode(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {
-  await runPackageCommand(`${project.packageManagerCommand} install`, project, argv);
+async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
+  const installCommand = `${project.packageManagerCommand} install`;
+  await runStep(steps, { detail: installCommand, name: 'install' }, () =>
+    runPackageCommand(installCommand, project, argv)
+  );
   if (project.packageJson.scripts?.['gen-code']) {
-    await runPackageCommand(`${project.packageManagerCommand} gen-code`, project, argv);
+    const genCodeCommand = `${project.packageManagerCommand} gen-code`;
+    await runStep(steps, { detail: genCodeCommand, name: 'gen-code' }, () =>
+      runPackageCommand(genCodeCommand, project, argv)
+    );
   }
-  await runInProcessCommand(
-    'cleanup',
-    () =>
+  // `lint --fix --format` prints nothing on success, so without the step summary a passing `verify`
+  // looks like it never linted at all — and it silently rewrote the working tree while at it.
+  await runStep(steps, { detail: 'lint --fix --format', name: 'cleanup' }, () =>
+    runInProcessCommand('cleanup', () =>
       lint({
         ...argv,
         _: ['lint'],
         fix: true,
         format: true,
         silent: true,
-      } as unknown as LintCommandArgv),
-    { silent: true }
+      } as unknown as LintCommandArgv)
+    )
   );
   // Type-aware lint reports TypeScript diagnostics only for the files oxlint actually lints, and
   // the shared config ignores directories tsc still compiles (e.g. `__generated__`, `@types`,
   // `dist`). Keep the typecheck command so `verify` stays equivalent to "the repository compiles".
   // The overlap with lint is deliberate: `--type-aware` also powers type-aware lint rules, and
   // dropping only `--type-check` from lint saves ~0.1s, far less than the coverage it would cost.
-  await runInProcessCommand(
-    'typecheck',
-    () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv),
-    { silent: true }
+  await runStep(steps, { name: 'typecheck' }, () =>
+    runInProcessCommand('typecheck', () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv))
   );
 }
 
@@ -122,24 +143,63 @@ function findTestProject(project: Project, argv: TestCommandArgv): Project {
   return testProject;
 }
 
-async function runInProcessCommand(
-  commandName: string,
-  command: () => Promise<number | undefined>,
-  options: { allowFailure?: boolean; silent?: boolean } = {}
-): Promise<number> {
-  if (!options.silent) {
-    console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
-  }
+/** Times a step and records it for the final summary. Steps that fail exit the process instead. */
+async function runStep<T>(
+  steps: VerifyStep[],
+  step: Omit<VerifyStep, 'durationMs'>,
+  run: () => Promise<T>
+): Promise<T> {
+  const startedAt = Date.now();
+  const result = await run();
+  steps.push({ ...step, durationMs: Date.now() - startedAt });
+  return result;
+}
+
+/**
+ * Runs a step that succeeds silently: the recap is the single place a successful step is announced,
+ * so wrapper `Start`/`Finished` lines would only repeat it. Failures still report before exiting.
+ */
+async function runInProcessCommand(commandName: string, command: () => Promise<number | undefined>): Promise<number> {
   const exitCode = (await command()) ?? 0;
-  if (exitCode === 0 || options.allowFailure) {
-    if (!options.silent) {
-      console.info(chalk.green(chalk.bold('Finished:'), commandName));
-    }
-  } else {
+  if (exitCode !== 0) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
     process.exit(exitCode);
   }
   return exitCode;
+}
+
+/**
+ * Recaps every completed step.
+ *
+ * `wb verify` is primarily consumed by AI coding agents, and its per-command output is uneven: a
+ * successful `cleanup` prints nothing at all while `typecheck` prints per-package progress. Reading
+ * a passing run therefore gave no evidence that linting happened, so the recap lists each step that
+ * ran, what it ran, and how long it took.
+ */
+function printVerifySummary(steps: VerifyStep[], dryRun: boolean): void {
+  if (steps.length === 0) return;
+
+  const nameWidth = Math.max(...steps.map((step) => step.name.length));
+  // `--dry-run` skips command execution, so every step took no time and verified nothing: a green
+  // "Verified" recap would claim exactly the work the flag suppressed. List what would run instead.
+  if (dryRun) {
+    console.info('\n' + chalk.cyan(chalk.bold('Dry run — nothing was executed. Steps that would run:')));
+    for (const step of steps) {
+      // Pad only when a detail follows, so a detail-less step does not emit trailing whitespace.
+      console.info(`  - ${step.detail ? step.name.padEnd(nameWidth) + chalk.gray(`  ${step.detail}`) : step.name}`);
+    }
+    return;
+  }
+
+  const durations = steps.map((step) => formatStepDuration(step.durationMs));
+  const durationWidth = Math.max(...durations.map((duration) => duration.length));
+  const totalDurationMs = steps.reduce((total, step) => total + step.durationMs, 0);
+  console.info('\n' + chalk.green(chalk.bold(`Verified in ${formatStepDuration(totalDurationMs)}:`)));
+  for (const [index, step] of steps.entries()) {
+    const duration = (durations[index] as string).padStart(durationWidth);
+    const detail = step.detail ? `  ${step.detail}` : '';
+    console.info(chalk.green('  ✔ ') + step.name.padEnd(nameWidth) + chalk.gray(`  ${duration}${detail}`));
+  }
 }
 
 async function runPackageCommand(
@@ -274,6 +334,14 @@ function teeWrite(originalWrite: typeof process.stdout.write, logFile: number): 
     // while the stream method buffers internally and handles backpressure.
     return originalWrite(buffer, typeof encodingOrCallback === 'function' ? encodingOrCallback : callback);
   }) as typeof process.stdout.write;
+}
+
+/** Sub-minute steps keep one decimal so a fast step is not flattened to a misleading `0s`. */
+function formatStepDuration(milliseconds: number): string {
+  if (milliseconds < 60_000) {
+    return `${(milliseconds / 1000).toFixed(1)}s`;
+  }
+  return formatElapsedTime(milliseconds);
 }
 
 function formatElapsedTime(milliseconds: number): string {

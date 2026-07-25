@@ -18,9 +18,10 @@ import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { findWranglerConfigPath } from '../utils/wrangler.js';
 import { promisePool } from '../utils/promisePool.js';
+import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
 
 import { httpServerPackages } from './httpServerPackages.js';
-import { findTestStructureViolations, getDefaultUnitTargets, printTestStructureViolations } from './test.js';
+import { getDefaultUnitTargets } from './test.js';
 
 const testOnCiBuilder = {
   silent: {

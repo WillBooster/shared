@@ -9,7 +9,6 @@ import yargs from 'yargs';
 import { retryCommand } from '../../src/commands/retry.js';
 import {
   buildPlaywrightArgsForE2E,
-  findTestStructureViolations,
   getDefaultUnitTargets,
   resolveTestExecutionTargets,
   testCommand,
@@ -145,69 +144,6 @@ describe('getDefaultUnitTargets', () => {
   it('runs nothing without test/unit', async () => {
     const dirPath = await createProjectDir(['test/e2e']);
     expect(getDefaultUnitTargets({ dirPath })).toBe(false);
-  });
-});
-
-describe('findTestStructureViolations', () => {
-  const packageJson = {};
-
-  it('accepts the canonical layout', async () => {
-    const dirPath = await createProjectDir(
-      ['test/e2e', 'test/debug', 'test/fixtures'],
-      ['test/unit/example.test.ts', 'test/helpers/shared.ts', 'src/index.ts']
-    );
-    expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
-  });
-
-  it('accepts a project without a test directory', async () => {
-    const dirPath = await createProjectDir([]);
-    expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
-  });
-
-  // The regression this convention removes: files directly under test/ were silently never run.
-  it('rejects files directly under test/ and unknown directories', async () => {
-    const dirPath = await createProjectDir(['test/integration'], ['test/example.test.ts']);
-    expect(findTestStructureViolations({ dirPath, packageJson }).toSorted()).toEqual([
-      'test/example.test.ts',
-      'test/integration',
-    ]);
-  });
-
-  it('rejects test files under test/helpers/ and src/', async () => {
-    const dirPath = await createProjectDir([], ['test/helpers/nested/a.test.ts', 'src/nested/b.spec.tsx']);
-    expect(findTestStructureViolations({ dirPath, packageJson }).toSorted()).toEqual([
-      'src/nested/b.spec.tsx',
-      'test/helpers/nested/a.test.ts',
-    ]);
-  });
-
-  it('allows test files inside test/fixtures/', async () => {
-    const dirPath = await createProjectDir([], ['test/fixtures/app/test/unit/example.test.ts']);
-    expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
-  });
-
-  it('ignores hidden entries such as .DS_Store', async () => {
-    const dirPath = await createProjectDir([], ['test/.DS_Store', 'test/unit/example.test.ts', '.tmp/a.test.ts']);
-    expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
-  });
-
-  it('rejects test files outside test/ such as the project root and scripts/', async () => {
-    const dirPath = await createProjectDir([], ['outside.test.ts', 'scripts/deploy.spec.ts']);
-    expect(findTestStructureViolations({ dirPath, packageJson }).toSorted()).toEqual([
-      'outside.test.ts',
-      'scripts/deploy.spec.ts',
-    ]);
-  });
-
-  it('skips nested packages, which are validated as their own projects', async () => {
-    const dirPath = await createProjectDir([], ['packages/app/package.json', 'packages/app/stray.test.ts']);
-    expect(findTestStructureViolations({ dirPath, packageJson })).toEqual([]);
-  });
-
-  it('rejects a Playwright config without test/e2e except on a workspace root', async () => {
-    const dirPath = await createProjectDir(['test/unit'], ['playwright.config.ts']);
-    expect(findTestStructureViolations({ dirPath, packageJson })).toEqual(['playwright.config.ts']);
-    expect(findTestStructureViolations({ dirPath, packageJson: { workspaces: ['packages/*'] } })).toEqual([]);
   });
 });
 
