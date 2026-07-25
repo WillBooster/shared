@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, expect, test, vi } from 'vitest';
 
-import { generateReadme, writeBadgeBlock } from '../../src/generators/readme.js';
+import { generateReadme, readAppliedWbfyVersionLabel, writeBadgeBlock } from '../../src/generators/readme.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import * as version from '../../src/utils/version.js';
@@ -270,6 +270,29 @@ test('marks a run from an unreleased checkout with its commit hash', async () =>
     const localContent = await runGenerateReadme(dirPath, 'abc1234-local');
     expect(localContent).toContain(badgeOf('abc1234--local'));
     expect(localContent).not.toContain('1.2.3');
+  });
+});
+
+// The already-applied check in the CLI compares this against the running build's label, so a label
+// that does not survive the badge round trip would either re-apply forever or skip a different build.
+test('reads back the version label the badge records', async () => {
+  await withTempDir(async (dirPath) => {
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
+
+    await runGenerateReadme(dirPath, '1.2.3');
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBe('1.2.3');
+
+    // Hyphens are escaped as `--` in the badge URL and must be unescaped back.
+    await runGenerateReadme(dirPath, 'abc1234-local');
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBe('abc1234-local');
+  });
+});
+
+test('ignores a wbfy badge that is only quoted in the README', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n\`\`\`md\n${badgeOf('1.2.3')}\n\`\`\`\n`);
+
+    expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
   });
 });
 
