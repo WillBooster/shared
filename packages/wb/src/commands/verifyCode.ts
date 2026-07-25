@@ -6,13 +6,13 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findRootAndSelfProjects, findSelfProject } from '../project.js';
+import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
-import { lint, type LintCommandArgv } from './lint.js';
+import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
-import { typeCheck, type TypeCheckCommandArgv } from './typecheck.js';
+import { buildTypeCheckCommands, typeCheck, type TypeCheckCommandArgv } from './typecheck.js';
 
 const builder = {
   full: {
@@ -28,7 +28,11 @@ type PackageCommandArgv = Pick<VerifyCodeCommandArgv, 'dryRun' | 'verbose'>;
 
 /** A completed `wb verify` step, recorded so the final summary can prove every step actually ran. */
 interface VerifyStep {
-  /** What the step ran, e.g. `lint --fix --format`. Omitted when no single command describes it. */
+  /**
+   * A short description of what the step ran, e.g. `tsc --noEmit`. Aggregated across the descendant
+   * projects, so ` + ` means each tool ran somewhere, not that one command ran them all. Omitted when
+   * nothing beyond the step name describes it.
+   */
   detail?: string;
   durationMs: number;
   name: string;
@@ -82,9 +86,14 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
       runPackageCommand(genCodeCommand, project, argv)
     );
   }
+  // Resolved after `gen-code` so a generated `src` directory is already there for `hasSourceCode`,
+  // which is an existsSync check, and reused by both step details below. `Project` memoizes per
+  // instance and `getAllDescendantProjects` builds fresh ones, so this repeats the workspace glob
+  // and manifest parse that `lint` and `typecheck` each perform anyway — cheap, but not free.
+  const stepDetails = await buildStepDetails(argv);
   // `lint --fix --format` prints nothing on success, so without the step summary a passing `verify`
   // looks like it never linted at all — and it silently rewrote the working tree while at it.
-  await runStep(steps, { detail: 'lint --fix --format', name: 'cleanup' }, () =>
+  await runStep(steps, { detail: stepDetails.cleanup, name: 'cleanup' }, () =>
     runInProcessCommand('cleanup', () =>
       lint({
         ...argv,
@@ -100,7 +109,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   // `dist`). Keep the typecheck command so `verify` stays equivalent to "the repository compiles".
   // The overlap with lint is deliberate: `--type-aware` also powers type-aware lint rules, and
   // dropping only `--type-check` from lint saves ~0.1s, far less than the coverage it would cost.
-  await runStep(steps, { name: 'typecheck' }, () =>
+  await runStep(steps, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
     runInProcessCommand('typecheck', () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv))
   );
 }
@@ -141,6 +150,51 @@ function findTestProject(project: Project, argv: TestCommandArgv): Project {
     throw new Error(`Project not found: ${project.dirPath}`);
   }
   return testProject;
+}
+
+/**
+ * Names the tools behind the `cleanup` and `typecheck` steps.
+ *
+ * Both steps type-check, which reads as redundant until the recap says how they differ: `cleanup`
+ * type-checks through oxlint, which sees only the files it lints (the shared config ignores
+ * `__generated__`, `@types`, `dist`, ...), while `typecheck` runs the compiler over the whole
+ * tsconfig program. Every label is derived from the resolved projects rather than hard-coded, so a
+ * repository whose `cleanup` runs flake8 or `dart analyze` is never told it ran oxlint.
+ */
+async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup: string; typecheck?: string }> {
+  const cleanup = 'lint --fix --format';
+  // Deliberately resolved with no explicit dirPath, exactly as `lint` (lint.ts) and `typeCheck`
+  // (typecheck.ts) resolve theirs, so the labels always describe the very project set those commands
+  // process. Threading a dirPath in — the self project's, say — would let the two diverge, which is
+  // the drift this function exists to prevent.
+  const projects = await findDescendantProjects(argv, false);
+  if (!projects) return { cleanup };
+
+  // Asks the real builders what they would run rather than restating their conditions, so a change
+  // to either command cannot leave these labels describing something it stopped doing. Only the
+  // project selection is restated: `lint` and `typeCheck` apply it around their builders, not
+  // inside them.
+  const runsTypeAwareLint = projects.descendants.some(
+    (project) =>
+      hasOwnSourceCode(project) && buildLintCommand(project, { fix: true, format: true })?.includes('--type-aware')
+  );
+  const typeCheckCommands = [
+    ...new Set(projects.descendants.flatMap((project) => buildTypeCheckCommands(project).map(toDisplayCommand))),
+  ];
+  return {
+    cleanup: runsTypeAwareLint ? `${cleanup} (oxlint --type-aware --type-check)` : cleanup,
+    typecheck: typeCheckCommands.length > 0 ? typeCheckCommands.join(' + ') : undefined,
+  };
+}
+
+/** Drops the package-manager placeholder `runWithSpawn` expands, leaving the tool call to show. */
+function toDisplayCommand(command: string): string {
+  return command.replace(/^(?:BUN|YARN) /u, '');
+}
+
+/** A workspace root without sources of its own runs neither lint nor typecheck commands. */
+function hasOwnSourceCode(project: Project): boolean {
+  return !project.packageJson.workspaces || project.hasSourceCode;
 }
 
 /** Times a step and records it for the final summary. Steps that fail exit the process instead. */
