@@ -82,6 +82,46 @@ exit "$failed"
 `.trim(),
     },
     {
+      // bun records an absolute `resolved` URL for an already-locked package whenever the
+      // configured registry does not serve the tarball host in the package metadata — which is
+      // exactly what the Takumi Guard proxy does. So an install run with Guard as the default
+      // registry (CI, or a developer who put it in ~/.npmrc) bakes npm.flatt.tech URLs into
+      // bun.lock, and committing them pins a SHARED lockfile to one environment's mirror: every
+      // later install downloads through the proxy, and a cold-cache install fails outright with
+      // 401 for anyone whose npmrc carries a registry.npmjs.org token, because bun sends the
+      // default registry's credentials to whatever host the lockfile names. Guard coverage does
+      // not depend on these URLs — with an empty `resolved`, bun derives the download URL from
+      // the configured registry — so strip them. Only the Guard host is stripped: a scoped
+      // registry such as Verdaccio legitimately records its own URL for private packages.
+      // Staging a DELETION of bun.lock leaves no file for inspection, so Lefthook skips this job
+      // rather than passing a missing path to the loop (verified); the rewrite therefore cannot
+      // resurrect a deleted lockfile as an empty file.
+      name: 'normalize-bun-lockfile',
+      glob: 'bun.lock',
+      run: `
+# Abort on any failure: a partially written temp file must never replace the lockfile.
+set -e
+# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
+for file in {staged_files}; do
+  # A sibling temp file makes the replacement an atomic same-directory rename, and \`cp -p\` gives
+  # it the lockfile's original mode (mktemp alone creates 0600, and git tracks only the executable
+  # bit, so that would change silently). The name must stay unpredictable and be created by
+  # mktemp: a repository-committed symlink at a fixed sibling path would otherwise be followed by
+  # \`cp\` and the redirection, and the \`mv\` would then turn bun.lock into that symlink.
+  normalized="$(mktemp "$file.wbfy-normalizing.XXXXXX")"
+  trap 'rm -f "$normalized"' EXIT
+  cp -p "$file" "$normalized"
+  sed -E 's#"https://npm\\.flatt\\.tech/[^"]*"#""#g' "$file" > "$normalized"
+  if ! cmp -s "$file" "$normalized"; then
+    mv "$normalized" "$file"
+    echo "Removed Takumi Guard proxy URLs from $file so the lockfile stays registry-agnostic."
+  fi
+  rm -f "$normalized"
+done
+`.trim(),
+      stage_fixed: true,
+    },
+    {
       // Only willbooster-configs gets this job: every other repository's renovate.jsonc merely
       // extends the shared preset, and the validator does not resolve remote presets, so running it
       // there would validate two lines and catch nothing. `--no-global` validates the preset as a
