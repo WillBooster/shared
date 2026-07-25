@@ -52,10 +52,7 @@ test('generates a scheduled self-applying wbfy caller for a public repository', 
     expect(workflow.permissions).toEqual({ actions: 'write', contents: 'write' });
     const job = workflow.jobs.wbfy;
     expect(job?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
-    expect(job?.secrets).toEqual({
-      VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}',
-      WBFY_GH_TOKEN: '${{ secrets.WBFY_GH_TOKEN }}',
-    });
+    expect(job?.secrets).toEqual({ VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}' });
     // The runner-selection idiom sees github.event.repository.private as true on schedule events,
     // so a public repository must pin the GitHub-hosted runner explicitly.
     expect(job?.with).toEqual({ github_hosted_runner: true });
@@ -80,7 +77,7 @@ test('generates a self-hosted wbfy caller for a private WillBoosterLab repositor
   });
 });
 
-test('rewrites a stale cron and drops leftover NPM_TOKEN / deprecated GH_BOT_PAT in an existing caller', async () => {
+test('rewrites a stale cron and drops leftover NPM_TOKEN / GH_BOT_PAT / WBFY_GH_TOKEN in an existing caller', async () => {
   await withTempRepo(async (dirPath, workflowsPath) => {
     await fs.promises.writeFile(
       path.join(workflowsPath, 'wbfy.yml'),
@@ -95,6 +92,7 @@ jobs:
     secrets:
       NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
       GH_BOT_PAT: \${{ secrets.GH_BOT_PAT }}
+      WBFY_GH_TOKEN: \${{ secrets.WBFY_GH_TOKEN }}
 `
     );
     const config = createConfig({ dirPath, isRoot: true });
@@ -103,10 +101,7 @@ jobs:
 
     const workflow = await loadWbfyCaller(workflowsPath);
     expect(workflow.on?.schedule).toEqual([{ cron: getWbfyWorkflowCron('github:WillBooster/example') }]);
-    expect(workflow.jobs.wbfy?.secrets).toEqual({
-      VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}',
-      WBFY_GH_TOKEN: '${{ secrets.WBFY_GH_TOKEN }}',
-    });
+    expect(workflow.jobs.wbfy?.secrets).toEqual({ VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}' });
   });
 });
 
