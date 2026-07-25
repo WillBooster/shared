@@ -104,8 +104,10 @@ const workflows = {
       push: {
         branches: ['main', 'wbfy'],
       },
-      // The reusable test workflow re-runs this caller via workflow_dispatch after its autofix
-      // push-back (a GITHUB_TOKEN push triggers no workflows by itself).
+      // The reusable autofix and wbfy workflows re-run this caller via workflow_dispatch after
+      // their GITHUB_TOKEN push-back (such a push triggers no workflows by itself). The reusable
+      // TEST workflow no longer pushes at all — its fixes travel through autofix-apply.yml — but
+      // the trigger stays for those two.
       workflow_dispatch: null,
     },
     // cf. https://docs.github.com/en/actions/using-jobs/using-concurrency#example-only-cancel-in-progress-jobs-or-runs-for-the-current-workflow
@@ -113,10 +115,13 @@ const workflows = {
       group: '${{ github.workflow }}-${{ github.ref }}',
       'cancel-in-progress': true,
     },
+    // None of these may be narrowed just because the reusable test workflow stopped pushing:
     permissions: {
-      // for dispatching this workflow again after the autofix push-back
+      // for the test job's skip-duplicate-actions call with cancel_others: true, and for the
+      // workflow_dispatch the autofix/wbfy workflows issue after their push-back
       actions: 'write',
-      // for linter fix
+      // for `semantic-release --dry-run`, which does a `git push --dry-run` to verify write
+      // access and aborts with EGITNOPERMISSION without it
       contents: 'write',
       // for pkg-preflight PR file listing
       'pull-requests': 'read',
@@ -126,6 +131,31 @@ const workflows = {
     jobs: {
       test: {
         uses: 'WillBooster/reusable-workflows/.github/workflows/test.yml@main',
+      },
+    },
+  },
+  // Commits the patch the test run uploaded, as a GitHub App, from the base repository's context.
+  // Private repositories only: public ones use autofix.ci (see generateAutofixWorkflow), whose own
+  // App does the same job and additionally handles fork pull requests.
+  'autofix-apply': {
+    name: 'Apply autofix',
+    on: {
+      workflow_run: {
+        // Matches the `name:` of the test caller above, not its filename.
+        workflows: ['Test'],
+        types: ['completed'],
+      },
+    },
+    // A called workflow can only REDUCE the caller's token, never elevate it, so `actions: read`
+    // has to be granted here: without it the apply job cannot list or download the artifact of
+    // the run that triggered it.
+    permissions: {
+      actions: 'read',
+      contents: 'read',
+    },
+    jobs: {
+      apply: {
+        uses: 'WillBooster/reusable-workflows/.github/workflows/autofix-apply.yml@main',
       },
     },
   },
@@ -391,7 +421,8 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       if (!entry.isFile() || !entry.name.endsWith('.yml') || obsoleteGenPrFileNames.has(entry.name)) continue;
       fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
     }
-    const mandatoryKinds = ['test', 'autofix', 'semantic-pr', 'close-comment'];
+    // Both autofix kinds are listed; the visibility check below drops whichever does not apply.
+    const mandatoryKinds = ['test', 'autofix', 'autofix-apply', 'semantic-pr', 'close-comment'];
     if (rootConfig.depending.semanticRelease) {
       mandatoryKinds.push('release');
     }
@@ -443,12 +474,13 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       fileNamesByKind.delete('sync-force');
       fileNamesByKind.delete('sync-init');
     }
-    if (!rootConfig.isPublicRepo) {
-      // The reusable test workflow already fixes and pushes code on private repos,
-      // so a separate autofix workflow only duplicates the same process.
-      fileNamesByKind.delete('autofix');
-      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, 'autofix.yml')));
-    }
+    // The two autofix paths are mutually exclusive. Public repositories run autofix.ci, which
+    // pushes through its own GitHub App and also covers fork pull requests. Private repositories
+    // (autofix.ci does not serve them) instead let the reusable test workflow upload a patch and
+    // autofix-apply.yml commit it with the WillBooster Autofixer App.
+    const obsoleteAutofixKind = rootConfig.isPublicRepo ? 'autofix-apply' : 'autofix';
+    fileNamesByKind.delete(obsoleteAutofixKind);
+    await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, `${obsoleteAutofixKind}.yml`)));
 
     for (const [kind, fileName] of fileNamesByKind) {
       // 実際はKnownKind以外の値も代入されることに注意
@@ -1208,6 +1240,13 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
     delete secrets.GH_BOT_PAT;
     delete secrets.WBFY_GH_TOKEN;
+  }
+  // The apply workflow declares exactly one secret. The App ID it pairs with is a constant in the
+  // callee, not an input: an App ID is public (an unauthenticated GET /apps/{slug} returns it) and
+  // useless without the key, and one Autofixer App serves every organization, so callers have
+  // nothing else to configure.
+  if (secrets && calledReusableWorkflow === 'autofix-apply') {
+    secrets.AUTOFIX_APP_PRIVATE_KEY = '${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}';
   }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
