@@ -133,8 +133,10 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   // the output, but never short-circuits them: `--fix --format` must still clean up what it can,
   // because a layout violation is not auto-fixable and would otherwise block every other fix.
   // Explicit-path runs (e.g. the lefthook pre-commit hook) skip the check so a pre-existing
-  // violation in an untouched package cannot block an unrelated commit.
-  const violatesTestStructure = files.length === 0 && reportTestStructureViolations(projects.descendants);
+  // violation in an untouched package cannot block an unrelated commit, and `--dry-run` skips it so
+  // this stays the one step that could fail a run whose whole contract is to execute nothing.
+  const violatesTestStructure =
+    !argv.dryRun && files.length === 0 && reportTestStructureViolations(projects.descendants);
   const lintFilePathsByProject = new Map<Project, string[]>();
   const oxfmtFilePathsByProject = new Map<Project, string[]>();
   const pythonFilePathsByProject = new Map<Project, string[]>();

@@ -155,14 +155,16 @@ async function runStep<T>(
   return result;
 }
 
+/**
+ * Runs a step that succeeds silently: the recap is the single place a successful step is announced,
+ * so wrapper `Start`/`Finished` lines would only repeat it. Failures still report before exiting.
+ */
 async function runInProcessCommand(commandName: string, command: () => Promise<number | undefined>): Promise<number> {
-  console.info('\n' + chalk.cyan(chalk.bold('Start:'), commandName));
   const exitCode = (await command()) ?? 0;
   if (exitCode !== 0) {
     console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), commandName));
     process.exit(exitCode);
   }
-  console.info(chalk.green(chalk.bold('Finished:'), commandName));
   return exitCode;
 }
 
