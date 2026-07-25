@@ -1169,6 +1169,20 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
     // node_modules/.bun resolves them (observed in WillBooster/prompt-study).
     ...(declaredDependencies.has('@willbooster/judge') ? ['@willbooster/judge'] : []),
     ...(declaredDependencies.has('@willbooster/llm-proxy') ? ['@willbooster/llm-proxy'] : []),
+    // Blitz runtime packages require react (and other peers) without declaring them, relying on
+    // hoisting, which the global-store layout places beyond their walk-up (observed in
+    // WillBooster/survey-system: `next build` page-data collection dies with "Cannot find module
+    // 'react'" from @blitzjs/auth). @blitzjs/next is deliberately NOT listed: trusting it would
+    // run its postinstall (`blitz codegen`), which patches the installed next package in place —
+    // repositories patch out that postinstall with `bun patch` instead, which also keeps the
+    // package project-local.
+    ...(declaredDependencies.has('blitz') ? ['blitz'] : []),
+    ...(declaredDependencies.has('@blitzjs/auth') ? ['@blitzjs/auth'] : []),
+    ...(declaredDependencies.has('@blitzjs/rpc') ? ['@blitzjs/rpc'] : []),
+    // Bun does not link @hookform/resolvers' OPTIONAL validator peers (e.g. zod) into its
+    // global-store entry even when the project installs them, so its server-side
+    // `import 'zod'` fails from the store (observed in WillBooster/survey-system).
+    ...(declaredDependencies.has('@hookform/resolvers') ? ['@hookform/resolvers'] : []),
   ];
 
   // wbfy fully owns this field: a package whose lifecycle scripts must run gets added to wbfy
@@ -1904,8 +1918,14 @@ function getRawDependencyVersionFromNpm(dependency: string): string {
 }
 
 function getInstallDependencySpecifier(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
-  if (dependency === wbDependency)
+  // wb and (in Blitz repositories) typescript are version-capped, so their install specifiers
+  // must carry the managed version — a bare `bun add` would install the incompatible latest.
+  if (
+    dependency === wbDependency ||
+    (dependency === typescriptDependency && (config.depending.blitz || rootConfig.depending.blitz))
+  ) {
     return `${dependency}@${getManagedDependencyVersion(config, rootConfig, dependency)}`;
+  }
   return dependency;
 }
 
@@ -2010,6 +2030,19 @@ function shouldUpdateExistingManagedDependency(
   ) {
     return true;
   }
+  // A TypeScript 7 pin in a Blitz repository is likewise incompatible (`next build` fails on
+  // the Next.js 15 that Blitz pins — see getManagedDependencyVersion), so rewrite it to the
+  // capped release instead of preserving it via the no-downgrade rule below.
+  if (
+    dependency === typescriptDependency &&
+    (config.depending.blitz || rootConfig.depending.blitz) &&
+    currentValidVersion &&
+    semver.major(currentValidVersion) >= 7 &&
+    semver.valid(managedVersion) &&
+    isNewerPackageVersion(currentVersion, managedVersion)
+  ) {
+    return true;
+  }
   // wbfy owns these tool dependencies, but applying wbfy should not downgrade a
   // repository that already pins a newer reviewed release.
   return isNewerPackageVersion(managedVersion, currentVersion);
@@ -2031,6 +2064,16 @@ const lastKnownPreFnoxOnlyWbVersion = '18.0.1';
  */
 function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
   const latestVersion = getLatestDependencyVersion(config, dependency);
+  if (dependency === typescriptDependency && (config.depending.blitz || rootConfig.depending.blitz)) {
+    // Blitz pins Next.js 15, whose build-time `verifyTypeScriptSetup` requires the classic
+    // `typescript` compiler API; the TypeScript 7 `typescript` package is the tsgo binary
+    // without that API, so `next build` aborts with "Failed to install required TypeScript
+    // dependencies" (observed in WillBooster/survey-system). Cap `typescript` below 7 until
+    // Blitz supports a Next.js release that understands tsgo.
+    const validLatestVersion = semver.valid(latestVersion);
+    if (validLatestVersion && semver.major(validLatestVersion) < 7) return latestVersion;
+    return getLatestPreV7TypescriptVersion() ?? latestVersion;
+  }
   if (dependency !== wbDependency) return latestVersion;
   return selectManagedWbVersion(
     hasFnoxConfigForRepository(rootConfig.dirPath),
@@ -2105,6 +2148,31 @@ function getLatestPreFnoxOnlyWbVersion(): string | undefined {
     cachedPreFnoxOnlyWbVersion = versions.toSorted(semver.compare).at(-1);
   }
   return cachedPreFnoxOnlyWbVersion;
+}
+
+let cachedPreV7TypescriptVersion: string | undefined | false = false;
+
+function getLatestPreV7TypescriptVersion(): string | undefined {
+  if (cachedPreV7TypescriptVersion === false) {
+    const output = spawnSyncAndReturnStdout(
+      'npm',
+      ['show', `${typescriptDependency}@<7.0.0`, 'version', '--json', '--workspaces=false'],
+      process.cwd()
+    );
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(output);
+    } catch {
+      parsed = undefined;
+    }
+    // `npm show pkg@<range> version --json` prints an array for multiple matches and a bare
+    // string for a single match.
+    const versions = (Array.isArray(parsed) ? parsed : [parsed]).filter(
+      (version): version is string => typeof version === 'string' && !!semver.valid(version)
+    );
+    cachedPreV7TypescriptVersion = versions.toSorted(semver.compare).at(-1);
+  }
+  return cachedPreV7TypescriptVersion;
 }
 
 function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {
