@@ -1187,6 +1187,27 @@ test('keeps `--env-file` arguments whose files still exist', async () => {
   });
 });
 
+test('generates test/ci script running wb test-on-ci at the root', async () => {
+  const packageJson = await generatePackageJsonFrom({ scripts: {} }, { isRoot: true });
+  expect(packageJson.scripts?.['test/ci']).toBe('bun wb test-on-ci');
+});
+
+test('replaces a legacy generated test/ci variant with the current one', async () => {
+  const packageJson = await generatePackageJsonFrom({ scripts: { 'test/ci': 'yarn wb test-on-ci' } }, { isRoot: true });
+  expect(packageJson.scripts?.['test/ci']).toBe('bun wb test-on-ci');
+});
+
+test('preserves a custom test/ci wrapper', async () => {
+  const customScript = 'wb test test/unit && playwright test';
+  const packageJson = await generatePackageJsonFrom({ scripts: { 'test/ci': customScript } }, { isRoot: true });
+  expect(packageJson.scripts?.['test/ci']).toBe(customScript);
+});
+
+test('does not generate test/ci in a workspace package', async () => {
+  const packageJson = await generatePackageJsonFrom({ scripts: {} }, { isRoot: false });
+  expect(packageJson.scripts?.['test/ci']).toBeUndefined();
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},

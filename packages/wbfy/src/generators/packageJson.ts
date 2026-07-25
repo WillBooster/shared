@@ -2186,6 +2186,9 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     verify: 'bun wb verify',
     'verify-full': 'bun wb verify --full',
   };
+  if (config.isRoot) {
+    applyTestOnCiScript(scripts, oldScripts);
+  }
   applyDatabaseScripts(config, scripts, oldScripts, `bun ${getWbDatabaseCommand(config)}`);
   applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
   if (!hasTypecheck) {
@@ -2198,6 +2201,25 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
 
 function shouldManageGenI18nTs(config: PackageConfig): boolean {
   return config.depending.genI18nTs && fs.existsSync(path.join(config.dirPath, 'i18n'));
+}
+
+// CI workflows (both the reusable test workflow and the self-contained variant for non-WillBooster
+// repositories) prefer `test/ci` over `test`, so standardize it on `wb test-on-ci` at the root —
+// `wb test-on-ci` already iterates workspace packages itself.
+function applyTestOnCiScript(scripts: Record<string, string>, oldScripts: PackageJson.Scripts): void {
+  const oldScript = oldScripts['test/ci'];
+  // Some repositories wrap CI tests with extra steps (e.g. selecting spec files or running raw
+  // Playwright) that wb cannot infer generically; such wrappers are preserved.
+  scripts['test/ci'] = oldScript && !isGeneratedTestOnCiScript(oldScript) ? oldScript : 'bun wb test-on-ci';
+}
+
+/**
+ * Whether a script body is one of the KNOWN generated `wb test-on-ci` invocations (allowing legacy
+ * runner prefixes, including the historical `bun --bun`). Anchored on the WHOLE body so a custom
+ * wrapper that merely contains the call is preserved instead of being replaced wholesale.
+ */
+function isGeneratedTestOnCiScript(script: string): boolean {
+  return /^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+test-on-ci$/u.test(script.trim());
 }
 
 function applyDatabaseScripts(
