@@ -40,7 +40,7 @@
     "verify-full": "bun wb verify --full"
   },
   "devDependencies": {
-    "@babel/core": "7.29.7",
+    "@babel/core": "8.0.1",
     "@mdx-js/react": "3.1.1",
     "@storybook/addon-actions": "9.0.8",
     "@storybook/addon-docs": "10.3.6",
