@@ -36,16 +36,6 @@ test('generates a public autofix workflow that can run wb with fnox on CI', asyn
 // The two autofix paths are mutually exclusive and chosen purely by repository visibility, which
 // nothing else in the build can check: a wrong choice silently leaves a repository with no working
 // autofix (or, worse, a public repository calling the private App-based one).
-async function generateInto(overrides: Partial<PackageConfig>): Promise<string> {
-  const tempRootPath = path.join(process.cwd(), '.tmp');
-  await fs.promises.mkdir(tempRootPath, { recursive: true });
-  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'wbfy-autofix-'));
-  await fs.promises.mkdir(path.join(dirPath, '.github', 'workflows'), { recursive: true });
-  await generateWorkflows(createConfig({ dirPath, isRoot: true, ...overrides }));
-  await promisePool.promiseAll();
-  return dirPath;
-}
-
 test('a private repository gets the App-based apply workflow instead of autofix.ci', async () => {
   const dirPath = await generateInto({ isPublicRepo: false });
   try {
@@ -97,3 +87,33 @@ test("the test caller keeps the permissions the reusable workflow's other steps 
     await fs.promises.rm(dirPath, { recursive: true, force: true });
   }
 });
+
+// A failed GitHub lookup collapses isPublicRepo to false. Because this branch both deletes one
+// workflow and creates the other, guessing "private" would strip a public repository's autofix.ci
+// setup and hand it the App-based workflow that refuses fork pull requests.
+test('unknown repository visibility leaves both autofix workflows untouched', async () => {
+  const dirPath = await generateInto({ isPublicRepo: true });
+  try {
+    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    const publicAutofix = await fs.promises.readFile(path.join(workflowsPath, 'autofix.yml'), 'utf8');
+
+    // Exactly what getPackageConfig produces for a public repository whose lookup failed.
+    await generateWorkflows(createConfig({ dirPath, isRoot: true, isPublicRepo: false, isRepoVisibilityKnown: false }));
+    await promisePool.promiseAll();
+
+    expect(await fs.promises.readFile(path.join(workflowsPath, 'autofix.yml'), 'utf8')).toBe(publicAutofix);
+    expect(fs.existsSync(path.join(workflowsPath, 'autofix-apply.yml'))).toBe(false);
+  } finally {
+    await fs.promises.rm(dirPath, { recursive: true, force: true });
+  }
+});
+
+async function generateInto(overrides: Partial<PackageConfig>): Promise<string> {
+  const tempRootPath = path.join(process.cwd(), '.tmp');
+  await fs.promises.mkdir(tempRootPath, { recursive: true });
+  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'wbfy-autofix-'));
+  await fs.promises.mkdir(path.join(dirPath, '.github', 'workflows'), { recursive: true });
+  await generateWorkflows(createConfig({ dirPath, isRoot: true, ...overrides }));
+  await promisePool.promiseAll();
+  return dirPath;
+}

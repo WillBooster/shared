@@ -478,9 +478,20 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     // pushes through its own GitHub App and also covers fork pull requests. Private repositories
     // (autofix.ci does not serve them) instead let the reusable test workflow upload a patch and
     // autofix-apply.yml commit it with the WillBooster Autofixer App.
-    const obsoleteAutofixKind = rootConfig.isPublicRepo ? 'autofix-apply' : 'autofix';
-    fileNamesByKind.delete(obsoleteAutofixKind);
-    await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, `${obsoleteAutofixKind}.yml`)));
+    if (rootConfig.isRepoVisibilityKnown) {
+      const obsoleteAutofixKind = rootConfig.isPublicRepo ? 'autofix-apply' : 'autofix';
+      fileNamesByKind.delete(obsoleteAutofixKind);
+      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, `${obsoleteAutofixKind}.yml`)));
+    } else {
+      // A failed GitHub lookup collapses isPublicRepo to false, and unlike the merge-based
+      // generators this branch both DELETES one file and CREATES the other — so guessing wrong
+      // strips a public repository's autofix.ci workflow AND gives it the private App-based one,
+      // which refuses fork pull requests. Touch neither and retry on a later successful lookup,
+      // the same choice the wbfy caller makes above.
+      console.warn('Skipped generating the autofix workflows because the repository visibility is unknown.');
+      fileNamesByKind.delete('autofix');
+      fileNamesByKind.delete('autofix-apply');
+    }
 
     for (const [kind, fileName] of fileNamesByKind) {
       // 実際はKnownKind以外の値も代入されることに注意
