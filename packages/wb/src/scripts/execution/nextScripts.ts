@@ -12,8 +12,11 @@ class NextScripts extends BaseScripts {
     super(true);
   }
 
-  protected override startDevProtected(_: Project, argv: ScriptArgv): string {
-    return `YARN next dev --turbopack ${argv.normalizedArgsText ?? ''}`;
+  protected override startDevProtected(project: Project, argv: ScriptArgv): string {
+    // Blitz's withBlitz wires its RPC layer through a webpack loader, which Turbopack ignores,
+    // so Blitz apps must run the webpack dev server (Turbopack dies with resolve errors).
+    const turbopackOption = project.packageJson.dependencies?.blitz ? '' : '--turbopack ';
+    return `YARN next dev ${turbopackOption}${argv.normalizedArgsText ?? ''}`;
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
