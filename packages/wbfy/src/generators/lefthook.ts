@@ -82,6 +82,35 @@ exit "$failed"
 `.trim(),
     },
     {
+      // bun records an absolute `resolved` URL for an already-locked package whenever the
+      // configured registry does not serve the tarball host in the package metadata — which is
+      // exactly what the Takumi Guard proxy does. So an install run with Guard as the default
+      // registry (CI, or a developer who put it in ~/.npmrc) bakes npm.flatt.tech URLs into
+      // bun.lock, and committing them pins a SHARED lockfile to one environment's mirror: every
+      // later install downloads through the proxy, and a cold-cache install fails outright with
+      // 401 for anyone whose npmrc carries a registry.npmjs.org token, because bun sends the
+      // default registry's credentials to whatever host the lockfile names. Guard coverage does
+      // not depend on these URLs — with an empty `resolved`, bun derives the download URL from
+      // the configured registry — so strip them. Only the Guard host is stripped: a scoped
+      // registry such as Verdaccio legitimately records its own URL for private packages.
+      name: 'normalize-bun-lockfile',
+      glob: 'bun.lock',
+      run: `
+# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
+for file in {staged_files}; do
+  normalized="$(mktemp)"
+  sed -E 's#"https://npm\\.flatt\\.tech/[^"]*"#""#g' "$file" > "$normalized"
+  if cmp -s "$file" "$normalized"; then
+    rm -f "$normalized"
+  else
+    mv "$normalized" "$file"
+    echo "Removed Takumi Guard proxy URLs from $file so the lockfile stays registry-agnostic."
+  fi
+done
+`.trim(),
+      stage_fixed: true,
+    },
+    {
       // Only willbooster-configs gets this job: every other repository's renovate.jsonc merely
       // extends the shared preset, and the validator does not resolve remote presets, so running it
       // there would validate two lines and catch nothing. `--no-global` validates the preset as a
