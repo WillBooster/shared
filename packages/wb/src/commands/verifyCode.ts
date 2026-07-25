@@ -10,9 +10,9 @@ import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
-import { lint, type LintCommandArgv } from './lint.js';
+import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
-import { typeCheck, type TypeCheckCommandArgv } from './typecheck.js';
+import { buildTypeCheckCommands, typeCheck, type TypeCheckCommandArgv } from './typecheck.js';
 
 const builder = {
   full: {
@@ -28,7 +28,11 @@ type PackageCommandArgv = Pick<VerifyCodeCommandArgv, 'dryRun' | 'verbose'>;
 
 /** A completed `wb verify` step, recorded so the final summary can prove every step actually ran. */
 interface VerifyStep {
-  /** What the step ran, e.g. `lint --fix --format`. Omitted when no single command describes it. */
+  /**
+   * A short description of what the step ran, e.g. `tsc --noEmit`. Aggregated across the descendant
+   * projects, so ` + ` means each tool ran somewhere, not that one command ran them all. Omitted when
+   * nothing beyond the step name describes it.
+   */
   detail?: string;
   durationMs: number;
   name: string;
@@ -162,24 +166,26 @@ async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup:
   const projects = await findDescendantProjects(argv, false);
   if (!projects) return { cleanup };
 
-  // Mirrors the guards the two commands themselves apply: `buildLintCommand` adds the type-aware
-  // flags only for oxlint projects that also ship oxlint-tsgolint, and `typeCheck` builds its
-  // commands only for projects with source code of their own.
+  // Asks the real builders what they would run rather than restating their conditions, so a change
+  // to either command cannot leave these labels describing something it stopped doing. Only the
+  // project selection is restated: `lint` and `typeCheck` apply it around their builders, not
+  // inside them.
   const runsTypeAwareLint = projects.descendants.some(
-    (project) => hasOwnSourceCode(project) && project.preferredLinter === 'oxlint' && project.hasTypeAwareOxlint
+    (project) =>
+      hasOwnSourceCode(project) && buildLintCommand(project, { fix: true, format: true })?.includes('--type-aware')
   );
   const typeCheckCommands = [
-    projects.descendants.some((project) => hasOwnSourceCode(project) && project.hasOwnDependency('typescript'))
-      ? 'tsc --noEmit'
-      : undefined,
-    projects.descendants.some((project) => !project.packageJson.workspaces && project.hasOwnDependency('pyright'))
-      ? 'pyright'
-      : undefined,
-  ].filter((command) => command !== undefined);
+    ...new Set(projects.descendants.flatMap((project) => buildTypeCheckCommands(project).map(toDisplayCommand))),
+  ];
   return {
     cleanup: runsTypeAwareLint ? `${cleanup} (oxlint --type-aware --type-check)` : cleanup,
     typecheck: typeCheckCommands.length > 0 ? typeCheckCommands.join(' + ') : undefined,
   };
+}
+
+/** Drops the package-manager placeholder `runWithSpawn` expands, leaving the tool call to show. */
+function toDisplayCommand(command: string): string {
+  return command.replace(/^(?:BUN|YARN) /u, '');
 }
 
 /** A workspace root without sources of its own runs neither lint nor typecheck commands. */
