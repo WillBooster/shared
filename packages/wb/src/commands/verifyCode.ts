@@ -6,7 +6,7 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
-import { findRootAndSelfProjects, findSelfProject } from '../project.js';
+import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
@@ -82,9 +82,13 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
       runPackageCommand(genCodeCommand, project, argv)
     );
   }
+  // Resolved after `install`, so a dependency the install added is reflected, and reused by both
+  // step details below. `lint` and `typecheck` each resolve the same set again internally; this
+  // extra resolution only reads the already-parsed package.json files.
+  const stepDetails = await buildStepDetails(argv);
   // `lint --fix --format` prints nothing on success, so without the step summary a passing `verify`
   // looks like it never linted at all — and it silently rewrote the working tree while at it.
-  await runStep(steps, { detail: 'lint --fix --format', name: 'cleanup' }, () =>
+  await runStep(steps, { detail: stepDetails.cleanup, name: 'cleanup' }, () =>
     runInProcessCommand('cleanup', () =>
       lint({
         ...argv,
@@ -100,7 +104,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   // `dist`). Keep the typecheck command so `verify` stays equivalent to "the repository compiles".
   // The overlap with lint is deliberate: `--type-aware` also powers type-aware lint rules, and
   // dropping only `--type-check` from lint saves ~0.1s, far less than the coverage it would cost.
-  await runStep(steps, { name: 'typecheck' }, () =>
+  await runStep(steps, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
     runInProcessCommand('typecheck', () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv))
   );
 }
@@ -141,6 +145,45 @@ function findTestProject(project: Project, argv: TestCommandArgv): Project {
     throw new Error(`Project not found: ${project.dirPath}`);
   }
   return testProject;
+}
+
+/**
+ * Names the tools behind the `cleanup` and `typecheck` steps.
+ *
+ * Both steps type-check, which reads as redundant until the recap says how they differ: `cleanup`
+ * type-checks through oxlint, which sees only the files it lints (the shared config ignores
+ * `__generated__`, `@types`, `dist`, ...), while `typecheck` runs the compiler over the whole
+ * tsconfig program. Every label is derived from the resolved projects rather than hard-coded, so a
+ * repository whose `cleanup` runs flake8 or `dart analyze` is never told it ran oxlint.
+ */
+async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup: string; typecheck?: string }> {
+  const cleanup = 'lint --fix --format';
+  const projects = await findDescendantProjects(argv, false);
+  if (!projects) return { cleanup };
+
+  // Mirrors the guards the two commands themselves apply: `buildLintCommand` adds the type-aware
+  // flags only for oxlint projects that also ship oxlint-tsgolint, and `typeCheck` builds its
+  // commands only for projects with source code of their own.
+  const runsTypeAwareLint = projects.descendants.some(
+    (project) => hasOwnSourceCode(project) && project.preferredLinter === 'oxlint' && project.hasTypeAwareOxlint
+  );
+  const typeCheckCommands = [
+    projects.descendants.some((project) => hasOwnSourceCode(project) && project.hasOwnDependency('typescript'))
+      ? 'tsc --noEmit'
+      : undefined,
+    projects.descendants.some((project) => !project.packageJson.workspaces && project.hasOwnDependency('pyright'))
+      ? 'pyright'
+      : undefined,
+  ].filter((command) => command !== undefined);
+  return {
+    cleanup: runsTypeAwareLint ? `${cleanup} (oxlint --type-aware --type-check)` : cleanup,
+    typecheck: typeCheckCommands.length > 0 ? typeCheckCommands.join(' + ') : undefined,
+  };
+}
+
+/** A workspace root without sources of its own runs neither lint nor typecheck commands. */
+function hasOwnSourceCode(project: Project): boolean {
+  return !project.packageJson.workspaces || project.hasSourceCode;
 }
 
 /** Times a step and records it for the final summary. Steps that fail exit the process instead. */
