@@ -50,7 +50,6 @@ import {
 } from './generators/removeYarnFiles.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
-import { setupSecrets } from './github/secret.js';
 import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
@@ -76,12 +75,6 @@ async function main(): Promise<void> {
       });
     })
     .options({
-      env: {
-        description: 'Upload environment variables as secrets to GitHub',
-        type: 'boolean',
-        default: false,
-        alias: 'e',
-      },
       force: {
         description: 'Apply wbfy even when the repository already records this wbfy version',
         type: 'boolean',
@@ -105,7 +98,6 @@ async function main(): Promise<void> {
     .version(getWbfyVersion())
     .strict().argv;
   options.isVerbose = argv.verbose;
-  options.doesUploadEnvVars = argv.env;
 
   let hasInvalidPackageConfig = false;
   try {
@@ -261,8 +253,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       yarnReleaseAgeSettings
     );
     await generateMiseToml(rootConfig, bunVersion);
-    // Must finish before setupSecrets below: it rewrites the age recipients in fnox.toml and
-    // re-encrypts the secrets that FNOX_AGE_KEY (uploaded by setupSecrets) must be able to decrypt.
     await generateFnoxToml(rootConfig);
     // After generateFnoxToml so the insertion can never race the transactional recipient
     // migration (which snapshots and may restore every fnox.toml).
@@ -307,7 +297,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
       setupLabels(rootConfig),
       setupRepositoryRulesets(rootConfig),
-      setupSecrets(rootConfig),
       setupGitHubSettings(rootConfig),
       // Git hooks are repository-level state: when the CLI entry is a child workspace
       // (`wbfy <repo>/apps/<app>`), installing Lefthook there would delete the child's .husky,
