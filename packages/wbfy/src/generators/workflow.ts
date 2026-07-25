@@ -230,7 +230,7 @@ const workflows = {
     },
     permissions: {
       // The reusable workflow's push job pushes the wbfy branch with GITHUB_TOKEN (workflow-file
-      // changes are skipped — updating them is opt-in via the WBFY_GH_TOKEN secret) and then
+      // changes are skipped — they are updated through local wbfy runs instead) and then
       // dispatches test.yml on the pushed branch, since a GITHUB_TOKEN push triggers no
       // workflows. Its wbfy job, which runs dependency lifecycle scripts, downgrades itself to a
       // read-only token.
@@ -244,13 +244,6 @@ const workflows = {
     },
   },
 } as const;
-
-// The OPT-IN push PAT secret of the self-applying wbfy caller: without it the reusable workflow
-// pushes with GITHUB_TOKEN and skips workflow-file changes (GitHub rejects every GITHUB_TOKEN
-// write under .github/workflows/). Deliberately NOT the historical GH_BOT_PAT: that name sits in
-// secret.ts's DEPRECATED_SECRET_NAMES, so already-released wbfy versions DELETE it during
-// `wbfy --env` — reusing it would let an old wbfy wipe the new secret.
-export const wbfyGhTokenSecretName = 'WBFY_GH_TOKEN';
 
 /**
  * Repositories that must NOT get the self-applying wbfy caller workflow, by repository name
@@ -1206,16 +1199,15 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // their secrets untouched.
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
-  // The reusable wbfy workflow declares exactly WBFY_GH_TOKEN (a PAT that can push files under
-  // .github/workflows/, which GITHUB_TOKEN cannot) and VERDACCIO_TOKEN (wbfy's own bun install in
+  // The reusable wbfy workflow needs only VERDACCIO_TOKEN (wbfy's own bun install in
   // repositories with @willbooster-private/* dependencies) — NOT the install-capable trio, so it
-  // gets its own injection instead of membership in installCapableReusableWorkflows.
+  // gets its own injection instead of membership in installCapableReusableWorkflows. Workflow
+  // pushes always use GITHUB_TOKEN; workflow-file updates happen through local wbfy runs, so the
+  // retired WBFY_GH_TOKEN / deprecated GH_BOT_PAT pass-throughs are removed from existing callers.
   if (secrets && calledReusableWorkflow === 'wbfy') {
-    secrets[wbfyGhTokenSecretName] = `\${{ secrets.${wbfyGhTokenSecretName} }}`;
     secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
-    // An early draft of the caller passed the deprecated GH_BOT_PAT name; the callee no longer
-    // declares it, and GitHub rejects callers passing undeclared secrets.
     delete secrets.GH_BOT_PAT;
+    delete secrets.WBFY_GH_TOKEN;
   }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard

@@ -15,7 +15,6 @@ import {
   readFnoxAgeRecipients,
   resolveFnoxCommand,
 } from '../generators/fnoxToml.js';
-import { isWbfyWorkflowDenied } from '../generators/workflow.js';
 import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -42,7 +41,7 @@ const require = createRequire(import.meta.url);
 // - WillBoosterLab (free plan): GitHub Free cannot share organization secrets with private
 //   repositories, so wbfy --env keeps provisioning FNOX_AGE_KEY / VERDACCIO_TOKEN as repository
 //   secrets automatically.
-const ORG_MANAGED_SECRET_NAMES = ['CLOUDFLARE_API_TOKEN', 'FNOX_AGE_KEY', 'VERDACCIO_TOKEN', 'WBFY_GH_TOKEN'];
+const ORG_MANAGED_SECRET_NAMES = ['CLOUDFLARE_API_TOKEN', 'FNOX_AGE_KEY', 'VERDACCIO_TOKEN'];
 
 export async function setupSecrets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupSecrets', async () => {
@@ -79,9 +78,6 @@ export async function setupSecrets(config: PackageConfig): Promise<void> {
 async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
   const octokit = getOctokit(owner);
   const requiredNames = ['VERDACCIO_TOKEN'];
-  // WBFY_GH_TOKEN is deliberately NOT required: the self-applying wbfy caller pushes non-workflow
-  // changes with GITHUB_TOKEN, and updating workflow files is opt-in (the secret, or a local wbfy
-  // run). The deny-listed and shadowing checks below still cover the secret where it exists.
   // Both requirement checks are deliberately based on the LOCAL working tree: workflow generation
   // keys FNOX_AGE_KEY injection on the local root fnox.toml too, and a config added on a feature
   // branch will need its secret as soon as it merges — surfacing the missing org secret before
@@ -129,46 +125,6 @@ async function verifyOrgManagedSecrets(config: PackageConfig, owner: string, rep
         assignedButUnusableNames.has(name)
           ? `The organization secret ${name} is assigned to ${owner}/${repo} but falls beyond the 100-organization-secret limit a workflow run can use (only the alphabetically first 100 are usable). Ask a WillBooster org admin to prune the assigned organization secrets.`
           : `The organization secret ${name} is not visible to ${owner}/${repo}. Ask a WillBooster org admin to register it as an organization secret (or extend its repository access to this repository) — do NOT create a repository-level copy.${repoLevelNames.has(name) ? ` A repository-level ${name} currently keeps CI working, but it violates the org-secret policy and must be deleted once the organization secret is visible.` : ''}`
-      );
-      verified = false;
-    }
-  }
-  // A deny-listed repository must not keep the write-capable push PAT visible: its wbfy caller
-  // workflow is removed, so retained visibility only exposes the broad credential to whatever
-  // workflows the (possibly externally maintained) repository still runs.
-  if (isWbfyWorkflowDenied(config.repository)) {
-    if (assignedOrgNames.includes('WBFY_GH_TOKEN')) {
-      console.error(
-        `The organization secret WBFY_GH_TOKEN is still assigned to the deny-listed repository ${owner}/${repo}. Ask a WillBooster org admin to remove this repository from the secret's repository access.`
-      );
-      verified = false;
-    }
-    if (repoLevelNames.has('WBFY_GH_TOKEN')) {
-      console.error(
-        `The deny-listed repository ${owner}/${repo} still has a repository-level WBFY_GH_TOKEN secret. Delete it manually (e.g. \`gh secret delete WBFY_GH_TOKEN --repo ${owner}/${repo}\`).`
-      );
-      verified = false;
-    }
-  } else {
-    // WBFY_GH_TOKEN is opt-in (its complete absence is fine), but a CONFIGURED token must still
-    // be usable — otherwise the repository looks opted into automatic workflow-file updates
-    // while the workflow silently keeps skipping them (or a policy-violating repository-level
-    // copy silently serves as the only source).
-    if (assignedButUnusableNames.has('WBFY_GH_TOKEN')) {
-      // A same-named repository secret takes precedence over the organization secret, so with one
-      // present the updates still run (from the policy-violating copy the next check flags) — only
-      // without it are they silently skipped.
-      console.error(
-        `The organization secret WBFY_GH_TOKEN is assigned to ${owner}/${repo} but falls beyond the 100-organization-secret limit a workflow run can use (only the alphabetically first 100 are usable)${repoLevelNames.has('WBFY_GH_TOKEN') ? '' : ', so workflow-file updates are silently skipped'}. Ask a WillBooster org admin to prune the assigned organization secrets.`
-      );
-      verified = false;
-    }
-    if (repoLevelNames.has('WBFY_GH_TOKEN') && !usableOrgNames.has('WBFY_GH_TOKEN')) {
-      // With an assigned-but-beyond-limit organization secret, "register it" would be wrong
-      // advice (it is already assigned) and deleting the fallback first would silently disable
-      // workflow-file updates — pruning must come first.
-      console.error(
-        `${owner}/${repo} has a repository-level WBFY_GH_TOKEN secret without a usable organization secret, which violates the WillBooster org-secret policy. ${assignedButUnusableNames.has('WBFY_GH_TOKEN') ? 'Ask a WillBooster org admin to prune the assigned organization secrets FIRST (making the organization secret usable)' : 'Ask a WillBooster org admin to register the organization secret (or extend its repository access)'}, then delete the repository-level copy manually (e.g. \`gh secret delete WBFY_GH_TOKEN --repo ${owner}/${repo}\`).`
       );
       verified = false;
     }
@@ -221,27 +177,6 @@ function containsWranglerConfig(rootDirPath: string): boolean {
 
 async function uploadSecrets(config: PackageConfig, owner: string, repo: string): Promise<void> {
   const octokit = getOctokit(owner);
-  // A deny-listed repository must lose the broad push PAT UNCONDITIONALLY: the revocation has no
-  // replacement credential to upload first, so it must not be gated on the fnox / Verdaccio
-  // validation below — any early return there would otherwise leave the PAT installed (it also
-  // stays in obsoleteSecretNames for the regular cleanup pass; the second delete just 404s).
-  if (isWbfyWorkflowDenied(config.repository)) {
-    try {
-      // Requires Secrets permission
-      await octokit.request('DELETE /repos/{owner}/{repo}/actions/secrets/{secret_name}', {
-        owner,
-        repo,
-        secret_name: 'WBFY_GH_TOKEN',
-      });
-      console.info(`Deleted the WBFY_GH_TOKEN secret from the deny-listed repository ${owner}/${repo}.`);
-    } catch (error) {
-      // Most deny-listed repositories never had the secret, so its absence is the expected outcome.
-      if ((error as { status?: number } | undefined)?.status !== 404) {
-        console.error(`Failed to delete the WBFY_GH_TOKEN secret from ${owner}/${repo}:`, error);
-        process.exitCode = 1;
-      }
-    }
-  }
   // Covers the non-fnox path too: a failed synchronization may mean an unsupported fnox layout
   // (e.g. nested configs without a root fnox.toml) whose FNOX_AGE_KEY must not be deleted.
   if (hasFnoxSyncFailed()) {
@@ -271,25 +206,6 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     process.exitCode = 1;
     return;
   }
-  // OPT-IN: the self-applying wbfy caller pushes non-workflow changes with GITHUB_TOKEN; the
-  // WBFY_GH_TOKEN secret (a PAT with contents:write and workflow scope) is only needed when a
-  // repository should have its workflow files updated automatically too. When the operator sets
-  // WBFY_GH_TOKEN_FOR_WILLBOOSTERLAB, it is uploaded as a repository secret (GitHub Free cannot
-  // share organization secrets with private repositories). It is deliberately sourced from a
-  // DEDICATED environment variable, never from GH_BOT_PAT_FOR_WILLBOOSTERLAB: anyone with write
-  // access to one repository can read its Actions secrets, so the uploaded value must be a
-  // least-privilege PAT (fine-grained, Contents and Workflows write only) rather than the bot
-  // PAT that can also administer settings, rulesets, and secrets across the organization.
-  // Deny-listed repositories get no caller workflow, so they need no push token either. Known
-  // accepted risk of opting in: the SAME least-privilege PAT value reaches every opted-in
-  // repository — replacing it with per-repository short-lived GitHub App tokens is tracked in
-  // https://github.com/WillBooster/shared/issues/1077.
-  const wbfyGhToken = isWbfyWorkflowDenied(config.repository)
-    ? undefined
-    : process.env.WBFY_GH_TOKEN_FOR_WILLBOOSTERLAB;
-  // Also keep WBFY_GH_TOKEN in the obsolete set on deny-listed repositories so the regular
-  // cleanup pass removes any stale copy the early revocation above missed.
-  const wbfyObsoleteSecretNames = isWbfyWorkflowDenied(config.repository) ? ['WBFY_GH_TOKEN'] : [];
   let secretsToUpload: Record<string, string>;
   let obsoleteSecretNames: string[];
   // Decide the fnox migration state SOLELY from the remote default branch: an unmerged local
@@ -374,9 +290,8 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     secretsToUpload = {
       FNOX_AGE_KEY: ciAgeKey,
       VERDACCIO_TOKEN: verdaccioToken,
-      ...(wbfyGhToken ? { WBFY_GH_TOKEN: wbfyGhToken } : {}),
     };
-    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, ...wbfyObsoleteSecretNames, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
+    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'DOT_ENV', 'DOT_ENV_PRODUCTION'];
   } else {
     // .env files are no longer synchronized into GitHub secrets: fnox is the org standard, and a
     // repository without a default-branch fnox.toml only gets the fnox-independent secrets. Any
@@ -384,9 +299,9 @@ async function uploadSecrets(config: PackageConfig, owner: string, repo: string)
     console.warn(
       `${owner}/${repo} has no fnox.toml on its default branch; migrate it to fnox so app secrets are managed in the repository.`
     );
-    secretsToUpload = { VERDACCIO_TOKEN: verdaccioToken, ...(wbfyGhToken ? { WBFY_GH_TOKEN: wbfyGhToken } : {}) };
+    secretsToUpload = { VERDACCIO_TOKEN: verdaccioToken };
     // A repository that migrated away from fnox must not keep the shared CI decryption key.
-    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, ...wbfyObsoleteSecretNames, 'FNOX_AGE_KEY'];
+    obsoleteSecretNames = [...DEPRECATED_SECRET_NAMES, 'FNOX_AGE_KEY'];
   }
 
   // Never upload a secret that is about to be deleted: a PUT followed by a failed DELETE would
