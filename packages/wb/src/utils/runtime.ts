@@ -37,10 +37,6 @@ export function hasBunDirectoryMarker(dirPath: string): boolean {
   );
 }
 
-export function isBunPackageManager(packageManager: unknown): boolean {
-  return typeof packageManager === 'string' && packageManager.startsWith('bun@');
-}
-
 /**
  * An explicit non-Bun packageManager declaration (e.g. `yarn@4.17.0`) overrides the directory
  * markers: yarn-era repositories may pin bun in mise.toml solely for `bunx`-based helpers
@@ -49,6 +45,10 @@ export function isBunPackageManager(packageManager: unknown): boolean {
  */
 export function isExplicitNonBunPackageManager(packageManager: unknown): boolean {
   return typeof packageManager === 'string' && !!packageManager.trim() && !isBunPackageManager(packageManager);
+}
+
+export function isBunPackageManager(packageManager: unknown): boolean {
+  return typeof packageManager === 'string' && packageManager.startsWith('bun@');
 }
 
 function readPackageManagerField(packageJsonPath: string): unknown {
