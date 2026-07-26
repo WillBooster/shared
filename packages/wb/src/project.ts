@@ -18,7 +18,7 @@ import type { PackageJson } from 'type-fest';
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
 import { selectFnoxSourcedKeys } from './utils/envSources.js';
-import { hasBunDirectoryMarker, isBunPackageManager } from './utils/runtime.js';
+import { hasBunDirectoryMarker, isBunPackageManager, isExplicitNonBunPackageManager } from './utils/runtime.js';
 import { clearTestStructureCache } from './utils/testStructure.js';
 import { findWranglerConfigPath } from './utils/wrangler.js';
 
@@ -65,12 +65,7 @@ export class Project {
     // Some repositories rely on the lockfile or packageManager field instead of mise.
     // Docker optimization must follow the target project, not the runtime that launched wb.
     const packageManager = this.rootPackageJson?.packageManager ?? this.packageJson.packageManager;
-    // An explicit non-Bun declaration wins over the directory markers: yarn-era repositories may
-    // pin bun in mise.toml solely for `bunx`-based helpers (e.g. `wb railway-env`), and Bun-managed
-    // repositories never declare a non-Bun packageManager.
-    if (typeof packageManager === 'string' && packageManager.trim() && !isBunPackageManager(packageManager)) {
-      return false;
-    }
+    if (isExplicitNonBunPackageManager(packageManager)) return false;
     if (hasBunDirectoryMarker(this.rootDirPath)) return true;
     return isBunPackageManager(packageManager);
   }

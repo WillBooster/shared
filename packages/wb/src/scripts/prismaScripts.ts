@@ -82,6 +82,13 @@ class PrismaScripts {
   }
 
   seed(project: Project, scriptPath?: string): string {
+    // Blitz seed modules default-export the seed function without calling it, so only
+    // `blitz db seed` (whose loader invokes the export) actually populates the database.
+    // Bun-era Blitz repositories declare prisma.seed instead and must avoid the blitz CLI,
+    // which patches the installed next package inside Bun's shared global store.
+    if (!project.usesBunPackageManager && project.hasOwnDependency('blitz')) {
+      return `YARN blitz db seed${scriptPath ? ` -f ${scriptPath}` : ''}`;
+    }
     if (scriptPath) return `BUN build-ts run ${scriptPath}`;
     if ((project.packageJson.prisma as Record<string, string> | undefined)?.seed) return `YARN prisma db seed`;
     const seedsPath = `${getPrismaDatabaseDirName(project)}/seeds.ts`;

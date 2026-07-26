@@ -108,7 +108,9 @@ describe('prismaScripts.reset', () => {
     const project = {
       dirPath,
       env: {},
+      hasOwnDependency: (name: string) => name === 'blitz',
       packageJson: { dependencies: { blitz: '2.2.4' } },
+      usesBunPackageManager: false,
     } as unknown as Project;
 
     expect(prismaScripts.deployForce(project)).toContain('rm -Rf "db/mount/prod.sqlite3"*');
@@ -118,7 +120,9 @@ describe('prismaScripts.reset', () => {
     expect(prismaScripts.restore(project, 'db/restored.sqlite3')).toContain(
       '-o db/restored.sqlite3 db/mount/prod.sqlite3'
     );
-    expect(prismaScripts.seed(project)).toBe('if [ -e "db/seeds.ts" ]; then BUN build-ts run db/seeds.ts; fi');
+    // Blitz seed modules default-export the seed function; only the blitz CLI's loader invokes it.
+    expect(prismaScripts.seed(project)).toBe('YARN blitz db seed');
+    expect(prismaScripts.seed(project, 'db/genUserCsv')).toBe('YARN blitz db seed -f db/genUserCsv');
   });
 
   it('uses wal checkpoint in deployForce cleanup command', () => {

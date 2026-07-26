@@ -12,6 +12,7 @@ import {
   getAbsoluteFileDatabaseUrlPath,
 } from '../../src/project.js';
 
+import { usesBunRuntime } from '../../src/utils/runtime.js';
 import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
 
 describe('project', () => {
@@ -84,6 +85,8 @@ describe('project', () => {
 
       const project = findSelfProject({}, false, dirPath);
       expect(project?.usesBunPackageManager).toBe(false);
+      // `wb run` must agree: the same precedence applies to the runtime detection.
+      expect(usesBunRuntime(dirPath)).toBe(false);
     } finally {
       await fs.promises.rm(dirPath, { recursive: true, force: true });
     }
