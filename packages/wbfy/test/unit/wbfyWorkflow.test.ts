@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { load } from 'js-yaml';
 import { expect, test } from 'vitest';
 
 import { generateWorkflows } from '../../src/generators/workflow.js';
@@ -60,6 +61,39 @@ jobs:
       expect(fs.existsSync(path.join(workflowsPath, 'wbfy.yml'))).toBe(false);
     });
   }
+});
+
+test('strips the retired push-back leftovers from an existing test caller', async () => {
+  await withTempRepo(async (dirPath, workflowsPath) => {
+    await fs.promises.writeFile(
+      path.join(workflowsPath, 'test.yml'),
+      `name: Test
+on:
+  pull_request:
+  push:
+    branches: [main, wbfy]
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: write
+  pull-requests: read
+  statuses: write
+jobs:
+  test:
+    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main
+`
+    );
+    const config = createConfig({ dirPath, isRoot: true });
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+
+    const generated = load(await fs.promises.readFile(path.join(workflowsPath, 'test.yml'), 'utf8')) as {
+      on: { push: { branches: string[] } };
+      permissions: Record<string, string>;
+    };
+    expect(generated.on.push.branches).toEqual(['main']);
+    expect(generated.permissions).toEqual({ actions: 'write', contents: 'write', 'pull-requests': 'read' });
+  });
 });
 
 test('keeps a custom workflow that merely shares the wbfy.yml file name', async () => {

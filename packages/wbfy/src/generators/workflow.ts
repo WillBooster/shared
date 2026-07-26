@@ -82,7 +82,7 @@ const workflows = {
     on: {
       pull_request: null,
       push: {
-        branches: ['main', 'wbfy'],
+        branches: ['main'],
       },
       // Nothing dispatches this caller any more (the workflows that pushed back and re-triggered
       // it are retired); the trigger stays only so a maintainer can re-run the tests by hand.
@@ -115,7 +115,7 @@ const workflows = {
     on: {
       pull_request: null,
       push: {
-        branches: ['main', 'wbfy'],
+        branches: ['main'],
       },
     },
     concurrency: {
@@ -507,12 +507,21 @@ async function writeWorkflowYaml(
       if (kind === 'test-rust') {
         delete newSettings.permissions?.actions;
       }
+      // `statuses: write` served the aggregate commit status the reusable test workflow posted
+      // for its retired push-back dispatch runs; older wbfy-generated callers still carry it, and
+      // the array-combining merge would keep it forever without this delete.
+      delete newSettings.permissions?.statuses;
       if (newSettings.on?.pull_request) {
         delete newSettings.on.pull_request['paths-ignore'];
       }
       if (newSettings.on?.push) {
         delete newSettings.on.push['paths-ignore'];
-        newSettings.on.push.branches = newSettings.on.push.branches.filter((branch) => branch !== 'renovate/**');
+        // The `wbfy` push branch existed for the retired nightly self-applying wbfy caller, which
+        // pushed that branch directly; wbfy runs now arrive as pull requests covered by the
+        // pull_request trigger, so the branch entry merged in from older callers is stripped.
+        newSettings.on.push.branches = newSettings.on.push.branches.filter(
+          (branch) => branch !== 'renovate/**' && branch !== 'wbfy'
+        );
       }
       break;
     }
