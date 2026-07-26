@@ -1,4 +1,5 @@
 // oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make load/dump usage clearer.
+import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
@@ -85,10 +86,14 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
         // write (e.g. a committed symlink destination) must not destroy the only usable
         // configuration — and via the containment guard so a symlinked .gemini directory can
         // never make cleanup delete files outside the repository.
-        // Announce the removal of a git-tracked file (removeConfined itself logs only skips),
-        // matching the convention of other wbfy removals (e.g. fixers/envExample.ts).
+        // Announce the removal of a git-tracked file (removeConfined itself logs only skips and
+        // returns true even for a nonexistent path), matching the convention of other wbfy
+        // removals (e.g. fixers/envExample.ts). lstat (not existsSync) keeps a dangling-symlink
+        // config.yml in scope for removal.
+        const legacyExists = !!(await fs.promises.lstat(legacyConfigFilePath).catch(() => {}));
         if (
           (await fsUtil.generateFile(configFilePath, yamlContent)) &&
+          legacyExists &&
           (await fsUtil.removeConfined(legacyConfigFilePath))
         ) {
           console.log(`Removed ${legacyConfigFilePath}: Gemini Code Assist reads only ${configFilePath}.`);
