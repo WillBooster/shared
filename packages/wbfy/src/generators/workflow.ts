@@ -1049,16 +1049,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // their secrets untouched.
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
-  // The reusable wbfy workflow needs only VERDACCIO_TOKEN (wbfy's own bun install in
-  // repositories with @willbooster-private/* dependencies) — NOT the install-capable trio, so it
-  // gets its own injection instead of membership in installCapableReusableWorkflows. Workflow
-  // pushes always use GITHUB_TOKEN; workflow-file updates happen through local wbfy runs, so the
-  // retired WBFY_GH_TOKEN / deprecated GH_BOT_PAT pass-throughs are removed from existing callers.
-  if (secrets && calledReusableWorkflow === 'wbfy') {
-    secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
-    delete secrets.GH_BOT_PAT;
-    delete secrets.WBFY_GH_TOKEN;
-  }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
     // malicious-package-blocking proxy when this token resolves; an unset organization secret
