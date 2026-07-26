@@ -9,6 +9,7 @@ import { findDescendantProjects } from '../project.js';
 import { findDrizzleConfig, wrapWithDrizzleConfigDir } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
+import { normalizeBunLockfile } from '../utils/bunLockfile.js';
 import { writeWorkerTypesEnvStub } from '../utils/workerTypesEnv.js';
 
 const builder = {} as const;
@@ -27,6 +28,16 @@ export const genCodeCommand: CommandModule = {
     if (!projects) {
       console.error(chalk.red('No project found.'));
       process.exit(1);
+    }
+
+    // Before the early return below: `gen-code` is the `postinstall` script wbfy generates, making
+    // this the first wb code that runs after bun may have rewritten the lockfile, and a repository
+    // with nothing to generate needs the normalization just as much. `rootDirPath` rather than
+    // `projects.root.dirPath`: bun runs a workspace package's postinstall from that package's
+    // directory, and findRootAndSelfProjects only climbs out of `packages/*`, so a workspace such
+    // as `apps/web` would otherwise look for `apps/web/bun.lock` instead of the repository's.
+    if (!argv.dryRun) {
+      normalizeBunLockfile(projects.self.rootDirPath);
     }
 
     const genCodeTargets = projects.descendants

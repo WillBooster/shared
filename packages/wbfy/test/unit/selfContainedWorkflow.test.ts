@@ -17,7 +17,10 @@ interface ParsedWorkflow {
   jobs: Record<
     string,
     {
+      env?: Record<string, string>;
       steps: {
+        name?: string;
+        if?: string;
         run?: string;
         uses?: string;
         env?: Record<string, string>;
@@ -44,7 +47,6 @@ test('generates self-contained test and semantic-pr workflows without reusable-w
     expect(testContent).not.toContain('reusable-workflows');
     const testWorkflow = yaml.load(testContent) as ParsedWorkflow;
     const runCommands = testWorkflow.jobs.test?.steps.map((step) => step.run).filter(Boolean);
-    expect(runCommands).toContain('bun install');
     expect(runCommands).toContain('bun run test/ci');
     // No TypeScript and no Playwright in this repository.
     expect(runCommands).not.toContain('bun run typecheck');
@@ -79,8 +81,8 @@ test('includes typecheck, Playwright caching and step-scoped FNOX_AGE_KEY when t
     expect(steps.some((step) => step.uses?.startsWith('actions/cache@'))).toBe(true);
     expect(content).toContain('playwright install --with-deps');
     // Step-scoped, not job-wide: `bun install` must not see the age identity.
-    const installStep = steps.find((step) => step.run === 'bun install');
-    expect(installStep?.env).toBeUndefined();
+    const installStep = steps.find((step) => step.name === 'Install dependencies');
+    expect(installStep?.env?.FNOX_AGE_KEY).toBeUndefined();
     const testStep = steps.find((step) => step.run === 'bun run test/ci');
     expect(testStep?.env?.FNOX_AGE_KEY).toBe('${{ secrets.FNOX_AGE_KEY }}');
   });
@@ -240,6 +242,48 @@ test('never overwrites a hand-written workflow and regenerates a marked one', as
     const regenerated = await fs.readFile(path.join(workflowsPath, 'semantic-pr.yml'), 'utf8');
     expect(regenerated).toContain('amannn/action-semantic-pull-request');
     expect(regenerated).not.toContain('Stale');
+  });
+});
+
+test('hardens every install with the Takumi Guard proxy without exposing the token to lifecycle scripts', async () => {
+  await withTempRepo(async (dirPath) => {
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isWillBoosterRepo: false,
+      repository: 'github:someone/example',
+      packageJson: { scripts: { deploy: 'WB_ENV=production bun wb deploy' } },
+    });
+    await generateSelfContainedWorkflows(config);
+    await promisePool.promiseAll();
+
+    const workflowsPath = path.join(dirPath, '.github', 'workflows');
+    for (const fileName of ['test.yml', 'deploy-production.yml']) {
+      const workflow = yaml.load(await fs.readFile(path.join(workflowsPath, fileName), 'utf8')) as ParsedWorkflow;
+      const job = Object.values(workflow.jobs)[0];
+      // The `if:` gates read the non-secret signal, and the empty token keeps the generated
+      // .npmrc's ${TAKUMI_GUARD_TOKEN} reference expandable in the tokenless steps.
+      expect(job?.env?.HAS_TAKUMI_GUARD_TOKEN).toBe('${{ !!secrets.TAKUMI_GUARD_TOKEN }}');
+      expect(job?.env?.TAKUMI_GUARD_TOKEN).toBe('');
+
+      const steps = job?.steps ?? [];
+      const installStep = steps.find((step) => step.name === 'Install dependencies');
+      expect(installStep?.env?.TAKUMI_GUARD_TOKEN).toBe('${{ secrets.TAKUMI_GUARD_TOKEN }}');
+      expect(installStep?.run).toContain('bun install --ignore-scripts');
+      // Without the secret the very same step still installs normally.
+      expect(installStep?.run).toContain('bun install\nfi');
+
+      // The replay runs the lifecycle scripts, so it must not carry the token.
+      const replayStep = steps.find(
+        (step) => step.name === 'Run dependency lifecycle scripts without registry credentials'
+      );
+      expect(replayStep?.env).toBeUndefined();
+      expect(replayStep?.if).toBe("${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}");
+      // Guard answers `npm publish` with 405, so the proxy must not outlive the install.
+      const cleanupStep = steps.find((step) => step.name === 'Remove the generated .npmrc');
+      expect(cleanupStep?.if).toBe("${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}");
+      expect(steps.indexOf(cleanupStep!)).toBeGreaterThan(steps.indexOf(replayStep!));
+    }
   });
 });
 

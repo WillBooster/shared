@@ -9,6 +9,7 @@ import type { Project } from '../project.js';
 import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { normalizeBunLockfile } from '../utils/bunLockfile.js';
 
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
@@ -77,9 +78,21 @@ async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv, st
 
 async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
   const installCommand = `${project.packageManagerCommand} install`;
-  await runStep(steps, { detail: installCommand, name: 'install' }, () =>
-    runPackageCommand(installCommand, project, argv)
+  // `allowFailure` so a failed install still reaches the normalization below: bun rewrites the
+  // lockfile before running lifecycle scripts, so a script failure would otherwise leave Guard
+  // URLs in the working tree. The failure is reported and exits exactly as runPackageCommand would.
+  const installExitCode = await runStep(steps, { detail: installCommand, name: 'install' }, () =>
+    runPackageCommand(installCommand, project, argv, { allowFailure: true })
   );
+  // The repository may have no `gen-code` script (where the same normalization runs at postinstall),
+  // and `verify` is the command a developer runs before committing.
+  if (!argv.dryRun) {
+    normalizeBunLockfile(project.rootDirPath);
+  }
+  if (installExitCode !== 0) {
+    console.info(chalk.red(chalk.bold(`Failed (exit code ${installExitCode}):`), installCommand));
+    process.exit(installExitCode);
+  }
   if (project.packageJson.scripts?.['gen-code']) {
     const genCodeCommand = `${project.packageManagerCommand} gen-code`;
     await runStep(steps, { detail: genCodeCommand, name: 'gen-code' }, () =>
