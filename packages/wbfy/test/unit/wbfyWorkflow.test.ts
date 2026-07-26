@@ -1,24 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { load as loadYaml } from 'js-yaml';
 import { expect, test } from 'vitest';
 
-import {
-  generateWorkflows,
-  getWbfyWorkflowCron,
-  isWbfyWorkflowDenied,
-  wbfyWorkflowDenyList,
-} from '../../src/generators/workflow.js';
+import { generateWorkflows } from '../../src/generators/workflow.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
-interface WbfyCallerWorkflow {
-  name?: string;
-  on?: { schedule?: { cron: string }[]; workflow_dispatch?: null };
-  permissions?: Record<string, string>;
-  jobs: Record<string, { uses?: string; with?: Record<string, unknown>; secrets?: Record<string, string> }>;
-}
+// The self-applying nightly wbfy caller is retired: wbfy runs are driven by developers and
+// agents directly. These tests pin the retirement behavior — no caller is generated, existing
+// generated callers are deleted, and custom workflows that merely share the file name survive.
 
 async function withTempRepo(callback: (dirPath: string, workflowsPath: string) => Promise<void>): Promise<void> {
   const tempRootPath = path.join(process.cwd(), '.tmp');
@@ -33,195 +24,45 @@ async function withTempRepo(callback: (dirPath: string, workflowsPath: string) =
   }
 }
 
-async function loadWbfyCaller(workflowsPath: string): Promise<WbfyCallerWorkflow> {
-  const content = await fs.promises.readFile(path.join(workflowsPath, 'wbfy.yml'), 'utf8');
-  return loadYaml(content) as WbfyCallerWorkflow;
-}
-
-test('generates a scheduled self-applying wbfy caller for a public repository', async () => {
+test('generates no wbfy caller workflow', async () => {
   await withTempRepo(async (dirPath, workflowsPath) => {
     const config = createConfig({ dirPath, isRoot: true });
     await generateWorkflows(config);
     await promisePool.promiseAll();
 
-    const workflow = await loadWbfyCaller(workflowsPath);
-    expect(workflow.name).toBe('Willboosterify');
-    expect(workflow.on?.schedule).toEqual([{ cron: getWbfyWorkflowCron('github:WillBooster/example') }]);
-    // oxlint-disable-next-line unicorn/no-null -- GitHub Actions valueless events are YAML nulls.
-    expect(workflow.on?.workflow_dispatch).toBeNull();
-    // id-token:write is transitional for the broker migration: callers must carry it before the
-    // reusable workflow's push job switches to the broker-issued App token.
-    expect(workflow.permissions).toEqual({ actions: 'write', contents: 'write', 'id-token': 'write' });
-    const job = workflow.jobs.wbfy;
-    expect(job?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
-    expect(job?.secrets).toEqual({ VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}' });
-    // The runner-selection idiom sees github.event.repository.private as true on schedule events,
-    // so a public repository must pin the GitHub-hosted runner explicitly.
-    expect(job?.with).toEqual({ github_hosted_runner: true });
+    expect(fs.existsSync(path.join(workflowsPath, 'wbfy.yml'))).toBe(false);
+    // The rest of the mandatory set is unaffected.
+    expect(fs.existsSync(path.join(workflowsPath, 'test.yml'))).toBe(true);
   });
 });
 
-test('generates a canonical-repository, GitHub-hosted wbfy caller for a private WillBoosterLab repository', async () => {
-  await withTempRepo(async (dirPath, workflowsPath) => {
-    const config = createConfig({
-      dirPath,
-      isRoot: true,
-      isPublicRepo: false,
-      repository: 'github:WillBoosterLab/example',
-    });
-    await generateWorkflows(config);
-    await promisePool.promiseAll();
-
-    const workflow = await loadWbfyCaller(workflowsPath);
-    const job = workflow.jobs.wbfy;
-    // Broker-backed workflows reference the canonical WillBooster repository even in
-    // WillBoosterLab: the token broker pins job_workflow_ref to WillBooster/reusable-workflows
-    // and rejects the sync mirror. The canonical repository is public, so private Lab
-    // repositories can call it.
-    expect(job?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
-    // A called workflow owned by a different organization cannot access the caller's self-hosted
-    // runners, so private Lab callers of the canonical wbfy workflow must run GitHub-hosted.
-    expect(job?.with).toEqual({ github_hosted_runner: true });
-
-    // Non-broker-backed workflows keep referencing the organization's own mirror.
-    const testContent = await fs.promises.readFile(path.join(workflowsPath, 'test.yml'), 'utf8');
-    const testWorkflow = loadYaml(testContent) as WbfyCallerWorkflow;
-    expect(testWorkflow.jobs.test?.uses).toBe('WillBoosterLab/reusable-workflows/.github/workflows/test.yml@main');
-  });
-});
-
-test('keeps the mirror owner for a custom-named wbfy caller pinned to a non-main ref', async () => {
-  await withTempRepo(async (dirPath, workflowsPath) => {
-    // The broker's policy covers only @main, and a mirror commit may not exist in the canonical
-    // repository, so pinned refs must keep the organization owner. A custom file name is used
-    // because the canonical wbfy.yml is template-managed and would be rewritten to @main anyway.
-    await fs.promises.writeFile(
-      path.join(workflowsPath, 'pinned-wbfy.yml'),
-      `name: Pinned Willboosterify
-on:
-  workflow_dispatch:
-jobs:
-  wbfy:
-    uses: WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@0123456789abcdef0123456789abcdef01234567
-`
-    );
-    const config = createConfig({
-      dirPath,
-      isRoot: true,
-      isPublicRepo: false,
-      repository: 'github:WillBoosterLab/example',
-    });
-    await generateWorkflows(config);
-    await promisePool.promiseAll();
-
-    const content = await fs.promises.readFile(path.join(workflowsPath, 'pinned-wbfy.yml'), 'utf8');
-    const workflow = loadYaml(content) as WbfyCallerWorkflow;
-    expect(workflow.jobs.wbfy?.uses).toBe(
-      'WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@0123456789abcdef0123456789abcdef01234567'
-    );
-  });
-});
-
-test('a custom-named Lab wbfy caller still gets the canonical owner and a GitHub-hosted runner', async () => {
-  await withTempRepo(async (dirPath, workflowsPath) => {
-    await fs.promises.writeFile(
-      path.join(workflowsPath, 'nightly-wbfy.yml'),
-      `name: Nightly Willboosterify
-on:
-  workflow_dispatch:
-jobs:
-  wbfy:
-    uses: WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@main
-`
-    );
-    const config = createConfig({
-      dirPath,
-      isRoot: true,
-      isPublicRepo: false,
-      repository: 'github:WillBoosterLab/example',
-    });
-    await generateWorkflows(config);
-    await promisePool.promiseAll();
-
-    const content = await fs.promises.readFile(path.join(workflowsPath, 'nightly-wbfy.yml'), 'utf8');
-    const workflow = loadYaml(content) as WbfyCallerWorkflow;
-    expect(workflow.jobs.wbfy?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
-    expect(workflow.jobs.wbfy?.with).toEqual({ github_hosted_runner: true });
-  });
-});
-
-test('rewrites an existing mirror-referencing wbfy caller to the canonical repository', async () => {
-  await withTempRepo(async (dirPath, workflowsPath) => {
-    await fs.promises.writeFile(
-      path.join(workflowsPath, 'wbfy.yml'),
-      `name: Willboosterify
+test('deletes an existing generated wbfy caller regardless of the calling organization', async () => {
+  for (const repository of ['github:WillBooster/example', 'github:WillBoosterLab/example']) {
+    await withTempRepo(async (dirPath, workflowsPath) => {
+      await fs.promises.writeFile(
+        path.join(workflowsPath, 'wbfy.yml'),
+        `name: Willboosterify
 on:
   schedule:
     - cron: 0 16 * * *
   workflow_dispatch:
 jobs:
   wbfy:
-    uses: WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@main
-`
-    );
-    const config = createConfig({
-      dirPath,
-      isRoot: true,
-      isPublicRepo: false,
-      repository: 'github:WillBoosterLab/example',
-    });
-    await generateWorkflows(config);
-    await promisePool.promiseAll();
-
-    const workflow = await loadWbfyCaller(workflowsPath);
-    expect(workflow.jobs.wbfy?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
-  });
-});
-
-test('rewrites a stale cron and drops leftover NPM_TOKEN / GH_BOT_PAT / WBFY_GH_TOKEN in an existing caller', async () => {
-  await withTempRepo(async (dirPath, workflowsPath) => {
-    await fs.promises.writeFile(
-      path.join(workflowsPath, 'wbfy.yml'),
-      `name: Willboosterify
-on:
-  schedule:
-    - cron: 59 23 * * *
-  workflow_dispatch:
-jobs:
-  wbfy:
-    uses: WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main
+    uses: ${repository === 'github:WillBooster/example' ? 'WillBooster' : 'WillBoosterLab'}/reusable-workflows/.github/workflows/wbfy.yml@main
     secrets:
-      NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
-      GH_BOT_PAT: \${{ secrets.GH_BOT_PAT }}
       WBFY_GH_TOKEN: \${{ secrets.WBFY_GH_TOKEN }}
 `
-    );
-    const config = createConfig({ dirPath, isRoot: true });
-    await generateWorkflows(config);
-    await promisePool.promiseAll();
+      );
+      const config = createConfig({ dirPath, isRoot: true, isPublicRepo: false, repository });
+      await generateWorkflows(config);
+      await promisePool.promiseAll();
 
-    const workflow = await loadWbfyCaller(workflowsPath);
-    expect(workflow.on?.schedule).toEqual([{ cron: getWbfyWorkflowCron('github:WillBooster/example') }]);
-    expect(workflow.jobs.wbfy?.secrets).toEqual({ VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}' });
-  });
+      expect(fs.existsSync(path.join(workflowsPath, 'wbfy.yml'))).toBe(false);
+    });
+  }
 });
 
-test('deletes the generated caller from a deny-listed repository but keeps a custom same-named workflow', async () => {
-  await withTempRepo(async (dirPath, workflowsPath) => {
-    await fs.promises.writeFile(
-      path.join(workflowsPath, 'wbfy.yml'),
-      `on: workflow_dispatch
-jobs:
-  wbfy:
-    uses: WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main
-`
-    );
-    const config = createConfig({ dirPath, isRoot: true, repository: 'github:WillBooster/verdaccio' });
-    await generateWorkflows(config);
-    await promisePool.promiseAll();
-    expect(fs.existsSync(path.join(workflowsPath, 'wbfy.yml'))).toBe(false);
-  });
-
+test('keeps a custom workflow that merely shares the wbfy.yml file name', async () => {
   await withTempRepo(async (dirPath, workflowsPath) => {
     const customContent = `on: workflow_dispatch
 jobs:
@@ -231,62 +72,10 @@ jobs:
       - run: echo not a wbfy caller
 `;
     await fs.promises.writeFile(path.join(workflowsPath, 'wbfy.yml'), customContent);
-    const config = createConfig({ dirPath, isRoot: true, repository: 'github:WillBooster/verdaccio' });
+    const config = createConfig({ dirPath, isRoot: true });
     await generateWorkflows(config);
     await promisePool.promiseAll();
+
     expect(await fs.promises.readFile(path.join(workflowsPath, 'wbfy.yml'), 'utf8')).toBe(customContent);
   });
-});
-
-test('skips generating (but does not delete) the caller when the repository visibility is unknown', async () => {
-  await withTempRepo(async (dirPath, workflowsPath) => {
-    const config = createConfig({ dirPath, isRoot: true, isPublicRepo: false, isRepoVisibilityKnown: false });
-    await generateWorkflows(config);
-    await promisePool.promiseAll();
-    // A failed GitHub lookup collapses isPublicRepo to false; generating from that state would
-    // schedule a possibly-public repository onto the self-hosted runners.
-    expect(fs.existsSync(path.join(workflowsPath, 'wbfy.yml'))).toBe(false);
-  });
-
-  await withTempRepo(async (dirPath, workflowsPath) => {
-    const existingContent = `on: workflow_dispatch
-jobs:
-  wbfy:
-    uses: WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main
-`;
-    await fs.promises.writeFile(path.join(workflowsPath, 'wbfy.yml'), existingContent);
-    const config = createConfig({ dirPath, isRoot: true, isPublicRepo: false, isRepoVisibilityKnown: false });
-    await generateWorkflows(config);
-    await promisePool.promiseAll();
-    expect(await fs.promises.readFile(path.join(workflowsPath, 'wbfy.yml'), 'utf8')).toBe(existingContent);
-  });
-});
-
-test('deny list decisions are case-insensitive and cover unknown repositories', () => {
-  expect(isWbfyWorkflowDenied('github:WillBooster/self-host-utils')).toBe(true);
-  expect(isWbfyWorkflowDenied('github:WillBoosterLab/Seamzip')).toBe(true);
-  expect(isWbfyWorkflowDenied('github:WillBooster/shared')).toBe(false);
-  expect(isWbfyWorkflowDenied(undefined)).toBe(true);
-  // Guard against accidental emptying: the deny list must keep covering the known-unsupported repos.
-  expect(wbfyWorkflowDenyList.has('reusable-workflows')).toBe(true);
-});
-
-test('the staggered cron is deterministic, case-insensitive, and stays within the safe window', () => {
-  const cron = getWbfyWorkflowCron('github:WillBooster/example');
-  expect(cron).toBe(getWbfyWorkflowCron('github:willbooster/EXAMPLE'));
-  // Different repositories should usually get different slots (spot-check two known names).
-  expect(getWbfyWorkflowCron('github:WillBooster/shared')).not.toBe(getWbfyWorkflowCron('github:WillBooster/judge'));
-  // Every slot must start between 16:00 and 17:59 UTC: with the 30-minute job timeout, the run
-  // finishes by 18:29 UTC, keeping ~30 minutes of schedule-delay slack before the 19:00 UTC
-  // (04:00 JST) self-hosted Ubuntu runner reboot, and always before the 20:00 UTC wbfy-merge run.
-  for (const seed of ['example', 'shared', 'judge', 'exercode', 'a', 'zz', 'agentic-workflows', 'website']) {
-    const match = /^(\d{1,2}) (\d{2}) \* \* \*$/.exec(getWbfyWorkflowCron(`github:WillBooster/${seed}`));
-    expect(match, seed).not.toBeNull();
-    const minute = Number(match![1]);
-    const hour = Number(match![2]);
-    expect(minute).toBeGreaterThanOrEqual(0);
-    expect(minute).toBeLessThan(60);
-    expect(hour).toBeGreaterThanOrEqual(16);
-    expect(hour * 60 + minute).toBeLessThanOrEqual(17 * 60 + 59);
-  }
 });
