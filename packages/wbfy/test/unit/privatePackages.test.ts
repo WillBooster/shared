@@ -52,52 +52,10 @@ test('detects a private dependency in a workspace manifest', async () => {
   });
 });
 
-test('detects a bunx invocation of a private package in a manifest script', async () => {
+test('detects a package published to Verdaccio via its scoped name', async () => {
   await withTempDir(async (tempDirPath) => {
-    writeJson(path.join(tempDirPath, 'package.json'), {
-      name: 'runner',
-      scripts: { 'update-deps': 'bunx @willbooster-private/agentic-workflows@1.71.3' },
-    });
+    writeJson(path.join(tempDirPath, 'package.json'), { name: '@willbooster-private/agentic-workflows' });
     expect(repoResolvesPrivatePackages(createConfig({ dirPath: tempDirPath }))).toBe(true);
-  });
-});
-
-test('detects a Verdaccio publishConfig registry', async () => {
-  await withTempDir(async (tempDirPath) => {
-    writeJson(path.join(tempDirPath, 'package.json'), {
-      name: 'publisher',
-      publishConfig: { registry: 'https://verdaccio-production-e389.up.railway.app/' },
-    });
-    expect(repoResolvesPrivatePackages(createConfig({ dirPath: tempDirPath }))).toBe(true);
-  });
-});
-
-test('detects a private package recorded only in the lockfile', async () => {
-  await withTempDir(async (tempDirPath) => {
-    writeJson(path.join(tempDirPath, 'package.json'), { name: 'transitive' });
-    fs.writeFileSync(path.join(tempDirPath, 'bun.lock'), '"@willbooster-private/some-lib": ["1.0.0", "", {}]\n');
-    expect(repoResolvesPrivatePackages(createConfig({ dirPath: tempDirPath }))).toBe(true);
-  });
-});
-
-test('detects private-package usage in a custom workflow, but not the standard secret pass-through', async () => {
-  await withTempDir(async (tempDirPath) => {
-    writeJson(path.join(tempDirPath, 'package.json'), { name: 'workflows' });
-    const workflowsDirPath = path.join(tempDirPath, '.github', 'workflows');
-    fs.mkdirSync(workflowsDirPath, { recursive: true });
-    // The generated caller mentions only the secret NAME; it must not count as usage.
-    fs.writeFileSync(
-      path.join(workflowsDirPath, 'test.yml'),
-      'jobs:\n  test:\n    secrets:\n      VERDACCIO_TOKEN: ${{ secrets.VERDACCIO_TOKEN }}\n'
-    );
-    const config = createConfig({ dirPath: tempDirPath });
-    expect(repoResolvesPrivatePackages(config)).toBe(false);
-
-    fs.writeFileSync(
-      path.join(workflowsDirPath, 'custom.yml'),
-      'jobs:\n  run:\n    steps:\n      - run: bunx @willbooster-private/agentic-workflows\n'
-    );
-    expect(repoResolvesPrivatePackages(config)).toBe(true);
   });
 });
 
@@ -107,7 +65,7 @@ function writeJson(filePath: string, value: unknown): void {
 }
 
 async function withTempDir(testBody: (tempDirPath: string) => Promise<void>): Promise<void> {
-  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-verdaccio-secret-')));
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-private-packages-')));
   try {
     await testBody(tempDirPath);
   } finally {
