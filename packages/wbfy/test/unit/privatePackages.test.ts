@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { repoResolvesPrivatePackages } from '../../src/github/verdaccioSecret.js';
+import { repoResolvesPrivatePackages } from '../../src/utils/privatePackages.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 test('detects no private-package usage in a plain repository', async () => {

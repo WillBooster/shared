@@ -34,7 +34,7 @@ export function hasGitHubToken(owner: string): boolean {
   return !!getGitHubToken(owner);
 }
 
-export function getGitHubToken(owner?: string): string | undefined {
+function getGitHubToken(owner?: string): string | undefined {
   // Case-insensitive on purpose: a noncanonically cased remote (e.g. github.com/willboosterlab/…)
   // must still select the organization's own PAT — falling through to the generic branch would
   // prefer the OTHER organization's PAT, which cannot read this organization's private

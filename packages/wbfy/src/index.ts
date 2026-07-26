@@ -52,7 +52,6 @@ import {
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
 import { setupGitHubSettings } from './github/settings.js';
-import { setupVerdaccioTokenSecret } from './github/verdaccioSecret.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
@@ -312,7 +311,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       setupLabels(rootConfig),
       setupRepositoryRulesets(rootConfig),
       setupGitHubSettings(rootConfig),
-      setupVerdaccioTokenSecret(rootConfig),
       // Git hooks are repository-level state: when the CLI entry is a child workspace
       // (`wbfy <repo>/apps/<app>`), installing Lefthook there would delete the child's .husky,
       // write a child lefthook.yml, and unset the ENCLOSING repository's core.hooksPath.
