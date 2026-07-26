@@ -92,6 +92,30 @@ describe('project', () => {
     }
   });
 
+  it('keeps the workspace root packageManager authoritative for the runtime detection', async () => {
+    // A child workspace declaring its own non-Bun packageManager must not override the Bun root:
+    // Project.usesBunPackageManager prefers the root declaration, and `wb run` must agree.
+    const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-bun-workspace-'));
+    try {
+      await fs.promises.mkdir(path.join(dirPath, '.git'));
+      await fs.promises.writeFile(
+        path.join(dirPath, 'package.json'),
+        JSON.stringify({ name: 'root', packageManager: 'bun@1.3.14', workspaces: ['packages/*'] })
+      );
+      await fs.promises.writeFile(path.join(dirPath, 'bun.lock'), '');
+      const childDirPath = path.join(dirPath, 'packages', 'child');
+      await fs.promises.mkdir(childDirPath, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(childDirPath, 'package.json'),
+        JSON.stringify({ name: 'child', packageManager: 'yarn@4.17.0' })
+      );
+
+      expect(usesBunRuntime(childDirPath)).toBe(true);
+    } finally {
+      await fs.promises.rm(dirPath, { recursive: true, force: true });
+    }
+  });
+
   it('uses oxlint when declared', async () => {
     const dirPath = path.join(tempDir, 'app');
     await initializeProjectDirectory(dirPath);

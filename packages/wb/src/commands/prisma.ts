@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
@@ -305,8 +306,10 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
     const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv, ['db-url-or-path', 'restored']);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db studio', allProjects)) {
+      // Resolved against the project directory because prismaScripts.studio resolves a relative
+      // path against the CLI process directory, which differs for workspace descendants.
       const dbUrlOrPath = argv.restored
-        ? `${getPrismaDatabaseDirName(project)}/restored.sqlite3`
+        ? path.resolve(project.dirPath, getPrismaDatabaseDirName(project), 'restored.sqlite3')
         : argv.dbUrlOrPath?.toString();
       await runWithSpawn(
         withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions)),

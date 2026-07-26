@@ -2,15 +2,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function usesBunRuntime(dirPath: string): boolean {
+  // Mirrors Project.usesBunPackageManager: the outermost packageManager declaration (the
+  // workspace root's) takes precedence over nested ones, and an explicit non-Bun declaration
+  // wins over the directory markers. The walk therefore collects signals up to the repository
+  // root instead of deciding at the first hit, so a child workspace cannot override the root.
+  let outermostPackageManager: unknown;
+  let hasSomeBunDirectoryMarker = false;
   for (let currentPath = path.resolve(dirPath); ; currentPath = path.dirname(currentPath)) {
     const packageManager = readPackageManagerField(path.join(currentPath, 'package.json'));
-    if (isExplicitNonBunPackageManager(packageManager)) return false;
-    if (hasBunDirectoryMarker(currentPath) || isBunPackageManager(packageManager)) {
-      return true;
+    if (packageManager !== undefined) outermostPackageManager = packageManager;
+    hasSomeBunDirectoryMarker ||= hasBunDirectoryMarker(currentPath);
+    if (fs.existsSync(path.join(currentPath, '.git')) || path.dirname(currentPath) === currentPath) {
+      if (isExplicitNonBunPackageManager(outermostPackageManager)) return false;
+      return hasSomeBunDirectoryMarker || isBunPackageManager(outermostPackageManager);
     }
-    if (fs.existsSync(path.join(currentPath, '.git'))) return false;
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) return false;
   }
 }
 

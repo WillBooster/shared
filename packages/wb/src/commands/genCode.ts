@@ -82,7 +82,10 @@ export function getGenCodeScripts(project: Project): string[] {
   // that @blitzjs/next's type declarations re-export; install scripts do not run it
   // (enableScripts: false). Never under Bun: the blitz CLI patches the installed next package in
   // place, which must not happen in Bun's shared global store (Bun-era Blitz repositories generate
-  // the manifest with their own scripts instead).
+  // the manifest with their own scripts instead). On a fresh install `blitz codegen` also
+  // generates the Prisma client itself, making the PRISMA generate step below redundant once —
+  // keeping both is deliberate: after schema-only changes blitz's already-generated guard skips
+  // its internal generate, so the explicit step is still what regenerates the client.
   if (!project.usesBunPackageManager && project.hasOwnDependency('blitz') && project.hasSourceCode) {
     scripts.push('YARN blitz codegen');
   }

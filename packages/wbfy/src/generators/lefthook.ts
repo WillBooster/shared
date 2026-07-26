@@ -408,10 +408,10 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   }
   // Blitz repositories deliberately get the same wb-driven prisma commands as everyone else:
   // the blitz CLI's codegen patches the installed next package in place, which must never run
-  // under Bun's shared global store (blitz repos migrated to bun run without the blitz CLI, and
-  // yarn-era ones regenerate the route manifest via `blitz dev` anyway). wb routes `wb prisma`
-  // through the blitz CLI only on wb <= 15 yarn-era repos, where in-place patching was already
-  // the status quo.
+  // under Bun's shared global store. Yarn-era Blitz repos get their route manifest from
+  // `wb gen-code`'s `blitz codegen` step, and current wb routes only `wb prisma seed` through
+  // the blitz CLI, only for non-Bun repos (see packages/wb/src/scripts/prismaScripts.ts); the
+  // post-merge hooks stay wb-driven because `prisma deploy`/`generate` need no blitz loader.
   if (config.depending.prisma) {
     postMergeCommands.push(
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/wb prisma deploy"`,
