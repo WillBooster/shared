@@ -35,6 +35,21 @@ const semanticPullRequestAction = 'amannn/action-semantic-pull-request@45b9ed7cf
 // v3.0.3; deploys are network-heavy and benefit from retries with a long timeout.
 const retryAction = 'nick-fields/retry@dd56f1ca8ca991e2385c18ab6dd36ea7f9fdb55f';
 
+/**
+ * Job-level env that turns the Takumi Guard install path on, mirroring the reusable workflows.
+ *
+ * `secrets` is unavailable in a step-level `if:`, so the presence of the token is exposed as a
+ * non-secret signal; an unset secret expands to `false` and leaves every Guard step skipped, which
+ * is what keeps the generated workflows runnable in a repository that never registers the secret.
+ * TAKUMI_GUARD_TOKEN itself is defined-but-EMPTY job-wide so the `${TAKUMI_GUARD_TOKEN}` reference
+ * in the generated .npmrc still expands (to '') in the steps that deliberately run without the
+ * token; a reference to an undefined variable is what breaks an install, an empty one is fine.
+ */
+const guardJobEnv: Record<string, string> = {
+  HAS_TAKUMI_GUARD_TOKEN: '${{ !!secrets.TAKUMI_GUARD_TOKEN }}',
+  TAKUMI_GUARD_TOKEN: '',
+};
+
 interface Step {
   name?: string;
   id?: string;
@@ -122,6 +137,83 @@ function removeTrailingSpaces(text: string): string {
   return text.replaceAll(/[ \t]+$/gm, '');
 }
 
+/**
+ * The install sequence every generated workflow shares: a plain `bun install`, hardened into the
+ * reusable workflows' three-step dance when the repository registers a TAKUMI_GUARD_TOKEN secret.
+ *
+ * Takumi Guard (https://flatt.tech/takumi/features/guard) is a registry proxy that blocks
+ * known-malicious packages. Routing the DEFAULT registry through it is what protects the install,
+ * and the token authenticates that proxy — so the token has to be present while dependencies are
+ * resolved, which is exactly when a compromised dependency's lifecycle script would run. Hence the
+ * split: resolve and download with `--ignore-scripts` and the token, then replay the skipped
+ * lifecycle scripts in a second install that has no token (every package is already cached, and
+ * Guard serves anonymously anyway). Only bun is generated here, and bun reads .npmrc, so no
+ * package-manager branching is needed.
+ */
+function buildInstallSteps(): Step[] {
+  return [
+    {
+      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
+      name: 'Generate .npmrc for Takumi Guard',
+      // The token is written as a literal `${TAKUMI_GUARD_TOKEN}` reference that bun expands at
+      // install time, so the secret itself never lands in a file. The managed lines are stripped
+      // from an existing .npmrc first: a repository outside the organizations may legitimately
+      // commit one (scope mappings for another registry), and dropping only these two lines keeps
+      // the rest of it in effect. Replacing the file with `mv` rather than appending in place stops
+      // a committed symlink from redirecting the write into, say, a persistent home npmrc.
+      run: `set -euo pipefail
+NPMRC="$(mktemp "$RUNNER_TEMP/npmrc.XXXXXX")"
+if [[ -e .npmrc ]]; then
+  grep -vE '^registry=|^//npm\\.flatt\\.tech/:_authToken' .npmrc > "$NPMRC" || true
+fi
+echo 'registry=https://npm.flatt.tech/' >> "$NPMRC"
+echo '//npm.flatt.tech/:_authToken=\${TAKUMI_GUARD_TOKEN}' >> "$NPMRC"
+rm -f .npmrc
+mv "$NPMRC" .npmrc`,
+    },
+    {
+      name: 'Install dependencies',
+      run: `set -euo pipefail
+if [[ "$HAS_TAKUMI_GUARD_TOKEN" == "true" ]]; then
+  bun install --ignore-scripts
+else
+  bun install
+fi`,
+      // Step-scoped: a job-level token would be readable by every dependency lifecycle script the
+      // tokenless replay below runs.
+      env: { TAKUMI_GUARD_TOKEN: '${{ secrets.TAKUMI_GUARD_TOKEN }}' },
+    },
+    {
+      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
+      name: 'Run dependency lifecycle scripts without registry credentials',
+      // A repeated `bun install` is a no-op that replays nothing, so node_modules has to go first.
+      // A failing repository postinstall is tolerated exactly as the reusable workflows tolerate
+      // it: the token-free environment also lacks FNOX_AGE_KEY, so a postinstall that wants
+      // decrypted secrets cannot succeed here and must not take the whole job down.
+      run: `set -euo pipefail
+rm -rf node_modules
+bun install || {
+  echo "::warning::Lifecycle scripts failed; completing the install without them"
+  rm -rf node_modules
+  bun install --ignore-scripts
+}`,
+    },
+    {
+      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
+      name: 'Remove the generated .npmrc',
+      // Nothing after the install needs the proxy, and leaving it in place would break the one
+      // thing Guard refuses to serve: it answers `npm publish` with 405, so a release workflow
+      // whose package lacks an explicit publishConfig.registry would fail to publish.
+      run: `set -euo pipefail
+if git ls-files --error-unmatch -- .npmrc > /dev/null 2>&1; then
+  git checkout -- .npmrc
+else
+  rm -f .npmrc
+fi`,
+    },
+  ];
+}
+
 function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConfig[]): Workflow {
   const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
   // Playwright may be declared only in workspace packages; `wb test-on-ci` runs every declaring
@@ -142,7 +234,7 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
   const steps: Step[] = [
     { uses: checkoutAction },
     { uses: miseAction },
-    { run: 'bun install' },
+    ...buildInstallSteps(),
     ...(playwrightDirPaths.length > 0
       ? ([
           ...playwrightDirPaths.map(
@@ -223,7 +315,7 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
     jobs: {
       test: {
         'runs-on': 'ubuntu-latest',
-        env: { FORCE_COLOR: '3', WB_ENV: 'test' },
+        env: { FORCE_COLOR: '3', WB_ENV: 'test', ...guardJobEnv },
         steps,
       },
     },
@@ -254,7 +346,7 @@ function buildDeployWorkflow(
     jobs: {
       deploy: {
         'runs-on': 'ubuntu-latest',
-        env: { WB_ENV: environment },
+        env: { WB_ENV: environment, ...guardJobEnv },
         steps: [
           // fetch-depth 0 so `git describe` sees the tags WB_VERSION is derived from.
           { uses: checkoutAction, with: { 'fetch-depth': 0 } },
@@ -263,7 +355,7 @@ function buildDeployWorkflow(
             name: 'Set WB_VERSION',
             run: 'set -euo pipefail\nWB_VERSION=$(git describe --always --tags)\necho "WB_VERSION=$WB_VERSION" >> "$GITHUB_ENV"',
           },
-          { run: 'bun install' },
+          ...buildInstallSteps(),
           {
             name: 'Deploy',
             uses: retryAction,
@@ -303,11 +395,12 @@ function buildReleaseWorkflow(config: PackageConfig, hasProductionDeployWorkflow
     jobs: {
       release: {
         'runs-on': 'ubuntu-latest',
+        env: { ...guardJobEnv },
         steps: [
           // fetch-depth 0: semantic-release reads the full history to compute the next version.
           { uses: checkoutAction, with: { 'fetch-depth': 0 } },
           { uses: miseAction },
-          { run: 'bun install' },
+          ...buildInstallSteps(),
           ...(hasProductionDeployWorkflow
             ? [
                 {
