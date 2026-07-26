@@ -4,7 +4,10 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { findUnmigratableYarnSettings, readYarnrcReleaseAgeSettings } from '../../src/generators/removeYarnFiles.js';
+import {
+  findUnmigratableYarnSettings,
+  readYarnrcMinimumReleaseAgeSeconds,
+} from '../../src/generators/removeYarnFiles.js';
 
 // The .yarnrc.yml shape the org standard (yarn-plugin-auto-install era) rolls out to apps.
 const orgStandardYarnrc = `approvedGitRepositories:
@@ -128,37 +131,24 @@ test('detects patch: dependencies declared in workspace manifests, not only the 
   });
 });
 
-test('reads release-age settings, dropping globs and descriptors Bun would match literally', async () => {
+test('reads the release-age gate and ignores npmPreapprovedPackages (excludes are org policy)', async () => {
   await withTempDir(async (tempDirPath) => {
     fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), orgStandardYarnrc);
-    // The glob, the versioned descriptor, and the TOML-unsafe name are dropped: only plain
-    // (optionally scoped) npm package names are usable Bun exclude entries.
-    // Scoped names may start any part with `_` and unscoped names may contain `_`
-    // (mirrors validate-npm-package-name).
-    expect(readYarnrcReleaseAgeSettings(tempDirPath)).toEqual({
-      minimumReleaseAgeSeconds: 432_000,
-      minimumReleaseAgeExcludes: [
-        '@scope/_private',
-        '@_scope/pkg',
-        'string_decoder',
-        'one-way-git-sync',
-        'my-repo-specific-package',
-      ],
-    });
+    expect(readYarnrcMinimumReleaseAgeSeconds(tempDirPath)).toBe(432_000);
   });
 });
 
 test('parses Yarn duration variants (bare numbers mean minutes)', async () => {
   await withTempDir(async (tempDirPath) => {
     fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), 'npmMinimalAgeGate: 36h\n');
-    expect(readYarnrcReleaseAgeSettings(tempDirPath).minimumReleaseAgeSeconds).toBe(129_600);
+    expect(readYarnrcMinimumReleaseAgeSeconds(tempDirPath)).toBe(129_600);
 
     fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), 'npmMinimalAgeGate: 30\n');
-    expect(readYarnrcReleaseAgeSettings(tempDirPath).minimumReleaseAgeSeconds).toBe(1800);
+    expect(readYarnrcMinimumReleaseAgeSeconds(tempDirPath)).toBe(1800);
 
     // Fractional seconds round up so a tiny gate stays a gate instead of becoming 0 (disabled).
     fs.writeFileSync(path.join(tempDirPath, '.yarnrc.yml'), 'npmMinimalAgeGate: 1ms\n');
-    expect(readYarnrcReleaseAgeSettings(tempDirPath).minimumReleaseAgeSeconds).toBe(1);
+    expect(readYarnrcMinimumReleaseAgeSeconds(tempDirPath)).toBe(1);
   });
 });
 
@@ -171,9 +161,9 @@ test('blocks on a negative npmMinimalAgeGate, which Bun would reject', async () 
   });
 });
 
-test('returns empty settings without a .yarnrc.yml', async () => {
+test('returns undefined without a .yarnrc.yml', async () => {
   await withTempDir(async (tempDirPath) => {
-    expect(readYarnrcReleaseAgeSettings(tempDirPath)).toEqual({ minimumReleaseAgeExcludes: [] });
+    expect(readYarnrcMinimumReleaseAgeSeconds(tempDirPath)).toBeUndefined();
   });
 });
 

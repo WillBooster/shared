@@ -5,7 +5,6 @@ import { parse } from 'smol-toml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import { isLiteralNpmPackageName, type YarnReleaseAgeSettings } from './removeYarnFiles.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { doesContainJava } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -17,10 +16,6 @@ interface BunfigToml {
     minimumReleaseAge?: number;
   };
 }
-
-// Everything after this marker inside minimumReleaseAgeExcludes is repository policy (e.g.
-// migrated from .yarnrc.yml npmPreapprovedPackages) and is preserved across regenerations.
-const repoSpecificExcludesMarker = '    # ---------- repository-specific entries ----------';
 
 export const bunMinimumReleaseAgeSeconds = 432_000;
 
@@ -175,12 +170,12 @@ export function readBunLinker(rootDirPath: string): BunLinker | undefined {
 export async function generateBunfigToml(
   config: PackageConfig,
   linker: BunLinker = 'isolated',
-  yarnReleaseAgeSettings?: YarnReleaseAgeSettings
+  yarnMinimumReleaseAgeSeconds?: number
 ): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, linker, config, yarnReleaseAgeSettings);
+    const content = newContent(existingContent, linker, config, yarnMinimumReleaseAgeSeconds);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
@@ -189,7 +184,7 @@ const newContent = (
   existingContent: string | undefined,
   linker: BunLinker,
   config: PackageConfig,
-  yarnReleaseAgeSettings?: YarnReleaseAgeSettings
+  yarnMinimumReleaseAgeSeconds?: number
 ): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // Only Java repositories still depend on @willbooster/prettier-config (wbfy installs it with
@@ -199,35 +194,15 @@ const newContent = (
   const managedExcludes = doesContainJava(config)
     ? bunMinimumReleaseAgeExcludes
     : bunMinimumReleaseAgeExcludes.filter((packageName) => packageName !== '@willbooster/prettier-config');
-  // The repository's own release-age policy must survive every run, not just the migration one:
-  // repo-specific npmPreapprovedPackages entries (pre-filtered to literal names — Bun matches
-  // these literally) AND the entries under the repository-specific marker of the existing
-  // bunfig.toml are merged after the managed list, and a custom npmMinimalAgeGate (or an
-  // already-customized minimumReleaseAge) is carried over. Only marker-tagged entries count as
-  // repo-specific — provenance stays explicit in the file itself, so entries an older wbfy
-  // version managed and later retired can never masquerade as repository policy. An explicit
-  // repository preapproval that ALSO appears in the managed list is emitted once, under the
-  // marker: the effective exclusion set is identical, but the repository-policy provenance
-  // survives even if wbfy later retires that managed entry.
-  const repoSpecificExcludes = [
-    ...new Set([
-      ...(yarnReleaseAgeSettings?.minimumReleaseAgeExcludes ?? []),
-      ...readRepoSpecificExcludes(existingContent),
-    ]),
-  ].toSorted();
-  const repoSpecificExcludeSet = new Set(repoSpecificExcludes);
-  const minimumReleaseAgeExcludes = [
-    ...managedExcludes
-      .filter((packageName) => !repoSpecificExcludeSet.has(packageName))
-      .map((packageName) => `    "${packageName}",`),
-    ...(repoSpecificExcludes.length > 0
-      ? [repoSpecificExcludesMarker, ...repoSpecificExcludes.map((packageName) => `    "${packageName}",`)]
-      : []),
-  ];
+  // minimumReleaseAgeExcludes is org policy, never repository policy: every entry comes from
+  // bunMinimumReleaseAgeExcludes, and any hand-added (or previously migrated) repository-specific
+  // entry is dropped on regeneration. Dropping is fail-safe — an uncovered package becomes
+  // age-gated and surfaces at install time instead of weakening the gate. A repository that
+  // genuinely needs an exclusion must add it to bunMinimumReleaseAgeExcludes in wbfy so all
+  // repositories share the same vetted list. The custom npmMinimalAgeGate (or an
+  // already-customized minimumReleaseAge) is still carried over — only the excludes are locked.
   const minimumReleaseAgeSeconds =
-    yarnReleaseAgeSettings?.minimumReleaseAgeSeconds ??
-    bunfigToml?.install?.minimumReleaseAge ??
-    bunMinimumReleaseAgeSeconds;
+    yarnMinimumReleaseAgeSeconds ?? bunfigToml?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
@@ -246,35 +221,14 @@ ${
     : 'linker = "hoisted"'
 }
 minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
+# Managed by wbfy — repository-specific entries are prohibited and removed on every run.
+# To exclude a package, add it to bunMinimumReleaseAgeExcludes in WillBooster/shared-2
+# (packages/wbfy/src/generators/bunfig.ts) so every repository shares the same vetted list.
 minimumReleaseAgeExcludes = [
-${minimumReleaseAgeExcludes.join('\n')}
+${managedExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
 ]
 `;
 };
-
-function readRepoSpecificExcludes(content: string | undefined): string[] {
-  if (!content) return [];
-  const lines = content.split('\n');
-  const markerIndex = lines.findIndex((line) => line.trim() === repoSpecificExcludesMarker.trim());
-  if (markerIndex === -1) return [];
-  const excludes: string[] = [];
-  for (const line of lines.slice(markerIndex + 1)) {
-    const trimmed = line.trim();
-    // The section ends at the array's closing bracket; hand-added comments and blank lines
-    // between entries must not truncate the repository-policy list (though only the entries
-    // themselves survive regeneration).
-    if (trimmed.startsWith(']')) break;
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    // wbfy writes one double-quoted entry per line. A line this parser cannot read could hide
-    // further entries, so stop instead of guessing.
-    const entry = /^"([^"]+)",?$/u.exec(trimmed)?.[1];
-    if (!entry) break;
-    // Hand-edited entries pass the same strict name gate as migrated ones: anything else would
-    // be dead configuration for Bun and could even break the generated TOML when interpolated.
-    if (isLiteralNpmPackageName(entry)) excludes.push(entry);
-  }
-  return excludes;
-}
 
 /**
  * Preserve the project's `[test]` sections (e.g. preload scripts swapping a Cloudflare D1 client
