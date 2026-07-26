@@ -18,6 +18,8 @@ import type { PackageJson } from 'type-fest';
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
 import { selectFnoxSourcedKeys } from './utils/envSources.js';
+import { hasBunDirectoryMarker, isBunPackageManager } from './utils/runtime.js';
+import { clearTestStructureCache } from './utils/testStructure.js';
 import { findWranglerConfigPath } from './utils/wrangler.js';
 
 /** The file `wrangler types` writes by default. */
@@ -60,29 +62,10 @@ export class Project {
   // `bun install` with `yarn prisma ...` in mise-pinned repos whose bun.lock is gitignored.
   @memoizeOne
   get usesBunPackageManager(): boolean {
-    if (this.hasBunToolVersion()) return true;
-    if (this.hasBunLockfile()) return true;
-    return this.hasBunPackageManager();
-  }
-
-  private hasBunToolVersion(): boolean {
-    // wbfy migrates .tool-versions into mise.toml, so a mise-pinned bun must count as well:
-    // repos that gitignore bun.lock and have no packageManager field rely on the tool manifest.
-    if (testFileContent(path.join(this.rootDirPath, '.tool-versions'), /(^|\n)bun\s/)) return true;
-    return ['mise.toml', '.mise.toml'].some((fileName) =>
-      testFileContent(path.join(this.rootDirPath, fileName), /^\s*(?:"bun"|bun)\s*=/m)
-    );
-  }
-
-  private hasBunLockfile(): boolean {
     // Some repositories rely on the lockfile or packageManager field instead of mise.
     // Docker optimization must follow the target project, not the runtime that launched wb.
-    return ['bun.lock', 'bun.lockb'].some((fileName) => fs.existsSync(path.join(this.rootDirPath, fileName)));
-  }
-
-  private hasBunPackageManager(): boolean {
-    const packageManager = this.rootPackageJson?.packageManager ?? this.packageJson.packageManager;
-    return typeof packageManager === 'string' && packageManager.startsWith('bun@');
+    if (hasBunDirectoryMarker(this.rootDirPath)) return true;
+    return isBunPackageManager(this.rootPackageJson?.packageManager ?? this.packageJson.packageManager);
   }
 
   @memoizeOne
@@ -122,6 +105,12 @@ export class Project {
   @memoizeOne
   get hasSourceCode(): boolean {
     return fs.existsSync(path.join(this.dirPath, 'src'));
+  }
+
+  /** A workspace root without sources of its own runs neither lint nor typecheck commands. */
+  @memoizeOne
+  get hasOwnSourceCode(): boolean {
+    return !this.packageJson.workspaces || this.hasSourceCode;
   }
 
   @memoizeOne
@@ -167,22 +156,8 @@ export class Project {
       return this.envCache;
     }
 
-    const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(this.argv, this.dirPath, {
-      // completeAndValidateWbEnv below fills an unset WB_ENV with the same fallback, so expanding
-      // ${WB_ENV} references against it keeps the pair consistent.
-      expandFallbackWbEnv: true,
-    });
-    if (!shouldSuppressEnvironmentOutput(this.argv)) {
-      for (const [envPath, names] of envPathAndLoadedEnvVarNamePairs) {
-        console.info(`Loaded ${names.length} environment variables from ${envPath}`);
-      }
-    }
-    // Spreading envVars last is safe for exported-variable precedence: readEnvironmentVariables
-    // already excludes keys present in process.env from .env/fnox sources (returning a key that
-    // exists in process.env only for deliberate forced-mode overrides). Mise values that
-    // differ from the ambient activation are deliberately kept so the requested cascade profile
-    // (e.g. `--cascade-env=test`) wins over a stale `mise activate` environment.
-    this.envCache = { ...process.env, ...envVars };
+    const [mergedEnv, envPathAndLoadedEnvVarNamePairs] = readAndMergeEnvironmentVariables(this.argv, this.dirPath);
+    this.envCache = mergedEnv;
     // `mise env` is excluded: it reports tool-activation output (e.g. PATH) even in repos that
     // declare no environment variables at all, which must not trigger the CI strictness below.
     this.completeAndValidateWbEnv(envPathAndLoadedEnvVarNamePairs.some(([source]) => !source.startsWith('mise env')));
@@ -439,11 +414,10 @@ export class Project {
 
   @memoizeOne
   get dockerPackageJson(): PackageJson {
-    return path.dirname(this.findFile('Dockerfile')) === this.dirPath
+    const dockerfileDirPath = path.dirname(this.findFile('Dockerfile'));
+    return dockerfileDirPath === this.dirPath
       ? this.packageJson
-      : (JSON.parse(
-          fs.readFileSync(path.join(path.dirname(this.findFile('Dockerfile')), 'package.json'), 'utf8')
-        ) as PackageJson);
+      : (JSON.parse(fs.readFileSync(path.join(dockerfileDirPath, 'package.json'), 'utf8')) as PackageJson);
   }
 
   @memoizeOne
@@ -520,17 +494,90 @@ export function getAbsoluteFileDatabaseUrlPath(
   return baseDirPath ? path.resolve(baseDirPath, dbPath) : undefined;
 }
 
+/**
+ * Reads the project's env sources and merges them over process.env, reporting each loaded source.
+ * Shared by Project.env and `wb run`'s standalone (manifest-less) environment loading.
+ */
+export function readAndMergeEnvironmentVariables(
+  argv: EnvReaderOptions,
+  dirPath: string
+): [Record<string, string | undefined>, [string, string[]][]] {
+  const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(argv, dirPath, {
+    // Callers fill an unset WB_ENV with the same fallback afterwards, so expanding ${WB_ENV}
+    // references against it keeps the pair consistent.
+    expandFallbackWbEnv: true,
+  });
+  if (!shouldSuppressEnvironmentOutput(argv)) {
+    for (const [envPath, names] of envPathAndLoadedEnvVarNamePairs) {
+      console.info(`Loaded ${names.length} environment variables from ${envPath}`);
+    }
+  }
+  // Spreading envVars last is safe for exported-variable precedence: readEnvironmentVariables
+  // already excludes keys present in process.env from .env/fnox sources (returning a key that
+  // exists in process.env only for deliberate forced-mode overrides). Mise values that
+  // differ from the ambient activation are deliberately kept so the requested cascade profile
+  // (e.g. `--cascade-env=test`) wins over a stale `mise activate` environment.
+  return [{ ...process.env, ...envVars }, envPathAndLoadedEnvVarNamePairs];
+}
+
 export interface FoundProjects {
   root: Project;
   self: Project;
   descendants: Project[];
 }
 
+// Project construction re-reads manifests and env sources, and `wb verify` composes commands
+// (lint, typecheck, test) that each rebuild the graph — so instances are shared per
+// (directory, loadEnv, env-relevant argv) within one invocation. Sharing is safe because a
+// Project is immutable except for env mutations (e.g. `project.env.PORT ||= ...`), which callers
+// deliberately rely on staying visible to later steps. The caches live for the whole process and
+// never observe later filesystem mutations, so code that rewrites a project directory and needs a
+// fresh view (today only tests) must call clearProjectCaches first.
+const selfProjectCache = new Map<string, Project>();
+const descendantProjectsCache = new Map<string, Promise<Project[]>>();
+
+export function clearProjectCaches(): void {
+  selfProjectCache.clear();
+  descendantProjectsCache.clear();
+  clearTestStructureCache();
+}
+
+function buildProjectCacheKey(argv: EnvReaderOptions, loadEnv: boolean, dirPath: string): string {
+  // Only the inputs a Project actually reads participate: the env cascade selection
+  // (readEnvironmentVariables / resolveFallbackWbEnv / completeAndValidateWbEnv) and the output
+  // switches (shouldSuppressEnvironmentOutput, buildCommand's --verbose). The ambient
+  // WB_ENV / NODE_ENV / CI values feed the same cascade selection and are mutated mid-run by
+  // commands such as `wb db reset` (which forces WB_ENV=test and re-resolves projects), so they
+  // must participate too or the second resolution would reuse a Project with the wrong env.
+  const { autoCascadeEnv, cascadeEnv, cascadeNodeEnv, commandDefaultWbEnv, quietEnv, verbose } = argv;
+  const { silent } = argv as { silent?: boolean };
+  return JSON.stringify([
+    path.resolve(dirPath),
+    loadEnv,
+    autoCascadeEnv,
+    cascadeEnv,
+    cascadeNodeEnv,
+    commandDefaultWbEnv,
+    quietEnv,
+    verbose,
+    silent,
+    process.env.WB_ENV,
+    process.env.NODE_ENV,
+    process.env.CI,
+  ]);
+}
+
 export function findSelfProject(argv: EnvReaderOptions, loadEnv = true, dirPath?: string): Project | undefined {
   dirPath ??= process.cwd();
   if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
 
-  return new Project(dirPath, argv, loadEnv);
+  const cacheKey = buildProjectCacheKey(argv, loadEnv, dirPath);
+  let project = selfProjectCache.get(cacheKey);
+  if (!project) {
+    project = new Project(dirPath, argv, loadEnv);
+    selfProjectCache.set(cacheKey, project);
+  }
+  return project;
 }
 
 export function isProjectEnvironment(project: Project, name: string): boolean {
@@ -544,14 +591,17 @@ export async function findDescendantProjects(
 ): Promise<FoundProjects | undefined> {
   const rootAndSelfProjects = findRootAndSelfProjects(argv, loadEnv, dirPath);
   if (!rootAndSelfProjects) return;
+  if (rootAndSelfProjects.root !== rootAndSelfProjects.self) {
+    return { ...rootAndSelfProjects, descendants: [rootAndSelfProjects.self] };
+  }
 
-  return {
-    ...rootAndSelfProjects,
-    descendants:
-      rootAndSelfProjects.root === rootAndSelfProjects.self
-        ? await getAllDescendantProjects(argv, rootAndSelfProjects.root, loadEnv)
-        : [rootAndSelfProjects.self],
-  };
+  const cacheKey = buildProjectCacheKey(argv, loadEnv, rootAndSelfProjects.root.dirPath);
+  let descendants = descendantProjectsCache.get(cacheKey);
+  if (!descendants) {
+    descendants = getAllDescendantProjects(argv, rootAndSelfProjects.root, loadEnv);
+    descendantProjectsCache.set(cacheKey, descendants);
+  }
+  return { ...rootAndSelfProjects, descendants: await descendants };
 }
 
 export function findRootAndSelfProjects(
@@ -560,25 +610,15 @@ export function findRootAndSelfProjects(
   dirPath?: string
 ): Omit<FoundProjects, 'descendants'> | undefined {
   dirPath ??= process.cwd();
-  if (!fs.existsSync(path.join(dirPath, 'package.json'))) return;
+  const thisProject = findSelfProject(argv, loadEnv, dirPath);
+  if (!thisProject) return;
 
-  const thisProject = new Project(dirPath, argv, loadEnv);
   let rootProject = thisProject;
   if (!thisProject.packageJson.workspaces && path.dirname(dirPath).endsWith('/packages')) {
     const rootDirPath = path.resolve(dirPath, '..', '..');
-    if (fs.existsSync(path.join(rootDirPath, 'package.json'))) {
-      rootProject = new Project(rootDirPath, argv, loadEnv);
-    }
+    rootProject = findSelfProject(argv, loadEnv, rootDirPath) ?? thisProject;
   }
   return { root: rootProject, self: thisProject };
-}
-
-function testFileContent(filePath: string, pattern: RegExp): boolean {
-  try {
-    return pattern.test(fs.readFileSync(filePath, 'utf8'));
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -594,7 +634,15 @@ async function getAllDescendantProjects(
   loadEnv: boolean
 ): Promise<Project[]> {
   const workspaceDirPaths = await findWorkspacePackageDirs(rootProject);
-  return [rootProject, ...workspaceDirPaths.map((workspaceDirPath) => new Project(workspaceDirPath, argv, loadEnv))];
+  return [
+    rootProject,
+    ...workspaceDirPaths.map(
+      // The fallback keeps a workspace whose manifest vanished after the glob (findSelfProject
+      // would drop it) discovered, matching the long-standing direct construction.
+      (workspaceDirPath) =>
+        findSelfProject(argv, loadEnv, workspaceDirPath) ?? new Project(workspaceDirPath, argv, loadEnv)
+    ),
+  ];
 }
 
 /**

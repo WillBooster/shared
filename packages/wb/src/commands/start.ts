@@ -5,16 +5,10 @@ import { findDescendantProjects } from '../project.js';
 import { normalizeArgs, scriptOptionsBuilder } from '../scripts/builder.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
 import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
-import { nextScripts } from '../scripts/execution/nextScripts.js';
 import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
-import { vinextScripts } from '../scripts/execution/vinextScripts.js';
-import { viteScripts } from '../scripts/execution/viteScripts.js';
-import { workersScripts } from '../scripts/execution/workersScripts.js';
+import { dependsOnHttpServerPackage, selectFrameworkScripts } from '../scripts/execution/selectScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
-import { findWranglerConfigPath } from '../utils/wrangler.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-
-import { httpServerPackages } from './httpServerPackages.js';
 
 const builder = {
   ...scriptOptionsBuilder,
@@ -45,26 +39,18 @@ export const startCommand: CommandModule<unknown, InferredOptionTypes<typeof bui
     for (const project of projects.descendants) {
       const deps = project.packageJson.dependencies ?? {};
       const devDeps = project.packageJson.devDependencies ?? {};
-      let scripts: BaseScripts;
-      if (deps.vinext || devDeps.vinext) {
-        // vinext apps also depend on next, so this check must come first.
-        scripts = vinextScripts;
-      } else if (deps.next) {
-        scripts = nextScripts;
-      } else if (devDeps.vite) {
-        scripts = viteScripts;
-      } else if (findWranglerConfigPath(project)) {
-        // Plain Cloudflare Workers app; vinext apps are detected above.
-        scripts = workersScripts;
-      } else if (
-        (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) ||
-        (project.hasDockerfile && /EXPOSE\s+8080/.test(project.dockerfile))
-      ) {
-        scripts = httpServerScripts;
-      } else if (deps['build-ts'] || devDeps['build-ts']) {
-        scripts = plainAppScripts;
-      } else {
-        continue;
+      let scripts: BaseScripts | undefined = selectFrameworkScripts(project);
+      if (!scripts) {
+        if (
+          dependsOnHttpServerPackage(project) ||
+          (project.hasDockerfile && /EXPOSE\s+8080/.test(project.dockerfile))
+        ) {
+          scripts = httpServerScripts;
+        } else if (deps['build-ts'] || devDeps['build-ts']) {
+          scripts = plainAppScripts;
+        } else {
+          continue;
+        }
       }
       console.info(`Running "start" for ${project.name} ...`);
 

@@ -2,11 +2,11 @@ import { withRetry } from '@willbooster/shared-lib/src';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import { getOctokit, gitHubUtil, hasGitHubToken } from '../utils/githubUtil.js';
+import { getOctokit, hasGitHubToken, isGitHubPermissionOrVisibilityError } from '../utils/githubUtil.js';
 
 export async function setupGitHubSettings(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupGitHubSettings', async () => {
-    const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
+    const { repoAuthor: owner, repoName: repo } = config;
     if (!owner || !repo) return;
     if (owner !== 'WillBooster' && owner !== 'WillBoosterLab') return;
     if (!hasGitHubToken(owner)) return;
@@ -44,9 +44,4 @@ export async function setupGitHubSettings(config: PackageConfig): Promise<void> 
       console.warn('Skip setupGitHubSettings due to:', (error as Error | undefined)?.stack ?? error);
     }
   });
-}
-
-function isGitHubPermissionOrVisibilityError(error: unknown): boolean {
-  if (!error || typeof error !== 'object' || !('status' in error)) return false;
-  return error.status === 401 || error.status === 403 || error.status === 404;
 }

@@ -14,6 +14,12 @@ class GitHubUtil {
 }
 export const gitHubUtil = new GitHubUtil();
 
+export function isGitHubPermissionOrVisibilityError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const status = (error as { status?: number }).status;
+  return status === 401 || status === 403 || status === 404;
+}
+
 const octokitCache = new Map<string, Octokit>();
 
 export function getOctokit(owner?: string): Octokit {

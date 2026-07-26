@@ -13,9 +13,7 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
   return logger.functionIgnoringException('generateAgentInstructions', async () => {
     if (!rootConfig.isRoot) return;
 
-    // Check if AGENTS_EXTRA.md exists and read its content
-    const agentsExtraPath = path.resolve(rootConfig.dirPath, 'AGENTS_EXTRA.md');
-    const extraContent = await fsUtil.readFileIfExists(agentsExtraPath);
+    const extraContent = await readAgentsExtraContent(rootConfig.dirPath);
 
     for (const [fileName, toolName] of [
       ['AGENTS.md', 'Codex CLI'],
@@ -31,6 +29,21 @@ export async function generateAgentInstructions(rootConfig: PackageConfig, allCo
     const cursorRulesContent = generateCursorGeneralMdcContent(rootConfig, allConfigs, extraContent);
     await promisePool.run(() => fsUtil.generateFile(cursorRulesPath, cursorRulesContent));
   });
+}
+
+const agentsExtraContentCache = new Map<string, string | undefined>();
+
+/**
+ * Reads the root's user-authored AGENTS_EXTRA.md once per process: wbfy never rewrites the file,
+ * and both the agent-instruction and Gemini generators need its content. Caching the resolved
+ * value (not the Promise) is race-free because the two callers run sequentially in index.ts.
+ */
+export async function readAgentsExtraContent(rootDirPath: string): Promise<string | undefined> {
+  const agentsExtraPath = path.resolve(rootDirPath, 'AGENTS_EXTRA.md');
+  if (!agentsExtraContentCache.has(agentsExtraPath)) {
+    agentsExtraContentCache.set(agentsExtraPath, await fsUtil.readFileIfExists(agentsExtraPath));
+  }
+  return agentsExtraContentCache.get(agentsExtraPath);
 }
 
 function generateCursorGeneralMdcContent(

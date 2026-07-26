@@ -12,18 +12,10 @@ import { toDevNull } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
 import type { BaseScripts } from '../scripts/execution/baseScripts.js';
 import { findExplicitPlaywrightTargetIndexes } from '../scripts/execution/baseScripts.js';
-import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
-import { nextScripts } from '../scripts/execution/nextScripts.js';
-import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
-import { vinextScripts } from '../scripts/execution/vinextScripts.js';
-import { viteScripts } from '../scripts/execution/viteScripts.js';
-import { workersScripts } from '../scripts/execution/workersScripts.js';
+import { selectScripts } from '../scripts/execution/selectScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
-import { findWranglerConfigPath } from '../utils/wrangler.js';
-
-import { httpServerPackages } from './httpServerPackages.js';
 
 const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
 const SIMILAR_TEST_OUTPUT_LOOKBACK_LINE_COUNT = 200;
@@ -76,7 +68,7 @@ export type TestArgv = Partial<
 
 export type TestCommandArgv = ArgumentsCamelCase<TestCommandOptions> & { '--'?: string[] };
 
-export interface TestRunOptions {
+interface TestRunOptions {
   exitIfFailed?: boolean;
 }
 
@@ -115,22 +107,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
 
     const deps = project.packageJson.dependencies ?? {};
     const devDeps = project.packageJson.devDependencies ?? {};
-    let scripts: BaseScripts;
-    if (deps.vinext || devDeps.vinext) {
-      // vinext apps also depend on next, so this check must come first.
-      scripts = vinextScripts;
-    } else if (deps.next) {
-      scripts = nextScripts;
-    } else if (devDeps.vite) {
-      scripts = viteScripts;
-    } else if (findWranglerConfigPath(project)) {
-      // Plain Cloudflare Workers app; vinext apps are detected above.
-      scripts = workersScripts;
-    } else if (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) {
-      scripts = httpServerScripts;
-    } else {
-      scripts = plainAppScripts;
-    }
+    const scripts = selectScripts(project);
 
     console.info(`Running "test" for ${project.name} ...`);
 
@@ -430,7 +407,7 @@ export function buildPlaywrightArgsForE2E(
 // test/unit/e2eConfig.test.ts must not be classified as an e2e target.
 const E2E_TARGET_REGEXP = /(?:^|\/)test\/e2e(?:\/|$)/;
 
-export function isE2eTarget(target: string): boolean {
+function isE2eTarget(target: string): boolean {
   return E2E_TARGET_REGEXP.test(target);
 }
 

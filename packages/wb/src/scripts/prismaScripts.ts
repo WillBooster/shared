@@ -3,12 +3,10 @@ import path from 'node:path';
 
 import type { Project } from '../project.js';
 import { FILE_SCHEMA, getFileDatabaseUrlPath } from '../project.js';
+import { getLitestreamConfigOption } from './litestream.js';
 
 /** Where the Prisma SQLite database is mounted, relative to the project directory. */
 const databaseDirPath = 'prisma/mount';
-
-const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
-const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
 
 const POSSIBLE_PRISMA_PATHS = [
   { schemaPath: path.join('prisma', 'schema.prisma'), dbPath: 'prisma' },
@@ -107,15 +105,6 @@ class PrismaScripts {
 function getPrismaBaseDir(project: Project): string | undefined {
   return POSSIBLE_PRISMA_PATHS.find(({ schemaPath }) => fs.existsSync(path.resolve(project.dirPath, schemaPath)))
     ?.dbPath;
-}
-
-function getLitestreamConfigOption(project: Project, configPath?: string): string {
-  if (configPath) return `-config "${configPath}"`;
-
-  const localConfigPath = path.join(project.dirPath, LITESTREAM_CONFIG_FILE_NAME);
-  if (fs.existsSync(localConfigPath)) return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
-  if (fs.existsSync(DEFAULT_LITESTREAM_CONFIG_PATH)) return `-config ${DEFAULT_LITESTREAM_CONFIG_PATH}`;
-  return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
 }
 
 function buildRemoveSqliteDbCommand(dbPath: string): string {

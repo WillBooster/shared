@@ -15,6 +15,7 @@ import {
   isPrivateRegistryDependency,
   resolvePrivateRegistryAuth,
   specifierSubset,
+  toUnscopedPackageName,
 } from '../utils/privateRegistry.js';
 
 interface PrivatePackage {
@@ -78,7 +79,7 @@ export const setupPrivatePackagesCommand: CommandModule<{ dryRun?: boolean }, In
   },
 };
 
-export interface MaterializePrivatePackagesOptions {
+interface MaterializePrivatePackagesOptions {
   /** Directory (relative to the repository root) that git dependencies are copied into. */
   outDir?: string;
   dryRun?: boolean;
@@ -809,10 +810,6 @@ async function findPackageJsonPaths(dirPath: string): Promise<string[]> {
 
 async function readPackageJson(packageJsonPath: string): Promise<PackageJson> {
   return JSON.parse(await fs.promises.readFile(packageJsonPath, 'utf8')) as PackageJson;
-}
-
-function toUnscopedPackageName(packageName: string): string {
-  return packageName.replace(/^@willbooster(?:-private)?\//, '');
 }
 
 function printDryRunResult(outDirPath: string, privatePackages: Map<string, PrivatePackage>): void {

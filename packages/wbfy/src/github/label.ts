@@ -2,11 +2,11 @@ import type { Octokit } from '@octokit/core';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import { getOctokit, gitHubUtil, hasGitHubToken } from '../utils/githubUtil.js';
+import { getOctokit, hasGitHubToken } from '../utils/githubUtil.js';
 
 export async function setupLabels(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupLabels', async () => {
-    const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
+    const { repoAuthor: owner, repoName: repo } = config;
     if (!owner || !repo) return;
     if (owner !== 'WillBooster' && owner !== 'WillBoosterLab') return;
     if (!hasGitHubToken(owner)) return;

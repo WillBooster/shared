@@ -12,7 +12,7 @@ export function shouldPrintBufferedOutput(exitCode: number, output: string): boo
   return exitCode !== 0 || hasWarningOutput(output);
 }
 
-export function normalizeBufferedOutput(output: string): string {
+function normalizeBufferedOutput(output: string): string {
   return output.trim();
 }
 

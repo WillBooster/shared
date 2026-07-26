@@ -58,13 +58,14 @@ export async function buildIfNeeded(
   // pathspecs below are joined/executed against rootDirPath. When the repo root is elsewhere
   // (e.g. a subproject of a larger repository), always build instead of mis-resolving paths.
   // A freshly initialized repo without commits (unborn HEAD) likewise builds without caching:
-  // `git rev-parse HEAD` would throw.
-  if (!fs.existsSync(path.join(project.rootDirPath, '.git')) || !hasGitCommit(project)) {
+  // resolving HEAD would fail.
+  const commitHash = fs.existsSync(path.join(project.rootDirPath, '.git')) ? getGitCommitHash(project) : undefined;
+  if (!commitHash) {
     build(project, argv);
     return true;
   }
 
-  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(project, argv);
+  const [canSkip, cacheFilePath, contentHash] = await canSkipBuild(project, argv, commitHash);
   if (canSkip) {
     console.info(chalk.green(`Skip to run '${argv.command}' 💫`));
     return false;
@@ -105,13 +106,14 @@ function matchesOutputPath(outputPaths: string[], filePath: string): boolean {
   return outputPaths.some((outputPath) => filePath === outputPath || filePath.startsWith(`${outputPath}/`));
 }
 
-function hasGitCommit(project: Project): boolean {
-  return (
-    child_process.spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
-      cwd: project.dirPath,
-      stdio: 'ignore',
-    }).status === 0
-  );
+/** The HEAD commit hash, or undefined on an unborn HEAD (a repo without commits). */
+function getGitCommitHash(project: Project): string | undefined {
+  const ret = child_process.spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+    cwd: project.dirPath,
+    encoding: 'utf8',
+    stdio: 'pipe',
+  });
+  return ret.status === 0 ? ret.stdout.trim() : undefined;
 }
 
 function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>): boolean {
@@ -133,17 +135,16 @@ function build(project: Project, argv: Partial<ArgumentsCamelCase<InferredOption
 
 const ignoringEnvVarNames = new Set(['CI', 'PWDEBUG', 'TMPDIR']);
 
-export async function canSkipBuild(
+async function canSkipBuild(
   project: Project,
-  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>
+  argv: Partial<ArgumentsCamelCase<InferredOptionTypes<typeof builder>>>,
+  commitHash: string
 ): Promise<[boolean, string, string]> {
   const cacheDirectoryPath = path.resolve(project.dirPath, 'node_modules', '.cache', 'build');
   const cacheFilePath = path.resolve(cacheDirectoryPath, 'last-build');
   await fs.promises.mkdir(cacheDirectoryPath, { recursive: true });
 
   const hash = createHash('sha256');
-
-  const commitHash = child_process.execSync('git rev-parse HEAD', { cwd: project.dirPath }).toString().trim();
   hash.update(commitHash);
 
   // The invoked build command is part of the cache identity: `-c commandB` must not reuse a

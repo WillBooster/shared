@@ -1180,7 +1180,7 @@ async function writeYaml(newSettings: Workflow, filePath: string): Promise<void>
   await fsUtil.writeFileConfined(filePath, yamlText);
 }
 
-function removeTrailingSpaces(text: string): string {
+export function removeTrailingSpaces(text: string): string {
   // js-yaml emits valueless GitHub Actions events as `event: ` when using the empty null style.
   return text.replaceAll(/[ \t]+$/gm, '');
 }

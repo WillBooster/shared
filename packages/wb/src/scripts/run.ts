@@ -252,7 +252,7 @@ export function configureEnv(
  * @param env The child-process environment to mutate.
  * @param preserveColor Whether wb should preserve colors for output that it captures and reprints to an interactive TTY.
  */
-export function configureColorEnv(env: Record<string, string | undefined>, preserveColor?: boolean): void {
+function configureColorEnv(env: Record<string, string | undefined>, preserveColor?: boolean): void {
   if (env.NO_COLOR !== undefined || preserveColor === false) {
     // NO_COLOR and preserveColor=false are explicit no-color choices, so inherited FORCE_COLOR must not leak through.
     delete env.FORCE_COLOR;

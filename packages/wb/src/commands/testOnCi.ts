@@ -7,20 +7,12 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { findDescendantProjects } from '../project.js';
 import { toDevNull } from '../scripts/builder.js';
 import { dockerScripts } from '../scripts/dockerScripts.js';
-import type { BaseScripts } from '../scripts/execution/baseScripts.js';
-import { httpServerScripts } from '../scripts/execution/httpServerScripts.js';
-import { nextScripts } from '../scripts/execution/nextScripts.js';
-import { plainAppScripts } from '../scripts/execution/plainAppScripts.js';
-import { vinextScripts } from '../scripts/execution/vinextScripts.js';
-import { viteScripts } from '../scripts/execution/viteScripts.js';
-import { workersScripts } from '../scripts/execution/workersScripts.js';
+import { selectScripts } from '../scripts/execution/selectScripts.js';
 import { runWithSpawn, runWithSpawnInParallel } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
-import { findWranglerConfigPath } from '../utils/wrangler.js';
 import { promisePool } from '../utils/promisePool.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
 
-import { httpServerPackages } from './httpServerPackages.js';
 import { getDefaultUnitTargets } from './test.js';
 
 const testOnCiBuilder = {
@@ -60,24 +52,7 @@ export async function testOnCi(
     // Overwrite, not ||=: project.env already carries the dotenv-derived value.
     project.env.WB_ENV = process.env.WB_ENV;
 
-    const deps = project.packageJson.dependencies ?? {};
-    const devDeps = project.packageJson.devDependencies ?? {};
-    let scripts: BaseScripts;
-    if (deps.vinext || devDeps.vinext) {
-      // vinext apps also depend on next, so this check must come first.
-      scripts = vinextScripts;
-    } else if (deps.next) {
-      scripts = nextScripts;
-    } else if (devDeps.vite) {
-      scripts = viteScripts;
-    } else if (findWranglerConfigPath(project)) {
-      // Plain Cloudflare Workers app; vinext apps are detected above.
-      scripts = workersScripts;
-    } else if (httpServerPackages.some((p) => deps[p]) && !deps['firebase-functions']) {
-      scripts = httpServerScripts;
-    } else {
-      scripts = plainAppScripts;
-    }
+    const scripts = selectScripts(project);
 
     console.info(`Running "test-on-ci" for ${project.name} ...`);
 

@@ -14,12 +14,14 @@ import {
   getFileDatabaseUrlPath,
   type Project,
 } from '../project.js';
+import { isDockerEnabled } from '../utils/ci.js';
 
 import {
   PRIVATE_REGISTRY_SCOPE,
   isPrivateGitDependency,
   isPrivateRegistryDependency,
   materializedVersionSatisfies,
+  toUnscopedPackageName,
 } from '../utils/privateRegistry.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
@@ -209,10 +211,6 @@ function getPrivatePackageDockerSpecifier(
   const privatePackageDirPath = path.join(rootDirPath, scopeDirName, toUnscopedPackageName(packageName));
   const relativePath = path.relative(packageDirPath, privatePackageDirPath);
   return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
-}
-
-function toUnscopedPackageName(packageName: string): string {
-  return packageName.replace(/^@willbooster(?:-private)?\//, '');
 }
 
 /** Undefined when the package is not materialized (or its manifest is unreadable/versionless). */
@@ -492,10 +490,6 @@ function isPathInsideProject(project: Project, targetPath: string): boolean {
   const relativePath = path.relative(project.dirPath, targetPath);
   // `startsWith('..')` would reject project-local names such as `..cache`.
   return relativePath === '' || (relativePath !== '..' && !relativePath.startsWith(`..${path.sep}`));
-}
-
-function isDockerEnabled(project: Project): boolean {
-  return !!project.env.WB_DOCKER && project.env.WB_DOCKER !== '0' && project.env.WB_DOCKER !== 'false';
 }
 
 async function isFile(filePath: string): Promise<boolean> {

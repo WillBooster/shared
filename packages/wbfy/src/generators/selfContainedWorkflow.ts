@@ -11,6 +11,7 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { removeTrailingSpaces } from './workflow.js';
 
 /**
  * Repositories outside WillBooster / WillBoosterLab cannot call the organization's reusable
@@ -84,8 +85,9 @@ export async function generateSelfContainedWorkflows(
     }
     await fs.promises.mkdir(workflowsPath, { recursive: true });
 
+    const usesFnox = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'));
     const workflowByFileName: Record<string, Workflow> = {
-      'test.yml': buildTestWorkflow(rootConfig, allPackageConfigs),
+      'test.yml': buildTestWorkflow(rootConfig, allPackageConfigs, usesFnox),
       'semantic-pr.yml': buildSemanticPrWorkflow(),
     };
     // Deploy workflows are generated per deploy script the repository declares, so a repository
@@ -95,13 +97,13 @@ export async function generateSelfContainedWorkflows(
     const scripts = rootConfig.packageJson?.scripts ?? {};
     const hasProductionDeployWorkflow = isWbDeployScript(scripts['deploy']);
     if (hasProductionDeployWorkflow) {
-      workflowByFileName['deploy-production.yml'] = buildDeployWorkflow(rootConfig, 'production', 'deploy');
+      workflowByFileName['deploy-production.yml'] = buildDeployWorkflow('production', 'deploy', usesFnox);
     }
     if (isWbDeployScript(scripts['deploy:staging'])) {
-      workflowByFileName['deploy-staging.yml'] = buildDeployWorkflow(rootConfig, 'staging', 'deploy:staging');
+      workflowByFileName['deploy-staging.yml'] = buildDeployWorkflow('staging', 'deploy:staging', usesFnox);
     }
     if (rootConfig.depending.semanticRelease && rootConfig.release.branches.length > 0) {
-      workflowByFileName['release.yml'] = buildReleaseWorkflow(rootConfig, hasProductionDeployWorkflow);
+      workflowByFileName['release.yml'] = buildReleaseWorkflow(rootConfig, hasProductionDeployWorkflow, usesFnox);
     }
     for (const [fileName, workflow] of Object.entries(workflowByFileName)) {
       await promisePool.run(() => writeSelfContainedWorkflow(path.join(workflowsPath, fileName), workflow));
@@ -132,13 +134,7 @@ function isWbDeployScript(script: unknown): boolean {
   return typeof script === 'string' && /\bwb deploy\b/u.test(script);
 }
 
-function removeTrailingSpaces(text: string): string {
-  // js-yaml emits valueless GitHub Actions events as `event: ` when using the empty null style.
-  return text.replaceAll(/[ \t]+$/gm, '');
-}
-
-function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConfig[]): Workflow {
-  const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
+function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConfig[], usesFnox: boolean): Workflow {
   // Playwright may be declared only in workspace packages; `wb test-on-ci` runs every declaring
   // package's e2e tests, so the workflow must install browsers for each of them (their versions
   // may differ, and each library version requires its matching browser binaries). Bun's isolated
@@ -245,12 +241,7 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
   };
 }
 
-function buildDeployWorkflow(
-  config: PackageConfig,
-  environment: 'staging' | 'production',
-  scriptName: string
-): Workflow {
-  const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
+function buildDeployWorkflow(environment: 'staging' | 'production', scriptName: string, usesFnox: boolean): Workflow {
   return {
     name: `Deploy app on ${environment}`,
     on: {
@@ -297,8 +288,11 @@ function buildDeployWorkflow(
   };
 }
 
-function buildReleaseWorkflow(config: PackageConfig, hasProductionDeployWorkflow: boolean): Workflow {
-  const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
+function buildReleaseWorkflow(
+  config: PackageConfig,
+  hasProductionDeployWorkflow: boolean,
+  usesFnox: boolean
+): Workflow {
   const fnoxEnv: Record<string, string> = usesFnox ? { FNOX_AGE_KEY: '${{ secrets.FNOX_AGE_KEY }}' } : {};
   return {
     name: 'Release',

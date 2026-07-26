@@ -11,7 +11,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 
-import { generateAgentCodingStyle } from './agents.js';
+import { generateAgentCodingStyle, readAgentsExtraContent } from './agents.js';
 
 const defaultConfig = {
   have_fun: true,
@@ -40,7 +40,6 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     const configFilePath = path.resolve(dirPath, 'config.yaml');
     const legacyConfigFilePath = path.resolve(dirPath, 'config.yml');
     const styleguideFilePath = path.resolve(dirPath, 'styleguide.md');
-    const agentsExtraPath = path.resolve(config.dirPath, 'AGENTS_EXTRA.md');
 
     let newConfig: object = structuredClone(defaultConfig);
     for (const oldFilePath of [configFilePath, legacyConfigFilePath]) {
@@ -71,7 +70,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
       },
     });
 
-    const extraContent = await fsUtil.readFileIfExists(agentsExtraPath);
+    const extraContent = await readAgentsExtraContent(config.dirPath);
     const codingRuleExtraContent = extraContent?.trimStart().startsWith('#') ? undefined : extraContent;
     const reviewLanguageInstruction = config.isPublicRepo
       ? 'Review in English based on the following coding standards.'

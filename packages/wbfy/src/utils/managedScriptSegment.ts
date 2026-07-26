@@ -8,7 +8,7 @@ import type { PackageJson } from 'type-fest';
  * worker-configuration.d.ts generated. It only needs to recognize the two segments it owns — the managed
  * `wb gen-code` and a plain `wrangler types` invocation — and to leave everything else alone.
  */
-export type ScriptSegmentKind = 'custom' | 'genCode' | 'genCodeWrapper' | 'genI18nTs' | 'wranglerTypes';
+type ScriptSegmentKind = 'custom' | 'genCode' | 'genCodeWrapper' | 'genI18nTs' | 'wranglerTypes';
 
 // Runner spellings wbfy has generated over time (`wb gen-code`, `bun wb gen-code`) plus wrappers around the
 // package's own `gen-code` script.

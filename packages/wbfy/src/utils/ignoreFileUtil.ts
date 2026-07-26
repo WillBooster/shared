@@ -1,4 +1,17 @@
 import fs from 'node:fs';
+import path from 'node:path';
+
+/** Whether the directory's .gitignore carries the given rule as its own line. */
+export function hasGitignoreRule(dirPath: string, rule: string): boolean {
+  const gitignorePath = path.resolve(dirPath, '.gitignore');
+  return (
+    fs.existsSync(gitignorePath) &&
+    fs
+      .readFileSync(gitignorePath, 'utf8')
+      .split('\n')
+      .some((line) => line.trim() === rule)
+  );
+}
 
 const userContentHeader = '# Project-specific settings';
 const userContentHeaderRegex = /# Project-specific settings[^\n]*\n/gm;

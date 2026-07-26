@@ -1,6 +1,9 @@
 import type { PackageConfig } from '../../src/packageConfig.js';
 
 export function createConfig(overrides: Partial<PackageConfig> = {}): PackageConfig {
+  // Mirror getPackageConfig's invariant: repoAuthor/repoName always agree with `repository`.
+  const repository = 'repository' in overrides ? overrides.repository : 'github:WillBooster/example';
+  const [repoAuthor, repoName] = repository?.replace(/^github:/u, '').split('/') ?? [];
   return {
     dirPath: '/tmp',
     dockerfile: '',
@@ -9,6 +12,8 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
     isRepoVisibilityKnown: true,
     isReferredByOtherRepo: false,
     repository: 'github:WillBooster/example',
+    repoAuthor,
+    repoName,
     isWillBoosterRepo: true,
     isCloudflare: false,
     doesContainWranglerConfig: false,
