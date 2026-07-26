@@ -35,7 +35,8 @@ const agentsExtraContentCache = new Map<string, string | undefined>();
 
 /**
  * Reads the root's user-authored AGENTS_EXTRA.md once per process: wbfy never rewrites the file,
- * and both the agent-instruction and Gemini generators need its content.
+ * and both the agent-instruction and Gemini generators need its content. Caching the resolved
+ * value (not the Promise) is race-free because the two callers run sequentially in index.ts.
  */
 export async function readAgentsExtraContent(rootDirPath: string): Promise<string | undefined> {
   const agentsExtraPath = path.resolve(rootDirPath, 'AGENTS_EXTRA.md');
