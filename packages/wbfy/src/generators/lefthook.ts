@@ -111,7 +111,10 @@ for file in {staged_files}; do
   normalized="$(mktemp "$file.wbfy-normalizing.XXXXXX")"
   trap 'rm -f "$normalized"' EXIT
   cp -p "$file" "$normalized"
-  sed -E 's#"https://npm\\.flatt\\.tech/[^"]*"#""#g' "$file" > "$normalized"
+  # Anchored to \`", \` so only a registry entry's \`resolved\` slot is cleared (mirroring
+  # reusable-workflows and wb's normalizeBunLockfile): a DIRECT tarball dependency carries the same
+  # host in the workspace descriptor and the package tuple's first element, which must survive.
+  sed -E 's#(", )"https://npm\\.flatt\\.tech/[^"]*"#\\1""#g' "$file" > "$normalized"
   if ! cmp -s "$file" "$normalized"; then
     mv "$normalized" "$file"
     echo "Removed Takumi Guard proxy URLs from $file so the lockfile stays registry-agnostic."
