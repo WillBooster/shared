@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { Project } from '../../../src/project.js';
+import { Project } from '../../../src/project.js';
 import { cleanUpSqliteDbIfNeeded, prismaScripts } from '../../../src/scripts/prismaScripts.js';
 
 const createdDirs: string[] = [];
@@ -75,6 +75,7 @@ describe('prismaScripts.reset', () => {
       dirPath,
       env: {},
       packageJson: { dependencies: {} },
+      prismaDirName: 'prisma',
     } as unknown as Project;
     const command = prismaScripts.cleanUpLitestream(project);
 
@@ -103,11 +104,33 @@ describe('prismaScripts.reset', () => {
     expect(introspectedSchema).toContain('model t');
   }, 120_000);
 
+  it('resolves database paths under db/ for the Blitz layout (db/schema.prisma)', () => {
+    const dirPath = createProjectDir({ blitzLayout: true });
+    // A real Project so prismaDirName's db/schema.prisma detection is exercised end-to-end.
+    fs.writeFileSync(
+      path.join(dirPath, 'package.json'),
+      JSON.stringify({ name: 'blitz-app', dependencies: { blitz: '2.2.4' } })
+    );
+    const project = new Project(dirPath, {}, false);
+
+    expect(prismaScripts.deployForce(project)).toContain('rm -Rf "db/mount/prod.sqlite3"*');
+    expect(prismaScripts.cleanUpLitestream(project)).toContain(
+      'rm -f "db/mount/prod.sqlite3".* "db/mount/prod.sqlite3"-*'
+    );
+    expect(prismaScripts.restore(project, 'db/restored.sqlite3')).toContain(
+      '-o db/restored.sqlite3 db/mount/prod.sqlite3'
+    );
+    // Blitz seed modules default-export the seed function; only the blitz CLI's loader invokes it.
+    expect(prismaScripts.seed(project)).toBe('YARN blitz db seed');
+    expect(prismaScripts.seed(project, 'db/genUserCsv')).toBe('YARN blitz db seed -f db/genUserCsv');
+  });
+
   it('uses wal checkpoint in deployForce cleanup command', () => {
     const project = {
       dirPath: '/tmp/dummy',
       env: {},
       packageJson: { dependencies: {} },
+      prismaDirName: 'prisma',
     } as unknown as Project;
 
     const command = prismaScripts.deployForce(project);
@@ -117,12 +140,13 @@ describe('prismaScripts.reset', () => {
   });
 });
 
-function createProjectDir(): string {
+function createProjectDir(options?: { blitzLayout?: boolean }): string {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-prisma-scripts-'));
   createdDirs.push(dirPath);
-  fs.mkdirSync(path.join(dirPath, 'prisma'), { recursive: true });
+  const schemaDirName = options?.blitzLayout ? 'db' : 'prisma';
+  fs.mkdirSync(path.join(dirPath, schemaDirName), { recursive: true });
   fs.writeFileSync(
-    path.join(dirPath, 'prisma', 'schema.prisma'),
+    path.join(dirPath, schemaDirName, 'schema.prisma'),
     [
       'datasource db {',
       '  provider = "sqlite"',

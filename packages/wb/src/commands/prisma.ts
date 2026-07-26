@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
@@ -305,7 +306,11 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
     const allProjects = await findDatabaseOrmProjects(argv);
     const unknownOptions = extractUnknownOptions(argv, ['db-url-or-path', 'restored']);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db studio', allProjects)) {
-      const dbUrlOrPath = argv.restored ? 'prisma/restored.sqlite3' : argv.dbUrlOrPath?.toString();
+      // Resolved against the project directory because prismaScripts.studio resolves a relative
+      // path against the CLI process directory, which differs for workspace descendants.
+      const dbUrlOrPath = argv.restored
+        ? path.resolve(project.dirPath, project.prismaDirName, 'restored.sqlite3')
+        : argv.dbUrlOrPath?.toString();
       await runWithSpawn(
         withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions)),
         project,
@@ -385,14 +390,13 @@ dbs:
 }
 
 function getDefaultRestoreOutput(project: Project, orm: DatabaseOrm): string {
-  if (orm === 'prisma') return 'prisma/restored.sqlite3';
+  if (orm === 'prisma') return `${project.prismaDirName}/restored.sqlite3`;
   return 'drizzle/restored.sqlite3';
 }
 
 function getLitestreamDbPath(project: Project, orm: DatabaseOrm): string {
   if (orm === 'prisma') {
-    const dirName = 'prisma';
-    return `${dirName}/mount/prod.sqlite3`;
+    return `${project.prismaDirName}/mount/prod.sqlite3`;
   }
 
   const dbPath = getAbsoluteFileDatabaseUrlPath(project);

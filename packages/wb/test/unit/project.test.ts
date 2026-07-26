@@ -12,6 +12,7 @@ import {
   getAbsoluteFileDatabaseUrlPath,
 } from '../../src/project.js';
 
+import { usesBunRuntime } from '../../src/utils/runtime.js';
 import { initializeProjectDirectory, tempDir } from '../helpers/shared.js';
 
 describe('project', () => {
@@ -69,6 +70,50 @@ describe('project', () => {
 
     const project = findSelfProject({}, false, dirPath);
     expect(project?.isBunAvailable).toBe(true);
+  });
+
+  it('prefers an explicit yarn packageManager over a mise.toml bun pin', async () => {
+    // Yarn-era repositories may pin bun in mise.toml solely for `bunx`-based helpers
+    // (e.g. `wb railway-env`); the explicit packageManager declaration must win.
+    const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-yarn-pm-'));
+    try {
+      await fs.promises.writeFile(
+        path.join(dirPath, 'package.json'),
+        JSON.stringify({ name: 'app', packageManager: 'yarn@4.17.0' })
+      );
+      await fs.promises.writeFile(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "latest"\n');
+
+      const project = findSelfProject({}, false, dirPath);
+      expect(project?.usesBunPackageManager).toBe(false);
+      // `wb run` must agree: the same precedence applies to the runtime detection.
+      expect(usesBunRuntime(dirPath)).toBe(false);
+    } finally {
+      await fs.promises.rm(dirPath, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the workspace root packageManager authoritative for the runtime detection', async () => {
+    // A child workspace declaring its own non-Bun packageManager must not override the Bun root:
+    // Project.usesBunPackageManager prefers the root declaration, and `wb run` must agree.
+    const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-bun-workspace-'));
+    try {
+      await fs.promises.mkdir(path.join(dirPath, '.git'));
+      await fs.promises.writeFile(
+        path.join(dirPath, 'package.json'),
+        JSON.stringify({ name: 'root', packageManager: 'bun@1.3.14', workspaces: ['packages/*'] })
+      );
+      await fs.promises.writeFile(path.join(dirPath, 'bun.lock'), '');
+      const childDirPath = path.join(dirPath, 'packages', 'child');
+      await fs.promises.mkdir(childDirPath, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(childDirPath, 'package.json'),
+        JSON.stringify({ name: 'child', packageManager: 'yarn@4.17.0' })
+      );
+
+      expect(usesBunRuntime(childDirPath)).toBe(true);
+    } finally {
+      await fs.promises.rm(dirPath, { recursive: true, force: true });
+    }
   });
 
   it('uses oxlint when declared', async () => {

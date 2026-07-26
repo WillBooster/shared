@@ -18,7 +18,7 @@ import type { PackageJson } from 'type-fest';
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
 import { selectFnoxSourcedKeys } from './utils/envSources.js';
-import { hasBunDirectoryMarker, isBunPackageManager } from './utils/runtime.js';
+import { hasBunDirectoryMarker, isBunPackageManager, isExplicitNonBunPackageManager } from './utils/runtime.js';
 import { clearTestStructureCache } from './utils/testStructure.js';
 import { findWranglerConfigPath } from './utils/wrangler.js';
 
@@ -64,8 +64,10 @@ export class Project {
   get usesBunPackageManager(): boolean {
     // Some repositories rely on the lockfile or packageManager field instead of mise.
     // Docker optimization must follow the target project, not the runtime that launched wb.
+    const packageManager = this.rootPackageJson?.packageManager ?? this.packageJson.packageManager;
+    if (isExplicitNonBunPackageManager(packageManager)) return false;
     if (hasBunDirectoryMarker(this.rootDirPath)) return true;
-    return isBunPackageManager(this.rootPackageJson?.packageManager ?? this.packageJson.packageManager);
+    return isBunPackageManager(packageManager);
   }
 
   @memoizeOne
@@ -306,6 +308,12 @@ export class Project {
   @memoizeOne
   get hasPrisma(): boolean {
     return !!this.getOwnDependencyVersion('prisma');
+  }
+
+  /** Blitz repositories keep their Prisma schema and SQLite databases under db/ instead of prisma/. */
+  @memoizeOne
+  get prismaDirName(): string {
+    return fs.existsSync(path.join(this.dirPath, 'db', 'schema.prisma')) ? 'db' : 'prisma';
   }
 
   @memoizeOne
