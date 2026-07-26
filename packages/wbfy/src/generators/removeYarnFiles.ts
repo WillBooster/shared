@@ -178,8 +178,9 @@ function isMigratableYarnrcSetting(key: string, value: unknown): boolean {
   if (key === 'enableScripts') return value === false;
   // A gate value the translation cannot parse (e.g. Yarn's `${ENV_VAR:-14d}` expansion syntax)
   // would silently fall back to the 5-day org default and could WEAKEN the repository's policy,
-  // so only literally parsable durations are migratable. Untranslatable npmPreapprovedPackages
-  // entries need no such gate: dropping them is fail-safe (packages become age-gated).
+  // so only literally parsable durations are migratable. npmPreapprovedPackages needs no such
+  // gate: ALL its entries are dropped unconditionally (minimumReleaseAgeExcludes is org policy
+  // managed solely by bunMinimumReleaseAgeExcludes), which is fail-safe — packages become age-gated.
   if (key === 'npmMinimalAgeGate') return parseYarnDurationAsSeconds(value) !== undefined;
   return safeYarnrcSettings.has(key);
 }

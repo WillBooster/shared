@@ -222,7 +222,7 @@ ${
 }
 minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
 # Managed by wbfy — repository-specific entries are prohibited and removed on every run.
-# To exclude a package, add it to bunMinimumReleaseAgeExcludes in WillBooster/shared-2
+# To exclude a package, add it to bunMinimumReleaseAgeExcludes in WillBooster/shared
 # (packages/wbfy/src/generators/bunfig.ts) so every repository shares the same vetted list.
 minimumReleaseAgeExcludes = [
 ${managedExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
