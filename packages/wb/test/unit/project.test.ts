@@ -71,6 +71,24 @@ describe('project', () => {
     expect(project?.isBunAvailable).toBe(true);
   });
 
+  it('prefers an explicit yarn packageManager over a mise.toml bun pin', async () => {
+    // Yarn-era repositories may pin bun in mise.toml solely for `bunx`-based helpers
+    // (e.g. `wb railway-env`); the explicit packageManager declaration must win.
+    const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-yarn-pm-'));
+    try {
+      await fs.promises.writeFile(
+        path.join(dirPath, 'package.json'),
+        JSON.stringify({ name: 'app', packageManager: 'yarn@4.17.0' })
+      );
+      await fs.promises.writeFile(path.join(dirPath, 'mise.toml'), '[tools]\nbun = "latest"\n');
+
+      const project = findSelfProject({}, false, dirPath);
+      expect(project?.usesBunPackageManager).toBe(false);
+    } finally {
+      await fs.promises.rm(dirPath, { recursive: true, force: true });
+    }
+  });
+
   it('uses oxlint when declared', async () => {
     const dirPath = path.join(tempDir, 'app');
     await initializeProjectDirectory(dirPath);

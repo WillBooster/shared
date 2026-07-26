@@ -204,6 +204,38 @@ describe('getGenCodeScripts', () => {
     }
   });
 
+  it('runs blitz codegen before prisma generate for yarn-era Blitz repositories', async () => {
+    const dirPath = await createProject({
+      packageManager: 'yarn@4.17.0',
+      dependencies: { blitz: '2.2.4', prisma: '6.0.0' },
+    });
+    await fs.mkdir(path.join(dirPath, 'src'));
+    await fs.mkdir(path.join(dirPath, 'db'));
+    await fs.writeFile(path.join(dirPath, 'db', 'schema.prisma'), '');
+
+    try {
+      const scripts = getGenCodeScripts(new Project(dirPath, {}, false));
+      expect(scripts).toContain('YARN blitz codegen');
+      expect(scripts.indexOf('YARN blitz codegen')).toBeLessThan(scripts.indexOf('PRISMA generate'));
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('does not run blitz codegen for Bun-managed Blitz repositories', async () => {
+    // The blitz CLI patches the installed next package in place, which must never happen in
+    // Bun's shared global store; Bun-era Blitz repositories generate the manifest themselves.
+    const dirPath = await createProject({ dependencies: { blitz: '2.2.4' } });
+    await fs.mkdir(path.join(dirPath, 'src'));
+    await fs.writeFile(path.join(dirPath, 'bun.lock'), '');
+
+    try {
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain('YARN blitz codegen');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
   it('does not run prisma generate without a schema', async () => {
     const dirPath = await createProject({
       dependencies: {

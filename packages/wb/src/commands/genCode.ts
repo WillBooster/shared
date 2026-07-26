@@ -78,6 +78,14 @@ export function getGenCodeScripts(project: Project): string[] {
     // below fail (e.g. "Property 'AUTH_SECRET' does not exist on type 'Env'").
     scripts.push(`${wranglerTypesScript} --env-file ${workerTypesEnvPath}`);
   }
+  // Yarn-era Blitz repositories need `blitz codegen` for the route manifest (node_modules/.blitz)
+  // that @blitzjs/next's type declarations re-export; install scripts do not run it
+  // (enableScripts: false). Never under Bun: the blitz CLI patches the installed next package in
+  // place, which must not happen in Bun's shared global store (Bun-era Blitz repositories generate
+  // the manifest with their own scripts instead).
+  if (!project.usesBunPackageManager && project.hasOwnDependency('blitz') && project.hasSourceCode) {
+    scripts.push('YARN blitz codegen');
+  }
   const prismaGenerateScript = getPrismaGenerateScript(project);
   if (prismaGenerateScript) {
     scripts.push(prismaGenerateScript);
