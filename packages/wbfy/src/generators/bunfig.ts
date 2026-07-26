@@ -15,6 +15,7 @@ interface BunfigToml {
     exact?: boolean;
     linker?: string;
     minimumReleaseAge?: number;
+    minimumReleaseAgeExcludes?: string[];
   };
 }
 
@@ -216,6 +217,21 @@ const newContent = (
     ]),
   ].toSorted();
   const repoSpecificExcludeSet = new Set(repoSpecificExcludes);
+  // Marker-less entries wbfy does not manage are dropped by design (see the provenance comment
+  // above), but dropping them SILENTLY loses deliberate repository policy unnoticed — e.g. a
+  // hand-added exemption for a fast-moving pre-release dependency disappears on the first wbfy
+  // run. Warn with the exact re-add instruction instead of preserving them automatically, so
+  // retired managed entries still cannot masquerade as repository policy.
+  const managedExcludeSet = new Set(managedExcludes);
+  const droppedExcludes = (bunfigToml?.install?.minimumReleaseAgeExcludes ?? []).filter(
+    (packageName) => !managedExcludeSet.has(packageName) && !repoSpecificExcludeSet.has(packageName)
+  );
+  if (droppedExcludes.length > 0) {
+    console.warn(
+      `Dropping minimumReleaseAgeExcludes entries wbfy does not manage: ${droppedExcludes.join(', ')}. ` +
+        `If they are repository policy, re-add them below the "# ---------- repository-specific entries ----------" marker in bunfig.toml.`
+    );
+  }
   const minimumReleaseAgeExcludes = [
     ...managedExcludes
       .filter((packageName) => !repoSpecificExcludeSet.has(packageName))

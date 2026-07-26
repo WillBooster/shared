@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 
 import { extractRawTestSections, generateBunfigToml } from '../../src/generators/bunfig.js';
 import { promisePool } from '../../src/utils/promisePool.js';
@@ -99,6 +99,40 @@ minimumReleaseAgeExcludes = [
     // A marker entry that is not a plain npm package name is dead configuration and is dropped.
     expect(content).not.toContain('not@a@name');
   } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
+test('warns about marker-less exclude entries wbfy does not manage before dropping them', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfig-dropped-')));
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    fs.writeFileSync(
+      path.join(tempDirPath, 'bunfig.toml'),
+      `[install]
+minimumReleaseAgeExcludes = [
+    "react",
+    "vinext",
+    "@vinext/cloudflare",
+    # ---------- repository-specific entries ----------
+    "my-repo-specific-package",
+]
+`
+    );
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }));
+    await promisePool.promiseAll();
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    // The drop itself is by design; the warning is the safety net.
+    expect(content).not.toContain('"vinext",');
+    const warning = warnSpy.mock.calls.map((call) => call.join(' ')).join('\n');
+    expect(warning).toContain('vinext');
+    expect(warning).toContain('@vinext/cloudflare');
+    expect(warning).toContain('repository-specific entries');
+    // Managed and marker-tagged entries must not be reported as dropped.
+    expect(warning).not.toContain('react');
+    expect(warning).not.toContain('my-repo-specific-package');
+  } finally {
+    warnSpy.mockRestore();
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
