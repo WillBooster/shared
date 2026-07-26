@@ -529,9 +529,16 @@ export interface FoundProjects {
 // (lint, typecheck, test) that each rebuild the graph — so instances are shared per
 // (directory, loadEnv, env-relevant argv) within one invocation. Sharing is safe because a
 // Project is immutable except for env mutations (e.g. `project.env.PORT ||= ...`), which callers
-// deliberately rely on staying visible to later steps.
+// deliberately rely on staying visible to later steps. The caches live for the whole process and
+// never observe later filesystem mutations, so code that rewrites a project directory and needs a
+// fresh view (today only tests) must call clearProjectCaches first.
 const selfProjectCache = new Map<string, Project>();
 const descendantProjectsCache = new Map<string, Promise<Project[]>>();
+
+export function clearProjectCaches(): void {
+  selfProjectCache.clear();
+  descendantProjectsCache.clear();
+}
 
 function buildProjectCacheKey(argv: EnvReaderOptions, loadEnv: boolean, dirPath: string): string {
   // Only the inputs a Project actually reads participate: the env cascade selection
