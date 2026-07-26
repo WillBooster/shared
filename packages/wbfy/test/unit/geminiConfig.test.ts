@@ -1,0 +1,50 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { expect, test } from 'vitest';
+
+import { generateGeminiConfig } from '../../src/generators/geminiConfig.js';
+import { promisePool } from '../../src/utils/promisePool.js';
+import { createConfig } from '../helpers/testConfig.js';
+
+test('writes .gemini/config.yaml (the only filename Gemini Code Assist reads), migrating and deleting a legacy config.yml', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gemini-')));
+  try {
+    const geminiDirPath = path.join(tempDirPath, '.gemini');
+    fs.mkdirSync(geminiDirPath, { recursive: true });
+    // A repository customization stored under the legacy filename must survive the rename.
+    fs.writeFileSync(path.join(geminiDirPath, 'config.yml'), 'custom_key: custom-value\n');
+
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
+    await generateGeminiConfig(config, [config]);
+    await promisePool.promiseAll();
+
+    const yamlContent = fs.readFileSync(path.join(geminiDirPath, 'config.yaml'), 'utf8');
+    expect(yamlContent).toContain('custom_key: custom-value');
+    expect(fs.existsSync(path.join(geminiDirPath, 'config.yml'))).toBe(false);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
+test('prefers an existing config.yaml over a stale legacy config.yml as the merge source', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gemini2-')));
+  try {
+    const geminiDirPath = path.join(tempDirPath, '.gemini');
+    fs.mkdirSync(geminiDirPath, { recursive: true });
+    fs.writeFileSync(path.join(geminiDirPath, 'config.yaml'), 'custom_key: from-yaml\n');
+    fs.writeFileSync(path.join(geminiDirPath, 'config.yml'), 'custom_key: from-yml\n');
+
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
+    await generateGeminiConfig(config, [config]);
+    await promisePool.promiseAll();
+
+    const yamlContent = fs.readFileSync(path.join(geminiDirPath, 'config.yaml'), 'utf8');
+    expect(yamlContent).toContain('custom_key: from-yaml');
+    expect(yamlContent).not.toContain('from-yml');
+    expect(fs.existsSync(path.join(geminiDirPath, 'config.yml'))).toBe(false);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});

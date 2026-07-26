@@ -33,17 +33,25 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     if (!config.isRoot) return;
 
     const dirPath = path.resolve(config.dirPath, '.gemini');
-    const configFilePath = path.resolve(dirPath, 'config.yml');
+    // Gemini Code Assist reads only `.gemini/config.yaml`
+    // (https://docs.cloud.google.com/gemini/docs/code-review/customize-repo-review); earlier wbfy
+    // versions wrote `config.yml`, which Gemini silently ignores. Read the legacy file as a merge
+    // source once so repository customizations migrate, then delete it below.
+    const configFilePath = path.resolve(dirPath, 'config.yaml');
+    const legacyConfigFilePath = path.resolve(dirPath, 'config.yml');
     const styleguideFilePath = path.resolve(dirPath, 'styleguide.md');
     const agentsExtraPath = path.resolve(config.dirPath, 'AGENTS_EXTRA.md');
 
     let newConfig: object = structuredClone(defaultConfig);
-    try {
-      const oldContent = await fs.promises.readFile(configFilePath, 'utf8');
-      const oldConfig = yaml.load(oldContent) as object;
-      newConfig = merge.all([newConfig, oldConfig, newConfig], { arrayMerge: overwriteMerge });
-    } catch {
-      // do nothing - file doesn't exist or can't be parsed
+    for (const oldFilePath of [configFilePath, legacyConfigFilePath]) {
+      try {
+        const oldContent = await fs.promises.readFile(oldFilePath, 'utf8');
+        const oldConfig = yaml.load(oldContent) as object;
+        newConfig = merge.all([newConfig, oldConfig, newConfig], { arrayMerge: overwriteMerge });
+        break;
+      } catch {
+        // do nothing - file doesn't exist or can't be parsed
+      }
     }
 
     const yamlContent = yaml.dump(newConfig, {
@@ -65,6 +73,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
 
     const promises = [
       promisePool.run(() => fsUtil.generateFile(configFilePath, yamlContent)),
+      promisePool.run(() => fs.promises.rm(legacyConfigFilePath, { force: true })),
       promisePool.run(() => fsUtil.generateFile(styleguideFilePath, styleguideContent)),
     ];
     await Promise.all(promises);
