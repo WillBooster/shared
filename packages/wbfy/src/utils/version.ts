@@ -23,6 +23,19 @@ const wbfyDirPathInRepo = path.join('packages', 'wbfy');
  * neither is available (e.g. an unreleased build extracted from a source archive).
  */
 export function getWbfyVersionLabel(): string | undefined {
+  // Neither the installed package.json nor the git state of wbfy's own checkout can change
+  // mid-run, and computing the label spawns several git subprocesses, so it is computed once.
+  if (!hasComputedVersionLabel) {
+    cachedVersionLabel = computeWbfyVersionLabel();
+    hasComputedVersionLabel = true;
+  }
+  return cachedVersionLabel;
+}
+
+let hasComputedVersionLabel = false;
+let cachedVersionLabel: string | undefined;
+
+function computeWbfyVersionLabel(): string | undefined {
   const { name, version, dirPath } = readWbfyPackageJson();
   if (!version.startsWith(unreleasedVersionPrefix)) return version;
 
@@ -120,7 +133,10 @@ function runGit(args: string[], cwd: string): string | undefined {
   return proc.status === 0 ? proc.stdout.trim() || undefined : undefined;
 }
 
+let cachedWbfyPackageJson: { name: string; version: string; dirPath: string } | undefined;
+
 function readWbfyPackageJson(): { name: string; version: string; dirPath: string } {
+  if (cachedWbfyPackageJson) return cachedWbfyPackageJson;
   // fileURLToPath, not URL.pathname: the latter keeps percent-encoding, so an installation path
   // containing e.g. a space would resolve to a nonexistent directory and the search would walk up
   // to an unrelated package.
@@ -135,5 +151,6 @@ function readWbfyPackageJson(): { name: string; version: string; dirPath: string
     name: string;
     version: string;
   };
-  return { name: packageJson.name, version: packageJson.version, dirPath };
+  cachedWbfyPackageJson = { name: packageJson.name, version: packageJson.version, dirPath };
+  return cachedWbfyPackageJson;
 }

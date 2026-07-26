@@ -1,9 +1,13 @@
 import childProcess from 'node:child_process';
 
 export function isMiseAvailable(): boolean {
-  return childProcess.spawnSync('mise', ['--version'], { stdio: 'ignore' }).status === 0;
+  return isCommandAvailable('mise');
 }
 
 export function isFnoxAvailable(): boolean {
-  return childProcess.spawnSync('fnox', ['--version'], { stdio: 'ignore' }).status === 0;
+  return isCommandAvailable('fnox');
+}
+
+function isCommandAvailable(command: string): boolean {
+  return childProcess.spawnSync(command, ['--version'], { stdio: 'ignore' }).status === 0;
 }

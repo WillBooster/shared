@@ -1,15 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {
-  readEnvironmentVariables,
-  resolveFallbackWbEnv,
-  shouldSuppressEnvironmentOutput,
-} from '@willbooster/shared-lib-node/src';
+import { resolveFallbackWbEnv } from '@willbooster/shared-lib-node/src';
 import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { getRunScriptArgs } from '../../bin/runArgs.js';
-import { Project } from '../project.js';
+import { findSelfProject, readAndMergeEnvironmentVariables, type Project } from '../project.js';
 import { usesBunRuntime } from '../utils/runtime.js';
 import { runCommandWithEnvironment } from './dotenv.js';
 
@@ -29,10 +25,9 @@ export const runCommand: CommandModule = {
       process.exit(1);
     }
     const cwd = process.cwd();
-    const env = fs.existsSync(path.join(cwd, 'package.json'))
-      ? new Project(cwd, argv, true).env
-      : readStandaloneEnvironment(argv, cwd);
-    const command = buildRunCommand(cwd, args, env);
+    const project = findSelfProject(argv, true, cwd);
+    const env = project?.env ?? readStandaloneEnvironment(argv, cwd);
+    const command = buildRunCommand(cwd, args, env, project);
     if (argv.dryRun) {
       console.info(`Would run: ${command.join(' ')}`);
       return;
@@ -44,7 +39,7 @@ export const runCommand: CommandModule = {
   },
 };
 
-function buildRunCommand(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv): string[] {
+function buildRunCommand(cwd: string, args: readonly string[], env: NodeJS.ProcessEnv, project?: Project): string[] {
   if (!usesBunRuntime(cwd)) return ['node', ...args];
   // `bun run` resolves package.json scripts before local binaries, so a script that invokes
   // `wb run <its own name>` (e.g. "vitest": "wb run vitest run") would respawn itself forever.
@@ -55,7 +50,7 @@ function buildRunCommand(cwd: string, args: readonly string[], env: NodeJS.Proce
   // PATH, resolving the direct execution to the local binary.
   const target = args[0];
   if (target && target === env.npm_lifecycle_event) {
-    const script = readPackageScript(cwd, target);
+    const script = project ? project.packageJson.scripts?.[target] : readPackageScript(cwd, target);
     if (script !== undefined && script === env.npm_lifecycle_script) return [...args];
   }
   return ['bun', 'run', ...args];
@@ -81,15 +76,7 @@ function readPackageScript(cwd: string, name: string): string | undefined {
 }
 
 function readStandaloneEnvironment(argv: ArgumentsCamelCase, cwd: string): NodeJS.ProcessEnv {
-  const [envVars, envPathAndLoadedEnvVarNamePairs] = readEnvironmentVariables(argv, cwd, {
-    expandFallbackWbEnv: true,
-  });
-  if (!shouldSuppressEnvironmentOutput(argv)) {
-    for (const [envPath, names] of envPathAndLoadedEnvVarNamePairs) {
-      console.info(`Loaded ${names.length} environment variables from ${envPath}`);
-    }
-  }
-  const env = { ...process.env, ...envVars };
+  const [env] = readAndMergeEnvironmentVariables(argv, cwd);
   env.WB_ENV ||= resolveFallbackWbEnv(argv);
   validateStandaloneWbEnv(argv, env);
   return env;

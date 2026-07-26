@@ -1,3 +1,5 @@
+import { escapeRegExp } from '../utils/stringUtil.js';
+
 export type ConfigBlockName = 'base' | 'export';
 
 interface ManagedConfigBlocksOptions {
@@ -82,8 +84,4 @@ ${this.getEndMarker(blockName)}`;
   private getEndMarker(blockName: ConfigBlockName): string {
     return `// wbfy:end ${this.markerPrefix}-${blockName}`;
   }
-}
-
-function escapeRegExp(value: string): string {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }

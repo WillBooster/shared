@@ -4,7 +4,7 @@ import { withRetry } from '@willbooster/shared-lib/src';
 import { isReusableWorkflowsRepo } from '../generators/workflow.js';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
-import { getOctokit, gitHubUtil, hasGitHubToken } from '../utils/githubUtil.js';
+import { getOctokit, hasGitHubToken, isGitHubPermissionOrVisibilityError } from '../utils/githubUtil.js';
 
 interface RepositoryRulesetPayload {
   name: string;
@@ -121,7 +121,7 @@ const PROTECT_MAIN_RULESET: RepositoryRulesetPayload = {
 
 export async function setupRepositoryRulesets(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('setupRepositoryRulesets', async () => {
-    const [owner, repo] = gitHubUtil.getOrgAndName(config.repository ?? '');
+    const { repoAuthor: owner, repoName: repo } = config;
     if (!owner || !repo) return;
     if (owner !== 'WillBooster') return;
     // The reusable-workflows repo hosts workflow_call definitions, so the
@@ -215,10 +215,4 @@ async function findRepositoryRuleset(
   const rulesets = response.data;
   if (!Array.isArray(rulesets)) return;
   return rulesets.find((ruleset) => ruleset.name === rulesetName && ruleset.source_type === 'Repository');
-}
-
-function isGitHubPermissionOrVisibilityError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const status = (error as { status?: number }).status;
-  return status === 401 || status === 403 || status === 404;
 }

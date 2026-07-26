@@ -76,7 +76,7 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
  */
 export function buildTypeCheckCommands(project: Project): string[] {
   const commands: string[] = [];
-  if (!project.packageJson.workspaces || project.hasSourceCode) {
+  if (project.hasOwnSourceCode) {
     commands.push(...buildTypeScriptTypeCheckCommands(project));
   }
   if (!project.packageJson.workspaces && project.hasOwnDependency('pyright')) {

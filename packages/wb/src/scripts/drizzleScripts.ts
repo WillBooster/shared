@@ -4,9 +4,7 @@ import path from 'node:path';
 import { getAbsoluteFileDatabaseUrlPath, isProjectEnvironment, type Project } from '../project.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { buildMaterializeLocalD1Command, getD1DatabaseName, getLocalWranglerStateDir } from '../utils/wrangler.js';
-
-const LITESTREAM_CONFIG_FILE_NAME = 'litestream.yml';
-const DEFAULT_LITESTREAM_CONFIG_PATH = '/etc/litestream.yml';
+import { getLitestreamConfigOption } from './litestream.js';
 
 class DrizzleScripts {
   cleanUpLitestream(project: Project): string {
@@ -414,15 +412,6 @@ function getAbsoluteSqliteDbPath(project: Project, commandName: string): string 
 
 function getSqliteDbPath(project: Project): string | undefined {
   return getAbsoluteFileDatabaseUrlPath(project);
-}
-
-function getLitestreamConfigOption(project: Project, configPath?: string): string {
-  if (configPath) return `-config "${configPath}"`;
-
-  const localConfigPath = path.join(project.dirPath, LITESTREAM_CONFIG_FILE_NAME);
-  if (fs.existsSync(localConfigPath)) return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
-  if (fs.existsSync(DEFAULT_LITESTREAM_CONFIG_PATH)) return `-config ${DEFAULT_LITESTREAM_CONFIG_PATH}`;
-  return `-config ./${LITESTREAM_CONFIG_FILE_NAME}`;
 }
 
 export const drizzleScripts = new DrizzleScripts();

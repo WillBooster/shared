@@ -5,6 +5,7 @@ import type { PackageJson } from 'type-fest';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { hasGitignoreRule } from '../utils/ignoreFileUtil.js';
 import { spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { runsManagedGenCode } from '../utils/managedScriptSegment.js';
 
@@ -33,14 +34,7 @@ export async function untrackWorkerTypes(config: PackageConfig): Promise<void> {
     // file was never written) would leave it untracked and dirty in the repository, so confirm the rule applies first.
     // `git check-ignore` also honors .git/info/exclude and global excludes, which a fresh clone lacks, so the
     // committed package .gitignore must carry the managed rule itself.
-    const gitignorePath = path.resolve(config.dirPath, '.gitignore');
-    const hasManagedRule =
-      fs.existsSync(gitignorePath) &&
-      fs
-        .readFileSync(gitignorePath, 'utf8')
-        .split('\n')
-        .some((line) => line.trim() === `/${workerTypesFileName}`);
-    if (!hasManagedRule) return;
+    if (!hasGitignoreRule(config.dirPath, `/${workerTypesFileName}`)) return;
     // --no-index makes git report the rule that would apply, instead of reporting nothing because the file is tracked.
     const isIgnored =
       spawnSyncAndReturnStatus(

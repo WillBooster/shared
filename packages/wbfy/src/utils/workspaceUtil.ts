@@ -49,7 +49,7 @@ export function getWorkspacePackageJsonPaths(rootConfig: WorkspaceRootLike): str
   return resolveWorkspacePackageJsonPaths(getSanitizedWorkspacePatterns(rootConfig), rootConfig.dirPath);
 }
 
-export interface WorkspaceDirPatterns {
+interface WorkspaceDirPatterns {
   /** Directory subtrees (or package-owned subpaths) matched by effective negations, for tsconfig `exclude` entries. */
   excludes: string[];
   /** Positive directory patterns (or concrete directories for Bun-only glob syntax). */

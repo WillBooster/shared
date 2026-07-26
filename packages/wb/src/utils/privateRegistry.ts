@@ -13,6 +13,10 @@ import semver from 'semver';
  */
 export const PRIVATE_REGISTRY_SCOPE = '@willbooster-private';
 
+export function toUnscopedPackageName(packageName: string): string {
+  return packageName.replace(/^@willbooster(?:-private)?\//, '');
+}
+
 // `git:`/`git+`/`git@` (not the bare word `git`): npm allows arbitrary dist-tags, so a tag named
 // `git` or `git-next` must still be treated as a registry specifier.
 const nonRegistrySpecifierPrefixes = [
@@ -174,7 +178,7 @@ async function resolveVersion(
   return version;
 }
 
-export interface Packument {
+interface Packument {
   'dist-tags'?: Record<string, string>;
   versions?: Record<string, unknown>;
 }
@@ -229,7 +233,7 @@ const exactSemverPattern =
   /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
 
 /** Whether the specifier is an exact SemVer version (not a range, tag, or git URL). */
-export function isExactVersion(specifier: string | undefined): boolean {
+function isExactVersion(specifier: string | undefined): boolean {
   return !!specifier && exactSemverPattern.test(specifier);
 }
 

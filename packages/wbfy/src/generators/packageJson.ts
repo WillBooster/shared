@@ -25,6 +25,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
+import { escapeRegExp } from '../utils/stringUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
 import { isPublishedWillboosterConfigsPackage } from '../utils/willboosterConfigsUtil.js';
@@ -117,6 +118,7 @@ const micromatchImportPattern =
 
 const latestDependencyVersionCache = new Map<string, string>();
 const npmPackageTimesCache = new Map<string, Record<string, string>>();
+const rawDependencyVersionCache = new Map<string, string>();
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 
 type WritablePackageJson = SetRequired<
@@ -1316,7 +1318,7 @@ async function normalizePackageMetadata(
     // `npm publish` with 405 (shared#1072). `??=` keeps a deliberately different registry.
     jsonObj.publishConfig.registry ??= 'https://registry.npmjs.org/';
   }
-  const [owner] = gitHubUtil.getOrgAndName(config.repository ?? '');
+  const owner = config.repoAuthor;
   if (owner === 'WillBooster' || owner === 'WillBoosterLab') {
     jsonObj.author = 'WillBooster Inc.';
   }
@@ -1920,7 +1922,13 @@ function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
 }
 
 function getRawDependencyVersionFromNpm(dependency: string): string {
-  return spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
+  const cachedVersion = rawDependencyVersionCache.get(dependency);
+  if (cachedVersion) return cachedVersion;
+
+  const version =
+    spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
+  rawDependencyVersionCache.set(dependency, version);
+  return version;
 }
 
 function getInstallDependencySpecifier(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
@@ -2392,10 +2400,6 @@ function doesMiseTaskCallPackageScript(config: PackageConfig, name: string): boo
   return packageManagers.some((packageManager) =>
     new RegExp(String.raw`\b${packageManager}\s+(?:run\s+)?${escapeRegExp(name)}(?![a-zA-Z0-9_\-:.])`, 'u').test(task)
   );
-}
-
-function escapeRegExp(value: string): string {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 function removePrettierArtifacts(jsonObj: WritablePackageJson, keepPrettierDependency = false): void {

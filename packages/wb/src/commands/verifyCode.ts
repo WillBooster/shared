@@ -100,9 +100,9 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
     );
   }
   // Resolved after `gen-code` so a generated `src` directory is already there for `hasSourceCode`,
-  // which is an existsSync check, and reused by both step details below. `Project` memoizes per
-  // instance and `getAllDescendantProjects` builds fresh ones, so this repeats the workspace glob
-  // and manifest parse that `lint` and `typecheck` each perform anyway — cheap, but not free.
+  // which is an existsSync check, and reused by both step details below. The project factories
+  // share instances per (directory, loadEnv, env-relevant argv), so `typecheck` reuses this very
+  // graph while `lint` (which adds --silent) resolves its own.
   const stepDetails = await buildStepDetails(argv);
   // `lint --fix --format` prints nothing on success, so without the step summary a passing `verify`
   // looks like it never linted at all — and it silently rewrote the working tree while at it.
@@ -189,7 +189,7 @@ async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup:
   // inside them.
   const runsTypeAwareLint = projects.descendants.some(
     (project) =>
-      hasOwnSourceCode(project) && buildLintCommand(project, { fix: true, format: true })?.includes('--type-aware')
+      project.hasOwnSourceCode && buildLintCommand(project, { fix: true, format: true })?.includes('--type-aware')
   );
   const typeCheckCommands = [
     ...new Set(projects.descendants.flatMap((project) => buildTypeCheckCommands(project).map(toDisplayCommand))),
@@ -203,11 +203,6 @@ async function buildStepDetails(argv: VerifyCodeCommandArgv): Promise<{ cleanup:
 /** Drops the package-manager placeholder `runWithSpawn` expands, leaving the tool call to show. */
 function toDisplayCommand(command: string): string {
   return command.replace(/^(?:BUN|YARN) /u, '');
-}
-
-/** A workspace root without sources of its own runs neither lint nor typecheck commands. */
-function hasOwnSourceCode(project: Project): boolean {
-  return !project.packageJson.workspaces || project.hasSourceCode;
 }
 
 /** Times a step and records it for the final summary. Steps that fail exit the process instead. */

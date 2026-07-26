@@ -14,6 +14,7 @@ import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { hasCustomWranglerTypesInvocation } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
+import { escapeRegExp } from './utils/stringUtil.js';
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
@@ -301,6 +302,9 @@ export async function getPackageConfig(
     const containsAnyInWorkspaces = (pattern: string): boolean =>
       workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath)) ||
       (declaredWorkspacePatterns.length === 0 && containsAny(`packages/**/${pattern}`, dirPath));
+    const doesContainWranglerConfig = detectWranglerConfig(dirPath);
+    const workflowContents = readWorkflowFileContents(dirPath);
+    const runtimeImports = detectRuntimeImports(dirPath);
     const config: PackageConfig = {
       dirPath,
       dockerfile,
@@ -314,9 +318,9 @@ export async function getPackageConfig(
       isWillBoosterRepo: Boolean(
         repository?.startsWith('github:WillBooster/') || repository?.startsWith('github:WillBoosterLab/')
       ),
-      isCloudflare: detectCloudflare(dirPath, packageJson),
-      doesContainWranglerConfig: detectWranglerConfig(dirPath),
-      isRailway: detectRailway(dirPath, packageJson),
+      isCloudflare: detectCloudflare(packageJson, doesContainWranglerConfig, workflowContents),
+      doesContainWranglerConfig,
+      isRailway: detectRailway(dirPath, packageJson, workflowContents),
       isEsmPackage: esmPackage,
       isWillBoosterConfigs: detectIsWillBoosterConfigs(dirPath, packageJsonPath, repoName),
       cargoTomlDirPaths: findCargoTomlDirPaths(dirPath),
@@ -327,7 +331,7 @@ export async function getPackageConfig(
       doesContainDockerfile: !!dockerfile || fs.existsSync(path.resolve(dirPath, 'docker-compose.yml')),
       doesContainGemfile: fs.existsSync(path.resolve(dirPath, 'Gemfile')),
       doesContainGoMod: fs.existsSync(path.resolve(dirPath, 'go.mod')),
-      doesContainPackageJson: fs.existsSync(path.resolve(dirPath, 'package.json')),
+      doesContainPackageJson,
       doesContainPoetryLock: fs.existsSync(path.resolve(dirPath, 'poetry.lock')),
       doesContainUvLock: fs.existsSync(path.resolve(dirPath, 'uv.lock')),
       // Recursive like doesContainJava: multi-language repositories keep language directories
@@ -361,8 +365,8 @@ export async function getPackageConfig(
         next: !!dependencies.next,
         playwrightTest:
           !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'] || !!devDependencies.playwright,
-        playwrightRuntime: doesImportPlaywrightAtRuntime(dirPath),
-        prettierRuntime: doesImportPrettierAtRuntime(dirPath),
+        playwrightRuntime: runtimeImports.playwright,
+        prettierRuntime: runtimeImports.prettier,
         prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
         pyright: !!devDependencies.pyright,
         reactNative: !!dependencies['react-native'],
@@ -720,20 +724,24 @@ function detectIsWillBoosterConfigs(dirPath: string, packageJsonPath: string, re
   return packageJsonPath.toLowerCase().includes('/willbooster-configs/');
 }
 
-function detectCloudflare(dirPath: string, packageJson: PackageJson): boolean {
+function detectCloudflare(
+  packageJson: PackageJson,
+  doesContainWranglerConfig: boolean,
+  workflowContents: string[]
+): boolean {
   const scripts = packageJson.scripts;
   if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('wrangler'))) {
     return true;
   }
 
-  if (detectWranglerConfig(dirPath)) {
+  if (doesContainWranglerConfig) {
     return true;
   }
 
-  return workflowFilesMatch(dirPath, /cloudflare|wrangler/iu);
+  return workflowContents.some((content) => /cloudflare|wrangler/iu.test(content));
 }
 
-function detectRailway(dirPath: string, packageJson: PackageJson): boolean {
+function detectRailway(dirPath: string, packageJson: PackageJson, workflowContents: string[]): boolean {
   const scripts = packageJson.scripts;
   if (scripts && Object.values(scripts).some((script) => typeof script === 'string' && script.includes('railway'))) {
     return true;
@@ -743,25 +751,25 @@ function detectRailway(dirPath: string, packageJson: PackageJson): boolean {
     return true;
   }
 
-  return workflowFilesMatch(dirPath, /railway/iu);
+  return workflowContents.some((content) => /railway/iu.test(content));
 }
 
-function workflowFilesMatch(dirPath: string, regex: RegExp): boolean {
+/** Contents of the readable .github/workflows YAML files, read once for every detector needing them. */
+function readWorkflowFileContents(dirPath: string): string[] {
   const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
   try {
     return fs
       .readdirSync(workflowsPath)
-      .some((fileName) => /\.ya?ml$/iu.test(fileName) && workflowFileMatches(workflowsPath, fileName, regex));
+      .filter((fileName) => /\.ya?ml$/iu.test(fileName))
+      .flatMap((fileName) => {
+        try {
+          return [fs.readFileSync(path.join(workflowsPath, fileName), 'utf8')];
+        } catch {
+          return [];
+        }
+      });
   } catch {
-    return false;
-  }
-}
-
-function workflowFileMatches(workflowsPath: string, fileName: string, regex: RegExp): boolean {
-  try {
-    return regex.test(fs.readFileSync(path.join(workflowsPath, fileName), 'utf8'));
-  } catch {
-    return false;
+    return [];
   }
 }
 
@@ -843,32 +851,38 @@ function findCargoTomlDirPaths(dirPath: string): string[] {
     .toSorted((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
 }
 
-function doesImportPlaywrightAtRuntime(dirPath: string): boolean {
-  return doesImportPackageAtRuntime(dirPath, 'playwright');
-}
-
 // `prettier` is normally stripped in favor of oxfmt, but a package that imports it as a library
 // (e.g. formatting HTML at runtime) must keep it declared, or isolated installs turn it into a
-// phantom dependency. Subpath specifiers like `prettier/standalone` count too.
-function doesImportPrettierAtRuntime(dirPath: string): boolean {
-  return doesImportPackageAtRuntime(dirPath, 'prettier');
-}
-
-function doesImportPackageAtRuntime(dirPath: string, packageName: string): boolean {
+// phantom dependency. Subpath specifiers like `prettier/standalone` count too. Both packages are
+// detected in one pass so every source file is globbed and read only once.
+function detectRuntimeImports(dirPath: string): { playwright: boolean; prettier: boolean } {
   const files = fg.globSync('{app,src}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}', {
     dot: true,
     cwd: dirPath,
     ignore: [...globIgnore, '**/__tests__/**', '**/*.spec.*', '**/*.test.*', '**/playwright.config.*'],
   });
-  const escapedName = packageName.replaceAll(/[.*+?^${}()|[\]\\]/gu, String.raw`\$&`);
+  const result = { playwright: false, prettier: false };
+  const regExps = {
+    playwright: buildRuntimeImportRegExp('playwright'),
+    prettier: buildRuntimeImportRegExp('prettier'),
+  };
+  for (const file of files) {
+    const content = fs.readFileSync(path.resolve(dirPath, file), 'utf8');
+    result.playwright ||= regExps.playwright.test(content);
+    result.prettier ||= regExps.prettier.test(content);
+    if (result.playwright && result.prettier) break;
+  }
+  return result;
+}
+
+function buildRuntimeImportRegExp(packageName: string): RegExp {
   // Match the bare specifier or any subpath of it (`pkg` / `pkg/sub`), but never a different package
   // that merely shares the prefix (`pkg-other`), since the char after the name must be `/` or a quote.
-  const specifier = String.raw`['"]${escapedName}(?:/[^'"]*)?['"]`;
-  const importRegExp = new RegExp(
+  const specifier = String.raw`['"]${escapeRegExp(packageName)}(?:/[^'"]*)?['"]`;
+  return new RegExp(
     String.raw`\bfrom\s+${specifier}|\bimport\s*\(\s*${specifier}\s*\)|\brequire\s*\(\s*${specifier}\s*\)`,
     'u'
   );
-  return files.some((file) => importRegExp.test(fs.readFileSync(path.resolve(dirPath, file), 'utf8')));
 }
 
 async function fetchRepoInfo(dirPath: string, packageJson: PackageJson): Promise<Record<string, unknown> | undefined> {

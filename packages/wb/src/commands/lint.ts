@@ -39,9 +39,7 @@ const _argumentsBuilder = {
   },
 } as const;
 
-export type LintCommandOptions = InferredOptionTypes<
-  typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder
->;
+type LintCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder & typeof _argumentsBuilder>;
 export type LintCommandArgv = ArgumentsCamelCase<LintCommandOptions> & {
   '--'?: unknown[];
   _: unknown[];
@@ -284,7 +282,7 @@ export async function lint(argv: LintCommandArgv): Promise<number> {
   } else {
     for (const project of projects.descendants) {
       if (shouldRunLinters) {
-        if (!project.packageJson.workspaces || project.hasSourceCode) {
+        if (project.hasOwnSourceCode) {
           const lintCommand = buildLintCommand(project, argv);
           if (lintCommand) linterCommands.push({ command: lintCommand, project });
         }
@@ -465,7 +463,7 @@ export function buildOxfmtCommand(files?: string[]): string {
 }
 
 export function buildPoetryFormatCommand(files?: string[]): string {
-  const targets = files && files.length > 0 ? files : ['.'];
+  const targets = toLintTargets(files);
   return [
     buildShellCommand(['poetry', 'run', 'isort', '--profile', 'black', '--filter-files', ...targets]),
     buildShellCommand(['poetry', 'run', 'black', ...targets]),
@@ -473,11 +471,10 @@ export function buildPoetryFormatCommand(files?: string[]): string {
 }
 
 export function buildPoetryLintCommand(argv: Partial<Pick<LintCommandOptions, 'quiet'>>, files?: string[]): string {
-  const targets = files && files.length > 0 ? files : ['.'];
-  return buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...targets]);
+  return buildShellCommand(['poetry', 'run', 'flake8', ...(argv.quiet ? ['-q'] : []), ...toLintTargets(files)]);
 }
 
-export function buildCargoFormatCommand(): string {
+function buildCargoFormatCommand(): string {
   // Formatting must go through cargo (not rustfmt on individual files) so each
   // crate's edition and rustfmt configuration are respected; `--all` covers
   // every workspace member and is a no-op suffix for single-crate projects.
@@ -485,13 +482,15 @@ export function buildCargoFormatCommand(): string {
 }
 
 export function buildDartFormatCommand(files?: string[]): string {
-  const targets = files && files.length > 0 ? files : ['.'];
-  return buildShellCommand(['dart', 'format', ...targets]);
+  return buildShellCommand(['dart', 'format', ...toLintTargets(files)]);
 }
 
 export function buildDartLintCommand(files?: string[]): string {
-  const targets = files && files.length > 0 ? files : ['.'];
-  return buildShellCommand(['dart', 'analyze', ...targets]);
+  return buildShellCommand(['dart', 'analyze', ...toLintTargets(files)]);
+}
+
+function toLintTargets(files: string[] | undefined): string[] {
+  return files && files.length > 0 ? files : ['.'];
 }
 
 export function buildPrettierArgs(

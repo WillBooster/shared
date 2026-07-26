@@ -103,16 +103,15 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
         if (path.dirname(dirPath) === dirPath) break;
       }
       // fnox also loads committed config aliases this generator cannot keep in sync.
-      const unsupportedFilePaths = listFnoxLikeFilePaths(rootDirPath).filter(
-        (filePath) => path.basename(filePath) !== 'fnox.toml'
-      );
+      const fnoxLikeFilePaths = listFnoxLikeFilePaths(rootDirPath);
+      const unsupportedFilePaths = fnoxLikeFilePaths.filter((filePath) => path.basename(filePath) !== 'fnox.toml');
       if (unsupportedFilePaths.length > 0) {
         failFnoxSync(
           `Failed to synchronize fnox age recipients because only fnox.toml files are supported: ${unsupportedFilePaths.join(', ')}. Merge them into the adjacent fnox.toml.`
         );
         return;
       }
-      const dirPaths = listFnoxTomlDirPaths(rootDirPath);
+      const dirPaths = listFnoxTomlDirPaths(fnoxLikeFilePaths);
       if (!dirPaths.includes(rootDirPath)) {
         failFnoxSync(
           `Failed to synchronize fnox age recipients because ${path.resolve(rootDirPath, 'fnox.toml')} is invisible to git (gitignored?). Commit it or remove it.`
@@ -188,7 +187,9 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
           dirPath,
           rootDirPath,
           dirPath === rootDirPath,
-          ancestorChanged
+          ancestorChanged,
+          // Every dirPath was snapshotted above, so the snapshot IS the current file content.
+          snapshots.get(path.resolve(dirPath, 'fnox.toml')) ?? ''
         );
         if (result === 'changed') changedDirPaths.push(dirPath);
         anyFailed ||= result === 'failed';
@@ -219,7 +220,8 @@ async function synchronizeFnoxAgeRecipients(
   dirPath: string,
   rootDirPath: string,
   isRoot: boolean,
-  ancestorRecipientsChanged: boolean
+  ancestorRecipientsChanged: boolean,
+  originalContent: string
 ): Promise<'changed' | 'unchanged' | 'failed'> {
   const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
 
@@ -244,7 +246,6 @@ async function synchronizeFnoxAgeRecipients(
   // interruption left the migration itself incomplete).
   recoverStaleFnoxLocalBackup(rootDirPath, dirPath);
 
-  const originalContent = fs.readFileSync(fnoxTomlPath, 'utf8');
   const layoutIssue = findFnoxLayoutIssue(originalContent);
   if (layoutIssue) {
     failFnoxSync(`Failed to synchronize fnox age recipients because ${fnoxTomlPath} ${layoutIssue}.`);
@@ -311,7 +312,7 @@ async function synchronizeFnoxAgeRecipients(
  * verification cannot cover, or undefined when the standard single-file, single-age-provider
  * layout is used.
  */
-export function findFnoxLayoutIssue(fnoxTomlContent: string): string | undefined {
+function findFnoxLayoutIssue(fnoxTomlContent: string): string | undefined {
   try {
     const settings = parse(fnoxTomlContent) as FnoxToml;
     if (settings.import !== undefined) return 'uses the unsupported `import` setting';
@@ -429,22 +430,29 @@ function reencryptFnoxSecrets(dirPath: string, rootDirPath: string, profileNames
  * once HOME/XDG_CONFIG_HOME point at the isolated directory (its trust state disappears), so the
  * isolated spawns need the shim resolved to the real executable beforehand.
  */
-export function resolveFnoxCommand(dirPath: string): string {
+function resolveFnoxCommand(dirPath: string): string {
   const proc = child_process.spawnSync('mise', ['which', 'fnox'], { cwd: dirPath, encoding: 'utf8', stdio: 'pipe' });
   const resolved = proc.status === 0 ? proc.stdout.trim() : '';
   return resolved || 'fnox';
 }
 
+// The personal identity file is machine-global, so it is read once per process.
+let hasReadPersonalAgeSecretKey = false;
+let cachedPersonalAgeSecretKey: string | undefined;
+
 function readPersonalAgeSecretKey(): string | undefined {
+  if (hasReadPersonalAgeSecretKey) return cachedPersonalAgeSecretKey;
+  hasReadPersonalAgeSecretKey = true;
   try {
     const content = fs.readFileSync(path.join(os.homedir(), '.config', 'fnox', 'age.txt'), 'utf8');
-    return content
+    cachedPersonalAgeSecretKey = content
       .split('\n')
       .find((line) => line.trim().startsWith('AGE-SECRET-KEY-'))
       ?.trim();
   } catch {
-    return undefined;
+    cachedPersonalAgeSecretKey = undefined;
   }
+  return cachedPersonalAgeSecretKey;
 }
 
 /**
@@ -611,14 +619,14 @@ function findFnoxLocalTomlIssue(dirPath: string): string | undefined {
 }
 
 /**
- * Lists every directory in the repository containing a committed (or committable) fnox.toml.
- * Discovery goes through git so that gitignored trees (node_modules, build outputs) are excluded
- * without excluding legitimate packages that merely happen to be named like build outputs.
+ * Lists every directory containing a committed (or committable) fnox.toml among the given
+ * git-discovered config paths (see listFnoxLikeFilePaths: git-based discovery excludes gitignored
+ * trees such as node_modules without excluding legitimate packages named like build outputs).
  */
-function listFnoxTomlDirPaths(rootDirPath: string): string[] {
+function listFnoxTomlDirPaths(fnoxLikeFilePaths: string[]): string[] {
   return [
     ...new Set(
-      listFnoxLikeFilePaths(rootDirPath)
+      fnoxLikeFilePaths
         .filter((filePath) => path.basename(filePath) === 'fnox.toml')
         .map((filePath) => path.dirname(filePath))
     ),

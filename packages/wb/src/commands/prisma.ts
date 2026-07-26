@@ -10,6 +10,7 @@ import { buildDrizzleKitCommand, drizzleScripts } from '../scripts/drizzleScript
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { isDockerEnabled } from '../utils/ci.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { wrapWithLocalD1DatabaseUrl } from '../utils/wrangler.js';
 
@@ -184,10 +185,6 @@ const migrateCommand: CommandModule<unknown, InferredOptionTypes<typeof migrateB
 
 function shouldCheckIdempotency(project: Project, checkIdempotency: boolean | undefined): boolean {
   return checkIdempotency ?? isDockerEnabled(project);
-}
-
-function isDockerEnabled(project: Project): boolean {
-  return !!project.env.WB_DOCKER && project.env.WB_DOCKER !== '0' && project.env.WB_DOCKER !== 'false';
 }
 
 function isProductionEnvironment(project: Project): boolean {

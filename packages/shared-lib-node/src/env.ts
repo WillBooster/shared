@@ -114,26 +114,30 @@ export function readEnvironmentVariables(
 
   const envPathAndLoadedEnvVarNames: [string, string[]][] = [];
   const envVars: Record<string, string> = {};
+  const projectHasFnoxConfig = hasProjectFnoxConfig(cwd);
   const [fnoxEnvVars, fnoxEnvVarNames] = readFnoxEnvironmentVariables(cwd, cascade, {
     ...options,
     modeFileOverridesProcessEnv,
+    hasFnoxConfig: projectHasFnoxConfig,
   });
   Object.assign(envVars, fnoxEnvVars);
   // Report the fnox source whenever fnox.toml exists — even when it yields no keys (all shadowed,
   // empty profile, or a failing export): consumers such as wb's required-environment validation
   // must see that a declared env source exists rather than silently failing open.
-  if (fnoxEnvVarNames.length > 0 || hasProjectFnoxConfig(cwd)) {
-    envPathAndLoadedEnvVarNames.push([fnoxEnvironmentSourceName(cascade), fnoxEnvVarNames]);
+  if (fnoxEnvVarNames.length > 0 || projectHasFnoxConfig) {
+    const fnoxSourceName = fnoxEnvironmentSourceName(cascade);
+    envPathAndLoadedEnvVarNames.push([fnoxSourceName, fnoxEnvVarNames]);
     if (argv.verbose && !shouldSuppressOutput) {
-      console.info(`Read ${fnoxEnvVarNames.length} environment variables from ${fnoxEnvironmentSourceName(cascade)}`);
+      console.info(`Read ${fnoxEnvVarNames.length} environment variables from ${fnoxSourceName}`);
     }
   }
   const [miseEnvVars, miseEnvVarNames] = readMiseEnvironmentVariables(cwd, cascade, envVars, options);
   Object.assign(envVars, miseEnvVars);
   if (miseEnvVarNames.length > 0) {
-    envPathAndLoadedEnvVarNames.push([miseEnvironmentSourceName(cascade), miseEnvVarNames]);
+    const miseSourceName = miseEnvironmentSourceName(cascade);
+    envPathAndLoadedEnvVarNames.push([miseSourceName, miseEnvVarNames]);
     if (argv.verbose && !shouldSuppressOutput) {
-      console.info(`Read ${miseEnvVarNames.length} environment variables from ${miseEnvironmentSourceName(cascade)}`);
+      console.info(`Read ${miseEnvVarNames.length} environment variables from ${miseSourceName}`);
     }
   }
   if (!argv.verbose && !shouldSuppressOutput) {
@@ -194,9 +198,14 @@ export function readEnvironmentVariables(
 export function readFnoxEnvironmentVariables(
   cwd: string,
   cascade: string | undefined,
-  options?: { ignoreProcessEnv?: boolean; modeFileOverridesProcessEnv?: boolean }
+  options?: {
+    ignoreProcessEnv?: boolean;
+    modeFileOverridesProcessEnv?: boolean;
+    /** Precomputed hasProjectFnoxConfig(cwd) result, to avoid re-walking the ancestor directories. */
+    hasFnoxConfig?: boolean;
+  }
 ): [Record<string, string>, string[]] {
-  if (!hasProjectFnoxConfig(cwd)) return [{}, []];
+  if (!(options?.hasFnoxConfig ?? hasProjectFnoxConfig(cwd))) return [{}, []];
 
   const secrets = runFnoxExport(cwd, cascade, { quiet: false });
   if (!secrets) return [{}, []];
@@ -305,13 +314,7 @@ function runFnoxExport(
 }
 
 export function hasProjectFnoxConfig(cwd: string): boolean {
-  for (let currentPath = path.resolve(cwd); ; currentPath = path.dirname(currentPath)) {
-    if (fs.existsSync(path.join(currentPath, 'fnox.toml'))) {
-      return true;
-    }
-    const parentPath = path.dirname(currentPath);
-    if (parentPath === currentPath) return false;
-  }
+  return hasAncestorContaining(cwd, ['fnox.toml']);
 }
 
 function fnoxEnvironmentSourceName(cascade: string | undefined): string {
@@ -362,8 +365,12 @@ function readMiseEnvironmentVariables(
 }
 
 function hasProjectMiseConfig(cwd: string): boolean {
+  return hasAncestorContaining(cwd, ['mise.toml', '.mise.toml']);
+}
+
+function hasAncestorContaining(cwd: string, fileNames: string[]): boolean {
   for (let currentPath = path.resolve(cwd); ; currentPath = path.dirname(currentPath)) {
-    if (fs.existsSync(path.join(currentPath, 'mise.toml')) || fs.existsSync(path.join(currentPath, '.mise.toml'))) {
+    if (fileNames.some((fileName) => fs.existsSync(path.join(currentPath, fileName)))) {
       return true;
     }
     const parentPath = path.dirname(currentPath);

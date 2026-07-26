@@ -18,8 +18,31 @@ const TEST_FILE_NAME_REGEXP = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
  * fixtures may contain test files as data.
  */
 export function findTestStructureViolations(project: Pick<Project, 'dirPath' | 'packageJson'>): string[] {
-  const violations: string[] = [];
   const testDirPath = path.join(project.dirPath, 'test');
+  const violations = [...findFileSystemViolations(project.dirPath)];
+  // Only a project's OWN Playwright config counts: a workspace root legitimately shares a root-level
+  // playwright.config.ts while keeping e2e specs in a single app package. Checked outside the
+  // memoized walk because it depends on the caller-supplied packageJson, not only the directory.
+  if (
+    !project.packageJson.workspaces &&
+    fs.existsSync(path.join(project.dirPath, 'playwright.config.ts')) &&
+    !fs.existsSync(path.join(testDirPath, 'e2e'))
+  ) {
+    violations.push('playwright.config.ts');
+  }
+  return violations;
+}
+
+// The recursive walk is the expensive part and runs for the same directories from both `wb lint`
+// and `wb test` within one `wb verify`, so its result is shared per project directory.
+const fileSystemViolationsCache = new Map<string, string[]>();
+
+function findFileSystemViolations(projectDirPath: string): string[] {
+  const cachedViolations = fileSystemViolationsCache.get(projectDirPath);
+  if (cachedViolations) return cachedViolations;
+
+  const violations: string[] = [];
+  const testDirPath = path.join(projectDirPath, 'test');
   if (fs.existsSync(testDirPath)) {
     for (const entry of fs.readdirSync(testDirPath, { withFileTypes: true })) {
       // OS and editor artifacts such as .DS_Store are environment noise, not layout mistakes.
@@ -29,18 +52,11 @@ export function findTestStructureViolations(project: Pick<Project, 'dirPath' | '
       }
     }
   }
-  collectStrayTestFiles(project.dirPath, '', violations);
-  // Only a project's OWN Playwright config counts: a workspace root legitimately shares a root-level
-  // playwright.config.ts while keeping e2e specs in a single app package.
-  if (
-    !project.packageJson.workspaces &&
-    fs.existsSync(path.join(project.dirPath, 'playwright.config.ts')) &&
-    !fs.existsSync(path.join(testDirPath, 'e2e'))
-  ) {
-    violations.push('playwright.config.ts');
-  }
+  collectStrayTestFiles(projectDirPath, '', violations);
   // A test file directly under test/ is reported by both the top-level check and the stray-file walk.
-  return [...new Set(violations)];
+  const uniqueViolations = [...new Set(violations)];
+  fileSystemViolationsCache.set(projectDirPath, uniqueViolations);
+  return uniqueViolations;
 }
 
 function collectStrayTestFiles(projectDirPath: string, relativeDirPath: string, violations: string[]): void {

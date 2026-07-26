@@ -64,28 +64,26 @@ export function getD1DatabaseName(project: Pick<Project, 'dirPath'>): string | u
   const configPath = findWranglerConfigPath(project);
   if (!configPath) return;
 
-  // Cover JSON(C) (`"database_name": "..."`) and TOML, including its inline-table form
-  // (`d1_databases = [{ ..., database_name = "..." }]`), without full parsers.
-  // Commented-out lines are skipped so that they cannot shadow the active database name,
-  // and the key must follow a line start, `{` or `,` so that prose mentioning it cannot match.
-  for (const line of fs.readFileSync(configPath, 'utf8').split('\n')) {
-    if (/^\s*(?:#|\/\/)/u.test(line)) continue;
-
-    const match = /(?:^|[,{])\s*["']?database_name["']?\s*[:=]\s*["']([^"']+)["']/u.exec(line);
-    if (match) return match[1];
-  }
-  return;
+  return scanWranglerConfigValue(configPath, 'database_name');
 }
+
+// Looked up from many call sites (framework detection, worker-types generation, deploy, test), so
+// the existence probes are shared. Keyed on the project OBJECT (not its directory path): the same
+// shared Project instance flows through every call site within one invocation, while callers that
+// rewrite configs and pass fresh partial objects must observe the current disk state.
+const wranglerConfigPathCache = new WeakMap<object, { configPath: string | undefined }>();
 
 export function findWranglerConfigPath(project: Pick<Project, 'dirPath'>): string | undefined {
   // Tests may pass partial Project objects without dirPath.
   if (!project.dirPath) return;
+  const cached = wranglerConfigPathCache.get(project);
+  if (cached) return cached.configPath;
 
-  for (const fileName of wranglerConfigFileNames) {
-    const filePath = path.join(project.dirPath, fileName);
-    if (fs.existsSync(filePath)) return filePath;
-  }
-  return;
+  const configPath = wranglerConfigFileNames
+    .map((fileName) => path.join(project.dirPath, fileName))
+    .find((filePath) => fs.existsSync(filePath));
+  wranglerConfigPathCache.set(project, { configPath });
+  return configPath;
 }
 
 /**
@@ -96,18 +94,28 @@ export function findD1MigrationsDirPath(project: Pick<Project, 'dirPath'>): stri
   const configPath = findWranglerConfigPath(project);
   if (!configPath) return;
 
-  let migrationsDir = 'migrations';
+  const migrationsDirPath = path.join(
+    project.dirPath,
+    scanWranglerConfigValue(configPath, 'migrations_dir') ?? 'migrations'
+  );
+  return fs.existsSync(migrationsDirPath) ? migrationsDirPath : undefined;
+}
+
+/**
+ * The first value declared for the key in the wrangler config, covering JSON(C)
+ * (`"key": "..."`) and TOML, including its inline-table form (`d1_databases = [{ ..., key = "..." }]`),
+ * without full parsers. Commented-out lines are skipped so that they cannot shadow the active
+ * value, and the key must follow a line start, `{` or `,` so that prose mentioning it cannot match.
+ */
+function scanWranglerConfigValue(configPath: string, key: string): string | undefined {
+  const keyValuePattern = new RegExp(`(?:^|[,{])\\s*["']?${key}["']?\\s*[:=]\\s*["']([^"']+)["']`, 'u');
   for (const line of fs.readFileSync(configPath, 'utf8').split('\n')) {
     if (/^\s*(?:#|\/\/)/u.test(line)) continue;
 
-    const match = /(?:^|[,{])\s*["']?migrations_dir["']?\s*[:=]\s*["']([^"']+)["']/u.exec(line);
-    if (match) {
-      migrationsDir = match[1] as string;
-      break;
-    }
+    const match = keyValuePattern.exec(line);
+    if (match) return match[1];
   }
-  const migrationsDirPath = path.join(project.dirPath, migrationsDir);
-  return fs.existsSync(migrationsDirPath) ? migrationsDirPath : undefined;
+  return;
 }
 
 /**
