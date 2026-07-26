@@ -37,6 +37,10 @@ export function findTestStructureViolations(project: Pick<Project, 'dirPath' | '
 // and `wb test` within one `wb verify`, so its result is shared per project directory.
 const fileSystemViolationsCache = new Map<string, string[]>();
 
+export function clearTestStructureCache(): void {
+  fileSystemViolationsCache.clear();
+}
+
 function findFileSystemViolations(projectDirPath: string): string[] {
   const cachedViolations = fileSystemViolationsCache.get(projectDirPath);
   if (cachedViolations) return cachedViolations;

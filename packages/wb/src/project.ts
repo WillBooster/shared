@@ -19,6 +19,7 @@ import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
 import { selectFnoxSourcedKeys } from './utils/envSources.js';
 import { hasBunDirectoryMarker, isBunPackageManager } from './utils/runtime.js';
+import { clearTestStructureCache } from './utils/testStructure.js';
 import { findWranglerConfigPath } from './utils/wrangler.js';
 
 /** The file `wrangler types` writes by default. */
@@ -538,6 +539,7 @@ const descendantProjectsCache = new Map<string, Promise<Project[]>>();
 export function clearProjectCaches(): void {
   selfProjectCache.clear();
   descendantProjectsCache.clear();
+  clearTestStructureCache();
 }
 
 function buildProjectCacheKey(argv: EnvReaderOptions, loadEnv: boolean, dirPath: string): string {
