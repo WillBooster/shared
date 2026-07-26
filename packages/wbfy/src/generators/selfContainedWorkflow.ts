@@ -137,83 +137,6 @@ function removeTrailingSpaces(text: string): string {
   return text.replaceAll(/[ \t]+$/gm, '');
 }
 
-/**
- * The install sequence every generated workflow shares: a plain `bun install`, hardened into the
- * reusable workflows' three-step dance when the repository registers a TAKUMI_GUARD_TOKEN secret.
- *
- * Takumi Guard (https://flatt.tech/takumi/features/guard) is a registry proxy that blocks
- * known-malicious packages. Routing the DEFAULT registry through it is what protects the install,
- * and the token authenticates that proxy — so the token has to be present while dependencies are
- * resolved, which is exactly when a compromised dependency's lifecycle script would run. Hence the
- * split: resolve and download with `--ignore-scripts` and the token, then replay the skipped
- * lifecycle scripts in a second install that has no token (every package is already cached, and
- * Guard serves anonymously anyway). Only bun is generated here, and bun reads .npmrc, so no
- * package-manager branching is needed.
- */
-function buildInstallSteps(): Step[] {
-  return [
-    {
-      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
-      name: 'Generate .npmrc for Takumi Guard',
-      // The token is written as a literal `${TAKUMI_GUARD_TOKEN}` reference that bun expands at
-      // install time, so the secret itself never lands in a file. The managed lines are stripped
-      // from an existing .npmrc first: a repository outside the organizations may legitimately
-      // commit one (scope mappings for another registry), and dropping only these two lines keeps
-      // the rest of it in effect. Replacing the file with `mv` rather than appending in place stops
-      // a committed symlink from redirecting the write into, say, a persistent home npmrc.
-      run: `set -euo pipefail
-NPMRC="$(mktemp "$RUNNER_TEMP/npmrc.XXXXXX")"
-if [[ -e .npmrc ]]; then
-  grep -vE '^registry=|^//npm\\.flatt\\.tech/:_authToken' .npmrc > "$NPMRC" || true
-fi
-echo 'registry=https://npm.flatt.tech/' >> "$NPMRC"
-echo '//npm.flatt.tech/:_authToken=\${TAKUMI_GUARD_TOKEN}' >> "$NPMRC"
-rm -f .npmrc
-mv "$NPMRC" .npmrc`,
-    },
-    {
-      name: 'Install dependencies',
-      run: `set -euo pipefail
-if [[ "$HAS_TAKUMI_GUARD_TOKEN" == "true" ]]; then
-  bun install --ignore-scripts
-else
-  bun install
-fi`,
-      // Step-scoped: a job-level token would be readable by every dependency lifecycle script the
-      // tokenless replay below runs.
-      env: { TAKUMI_GUARD_TOKEN: '${{ secrets.TAKUMI_GUARD_TOKEN }}' },
-    },
-    {
-      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
-      name: 'Run dependency lifecycle scripts without registry credentials',
-      // A repeated `bun install` is a no-op that replays nothing, so node_modules has to go first.
-      // A failing repository postinstall is tolerated exactly as the reusable workflows tolerate
-      // it: the token-free environment also lacks FNOX_AGE_KEY, so a postinstall that wants
-      // decrypted secrets cannot succeed here and must not take the whole job down.
-      run: `set -euo pipefail
-rm -rf node_modules
-bun install || {
-  echo "::warning::Lifecycle scripts failed; completing the install without them"
-  rm -rf node_modules
-  bun install --ignore-scripts
-}`,
-    },
-    {
-      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
-      name: 'Remove the generated .npmrc',
-      // Nothing after the install needs the proxy, and leaving it in place would break the one
-      // thing Guard refuses to serve: it answers `npm publish` with 405, so a release workflow
-      // whose package lacks an explicit publishConfig.registry would fail to publish.
-      run: `set -euo pipefail
-if git ls-files --error-unmatch -- .npmrc > /dev/null 2>&1; then
-  git checkout -- .npmrc
-else
-  rm -f .npmrc
-fi`,
-    },
-  ];
-}
-
 function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConfig[]): Workflow {
   const usesFnox = fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'));
   // Playwright may be declared only in workspace packages; `wb test-on-ci` runs every declaring
@@ -442,6 +365,88 @@ function buildReleaseWorkflow(config: PackageConfig, hasProductionDeployWorkflow
       },
     },
   };
+}
+
+/**
+ * The install sequence every generated workflow shares: a plain `bun install`, hardened into the
+ * reusable workflows' three-step dance when the repository registers a TAKUMI_GUARD_TOKEN secret.
+ *
+ * Takumi Guard (https://flatt.tech/takumi/features/guard) is a registry proxy that blocks
+ * known-malicious packages. Routing the DEFAULT registry through it is what protects the install,
+ * and the token authenticates that proxy — so the token has to be present while dependencies are
+ * resolved, which is exactly when a compromised dependency's lifecycle script would run. Hence the
+ * split: resolve and download with `--ignore-scripts` and the token, then replay the skipped
+ * lifecycle scripts in a second install that has no token (every package is already cached, and
+ * Guard serves anonymously anyway). Only bun is generated here, and bun reads .npmrc, so no
+ * package-manager branching is needed.
+ *
+ * The shell details deliberately mirror reusable-workflows' production-proven install steps: bare
+ * `$RUNNER_TEMP` (set by the runner application on every runner, and `set -u` fails loudly if not),
+ * `[[ -e .npmrc ]]`, and the second `rm -rf node_modules` in the fallback (an interrupted lifecycle
+ * run may leave node_modules inconsistent, so the retry starts clean rather than trusting a repair).
+ */
+function buildInstallSteps(): Step[] {
+  return [
+    {
+      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
+      name: 'Generate .npmrc for Takumi Guard',
+      // The token is written as a literal `${TAKUMI_GUARD_TOKEN}` reference that bun expands at
+      // install time, so the secret itself never lands in a file. The managed lines are stripped
+      // from an existing .npmrc first: a repository outside the organizations may legitimately
+      // commit one (scope mappings for another registry), and dropping only these two lines keeps
+      // the rest of it in effect. Replacing the file with `mv` rather than appending in place stops
+      // a committed symlink from redirecting the write into, say, a persistent home npmrc.
+      run: `set -euo pipefail
+NPMRC="$(mktemp "$RUNNER_TEMP/npmrc.XXXXXX")"
+if [[ -e .npmrc ]]; then
+  grep -vE '^registry=|^//npm\\.flatt\\.tech/:_authToken' .npmrc > "$NPMRC" || true
+fi
+echo 'registry=https://npm.flatt.tech/' >> "$NPMRC"
+echo '//npm.flatt.tech/:_authToken=\${TAKUMI_GUARD_TOKEN}' >> "$NPMRC"
+rm -f .npmrc
+mv "$NPMRC" .npmrc`,
+    },
+    {
+      name: 'Install dependencies',
+      run: `set -euo pipefail
+if [[ "$HAS_TAKUMI_GUARD_TOKEN" == "true" ]]; then
+  bun install --ignore-scripts
+else
+  bun install
+fi`,
+      // Step-scoped: a job-level token would be readable by every dependency lifecycle script the
+      // tokenless replay below runs.
+      env: { TAKUMI_GUARD_TOKEN: '${{ secrets.TAKUMI_GUARD_TOKEN }}' },
+    },
+    {
+      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
+      name: 'Run dependency lifecycle scripts without registry credentials',
+      // A repeated `bun install` is a no-op that replays nothing, so node_modules has to go first.
+      // A failing repository postinstall is tolerated exactly as the reusable workflows tolerate
+      // it: the token-free environment also lacks FNOX_AGE_KEY, so a postinstall that wants
+      // decrypted secrets cannot succeed here and must not take the whole job down.
+      run: `set -euo pipefail
+rm -rf node_modules
+bun install || {
+  echo "::warning::Lifecycle scripts failed; completing the install without them"
+  rm -rf node_modules
+  bun install --ignore-scripts
+}`,
+    },
+    {
+      if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
+      name: 'Remove the generated .npmrc',
+      // Nothing after the install needs the proxy, and leaving it in place would break the one
+      // thing Guard refuses to serve: it answers `npm publish` with 405, so a release workflow
+      // whose package lacks an explicit publishConfig.registry would fail to publish.
+      run: `set -euo pipefail
+if git ls-files --error-unmatch -- .npmrc > /dev/null 2>&1; then
+  git checkout -- .npmrc
+else
+  rm -f .npmrc
+fi`,
+    },
+  ];
 }
 
 function buildSemanticPrWorkflow(): Workflow {
