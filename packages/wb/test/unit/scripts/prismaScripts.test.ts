@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { Project } from '../../../src/project.js';
+import { Project } from '../../../src/project.js';
 import { cleanUpSqliteDbIfNeeded, prismaScripts } from '../../../src/scripts/prismaScripts.js';
 
 const createdDirs: string[] = [];
@@ -75,6 +75,7 @@ describe('prismaScripts.reset', () => {
       dirPath,
       env: {},
       packageJson: { dependencies: {} },
+      prismaDirName: 'prisma',
     } as unknown as Project;
     const command = prismaScripts.cleanUpLitestream(project);
 
@@ -105,13 +106,12 @@ describe('prismaScripts.reset', () => {
 
   it('resolves database paths under db/ for the Blitz layout (db/schema.prisma)', () => {
     const dirPath = createProjectDir({ blitzLayout: true });
-    const project = {
-      dirPath,
-      env: {},
-      hasOwnDependency: (name: string) => name === 'blitz',
-      packageJson: { dependencies: { blitz: '2.2.4' } },
-      usesBunPackageManager: false,
-    } as unknown as Project;
+    // A real Project so prismaDirName's db/schema.prisma detection is exercised end-to-end.
+    fs.writeFileSync(
+      path.join(dirPath, 'package.json'),
+      JSON.stringify({ name: 'blitz-app', dependencies: { blitz: '2.2.4' } })
+    );
+    const project = new Project(dirPath, {}, false);
 
     expect(prismaScripts.deployForce(project)).toContain('rm -Rf "db/mount/prod.sqlite3"*');
     expect(prismaScripts.cleanUpLitestream(project)).toContain(
@@ -130,6 +130,7 @@ describe('prismaScripts.reset', () => {
       dirPath: '/tmp/dummy',
       env: {},
       packageJson: { dependencies: {} },
+      prismaDirName: 'prisma',
     } as unknown as Project;
 
     const command = prismaScripts.deployForce(project);

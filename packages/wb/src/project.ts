@@ -310,6 +310,12 @@ export class Project {
     return !!this.getOwnDependencyVersion('prisma');
   }
 
+  /** Blitz repositories keep their Prisma schema and SQLite databases under db/ instead of prisma/. */
+  @memoizeOne
+  get prismaDirName(): string {
+    return fs.existsSync(path.join(this.dirPath, 'db', 'schema.prisma')) ? 'db' : 'prisma';
+  }
+
   @memoizeOne
   get hasDrizzle(): boolean {
     return !!this.getOwnDependencyVersion('drizzle-orm');

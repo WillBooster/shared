@@ -11,14 +11,9 @@ const POSSIBLE_PRISMA_PATHS = [
   { schemaPath: path.join('db', 'schema.prisma'), dbPath: 'db' },
 ];
 
-/** Blitz repositories keep their Prisma schema and SQLite databases under db/ instead of prisma/. */
-export function getPrismaDatabaseDirName(project: Project): string {
-  return fs.existsSync(path.resolve(project.dirPath, 'db', 'schema.prisma')) ? 'db' : 'prisma';
-}
-
 /** Where the Litestream-replicated SQLite database is mounted, relative to the project directory. */
 function getMountDirPath(project: Project): string {
-  return `${getPrismaDatabaseDirName(project)}/mount`;
+  return `${project.prismaDirName}/mount`;
 }
 
 /**
@@ -91,7 +86,7 @@ class PrismaScripts {
     }
     if (scriptPath) return `BUN build-ts run ${scriptPath}`;
     if ((project.packageJson.prisma as Record<string, string> | undefined)?.seed) return `YARN prisma db seed`;
-    const seedsPath = `${getPrismaDatabaseDirName(project)}/seeds.ts`;
+    const seedsPath = `${project.prismaDirName}/seeds.ts`;
     return `if [ -e "${seedsPath}" ]; then BUN build-ts run ${seedsPath}; fi`;
   }
 

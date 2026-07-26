@@ -8,7 +8,7 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 import type { DatabaseOrm, Project } from '../project.js';
 import { findDescendantProjects, getAbsoluteFileDatabaseUrlPath, isProjectEnvironment } from '../project.js';
 import { buildDrizzleKitCommand, drizzleScripts } from '../scripts/drizzleScripts.js';
-import { getPrismaDatabaseDirName, prismaScripts } from '../scripts/prismaScripts.js';
+import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isDockerEnabled } from '../utils/ci.js';
@@ -309,7 +309,7 @@ const studioCommand: CommandModule<unknown, InferredOptionTypes<typeof studioBui
       // Resolved against the project directory because prismaScripts.studio resolves a relative
       // path against the CLI process directory, which differs for workspace descendants.
       const dbUrlOrPath = argv.restored
-        ? path.resolve(project.dirPath, getPrismaDatabaseDirName(project), 'restored.sqlite3')
+        ? path.resolve(project.dirPath, project.prismaDirName, 'restored.sqlite3')
         : argv.dbUrlOrPath?.toString();
       await runWithSpawn(
         withLocalD1IfNeeded(orm, project, getDatabaseOrmScripts(orm).studio(project, dbUrlOrPath, unknownOptions)),
@@ -390,13 +390,13 @@ dbs:
 }
 
 function getDefaultRestoreOutput(project: Project, orm: DatabaseOrm): string {
-  if (orm === 'prisma') return `${getPrismaDatabaseDirName(project)}/restored.sqlite3`;
+  if (orm === 'prisma') return `${project.prismaDirName}/restored.sqlite3`;
   return 'drizzle/restored.sqlite3';
 }
 
 function getLitestreamDbPath(project: Project, orm: DatabaseOrm): string {
   if (orm === 'prisma') {
-    return `${getPrismaDatabaseDirName(project)}/mount/prod.sqlite3`;
+    return `${project.prismaDirName}/mount/prod.sqlite3`;
   }
 
   const dbPath = getAbsoluteFileDatabaseUrlPath(project);
