@@ -104,12 +104,10 @@ const workflows = {
       push: {
         branches: ['main', 'wbfy'],
       },
-      // The reusable wbfy workflow re-runs this caller via workflow_dispatch after its
-      // GITHUB_TOKEN push-back (such a push triggers no workflows by itself), so the trigger has
-      // to stay. Being a dispatch TARGET needs only this trigger — the API call requires
-      // actions:write on the DISPATCHER's token, which wbfy.yml declares on its own push job.
-      // The reusable test workflow no longer pushes or dispatches at all; its fixes travel
-      // through autofix-apply.yml.
+      // The reusable autofix workflow (public repositories) re-runs this caller via
+      // workflow_dispatch after its GITHUB_TOKEN push-back (such a push triggers no workflows by
+      // itself), so the trigger has to stay. Being a dispatch TARGET needs only this trigger —
+      // the API call requires actions:write on the DISPATCHER's token.
       workflow_dispatch: null,
     },
     // cf. https://docs.github.com/en/actions/using-jobs/using-concurrency#example-only-cancel-in-progress-jobs-or-runs-for-the-current-workflow
@@ -133,34 +131,6 @@ const workflows = {
     jobs: {
       test: {
         uses: 'WillBooster/reusable-workflows/.github/workflows/test.yml@main',
-      },
-    },
-  },
-  // Commits the patch the test run uploaded, as a GitHub App, from the base repository's context.
-  // Private repositories only: public ones use autofix.ci (see generateAutofixWorkflow), whose own
-  // App does the same job and additionally handles fork pull requests.
-  'autofix-apply': {
-    name: 'Apply autofix',
-    on: {
-      workflow_run: {
-        // Matches the `name:` of the test caller above, not its filename.
-        workflows: ['Test'],
-        types: ['completed'],
-      },
-    },
-    // A called workflow can only REDUCE the caller's token, never elevate it, so both grants have
-    // to be here: without `actions: read` the apply job cannot list or download the artifact of
-    // the run that triggered it, and without `id-token: write` it cannot mint the OIDC token it
-    // exchanges at the WillBooster token broker for the App token. No secret is passed at all —
-    // the App's private key lives only in the broker, never in GitHub Secrets.
-    permissions: {
-      actions: 'read',
-      contents: 'read',
-      'id-token': 'write',
-    },
-    jobs: {
-      apply: {
-        uses: 'WillBooster/reusable-workflows/.github/workflows/autofix-apply.yml@main',
       },
     },
   },
@@ -250,124 +220,7 @@ const workflows = {
       },
     },
   },
-  wbfy: {
-    name: 'Willboosterify',
-    on: {
-      // The nightly cron is repository-specific (minutes staggered by repository name so the
-      // whole organization does not queue on the self-hosted runners at once); it is injected in
-      // writeWorkflowYaml AFTER the merge with existing content, so a stale minute never wins.
-      schedule: [],
-      workflow_dispatch: null,
-    },
-    concurrency: {
-      group: '${{ github.workflow }}',
-      'cancel-in-progress': true,
-    },
-    permissions: {
-      // The reusable workflow's push job pushes the wbfy branch with GITHUB_TOKEN (workflow-file
-      // changes are skipped — they are updated through local wbfy runs instead) and then
-      // dispatches test.yml on the pushed branch, since a GITHUB_TOKEN push triggers no
-      // workflows. Its wbfy job, which runs dependency lifecycle scripts, downgrades itself to a
-      // read-only token.
-      actions: 'write',
-      contents: 'write',
-      // Transitional (broker migration phase A): the reusable workflow's push job is about to
-      // exchange an OIDC token at the WillBooster token broker for an App push token. Callers must
-      // carry this grant BEFORE that switch lands — a called workflow can only reduce the caller's
-      // token — and `actions`/`contents: write` stay until the switch completes fleet-wide.
-      'id-token': 'write',
-    },
-    jobs: {
-      wbfy: {
-        uses: 'WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main',
-      },
-    },
-  },
 } as const;
-
-/**
- * Repositories that must NOT get the self-applying wbfy caller workflow, by repository name
- * (case-insensitive, either organization). Deny-list based on purpose: wbfy should run nightly on
- * every WillBooster/WillBoosterLab repository except the ones where it is known not to work, the
- * ones maintained for/by external collaborators, and forks (mirrors the exclusions of the retired
- * self-host-utils nightly fan-out, scripts/process-repos.sh).
- */
-export const wbfyWorkflowDenyList: ReadonlySet<string> = new Set(
-  [
-    // wbfy doesn't support these repos.
-    'agent-skills-private',
-    'corporate_consulting',
-    'detect-phone-fraud',
-    'detect-phone-fraud-android',
-    'detect-phone-fraud-cache',
-    'development-guide',
-    'docker-utils',
-    'healthcare',
-    'openclaw-railway',
-    'openclaw-workspace',
-    'photo_management',
-    'prompt-study-courses',
-    'reusable-workflows',
-    'sample-of-one-way-git-sync',
-    'seamzip',
-    'self-host-utils',
-    'slide-reviewer',
-    'test-fixtures-for-wbfy',
-    'verdaccio',
-    // These repos are for externals, so don't touch them.
-    'agent-sandbox-backlog',
-    'agent-sandbox-sample-account-book',
-    'agent-sandbox-workflow',
-    'chofu-walking-ai',
-    'exercode-employee-courses',
-    'exercode-example-course',
-    'exercode-kawahara-courses',
-    'exercode-kawahara-teacher-courses',
-    'exercode-kcs-courses',
-    'exercode-oic-ok-courses',
-    'exercode-oic-wb-courses',
-    'exercode-public-courses',
-    'exercode-sakamoto-smartse-courses',
-    'exercode-sakamoto-topse-courses',
-    'exercode-sakamoto-waseda-courses',
-    'exercode-waseda-programming-a-cce',
-    'exercode-waseda-programming-a-cse',
-    'vibe-coding-examples',
-    // These repos are forks, so don't touch them.
-    'asdf-actions',
-    'react-frame-component',
-  ].map((name) => name.toLowerCase())
-);
-
-/**
- * Whether the self-applying wbfy caller workflow must not be generated for this repository.
- * An unknown repository is denied: without the repository identity there is no way to check the
- * deny list (nor to stagger the schedule deterministically).
- */
-export function isWbfyWorkflowDenied(repository: string | undefined): boolean {
-  const repoName = repository?.toLowerCase().split('/').at(-1);
-  return !repoName || wbfyWorkflowDenyList.has(repoName);
-}
-
-// The self-applying wbfy callers start between 16:00 and 17:59 UTC (01:00-02:59 JST), staggered
-// per repository so the whole organization neither hammers GitHub/npm/Verdaccio at one instant
-// (which reads like a DDoS to rate limiters) nor queues on the self-hosted runners at once. The
-// window is bounded by two org constraints: the self-hosted Ubuntu runners reboot themselves at
-// 19:00 UTC (04:00 JST, self-host-utils setup-ubuntu.yml crontab), so with the 30-minute job
-// timeout the latest start (17:59 UTC) finishes by 18:29 UTC — leaving ~30 minutes of slack for
-// GitHub's documented schedule-event delays — and every run completes before the 20:00 UTC
-// wbfy-merge run that opens PRs from the pushed `wbfy` branches.
-const wbfyCronWindowStartHourUtc = 16;
-const wbfyCronWindowMinutes = 120;
-
-/** Deterministic staggered nightly cron for the wbfy caller (see the window rationale above). */
-export function getWbfyWorkflowCron(repository: string): string {
-  let hash = 0;
-  for (const ch of repository.toLowerCase()) {
-    hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) % wbfyCronWindowMinutes;
-  }
-  return `${hash % 60} ${wbfyCronWindowStartHourUtc + Math.floor(hash / 60)} * * *`;
-}
 
 type KnownKind = keyof typeof workflows | 'deploy' | 'autofix';
 
@@ -431,34 +284,24 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       if (!entry.isFile() || !entry.name.endsWith('.yml') || obsoleteGenPrFileNames.has(entry.name)) continue;
       fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
     }
-    // Both autofix kinds are listed; the visibility check below drops whichever does not apply.
-    const mandatoryKinds = ['test', 'autofix', 'autofix-apply', 'semantic-pr', 'close-comment'];
+    // The visibility check below drops autofix from private repositories.
+    const mandatoryKinds = ['test', 'autofix', 'semantic-pr', 'close-comment'];
     if (rootConfig.depending.semanticRelease) {
       mandatoryKinds.push('release');
     }
     if (rootConfig.cargoTomlDirPaths.length > 0) {
       mandatoryKinds.push('test-rust');
     }
-    // Every repository gets the self-applying nightly wbfy caller except deny-listed ones
-    // (generateWorkflows itself only runs for WillBooster/WillBoosterLab repositories — see
-    // shouldRunWorkflows in index.ts — so third-party repositories never reach this). On a
-    // deny-listed repository an existing caller is also removed (only when the file solely calls the reusable wbfy
-    // workflow — a same-named custom workflow is left alone) so a repository that later turns out
-    // to be unsupported stops willboosterifying itself after one manual wbfy run.
-    if (isWbfyWorkflowDenied(rootConfig.repository)) {
+    // The self-applying nightly wbfy caller is retired: automated fleet maintenance is driven by
+    // developers and agents running wbfy directly instead. An existing generated caller is
+    // removed (only when the file solely calls the reusable wbfy workflow — a same-named custom
+    // workflow is left alone).
+    {
       const wbfyFileName = fileNamesByKind.get('wbfy');
       fileNamesByKind.delete('wbfy');
       if (wbfyFileName && jobsAllCallReusableWorkflow(workflowsPath, wbfyFileName, 'wbfy')) {
         await fsUtil.removeConfined(path.join(workflowsPath, wbfyFileName));
       }
-    } else if (!rootConfig.isRepoVisibilityKnown) {
-      // Unknown visibility (failed GitHub lookup) collapses isPublicRepo to false, which would
-      // generate a caller WITHOUT github_hosted_runner and schedule a possibly-public repository
-      // onto the self-hosted runners. Leave any existing caller untouched and retry next run.
-      console.warn('Skipped generating the wbfy caller workflow because the repository visibility is unknown.');
-      fileNamesByKind.delete('wbfy');
-    } else {
-      mandatoryKinds.push('wbfy');
     }
     for (const kind of mandatoryKinds) {
       if (!fileNamesByKind.has(kind)) {
@@ -484,23 +327,25 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       fileNamesByKind.delete('sync-force');
       fileNamesByKind.delete('sync-init');
     }
-    // The two autofix paths are mutually exclusive. Public repositories run autofix.ci, which
-    // pushes through its own GitHub App and also covers fork pull requests. Private repositories
-    // (autofix.ci does not serve them) instead let the reusable test workflow upload a patch and
-    // autofix-apply.yml commit it with the WillBooster Autofixer App.
+    // The App-based autofix-apply workflow is retired everywhere: committing CI-generated patches
+    // with a bot credential is a risk with little benefit now that agents fix and verify before
+    // pushing, and retiring it lets the App private key (and its token broker) be decommissioned.
+    // The failing test run still reports the diff, which developers and agents apply themselves.
+    fileNamesByKind.delete('autofix-apply');
+    await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, 'autofix-apply.yml')));
+    // Public repositories keep autofix.ci (its own external App). Private repositories get no
+    // autofix workflow at all.
     if (rootConfig.isRepoVisibilityKnown) {
-      const obsoleteAutofixKind = rootConfig.isPublicRepo ? 'autofix-apply' : 'autofix';
-      fileNamesByKind.delete(obsoleteAutofixKind);
-      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, `${obsoleteAutofixKind}.yml`)));
+      if (!rootConfig.isPublicRepo) {
+        fileNamesByKind.delete('autofix');
+        await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, 'autofix.yml')));
+      }
     } else {
-      // A failed GitHub lookup collapses isPublicRepo to false, and unlike the merge-based
-      // generators this branch both DELETES one file and CREATES the other — so guessing wrong
-      // strips a public repository's autofix.ci workflow AND gives it the private App-based one,
-      // which refuses fork pull requests. Touch neither and retry on a later successful lookup,
-      // the same choice the wbfy caller makes above.
-      console.warn('Skipped generating the autofix workflows because the repository visibility is unknown.');
+      // A failed GitHub lookup collapses isPublicRepo to false, and this branch both DELETES the
+      // file and CREATES it — so guessing wrong strips a public repository's autofix.ci workflow.
+      // Touch nothing and retry on a later successful lookup.
+      console.warn('Skipped generating the autofix workflow because the repository visibility is unknown.');
       fileNamesByKind.delete('autofix');
-      fileNamesByKind.delete('autofix-apply');
     }
 
     for (const [kind, fileName] of fileNamesByKind) {
@@ -710,15 +555,6 @@ async function writeWorkflowYaml(
       if (newSettings.on?.push) {
         delete newSettings.on.push['paths-ignore'];
         newSettings.on.push.branches = newSettings.on.push.branches.filter((branch) => branch !== 'renovate/**');
-      }
-      break;
-    }
-    case 'wbfy': {
-      // Assigned after the merge so wbfy owns the schedule authoritatively: a hand-edited (or
-      // previously generated) cron never wins over the deterministic staggered one.
-      if (config.repository) {
-        newSettings.on ??= {};
-        newSettings.on.schedule = [{ cron: getWbfyWorkflowCron(config.repository) }];
       }
       break;
     }
@@ -1232,18 +1068,6 @@ function readProductionCustomDomain(rootDirPath: string, workerDirPath: string):
 // other callee is a GitHub error.
 const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'release', 'run-script', 'test']);
 
-// The reusable workflows whose App tokens come from the WillBooster token broker. The broker's
-// policy pins the OIDC job_workflow_ref to WillBooster/reusable-workflows@main and deliberately
-// rejects the WillBoosterLab sync mirror (accepting it would extend the token-issuing trust
-// boundary to a second repository's main branch), so callers of these always reference the
-// canonical PUBLIC WillBooster repository regardless of the calling repository's organization.
-// Mirror of POLICIES in WillBooster/github-token-broker/src/authorize.ts.
-// Note the `id-token: write` these callees need is part of the template-managed workflow-level
-// permissions, keyed by the canonical file name like every other template property: a caller kept
-// under a custom file name owns its permissions itself, and a missing grant fails closed with an
-// explicit "grant id-token: write" error in the callee.
-const brokerBackedReusableWorkflows = new Set(['autofix-apply', 'wbfy']);
-
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
   // `secrets: inherit` (parsed by js-yaml as a plain string) already forwards every caller secret
@@ -1276,13 +1100,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
     delete secrets.GH_BOT_PAT;
     delete secrets.WBFY_GH_TOKEN;
-  }
-  // The apply workflow takes no secret at all: the App's private key lives only in the WillBooster
-  // token broker, and the callee exchanges its OIDC ID token for a repository-scoped App token.
-  // Remove the pass-through an earlier template injected — the callee no longer declares the
-  // secret, and GitHub fails a caller passing an undeclared secret at startup.
-  if (secrets && calledReusableWorkflow === 'autofix-apply') {
-    delete secrets.AUTOFIX_APP_PRIVATE_KEY;
   }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
@@ -1338,24 +1155,11 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
 
   // Reconstruct from the parsed call so a differently cased owner (GitHub is case-insensitive
-  // there) is also normalized to the repository's own organization / mirror — except @main calls
-  // of the broker-backed workflows, which always reference the canonical repository (see
-  // brokerBackedReusableWorkflows). Pinned (tag/SHA) calls keep the organization owner, like
-  // their secrets above: the broker's policy covers only @main, and a mirror commit is not
-  // necessarily an object in the canonical repository, so retargeting a pinned ref could break
-  // workflow resolution outright. calledReusableWorkflow already carries the @main restriction.
-  if (orgWorkflowCall) {
-    const owner =
-      calledReusableWorkflow && brokerBackedReusableWorkflows.has(calledReusableWorkflow)
-        ? 'WillBooster'
-        : config.repository?.startsWith('github:WillBooster/')
-          ? 'WillBooster'
-          : config.repository?.startsWith('github:WillBoosterLab/')
-            ? 'WillBoosterLab'
-            : undefined;
-    if (owner) {
-      job.uses = `${owner}/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
-    }
+  // there) is also normalized to the repository's own organization / mirror.
+  if (orgWorkflowCall && config.repository?.startsWith('github:WillBooster/')) {
+    job.uses = `WillBooster/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
+  } else if (orgWorkflowCall && config.repository?.startsWith('github:WillBoosterLab/')) {
+    job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
   }
 
   // Remove redundant parameters
@@ -1370,25 +1174,9 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   if (config.doesContainDockerfile && !job.with.ci_label && kind.startsWith('test')) {
     job.with.ci_label = 'large';
   }
-  // Because github.event.repository.private is always true if job is scheduled.
-  // calledReusableWorkflow covers wbfy callers under a custom file name, which `kind` misses.
-  if (
-    kind === 'release' ||
-    kind === 'wbfy' ||
-    kind.startsWith('test') ||
-    kind.startsWith('deploy') ||
-    calledReusableWorkflow === 'wbfy'
-  ) {
+  // Because github.event.repository.private is always true if job is scheduled
+  if (kind === 'release' || kind.startsWith('test') || kind.startsWith('deploy')) {
     if (config.isPublicRepo) {
-      job.with.github_hosted_runner = true;
-    }
-    // WillBoosterLab wbfy callers reference the WillBooster-owned canonical workflow (see
-    // brokerBackedReusableWorkflows), and a called workflow owned by a DIFFERENT organization
-    // cannot access the caller's self-hosted runners
-    // (https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#how-reusable-workflows-use-runners),
-    // so their private repositories must opt into GitHub-hosted runners or the wbfy job would
-    // queue forever on runners the callee cannot reach.
-    if (calledReusableWorkflow === 'wbfy' && config.repository?.startsWith('github:WillBoosterLab/')) {
       job.with.github_hosted_runner = true;
     }
     // An existing github_hosted_runner on a PRIVATE repository is preserved on purpose: the input
