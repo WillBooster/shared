@@ -9,6 +9,7 @@ import type { Project } from '../project.js';
 import { findDescendantProjects, findRootAndSelfProjects, findSelfProject } from '../project.js';
 import { configureEnv } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { normalizeBunLockfile } from '../utils/bunLockfile.js';
 
 import { buildLintCommand, lint, type LintCommandArgv } from './lint.js';
 import { test, type TestCommandArgv, withDefaultTestCascadeEnv } from './test.js';
@@ -80,6 +81,11 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   await runStep(steps, { detail: installCommand, name: 'install' }, () =>
     runPackageCommand(installCommand, project, argv)
   );
+  // The repository may have no `gen-code` script (where the same normalization runs at postinstall),
+  // and `verify` is the command a developer runs before committing.
+  if (!argv.dryRun) {
+    normalizeBunLockfile(project.rootDirPath);
+  }
   if (project.packageJson.scripts?.['gen-code']) {
     const genCodeCommand = `${project.packageManagerCommand} gen-code`;
     await runStep(steps, { detail: genCodeCommand, name: 'gen-code' }, () =>
