@@ -48,7 +48,8 @@ export function normalizeBunLockfile(rootDirPath: string): boolean {
   // write cannot leave a truncated bun.lock behind (same strategy as wbfy's lefthook generator).
   const temporaryPath = `${lockfilePath}.wb-normalizing.${process.pid}.${crypto.randomUUID()}`;
   try {
-    const mode = fs.statSync(lockfilePath).mode;
+    // `& 0o777`: stat's mode carries the file-type bits, which chmod is not specified to accept.
+    const mode = fs.statSync(lockfilePath).mode & 0o777;
     fs.writeFileSync(temporaryPath, normalizedContent, { mode });
     // writeFileSync's `mode` is masked by the process umask; chmod applies the original bits as is.
     fs.chmodSync(temporaryPath, mode);
