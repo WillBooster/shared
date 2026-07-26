@@ -180,7 +180,16 @@ ${
   allConfigs.some((c) => c.depending.next || c.depending.vinext)
     ? `
 - This project uses the React Compiler, so \`useCallback\` and \`useMemo\` are unnecessary for performance.
-- Assume a single server instance.
+${
+  // Cloudflare Workers execute across many ephemeral isolates with no shared memory, and two
+  // requests are not guaranteed to hit the same instance — the single-instance simplification
+  // (module-level mutable state, in-process caches or locks) silently loses state there.
+  // doesContainWranglerConfig is the accurate Workers signal (isCloudflare also matches a mere
+  // wrangler mention in a script or workflow).
+  allConfigs.some((c) => c.doesContainWranglerConfig)
+    ? '- The app runs on Cloudflare Workers across multiple ephemeral isolates: never keep state in module-level variables or in-process caches; persist anything shared between requests in bindings (D1, KV, R2, Durable Objects).'
+    : '- Assume a single server instance.'
+}
 `
     : ''
 }
