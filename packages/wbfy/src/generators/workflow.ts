@@ -76,26 +76,6 @@ interface Step {
   run?: string;
 }
 
-const publicRepoAutofixWorkflow: Workflow = {
-  name: 'autofix.ci',
-  on: {
-    pull_request: null,
-    push: {
-      branches: ['main'],
-    },
-  },
-  permissions: {
-    contents: 'read',
-  },
-  concurrency: {
-    group: 'autofix-${{ github.head_ref }}',
-    'cancel-in-progress': true,
-  },
-  jobs: {
-    autofix: { 'runs-on': 'ubuntu-latest' },
-  },
-};
-
 const workflows = {
   test: {
     name: 'Test',
@@ -104,10 +84,8 @@ const workflows = {
       push: {
         branches: ['main', 'wbfy'],
       },
-      // The reusable autofix workflow (public repositories) re-runs this caller via
-      // workflow_dispatch after its GITHUB_TOKEN push-back (such a push triggers no workflows by
-      // itself), so the trigger has to stay. Being a dispatch TARGET needs only this trigger —
-      // the API call requires actions:write on the DISPATCHER's token.
+      // Nothing dispatches this caller any more (the workflows that pushed back and re-triggered
+      // it are retired); the trigger stays only so a maintainer can re-run the tests by hand.
       workflow_dispatch: null,
     },
     // cf. https://docs.github.com/en/actions/using-jobs/using-concurrency#example-only-cancel-in-progress-jobs-or-runs-for-the-current-workflow
@@ -115,7 +93,7 @@ const workflows = {
       group: '${{ github.workflow }}-${{ github.ref }}',
       'cancel-in-progress': true,
     },
-    // None of these may be narrowed just because the reusable test workflow stopped pushing:
+    // None of these may be narrowed just because the reusable test workflow never pushes:
     permissions: {
       // for the test job's skip-duplicate-actions call with cancel_others: true (the reusable
       // test workflow declares no permissions of its own, so its jobs run on this token)
@@ -125,8 +103,6 @@ const workflows = {
       contents: 'write',
       // for pkg-preflight PR file listing
       'pull-requests': 'read',
-      // for the commit status the reusable test workflow posts on workflow_dispatch runs
-      statuses: 'write',
     },
     jobs: {
       test: {
@@ -222,7 +198,7 @@ const workflows = {
   },
 } as const;
 
-type KnownKind = keyof typeof workflows | 'deploy' | 'autofix';
+type KnownKind = keyof typeof workflows | 'deploy';
 
 /**
  * Parses a `uses:` value calling one of WillBooster's own reusable workflows (or the
@@ -284,8 +260,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       if (!entry.isFile() || !entry.name.endsWith('.yml') || obsoleteGenPrFileNames.has(entry.name)) continue;
       fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
     }
-    // The visibility check below drops autofix from private repositories.
-    const mandatoryKinds = ['test', 'autofix', 'semantic-pr', 'close-comment'];
+    const mandatoryKinds = ['test', 'semantic-pr', 'close-comment'];
     if (rootConfig.depending.semanticRelease) {
       mandatoryKinds.push('release');
     }
@@ -327,25 +302,13 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       fileNamesByKind.delete('sync-force');
       fileNamesByKind.delete('sync-init');
     }
-    // The App-based autofix-apply workflow is retired everywhere: committing CI-generated patches
-    // with a bot credential is a risk with little benefit now that agents fix and verify before
-    // pushing, and retiring it lets the App private key (and its token broker) be decommissioned.
-    // The failing test run still reports the diff, which developers and agents apply themselves.
-    fileNamesByKind.delete('autofix-apply');
-    await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, 'autofix-apply.yml')));
-    // Public repositories keep autofix.ci (its own external App). Private repositories get no
-    // autofix workflow at all.
-    if (rootConfig.isRepoVisibilityKnown) {
-      if (!rootConfig.isPublicRepo) {
-        fileNamesByKind.delete('autofix');
-        await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, 'autofix.yml')));
-      }
-    } else {
-      // A failed GitHub lookup collapses isPublicRepo to false, and this branch both DELETES the
-      // file and CREATES it — so guessing wrong strips a public repository's autofix.ci workflow.
-      // Touch nothing and retry on a later successful lookup.
-      console.warn('Skipped generating the autofix workflow because the repository visibility is unknown.');
-      fileNamesByKind.delete('autofix');
+    // Every automated fix-application path is retired: the App-based autofix-apply flow and
+    // autofix.ci both committed CI-generated changes with a bot credential, a standing risk with
+    // little benefit now that agents fix and verify before pushing. The failing test run still
+    // reports the diff, which developers and agents apply themselves.
+    for (const retiredKind of ['autofix', 'autofix-apply']) {
+      fileNamesByKind.delete(retiredKind);
+      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, `${retiredKind}.yml`)));
     }
 
     for (const [kind, fileName] of fileNamesByKind) {
@@ -412,11 +375,6 @@ async function writeWorkflowYaml(
   const deployProductionFileName = fs.existsSync(path.join(workflowsPath, 'deploy-production.yml'))
     ? 'deploy-production.yml'
     : undefined;
-
-  if (kind === 'autofix') {
-    await writeYaml(generateAutofixWorkflow(config), filePath);
-    return;
-  }
 
   // A test-rust.yml in a repo without Rust code is a custom workflow that merely shares the name; leave it alone.
   if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) return;
@@ -1066,7 +1024,7 @@ function readProductionCustomDomain(rootDirPath: string, workerDirPath: string):
 // The reusable workflows that declare FNOX_AGE_KEY and VERDACCIO_TOKEN under
 // on.workflow_call.secrets (see WillBooster/reusable-workflows). Passing either secret to any
 // other callee is a GitHub error.
-const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'release', 'run-script', 'test']);
+const installCapableReusableWorkflows = new Set(['deploy', 'release', 'run-script', 'test']);
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
@@ -1091,16 +1049,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // their secrets untouched.
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
-  // The reusable wbfy workflow needs only VERDACCIO_TOKEN (wbfy's own bun install in
-  // repositories with @willbooster-private/* dependencies) — NOT the install-capable trio, so it
-  // gets its own injection instead of membership in installCapableReusableWorkflows. Workflow
-  // pushes always use GITHUB_TOKEN; workflow-file updates happen through local wbfy runs, so the
-  // retired WBFY_GH_TOKEN / deprecated GH_BOT_PAT pass-throughs are removed from existing callers.
-  if (secrets && calledReusableWorkflow === 'wbfy') {
-    secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
-    delete secrets.GH_BOT_PAT;
-    delete secrets.WBFY_GH_TOKEN;
-  }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
     // malicious-package-blocking proxy when this token resolves; an unset organization secret
@@ -1201,27 +1149,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       delete job.secrets;
     }
   }
-}
-
-function generateAutofixWorkflow(config: PackageConfig): Workflow {
-  // No FNOX_AGE_KEY here on purpose: public-repo autofix runs on fork PRs where exposing a
-  // decryption secret would be unsafe. mise still installs fnox so plaintext defaults load, and
-  // WB_ENV satisfies wb's CI environment guard while encrypted values remain unavailable.
-  const steps: Step[] = [
-    { uses: 'actions/checkout@v7' },
-    { uses: 'jdx/mise-action@v4.2.0', with: { cache: true } },
-    { run: 'bun install' },
-    { run: 'bun run cleanup' },
-  ];
-  if (config.packageJson?.scripts?.build) {
-    steps.push({ run: 'bun run build' });
-  }
-  steps.push({ uses: 'autofix-ci/action@c5b2d67aa2274e7b5a18224e8171550871fc7e4a' });
-
-  const autofixWorkflow = structuredClone(publicRepoAutofixWorkflow);
-  const autofixJob = autofixWorkflow.jobs.autofix ?? { 'runs-on': 'ubuntu-latest' };
-  autofixWorkflow.jobs.autofix = { ...autofixJob, env: { WB_ENV: 'development' }, steps };
-  return autofixWorkflow;
 }
 
 async function writeYaml(newSettings: Workflow, filePath: string): Promise<void> {
