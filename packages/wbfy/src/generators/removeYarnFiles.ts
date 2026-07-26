@@ -17,10 +17,9 @@ import { getWorkspacePackageJsonPaths } from '../utils/workspaceUtil.js';
 // approvedGitRepositories has no Bun counterpart because Bun does not restrict git dependencies,
 // so dropping it cannot change the install graph — org-level git-dependency policy is instead
 // enforced on every wbfy run by assertSafeDependencySources, the trade-off explicitly chosen in
-// #1014). Anything else
-// (registries, auth, scopes, packageExtensions,
-// patchFolder, proxies, supportedArchitectures, ...) affects dependency resolution or install
-// behavior and requires manual migration.
+// #1014). Anything else (registries, auth, scopes, packageExtensions, patchFolder, proxies,
+// supportedArchitectures, ...) affects dependency resolution or install behavior and requires
+// manual migration.
 const safeYarnrcSettings = new Set([
   'approvedGitRepositories',
   'checksumBehavior',
@@ -196,7 +195,7 @@ function isMigratableYarnrcSetting(key: string, value: unknown): boolean {
 export function readYarnrcMinimumReleaseAgeSeconds(dirPath: string): number | undefined {
   const parsed = readYarnrcYml(dirPath);
   if (!parsed || parsed === unparsableYarnrc) return undefined;
-  return parseYarnDurationAsSeconds((parsed as { npmMinimalAgeGate?: unknown }).npmMinimalAgeGate);
+  return parseYarnDurationAsSeconds(parsed.npmMinimalAgeGate);
 }
 
 function parseYarnDurationAsSeconds(value: unknown): number | undefined {
