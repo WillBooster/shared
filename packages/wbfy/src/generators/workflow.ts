@@ -14,6 +14,7 @@ import { jsoncUtil } from '../utils/jsoncUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
+import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
 
 interface Workflow {
@@ -1064,9 +1065,15 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     // expands to '' and the callee treats that as "feature off", so passing it is always safe.
     secrets.TAKUMI_GUARD_TOKEN = '${{ secrets.TAKUMI_GUARD_TOKEN }}';
     // The callee generates the workspace .npmrc for @willbooster-private/* from VERDACCIO_TOKEN
-    // before installing dependencies, which every repository needs regardless of its fnox
-    // migration state.
-    secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
+    // before installing dependencies. Only repositories that actually resolve private packages
+    // (or publish to Verdaccio) get the pass-through: everywhere else the credential would flow
+    // into CI runs that never use it, so the line is removed instead. The GitHub secret itself is
+    // always registered manually and stays registered either way.
+    if (repoResolvesPrivatePackages(config)) {
+      secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
+    } else {
+      delete secrets.VERDACCIO_TOKEN;
+    }
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
       // fnox.toml replaced the .env files (wb no longer reads them), so the legacy inputs would
