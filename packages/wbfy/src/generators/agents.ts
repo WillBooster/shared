@@ -162,7 +162,7 @@ export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
     '- Cloudflare Workers run across multiple ephemeral isolates and two requests may hit different instances: never let correctness depend on module-level mutable state; persist authoritative shared state in bindings (D1, KV, R2, Durable Objects). Best-effort isolate-local caches of non-request-scoped data are fine.';
   const serverInstanceInstruction = hasWorkersApp
     ? hasSingleInstanceServerApp
-      ? `${workersInstruction} This applies only to packages with a wrangler configuration; assume a single server instance for the other server apps.`
+      ? `${workersInstruction} This applies to all code that runs on Cloudflare Workers (the wrangler-configured packages and any workspace package they import); assume a single server instance for the other server apps.`
       : workersInstruction
     : hasSingleInstanceServerApp
       ? '- Assume a single server instance.'
