@@ -85,8 +85,13 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
         // write (e.g. a committed symlink destination) must not destroy the only usable
         // configuration — and via the containment guard so a symlinked .gemini directory can
         // never make cleanup delete files outside the repository.
-        if (await fsUtil.generateFile(configFilePath, yamlContent)) {
-          await fsUtil.removeConfined(legacyConfigFilePath);
+        // Announce the removal of a git-tracked file (removeConfined itself logs only skips),
+        // matching the convention of other wbfy removals (e.g. fixers/envExample.ts).
+        if (
+          (await fsUtil.generateFile(configFilePath, yamlContent)) &&
+          (await fsUtil.removeConfined(legacyConfigFilePath))
+        ) {
+          console.log(`Removed ${legacyConfigFilePath}: Gemini Code Assist reads only ${configFilePath}.`);
         }
       }),
       promisePool.run(() => fsUtil.generateFile(styleguideFilePath, styleguideContent)),
