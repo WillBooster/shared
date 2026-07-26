@@ -10,15 +10,16 @@ import { promisePool } from '../utils/promisePool.js';
 import { getWorkspacePackageJsonPaths } from '../utils/workspaceUtil.js';
 
 // Yarn settings wbfy can safely drop when migrating to Bun: tooling and cosmetics that do not
-// change what gets installed, plus the org-standard release-age-gate settings that have a Bun
-// translation (npmMinimalAgeGate / npmPreapprovedPackages are reflected into the generated
-// bunfig.toml's minimumReleaseAge / minimumReleaseAgeExcludes, and approvedGitRepositories has
-// no Bun counterpart because Bun does not restrict git dependencies, so dropping it cannot
-// change the install graph — org-level git-dependency policy is instead enforced on every wbfy
-// run by assertSafeDependencySources, the trade-off explicitly chosen in #1014). Anything else
-// (registries, auth, scopes, packageExtensions,
-// patchFolder, proxies, supportedArchitectures, ...) affects dependency resolution or install
-// behavior and requires manual migration.
+// change what gets installed, plus the org-standard release-age-gate settings (npmMinimalAgeGate
+// is reflected into the generated bunfig.toml's minimumReleaseAge; npmPreapprovedPackages is
+// deliberately DROPPED because minimumReleaseAgeExcludes is org policy managed solely by wbfy's
+// bunMinimumReleaseAgeExcludes — dropping is fail-safe, packages become age-gated; and
+// approvedGitRepositories has no Bun counterpart because Bun does not restrict git dependencies,
+// so dropping it cannot change the install graph — org-level git-dependency policy is instead
+// enforced on every wbfy run by assertSafeDependencySources, the trade-off explicitly chosen in
+// #1014). Anything else (registries, auth, scopes, packageExtensions, patchFolder, proxies,
+// supportedArchitectures, ...) affects dependency resolution or install behavior and requires
+// manual migration.
 const safeYarnrcSettings = new Set([
   'approvedGitRepositories',
   'checksumBehavior',
@@ -58,20 +59,6 @@ const yarnDurationUnitsInSeconds: Record<string, number> = {
 };
 
 const unparsableYarnrc = Symbol('unparsableYarnrc');
-
-/**
- * Whether the value is a plain (optionally scoped) npm package name. Anything else — globs,
- * versioned descriptors, or names with characters npm forbids — is not a usable
- * minimumReleaseAgeExcludes entry, and the strict character set also guarantees the value can be
- * interpolated into a double-quoted TOML string without escaping.
- */
-export function isLiteralNpmPackageName(value: string): boolean {
-  // Mirrors validate-npm-package-name (verified 7.0.2): both parts of a SCOPED name may contain
-  // any URL-safe character including leading `.`/`_` (e.g. `@_scope/pkg`, `@scope/_private`),
-  // while an UNSCOPED name must not start with `.`, `_`, or `-`; legacy uppercase names remain
-  // installable and are accepted too. Every accepted character is TOML-safe.
-  return /^(?:@[\w.~-]+\/[\w.~-]+|[A-Za-z0-9~][\w.~-]*)$/u.test(value);
-}
 
 /**
  * Detects Yarn configuration that has no automatic Bun translation. Must run as a read-only
@@ -190,44 +177,25 @@ function isMigratableYarnrcSetting(key: string, value: unknown): boolean {
   if (key === 'enableScripts') return value === false;
   // A gate value the translation cannot parse (e.g. Yarn's `${ENV_VAR:-14d}` expansion syntax)
   // would silently fall back to the 5-day org default and could WEAKEN the repository's policy,
-  // so only literally parsable durations are migratable. Untranslatable npmPreapprovedPackages
-  // entries need no such gate: dropping them is fail-safe (packages become age-gated).
+  // so only literally parsable durations are migratable. npmPreapprovedPackages needs no such
+  // gate: ALL its entries are dropped unconditionally (minimumReleaseAgeExcludes is org policy
+  // managed solely by bunMinimumReleaseAgeExcludes), which is fail-safe — packages become age-gated.
   if (key === 'npmMinimalAgeGate') return parseYarnDurationAsSeconds(value) !== undefined;
   return safeYarnrcSettings.has(key);
 }
 
-export interface YarnReleaseAgeSettings {
-  /** Undefined when .yarnrc.yml declares no (parsable) npmMinimalAgeGate. */
-  minimumReleaseAgeSeconds?: number;
-  minimumReleaseAgeExcludes: string[];
-}
-
 /**
- * Reads the release-age-gate settings from .yarnrc.yml so the generated bunfig.toml can keep
- * their behavior (minimumReleaseAge / minimumReleaseAgeExcludes). Must run BEFORE removeYarnFiles
- * deletes .yarnrc.yml.
+ * Reads the release-age gate from .yarnrc.yml so the generated bunfig.toml can keep its behavior
+ * (minimumReleaseAge). Must run BEFORE removeYarnFiles deletes .yarnrc.yml. npmPreapprovedPackages
+ * is deliberately NOT read: minimumReleaseAgeExcludes is org policy managed solely by wbfy's
+ * bunMinimumReleaseAgeExcludes, and dropping repository preapprovals is fail-safe (the packages
+ * become age-gated, which surfaces at install time instead of weakening the gate).
+ * @return The gate in seconds, or undefined when .yarnrc.yml declares no (parsable) npmMinimalAgeGate.
  */
-export function readYarnrcReleaseAgeSettings(dirPath: string): YarnReleaseAgeSettings {
-  const settings: YarnReleaseAgeSettings = { minimumReleaseAgeExcludes: [] };
+export function readYarnrcMinimumReleaseAgeSeconds(dirPath: string): number | undefined {
   const parsed = readYarnrcYml(dirPath);
-  if (!parsed || parsed === unparsableYarnrc) return settings;
-
-  const { npmMinimalAgeGate, npmPreapprovedPackages } = parsed as {
-    npmMinimalAgeGate?: unknown;
-    npmPreapprovedPackages?: unknown;
-  };
-  settings.minimumReleaseAgeSeconds = parseYarnDurationAsSeconds(npmMinimalAgeGate);
-  if (Array.isArray(npmPreapprovedPackages)) {
-    settings.minimumReleaseAgeExcludes = npmPreapprovedPackages.filter(
-      // Bun matches minimumReleaseAgeExcludes entries literally as package NAMES, so Yarn glob
-      // patterns (e.g. `@willbooster/*`) and package descriptors (e.g. `is-number@npm:7.0.0`)
-      // would be dead configuration and are dropped. Dropping is fail-safe (an uncovered package
-      // becomes age-gated, which surfaces at install time instead of weakening the gate), and
-      // the org-standard globs are already covered literally by bunMinimumReleaseAgeExcludes.
-      (entry): entry is string => typeof entry === 'string' && isLiteralNpmPackageName(entry)
-    );
-  }
-  return settings;
+  if (!parsed || parsed === unparsableYarnrc) return undefined;
+  return parseYarnDurationAsSeconds(parsed.npmMinimalAgeGate);
 }
 
 function parseYarnDurationAsSeconds(value: unknown): number | undefined {

@@ -45,9 +45,8 @@ import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflo
 import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
 import {
   findUnmigratableYarnSettings,
-  readYarnrcReleaseAgeSettings,
+  readYarnrcMinimumReleaseAgeSeconds,
   removeYarnFiles,
-  type YarnReleaseAgeSettings,
 } from './generators/removeYarnFiles.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
@@ -245,13 +244,14 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // and skips the probe (and its node_modules cleanup) entirely.
     const previousBunLinker = readBunLinker(rootDirPath);
     // Read BEFORE removeYarnFiles deletes .yarnrc.yml: the generated bunfig.toml keeps the
-    // repository's release-age-gate behavior (npmMinimalAgeGate / npmPreapprovedPackages).
-    const yarnReleaseAgeSettings = readYarnrcReleaseAgeSettings(rootDirPath);
+    // repository's release-age gate (npmMinimalAgeGate). npmPreapprovedPackages is dropped —
+    // minimumReleaseAgeExcludes is org policy managed solely by bunMinimumReleaseAgeExcludes.
+    const yarnMinimumReleaseAgeSeconds = readYarnrcMinimumReleaseAgeSeconds(rootDirPath);
     await removeYarnFiles(rootConfig);
     await generateBunfigToml(
       rootConfig,
       skipDeps ? (previousBunLinker ?? 'isolated') : 'isolated',
-      yarnReleaseAgeSettings
+      yarnMinimumReleaseAgeSeconds
     );
     await generateMiseToml(rootConfig, bunVersion);
     await generateFnoxToml(rootConfig);
@@ -270,7 +270,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // install would silently drop every managed dependency update for the rest of the run.
     if (
       !skipDeps &&
-      !(await ensureInstallableBunLinker(rootDirPath, rootConfig, previousBunLinker, yarnReleaseAgeSettings))
+      !(await ensureInstallableBunLinker(rootDirPath, rootConfig, previousBunLinker, yarnMinimumReleaseAgeSeconds))
     ) {
       // Do not fail the run here: the probe observes the pre-migration lifecycle scripts (e.g.
       // still-Yarn-based postinstall commands that generatePackageJson converts later), so both
@@ -384,7 +384,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
 
     // Refresh lock files
     try {
-      await refreshBunLock(rootDirPath, rootConfig, yarnReleaseAgeSettings);
+      await refreshBunLock(rootDirPath, rootConfig, yarnMinimumReleaseAgeSeconds);
       // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
       // that removeYarnFiles intentionally preserved for the migration can be removed.
       fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
@@ -410,7 +410,7 @@ async function ensureInstallableBunLinker(
   rootDirPath: string,
   rootConfig: PackageConfig,
   previousLinker: BunLinker | undefined,
-  yarnReleaseAgeSettings: YarnReleaseAgeSettings
+  yarnMinimumReleaseAgeSeconds: number | undefined
 ): Promise<boolean> {
   // A layout switch must probe from a clean tree: `bun install` does not remove packages the
   // previous layout left behind, so e.g. still-hoisted phantom dependencies can make the isolated
@@ -423,7 +423,7 @@ async function ensureInstallableBunLinker(
   if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1) === 0) return true;
 
   console.warn('bun install failed with the isolated linker; falling back to the hoisted linker.');
-  await generateBunfigToml(rootConfig, 'hoisted', yarnReleaseAgeSettings);
+  await generateBunfigToml(rootConfig, 'hoisted', yarnMinimumReleaseAgeSeconds);
   await promisePool.promiseAll();
   // The failed isolated attempt may have left a partial isolated tree behind.
   removeNodeModules(rootDirPath, rootConfig);
@@ -434,7 +434,7 @@ async function ensureInstallableBunLinker(
   // Both layouts failed, so the failure is not linker-specific; keep the default isolated
   // configuration instead of persisting a downgrade that the failed install never justified.
   // Clean up the failed hoisted attempt too, so later installs do not run on a polluted tree.
-  await generateBunfigToml(rootConfig, 'isolated', yarnReleaseAgeSettings);
+  await generateBunfigToml(rootConfig, 'isolated', yarnMinimumReleaseAgeSeconds);
   await promisePool.promiseAll();
   removeNodeModules(rootDirPath, rootConfig);
   return false;
@@ -467,7 +467,7 @@ function removeNodeModules(rootDirPath: string, rootConfig: PackageConfig): void
 async function refreshBunLock(
   rootDirPath: string,
   rootConfig: PackageConfig,
-  yarnReleaseAgeSettings: YarnReleaseAgeSettings
+  yarnMinimumReleaseAgeSeconds: number | undefined
 ): Promise<void> {
   // wbfy should update only the packages it explicitly manages through bun add.
   // Running bun update here refreshes unrelated application dependencies and
@@ -480,14 +480,14 @@ async function refreshBunLock(
   // run fails — e.g. a converted script may exercise a phantom dependency only hoisting provides.
   if (readBunLinker(rootDirPath) === 'isolated') {
     console.warn('bun install failed with the isolated linker after migration; retrying with the hoisted linker.');
-    await generateBunfigToml(rootConfig, 'hoisted', yarnReleaseAgeSettings);
+    await generateBunfigToml(rootConfig, 'hoisted', yarnMinimumReleaseAgeSeconds);
     await promisePool.promiseAll();
     removeNodeModules(rootDirPath, rootConfig);
     status = spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1);
     if (status === 0) return;
     // Both layouts failed after conversion; restore the default isolated configuration and clean
     // up the failed hoisted attempt so the next run does not probe on a polluted tree.
-    await generateBunfigToml(rootConfig, 'isolated', yarnReleaseAgeSettings);
+    await generateBunfigToml(rootConfig, 'isolated', yarnMinimumReleaseAgeSeconds);
     await promisePool.promiseAll();
     removeNodeModules(rootDirPath, rootConfig);
   }
