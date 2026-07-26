@@ -148,12 +148,15 @@ const workflows = {
         types: ['completed'],
       },
     },
-    // A called workflow can only REDUCE the caller's token, never elevate it, so `actions: read`
-    // has to be granted here: without it the apply job cannot list or download the artifact of
-    // the run that triggered it.
+    // A called workflow can only REDUCE the caller's token, never elevate it, so both grants have
+    // to be here: without `actions: read` the apply job cannot list or download the artifact of
+    // the run that triggered it, and without `id-token: write` it cannot mint the OIDC token it
+    // exchanges at the WillBooster token broker for the App token. No secret is passed at all —
+    // the App's private key lives only in the broker, never in GitHub Secrets.
     permissions: {
       actions: 'read',
       contents: 'read',
+      'id-token': 'write',
     },
     jobs: {
       apply: {
@@ -268,6 +271,11 @@ const workflows = {
       // read-only token.
       actions: 'write',
       contents: 'write',
+      // Transitional (broker migration phase A): the reusable workflow's push job is about to
+      // exchange an OIDC token at the WillBooster token broker for an App push token. Callers must
+      // carry this grant BEFORE that switch lands — a called workflow can only reduce the caller's
+      // token — and `actions`/`contents: write` stay until the switch completes fleet-wide.
+      'id-token': 'write',
     },
     jobs: {
       wbfy: {
@@ -1257,12 +1265,12 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     delete secrets.GH_BOT_PAT;
     delete secrets.WBFY_GH_TOKEN;
   }
-  // The apply workflow declares exactly one secret. The App ID it pairs with is a constant in the
-  // callee, not an input: an App ID is public (an unauthenticated GET /apps/{slug} returns it) and
-  // useless without the key, and one Autofixer App serves every organization, so callers have
-  // nothing else to configure.
+  // The apply workflow takes no secret at all: the App's private key lives only in the WillBooster
+  // token broker, and the callee exchanges its OIDC ID token for a repository-scoped App token.
+  // Remove the pass-through an earlier template injected — the callee no longer declares the
+  // secret, and GitHub fails a caller passing an undeclared secret at startup.
   if (secrets && calledReusableWorkflow === 'autofix-apply') {
-    secrets.AUTOFIX_APP_PRIVATE_KEY = '${{ secrets.AUTOFIX_APP_PRIVATE_KEY }}';
+    delete secrets.AUTOFIX_APP_PRIVATE_KEY;
   }
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
@@ -1318,11 +1326,24 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
 
   // Reconstruct from the parsed call so a differently cased owner (GitHub is case-insensitive
-  // there) is also normalized to the repository's own organization / mirror.
-  if (orgWorkflowCall && config.repository?.startsWith('github:WillBooster/')) {
-    job.uses = `WillBooster/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
-  } else if (orgWorkflowCall && config.repository?.startsWith('github:WillBoosterLab/')) {
-    job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
+  // there) is also normalized to the repository's own organization / mirror. Exception: the
+  // broker-backed workflows (wbfy, autofix-apply) always reference the canonical PUBLIC
+  // WillBooster repository, never the WillBoosterLab sync mirror — the token broker's policy pins
+  // the OIDC job_workflow_ref to WillBooster/reusable-workflows@main and deliberately rejects the
+  // mirror, because accepting it would extend the token-issuing trust boundary to a second
+  // repository's main branch.
+  if (orgWorkflowCall) {
+    const owner =
+      orgWorkflowCall.workflowName === 'wbfy' || orgWorkflowCall.workflowName === 'autofix-apply'
+        ? 'WillBooster'
+        : config.repository?.startsWith('github:WillBooster/')
+          ? 'WillBooster'
+          : config.repository?.startsWith('github:WillBoosterLab/')
+            ? 'WillBoosterLab'
+            : undefined;
+    if (owner) {
+      job.uses = `${owner}/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
+    }
   }
 
   // Remove redundant parameters

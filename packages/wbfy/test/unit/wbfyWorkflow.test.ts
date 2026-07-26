@@ -49,7 +49,9 @@ test('generates a scheduled self-applying wbfy caller for a public repository', 
     expect(workflow.on?.schedule).toEqual([{ cron: getWbfyWorkflowCron('github:WillBooster/example') }]);
     // oxlint-disable-next-line unicorn/no-null -- GitHub Actions valueless events are YAML nulls.
     expect(workflow.on?.workflow_dispatch).toBeNull();
-    expect(workflow.permissions).toEqual({ actions: 'write', contents: 'write' });
+    // id-token:write is transitional for the broker migration: callers must carry it before the
+    // reusable workflow's push job switches to the broker-issued App token.
+    expect(workflow.permissions).toEqual({ actions: 'write', contents: 'write', 'id-token': 'write' });
     const job = workflow.jobs.wbfy;
     expect(job?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
     expect(job?.secrets).toEqual({ VERDACCIO_TOKEN: '${{ secrets.VERDACCIO_TOKEN }}' });
@@ -72,8 +74,45 @@ test('generates a self-hosted wbfy caller for a private WillBoosterLab repositor
 
     const workflow = await loadWbfyCaller(workflowsPath);
     const job = workflow.jobs.wbfy;
-    expect(job?.uses).toBe('WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@main');
+    // Broker-backed workflows reference the canonical WillBooster repository even in
+    // WillBoosterLab: the token broker pins job_workflow_ref to WillBooster/reusable-workflows
+    // and rejects the sync mirror. The canonical repository is public, so private Lab
+    // repositories can call it.
+    expect(job?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
     expect(job?.with).toBeUndefined();
+
+    // Non-broker-backed workflows keep referencing the organization's own mirror.
+    const testContent = await fs.promises.readFile(path.join(workflowsPath, 'test.yml'), 'utf8');
+    const testWorkflow = loadYaml(testContent) as WbfyCallerWorkflow;
+    expect(testWorkflow.jobs.test?.uses).toBe('WillBoosterLab/reusable-workflows/.github/workflows/test.yml@main');
+  });
+});
+
+test('rewrites an existing mirror-referencing wbfy caller to the canonical repository', async () => {
+  await withTempRepo(async (dirPath, workflowsPath) => {
+    await fs.promises.writeFile(
+      path.join(workflowsPath, 'wbfy.yml'),
+      `name: Willboosterify
+on:
+  schedule:
+    - cron: 0 16 * * *
+  workflow_dispatch:
+jobs:
+  wbfy:
+    uses: WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@main
+`
+    );
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      repository: 'github:WillBoosterLab/example',
+    });
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+
+    const workflow = await loadWbfyCaller(workflowsPath);
+    expect(workflow.jobs.wbfy?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
   });
 });
 
