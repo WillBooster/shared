@@ -403,13 +403,13 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   if (config.doesContainUvLock) {
     postMergeCommands.push(String.raw`run_if_changed "uv\.lock" "uv sync --frozen"`);
   }
-  if (config.depending.blitz) {
-    postMergeCommands.push(
-      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/blitz prisma migrate deploy"`,
-      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/blitz prisma generate"`,
-      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/blitz codegen"`
-    );
-  } else if (config.depending.prisma) {
+  // Blitz repositories deliberately get the same wb-driven prisma commands as everyone else:
+  // the blitz CLI's codegen patches the installed next package in place, which must never run
+  // under Bun's shared global store (blitz repos migrated to bun run without the blitz CLI, and
+  // yarn-era ones regenerate the route manifest via `blitz dev` anyway). wb routes `wb prisma`
+  // through the blitz CLI only on wb <= 15 yarn-era repos, where in-place patching was already
+  // the status quo.
+  if (config.depending.prisma) {
     postMergeCommands.push(
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/wb prisma deploy"`,
       String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/wb prisma generate"`
