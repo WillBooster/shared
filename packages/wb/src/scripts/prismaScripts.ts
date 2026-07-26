@@ -11,11 +11,6 @@ const POSSIBLE_PRISMA_PATHS = [
   { schemaPath: path.join('db', 'schema.prisma'), dbPath: 'db' },
 ];
 
-/** Where the Litestream-replicated SQLite database is mounted, relative to the project directory. */
-function getMountDirPath(project: Project): string {
-  return `${project.prismaDirName}/mount`;
-}
-
 /**
  * A collection of scripts for executing Prisma commands.
  * Note that `PRISMA` is replaced with `YARN prisma`
@@ -110,6 +105,11 @@ class PrismaScripts {
     }
     return `${prefix}PRISMA studio ${additionalOptions}`;
   }
+}
+
+/** Where the Litestream-replicated SQLite database is mounted, relative to the project directory. */
+function getMountDirPath(project: Project): string {
+  return `${project.prismaDirName}/mount`;
 }
 
 function getPrismaBaseDir(project: Project): string | undefined {
