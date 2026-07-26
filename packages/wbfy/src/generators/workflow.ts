@@ -1232,6 +1232,14 @@ function readProductionCustomDomain(rootDirPath: string, workerDirPath: string):
 // other callee is a GitHub error.
 const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'release', 'run-script', 'test']);
 
+// The reusable workflows whose App tokens come from the WillBooster token broker. The broker's
+// policy pins the OIDC job_workflow_ref to WillBooster/reusable-workflows@main and deliberately
+// rejects the WillBoosterLab sync mirror (accepting it would extend the token-issuing trust
+// boundary to a second repository's main branch), so callers of these always reference the
+// canonical PUBLIC WillBooster repository regardless of the calling repository's organization.
+// Mirror of POLICIES in WillBooster/github-token-broker/src/authorize.ts.
+const brokerBackedReusableWorkflows = new Set(['autofix-apply', 'wbfy']);
+
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
   // `secrets: inherit` (parsed by js-yaml as a plain string) already forwards every caller secret
@@ -1326,21 +1334,17 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
 
   // Reconstruct from the parsed call so a differently cased owner (GitHub is case-insensitive
-  // there) is also normalized to the repository's own organization / mirror. Exception: the
-  // broker-backed workflows (wbfy, autofix-apply) always reference the canonical PUBLIC
-  // WillBooster repository, never the WillBoosterLab sync mirror — the token broker's policy pins
-  // the OIDC job_workflow_ref to WillBooster/reusable-workflows@main and deliberately rejects the
-  // mirror, because accepting it would extend the token-issuing trust boundary to a second
-  // repository's main branch.
+  // there) is also normalized to the repository's own organization / mirror — except the
+  // broker-backed workflows, which always reference the canonical repository (see
+  // brokerBackedReusableWorkflows).
   if (orgWorkflowCall) {
-    const owner =
-      orgWorkflowCall.workflowName === 'wbfy' || orgWorkflowCall.workflowName === 'autofix-apply'
+    const owner = brokerBackedReusableWorkflows.has(orgWorkflowCall.workflowName)
+      ? 'WillBooster'
+      : config.repository?.startsWith('github:WillBooster/')
         ? 'WillBooster'
-        : config.repository?.startsWith('github:WillBooster/')
-          ? 'WillBooster'
-          : config.repository?.startsWith('github:WillBoosterLab/')
-            ? 'WillBoosterLab'
-            : undefined;
+        : config.repository?.startsWith('github:WillBoosterLab/')
+          ? 'WillBoosterLab'
+          : undefined;
     if (owner) {
       job.uses = `${owner}/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
     }
@@ -1361,6 +1365,15 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // Because github.event.repository.private is always true if job is scheduled
   if (kind === 'release' || kind === 'wbfy' || kind.startsWith('test') || kind.startsWith('deploy')) {
     if (config.isPublicRepo) {
+      job.with.github_hosted_runner = true;
+    }
+    // WillBoosterLab wbfy callers reference the WillBooster-owned canonical workflow (see
+    // brokerBackedReusableWorkflows), and a called workflow owned by a DIFFERENT organization
+    // cannot access the caller's self-hosted runners
+    // (https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#how-reusable-workflows-use-runners),
+    // so their private repositories must opt into GitHub-hosted runners or the wbfy job would
+    // queue forever on runners the callee cannot reach.
+    if (calledReusableWorkflow === 'wbfy' && config.repository?.startsWith('github:WillBoosterLab/')) {
       job.with.github_hosted_runner = true;
     }
     // An existing github_hosted_runner on a PRIVATE repository is preserved on purpose: the input

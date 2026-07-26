@@ -61,7 +61,7 @@ test('generates a scheduled self-applying wbfy caller for a public repository', 
   });
 });
 
-test('generates a self-hosted wbfy caller for a private WillBoosterLab repository', async () => {
+test('generates a canonical-repository, GitHub-hosted wbfy caller for a private WillBoosterLab repository', async () => {
   await withTempRepo(async (dirPath, workflowsPath) => {
     const config = createConfig({
       dirPath,
@@ -79,7 +79,9 @@ test('generates a self-hosted wbfy caller for a private WillBoosterLab repositor
     // and rejects the sync mirror. The canonical repository is public, so private Lab
     // repositories can call it.
     expect(job?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
-    expect(job?.with).toBeUndefined();
+    // A called workflow owned by a different organization cannot access the caller's self-hosted
+    // runners, so private Lab callers of the canonical wbfy workflow must run GitHub-hosted.
+    expect(job?.with).toEqual({ github_hosted_runner: true });
 
     // Non-broker-backed workflows keep referencing the organization's own mirror.
     const testContent = await fs.promises.readFile(path.join(workflowsPath, 'test.yml'), 'utf8');
