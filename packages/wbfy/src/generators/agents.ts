@@ -158,6 +158,27 @@ export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
   const osCompatibilityInstruction = hasDesktopApp
     ? '- Server and CLI code targets macOS and Linux; the Tauri desktop app additionally supports Windows, so keep its Windows-specific code working.'
     : '- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.';
+  // Cloudflare Workers execute across many ephemeral isolates and two requests are not guaranteed
+  // to hit the same instance, so the single-instance simplification silently loses state there —
+  // but Workers deliberately reuse execution contexts, so best-effort isolate-local caches stay
+  // legitimate (https://developers.cloudflare.com/workers/reference/how-workers-works/). The
+  // signals are correlated PER PACKAGE: a monorepo can host a single-instance server app next to
+  // an unrelated Worker, and neither may override the other's rule. doesContainWranglerConfig is
+  // the accurate Workers signal (isCloudflare also matches a mere wrangler mention in a script or
+  // workflow).
+  const hasWorkersApp = allConfigs.some((c) => c.doesContainWranglerConfig);
+  const hasSingleInstanceServerApp = allConfigs.some(
+    (c) => (c.depending.next || c.depending.vinext) && !c.doesContainWranglerConfig
+  );
+  const workersInstruction =
+    '- Cloudflare Workers run across multiple ephemeral isolates and two requests may hit different instances: never let correctness depend on module-level mutable state; persist authoritative shared state in bindings (D1, KV, R2, Durable Objects). Best-effort isolate-local caches of non-request-scoped data are fine.';
+  const serverInstanceInstruction = hasWorkersApp
+    ? hasSingleInstanceServerApp
+      ? `${workersInstruction} This applies to all code that runs on Cloudflare Workers (the wrangler-configured packages and any workspace package they import); assume a single server instance for the other server apps.`
+      : workersInstruction
+    : hasSingleInstanceServerApp
+      ? '- Assume a single server instance.'
+      : '';
   // Keep top-down ordering guidance function-only because classes are not hoisted and can fail when inheritance or top-level instantiation depends on declaration order.
   return `
 ## Coding Style
@@ -188,14 +209,14 @@ ${
 }
 ${
   // vinext is the org's current web-app framework and enables the React Compiler just as Next.js
-  // does, so it must not miss these rules.
+  // does, so it must not miss this rule.
   allConfigs.some((c) => c.depending.next || c.depending.vinext)
     ? `
 - This project uses the React Compiler, so \`useCallback\` and \`useMemo\` are unnecessary for performance.
-- Assume a single server instance.
 `
     : ''
 }
+${serverInstanceInstruction}
 `
     .replaceAll(/\.\n\n+-/g, '.\n-')
     .replaceAll(/\n{3,}/g, '\n\n')
