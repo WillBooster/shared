@@ -1,10 +1,16 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import chalk from 'chalk';
 
-/** A Takumi Guard URL can only appear in bun.lock as a package's `resolved` value. */
-const guardResolvedUrlPattern = /"https:\/\/npm\.flatt\.tech\/[^"]*"/g;
+/**
+ * Anchored to `", ` so it only clears a registry entry's `resolved` slot, mirroring
+ * reusable-workflows' normalization: a DIRECT tarball dependency would carry the same host in two
+ * other places that must survive — the workspace descriptor (`"pkg": "https://…"`, preceded by
+ * `": `) and its package tuple's first element (`"pkg@https://…"`).
+ */
+const guardResolvedUrlPattern = /(", )"https:\/\/npm\.flatt\.tech\/[^"]*"/g;
 
 /**
  * Strip Takumi Guard proxy URLs from the root `bun.lock`, returning whether the file changed.
@@ -35,10 +41,18 @@ export function normalizeBunLockfile(rootDirPath: string): boolean {
     return false;
   }
 
-  const normalizedContent = content.replaceAll(guardResolvedUrlPattern, '""');
+  const normalizedContent = content.replaceAll(guardResolvedUrlPattern, '$1""');
   if (normalizedContent === content) return false;
 
-  fs.writeFileSync(lockfilePath, normalizedContent);
+  // A sibling temp file makes the replacement an atomic same-directory rename, so an interrupted
+  // write cannot leave a truncated bun.lock behind (same strategy as wbfy's lefthook generator).
+  const temporaryPath = `${lockfilePath}.wb-normalizing.${process.pid}.${crypto.randomUUID()}`;
+  try {
+    fs.writeFileSync(temporaryPath, normalizedContent, { mode: fs.statSync(lockfilePath).mode });
+    fs.renameSync(temporaryPath, lockfilePath);
+  } finally {
+    fs.rmSync(temporaryPath, { force: true });
+  }
   console.info(chalk.green(`Removed Takumi Guard proxy URLs from ${lockfilePath} to keep it registry-agnostic.`));
   return true;
 }
