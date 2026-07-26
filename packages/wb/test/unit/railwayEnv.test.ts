@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { selectFnoxSourcedKeys, selectRailwayVariables } from '../../src/commands/railwayEnv.js';
+import { selectRailwayVariables } from '../../src/commands/railwayEnv.js';
+import { selectFnoxSourcedKeys } from '../../src/utils/envSources.js';
 
 describe('selectFnoxSourcedKeys', () => {
   it('keeps fnox-declared keys and drops mise-provided host/tool variables', () => {

@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject } from '../project.js';
+import { selectFnoxSourcedKeys } from '../utils/envSources.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 
 // Railway injects its own system variables and platform-managed values; never mirror those back,
@@ -14,15 +15,6 @@ const NON_RAILWAY_KEY_PREFIXES = ['RAILWAY_', 'NIXPACKS_'];
 
 function isNonRailwayKey(key: string): boolean {
   return NON_RAILWAY_KEYS.has(key) || NON_RAILWAY_KEY_PREFIXES.some((prefix) => key.startsWith(prefix));
-}
-
-/**
- * The keys actually declared in the project's fnox sources. `mise env` is reported as a
- * pseudo-source that mixes in host/tool variables (PATH, CARGO_HOME, RUSTUP_*, ...); those must
- * never be pushed to Railway, so they are excluded here (mirrors wb deploy).
- */
-export function selectFnoxSourcedKeys(envSources: ReadonlyArray<readonly [string, readonly string[]]>): Set<string> {
-  return new Set(envSources.filter(([source]) => !source.startsWith('mise env')).flatMap(([, keys]) => keys));
 }
 
 /**

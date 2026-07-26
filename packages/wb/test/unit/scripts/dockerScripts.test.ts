@@ -7,7 +7,20 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { Project } from '../../../src/project.js';
-import { dockerScripts } from '../../../src/scripts/dockerScripts.js';
+import { dockerScripts, selectContainerEnvKeys } from '../../../src/scripts/dockerScripts.js';
+
+describe('selectContainerEnvKeys', () => {
+  it('forwards the declared variables but never the ones the image owns', () => {
+    const keys = selectContainerEnvKeys(new Set(['DATABASE_URL', 'NODE_ENV', 'PORT', 'APP_ORIGIN', 'UNRESOLVED']), {
+      APP_ORIGIN: 'https://example.com',
+      DATABASE_URL: 'file:./test.sqlite3',
+      NODE_ENV: 'test',
+      PATH: '/usr/bin',
+      PORT: '3000',
+    });
+    expect(keys).toEqual(['APP_ORIGIN', 'DATABASE_URL']);
+  });
+});
 
 describe.runIf(isDockerAvailable())('dockerScripts', () => {
   it('removes a non-running container before reuse', async () => {

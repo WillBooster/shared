@@ -32,7 +32,7 @@ class DockerScripts {
     spawnSyncOnExit(this.stop(project), project);
     const allocateTty = additionalArgs.includes('/bin/bash');
     const miseAgeKeyEnvOption = project.env.MISE_AGE_KEY ? '--env MISE_AGE_KEY ' : '';
-    return `docker run --rm ${allocateTty ? '-it ' : ''}${miseAgeKeyEnvOption}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
+    return `docker run --rm ${allocateTty ? '-it ' : ''}${miseAgeKeyEnvOption}${selectContainerEnvOptions(project)}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
   }
 
   stop(project: Project): string {
@@ -45,3 +45,30 @@ class DockerScripts {
 }
 
 export const dockerScripts = new DockerScripts();
+
+// Variables the IMAGE itself owns: a Dockerfile pins the container port (the published mapping
+// targets 8080, not the host-side PORT) and the runtime mode it was built for, and before fnox the
+// baked .env files lost to those `ENV` values too because process.env wins over env sources.
+const IMAGE_OWNED_KEYS = new Set(['NODE_ENV', 'PORT']);
+
+/**
+ * `docker run --env KEY` options for every variable the project declares, so a container gets the
+ * app's environment. Since fnox replaced the .env files that images used to bake in — the age key
+ * that decrypts them must never enter a container — a container would otherwise start with no
+ * configuration at all. Only NAMES are passed: docker then forwards each value from wb's own
+ * environment, keeping secrets out of the command line (visible in `ps` output and CI logs).
+ */
+function selectContainerEnvOptions(project: Project): string {
+  const options = selectContainerEnvKeys(project.declaredEnvKeys, project.env).map((key) => `--env ${key}`);
+  return options.length > 0 ? `${options.join(' ')} ` : '';
+}
+
+/** The declared variables to forward into a container, sorted for a stable command. */
+export function selectContainerEnvKeys(
+  declaredEnvKeys: ReadonlySet<string>,
+  env: Record<string, string | undefined>
+): string[] {
+  return [...declaredEnvKeys]
+    .filter((key) => !IMAGE_OWNED_KEYS.has(key) && env[key] !== undefined)
+    .toSorted((a, b) => a.localeCompare(b));
+}

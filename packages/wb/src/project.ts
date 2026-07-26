@@ -17,6 +17,7 @@ import type { PackageJson } from 'type-fest';
 
 import { prependNodeModulesBinToPath } from './utils/binPath.js';
 import { isCI } from './utils/ci.js';
+import { selectFnoxSourcedKeys } from './utils/envSources.js';
 import { findWranglerConfigPath } from './utils/wrangler.js';
 
 /** The file `wrangler types` writes by default. */
@@ -132,6 +133,25 @@ export class Project {
   get dockerImageName(): string {
     const name = this.packageJson.name || 'unknown';
     return name.replaceAll('@', '').replaceAll('/', '-');
+  }
+
+  private declaredEnvKeyCache: Set<string> | undefined;
+
+  /**
+   * The names of the environment variables the PROJECT declares (its fnox/.env sources), excluding
+   * both the ambient process environment and the `mise env` pseudo-source that reports host/tool
+   * variables such as PATH. `env` cannot answer this: it merges process.env, so a project variable
+   * is indistinguishable from an inherited one there.
+   */
+  get declaredEnvKeys(): Set<string> {
+    if (this.declaredEnvKeyCache) return this.declaredEnvKeyCache;
+    if (!this.loadEnv) {
+      this.declaredEnvKeyCache = new Set();
+      return this.declaredEnvKeyCache;
+    }
+    const [, envSources] = readEnvironmentVariables(this.argv, this.dirPath, { ignoreProcessEnv: true });
+    this.declaredEnvKeyCache = selectFnoxSourcedKeys(envSources);
+    return this.declaredEnvKeyCache;
   }
 
   // Cached in a plain field rather than with @memoizeOne: that decorator keys its cache on a hash
