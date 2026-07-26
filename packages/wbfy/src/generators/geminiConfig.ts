@@ -1,5 +1,4 @@
 // oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make load/dump usage clearer.
-import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
@@ -44,14 +43,23 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
 
     let newConfig: object = structuredClone(defaultConfig);
     for (const oldFilePath of [configFilePath, legacyConfigFilePath]) {
+      // The confined read skips (returns undefined for) committed symlinks resolving outside the
+      // repository, so their targets' content is never copied into the tracked config.yaml.
+      const oldContent = await fsUtil.readFileConfinedIfExists(oldFilePath);
+      if (oldContent === undefined) continue;
       try {
-        const oldContent = await fs.promises.readFile(oldFilePath, 'utf8');
-        const oldConfig = yaml.load(oldContent) as object;
-        newConfig = merge.all([newConfig, oldConfig, newConfig], { arrayMerge: overwriteMerge });
-        break;
+        const oldConfig = yaml.load(oldContent);
+        // Merge only a mapping: empty, comment-only, or scalar YAML would either throw in
+        // merge.all or pollute the config with index keys.
+        if (oldConfig && typeof oldConfig === 'object' && !Array.isArray(oldConfig)) {
+          newConfig = merge.all([newConfig, oldConfig, newConfig], { arrayMerge: overwriteMerge });
+        }
       } catch {
-        // do nothing - file doesn't exist or can't be parsed
+        // do nothing - file can't be parsed
       }
+      // The higher-priority file exists; never fall back to the legacy file even when this one is
+      // empty or unparseable, or superseded legacy settings would resurrect.
+      break;
     }
 
     const yamlContent = yaml.dump(newConfig, {
@@ -72,8 +80,15 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     }`;
 
     const promises = [
-      promisePool.run(() => fsUtil.generateFile(configFilePath, yamlContent)),
-      promisePool.run(() => fs.promises.rm(legacyConfigFilePath, { force: true })),
+      promisePool.run(async () => {
+        // Delete the ignored legacy file only after config.yaml was actually written — a skipped
+        // write (e.g. a committed symlink destination) must not destroy the only usable
+        // configuration — and via the containment guard so a symlinked .gemini directory can
+        // never make cleanup delete files outside the repository.
+        if (await fsUtil.generateFile(configFilePath, yamlContent)) {
+          await fsUtil.removeConfined(legacyConfigFilePath);
+        }
+      }),
       promisePool.run(() => fsUtil.generateFile(styleguideFilePath, styleguideContent)),
     ];
     await Promise.all(promises);
