@@ -1238,6 +1238,10 @@ const installCapableReusableWorkflows = new Set(['autofix', 'deploy', 'release',
 // boundary to a second repository's main branch), so callers of these always reference the
 // canonical PUBLIC WillBooster repository regardless of the calling repository's organization.
 // Mirror of POLICIES in WillBooster/github-token-broker/src/authorize.ts.
+// Note the `id-token: write` these callees need is part of the template-managed workflow-level
+// permissions, keyed by the canonical file name like every other template property: a caller kept
+// under a custom file name owns its permissions itself, and a missing grant fails closed with an
+// explicit "grant id-token: write" error in the callee.
 const brokerBackedReusableWorkflows = new Set(['autofix-apply', 'wbfy']);
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
@@ -1334,17 +1338,21 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
 
   // Reconstruct from the parsed call so a differently cased owner (GitHub is case-insensitive
-  // there) is also normalized to the repository's own organization / mirror — except the
-  // broker-backed workflows, which always reference the canonical repository (see
-  // brokerBackedReusableWorkflows).
+  // there) is also normalized to the repository's own organization / mirror — except @main calls
+  // of the broker-backed workflows, which always reference the canonical repository (see
+  // brokerBackedReusableWorkflows). Pinned (tag/SHA) calls keep the organization owner, like
+  // their secrets above: the broker's policy covers only @main, and a mirror commit is not
+  // necessarily an object in the canonical repository, so retargeting a pinned ref could break
+  // workflow resolution outright. calledReusableWorkflow already carries the @main restriction.
   if (orgWorkflowCall) {
-    const owner = brokerBackedReusableWorkflows.has(orgWorkflowCall.workflowName)
-      ? 'WillBooster'
-      : config.repository?.startsWith('github:WillBooster/')
+    const owner =
+      calledReusableWorkflow && brokerBackedReusableWorkflows.has(calledReusableWorkflow)
         ? 'WillBooster'
-        : config.repository?.startsWith('github:WillBoosterLab/')
-          ? 'WillBoosterLab'
-          : undefined;
+        : config.repository?.startsWith('github:WillBooster/')
+          ? 'WillBooster'
+          : config.repository?.startsWith('github:WillBoosterLab/')
+            ? 'WillBoosterLab'
+            : undefined;
     if (owner) {
       job.uses = `${owner}/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
     }
@@ -1362,8 +1370,15 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   if (config.doesContainDockerfile && !job.with.ci_label && kind.startsWith('test')) {
     job.with.ci_label = 'large';
   }
-  // Because github.event.repository.private is always true if job is scheduled
-  if (kind === 'release' || kind === 'wbfy' || kind.startsWith('test') || kind.startsWith('deploy')) {
+  // Because github.event.repository.private is always true if job is scheduled.
+  // calledReusableWorkflow covers wbfy callers under a custom file name, which `kind` misses.
+  if (
+    kind === 'release' ||
+    kind === 'wbfy' ||
+    kind.startsWith('test') ||
+    kind.startsWith('deploy') ||
+    calledReusableWorkflow === 'wbfy'
+  ) {
     if (config.isPublicRepo) {
       job.with.github_hosted_runner = true;
     }

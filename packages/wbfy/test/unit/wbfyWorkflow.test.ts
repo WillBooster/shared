@@ -90,6 +90,66 @@ test('generates a canonical-repository, GitHub-hosted wbfy caller for a private 
   });
 });
 
+test('keeps the mirror owner for a custom-named wbfy caller pinned to a non-main ref', async () => {
+  await withTempRepo(async (dirPath, workflowsPath) => {
+    // The broker's policy covers only @main, and a mirror commit may not exist in the canonical
+    // repository, so pinned refs must keep the organization owner. A custom file name is used
+    // because the canonical wbfy.yml is template-managed and would be rewritten to @main anyway.
+    await fs.promises.writeFile(
+      path.join(workflowsPath, 'pinned-wbfy.yml'),
+      `name: Pinned Willboosterify
+on:
+  workflow_dispatch:
+jobs:
+  wbfy:
+    uses: WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@0123456789abcdef0123456789abcdef01234567
+`
+    );
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      repository: 'github:WillBoosterLab/example',
+    });
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+
+    const content = await fs.promises.readFile(path.join(workflowsPath, 'pinned-wbfy.yml'), 'utf8');
+    const workflow = loadYaml(content) as WbfyCallerWorkflow;
+    expect(workflow.jobs.wbfy?.uses).toBe(
+      'WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@0123456789abcdef0123456789abcdef01234567'
+    );
+  });
+});
+
+test('a custom-named Lab wbfy caller still gets the canonical owner and a GitHub-hosted runner', async () => {
+  await withTempRepo(async (dirPath, workflowsPath) => {
+    await fs.promises.writeFile(
+      path.join(workflowsPath, 'nightly-wbfy.yml'),
+      `name: Nightly Willboosterify
+on:
+  workflow_dispatch:
+jobs:
+  wbfy:
+    uses: WillBoosterLab/reusable-workflows/.github/workflows/wbfy.yml@main
+`
+    );
+    const config = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      repository: 'github:WillBoosterLab/example',
+    });
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+
+    const content = await fs.promises.readFile(path.join(workflowsPath, 'nightly-wbfy.yml'), 'utf8');
+    const workflow = loadYaml(content) as WbfyCallerWorkflow;
+    expect(workflow.jobs.wbfy?.uses).toBe('WillBooster/reusable-workflows/.github/workflows/wbfy.yml@main');
+    expect(workflow.jobs.wbfy?.with).toEqual({ github_hosted_runner: true });
+  });
+});
+
 test('rewrites an existing mirror-referencing wbfy caller to the canonical repository', async () => {
   await withTempRepo(async (dirPath, workflowsPath) => {
     await fs.promises.writeFile(
