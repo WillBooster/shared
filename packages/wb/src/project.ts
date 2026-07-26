@@ -534,9 +534,12 @@ const selfProjectCache = new Map<string, Project>();
 const descendantProjectsCache = new Map<string, Promise<Project[]>>();
 
 function buildProjectCacheKey(argv: EnvReaderOptions, loadEnv: boolean, dirPath: string): string {
-  // Only the argv fields a Project actually reads participate: the env cascade selection
+  // Only the inputs a Project actually reads participate: the env cascade selection
   // (readEnvironmentVariables / resolveFallbackWbEnv / completeAndValidateWbEnv) and the output
-  // switches (shouldSuppressEnvironmentOutput, buildCommand's --verbose).
+  // switches (shouldSuppressEnvironmentOutput, buildCommand's --verbose). The ambient
+  // WB_ENV / NODE_ENV / CI values feed the same cascade selection and are mutated mid-run by
+  // commands such as `wb db reset` (which forces WB_ENV=test and re-resolves projects), so they
+  // must participate too or the second resolution would reuse a Project with the wrong env.
   const { autoCascadeEnv, cascadeEnv, cascadeNodeEnv, commandDefaultWbEnv, quietEnv, verbose } = argv;
   const { silent } = argv as { silent?: boolean };
   return JSON.stringify([
@@ -549,6 +552,9 @@ function buildProjectCacheKey(argv: EnvReaderOptions, loadEnv: boolean, dirPath:
     quietEnv,
     verbose,
     silent,
+    process.env.WB_ENV,
+    process.env.NODE_ENV,
+    process.env.CI,
   ]);
 }
 

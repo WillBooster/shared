@@ -183,13 +183,17 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
       let anyFailed = false;
       for (const dirPath of dirPaths) {
         const ancestorChanged = changedDirPaths.some((changedDirPath) => dirPath.startsWith(changedDirPath + path.sep));
+        // Every dirPath was snapshotted above. A missing snapshot must fail hard: falling back to
+        // an empty string would flow into replaceAgeRecipients and overwrite the real fnox.toml
+        // with a recipients-only file, destroying every committed secret.
+        const snapshotContent = snapshots.get(path.resolve(dirPath, 'fnox.toml'));
+        if (snapshotContent === undefined) throw new Error(`Missing fnox.toml snapshot for ${dirPath}.`);
         const result = await synchronizeFnoxAgeRecipients(
           dirPath,
           rootDirPath,
           dirPath === rootDirPath,
           ancestorChanged,
-          // Every dirPath was snapshotted above, so the snapshot IS the current file content.
-          snapshots.get(path.resolve(dirPath, 'fnox.toml')) ?? ''
+          snapshotContent
         );
         if (result === 'changed') changedDirPaths.push(dirPath);
         anyFailed ||= result === 'failed';

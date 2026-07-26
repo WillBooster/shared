@@ -118,7 +118,6 @@ const micromatchImportPattern =
 
 const latestDependencyVersionCache = new Map<string, string>();
 const npmPackageTimesCache = new Map<string, Record<string, string>>();
-const rawDependencyVersionCache = new Map<string, string>();
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 
 type WritablePackageJson = SetRequired<
@@ -1922,13 +1921,9 @@ function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
 }
 
 function getRawDependencyVersionFromNpm(dependency: string): string {
-  const cachedVersion = rawDependencyVersionCache.get(dependency);
-  if (cachedVersion) return cachedVersion;
-
-  const version =
-    spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
-  rawDependencyVersionCache.set(dependency, version);
-  return version;
+  // No cache here: the only caller chain goes through getLatestDependencyVersion, which already
+  // memoizes per dependency, so this can run at most once per dependency.
+  return spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
 }
 
 function getInstallDependencySpecifier(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
