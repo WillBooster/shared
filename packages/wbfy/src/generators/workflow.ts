@@ -1047,7 +1047,8 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     secrets.GH_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
   }
 
-  // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY repository secret.
+  // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY (or, for
+  // public repositories, PUBLIC_FNOX_AGE_KEY) organization secret.
   // Key the injection on the *called* reusable workflow, not the caller's filename: callers may have
   // arbitrary names (e.g. scheduled run-script callers), and GitHub rejects passing a secret that the
   // callee does not declare. In a not-yet-migrated repository the legacy DOT_ENV pass-through is
@@ -1075,7 +1076,12 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       delete secrets.VERDACCIO_TOKEN;
     }
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
+      // Public repositories commit world-readable ciphertexts, so they decrypt with a dedicated
+      // CI identity (the PUBLIC_FNOX_AGE_KEY organization secret) instead of the org-internal
+      // one; the callee still receives it under its declared FNOX_AGE_KEY name. An unknown
+      // visibility keeps the org-internal mapping, matching the fnox recipient sync, which fails
+      // the run in that case anyway.
+      secrets.FNOX_AGE_KEY = config.isPublicRepo ? '${{ secrets.PUBLIC_FNOX_AGE_KEY }}' : '${{ secrets.FNOX_AGE_KEY }}';
       // fnox.toml replaced the .env files (wb no longer reads them), so the legacy inputs would
       // only keep dead configuration alive.
       delete secrets.DOT_ENV;

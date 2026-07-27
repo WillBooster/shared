@@ -15,6 +15,10 @@ type RepositoryFullName = `${WillBoosterOrganization}/${string}`;
 export interface FnoxRepositoryScope {
   organizations?: readonly WillBoosterOrganization[];
   repositories?: readonly RepositoryFullName[];
+  // Restricts the scope to repositories of the given visibility. Public repositories publish their
+  // ciphertexts to the world, so they must use a CI identity separate from the org-internal one:
+  // leaking either CI key must not expose the other side's secrets.
+  visibility?: 'public' | 'private';
 }
 
 interface FnoxAgePrincipal {
@@ -32,9 +36,12 @@ interface FnoxAgeRecipient {
 // principal's public keys and repository scope here. Organization scopes include every current and
 // future repository in that organization; use repositories for exact owner/repository grants. The
 // next wbfy run on each matching repository rewrites every managed fnox.toml and re-encrypts its
-// committed secrets for the resulting recipient set. Removing a scope cannot revoke ciphertext
+// committed secrets for the resulting recipient set. A scope's optional visibility constraint
+// selects only public or only private repositories (used to keep the org-internal and the
+// public-repository CI identities apart). Removing a scope cannot revoke ciphertext
 // already available from Git history, so rotate the secret values that principal could decrypt.
-// Only public keys may appear here; CI's private key supplies the FNOX_AGE_KEY secret.
+// Only public keys may appear here; a CI identity's private key supplies the FNOX_AGE_KEY (or,
+// for public repositories, PUBLIC_FNOX_AGE_KEY) organization secret.
 export const FNOX_AGE_PRINCIPALS = [
   {
     name: 'exkazuu',
@@ -50,9 +57,19 @@ export const FNOX_AGE_PRINCIPALS = [
     repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'] },
   },
   {
+    // The org-internal CI identity (the FNOX_AGE_KEY organization secret / ~/.config/fnox/age-ci-wb.txt).
     name: 'ci',
     publicKeys: ['age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak'],
-    repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'] },
+    repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'], visibility: 'private' },
+  },
+  {
+    // The CI identity dedicated to public repositories (the PUBLIC_FNOX_AGE_KEY organization
+    // secret / ~/.config/fnox/age-ci-wb-public.txt). Public repositories exist only in the
+    // WillBooster organization: WillBoosterLab is on GitHub Free, where organization secrets
+    // cannot reach private repos, and hosts private repositories exclusively.
+    name: 'ci-public',
+    publicKeys: ['age1fhea85xjwp89lwq3jcnwj32swh3v24pwparqh5l7qkgvc4ax3p0ql6du36'],
+    repositoryScope: { organizations: ['WillBooster'], visibility: 'public' },
   },
   {
     name: 'remin',
@@ -133,6 +150,15 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
           `Failed to check for nested fnox configs due to: ${(error as Error | undefined)?.message ?? error}`
         );
       }
+      return;
+    }
+    // A failed visibility lookup collapses isPublicRepo to false, which would silently re-encrypt
+    // a public repository's world-readable ciphertexts to the org-internal CI identity (and vice
+    // versa drop the public one). Fail instead of guessing whenever visibility changes the roster.
+    if (!rootConfig.isRepoVisibilityKnown && doesFnoxRecipientSetDependOnVisibility(rootConfig)) {
+      failFnoxSync(
+        `Failed to synchronize fnox age recipients because the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName} could not be determined (GitHub lookup failed) and the CI recipient depends on it. Check network and gh authentication, then rerun wbfy.`
+      );
       return;
     }
     // The migration is transactional over every managed fnox.toml: reruns must retry from the
@@ -411,7 +437,20 @@ export function readFnoxAgeRecipients(fnoxTomlContent: string): Set<string> | un
   }
 }
 
-export function getFnoxAgeRecipients(rootConfig: Pick<PackageConfig, 'repoAuthor' | 'repoName'>): FnoxAgeRecipient[] {
+type FnoxRepositoryIdentity = Pick<PackageConfig, 'repoAuthor' | 'repoName' | 'isPublicRepo' | 'isRepoVisibilityKnown'>;
+
+/** Whether the recipient set differs between the public and private reading of the repository. */
+export function doesFnoxRecipientSetDependOnVisibility(
+  rootConfig: Pick<PackageConfig, 'repoAuthor' | 'repoName'>
+): boolean {
+  const publicKeysFor = (isPublicRepo: boolean): string =>
+    getFnoxAgeRecipients({ ...rootConfig, isPublicRepo, isRepoVisibilityKnown: true })
+      .map(({ publicKey }) => publicKey)
+      .join('\n');
+  return publicKeysFor(true) !== publicKeysFor(false);
+}
+
+export function getFnoxAgeRecipients(rootConfig: FnoxRepositoryIdentity): FnoxAgeRecipient[] {
   return FNOX_AGE_PRINCIPALS.filter((principal) =>
     matchesFnoxRepositoryScope(principal.repositoryScope, rootConfig)
   ).flatMap((principal) =>
@@ -422,13 +461,19 @@ export function getFnoxAgeRecipients(rootConfig: Pick<PackageConfig, 'repoAuthor
   );
 }
 
-export function matchesFnoxRepositoryScope(
-  scope: FnoxRepositoryScope,
-  repository: Pick<PackageConfig, 'repoAuthor' | 'repoName'>
-): boolean {
+export function matchesFnoxRepositoryScope(scope: FnoxRepositoryScope, repository: FnoxRepositoryIdentity): boolean {
   const owner = repository.repoAuthor?.toLowerCase();
   const name = repository.repoName?.toLowerCase();
   if (!owner || !name) return false;
+
+  // An unknown visibility (failed GitHub lookup) matches no visibility-constrained scope: callers
+  // that would rewrite recipients fail instead of encrypting to the wrong CI identity.
+  if (
+    scope.visibility &&
+    (!repository.isRepoVisibilityKnown || (scope.visibility === 'public') !== repository.isPublicRepo)
+  ) {
+    return false;
+  }
 
   return (
     (scope.organizations?.some((organization) => organization.toLowerCase() === owner) ?? false) ||
