@@ -9,6 +9,7 @@ import merge from 'deepmerge';
 import yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
+import { hasFnoxSyncFailed, resolveFnoxCiAgeKeySecretName } from './fnoxToml.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -1082,14 +1083,14 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       // Public repositories commit world-readable ciphertexts, so they decrypt with a dedicated
       // CI identity (the PUBLIC_FNOX_AGE_KEY organization secret) instead of the org-internal
-      // one; the callee still receives it under its declared FNOX_AGE_KEY name. When the
-      // visibility lookup failed (isPublicRepo collapses to false then), only fill in a MISSING
-      // mapping with the org-internal default: rewriting an existing PUBLIC_FNOX_AGE_KEY mapping
-      // on that guess would break an already-migrated public repository's CI, and the fnox
-      // recipient sync's own unknown-visibility failure does not stop this generator from
-      // writing files.
-      if (config.isRepoVisibilityKnown) {
-        secrets.FNOX_AGE_KEY = fnoxAgeKeySecretExpression(config);
+      // one; the callee still receives it under its declared FNOX_AGE_KEY name. When no CI
+      // identity resolves (see fnoxAgeKeyMapping), only fill in a MISSING mapping with the
+      // org-internal default: rewriting an EXISTING mapping on incomplete information would break
+      // an already-migrated repository's CI, and a fnox recipient sync failure does not stop this
+      // generator from writing files.
+      const mapping = fnoxAgeKeyMapping(config);
+      if (mapping) {
+        secrets.FNOX_AGE_KEY = mapping;
       } else {
         secrets.FNOX_AGE_KEY ??= '${{ secrets.FNOX_AGE_KEY }}';
       }
@@ -1109,10 +1110,12 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     secrets?.FNOX_AGE_KEY &&
     orgWorkflowCall &&
     !calledReusableWorkflow &&
-    config.isRepoVisibilityKnown &&
     fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))
   ) {
-    secrets.FNOX_AGE_KEY = fnoxAgeKeySecretExpression(config);
+    const mapping = fnoxAgeKeyMapping(config);
+    if (mapping) {
+      secrets.FNOX_AGE_KEY = mapping;
+    }
   }
   // reusable-workflows replaced the NPM_TOKEN secret declaration with VERDACCIO_TOKEN; GitHub
   // rejects passing an undeclared secret to a reusable workflow with a startup_failure that emits
@@ -1198,8 +1201,17 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
 }
 
-function fnoxAgeKeySecretExpression(config: Pick<PackageConfig, 'isPublicRepo'>): string {
-  return config.isPublicRepo ? '${{ secrets.PUBLIC_FNOX_AGE_KEY }}' : '${{ secrets.FNOX_AGE_KEY }}';
+/**
+ * The secret expression the caller maps into the callee's declared FNOX_AGE_KEY, or undefined
+ * when the repository state does not identify a usable CI identity — an unknown visibility, a
+ * repository no CI scope covers (deriving from the same principal roster as the recipient sync
+ * keeps the two from ever disagreeing), or a failed fnox recipient sync, whose ciphertexts may
+ * still target the previous identity. The caller must then preserve any existing mapping.
+ */
+function fnoxAgeKeyMapping(config: PackageConfig): string | undefined {
+  if (!config.isRepoVisibilityKnown || hasFnoxSyncFailed()) return undefined;
+  const secretName = resolveFnoxCiAgeKeySecretName(config);
+  return secretName && `\${{ secrets.${secretName} }}`;
 }
 
 async function writeYaml(newSettings: Workflow, filePath: string): Promise<void> {

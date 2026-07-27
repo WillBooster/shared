@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
+import { generateFnoxToml, hasFnoxSyncFailed } from '../../src/generators/fnoxToml.js';
 import { generateWorkflows } from '../../src/generators/workflow.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { readCallerJob, withTempWorkflowsRepo } from '../helpers/callerWorkflow.js';
@@ -67,6 +68,20 @@ test('keeps an existing PUBLIC_FNOX_AGE_KEY mapping when the visibility lookup f
   });
 });
 
+test('keeps the org-internal mapping in a public WillBoosterLab repository', async () => {
+  await withTempWorkflowsRepo('wbfy-fnox-age-key-injection-', async (dirPath, workflowsPath) => {
+    writeFnoxRepoFixture(dirPath, workflowsPath, defaultCallerContent);
+    // No CI identity is scoped to public WillBoosterLab repositories (the recipient sync fails
+    // closed on them), so the caller must not be pointed at the nonexistent PUBLIC_FNOX_AGE_KEY.
+    await generateWorkflows(
+      createConfig({ dirPath, isRoot: true, isPublicRepo: true, repository: 'github:WillBoosterLab/example' })
+    );
+    await promisePool.promiseAll();
+
+    expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBe('${{ secrets.FNOX_AGE_KEY }}');
+  });
+});
+
 test('remaps an existing FNOX_AGE_KEY mapping of a pinned caller in a public repository', async () => {
   await withTempWorkflowsRepo('wbfy-fnox-age-key-injection-', async (dirPath, workflowsPath) => {
     writeFnoxRepoFixture(dirPath, workflowsPath, defaultCallerContent);
@@ -89,5 +104,34 @@ jobs:
     expect(job.secrets?.FNOX_AGE_KEY).toBe('${{ secrets.PUBLIC_FNOX_AGE_KEY }}');
     // The pinned revision's other secret declarations are unknown, so nothing else is injected.
     expect(job.secrets?.TAKUMI_GUARD_TOKEN).toBeUndefined();
+  });
+});
+
+test('does not remap FNOX_AGE_KEY while the fnox recipient sync failed', async () => {
+  await withTempWorkflowsRepo('wbfy-fnox-age-key-injection-', async (dirPath, workflowsPath) => {
+    writeFnoxRepoFixture(
+      dirPath,
+      workflowsPath,
+      defaultCallerContent.replace('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}', 'FNOX_AGE_KEY: ${{ secrets.FNOX_AGE_KEY }}')
+    );
+    // generateFnoxToml refuses this fixture (its fnox.toml is invisible to git, and a leftover
+    // migration marker also marks an interrupted migration): the ciphertexts may still target the
+    // previous CI identity, so the workflow generator must not flip the key mapping either.
+    fs.mkdirSync(path.join(dirPath, '.tmp'), { recursive: true });
+    fs.writeFileSync(path.join(dirPath, '.tmp', 'wbfy-fnox-migration-marker'), '');
+    try {
+      const config = createConfig({ dirPath, isRoot: true, isPublicRepo: true });
+      await generateFnoxToml(config);
+      expect(hasFnoxSyncFailed()).toBe(true);
+      await generateWorkflows(config);
+      await promisePool.promiseAll();
+
+      expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBe('${{ secrets.FNOX_AGE_KEY }}');
+    } finally {
+      // failFnoxSync sets the process-global exit code; reset it so this test run's own status
+      // stays meaningful, and clear the module-level flag via a no-op non-WillBooster run.
+      process.exitCode = 0;
+      await generateFnoxToml(createConfig({ isWillBoosterRepo: false }));
+    }
   });
 });
