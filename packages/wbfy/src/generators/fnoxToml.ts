@@ -25,6 +25,10 @@ interface FnoxAgePrincipal {
   name: string;
   publicKeys: readonly string[];
   repositoryScope: FnoxRepositoryScope;
+  // Marks the principal as a CI identity. Every fnox-managed repository must resolve at least one
+  // (generateFnoxToml fails closed otherwise): a roster without a CI recipient would re-encrypt
+  // secrets that CI can never decrypt again.
+  isCiIdentity?: true;
 }
 
 interface FnoxAgeRecipient {
@@ -61,15 +65,19 @@ export const FNOX_AGE_PRINCIPALS = [
     name: 'ci',
     publicKeys: ['age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak'],
     repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'], visibility: 'private' },
+    isCiIdentity: true,
   },
   {
     // The CI identity dedicated to public repositories (the PUBLIC_FNOX_AGE_KEY organization
-    // secret / ~/.config/fnox/age-ci-wb-public.txt). Public repositories exist only in the
-    // WillBooster organization: WillBoosterLab is on GitHub Free, where organization secrets
-    // cannot reach private repos, and hosts private repositories exclusively.
+    // secret / ~/.config/fnox/age-ci-wb-public.txt). Scoped to WillBooster only because the
+    // PUBLIC_FNOX_AGE_KEY secret is registered in that organization alone; a public
+    // WillBoosterLab repository resolves NO CI identity and generateFnoxToml fails closed on it
+    // (WillBoosterLab does own public repositories, e.g. its reusable-workflows sync mirror, but
+    // none of them use fnox — register the secret there and extend this scope if one ever does).
     name: 'ci-public',
     publicKeys: ['age1fhea85xjwp89lwq3jcnwj32swh3v24pwparqh5l7qkgvc4ax3p0ql6du36'],
     repositoryScope: { organizations: ['WillBooster'], visibility: 'public' },
+    isCiIdentity: true,
   },
   {
     name: 'remin',
@@ -158,6 +166,21 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
     if (!rootConfig.isRepoVisibilityKnown && doesFnoxRecipientSetDependOnVisibility(rootConfig)) {
       failFnoxSync(
         `Failed to synchronize fnox age recipients because the visibility of ${rootConfig.repoAuthor}/${rootConfig.repoName} could not be determined (GitHub lookup failed) and the CI recipient depends on it. Check network and gh authentication, then rerun wbfy.`
+      );
+      return;
+    }
+    // Both CI identities are visibility-constrained, so a repository can fall through BOTH (e.g. a
+    // public WillBoosterLab repository, whose organization has no PUBLIC_FNOX_AGE_KEY secret).
+    // Re-encrypting for a roster without a CI identity would leave CI unable to decrypt anything,
+    // failing only at runtime in Actions; fail loudly here instead.
+    if (
+      !FNOX_AGE_PRINCIPALS.some(
+        (principal: FnoxAgePrincipal) =>
+          principal.isCiIdentity && matchesFnoxRepositoryScope(principal.repositoryScope, rootConfig)
+      )
+    ) {
+      failFnoxSync(
+        `Failed to synchronize fnox age recipients because no CI identity is scoped to ${rootConfig.repoAuthor}/${rootConfig.repoName} (public repositories are supported only in the WillBooster organization). Provision the matching organization secret and extend the CI scopes in wbfy first.`
       );
       return;
     }

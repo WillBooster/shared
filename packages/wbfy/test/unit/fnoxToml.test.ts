@@ -31,6 +31,13 @@ test('selects the CI identity by repository visibility', () => {
       ({ name }) => name
     )
   ).toEqual([...developerNames, 'ci-public', 'remin']);
+  // A public WillBoosterLab repository resolves NO CI identity (PUBLIC_FNOX_AGE_KEY is registered
+  // only in the WillBooster organization); generateFnoxToml fails closed on it.
+  expect(
+    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBoosterLab/example', isPublicRepo: true })).map(
+      ({ name }) => name
+    )
+  ).toEqual([...developerNames, 'remin']);
   // An unknown visibility (failed GitHub lookup) grants NEITHER CI identity; generateFnoxToml
   // fails instead of rewriting recipients in that state.
   expect(
