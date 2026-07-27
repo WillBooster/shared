@@ -38,7 +38,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "18.0.1",
-        "build-ts": "20.0.0",
+        "build-ts": "21.0.0",
         "oxfmt": "0.60.0",
         "oxlint": "1.75.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -60,7 +60,7 @@
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "18.0.1",
         "blitz": "3.0.2",
-        "build-ts": "20.0.0",
+        "build-ts": "21.0.0",
         "oxfmt": "0.60.0",
         "oxlint": "1.75.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -81,7 +81,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "18.0.1",
-        "build-ts": "20.0.0",
+        "build-ts": "21.0.0",
         "next": "16.2.11",
         "oxfmt": "0.60.0",
         "oxlint": "1.75.0",
@@ -111,7 +111,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "18.0.1",
-        "build-ts": "20.0.0",
+        "build-ts": "21.0.0",
         "oxfmt": "0.60.0",
         "oxlint": "1.75.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -145,7 +145,7 @@
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "18.0.1",
         "babel-loader": "10.1.1",
-        "build-ts": "20.0.0",
+        "build-ts": "21.0.0",
         "oxfmt": "0.60.0",
         "oxlint": "1.75.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -194,7 +194,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "at-decorators": "7.1.2",
-        "build-ts": "20.0.0",
+        "build-ts": "21.0.0",
         "oxfmt": "0.60.0",
         "oxlint": "1.75.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -240,7 +240,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "18.0.1",
-        "build-ts": "20.0.0",
+        "build-ts": "21.0.0",
         "lefthook": "2.1.10",
         "oxfmt": "0.60.0",
         "oxlint": "1.75.0",
@@ -251,6 +251,12 @@
       },
     },
   },
+  "trustedDependencies": [
+    "blitz",
+    "esbuild",
+    "lefthook",
+    "sharp",
+  ],
   "overrides": {
     "@types/glob": "9.0.0",
   },
@@ -1495,7 +1501,7 @@
 
     "buffer-xor": ["buffer-xor@1.0.3", "", {}, "sha512-571s0T7nZWK6vB67HI5dyUF7wXiNcfaPPPTl6zYCNApANjIvYJTg7hlud/+cJpdAhS7dVzqMLmfhfHR3rAcOjQ=="],
 
-    "build-ts": ["build-ts@20.0.0", "", { "dependencies": { "@babel/core": "8.0.1", "@babel/plugin-proposal-decorators": "8.0.2", "@babel/plugin-transform-explicit-resource-management": "8.0.1", "@babel/preset-env": "8.0.2", "@babel/preset-react": "8.0.1", "@babel/preset-typescript": "8.0.1", "@willbooster/shared-lib-node": "11.0.0", "magic-string": "0.30.21", "oxc-parser": "0.139.0", "rolldown": "1.1.5", "signal-exit": "4.1.0", "tsx": "4.23.1", "typescript": "7.0.2", "yargs": "18.0.0" }, "bin": { "build-ts": "bin/index.js" } }, "sha512-xZMT2u+LA0QIBDQ4n1pudYb6cLWaI+tUqgtRYKlmUdNrV30YZYsQNt5g1BkKfanvS9lG8Jpv2p2EzQ5I0jZVgQ=="],
+    "build-ts": ["build-ts@21.0.0", "", { "dependencies": { "@babel/core": "8.0.1", "@babel/plugin-proposal-decorators": "8.0.2", "@babel/plugin-transform-explicit-resource-management": "8.0.1", "@babel/preset-env": "8.0.2", "@babel/preset-react": "8.0.1", "@babel/preset-typescript": "8.0.1", "@willbooster/shared-lib-node": "13.0.0", "magic-string": "0.30.21", "oxc-parser": "0.139.0", "rolldown": "1.1.5", "signal-exit": "4.1.0", "tsx": "4.23.1", "typescript": "7.0.2", "yargs": "18.0.0" }, "bin": { "build-ts": "bin/index.js" } }, "sha512-dHx/EaF9uge+DpO0GvRmXwN7wt+bMjQ5t2FotUaLHCS0l/PBy3/HeNBs8BdGZtUUbsXk+zYkmU3KKUkboa0Zog=="],
 
     "builtin-status-codes": ["builtin-status-codes@3.0.0", "", {}, "sha512-HpGFw18DgFWlncDfjTa2rcQ4W88O1mC8e8yZ2AvQY5KDaktSTwo+KRf6nHK6FRI5FyRyb/5T6+TSxfP7QyGsmQ=="],
 
@@ -3853,7 +3859,7 @@
 
     "boxen/type-fest": ["type-fest@2.19.0", "", {}, "sha512-RAH822pAdBgcNMAfWnCBU3CFZcfZ/i1eZjwFU/dsLKumyuuP3niueg2UAukXYF0E2AAoc82ZSSf9J0WQBinzHA=="],
 
-    "build-ts/@willbooster/shared-lib-node": ["@willbooster/shared-lib-node@11.0.0", "", { "dependencies": { "@types/yargs": "17.0.35", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3" } }, "sha512-vObzQvceHQlxswMpdQJsrwT+ZnZlgq8f2LdaCtlywl32F6ePl/4fH1EoySXeM8/jVp4p7uq5fzSGjaIpfaP94w=="],
+    "build-ts/@willbooster/shared-lib-node": ["@willbooster/shared-lib-node@13.0.0", "", { "dependencies": { "@types/yargs": "17.0.35", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3" } }, "sha512-gPxu1W9lqwb9ObSe2mDM77ktTDcd5RpcM91pV4bhorlt+Cx6xsyV5yb0qYftHJEP/g9Nx4urFEs5amzXarh6Rw=="],
 
     "build-ts/rolldown": ["rolldown@1.1.5", "", { "dependencies": { "@oxc-project/types": "=0.139.0", "@rolldown/pluginutils": "^1.0.0" }, "optionalDependencies": { "@rolldown/binding-android-arm64": "1.1.5", "@rolldown/binding-darwin-arm64": "1.1.5", "@rolldown/binding-darwin-x64": "1.1.5", "@rolldown/binding-freebsd-x64": "1.1.5", "@rolldown/binding-linux-arm-gnueabihf": "1.1.5", "@rolldown/binding-linux-arm64-gnu": "1.1.5", "@rolldown/binding-linux-arm64-musl": "1.1.5", "@rolldown/binding-linux-ppc64-gnu": "1.1.5", "@rolldown/binding-linux-s390x-gnu": "1.1.5", "@rolldown/binding-linux-x64-gnu": "1.1.5", "@rolldown/binding-linux-x64-musl": "1.1.5", "@rolldown/binding-openharmony-arm64": "1.1.5", "@rolldown/binding-wasm32-wasi": "1.1.5", "@rolldown/binding-win32-arm64-msvc": "1.1.5", "@rolldown/binding-win32-x64-msvc": "1.1.5" }, "bin": { "rolldown": "./bin/cli.mjs" } }, "sha512-t9z29cJjXf/vxQ8dyhCSpt6H6aSwHTk8cT5I3iy6SMXuFpk5mB6PL6XfC8PCwrPTx93udwKUm9HRteAlTGBLiA=="],
 
