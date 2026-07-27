@@ -92,13 +92,11 @@ export const FNOX_AGE_PRINCIPALS = [
     repositoryScope: {
       repositories: [
         'WillBooster/agent-challenges',
-        'WillBooster/agentic-workflows',
         'WillBooster/agentic-workflows-dashboard',
         'WillBooster/cheerlings',
         'WillBooster/chofu-walking',
         'WillBooster/prompt-study',
         'WillBoosterLab/exercode',
-        'WillBoosterLab/exercode-employee-courses',
         'WillBoosterLab/judge',
       ],
     },
