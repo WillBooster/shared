@@ -13,15 +13,38 @@ import {
 } from '../../src/generators/fnoxToml.js';
 import { createConfig } from '../helpers/testConfig.js';
 
-test('keeps the existing age recipient roster for both WillBooster organizations', () => {
-  const recipientNames = ['exkazuu', 'ponharu1', 'ponharu2', 'ci', 'remin'];
+test('selects the CI identity by repository visibility', () => {
+  const developerNames = ['exkazuu', 'ponharu1', 'ponharu2'];
 
   expect(
-    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBooster/example' })).map(({ name }) => name)
-  ).toEqual(recipientNames);
+    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBooster/example', isPublicRepo: false })).map(
+      ({ name }) => name
+    )
+  ).toEqual([...developerNames, 'ci', 'remin']);
   expect(
-    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBoosterLab/example' })).map(({ name }) => name)
-  ).toEqual(recipientNames);
+    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBoosterLab/example', isPublicRepo: false })).map(
+      ({ name }) => name
+    )
+  ).toEqual([...developerNames, 'ci', 'remin']);
+  expect(
+    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBooster/example', isPublicRepo: true })).map(
+      ({ name }) => name
+    )
+  ).toEqual([...developerNames, 'ci-public', 'remin']);
+  // A public WillBoosterLab repository resolves NO CI identity (PUBLIC_FNOX_AGE_KEY is registered
+  // only in the WillBooster organization); generateFnoxToml fails closed on it.
+  expect(
+    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBoosterLab/example', isPublicRepo: true })).map(
+      ({ name }) => name
+    )
+  ).toEqual([...developerNames, 'remin']);
+  // An unknown visibility (failed GitHub lookup) grants NEITHER CI identity; generateFnoxToml
+  // fails instead of rewriting recipients in that state.
+  expect(
+    getFnoxAgeRecipients(
+      createConfig({ repository: 'github:WillBooster/example', isPublicRepo: false, isRepoVisibilityKnown: false })
+    ).map(({ name }) => name)
+  ).toEqual([...developerNames, 'remin']);
 });
 
 test('matches fnox repository scopes by organization or exact repository', () => {
@@ -44,6 +67,22 @@ test('matches fnox repository scopes by organization or exact repository', () =>
   expect(matchesFnoxRepositoryScope(scope, createConfig({ repository: undefined }))).toBe(false);
 });
 
+test('matches visibility-constrained fnox repository scopes only when the visibility is known and agrees', () => {
+  const publicScope = { organizations: ['WillBooster'], visibility: 'public' } as const;
+  const privateScope = { organizations: ['WillBooster'], visibility: 'private' } as const;
+
+  expect(matchesFnoxRepositoryScope(publicScope, createConfig({ isPublicRepo: true }))).toBe(true);
+  expect(matchesFnoxRepositoryScope(publicScope, createConfig({ isPublicRepo: false }))).toBe(false);
+  expect(matchesFnoxRepositoryScope(privateScope, createConfig({ isPublicRepo: false }))).toBe(true);
+  expect(matchesFnoxRepositoryScope(privateScope, createConfig({ isPublicRepo: true }))).toBe(false);
+  expect(
+    matchesFnoxRepositoryScope(publicScope, createConfig({ isPublicRepo: true, isRepoVisibilityKnown: false }))
+  ).toBe(false);
+  expect(
+    matchesFnoxRepositoryScope(privateScope, createConfig({ isPublicRepo: false, isRepoVisibilityKnown: false }))
+  ).toBe(false);
+});
+
 test('grants aries fnox access only to the selected repositories', () => {
   const ariesRecipient = {
     name: 'aries',
@@ -51,13 +90,11 @@ test('grants aries fnox access only to the selected repositories', () => {
   };
   const selectedRepositories = [
     'WillBooster/agent-challenges',
-    'WillBooster/agentic-workflows',
     'WillBooster/agentic-workflows-dashboard',
     'WillBooster/cheerlings',
     'WillBooster/chofu-walking',
     'WillBooster/prompt-study',
     'WillBoosterLab/exercode',
-    'WillBoosterLab/exercode-employee-courses',
     'WillBoosterLab/judge',
   ];
 

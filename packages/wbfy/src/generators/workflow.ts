@@ -9,6 +9,7 @@ import merge from 'deepmerge';
 import yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
+import { hasFnoxSyncFailed, resolveFnoxCiAgeKeySecretName } from './fnoxToml.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -1040,14 +1041,19 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
   // `secrets: inherit` (parsed by js-yaml as a plain string) already forwards every caller secret
   // including the ones injected below, so preserve it untouched — property assignments on the
-  // string would throw.
+  // string would throw. Caveat: `inherit` forwards secrets under their existing NAMES, so it can
+  // never feed PUBLIC_FNOX_AGE_KEY into the callee's declared FNOX_AGE_KEY; a hand-written
+  // inherit caller in a PUBLIC fnox repository must be converted to an explicit mapping manually
+  // (wbfy never generates the inherit form, and hand-written deviations are fixed in the target
+  // repository by policy).
   const secrets = job.secrets === 'inherit' ? undefined : (job.secrets = job.secrets ?? {});
 
   if (secrets && (kind === 'test' || kind === 'release')) {
     secrets.GH_TOKEN = '${{ secrets.GITHUB_TOKEN }}';
   }
 
-  // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY repository secret.
+  // fnox.toml carries age-encrypted app secrets; CI decrypts them with the FNOX_AGE_KEY (or, for
+  // public repositories, PUBLIC_FNOX_AGE_KEY) organization secret.
   // Key the injection on the *called* reusable workflow, not the caller's filename: callers may have
   // arbitrary names (e.g. scheduled run-script callers), and GitHub rejects passing a secret that the
   // callee does not declare. In a not-yet-migrated repository the legacy DOT_ENV pass-through is
@@ -1075,12 +1081,38 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       delete secrets.VERDACCIO_TOKEN;
     }
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
-      secrets.FNOX_AGE_KEY = '${{ secrets.FNOX_AGE_KEY }}';
+      // Public repositories commit world-readable ciphertexts, so they decrypt with a dedicated
+      // CI identity (the PUBLIC_FNOX_AGE_KEY organization secret) instead of the org-internal
+      // one; the callee still receives it under its declared FNOX_AGE_KEY name. When no CI
+      // identity resolves (see fnoxAgeKeyMapping), leave any existing mapping untouched and add
+      // none: creating or rewriting one on incomplete information would map a possibly-public
+      // repository to the wrong identity, and a fnox recipient sync failure does not stop this
+      // generator from writing files — the failed run's rerun fills the mapping in.
+      const mapping = fnoxAgeKeyMapping(config);
+      if (mapping) {
+        secrets.FNOX_AGE_KEY = mapping;
+      }
       // fnox.toml replaced the .env files (wb no longer reads them), so the legacy inputs would
       // only keep dead configuration alive.
       delete secrets.DOT_ENV;
       delete secrets.DOT_ENV_PRODUCTION;
       delete job.with.dot_env_path;
+    }
+  }
+  // Callers pinned to a tag/SHA keep their secret SET untouched (the pinned revision's
+  // declarations may differ), but the fnox recipient sync migrates the repository's ciphertexts
+  // by visibility regardless of the caller's ref, so an already-present FNOX_AGE_KEY mapping must
+  // still be remapped to the CI identity that can actually decrypt them; only the mapped-from
+  // secret changes, never the declared FNOX_AGE_KEY name the pinned revision expects.
+  if (
+    secrets?.FNOX_AGE_KEY &&
+    orgWorkflowCall &&
+    !calledReusableWorkflow &&
+    fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))
+  ) {
+    const mapping = fnoxAgeKeyMapping(config);
+    if (mapping) {
+      secrets.FNOX_AGE_KEY = mapping;
     }
   }
   // reusable-workflows replaced the NPM_TOKEN secret declaration with VERDACCIO_TOKEN; GitHub
@@ -1165,6 +1197,19 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       delete job.secrets;
     }
   }
+}
+
+/**
+ * The secret expression the caller maps into the callee's declared FNOX_AGE_KEY, or undefined
+ * when the repository state does not identify a usable CI identity — an unknown visibility, a
+ * repository no CI scope covers (deriving from the same principal roster as the recipient sync
+ * keeps the two from ever disagreeing), or a failed fnox recipient sync, whose ciphertexts may
+ * still target the previous identity. The caller must then preserve any existing mapping.
+ */
+function fnoxAgeKeyMapping(config: PackageConfig): string | undefined {
+  if (!config.isRepoVisibilityKnown || hasFnoxSyncFailed()) return undefined;
+  const secretName = resolveFnoxCiAgeKeySecretName(config);
+  return secretName && `\${{ secrets.${secretName} }}`;
 }
 
 async function writeYaml(newSettings: Workflow, filePath: string): Promise<void> {
