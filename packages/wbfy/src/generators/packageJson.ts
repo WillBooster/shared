@@ -2257,6 +2257,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
   if (config.isRoot) {
     applyTestOnCiScript(scripts, oldScripts);
   }
+  applyTestScript(config, scripts, oldScripts);
   applyDatabaseScripts(config, scripts, oldScripts, `bun ${getWbDatabaseCommand(config)}`);
   applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
   if (!hasTypecheck) {
@@ -2288,6 +2289,36 @@ function applyTestOnCiScript(scripts: Record<string, string>, oldScripts: Packag
  */
 function isGeneratedTestOnCiScript(script: string): boolean {
   return /^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+test-on-ci$/u.test(script.trim());
+}
+
+/**
+ * `wb test` runs JavaScript/TypeScript test runners only, so replacing the `test` script of a
+ * package written in another language (e.g. a Maven or an RSpec package in a polyglot monorepo)
+ * silently drops its whole suite: the generated script then succeeds without running anything.
+ * Such a package keeps its own `test` script; JS/TS packages are standardized as usual.
+ */
+function applyTestScript(
+  config: PackageConfig,
+  scripts: Record<string, string>,
+  oldScripts: PackageJson.Scripts
+): void {
+  const oldScript = oldScripts.test?.trim();
+  if (
+    !oldScript ||
+    config.doesContainJavaScript ||
+    config.doesContainTypeScript ||
+    config.doesContainJavaScriptInPackages ||
+    config.doesContainTypeScriptInPackages
+  ) {
+    return;
+  }
+  if (isGeneratedTestScript(oldScript)) return;
+  scripts.test = oldScript;
+}
+
+/** Whether a script body is one of the KNOWN generated `wb test` invocations. */
+function isGeneratedTestScript(script: string): boolean {
+  return /^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+test$/u.test(script.trim());
 }
 
 function applyDatabaseScripts(
