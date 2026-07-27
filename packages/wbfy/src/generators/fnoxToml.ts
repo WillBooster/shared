@@ -9,19 +9,55 @@ import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 
-// The age public keys of every developer and of CI. Every fnox-managed repository must encrypt
-// its secrets for exactly this recipient set so that decryptability does not depend on which
-// machine ran wbfy. To grant a new member or environment access, append its public key here; the
-// next wbfy run on each repository rewrites the recipients in fnox.toml and re-encrypts the
-// committed secrets. Only public keys may appear in this repository; CI's private key lives in
-// ~/.config/fnox/age-ci-wb.txt and the FNOX_AGE_KEY repository secrets.
-export const FNOX_AGE_RECIPIENTS = [
-  { name: 'exkazuu', publicKey: 'age1j2354xhvm3fv9y77t5g6y3q8mexgk2mf00tgrkzgp73tynrvz55s8auayw' },
-  { name: 'ponharu1', publicKey: 'age18rugldf9htc6um5eplpx27k53ep4zn0lhzwffgnxzhrq0c7zgvyq3zccdy' },
-  { name: 'ponharu2', publicKey: 'age1nz2n99crjr7np9xjglwfffc3dud45dhewqzqfzpztkdwu4hj74gq6el533' },
-  { name: 'ci', publicKey: 'age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak' },
-  { name: 'remin', publicKey: 'age1mw4pz9dujy9dmhk0palqawjkj7m4k7zx78yr9fjt63sa5l3e43uq6nw004' },
-];
+type WillBoosterOrganization = 'WillBooster' | 'WillBoosterLab';
+type RepositoryFullName = `${WillBoosterOrganization}/${string}`;
+
+export interface FnoxRepositoryScope {
+  organizations?: readonly WillBoosterOrganization[];
+  repositories?: readonly RepositoryFullName[];
+}
+
+interface FnoxAgePrincipal {
+  name: string;
+  publicKeys: readonly string[];
+  repositoryScope: FnoxRepositoryScope;
+}
+
+interface FnoxAgeRecipient {
+  name: string;
+  publicKey: string;
+}
+
+const allWillBoosterOrganizations = ['WillBooster', 'WillBoosterLab'] as const;
+
+// Only public keys may appear here. CI's private key lives in ~/.config/fnox/age-ci-wb.txt and the
+// FNOX_AGE_KEY repository secrets. Organization scopes include future repositories automatically;
+// use repositories for exact owner/repository grants.
+export const FNOX_AGE_PRINCIPALS = [
+  {
+    name: 'exkazuu',
+    publicKeys: ['age1j2354xhvm3fv9y77t5g6y3q8mexgk2mf00tgrkzgp73tynrvz55s8auayw'],
+    repositoryScope: { organizations: allWillBoosterOrganizations },
+  },
+  {
+    name: 'ponharu',
+    publicKeys: [
+      'age18rugldf9htc6um5eplpx27k53ep4zn0lhzwffgnxzhrq0c7zgvyq3zccdy',
+      'age1nz2n99crjr7np9xjglwfffc3dud45dhewqzqfzpztkdwu4hj74gq6el533',
+    ],
+    repositoryScope: { organizations: allWillBoosterOrganizations },
+  },
+  {
+    name: 'ci',
+    publicKeys: ['age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak'],
+    repositoryScope: { organizations: allWillBoosterOrganizations },
+  },
+  {
+    name: 'remin',
+    publicKeys: ['age1mw4pz9dujy9dmhk0palqawjkj7m4k7zx78yr9fjt63sa5l3e43uq6nw004'],
+    repositoryScope: { organizations: allWillBoosterOrganizations },
+  },
+] as const satisfies readonly FnoxAgePrincipal[];
 
 interface FnoxToml {
   import?: unknown;
@@ -40,20 +76,20 @@ export function hasFnoxSyncFailed(): boolean {
 }
 
 /**
- * Synchronizes the age recipients in every fnox.toml with FNOX_AGE_RECIPIENTS and re-encrypts the
- * committed secrets when the recipient set changed.
+ * Synchronizes the age recipients in every fnox.toml with the principals authorized for this
+ * repository and re-encrypts the committed secrets when the recipient set changed.
  */
 export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateFnoxToml', async () => {
     // The failure flag is per repository: wbfy can process multiple working directories in one
     // invocation, and an earlier repository's failure must not veto a later repository's upload.
     fnoxSyncFailed = false;
-    // FNOX_AGE_RECIPIENTS is the WillBooster organizations' roster (developers + the shared CI
-    // identity). A repository outside WillBooster/WillBoosterLab manages its own recipient set
-    // (e.g. a personal repository with its own CI identity), so rewriting it to the org roster
-    // would grant org members access and re-encrypt secrets for a CI key that repository does not
-    // use. setupSecrets never uploads secrets for such repositories either, so skip entirely.
+    // A repository outside WillBooster/WillBoosterLab manages its own recipient set (e.g. a
+    // personal repository with its own CI identity), so rewriting it to the org roster would grant
+    // org members access and re-encrypt secrets for a CI key that repository does not use.
+    // setupSecrets never uploads secrets for such repositories either, so skip entirely.
     if (!rootConfig.isWillBoosterRepo) return;
+    const ageRecipients = getFnoxAgeRecipients(rootConfig);
     const rootDirPath = path.resolve(rootConfig.dirPath);
     if (!fs.existsSync(path.resolve(rootDirPath, 'fnox.toml'))) {
       // A nested-only fnox layout is unsupported: setupSecrets would take the dotenv path and
@@ -193,7 +229,8 @@ export async function generateFnoxToml(rootConfig: PackageConfig): Promise<void>
           rootDirPath,
           dirPath === rootDirPath,
           ancestorChanged,
-          snapshotContent
+          snapshotContent,
+          ageRecipients
         );
         if (result === 'changed') changedDirPaths.push(dirPath);
         anyFailed ||= result === 'failed';
@@ -225,7 +262,8 @@ async function synchronizeFnoxAgeRecipients(
   rootDirPath: string,
   isRoot: boolean,
   ancestorRecipientsChanged: boolean,
-  originalContent: string
+  originalContent: string,
+  ageRecipients: readonly FnoxAgeRecipient[]
 ): Promise<'changed' | 'unchanged' | 'failed'> {
   const fnoxTomlPath = path.resolve(dirPath, 'fnox.toml');
 
@@ -278,8 +316,8 @@ async function synchronizeFnoxAgeRecipients(
 
   if (
     currentRecipients &&
-    currentRecipients.size === FNOX_AGE_RECIPIENTS.length &&
-    FNOX_AGE_RECIPIENTS.every((recipient) => currentRecipients.has(recipient.publicKey))
+    currentRecipients.size === ageRecipients.length &&
+    ageRecipients.every((recipient) => currentRecipients.has(recipient.publicKey))
   ) {
     return 'unchanged';
   }
@@ -287,11 +325,11 @@ async function synchronizeFnoxAgeRecipients(
   // Rewrite only the recipients assignment so user-authored comments and formatting survive.
   // Re-parse before writing: an unusual layout (e.g. dotted keys) could make the textual edit
   // produce a duplicate table or leave the old recipients in effect.
-  const updatedContent = replaceAgeRecipients(originalContent);
+  const updatedContent = replaceAgeRecipients(originalContent, ageRecipients);
   const updatedRecipients = [...(readFnoxAgeRecipients(updatedContent) ?? [])];
   if (
-    updatedRecipients.length !== FNOX_AGE_RECIPIENTS.length ||
-    !FNOX_AGE_RECIPIENTS.every((recipient) => updatedRecipients.includes(recipient.publicKey))
+    updatedRecipients.length !== ageRecipients.length ||
+    !ageRecipients.every((recipient) => updatedRecipients.includes(recipient.publicKey))
   ) {
     throw new Error(`Rewriting the age recipients in ${fnoxTomlPath} did not take effect; update them manually.`);
   }
@@ -354,11 +392,36 @@ export function readFnoxAgeRecipients(fnoxTomlContent: string): Set<string> | un
   }
 }
 
-function replaceAgeRecipients(content: string): string {
+export function getFnoxAgeRecipients(rootConfig: Pick<PackageConfig, 'repoAuthor' | 'repoName'>): FnoxAgeRecipient[] {
+  return FNOX_AGE_PRINCIPALS.filter((principal) =>
+    matchesFnoxRepositoryScope(principal.repositoryScope, rootConfig)
+  ).flatMap((principal) =>
+    principal.publicKeys.map((publicKey, index) => ({
+      name: principal.publicKeys.length === 1 ? principal.name : `${principal.name}${index + 1}`,
+      publicKey,
+    }))
+  );
+}
+
+export function matchesFnoxRepositoryScope(
+  scope: FnoxRepositoryScope,
+  repository: Pick<PackageConfig, 'repoAuthor' | 'repoName'>
+): boolean {
+  const owner = repository.repoAuthor?.toLowerCase();
+  const name = repository.repoName?.toLowerCase();
+  if (!owner || !name) return false;
+
+  return (
+    (scope.organizations?.some((organization) => organization.toLowerCase() === owner) ?? false) ||
+    (scope.repositories?.some((fullName) => fullName.toLowerCase() === `${owner}/${name}`) ?? false)
+  );
+}
+
+function replaceAgeRecipients(content: string, ageRecipients: readonly FnoxAgeRecipient[]): string {
   // Trailing name comments let humans tell whose key each recipient is without consulting wbfy.
-  const recipientsText = `recipients = [\n${FNOX_AGE_RECIPIENTS.map(
-    (recipient) => `  "${recipient.publicKey}", # ${recipient.name}`
-  ).join('\n')}\n]`;
+  const recipientsText = `recipients = [\n${ageRecipients
+    .map((recipient) => `  "${recipient.publicKey}", # ${recipient.name}`)
+    .join('\n')}\n]`;
   // wbfy writes a [providers.age] table (possibly with a trailing comment). Scan line-wise so that
   // a `[` inside a comment or a string never terminates the table early; the table ends at the
   // next line-start table header. The assignment match is line-anchored so a commented-out
