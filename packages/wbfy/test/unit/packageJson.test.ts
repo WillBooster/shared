@@ -1208,6 +1208,50 @@ test('does not generate test/ci in a workspace package', async () => {
   expect(packageJson.scripts?.['test/ci']).toBeUndefined();
 });
 
+const jsRootConfig = { doesContainTypeScript: true, isRoot: true } as const;
+
+test('keeps commands chained onto the generated test and verify-full scripts', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        test: 'bun wb test && bun run test/analyzers',
+        'verify-full': 'bun wb verify --full && bun run test/analyzers',
+      },
+    },
+    jsRootConfig
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    test: 'bun wb test && bun run test/analyzers',
+    'verify-full': 'bun wb verify --full && bun run test/analyzers',
+  });
+});
+
+test('normalizes the runner prefix of a chained test script instead of freezing it', async () => {
+  // `bun run wb test` is what convertYarnCommandsToBun leaves behind for a `yarn wb test` wrapper,
+  // and `--bun` breaks Node-based tools; both must converge on the generated command so that the
+  // next run still recognizes the body as a wrapper.
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { test: 'bun run wb test && mvn test', 'verify-full': 'bun --bun wb verify --full; mvn test' } },
+    jsRootConfig
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    test: 'bun wb test && mvn test',
+    'verify-full': 'bun wb verify --full; mvn test',
+  });
+});
+
+test('keeps a command chained onto the generated test script with a newline', async () => {
+  const packageJson = await generatePackageJsonFrom({ scripts: { test: 'bun wb test\nmvn test' } }, jsRootConfig);
+  expect(packageJson.scripts?.test).toBe('bun wb test\nmvn test');
+});
+
+test('replaces a plain generated test script body', async () => {
+  const packageJson = await generatePackageJsonFrom({ scripts: { test: 'yarn wb test' } }, jsRootConfig);
+  expect(packageJson.scripts?.test).toBe('bun wb test');
+});
+
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},

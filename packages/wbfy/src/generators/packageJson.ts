@@ -2329,15 +2329,24 @@ function keepGeneratedScriptWrappers(
     const oldScript = oldScripts[scriptName]?.trim();
     const generatedScript = scripts[scriptName];
     if (!oldScript || !generatedScript || oldScript === generatedScript) continue;
-    // The stored wrapper may carry a legacy runner prefix (e.g. `yarn wb test && ...`), so compare
-    // the command core and accept any of the historical prefixes.
+    // The stored wrapper may lead with a legacy runner prefix (`yarn wb test && ...`) or with the
+    // `bun run wb test && ...` that convertYarnCommandsToBun produces from it later in this very
+    // run, so accept those prefixes and REWRITE the matched head to the generated command. Keeping
+    // the old head verbatim would freeze a stale prefix — notably `--bun`, whose node->bun PATH
+    // shim breaks Node-based tools — and leave a body the next run no longer recognizes as a
+    // wrapper, silently dropping the chained commands one run later.
     const generatedCore = generatedScript.replace(/^bun[ \t]+/u, '');
-    const wrapperRegExp = new RegExp(
-      `^(?:(?:bun(?:[ \\t]+--bun)?|yarn|npx)[ \\t]+)?${escapeRegExp(generatedCore)}[ \\t]*(?:&&|\\|\\||;)`,
+    const headRegExp = new RegExp(
+      `^(?:(?:bun(?:[ \\t]+--bun)?|yarn|npx)(?:[ \\t]+run)?[ \\t]+)?${escapeRegExp(generatedCore).replaceAll(
+        ' ',
+        String.raw`[ \t]+`
+      )}(?=[ \\t]*(?:&&|\\|\\||;|\\n))`,
       'u'
     );
-    if (wrapperRegExp.test(oldScript)) {
-      scripts[scriptName] = oldScript;
+    // A newline separates shell commands just like &&, || and ;, matching isGeneratedDatabaseScript.
+    if (headRegExp.test(oldScript)) {
+      // A function replacement keeps `$`-shaped characters in the generated command literal.
+      scripts[scriptName] = oldScript.replace(headRegExp, () => generatedScript);
     }
   }
 }
