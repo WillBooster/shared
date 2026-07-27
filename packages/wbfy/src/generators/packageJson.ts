@@ -2258,6 +2258,7 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
     applyTestOnCiScript(scripts, oldScripts);
   }
   applyTestScript(config, scripts, oldScripts);
+  keepGeneratedScriptWrappers(scripts, oldScripts, ['test', 'verify-full']);
   applyDatabaseScripts(config, scripts, oldScripts, `bun ${getWbDatabaseCommand(config)}`);
   applyMiseTaskScripts(config, scripts, oldScripts, ['build', 'dev', 'start', 'test', 'typecheck']);
   if (!hasTypecheck) {
@@ -2303,22 +2304,42 @@ function applyTestScript(
   oldScripts: PackageJson.Scripts
 ): void {
   const oldScript = oldScripts.test?.trim();
-  if (
-    !oldScript ||
-    config.doesContainJavaScript ||
-    config.doesContainTypeScript ||
-    config.doesContainJavaScriptInPackages ||
-    config.doesContainTypeScriptInPackages
-  ) {
-    return;
-  }
-  if (isGeneratedTestScript(oldScript)) return;
+  if (!oldScript || doesContainJsOrTs(config) || isGeneratedTestScript(oldScript)) return;
   scripts.test = oldScript;
 }
 
 /** Whether a script body is one of the KNOWN generated `wb test` invocations. */
 function isGeneratedTestScript(script: string): boolean {
   return /^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+test$/u.test(script.trim());
+}
+
+/**
+ * Keeps a script that CHAINS extra commands onto the generated one (e.g. a polyglot monorepo
+ * appending its Maven and RSpec suites to `wb test`, which runs JavaScript/TypeScript runners
+ * only). Such a wrapper still runs the generated command, so replacing it would silently drop the
+ * repository's own steps — the same reasoning as `applyTestOnCiScript`. A script that starts with
+ * anything else is standardized as usual.
+ */
+function keepGeneratedScriptWrappers(
+  scripts: Record<string, string>,
+  oldScripts: PackageJson.Scripts,
+  scriptNames: string[]
+): void {
+  for (const scriptName of scriptNames) {
+    const oldScript = oldScripts[scriptName]?.trim();
+    const generatedScript = scripts[scriptName];
+    if (!oldScript || !generatedScript || oldScript === generatedScript) continue;
+    // The stored wrapper may carry a legacy runner prefix (e.g. `yarn wb test && ...`), so compare
+    // the command core and accept any of the historical prefixes.
+    const generatedCore = generatedScript.replace(/^bun[ \t]+/u, '');
+    const wrapperRegExp = new RegExp(
+      `^(?:(?:bun(?:[ \\t]+--bun)?|yarn|npx)[ \\t]+)?${escapeRegExp(generatedCore)}[ \\t]*(?:&&|\\|\\||;)`,
+      'u'
+    );
+    if (wrapperRegExp.test(oldScript)) {
+      scripts[scriptName] = oldScript;
+    }
+  }
 }
 
 function applyDatabaseScripts(
