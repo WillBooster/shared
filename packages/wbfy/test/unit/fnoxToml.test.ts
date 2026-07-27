@@ -44,6 +44,34 @@ test('matches fnox repository scopes by organization or exact repository', () =>
   expect(matchesFnoxRepositoryScope(scope, createConfig({ repository: undefined }))).toBe(false);
 });
 
+test('grants aries fnox access only to the selected repositories', () => {
+  const ariesRecipient = {
+    name: 'aries',
+    publicKey: 'age1nn0ehyaenyq8kmnq4294kzzgxv5dnf6pep2cdkraxzfqlk7xgsrqqn6nn9',
+  };
+  const selectedRepositories = [
+    'WillBooster/agent-challenges',
+    'WillBooster/agentic-workflows',
+    'WillBooster/agentic-workflows-dashboard',
+    'WillBooster/cheerlings',
+    'WillBooster/chofu-walking',
+    'WillBooster/prompt-study',
+    'WillBoosterLab/exercode',
+    'WillBoosterLab/exercode-employee-courses',
+    'WillBoosterLab/judge',
+  ];
+
+  for (const repository of selectedRepositories) {
+    expect(getFnoxAgeRecipients(createConfig({ repository: `github:${repository}` }))).toContainEqual(ariesRecipient);
+  }
+  expect(getFnoxAgeRecipients(createConfig({ repository: 'github:WillBooster/shared' }))).not.toContainEqual(
+    ariesRecipient
+  );
+  expect(getFnoxAgeRecipients(createConfig({ repository: 'github:WillBoosterLab/example' }))).not.toContainEqual(
+    ariesRecipient
+  );
+});
+
 test('keeps the age recipients of a repository outside the WillBooster organizations', async () => {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fnox-'));
   try {

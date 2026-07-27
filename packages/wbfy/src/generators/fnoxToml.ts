@@ -59,6 +59,23 @@ export const FNOX_AGE_PRINCIPALS = [
     publicKeys: ['age1mw4pz9dujy9dmhk0palqawjkj7m4k7zx78yr9fjt63sa5l3e43uq6nw004'],
     repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'] },
   },
+  {
+    name: 'aries',
+    publicKeys: ['age1nn0ehyaenyq8kmnq4294kzzgxv5dnf6pep2cdkraxzfqlk7xgsrqqn6nn9'],
+    repositoryScope: {
+      repositories: [
+        'WillBooster/agent-challenges',
+        'WillBooster/agentic-workflows',
+        'WillBooster/agentic-workflows-dashboard',
+        'WillBooster/cheerlings',
+        'WillBooster/chofu-walking',
+        'WillBooster/prompt-study',
+        'WillBoosterLab/exercode',
+        'WillBoosterLab/exercode-employee-courses',
+        'WillBoosterLab/judge',
+      ],
+    },
+  },
 ] as const satisfies readonly FnoxAgePrincipal[];
 
 interface FnoxToml {
