@@ -4,8 +4,45 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { generateFnoxToml, hasFnoxSyncFailed, isTestFixtureFnoxPath } from '../../src/generators/fnoxToml.js';
+import {
+  generateFnoxToml,
+  getFnoxAgeRecipients,
+  hasFnoxSyncFailed,
+  isTestFixtureFnoxPath,
+  matchesFnoxRepositoryScope,
+} from '../../src/generators/fnoxToml.js';
 import { createConfig } from '../helpers/testConfig.js';
+
+test('keeps the existing age recipient roster for both WillBooster organizations', () => {
+  const recipientNames = ['exkazuu', 'ponharu1', 'ponharu2', 'ci', 'remin'];
+
+  expect(
+    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBooster/example' })).map(({ name }) => name)
+  ).toEqual(recipientNames);
+  expect(
+    getFnoxAgeRecipients(createConfig({ repository: 'github:WillBoosterLab/example' })).map(({ name }) => name)
+  ).toEqual(recipientNames);
+});
+
+test('matches fnox repository scopes by organization or exact repository', () => {
+  const scope = {
+    organizations: ['WillBoosterLab'],
+    repositories: ['WillBooster/selected'],
+  } as const;
+
+  expect(matchesFnoxRepositoryScope(scope, createConfig({ repository: 'github:WillBoosterLab/any-repository' }))).toBe(
+    true
+  );
+  expect(matchesFnoxRepositoryScope(scope, createConfig({ repository: 'github:willbooster/SELECTED' }))).toBe(true);
+  expect(matchesFnoxRepositoryScope(scope, createConfig({ repository: 'github:WillBooster/other' }))).toBe(false);
+  expect(
+    matchesFnoxRepositoryScope(
+      { repositories: ['WillBooster/selected'] },
+      createConfig({ repository: 'github:WillBoosterLab/selected' })
+    )
+  ).toBe(false);
+  expect(matchesFnoxRepositoryScope(scope, createConfig({ repository: undefined }))).toBe(false);
+});
 
 test('keeps the age recipients of a repository outside the WillBooster organizations', async () => {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fnox-'));
