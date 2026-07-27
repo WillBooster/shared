@@ -1084,15 +1084,13 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       // Public repositories commit world-readable ciphertexts, so they decrypt with a dedicated
       // CI identity (the PUBLIC_FNOX_AGE_KEY organization secret) instead of the org-internal
       // one; the callee still receives it under its declared FNOX_AGE_KEY name. When no CI
-      // identity resolves (see fnoxAgeKeyMapping), only fill in a MISSING mapping with the
-      // org-internal default: rewriting an EXISTING mapping on incomplete information would break
-      // an already-migrated repository's CI, and a fnox recipient sync failure does not stop this
-      // generator from writing files.
+      // identity resolves (see fnoxAgeKeyMapping), leave any existing mapping untouched and add
+      // none: creating or rewriting one on incomplete information would map a possibly-public
+      // repository to the wrong identity, and a fnox recipient sync failure does not stop this
+      // generator from writing files — the failed run's rerun fills the mapping in.
       const mapping = fnoxAgeKeyMapping(config);
       if (mapping) {
         secrets.FNOX_AGE_KEY = mapping;
-      } else {
-        secrets.FNOX_AGE_KEY ??= '${{ secrets.FNOX_AGE_KEY }}';
       }
       // fnox.toml replaced the .env files (wb no longer reads them), so the legacy inputs would
       // only keep dead configuration alive.

@@ -68,17 +68,18 @@ test('keeps an existing PUBLIC_FNOX_AGE_KEY mapping when the visibility lookup f
   });
 });
 
-test('keeps the org-internal mapping in a public WillBoosterLab repository', async () => {
+test('adds no mapping in a public WillBoosterLab repository', async () => {
   await withTempWorkflowsRepo('wbfy-fnox-age-key-injection-', async (dirPath, workflowsPath) => {
     writeFnoxRepoFixture(dirPath, workflowsPath, defaultCallerContent);
     // No CI identity is scoped to public WillBoosterLab repositories (the recipient sync fails
-    // closed on them), so the caller must not be pointed at the nonexistent PUBLIC_FNOX_AGE_KEY.
+    // closed on them), so the caller must not be pointed at the nonexistent PUBLIC_FNOX_AGE_KEY —
+    // or at any other secret this unsupported state cannot back.
     await generateWorkflows(
       createConfig({ dirPath, isRoot: true, isPublicRepo: true, repository: 'github:WillBoosterLab/example' })
     );
     await promisePool.promiseAll();
 
-    expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBe('${{ secrets.FNOX_AGE_KEY }}');
+    expect(readCallerJob(workflowsPath).secrets?.FNOX_AGE_KEY).toBeUndefined();
   });
 });
 
