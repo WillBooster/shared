@@ -30,9 +30,13 @@ interface FnoxAgeRecipient {
 
 const allWillBoosterOrganizations = ['WillBooster', 'WillBoosterLab'] as const;
 
-// Only public keys may appear here. CI's private key lives in ~/.config/fnox/age-ci-wb.txt and the
-// FNOX_AGE_KEY repository secrets. Organization scopes include future repositories automatically;
-// use repositories for exact owner/repository grants.
+// The age principals authorized to decrypt each fnox-managed repository. To grant access, add the
+// principal's public keys and repository scope here. Organization scopes include every current and
+// future repository in that organization; use repositories for exact owner/repository grants. The
+// next wbfy run on each matching repository rewrites every managed fnox.toml and re-encrypts its
+// committed secrets for the resulting recipient set. Removing a scope cannot revoke ciphertext
+// already available from Git history, so rotate the secret values that principal could decrypt.
+// Only public keys may appear here; CI's private key supplies the FNOX_AGE_KEY secret.
 export const FNOX_AGE_PRINCIPALS = [
   {
     name: 'exkazuu',
