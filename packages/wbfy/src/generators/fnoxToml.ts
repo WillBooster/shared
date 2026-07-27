@@ -28,8 +28,6 @@ interface FnoxAgeRecipient {
   publicKey: string;
 }
 
-const allWillBoosterOrganizations = ['WillBooster', 'WillBoosterLab'] as const;
-
 // The age principals authorized to decrypt each fnox-managed repository. To grant access, add the
 // principal's public keys and repository scope here. Organization scopes include every current and
 // future repository in that organization; use repositories for exact owner/repository grants. The
@@ -41,7 +39,7 @@ export const FNOX_AGE_PRINCIPALS = [
   {
     name: 'exkazuu',
     publicKeys: ['age1j2354xhvm3fv9y77t5g6y3q8mexgk2mf00tgrkzgp73tynrvz55s8auayw'],
-    repositoryScope: { organizations: allWillBoosterOrganizations },
+    repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'] },
   },
   {
     name: 'ponharu',
@@ -49,17 +47,17 @@ export const FNOX_AGE_PRINCIPALS = [
       'age18rugldf9htc6um5eplpx27k53ep4zn0lhzwffgnxzhrq0c7zgvyq3zccdy',
       'age1nz2n99crjr7np9xjglwfffc3dud45dhewqzqfzpztkdwu4hj74gq6el533',
     ],
-    repositoryScope: { organizations: allWillBoosterOrganizations },
+    repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'] },
   },
   {
     name: 'ci',
     publicKeys: ['age1a2c6ef6ahl6mmkhgqtxg0mgtd7ysspntq7rxusv26efxhnuhlcdsr9dpak'],
-    repositoryScope: { organizations: allWillBoosterOrganizations },
+    repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'] },
   },
   {
     name: 'remin',
     publicKeys: ['age1mw4pz9dujy9dmhk0palqawjkj7m4k7zx78yr9fjt63sa5l3e43uq6nw004'],
-    repositoryScope: { organizations: allWillBoosterOrganizations },
+    repositoryScope: { organizations: ['WillBooster', 'WillBoosterLab'] },
   },
 ] as const satisfies readonly FnoxAgePrincipal[];
 
