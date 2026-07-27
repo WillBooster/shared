@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - wbfy
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,7 +12,6 @@ permissions:
   actions: write
   contents: write
   pull-requests: read
-  statuses: write
 jobs:
   test:
     uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main
@@ -22,4 +20,3 @@ jobs:
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAKUMI_GUARD_TOKEN: ${{ secrets.TAKUMI_GUARD_TOKEN }}
-      VERDACCIO_TOKEN: ${{ secrets.VERDACCIO_TOKEN }}
