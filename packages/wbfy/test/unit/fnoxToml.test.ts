@@ -51,13 +51,11 @@ test('grants aries fnox access only to the selected repositories', () => {
   };
   const selectedRepositories = [
     'WillBooster/agent-challenges',
-    'WillBooster/agentic-workflows',
     'WillBooster/agentic-workflows-dashboard',
     'WillBooster/cheerlings',
     'WillBooster/chofu-walking',
     'WillBooster/prompt-study',
     'WillBoosterLab/exercode',
-    'WillBoosterLab/exercode-employee-courses',
     'WillBoosterLab/judge',
   ];
 
