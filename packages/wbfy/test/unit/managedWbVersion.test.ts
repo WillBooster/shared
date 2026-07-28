@@ -1,19 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
+import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { hasFnoxConfigForRepository, selectManagedWbVersion } from '../../src/generators/packageJson.js';
+import {
+  hasFnoxConfigForRepository,
+  repositoryUsesEnvCascade,
+  selectManagedWbVersion,
+} from '../../src/generators/packageJson.js';
 
 // wb >= 19 loads environment variables only from fnox, so wbfy must not materialize such a
-// version for repositories without a root fnox.toml (fresh installs, `*`, and upgrades all flow
-// through this selection).
+// version for repositories that still rely on the .env cascade without a root fnox.toml (fresh
+// installs, `*`, and upgrades all flow through this selection). Repositories using neither fnox
+// nor .env files have nothing to migrate and get the latest wb.
 describe('selectManagedWbVersion', () => {
-  it('keeps the latest version for fnox repositories', () => {
+  it('keeps the latest version for repositories not needing the fnox migration', () => {
     expect(
       selectManagedWbVersion(
-        true,
+        false,
         '19.0.0',
         () => {
           throw new Error('must not be called');
@@ -23,18 +29,18 @@ describe('selectManagedWbVersion', () => {
     ).toBe('19.0.0');
   });
 
-  it('caps a fnox-only latest version to the latest pre-fnox-only release for non-fnox repositories', () => {
-    expect(selectManagedWbVersion(false, '19.1.0', () => '18.0.1', '/repo')).toBe('18.0.1');
+  it('caps a fnox-only latest version to the latest pre-fnox-only release for repositories needing the migration', () => {
+    expect(selectManagedWbVersion(true, '19.1.0', () => '18.0.1', '/repo')).toBe('18.0.1');
   });
 
-  it('caps a fnox-only PRE-release version for non-fnox repositories', () => {
-    expect(selectManagedWbVersion(false, '19.0.0-alpha.0', () => '18.0.1', '/repo')).toBe('18.0.1');
+  it('caps a fnox-only PRE-release version for repositories needing the migration', () => {
+    expect(selectManagedWbVersion(true, '19.0.0-alpha.0', () => '18.0.1', '/repo')).toBe('18.0.1');
   });
 
-  it('keeps a pre-fnox-only latest version for non-fnox repositories', () => {
+  it('keeps a pre-fnox-only latest version for repositories needing the migration', () => {
     expect(
       selectManagedWbVersion(
-        false,
+        true,
         '18.0.1',
         () => {
           throw new Error('must not be called');
@@ -45,18 +51,18 @@ describe('selectManagedWbVersion', () => {
   });
 
   it('falls back to the last known pre-fnox-only release when the lookup fails', () => {
-    expect(selectManagedWbVersion(false, '19.0.0', () => {}, '/repo')).toBe('18.0.1');
+    expect(selectManagedWbVersion(true, '19.0.0', () => {}, '/repo')).toBe('18.0.1');
   });
 
-  it('resolves a failed-lookup marker to a compatible release for non-fnox repositories', () => {
-    expect(selectManagedWbVersion(false, '*', () => '18.0.1', '/repo')).toBe('18.0.1');
-    expect(selectManagedWbVersion(false, '*', () => {}, '/repo')).toBe('18.0.1');
+  it('resolves a failed-lookup marker to a compatible release for repositories needing the migration', () => {
+    expect(selectManagedWbVersion(true, '*', () => '18.0.1', '/repo')).toBe('18.0.1');
+    expect(selectManagedWbVersion(true, '*', () => {}, '/repo')).toBe('18.0.1');
   });
 
-  it('passes through a failed-lookup marker for fnox repositories', () => {
+  it('passes through a failed-lookup marker for repositories not needing the migration', () => {
     expect(
       selectManagedWbVersion(
-        true,
+        false,
         '*',
         () => {
           throw new Error('must not be called');
@@ -83,6 +89,77 @@ describe('hasFnoxConfigForRepository', () => {
       expect(hasFnoxConfigForRepository(repoPath)).toBe(true);
     } finally {
       fs.rmSync(outerPath, { recursive: true, force: true });
+    }
+  });
+});
+
+function createGitRepository(): string {
+  const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-env-repo-'));
+  child_process.execFileSync('git', ['init', '--quiet'], { cwd: repoPath });
+  return repoPath;
+}
+
+describe('repositoryUsesEnvCascade', () => {
+  it('detects nothing in a repository without cascade files or DOT_ENV workflows', () => {
+    const repoPath = createGitRepository();
+    try {
+      fs.writeFileSync(path.join(repoPath, 'package.json'), '{}');
+      const workflowsPath = path.join(repoPath, '.github', 'workflows');
+      fs.mkdirSync(workflowsPath, { recursive: true });
+      fs.writeFileSync(path.join(workflowsPath, 'test.yml'), 'jobs: {}\n');
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(false);
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+  });
+
+  it('detects tracked, untracked, and gitignored cascade files, also from a workspace child', () => {
+    const repoPath = createGitRepository();
+    try {
+      // Untracked root .env.
+      fs.writeFileSync(path.join(repoPath, '.env'), 'FOO=1\n');
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(true);
+      fs.rmSync(path.join(repoPath, '.env'));
+
+      // Gitignored nested .env.local: a developer-local configuration source.
+      fs.writeFileSync(path.join(repoPath, '.gitignore'), '.env.local\n');
+      const childPath = path.join(repoPath, 'packages', 'app');
+      fs.mkdirSync(childPath, { recursive: true });
+      fs.writeFileSync(path.join(childPath, '.env.local'), 'FOO=1\n');
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(true);
+      // Scanning starts from the repository root even when invoked on a workspace child.
+      expect(repositoryUsesEnvCascade(childPath)).toBe(true);
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores the .env.cloudflare sidecar and files inside wholly ignored directories', () => {
+    const repoPath = createGitRepository();
+    try {
+      fs.writeFileSync(path.join(repoPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=x\n');
+      fs.writeFileSync(path.join(repoPath, '.gitignore'), 'node_modules/\n');
+      const dependencyPath = path.join(repoPath, 'node_modules', 'some-pkg');
+      fs.mkdirSync(dependencyPath, { recursive: true });
+      fs.writeFileSync(path.join(dependencyPath, '.env'), 'FOO=1\n');
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(false);
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+  });
+
+  it('detects a legacy DOT_ENV secret wired into a workflow', () => {
+    const repoPath = createGitRepository();
+    try {
+      const workflowsPath = path.join(repoPath, '.github', 'workflows');
+      fs.mkdirSync(workflowsPath, { recursive: true });
+      fs.writeFileSync(
+        path.join(workflowsPath, 'test.yml'),
+        'jobs:\n  test:\n    secrets:\n      DOT_ENV: ${{ secrets.DOT_ENV }}\n'
+      );
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(true);
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
     }
   });
 });
