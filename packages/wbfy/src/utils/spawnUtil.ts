@@ -22,14 +22,24 @@ export function spawnSyncAndReturnStatus(command: string, args: string[], cwd: s
  * `git ls-files -z`) where a leading/trailing whitespace byte belongs to a file name.
  */
 export function spawnSyncAndReturnRawStdout(command: string, args: string[], cwd: string): string {
+  return spawnSyncAndReturnStdoutInternal(command, args, cwd, false)[1];
+}
+
+/** Like spawnSyncAndReturnRawStdout, but also exposes the exit status so callers can fail closed. */
+export function spawnSyncAndReturnStatusAndRawStdout(command: string, args: string[], cwd: string): [number, string] {
   return spawnSyncAndReturnStdoutInternal(command, args, cwd, false);
 }
 
 export function spawnSyncAndReturnStdout(command: string, args: string[], cwd: string): string {
-  return spawnSyncAndReturnStdoutInternal(command, args, cwd, true);
+  return spawnSyncAndReturnStdoutInternal(command, args, cwd, true)[1];
 }
 
-function spawnSyncAndReturnStdoutInternal(command: string, args: string[], cwd: string, trims: boolean): string {
+function spawnSyncAndReturnStdoutInternal(
+  command: string,
+  args: string[],
+  cwd: string,
+  trims: boolean
+): [number, string] {
   const [newCmd, newArgs, options] = getSpawnSyncArgs(command, args, cwd);
   options.stdio = 'pipe';
   const proc = child_process.spawnSync(newCmd, newArgs, options);
@@ -46,7 +56,7 @@ function spawnSyncAndReturnStdoutInternal(command: string, args: string[], cwd: 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- spawnSync returns null stdout on ENOENT.
   const stdout = proc.stdout ?? '';
   const stdoutText = typeof stdout === 'string' ? stdout : stdout.toString();
-  return trims ? stdoutText.trim() : stdoutText;
+  return [proc.status ?? 1, trims ? stdoutText.trim() : stdoutText];
 }
 
 export function getSpawnSyncArgs(command: string, args: string[], cwd: string): [string, string[], SpawnSyncOptions] {

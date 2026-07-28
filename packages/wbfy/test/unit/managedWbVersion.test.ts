@@ -168,6 +168,18 @@ describe('repositoryUsesEnvCascade', () => {
     }
   });
 
+  it('fails closed when git cannot run in the repository', () => {
+    const repoPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-env-broken-repo-'));
+    try {
+      // A stale worktree-style gitdir link makes every git command fail; an empty listing must
+      // not read as "no cascade files", so detection assumes the cascade is in use.
+      fs.writeFileSync(path.join(repoPath, '.git'), 'gitdir: /nonexistent/gitdir\n');
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(true);
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+  });
+
   it('detects a .env.cloudflare.local variant (only the exact sidecar name is excluded)', () => {
     const repoPath = createGitRepository();
     try {

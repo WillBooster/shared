@@ -25,7 +25,7 @@ import { combineMerge } from '../utils/mergeUtil.js';
 import { isEnvCascadeFileName } from '../utils/envFileName.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
-import { spawnSync, spawnSyncAndReturnRawStdout, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStatusAndRawStdout, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { escapeRegExp } from '../utils/stringUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
@@ -2120,14 +2120,7 @@ export function hasFnoxConfigForRepository(rootDirPath: string): boolean {
   }
 }
 
-/** The nearest ancestor containing `.git` (the repository root), or the filesystem root. */
-function findGitRepositoryDirPath(dirPath: string): string {
-  for (let currentDirPath = path.resolve(dirPath); ; currentDirPath = path.dirname(currentDirPath)) {
-    if (fs.existsSync(path.join(currentDirPath, '.git')) || path.dirname(currentDirPath) === currentDirPath) {
-      return currentDirPath;
-    }
-  }
-}
+const repositoryUsesEnvCascadeCache = new Map<string, boolean>();
 
 /**
  * Whether the repository's .env cascade could still supply environment variables: a cascade file
@@ -2154,7 +2147,14 @@ export function repositoryUsesEnvCascade(dirPath: string): boolean {
   return usesEnvCascade;
 }
 
-const repositoryUsesEnvCascadeCache = new Map<string, boolean>();
+/** The nearest ancestor containing `.git` (the repository root), or the filesystem root. */
+function findGitRepositoryDirPath(dirPath: string): string {
+  for (let currentDirPath = path.resolve(dirPath); ; currentDirPath = path.dirname(currentDirPath)) {
+    if (fs.existsSync(path.join(currentDirPath, '.git')) || path.dirname(currentDirPath) === currentDirPath) {
+      return currentDirPath;
+    }
+  }
+}
 
 function detectEnvCascadeUsage(rootDirPath: string): boolean {
   // Three listings: tracked files, untracked non-ignored files, and ignored files (`--ignored`
@@ -2167,11 +2167,16 @@ function detectEnvCascadeUsage(rootDirPath: string): boolean {
     // -z + core.quotePath=false: git C-quotes non-ASCII paths by default, which would break the
     // basename filter below. Raw (untrimmed) stdout, because a leading whitespace byte belongs
     // to the first file name.
-    const listedPaths = spawnSyncAndReturnRawStdout(
+    const [status, stdout] = spawnSyncAndReturnStatusAndRawStdout(
       'git',
       ['-c', 'core.quotePath=false', 'ls-files', '-z', ...extraArgs, '--', '.env*', '*/.env*'],
       rootDirPath
-    ).split('\0');
+    );
+    // Fail CLOSED: when git itself fails (a stale worktree gitdir link, a dubious-ownership
+    // refusal, a missing binary), an empty listing must not read as "no cascade files" — this
+    // guard exists to prevent silent env loss, so assume the cascade is in use and keep the cap.
+    if (status !== 0) return true;
+    const listedPaths = stdout.split('\0');
     // Collapsed directory entries end with '/'; a directory is not a cascade file.
     if (
       listedPaths.some(
