@@ -113,14 +113,34 @@ describe('repositoryUsesEnvCascade', () => {
     }
   });
 
-  it('detects tracked, untracked, and gitignored cascade files, also from a workspace child', () => {
+  it('detects a tracked cascade file', () => {
     const repoPath = createGitRepository();
     try {
-      // Untracked root .env.
-      fs.writeFileSync(path.join(repoPath, '.env'), 'FOO=1\n');
+      fs.writeFileSync(path.join(repoPath, '.env.production'), 'FOO=1\n');
+      child_process.execFileSync('git', ['add', '.env.production'], { cwd: repoPath });
       expect(repositoryUsesEnvCascade(repoPath)).toBe(true);
-      fs.rmSync(path.join(repoPath, '.env'));
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+  });
 
+  it('detects an untracked cascade file and memoizes the verdict across its deletion', () => {
+    const repoPath = createGitRepository();
+    try {
+      fs.writeFileSync(path.join(repoPath, '.env.example'), 'FOO=\n');
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(true);
+      // The memoized verdict must survive removeEnvExample deleting the file mid-run (index.ts
+      // primes the memo before that fixer).
+      fs.rmSync(path.join(repoPath, '.env.example'));
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(true);
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+  });
+
+  it('detects a gitignored cascade file, also from a workspace child', () => {
+    const repoPath = createGitRepository();
+    try {
       // Gitignored nested .env.local: a developer-local configuration source.
       fs.writeFileSync(path.join(repoPath, '.gitignore'), '.env.local\n');
       const childPath = path.join(repoPath, 'packages', 'app');
@@ -143,6 +163,18 @@ describe('repositoryUsesEnvCascade', () => {
       fs.mkdirSync(dependencyPath, { recursive: true });
       fs.writeFileSync(path.join(dependencyPath, '.env'), 'FOO=1\n');
       expect(repositoryUsesEnvCascade(repoPath)).toBe(false);
+    } finally {
+      fs.rmSync(repoPath, { recursive: true, force: true });
+    }
+  });
+
+  it('detects a .env.cloudflare.local variant (only the exact sidecar name is excluded)', () => {
+    const repoPath = createGitRepository();
+    try {
+      // wb 18's `--cascade-env=cloudflare` loads `.env.cloudflare.local`; only the exact
+      // `.env.cloudflare` sidecar is read by wb regardless of fnox.
+      fs.writeFileSync(path.join(repoPath, '.env.cloudflare.local'), 'FOO=1\n');
+      expect(repositoryUsesEnvCascade(repoPath)).toBe(true);
     } finally {
       fs.rmSync(repoPath, { recursive: true, force: true });
     }

@@ -22,6 +22,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
+import { isEnvCascadeFileName } from '../utils/envFileName.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 import { spawnSync, spawnSyncAndReturnRawStdout, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
@@ -2129,27 +2130,33 @@ function findGitRepositoryDirPath(dirPath: string): string {
 }
 
 /**
- * `.env` cascade file names (`.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`, ...) count
- * as env usage, `.env.example` included — it signals developer-local cascade files a fresh
- * checkout cannot see. `.env.cloudflare` is the deployment-credential sidecar wb keeps reading
- * regardless of fnox, so it does not count.
- */
-function isEnvCascadeFileName(fileName: string): boolean {
-  return /^\.env(?:\.|$)/u.test(fileName) && !/^\.env\.cloudflare(?:\.|$)/u.test(fileName);
-}
-
-/**
  * Whether the repository's .env cascade could still supply environment variables: a cascade file
- * anywhere in the working tree — tracked, untracked, or gitignored, because a gitignored
- * `.env.local` is a real configuration source on developer machines — or a legacy `DOT_ENV`
- * secret wired into a workflow (CI materializes the cascade from it). The ignored-files listing
- * collapses wholly ignored directories (`--directory`), so e.g. node_modules contents never
- * count and the listing stays cheap. Like hasFnoxConfigForRepository, scan from the git
- * repository root: wbfy may be invoked on a workspace CHILD whose cascade files and workflows
- * live at the repository root.
+ * (isEnvCascadeFileName) anywhere in the working tree — tracked, untracked, or gitignored,
+ * because a gitignored `.env.local` is a real configuration source on developer machines — or a
+ * legacy `DOT_ENV` secret wired into a workflow (CI materializes the cascade from it). The
+ * ignored-files listing collapses wholly ignored directories (`--directory`), so e.g.
+ * node_modules contents never count and the listing stays cheap. Like hasFnoxConfigForRepository,
+ * scan from the git repository root: wbfy may be invoked on a workspace CHILD whose cascade files
+ * and workflows live at the repository root.
+ *
+ * The verdict is memoized per repository root, and index.ts primes it BEFORE removeEnvExample
+ * runs: on a fresh checkout a tracked `.env.example` may be the only visible signal that
+ * developers keep gitignored cascade files, and it must count even though this same wbfy run
+ * deletes it.
  */
 export function repositoryUsesEnvCascade(dirPath: string): boolean {
   const rootDirPath = findGitRepositoryDirPath(dirPath);
+  let usesEnvCascade = repositoryUsesEnvCascadeCache.get(rootDirPath);
+  if (usesEnvCascade === undefined) {
+    usesEnvCascade = detectEnvCascadeUsage(rootDirPath);
+    repositoryUsesEnvCascadeCache.set(rootDirPath, usesEnvCascade);
+  }
+  return usesEnvCascade;
+}
+
+const repositoryUsesEnvCascadeCache = new Map<string, boolean>();
+
+function detectEnvCascadeUsage(rootDirPath: string): boolean {
   // Three listings: tracked files, untracked non-ignored files, and ignored files (`--ignored`
   // limits `--others` to ignored files, so plain untracked files need their own listing).
   for (const extraArgs of [

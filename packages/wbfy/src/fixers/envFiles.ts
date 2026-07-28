@@ -3,17 +3,8 @@ import path from 'node:path';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
+import { isRemovableEnvFileName } from '../utils/envFileName.js';
 import { spawnSyncAndReturnRawStdout, spawnSyncAndReturnStatus } from '../utils/spawnUtil.js';
-
-/**
- * `.env` cascade files (`.env`, `.env.local`, `.env.<mode>`, `.env.<mode>.local`, `.env.example`,
- * ...) are matched by name; `.env.cloudflare` is the deployment-credential sidecar that
- * untrackCloudflareEnv unlinks from git while keeping it on disk (a local `wb deploy` still needs
- * the real token in it), so it is excluded here.
- */
-function isRemovableEnvFileName(fileName: string): boolean {
-  return /^\.env(?:\.|$)/u.test(fileName) && !/^\.env\.cloudflare(?:\.|$)/u.test(fileName);
-}
 
 /**
  * Removes committed .env files from a repository that migrated to fnox (a root fnox.toml exists):

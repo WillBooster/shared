@@ -28,7 +28,7 @@ import { generateGitignore } from './generators/gitignore.js';
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
-import { generatePackageJson, getWorkspacePackageDirs } from './generators/packageJson.js';
+import { generatePackageJson, getWorkspacePackageDirs, repositoryUsesEnvCascade } from './generators/packageJson.js';
 import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
@@ -237,6 +237,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
     }
     assertSafeDependencySources(allPackageConfigs);
+    // Prime the cascade-usage memo BEFORE removeEnvExample deletes .env.example: on a fresh
+    // checkout that file may be the only visible signal that developers keep gitignored .env
+    // files, and generatePackageJson's wb version cap must still see it (see
+    // repositoryUsesEnvCascade).
+    repositoryUsesEnvCascade(rootConfig.dirPath);
     for (const config of allPackageConfigs) await removeEnvExample(config);
 
     // Managed repositories use Bun with mise (and optionally fnox); Yarn artifacts are removed.
