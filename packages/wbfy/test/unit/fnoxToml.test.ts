@@ -109,6 +109,33 @@ test('grants aries fnox access only to the selected repositories', () => {
   );
 });
 
+test('grants sunaga and ayame fnox access only to their selected repositories', () => {
+  const sunagaRecipient = {
+    name: 'sunaga',
+    publicKey: 'age1ulxzn6y68ku34cpx5fya5gf7rnrwz0uflnye6uxuhg34p2njhgkqmg73g4',
+  };
+  const ayameRecipient = {
+    name: 'ayame',
+    publicKey: 'age1vxm2gs003ruwm8p6h3hv7xasju2s8k4mxmc34zm6grdwznrs09nq6xz5vz',
+  };
+
+  for (const repository of ['WillBoosterLab/exercode', 'WillBoosterLab/judge']) {
+    const recipients = getFnoxAgeRecipients(createConfig({ repository: `github:${repository}` }));
+    expect(recipients).toContainEqual(sunagaRecipient);
+    expect(recipients).toContainEqual(ayameRecipient);
+  }
+
+  const chofuWalkingRecipients = getFnoxAgeRecipients(createConfig({ repository: 'github:WillBooster/chofu-walking' }));
+  expect(chofuWalkingRecipients).not.toContainEqual(sunagaRecipient);
+  expect(chofuWalkingRecipients).toContainEqual(ayameRecipient);
+
+  for (const repository of ['WillBooster/shared', 'WillBoosterLab/example']) {
+    const recipients = getFnoxAgeRecipients(createConfig({ repository: `github:${repository}` }));
+    expect(recipients).not.toContainEqual(sunagaRecipient);
+    expect(recipients).not.toContainEqual(ayameRecipient);
+  }
+});
+
 test('keeps the age recipients of a repository outside the WillBooster organizations', async () => {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-fnox-'));
   try {
