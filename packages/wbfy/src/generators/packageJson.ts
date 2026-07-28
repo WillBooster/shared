@@ -22,9 +22,10 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
+import { isEnvCascadeFileName } from '../utils/envFileName.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
-import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStatusAndRawStdout, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { escapeRegExp } from '../utils/stringUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
@@ -2025,11 +2026,11 @@ function shouldUpdateExistingManagedDependency(
   if (isWorkspaceProtocolRange(currentVersion)) return true;
   if (!managedDependencyNames.has(dependency)) return false;
   const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
-  // An existing fnox-only wb pin in a non-fnox repository is an incompatible state (wb >= 19
-  // ignores the repository's .env configuration), so the general no-downgrade rule below must
-  // not preserve it: rewrite it to the capped compatible release. Restricted to fnox-only
-  // MAJORS of the current pin so a merely-newer compatible pin (e.g. 18.0.2 while the registry
-  // lookup lags at 18.0.1) keeps the no-downgrade protection.
+  // An existing fnox-only wb pin in a repository still relying on the .env cascade without fnox
+  // is an incompatible state (wb >= 19 ignores the repository's .env configuration), so the
+  // general no-downgrade rule below must not preserve it: rewrite it to the capped compatible
+  // release. Restricted to fnox-only MAJORS of the current pin so a merely-newer compatible pin
+  // (e.g. 18.0.2 while the registry lookup lags at 18.0.1) keeps the no-downgrade protection.
   const currentValidVersion = semver.valid(currentVersion);
   if (
     dependency === wbDependency &&
@@ -2037,7 +2038,8 @@ function shouldUpdateExistingManagedDependency(
     semver.major(currentValidVersion) >= semver.major(minimumFnoxOnlyWbVersion) &&
     semver.valid(managedVersion) &&
     isNewerPackageVersion(currentVersion, managedVersion) &&
-    !hasFnoxConfigForRepository(rootConfig.dirPath)
+    !hasFnoxConfigForRepository(rootConfig.dirPath) &&
+    repositoryUsesEnvCascade(rootConfig.dirPath)
   ) {
     return true;
   }
@@ -2064,7 +2066,8 @@ function shouldUpdateExistingManagedDependency(
 
 // wb >= 19 reads environment variables exclusively from fnox (the .env cascade was removed), so
 // installing it into a repository that has not migrated (no root fnox.toml) would silently drop
-// every .env-configured variable from its builds, tests, and deploys.
+// every .env-configured variable from its builds, tests, and deploys. A repository that uses
+// neither fnox nor the .env cascade has nothing to migrate, so it gets the latest wb.
 const minimumFnoxOnlyWbVersion = '19.0.0';
 // The newest release below minimumFnoxOnlyWbVersion at the time this guard shipped; used only
 // when the registry lookup for the actual newest pre-fnox-only release fails.
@@ -2075,9 +2078,10 @@ const lastKnownPreV7TypescriptVersion = '6.0.3';
 
 /**
  * The version wbfy materializes for a managed dependency: the latest release, except that
- * `@willbooster/wb` is capped to the latest pre-fnox-only release for repositories without a
- * root fnox.toml (see minimumFnoxOnlyWbVersion). Capping at the version source covers every
- * path — upgrades of an existing pin, `*`/missing specifiers, and fresh installs.
+ * `@willbooster/wb` is capped to the latest pre-fnox-only release for repositories that still
+ * rely on the .env cascade without a root fnox.toml (see minimumFnoxOnlyWbVersion). Capping at
+ * the version source covers every path — upgrades of an existing pin, `*`/missing specifiers,
+ * and fresh installs.
  */
 function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
   const latestVersion = getLatestDependencyVersion(config, dependency);
@@ -2095,7 +2099,7 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
   }
   if (dependency !== wbDependency) return latestVersion;
   return selectManagedWbVersion(
-    hasFnoxConfigForRepository(rootConfig.dirPath),
+    !hasFnoxConfigForRepository(rootConfig.dirPath) && repositoryUsesEnvCascade(rootConfig.dirPath),
     latestVersion,
     getLatestPreFnoxOnlyWbVersion,
     rootConfig.dirPath
@@ -2116,15 +2120,93 @@ export function hasFnoxConfigForRepository(rootDirPath: string): boolean {
   }
 }
 
+const repositoryUsesEnvCascadeCache = new Map<string, boolean>();
+
+/**
+ * Whether the repository's .env cascade could still supply environment variables: a cascade file
+ * (isEnvCascadeFileName) anywhere in the working tree — tracked, untracked, or gitignored,
+ * because a gitignored `.env.local` is a real configuration source on developer machines — or a
+ * legacy `DOT_ENV` secret wired into a workflow (CI materializes the cascade from it). The
+ * ignored-files listing collapses wholly ignored directories (`--directory`), so e.g.
+ * node_modules contents never count and the listing stays cheap. Like hasFnoxConfigForRepository,
+ * scan from the git repository root: wbfy may be invoked on a workspace CHILD whose cascade files
+ * and workflows live at the repository root.
+ *
+ * The verdict is memoized per repository root, and index.ts primes it BEFORE removeEnvExample
+ * runs: on a fresh checkout a tracked `.env.example` may be the only visible signal that
+ * developers keep gitignored cascade files, and it must count even though this same wbfy run
+ * deletes it.
+ */
+export function repositoryUsesEnvCascade(dirPath: string): boolean {
+  const rootDirPath = findGitRepositoryDirPath(dirPath);
+  let usesEnvCascade = repositoryUsesEnvCascadeCache.get(rootDirPath);
+  if (usesEnvCascade === undefined) {
+    usesEnvCascade = detectEnvCascadeUsage(rootDirPath);
+    repositoryUsesEnvCascadeCache.set(rootDirPath, usesEnvCascade);
+  }
+  return usesEnvCascade;
+}
+
+/** The nearest ancestor containing `.git` (the repository root), or the filesystem root. */
+function findGitRepositoryDirPath(dirPath: string): string {
+  for (let currentDirPath = path.resolve(dirPath); ; currentDirPath = path.dirname(currentDirPath)) {
+    if (fs.existsSync(path.join(currentDirPath, '.git')) || path.dirname(currentDirPath) === currentDirPath) {
+      return currentDirPath;
+    }
+  }
+}
+
+function detectEnvCascadeUsage(rootDirPath: string): boolean {
+  // Three listings: tracked files, untracked non-ignored files, and ignored files (`--ignored`
+  // limits `--others` to ignored files, so plain untracked files need their own listing).
+  for (const extraArgs of [
+    [],
+    ['--others', '--exclude-standard', '--directory'],
+    ['--others', '--ignored', '--exclude-standard', '--directory'],
+  ]) {
+    // -z + core.quotePath=false: git C-quotes non-ASCII paths by default, which would break the
+    // basename filter below. Raw (untrimmed) stdout, because a leading whitespace byte belongs
+    // to the first file name.
+    const [status, stdout] = spawnSyncAndReturnStatusAndRawStdout(
+      'git',
+      ['-c', 'core.quotePath=false', 'ls-files', '-z', ...extraArgs, '--', '.env*', '*/.env*'],
+      rootDirPath
+    );
+    // Fail CLOSED: when git itself fails (a stale worktree gitdir link, a dubious-ownership
+    // refusal, a missing binary), an empty listing must not read as "no cascade files" — this
+    // guard exists to prevent silent env loss, so assume the cascade is in use and keep the cap.
+    if (status !== 0) return true;
+    const listedPaths = stdout.split('\0');
+    // Collapsed directory entries end with '/'; a directory is not a cascade file.
+    if (
+      listedPaths.some(
+        (filePath) => filePath && !filePath.endsWith('/') && isEnvCascadeFileName(path.basename(filePath))
+      )
+    ) {
+      return true;
+    }
+  }
+  try {
+    const workflowsDirPath = path.join(rootDirPath, '.github', 'workflows');
+    for (const fileName of fs.readdirSync(workflowsDirPath)) {
+      const filePath = path.join(workflowsDirPath, fileName);
+      if (fs.statSync(filePath).isFile() && fs.readFileSync(filePath, 'utf8').includes('DOT_ENV')) return true;
+    }
+  } catch {
+    // No workflows directory.
+  }
+  return false;
+}
+
 const warnedPreFnoxOnlyWbRootDirPaths = new Set<string>();
 
 export function selectManagedWbVersion(
-  hasFnoxConfig: boolean,
+  needsFnoxMigration: boolean,
   latestVersion: string,
   getLatestPreFnoxVersion: () => string | undefined,
   rootDirPath: string
 ): string {
-  if (hasFnoxConfig) return latestVersion;
+  if (!needsFnoxMigration) return latestVersion;
   const validLatestVersion = semver.valid(latestVersion);
   // Compare majors so a 19.x PRE-release (semver-less-than 19.0.0) is capped too.
   if (validLatestVersion && semver.major(validLatestVersion) < semver.major(minimumFnoxOnlyWbVersion)) {
@@ -2138,7 +2220,7 @@ export function selectManagedWbVersion(
   if (!warnedPreFnoxOnlyWbRootDirPaths.has(rootDirPath)) {
     warnedPreFnoxOnlyWbRootDirPaths.add(rootDirPath);
     console.warn(
-      `Capped ${wbDependency} at ${preFnoxVersion} in ${rootDirPath}: wb >= ${minimumFnoxOnlyWbVersion} loads environment variables only from fnox, and this repository has no root fnox.toml. Migrate to fnox (see migrate-env-to-fnox), then rerun wbfy to upgrade.`
+      `Capped ${wbDependency} at ${preFnoxVersion} in ${rootDirPath}: wb >= ${minimumFnoxOnlyWbVersion} loads environment variables only from fnox, and this repository still relies on the .env cascade (or a DOT_ENV secret) without a root fnox.toml. Migrate to fnox (see migrate-env-to-fnox), then rerun wbfy to upgrade.`
     );
   }
   return preFnoxVersion;
