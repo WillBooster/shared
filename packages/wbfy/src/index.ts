@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
+import { normalizeBunLockfile } from '@willbooster/shared-lib-node/src';
 import semver from 'semver';
 import yargs from 'yargs';
 
@@ -56,7 +57,6 @@ import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
 import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
-import { normalizeBunLockfile } from './utils/bunLockfile.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
@@ -393,7 +393,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       await refreshBunLock(rootDirPath, rootConfig, yarnMinimumReleaseAgeSeconds);
       // wbfy can run with Takumi Guard as the caller's default registry. Normalize after the last
       // install so wbfy's own output is clean even before the generated pre-commit hook or wb runs.
-      normalizeBunLockfile(rootDirPath);
+      if (normalizeBunLockfile(rootDirPath)) {
+        console.info(`Removed Takumi Guard proxy URLs from the enclosing bun.lock to keep it registry-agnostic.`);
+      }
       // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
       // that removeYarnFiles intentionally preserved for the migration can be removed.
       fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
