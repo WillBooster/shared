@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import { normalizeBunLockfile as normalizeSharedBunLockfile } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 
@@ -23,8 +21,8 @@ import chalk from 'chalk';
  * registry such as Verdaccio legitimately records its own URL for private packages.
  */
 export function normalizeBunLockfile(rootDirPath: string): boolean {
-  if (!normalizeSharedBunLockfile(rootDirPath)) return false;
-  const lockfilePath = path.join(rootDirPath, 'bun.lock');
+  const lockfilePath = normalizeSharedBunLockfile(rootDirPath);
+  if (!lockfilePath) return false;
   console.info(chalk.green(`Removed Takumi Guard proxy URLs from ${lockfilePath} to keep it registry-agnostic.`));
   return true;
 }

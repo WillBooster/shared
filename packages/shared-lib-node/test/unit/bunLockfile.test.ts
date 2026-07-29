@@ -32,13 +32,29 @@ test('normalizes the enclosing lockfile without changing legitimate registry or 
 `
     );
 
-    expect(normalizeBunLockfile(childDirPath)).toBe(true);
+    expect(normalizeBunLockfile(childDirPath)).toBe(lockfilePath);
     const content = await fs.readFile(lockfilePath, 'utf8');
     expect(content).toContain('"public": ["public@1.0.0", "", {}]');
     expect(content).toContain('https://registry.example.com/private/-/private-1.0.0.tgz');
     expect(content).toContain('"tarball": "https://npm.flatt.tech/direct.tgz"');
     expect(content).toContain('"tarball": ["tarball@https://npm.flatt.tech/direct.tgz", {}, "sha512-a"]');
-    expect(normalizeBunLockfile(childDirPath)).toBe(false);
+    expect(normalizeBunLockfile(childDirPath)).toBeUndefined();
+  } finally {
+    await fs.rm(rootDirPath, { force: true, recursive: true });
+  }
+});
+
+test('does not search ancestors without a repository boundary', async () => {
+  const rootDirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'bun-lockfile-boundary-')));
+  try {
+    const childDirPath = path.join(rootDirPath, 'child');
+    const lockfilePath = path.join(rootDirPath, 'bun.lock');
+    const content = '{"packages":{"public":["public@1.0.0","https://npm.flatt.tech/public.tgz",{}]}}\n';
+    await fs.mkdir(childDirPath);
+    await fs.writeFile(lockfilePath, content);
+
+    expect(normalizeBunLockfile(childDirPath)).toBeUndefined();
+    expect(await fs.readFile(lockfilePath, 'utf8')).toBe(content);
   } finally {
     await fs.rm(rootDirPath, { force: true, recursive: true });
   }
