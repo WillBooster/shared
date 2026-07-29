@@ -8,6 +8,9 @@ export const globIgnore = [
   // not influence language detection.
   '**/.tmp/**',
   '**/.tmp-*/**',
+  // Local caches can contain complete third-party source checkouts. Treating those as repository
+  // code generates workflows for paths that are gitignored and absent from fresh CI checkouts.
+  '**/.cache/**',
   '**/.venv/**',
   '**/test-fixtures/**',
   '**/test/fixtures/**',

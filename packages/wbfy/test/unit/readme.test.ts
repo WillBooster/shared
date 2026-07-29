@@ -75,6 +75,26 @@ test('orders the block as workflows, semantic-release, then wbfy', async () => {
   });
 });
 
+test('drops a stale Rust workflow badge when the repository has no Rust code', async () => {
+  await withTempDir(async (dirPath) => {
+    const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
+    fs.mkdirSync(workflowsPath, { recursive: true });
+    fs.writeFileSync(path.resolve(workflowsPath, 'test-rust.yml'), 'name: Test Rust\n');
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      `# Project
+
+[![Test rust](https://github.com/WillBooster/example/actions/workflows/test-rust.yml/badge.svg)](https://github.com/WillBooster/example/actions/workflows/test-rust.yml)
+${badgeOf('1.2.3')}
+`
+    );
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).not.toContain('test-rust.yml');
+    expect(content).toContain(badgeOf('1.2.3'));
+  });
+});
+
 test.each([
   {
     name: 'no blank line after the heading',
