@@ -2,7 +2,7 @@ import { normalizeBunLockfile as normalizeSharedBunLockfile } from '@willbooster
 import chalk from 'chalk';
 
 /**
- * Strip Takumi Guard proxy URLs from the root `bun.lock`, returning whether the file changed.
+ * Strip Takumi Guard proxy URLs from the nearest enclosing `bun.lock` and report a change.
  *
  * bun records an absolute `resolved` URL for an already-locked package whenever the configured
  * registry does not serve the tarball host named in the package metadata — which is exactly what

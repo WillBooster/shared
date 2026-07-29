@@ -37,7 +37,9 @@ describe('normalizeBunLockfile', () => {
 
   it('does nothing without a bun.lock', async () => {
     await withTempDir(async (dirPath) => {
+      await fs.writeFile(path.join(dirPath, '.git'), '');
       normalizeBunLockfile(dirPath);
+      expect(await fs.readdir(dirPath)).toEqual(['.git']);
     });
   });
 });
