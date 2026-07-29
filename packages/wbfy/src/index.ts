@@ -390,12 +390,15 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
 
     // Refresh lock files
     try {
-      await refreshBunLock(rootDirPath, rootConfig, yarnMinimumReleaseAgeSeconds);
-      // wbfy can run with Takumi Guard as the caller's default registry. Normalize after the last
-      // install so wbfy's own output is clean even before the generated pre-commit hook or wb runs.
-      const normalizedLockfilePath = normalizeBunLockfile(rootDirPath);
-      if (normalizedLockfilePath) {
-        console.info(`Removed Takumi Guard proxy URLs from ${normalizedLockfilePath} to keep it registry-agnostic.`);
+      try {
+        await refreshBunLock(rootDirPath, rootConfig, yarnMinimumReleaseAgeSeconds);
+      } finally {
+        // Bun writes bun.lock before lifecycle scripts, so a failed install can still leave Guard
+        // URLs behind. Normalize both success and failure output before wbfy returns control.
+        const normalizedLockfilePath = normalizeBunLockfile(rootDirPath);
+        if (normalizedLockfilePath) {
+          console.info(`Removed Takumi Guard proxy URLs from ${normalizedLockfilePath} to keep it registry-agnostic.`);
+        }
       }
       // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
       // that removeYarnFiles intentionally preserved for the migration can be removed.
