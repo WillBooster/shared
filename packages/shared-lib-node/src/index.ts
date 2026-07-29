@@ -9,6 +9,7 @@ export {
   resolveWorkspacePackageJsonPaths,
 } from './bunWorkspaces.js';
 export type { WorkspacesDeclaration } from './bunWorkspaces.js';
+export { normalizeBunLockfile } from './bunLockfile.js';
 export {
   hasProjectFnoxConfig,
   readEnvironmentVariables,

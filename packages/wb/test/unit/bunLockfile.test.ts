@@ -22,7 +22,7 @@ describe('normalizeBunLockfile', () => {
 `
       );
 
-      expect(normalizeBunLockfile(dirPath)).toBe(true);
+      normalizeBunLockfile(dirPath);
       const content = await fs.readFile(lockfilePath, 'utf8');
       expect(content).not.toContain('npm.flatt.tech');
       expect(content).toContain('["chalk@5.6.2", "", {}, "sha512-a"]');
@@ -30,14 +30,16 @@ describe('normalizeBunLockfile', () => {
       expect(content).toContain('https://verdaccio-production-e389.up.railway.app/');
 
       // Idempotent: a clean lockfile is left byte-for-byte alone.
-      expect(normalizeBunLockfile(dirPath)).toBe(false);
+      normalizeBunLockfile(dirPath);
       expect(await fs.readFile(lockfilePath, 'utf8')).toBe(content);
     });
   });
 
   it('does nothing without a bun.lock', async () => {
     await withTempDir(async (dirPath) => {
-      expect(normalizeBunLockfile(dirPath)).toBe(false);
+      await fs.writeFile(path.join(dirPath, '.git'), '');
+      normalizeBunLockfile(dirPath);
+      expect(await fs.readdir(dirPath)).toEqual(['.git']);
     });
   });
 });
