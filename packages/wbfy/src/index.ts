@@ -389,25 +389,36 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     await fixWbDbCommand(rootConfig, allPackageConfigs);
 
     // Refresh lock files
+    let didRefreshBunLock = false;
     try {
-      try {
-        await refreshBunLock(rootDirPath, rootConfig, yarnMinimumReleaseAgeSeconds);
-      } finally {
-        // Bun writes bun.lock before lifecycle scripts, so a failed install can still leave Guard
-        // URLs behind. Normalize both success and failure output before wbfy returns control.
-        const normalizedLockfilePath = normalizeBunLockfile(rootDirPath);
-        if (normalizedLockfilePath) {
-          console.info(`Removed Takumi Guard proxy URLs from ${normalizedLockfilePath} to keep it registry-agnostic.`);
-        }
-      }
-      // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
-      // that removeYarnFiles intentionally preserved for the migration can be removed.
-      fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
+      await refreshBunLock(rootDirPath, rootConfig, yarnMinimumReleaseAgeSeconds);
+      didRefreshBunLock = true;
     } catch (error) {
       // A failed install must fail the CLI: exiting 0 with a stale or missing Bun lockfile would
       // hide a broken migration.
       console.error('Failed to refresh the Bun lockfile:', (error as Error | undefined)?.message ?? error);
       hasInvalidPackageConfig = true;
+    }
+    try {
+      // Bun writes bun.lock before lifecycle scripts, so a failed install can still leave Guard
+      // URLs behind. Normalize both success and failure output without replacing the install error.
+      const normalizedLockfilePath = normalizeBunLockfile(rootDirPath);
+      if (normalizedLockfilePath) {
+        console.info(`Removed Takumi Guard proxy URLs from ${normalizedLockfilePath} to keep it registry-agnostic.`);
+      }
+    } catch (error) {
+      console.error('Failed to normalize the Bun lockfile:', (error as Error | undefined)?.message ?? error);
+      hasInvalidPackageConfig = true;
+    }
+    if (didRefreshBunLock) {
+      try {
+        // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
+        // that removeYarnFiles intentionally preserved for the migration can be removed.
+        fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
+      } catch (error) {
+        console.error('Failed to remove the Yarn lockfile:', (error as Error | undefined)?.message ?? error);
+        hasInvalidPackageConfig = true;
+      }
     }
     spawnSync('bun', ['cleanup'], rootDirPath);
   }

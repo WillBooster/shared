@@ -44,10 +44,11 @@ test('normalizes the enclosing lockfile without changing legitimate registry or 
   }
 });
 
-test('does not search ancestors without a repository boundary', async () => {
+test('does not search beyond the repository boundary', async () => {
   const rootDirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'bun-lockfile-boundary-')));
   try {
-    const childDirPath = path.join(rootDirPath, 'child');
+    const repositoryDirPath = path.join(rootDirPath, 'repository');
+    const childDirPath = path.join(repositoryDirPath, 'child');
     const lockfilePath = path.join(rootDirPath, 'bun.lock');
     const content = `{
   "packages": {
@@ -55,7 +56,8 @@ test('does not search ancestors without a repository boundary', async () => {
   }
 }
 `;
-    await fs.mkdir(childDirPath);
+    await fs.mkdir(childDirPath, { recursive: true });
+    await fs.writeFile(path.join(repositoryDirPath, '.git'), '');
     await fs.writeFile(lockfilePath, content);
 
     expect(normalizeBunLockfile(childDirPath)).toBeUndefined();

@@ -20,9 +20,8 @@ import chalk from 'chalk';
  * or a diff read by a human or an agent all see it. Only the Guard host is stripped; a scoped
  * registry such as Verdaccio legitimately records its own URL for private packages.
  */
-export function normalizeBunLockfile(rootDirPath: string): boolean {
+export function normalizeBunLockfile(rootDirPath: string): void {
   const lockfilePath = normalizeSharedBunLockfile(rootDirPath);
-  if (!lockfilePath) return false;
+  if (!lockfilePath) return;
   console.info(chalk.green(`Removed Takumi Guard proxy URLs from ${lockfilePath} to keep it registry-agnostic.`));
-  return true;
 }
