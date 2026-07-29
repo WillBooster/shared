@@ -49,7 +49,12 @@ test('does not search ancestors without a repository boundary', async () => {
   try {
     const childDirPath = path.join(rootDirPath, 'child');
     const lockfilePath = path.join(rootDirPath, 'bun.lock');
-    const content = '{"packages":{"public":["public@1.0.0","https://npm.flatt.tech/public.tgz",{}]}}\n';
+    const content = `{
+  "packages": {
+    "public": ["public@1.0.0", "https://npm.flatt.tech/public.tgz", {}]
+  }
+}
+`;
     await fs.mkdir(childDirPath);
     await fs.writeFile(lockfilePath, content);
 
