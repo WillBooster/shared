@@ -1,3 +1,4 @@
+export { getAppEnv } from './appEnv.js';
 export { ensureTruthy } from './assert.js';
 export { errorify, ignoreError, ignoreEnoent, ignoreErrorAsync, ignoreEnoentAsync, withRetry } from './error.js';
 export { humanizeNumber } from './humanize.js';
@@ -8,4 +9,5 @@ export { sleep } from './sleep.js';
 export { getConnectionLevelSqlitePragmas, getPersistentSqlitePragmas } from './sqlite.js';
 export { zenkakuAlphanumericalsToHankaku } from './zenkaku.js';
 
+export type { AppEnv } from './appEnv.js';
 export type { RetryOptions } from './error.js';
