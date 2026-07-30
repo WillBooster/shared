@@ -186,6 +186,44 @@ export default defineConfig({
   }
 });
 
+test('restores an expression whose object keys are not free identifiers', async () => {
+  const dirPath = createGitRepository();
+  const helper = `const makeCommand = (options: { cwd: string }): string => options.cwd;
+`;
+  try {
+    commitRawConfig(
+      dirPath,
+      `import { defineConfig } from '@playwright/test';
+${helper}export default defineConfig({
+  webServer: {
+    command: makeCommand({ cwd: 'test/e2e/app' }),
+    url: 'http://127.0.0.1:3010',
+  },
+});
+`,
+      'test: add a helper-built Playwright command'
+    );
+    commitRawConfig(
+      dirPath,
+      `import { defineConfig } from '@playwright/test';
+${helper}export default defineConfig({
+  webServer: {
+    command: 'bun wb start --mode test',
+    url: 'http://127.0.0.1:3010',
+  },
+});
+`,
+      'chore: willboosterify this repo'
+    );
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: makeCommand({ cwd: 'test/e2e/app' })`);
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
 test('does not restore an obsolete overwrite after a deliberate command transition', async () => {
   const dirPath = createGitRepository();
   try {

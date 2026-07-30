@@ -341,18 +341,47 @@ function getObjectPropertyInitializer(
 
 function collectReferencedIdentifiers(expression: ast.Expression): Set<string> {
   const identifiers = new Set<string>();
-  const visit = (node: ast.Node): void => {
+  const visit = (node: ast.Node, boundIdentifiers: Set<string>): void => {
     if (ast.isIdentifier(node)) {
-      identifiers.add(node.text);
+      if (!boundIdentifiers.has(node.text)) identifiers.add(node.text);
       return;
     }
     if (ast.isPropertyAccessExpression(node)) {
-      visit(node.expression);
+      visit(node.expression, boundIdentifiers);
       return;
     }
-    node.forEachChild(visit);
+    if (ast.isPropertyAssignment(node)) {
+      if (ast.isComputedPropertyName(node.name)) visit(node.name.expression, boundIdentifiers);
+      visit(node.initializer, boundIdentifiers);
+      return;
+    }
+    if (ast.isVariableDeclaration(node)) {
+      collectBindingName(node.name, boundIdentifiers);
+      if (node.initializer) visit(node.initializer, boundIdentifiers);
+      return;
+    }
+    if (ast.isArrowFunction(node)) {
+      const functionBindings = new Set(boundIdentifiers);
+      for (const parameter of node.parameters) collectBindingName(parameter.name, functionBindings);
+      for (const parameter of node.parameters) {
+        if (parameter.initializer) visit(parameter.initializer, functionBindings);
+      }
+      visit(node.body, functionBindings);
+      return;
+    }
+    if (ast.isFunctionExpression(node) || ast.isFunctionDeclaration(node)) {
+      const functionBindings = new Set(boundIdentifiers);
+      if (node.name) functionBindings.add(node.name.text);
+      for (const parameter of node.parameters) collectBindingName(parameter.name, functionBindings);
+      for (const parameter of node.parameters) {
+        if (parameter.initializer) visit(parameter.initializer, functionBindings);
+      }
+      if (node.body) visit(node.body, functionBindings);
+      return;
+    }
+    node.forEachChild((child) => visit(child, boundIdentifiers));
   };
-  visit(expression);
+  visit(expression, new Set());
   return identifiers;
 }
 
@@ -431,7 +460,31 @@ function isHistoricallyGeneratedWbStartTestCommand(command: ParsedValue): boolea
   );
 }
 
-const knownRuntimeGlobals = new Set(['Buffer', 'URL', 'clearTimeout', 'console', 'process', 'setTimeout', 'undefined']);
+const knownRuntimeGlobals = new Set([
+  'Array',
+  'BigInt',
+  'Boolean',
+  'Buffer',
+  'Date',
+  'Error',
+  'JSON',
+  'Map',
+  'Math',
+  'Number',
+  'Object',
+  'Promise',
+  'RegExp',
+  'Set',
+  'String',
+  'URL',
+  'clearInterval',
+  'clearTimeout',
+  'console',
+  'process',
+  'setInterval',
+  'setTimeout',
+  'undefined',
+]);
 
 function getWbStartTestCommand(): string {
   return `'bun wb start --mode test'`;
