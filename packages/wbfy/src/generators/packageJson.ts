@@ -1185,6 +1185,10 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
     // global-store entry even when the project installs them, so its server-side
     // `import 'zod'` fails from the store (observed in WillBooster/survey-system).
     ...(declaredDependencies.has('@hookform/resolvers') ? ['@hookform/resolvers'] : []),
+    // @zoom/rtms installs its native rtms.node binding in a lifecycle script. Without explicit
+    // trust, Bun skips that script and the package fails as soon as the Zoom bot imports it
+    // (observed in WillBooster/smartse-zoom-bot).
+    ...(declaredDependencies.has('@zoom/rtms') ? ['@zoom/rtms'] : []),
   ];
 
   // wbfy fully owns this field: a package whose lifecycle scripts must run gets added to wbfy
@@ -1231,6 +1235,7 @@ const wbfyManagedTrustedDependencies = new Set([
   '@hookform/resolvers',
   '@willbooster/judge',
   '@willbooster/llm-proxy',
+  '@zoom/rtms',
   'blitz',
   'drizzle-kit',
   lefthookDependency,

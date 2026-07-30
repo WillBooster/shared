@@ -886,6 +886,30 @@ test('manages trustedDependencies correctly when store-incompatible packages are
   expect(packageJson.trustedDependencies).toEqual([...(packageJson.trustedDependencies ?? [])].toSorted());
 });
 
+test('trusts @zoom/rtms so Bun installs its native binding', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      workspaces: ['packages/*'],
+    },
+    {
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+    },
+    {
+      files: {
+        'packages/server/package.json': JSON.stringify({
+          name: 'zoom-bot',
+          dependencies: {
+            '@zoom/rtms': '1.1.0',
+          },
+        }),
+      },
+    }
+  );
+
+  expect(packageJson.trustedDependencies).toContain('@zoom/rtms');
+});
+
 // wbfy fully owns trustedDependencies: packages whose lifecycle scripts must run get added to
 // wbfy itself, so unmanaged entries are removed and the field is deleted when wbfy needs nothing.
 test('removes custom trustedDependencies and deletes the field when wbfy needs no entries', async () => {
