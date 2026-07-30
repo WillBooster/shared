@@ -273,16 +273,14 @@ async function findWbfyOverwrittenWebServerCommand(
 
       const commitCommand = extractWebServerCommand(await git.show([`${entry.commit}:${entry.commitPath}`]));
       const previousCommand = extractWebServerCommand(await git.show([`${entry.commit}^:${entry.parentPath}`]));
-      if (!commitCommand || !previousCommand || areCommandsEqual(commitCommand.command, previousCommand.command)) {
-        continue;
-      }
+      if (!commitCommand || !previousCommand) return undefined;
+      if (areCommandsEqual(commitCommand.command, previousCommand.command)) continue;
 
       // Only the latest command-changing transition can explain the current generated value. Older
       // wbfy overwrites are obsolete once a maintainer has deliberately changed the command again.
-      if (!isWbfyCommitSubject(entry.subject) || !isGeneratedWbStartTestCommand(commitCommand.command)) {
-        return undefined;
-      }
+      if (!isGeneratedWbStartTestCommand(commitCommand.command)) return undefined;
       if (isGeneratedWbStartTestCommand(previousCommand.command)) continue;
+      if (!isWbfyCommitSubject(entry.subject)) return undefined;
       return areHistoricalIdentifiersAvailable(previousCommand.identifiers, currentSource)
         ? previousCommand.command
         : undefined;

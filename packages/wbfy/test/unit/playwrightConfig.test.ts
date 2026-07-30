@@ -80,11 +80,33 @@ test('continues through later wbfy-generated command migrations', async () => {
     const customCommand = getCustomCommand('migrated-app');
     commitConfig(dirPath, customCommand, 'test: add custom Playwright fixture');
     commitConfig(dirPath, 'yarn start-test-server', 'chore: willboosterify this repo');
-    commitConfig(dirPath, 'bun wb start --mode test', 'chore: willboosterify this repo');
+    commitConfig(dirPath, 'bun wb start --mode test', 'feat: migrate repository to Bun');
 
     const generated = await fixAndReadConfig(dirPath);
 
     expect(generated).toContain(`command: '${customCommand}'`);
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('does not recover across an intermediate revision without a web server command', async () => {
+  const dirPath = createGitRepository();
+  try {
+    commitConfig(dirPath, getCustomCommand('removed-app'), 'test: add custom Playwright fixture');
+    commitConfig(dirPath, 'bun wb start --mode test', 'chore: willboosterify this repo');
+    commitRawConfig(
+      dirPath,
+      `import { defineConfig } from '@playwright/test';
+export default defineConfig({ use: { baseURL: 'http://127.0.0.1:3010' } });
+`,
+      'refactor: remove the managed web server'
+    );
+    commitConfig(dirPath, 'bun wb start --mode test', 'chore: willboosterify this repo');
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: 'bun wb start --mode test'`);
   } finally {
     fs.rmSync(dirPath, { force: true, recursive: true });
   }
