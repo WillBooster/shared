@@ -176,7 +176,7 @@ export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
 
 export async function generateBunfigToml(
   config: PackageConfig,
-  linker: BunLinker = 'isolated',
+  linker: BunLinker,
   yarnMinimumReleaseAgeSeconds: number | undefined,
   useGlobalStore: boolean
 ): Promise<void> {
