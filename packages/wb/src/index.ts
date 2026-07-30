@@ -97,7 +97,8 @@ function findFirstNodeOnPath(): string | undefined {
     const nodePath = path.join(dir, 'node');
     try {
       fs.accessSync(nodePath, fs.constants.X_OK);
-      return nodePath;
+      // X_OK also passes for searchable directories, which execvp skips.
+      if (fs.statSync(nodePath).isFile()) return nodePath;
     } catch {
       // Not present or not executable in this directory; keep searching.
     }
@@ -109,7 +110,8 @@ function isBunNodeShim(nodePath: string): boolean {
   // `bun --bun` and bunfig's `run.bun` prepend a bun-node-<version> directory whose `node` links
   // to bun, and oven/bun images symlink node -> bun in bun-node-fallback-bin, so the giveaway is
   // either a bun-node- path segment or a resolution to the bun binary itself.
-  if (nodePath.includes('/bun-node-')) return true;
+  // A segment check rather than an `includes('/bun-node-')` so relative PATH entries match too.
+  if (nodePath.split(path.sep).some((segment) => segment.startsWith('bun-node-'))) return true;
   try {
     return path.basename(fs.realpathSync(nodePath)) === 'bun';
   } catch {
