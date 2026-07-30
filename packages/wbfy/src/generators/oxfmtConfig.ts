@@ -43,11 +43,13 @@ function getConfigContent(config: PackageConfig): string {
 
   // CommonJS packages need require/module.exports here: oxfmt config files are
   // only auto-discovered as .ts, and the shared config package is ESM-only.
+  // No /// <reference types> line: the wbfy-generated tsconfig already covers *.config.ts with
+  // types ["bun"], which types require/module.exports, while a "node" reference breaks under
+  // Bun's isolated linker where the undeclared @types/node is unresolvable (TS2688).
   if (!config.isEsmPackage) {
     return `${managedConfigBlocks.getBlock(
       'base',
-      `/// <reference types="node" />
-import type { OxfmtConfig } from 'oxfmt';
+      `import type { OxfmtConfig } from 'oxfmt';
 
 // oxlint-disable unicorn/prefer-module -- Oxfmt config files are only auto-discovered as .ts, and CommonJS avoids ESM package loading issues.
 const oxfmtConfig = require('${oxfmtBaseConfigModule}');

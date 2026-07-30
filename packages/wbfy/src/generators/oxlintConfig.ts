@@ -81,11 +81,13 @@ function getConfigContent(config: PackageConfig): string {
   // type-check auto-discovered oxlint.config.ts as CommonJS, so importing the ESM
   // @willbooster/oxlint-config package triggers TS1479. Keep this in sync with
   // literacy-test's generated config pattern.
+  // No /// <reference types> line: the wbfy-generated tsconfig already covers *.config.ts with
+  // types ["bun"], which types require/module.exports, while a "node" reference breaks under
+  // Bun's isolated linker where the undeclared @types/node is unresolvable (TS2688).
   if (!config.isEsmPackage) {
     return `${managedConfigBlocks.getBlock(
       'base',
-      `/// <reference types="node" />
-import type { OxlintConfig } from 'oxlint';
+      `import type { OxlintConfig } from 'oxlint';
 
 // oxlint-disable unicorn/prefer-module -- Oxlint only auto-discovers .ts config files, and CommonJS avoids ESM package loading issues.
 const oxlintBaseConfig = require('${oxlintBaseConfigModule}');
