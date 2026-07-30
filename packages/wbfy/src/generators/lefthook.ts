@@ -380,6 +380,12 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   );
   const rmNextDirectories =
     nextCacheDirPaths.length > 0 ? ` && rm -Rf -- ${nextCacheDirPaths.map(quoteForEvaluatedShell).join(' ')}` : '';
+  // Bun does not relink an existing isolated tree when globalStore/linker settings change. Clean
+  // every workspace install first so contributors pulling a bunfig change get the intended layout.
+  const nodeModulesDirPaths = collectWorkspaceRelativeDirPaths(config, allConfigs, () => true, 'node_modules');
+  postMergeCommands.push(
+    String.raw`run_if_changed "bunfig\.toml" "rm -Rf -- ${nodeModulesDirPaths.map(quoteForEvaluatedShell).join(' ')}"`
+  );
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
   postMergeCommands.push(

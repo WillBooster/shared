@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { extractRawTestSections, generateBunfigToml } from '../../src/generators/bunfig.js';
+import { extractRawTestSections, generateBunfigToml, readBunGlobalStore } from '../../src/generators/bunfig.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -40,16 +40,16 @@ test('returns an empty string when there is no [test] section', () => {
 test('keeps Next.js dependencies inside the Turbopack filesystem root', async () => {
   const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-next-bunfig-')));
   try {
+    // The root package need not depend on Next.js when a workspace app does; the repository-wide
+    // decision is passed separately from the root PackageConfig.
     const config = createConfig({ dirPath: tempDirPath });
-    await generateBunfigToml({
-      ...config,
-      depending: { ...config.depending, next: true },
-    });
+    await generateBunfigToml(config, 'isolated', undefined, false);
     await promisePool.promiseAll();
 
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).toContain('globalStore = false # Keep Turbopack dependencies inside the project root.');
     expect(content).toContain('linker = "isolated"');
+    expect(readBunGlobalStore(tempDirPath)).toBe(false);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

@@ -12,6 +12,7 @@ import { promisePool } from '../utils/promisePool.js';
 interface BunfigToml {
   install?: {
     exact?: boolean;
+    globalStore?: boolean;
     linker?: string;
     minimumReleaseAge?: number;
   };
@@ -167,15 +168,22 @@ export function readBunLinker(rootDirPath: string): BunLinker | undefined {
   return linker === 'isolated' || linker === 'hoisted' ? linker : undefined;
 }
 
+export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  if (!fs.existsSync(filePath)) return undefined;
+  return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
+}
+
 export async function generateBunfigToml(
   config: PackageConfig,
   linker: BunLinker = 'isolated',
-  yarnMinimumReleaseAgeSeconds?: number
+  yarnMinimumReleaseAgeSeconds?: number,
+  useGlobalStore = !config.depending.next
 ): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, linker, config, yarnMinimumReleaseAgeSeconds);
+    const content = newContent(existingContent, linker, config, yarnMinimumReleaseAgeSeconds, useGlobalStore);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
@@ -184,7 +192,8 @@ const newContent = (
   existingContent: string | undefined,
   linker: BunLinker,
   config: PackageConfig,
-  yarnMinimumReleaseAgeSeconds?: number
+  yarnMinimumReleaseAgeSeconds: number | undefined,
+  useGlobalStore: boolean
 ): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // Only Java repositories still depend on @willbooster/prettier-config (wbfy installs it with
@@ -206,9 +215,9 @@ const newContent = (
   // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
-  const globalStoreLine = config.depending.next
-    ? 'globalStore = false # Keep Turbopack dependencies inside the project root.'
-    : 'globalStore = true';
+  const globalStoreLine = useGlobalStore
+    ? 'globalStore = true'
+    : 'globalStore = false # Keep Turbopack dependencies inside the project root.';
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false

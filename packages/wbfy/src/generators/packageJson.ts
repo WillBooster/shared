@@ -1113,8 +1113,8 @@ const dependencyDeclarationSections = [
 ] as const;
 
 /**
- * Forces store-incompatible packages to stay project-local under Bun's global store
- * (`globalStore = true` in the generated bunfig.toml): `chakra typegen` (run by `wb gen-code`)
+ * Forces store-incompatible packages to stay project-local when the generated bunfig.toml enables
+ * Bun's global store: `chakra typegen` (run by `wb gen-code`)
  * writes generated types into the installed @chakra-ui/react package, which would otherwise
  * mutate the machine-wide store shared across repositories, and drizzle-kit requires drizzle-orm
  * without declaring it, which the store realpath places beyond a plain node_modules walk-up.
