@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { simpleGit } from 'simple-git';
@@ -23,6 +24,12 @@ interface ParsedObject {
 interface ExtractedObjectLiteral {
   source: ast.SourceFile;
   node: ast.ObjectLiteralExpression;
+}
+interface FileHistoryEntry {
+  commit: string;
+  subject: string;
+  commitPath: string;
+  parentPath: string | undefined;
 }
 
 const literal = (value: string): ParsedValue => ({ kind: 'literal', value });
@@ -215,7 +222,7 @@ async function setWebServerCommand(object: ParsedObject, filePath: string): Prom
   // commands; only add or migrate the command when wbfy already owns it.
   if (command && !isGeneratedWbStartTestCommand(command)) return;
 
-  const historicalCommand = command && (await findWbfyOverwrittenWebServerCommand(filePath));
+  const historicalCommand = command && (await findWbfyOverwrittenWebServerCommand(filePath, command));
   if (historicalCommand) {
     webServer.value.properties.command = historicalCommand;
     return;
@@ -226,27 +233,45 @@ async function setWebServerCommand(object: ParsedObject, filePath: string): Prom
   webServer.value.properties.command = literal(getWbStartTestCommand());
 }
 
-async function findWbfyOverwrittenWebServerCommand(filePath: string): Promise<ParsedValue | undefined> {
+async function findWbfyOverwrittenWebServerCommand(
+  filePath: string,
+  currentCommand: ParsedValue
+): Promise<ParsedValue | undefined> {
   try {
-    const git = simpleGit(path.dirname(filePath));
-    const rootDirOutput = await git.revparse(['--show-toplevel']);
+    const initialGit = simpleGit(path.dirname(filePath));
+    const rootDirOutput = await initialGit.revparse(['--show-toplevel']);
     const rootDirPath = rootDirOutput.trim();
     // Git reports canonical paths on macOS (/private/var), while callers can reach the same file
     // through a symlinked path (/var). Compare physical paths so history lookup stays repository-local.
     const relativeFilePath = path.relative(rootDirPath, fs.realpathSync(filePath));
-    const logOutput = await git.raw(['log', '--format=%H', '--follow', '--', relativeFilePath]);
-    const commits = logOutput.trim().split('\n').filter(Boolean);
+    const git = simpleGit(rootDirPath);
+    const headCommand = extractWebServerCommand(await git.show([`HEAD:${relativeFilePath}`]));
+    // An uncommitted switch to the standard server command is repository-owned, not historical
+    // damage. Recover only when the working tree still matches the committed command.
+    if (!headCommand || !areCommandsEqual(currentCommand, headCommand)) return undefined;
 
-    for (const commit of commits) {
-      const subjectOutput = await git.raw(['show', '-s', '--format=%s', commit]);
-      const subject = subjectOutput.trim();
-      if (subject !== 'chore: willboosterify this repo') continue;
+    const logOutput = await git.raw([
+      'log',
+      '--follow',
+      '--name-status',
+      '--format=%x1e%H%x00%s',
+      '--',
+      relativeFilePath,
+    ]);
+    for (const entry of parseFileHistory(logOutput)) {
+      if (!entry.parentPath) return undefined;
 
-      const generatedCommand = extractWebServerCommand(await git.show([`${commit}:${relativeFilePath}`]), rootDirPath);
-      if (!generatedCommand || !isGeneratedWbStartTestCommand(generatedCommand)) continue;
+      const commitCommand = extractWebServerCommand(await git.show([`${entry.commit}:${entry.commitPath}`]));
+      const previousCommand = extractWebServerCommand(await git.show([`${entry.commit}^:${entry.parentPath}`]));
+      if (!commitCommand || !previousCommand || areCommandsEqual(commitCommand, previousCommand)) continue;
 
-      const previousCommand = extractWebServerCommand(await git.show([`${commit}^:${relativeFilePath}`]), rootDirPath);
-      if (previousCommand && !isGeneratedWbStartTestCommand(previousCommand)) return previousCommand;
+      // Only the latest command-changing transition can explain the current generated value. Older
+      // wbfy overwrites are obsolete once a maintainer has deliberately changed the command again.
+      return isWbfyCommitSubject(entry.subject) &&
+        isGeneratedWbStartTestCommand(commitCommand) &&
+        !isGeneratedWbStartTestCommand(previousCommand)
+        ? previousCommand
+        : undefined;
     }
   } catch {
     // Repositories without usable Git history still receive the canonical generated command below.
@@ -254,10 +279,27 @@ async function findWbfyOverwrittenWebServerCommand(filePath: string): Promise<Pa
   return undefined;
 }
 
-function extractWebServerCommand(content: string, rootDirPath: string): ParsedValue | undefined {
-  const tempRootDirPath = path.resolve(rootDirPath, '.tmp');
-  fs.mkdirSync(tempRootDirPath, { recursive: true });
-  const tempDirPath = fs.mkdtempSync(path.resolve(tempRootDirPath, 'wbfy-playwright-history-'));
+function parseFileHistory(output: string): FileHistoryEntry[] {
+  return output
+    .split('\u001E')
+    .slice(1)
+    .flatMap((record): FileHistoryEntry[] => {
+      const [header = '', ...bodyLines] = record.trim().split('\n');
+      const [commit, subject] = header.split('\0', 2);
+      const statusLine = bodyLines.find((line) => /^[AMDRT]\d*\t/u.test(line));
+      if (!commit || subject === undefined || !statusLine) return [];
+
+      const [status, firstPath, secondPath] = statusLine.split('\t');
+      if (!status || !firstPath) return [];
+      if (status.startsWith('R')) {
+        return secondPath ? [{ commit, subject, commitPath: secondPath, parentPath: firstPath }] : [];
+      }
+      return [{ commit, subject, commitPath: firstPath, parentPath: status === 'A' ? undefined : firstPath }];
+    });
+}
+
+function extractWebServerCommand(content: string): ParsedValue | undefined {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-playwright-history-'));
   const tempFilePath = path.resolve(tempDirPath, 'playwright.config.ts');
   try {
     fs.writeFileSync(tempFilePath, content);
@@ -269,6 +311,14 @@ function extractWebServerCommand(content: string, rootDirPath: string): ParsedVa
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
+}
+
+function areCommandsEqual(left: ParsedValue, right: ParsedValue): boolean {
+  return left.kind === 'literal' && right.kind === 'literal' && left.value.trim() === right.value.trim();
+}
+
+function isWbfyCommitSubject(subject: string): boolean {
+  return /^chore: willboosterify this repo(?: \(#\d+\))?$/u.test(subject);
 }
 
 function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
