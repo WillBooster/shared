@@ -2,6 +2,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -10,7 +11,9 @@ import { cleanUpSqliteDbIfNeeded, prismaScripts } from '../../../src/scripts/pri
 
 const createdDirs: string[] = [];
 // This package does not depend on Prisma, so the test pins a CLI version explicitly instead of relying on ambient tools.
-const PRISMA_TEST_COMMAND = 'npx --yes prisma@6.10.1';
+const PRISMA_TEST_COMMAND = 'bunx prisma@6.10.1';
+// CHECKPOINT_DISABLE skips the Prisma CLI's telemetry network call, which dominates its startup time.
+const PRISMA_TEST_ENV = { ...process.env, CHECKPOINT_DISABLE: '1' };
 
 afterEach(() => {
   for (const dirPath of createdDirs.splice(0)) {
@@ -49,7 +52,7 @@ describe('prismaScripts.reset', () => {
     expect(fs.existsSync(walPath)).toBe(false);
     expect(fs.existsSync(absoluteDbPath)).toBe(false);
     expect(fs.existsSync(`${absoluteDbPath}-shm`)).toBe(false);
-  }, 120_000);
+  });
 
   it('does not add sqlite cleanup when DATABASE_URL is not file scheme', () => {
     const project = {
@@ -85,6 +88,7 @@ describe('prismaScripts.reset', () => {
 
     child_process.execSync(command.replaceAll('PRISMA ', `${PRISMA_TEST_COMMAND} `), {
       cwd: dirPath,
+      env: PRISMA_TEST_ENV,
       stdio: 'inherit',
     });
 
@@ -95,13 +99,11 @@ describe('prismaScripts.reset', () => {
     expect(fs.existsSync(`${dbPath}-litestream`)).toBe(false);
     expect(fs.existsSync(path.resolve(dirPath, 'prisma', 'mount', '.prod.sqlite3-shadow'))).toBe(false);
 
-    const introspectedSchema = child_process.execSync(`${PRISMA_TEST_COMMAND} db pull --print --url "file:${dbPath}"`, {
-      cwd: dirPath,
-      encoding: 'utf8',
-      env: { ...process.env, DATABASE_URL: `file:${dbPath}` },
-      stdio: ['ignore', 'pipe', 'inherit'],
-    });
-    expect(introspectedSchema).toContain('model t');
+    // The checkpointed database must remain readable with its data intact.
+    const db = new DatabaseSync(dbPath);
+    const row = db.prepare('SELECT count(*) AS count FROM t').get() as { count: number };
+    db.close();
+    expect(row.count).toBeGreaterThan(0);
   }, 120_000);
 
   it('resolves database paths under db/ for the Blitz layout (db/schema.prisma)', () => {
@@ -163,13 +165,12 @@ function createProjectDir(options?: { blitzLayout?: boolean }): string {
 }
 
 function createDatabaseWithWal(dbPath: string): void {
-  child_process.execSync(`${PRISMA_TEST_COMMAND} db execute --stdin --url "file:${dbPath}"`, {
-    encoding: 'utf8',
-    input:
-      'PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;',
-    stdio: ['pipe', 'pipe', 'inherit'],
-  });
-  // Prisma CLI does not keep SQLite sidecar files around after the command exits, so we create them to exercise cleanup paths.
+  const db = new DatabaseSync(dbPath);
+  db.exec(
+    'PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;'
+  );
+  db.close();
+  // Closing the connection checkpoints and removes the SQLite sidecar files, so we create them to exercise cleanup paths.
   fs.writeFileSync(`${dbPath}-wal`, 'wal');
   fs.writeFileSync(`${dbPath}-shm`, 'shm');
 }
