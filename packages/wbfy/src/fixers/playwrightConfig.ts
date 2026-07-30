@@ -214,6 +214,8 @@ function setWebServerCommand(object: ParsedObject): void {
   // commands; only add or migrate the command when wbfy already owns it.
   if (command && !isGeneratedWbStartTestCommand(command)) return;
 
+  // Playwright requires `command` whenever `webServer` exists; an externally managed server should
+  // omit `webServer` instead. Keep filling this required field when a partial managed block lacks it.
   webServer.value.properties.command = literal(getWbStartTestCommand());
 }
 
