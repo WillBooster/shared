@@ -33,9 +33,36 @@ interface FileHistoryEntry {
 }
 interface ExtractedCommand {
   command: ParsedValue;
-  identifiers: Set<string>;
+  bindingFingerprints: Map<string, string> | undefined;
 }
 
+const knownRuntimeGlobals = new Set([
+  'Array',
+  'BigInt',
+  'Boolean',
+  'Buffer',
+  'Date',
+  'Error',
+  'JSON',
+  'Map',
+  'Math',
+  'Number',
+  'Object',
+  'Promise',
+  'RegExp',
+  'Set',
+  'String',
+  'URL',
+  'clearInterval',
+  'clearTimeout',
+  'console',
+  'globalThis',
+  'process',
+  'setInterval',
+  'setTimeout',
+  'undefined',
+]);
+const maxPlaywrightHistoryEntries = 100;
 const literal = (value: string): ParsedValue => ({ kind: 'literal', value });
 const asArray = (value: ParsedValue[]): ParsedValue => ({ kind: 'array', value });
 const asObject = (properties: Record<string, ParsedValue>, extraMembers: string[] = []): ParsedValue => ({
@@ -292,7 +319,7 @@ async function findWbfyOverwrittenWebServerCommand(
       if (!isHistoricallyGeneratedWbStartTestCommand(commitCommand.command)) return undefined;
       if (isHistoricallyGeneratedWbStartTestCommand(previousCommand.command)) continue;
       if (!isWbfyCommitSubject(entry.subject)) return undefined;
-      return areHistoricalIdentifiersAvailable(previousCommand.identifiers, currentSource)
+      return areHistoricalBindingsUnchanged(previousCommand.bindingFingerprints, currentSource)
         ? previousCommand.command
         : undefined;
     }
@@ -328,7 +355,11 @@ function extractWebServerCommand(content: string): ExtractedCommand | undefined 
     if (!webServer || !ast.isObjectLiteralExpression(webServer)) return undefined;
     const commandExpression = getObjectPropertyInitializer(webServer, 'command');
     const command = commandExpression && parseExpression(commandExpression, extracted.source);
-    return command ? { command, identifiers: collectReferencedIdentifiers(commandExpression) } : undefined;
+    if (!command || !commandExpression) return undefined;
+    return {
+      command,
+      bindingFingerprints: getRecoverableBindingFingerprints(commandExpression, extracted.source),
+    };
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
@@ -357,87 +388,60 @@ function getObjectPropertyInitializer(
   return undefined;
 }
 
-function collectReferencedIdentifiers(expression: ast.Expression): Set<string> {
+function getRecoverableBindingFingerprints(
+  expression: ast.Expression,
+  source: ast.SourceFile
+): Map<string, string> | undefined {
+  const identifiers = getRecoverableCommandIdentifiers(expression);
+  if (!identifiers) return undefined;
+
+  const bindings = collectTopLevelValueBindings(source);
+  const fingerprints = new Map<string, string>();
+  for (const identifier of identifiers) {
+    if (knownRuntimeGlobals.has(identifier)) continue;
+    const fingerprint = bindings.get(identifier);
+    if (!fingerprint) return undefined;
+    fingerprints.set(identifier, fingerprint);
+  }
+  return fingerprints;
+}
+
+function getRecoverableCommandIdentifiers(expression: ast.Expression): Set<string> | undefined {
+  if (ast.isStringLiteral(expression) || ast.isNoSubstitutionTemplateLiteral(expression)) return new Set();
+  if (ast.isIdentifier(expression)) return new Set([expression.text]);
+  if (!ast.isTemplateExpression(expression)) return undefined;
+
   const identifiers = new Set<string>();
-  const visit = (node: ast.Node, boundIdentifiers: Set<string>): void => {
-    if (ast.isIdentifier(node)) {
-      if (!boundIdentifiers.has(node.text)) identifiers.add(node.text);
-      return;
-    }
-    if (ast.isPropertyAccessExpression(node)) {
-      visit(node.expression, boundIdentifiers);
-      return;
-    }
-    if (ast.isPropertyAssignment(node)) {
-      if (ast.isComputedPropertyName(node.name)) visit(node.name.expression, boundIdentifiers);
-      visit(node.initializer, boundIdentifiers);
-      return;
-    }
-    if (ast.isVariableDeclaration(node)) {
-      collectBindingName(node.name, boundIdentifiers);
-      if (node.initializer) visit(node.initializer, boundIdentifiers);
-      return;
-    }
-    if (ast.isBlock(node)) {
-      const blockBindings = new Set(boundIdentifiers);
-      for (const statement of node.statements) collectStatementBindings(statement, blockBindings);
-      for (const statement of node.statements) visit(statement, blockBindings);
-      return;
-    }
-    if (ast.isArrowFunction(node)) {
-      const functionBindings = new Set(boundIdentifiers);
-      for (const parameter of node.parameters) collectBindingName(parameter.name, functionBindings);
-      for (const parameter of node.parameters) {
-        if (parameter.initializer) visit(parameter.initializer, functionBindings);
-      }
-      visit(node.body, functionBindings);
-      return;
-    }
-    if (ast.isFunctionExpression(node) || ast.isFunctionDeclaration(node)) {
-      const functionBindings = new Set(boundIdentifiers);
-      if (node.name) functionBindings.add(node.name.text);
-      for (const parameter of node.parameters) collectBindingName(parameter.name, functionBindings);
-      for (const parameter of node.parameters) {
-        if (parameter.initializer) visit(parameter.initializer, functionBindings);
-      }
-      if (node.body) visit(node.body, functionBindings);
-      return;
-    }
-    node.forEachChild((child) => visit(child, boundIdentifiers));
-  };
-  visit(expression, new Set());
+  for (const span of expression.templateSpans) {
+    const identifier = getPropertyAccessRootIdentifier(span.expression);
+    if (!identifier) return undefined;
+    identifiers.add(identifier);
+  }
   return identifiers;
 }
 
-function collectStatementBindings(statement: ast.Statement, bindings: Set<string>): void {
-  if (ast.isVariableStatement(statement)) {
-    for (const declaration of statement.declarationList.declarations) {
-      collectBindingName(declaration.name, bindings);
-    }
-    return;
-  }
-  if (
-    (ast.isFunctionDeclaration(statement) || ast.isClassDeclaration(statement) || ast.isEnumDeclaration(statement)) &&
-    statement.name
-  ) {
-    bindings.add(statement.name.text);
-  }
+function getPropertyAccessRootIdentifier(expression: ast.Expression): string | undefined {
+  if (ast.isIdentifier(expression)) return expression.text;
+  if (ast.isPropertyAccessExpression(expression)) return getPropertyAccessRootIdentifier(expression.expression);
+  return undefined;
 }
 
-function areHistoricalIdentifiersAvailable(identifiers: Set<string>, currentSource: ast.SourceFile): boolean {
-  if (identifiers.size === 0) return true;
-  const availableIdentifiers = collectTopLevelValueBindings(currentSource);
-  return [...identifiers].every(
-    (identifier) => availableIdentifiers.has(identifier) || knownRuntimeGlobals.has(identifier)
-  );
+function areHistoricalBindingsUnchanged(
+  bindingFingerprints: Map<string, string> | undefined,
+  currentSource: ast.SourceFile
+): boolean {
+  if (!bindingFingerprints) return false;
+  const currentBindings = collectTopLevelValueBindings(currentSource);
+  return [...bindingFingerprints].every(([identifier, fingerprint]) => currentBindings.get(identifier) === fingerprint);
 }
 
-function collectTopLevelValueBindings(source: ast.SourceFile): Set<string> {
-  const bindings = new Set<string>();
+function collectTopLevelValueBindings(source: ast.SourceFile): Map<string, string> {
+  const bindings = new Map<string, string>();
   for (const statement of source.statements) {
+    const fingerprint = statement.getText(source);
     if (ast.isVariableStatement(statement)) {
       for (const declaration of statement.declarationList.declarations) {
-        collectBindingName(declaration.name, bindings);
+        collectBindingName(declaration.name, bindings, fingerprint);
       }
       continue;
     }
@@ -445,36 +449,36 @@ function collectTopLevelValueBindings(source: ast.SourceFile): Set<string> {
       (ast.isFunctionDeclaration(statement) || ast.isClassDeclaration(statement) || ast.isEnumDeclaration(statement)) &&
       statement.name
     ) {
-      bindings.add(statement.name.text);
+      bindings.set(statement.name.text, fingerprint);
       continue;
     }
     if (ast.isImportEqualsDeclaration(statement)) {
-      bindings.add(statement.name.text);
+      bindings.set(statement.name.text, fingerprint);
       continue;
     }
     if (!ast.isImportDeclaration(statement)) continue;
     const importClause = statement.importClause;
     if (!importClause || importClause.phaseModifier === ast.SyntaxKind.TypeKeyword) continue;
-    if (importClause.name) bindings.add(importClause.name.text);
+    if (importClause.name) bindings.set(importClause.name.text, fingerprint);
     const namedBindings = importClause.namedBindings;
     if (namedBindings && ast.isNamespaceImport(namedBindings)) {
-      bindings.add(namedBindings.name.text);
+      bindings.set(namedBindings.name.text, fingerprint);
     } else if (namedBindings && ast.isNamedImports(namedBindings)) {
       for (const element of namedBindings.elements) {
-        if (!element.isTypeOnly) bindings.add(element.name.text);
+        if (!element.isTypeOnly) bindings.set(element.name.text, fingerprint);
       }
     }
   }
   return bindings;
 }
 
-function collectBindingName(name: ast.BindingName, bindings: Set<string>): void {
+function collectBindingName(name: ast.BindingName, bindings: Map<string, string>, fingerprint: string): void {
   if (ast.isIdentifier(name)) {
-    bindings.add(name.text);
+    bindings.set(name.text, fingerprint);
     return;
   }
   for (const element of name.elements) {
-    if (element.name) collectBindingName(element.name, bindings);
+    if (element.name) collectBindingName(element.name, bindings, fingerprint);
   }
 }
 
@@ -483,7 +487,9 @@ function areCommandsEqual(left: ParsedValue, right: ParsedValue): boolean {
 }
 
 function isWbfyCommitSubject(subject: string): boolean {
-  return /^chore: willboosterify this repo(?: \(#\d+\))?$/u.test(subject);
+  return /^(?:build|chore|fix): (?:apply wbfy|wbfy(?: this repo)?|willboosterify this repo)(?: \(#\d+\))?$/u.test(
+    subject
+  );
 }
 
 function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
@@ -502,33 +508,6 @@ function isHistoricallyGeneratedWbStartTestCommand(command: ParsedValue): boolea
     command.value.trim()
   );
 }
-
-const knownRuntimeGlobals = new Set([
-  'Array',
-  'BigInt',
-  'Boolean',
-  'Buffer',
-  'Date',
-  'Error',
-  'JSON',
-  'Map',
-  'Math',
-  'Number',
-  'Object',
-  'Promise',
-  'RegExp',
-  'Set',
-  'String',
-  'URL',
-  'clearInterval',
-  'clearTimeout',
-  'console',
-  'process',
-  'setInterval',
-  'setTimeout',
-  'undefined',
-]);
-const maxPlaywrightHistoryEntries = 100;
 
 function getWbStartTestCommand(): string {
   return `'bun wb start --mode test'`;
