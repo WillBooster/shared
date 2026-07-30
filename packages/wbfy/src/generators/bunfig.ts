@@ -223,7 +223,7 @@ const newContent = (
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
   const globalStoreLine = useGlobalStore
     ? 'globalStore = true'
-    : 'globalStore = false # Keep Turbopack dependencies inside the project root.';
+    : '# Keep Turbopack dependencies inside the project root.\nglobalStore = false';
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
@@ -231,6 +231,7 @@ telemetry = false
 
 ${extractRawTestSections(existingContent)}[install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
+${globalStoreLine}
 ${
   linker === 'isolated'
     ? // tsx: build-ts under Node.js spawns `node --import tsx`, which resolves tsx from the
@@ -238,7 +239,7 @@ ${
       // undici-types: bun-types references it without declaring it as a dependency
       // (oven-sh/bun#22805); generated tsconfigs also map undici-types to the hoisted copy
       // (see tsconfig.ts) because the global store realpaths bun-types outside the repository.
-      `${globalStoreLine}\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]`
+      'linker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
     : 'linker = "hoisted"'
 }
 minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}

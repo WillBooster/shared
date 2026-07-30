@@ -62,8 +62,15 @@ test('keeps Next.js dependencies inside the Turbopack filesystem root', async ()
     await promisePool.promiseAll();
 
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
-    expect(content).toContain('globalStore = false # Keep Turbopack dependencies inside the project root.');
+    expect(content).toContain('# Keep Turbopack dependencies inside the project root.\nglobalStore = false');
     expect(content).toContain('linker = "isolated"');
+    expect(readBunGlobalStore(tempDirPath)).toBe(false);
+
+    await generateBunfigToml(config, 'hoisted', undefined, false);
+    await promisePool.promiseAll();
+    expect(fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8')).toContain(
+      'globalStore = false\nlinker = "hoisted"'
+    );
     expect(readBunGlobalStore(tempDirPath)).toBe(false);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
