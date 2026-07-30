@@ -15,6 +15,22 @@ import { parseSourceFile } from '../utils/typescriptApi.js';
 const managedProperties: readonly { name: string; text: string }[] = [
   { name: 'reactCompiler', text: 'reactCompiler: true' },
   { name: 'reactStrictMode', text: 'reactStrictMode: true' },
+  {
+    name: 'turbopack',
+    // Bun's global store resolves dependency symlinks under $HOME, outside the project. Turbopack
+    // rejects those targets unless its filesystem root covers both locations, so use their nearest
+    // common ancestor. This is intentionally inline so it also works in CJS configs without
+    // injecting module-system-specific path/os imports.
+    text: `turbopack: {
+  /* Bun's global store resolves dependencies outside the project directory. */
+  root: (() => {
+    const projectParts = process.cwd().split('/');
+    const homeParts = (process.env.HOME ?? process.cwd()).split('/');
+    const mismatchIndex = projectParts.findIndex((part, index) => part !== homeParts[index]);
+    return projectParts.slice(0, mismatchIndex === -1 ? projectParts.length : mismatchIndex).join('/') || '/';
+  })(),
+}`,
+  },
   { name: 'typescript', text: 'typescript: { ignoreBuildErrors: true }' },
 ];
 
