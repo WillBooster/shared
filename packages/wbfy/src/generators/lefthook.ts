@@ -385,7 +385,7 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   // contributor's working install before a potentially network-dependent replacement succeeds.
   const nodeModulesDirPaths = collectWorkspaceRelativeDirPaths(config, allConfigs, () => true, 'node_modules');
   postMergeCommands.push(
-    String.raw`if git diff -U0 ORIG_HEAD HEAD -- '*bunfig.toml' | grep --quiet -E '^[+-] *(globalStore|linker|publicHoistPattern)'; then rm -Rf -- ${nodeModulesDirPaths.map(quoteForShell).join(' ')}; fi`
+    String.raw`if git diff --no-color -U0 ORIG_HEAD HEAD -- '*bunfig.toml' | grep --quiet -E '^[+-] *(globalStore|linker|publicHoistPattern)'; then rm -Rf -- ${nodeModulesDirPaths.map(quoteForShell).join(' ')}; fi`
   );
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.
