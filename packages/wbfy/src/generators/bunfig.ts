@@ -12,6 +12,7 @@ import { promisePool } from '../utils/promisePool.js';
 interface BunfigToml {
   install?: {
     exact?: boolean;
+    globalStore?: boolean;
     linker?: string;
     minimumReleaseAge?: number;
   };
@@ -167,15 +168,28 @@ export function readBunLinker(rootDirPath: string): BunLinker | undefined {
   return linker === 'isolated' || linker === 'hoisted' ? linker : undefined;
 }
 
+export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  if (!fs.existsSync(filePath)) return undefined;
+  return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
+}
+
+export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
+  // Blitz builds on Next.js but need not declare it directly, and its codegen also patches Next
+  // inside node_modules. Both frameworks therefore require project-local isolated installs.
+  return !configs.some((config) => config.depending.next || config.depending.blitz);
+}
+
 export async function generateBunfigToml(
   config: PackageConfig,
-  linker: BunLinker = 'isolated',
-  yarnMinimumReleaseAgeSeconds?: number
+  linker: BunLinker,
+  yarnMinimumReleaseAgeSeconds: number | undefined,
+  useGlobalStore: boolean
 ): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, linker, config, yarnMinimumReleaseAgeSeconds);
+    const content = newContent(existingContent, linker, config, yarnMinimumReleaseAgeSeconds, useGlobalStore);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
@@ -184,7 +198,8 @@ const newContent = (
   existingContent: string | undefined,
   linker: BunLinker,
   config: PackageConfig,
-  yarnMinimumReleaseAgeSeconds?: number
+  yarnMinimumReleaseAgeSeconds: number | undefined,
+  useGlobalStore: boolean
 ): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // Only Java repositories still depend on @willbooster/prettier-config (wbfy installs it with
@@ -203,6 +218,12 @@ const newContent = (
   // already-customized minimumReleaseAge) is still carried over — only the excludes are locked.
   const minimumReleaseAgeSeconds =
     yarnMinimumReleaseAgeSeconds ?? bunfigToml?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
+  // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
+  // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
+  // which would expand development filesystem watching and bypass the boundary's cache benefits.
+  const globalStoreLine = useGlobalStore
+    ? 'globalStore = true'
+    : '# Keep Turbopack dependencies inside the project root.\nglobalStore = false';
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
@@ -210,6 +231,7 @@ telemetry = false
 
 ${extractRawTestSections(existingContent)}[install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
+${globalStoreLine}
 ${
   linker === 'isolated'
     ? // tsx: build-ts under Node.js spawns `node --import tsx`, which resolves tsx from the
@@ -217,7 +239,7 @@ ${
       // undici-types: bun-types references it without declaring it as a dependency
       // (oven-sh/bun#22805); generated tsconfigs also map undici-types to the hoisted copy
       // (see tsconfig.ts) because the global store realpaths bun-types outside the repository.
-      'globalStore = true\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
+      'linker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
     : 'linker = "hoisted"'
 }
 minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}

@@ -78,7 +78,7 @@ function generateAgentInstruction(
   // catch.
   const isolatedInstallInstruction =
     readBunLinker(rootConfig.dirPath) === 'isolated'
-      ? `\n- \`bunfig.toml\` uses Bun's isolated linker with a global store, so only declared dependencies resolve. If an import fails to resolve, declare that package in the \`package.json\` that imports it; never switch \`linker\` to \`hoisted\` or add to \`publicHoistPattern\` to work around it.`
+      ? `\n- \`bunfig.toml\` uses Bun's isolated linker, so only declared dependencies resolve. If an import fails to resolve, declare that package in the \`package.json\` that imports it; never switch \`linker\` to \`hoisted\` or add to \`publicHoistPattern\` to work around it.`
       : '';
   // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
   // wrangler-config clause needs an actual config file (isCloudflare also matches a mere wrangler
