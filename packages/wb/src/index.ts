@@ -110,8 +110,10 @@ function isBunNodeShim(nodePath: string): boolean {
   // `bun --bun` and bunfig's `run.bun` prepend a bun-node-<version> directory whose `node` links
   // to bun, and oven/bun images symlink node -> bun in bun-node-fallback-bin, so the giveaway is
   // either a bun-node- path segment or a resolution to the bun binary itself.
-  // A segment check rather than an `includes('/bun-node-')` so relative PATH entries match too.
-  if (nodePath.split(path.sep).some((segment) => segment.startsWith('bun-node-'))) return true;
+  // Shims live directly in a bun-node-<version> directory, so check only the immediate parent
+  // (relative PATH entries included): matching ancestors would false-positive on e.g. a real node
+  // inside a bun-node-workspace checkout.
+  if (path.basename(path.dirname(nodePath)).startsWith('bun-node-')) return true;
   try {
     return path.basename(fs.realpathSync(nodePath)) === 'bun';
   } catch {
