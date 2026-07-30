@@ -101,9 +101,12 @@ describe('prismaScripts.reset', () => {
 
     // The checkpointed database must remain readable with its data intact.
     const db = new DatabaseSync(dbPath);
-    const row = db.prepare('SELECT count(*) AS count FROM t').get() as { count: number };
-    db.close();
-    expect(row.count).toBeGreaterThan(0);
+    try {
+      const row = db.prepare('SELECT count(*) AS count FROM t').get() as { count: number };
+      expect(row.count).toBeGreaterThan(0);
+    } finally {
+      db.close();
+    }
   }, 120_000);
 
   it('resolves database paths under db/ for the Blitz layout (db/schema.prisma)', () => {
@@ -166,10 +169,13 @@ function createProjectDir(options?: { blitzLayout?: boolean }): string {
 
 function createDatabaseWithWal(dbPath: string): void {
   const db = new DatabaseSync(dbPath);
-  db.exec(
-    'PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;'
-  );
-  db.close();
+  try {
+    db.exec(
+      'PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS t (id INTEGER PRIMARY KEY); INSERT INTO t DEFAULT VALUES;'
+    );
+  } finally {
+    db.close();
+  }
   // Closing the connection checkpoints and removes the SQLite sidecar files, so we create them to exercise cleanup paths.
   fs.writeFileSync(`${dbPath}-wal`, 'wal');
   fs.writeFileSync(`${dbPath}-shm`, 'shm');
