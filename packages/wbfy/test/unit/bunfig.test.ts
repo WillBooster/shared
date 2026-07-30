@@ -37,6 +37,24 @@ test('returns an empty string when there is no [test] section', () => {
   expect(extractRawTestSections('env = false\n\n[install]\nexact = true\n')).toBe('');
 });
 
+test('keeps Next.js dependencies inside the Turbopack filesystem root', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-next-bunfig-')));
+  try {
+    const config = createConfig({ dirPath: tempDirPath });
+    await generateBunfigToml({
+      ...config,
+      depending: { ...config.depending, next: true },
+    });
+    await promisePool.promiseAll();
+
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(content).toContain('globalStore = false # Keep Turbopack dependencies inside the project root.');
+    expect(content).toContain('linker = "isolated"');
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
 test('keeps a migrated .yarnrc.yml npmMinimalAgeGate across regenerations', async () => {
   const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-bunfig-')));
   try {

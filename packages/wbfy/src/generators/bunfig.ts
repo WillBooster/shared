@@ -203,6 +203,12 @@ const newContent = (
   // already-customized minimumReleaseAge) is still carried over — only the excludes are locked.
   const minimumReleaseAgeSeconds =
     yarnMinimumReleaseAgeSeconds ?? bunfigToml?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
+  // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
+  // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
+  // which would expand development filesystem watching and bypass the boundary's cache benefits.
+  const globalStoreLine = config.depending.next
+    ? 'globalStore = false # Keep Turbopack dependencies inside the project root.'
+    : 'globalStore = true';
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   return `env = false
@@ -217,7 +223,7 @@ ${
       // undici-types: bun-types references it without declaring it as a dependency
       // (oven-sh/bun#22805); generated tsconfigs also map undici-types to the hoisted copy
       // (see tsconfig.ts) because the global store realpaths bun-types outside the repository.
-      'globalStore = true\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
+      `${globalStoreLine}\nlinker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]`
     : 'linker = "hoisted"'
 }
 minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
