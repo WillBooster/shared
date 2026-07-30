@@ -90,6 +90,24 @@ test('continues through later wbfy-generated command migrations', async () => {
   }
 });
 
+test('does not restore a legacy wbfy-generated command as repository-owned', async () => {
+  const dirPath = createGitRepository();
+  try {
+    commitConfig(dirPath, 'yarn start-test', 'chore: willboosterify this repo');
+    commitConfig(dirPath, 'yarn start-test-server', 'chore: willboosterify this repo');
+    commitConfig(dirPath, 'wb start --mode test', 'chore: willboosterify this repo');
+    commitConfig(dirPath, 'yarn wb start --mode test', 'chore: willboosterify this repo');
+    commitConfig(dirPath, 'bun wb start --mode test', 'feat: migrate repository to Bun');
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: 'bun wb start --mode test'`);
+    expect(generated).not.toContain(`command: 'yarn start-test'`);
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
 test('does not recover across an intermediate revision without a web server command', async () => {
   const dirPath = createGitRepository();
   try {
@@ -148,8 +166,15 @@ test('does not restore a command whose referenced identifier was renamed later',
     );
     commitRawConfig(
       dirPath,
-      createTemplateConfig('PORT', "'bun wb start --mode test'"),
-      'refactor: rename the port constant'
+      `import { defineConfig } from '@playwright/test';
+export default defineConfig({
+  webServer: {
+    command: 'bun wb start --mode test',
+    port: 3010,
+  },
+});
+`,
+      'refactor: replace the port binding with a property'
     );
 
     const generated = await fixAndReadConfig(dirPath);
@@ -205,6 +230,9 @@ function commitPlaywrightConfig(dirPath: string, subject: string): void {
 function findRepositoryDirPath(dirPath: string): string {
   for (let currentDirPath = dirPath; ; currentDirPath = path.dirname(currentDirPath)) {
     if (fs.existsSync(path.join(currentDirPath, '.git'))) return currentDirPath;
+    if (path.dirname(currentDirPath) === currentDirPath) {
+      throw new Error(`No Git repository contains ${dirPath}`);
+    }
   }
 }
 

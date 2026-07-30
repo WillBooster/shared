@@ -278,8 +278,8 @@ async function findWbfyOverwrittenWebServerCommand(
 
       // Only the latest command-changing transition can explain the current generated value. Older
       // wbfy overwrites are obsolete once a maintainer has deliberately changed the command again.
-      if (!isGeneratedWbStartTestCommand(commitCommand.command)) return undefined;
-      if (isGeneratedWbStartTestCommand(previousCommand.command)) continue;
+      if (!isHistoricallyGeneratedWbStartTestCommand(commitCommand.command)) return undefined;
+      if (isHistoricallyGeneratedWbStartTestCommand(previousCommand.command)) continue;
       if (!isWbfyCommitSubject(entry.subject)) return undefined;
       return areHistoricalIdentifiersAvailable(previousCommand.identifiers, currentSource)
         ? previousCommand.command
@@ -358,13 +358,52 @@ function collectReferencedIdentifiers(expression: ast.Expression): Set<string> {
 
 function areHistoricalIdentifiersAvailable(identifiers: Set<string>, currentSource: ast.SourceFile): boolean {
   if (identifiers.size === 0) return true;
-  const currentIdentifiers = new Set<string>();
-  const visit = (node: ast.Node): void => {
-    if (ast.isIdentifier(node)) currentIdentifiers.add(node.text);
-    node.forEachChild(visit);
-  };
-  currentSource.forEachChild(visit);
-  return [...identifiers].every((identifier) => currentIdentifiers.has(identifier));
+  const availableIdentifiers = collectTopLevelValueBindings(currentSource);
+  return [...identifiers].every(
+    (identifier) => availableIdentifiers.has(identifier) || knownRuntimeGlobals.has(identifier)
+  );
+}
+
+function collectTopLevelValueBindings(source: ast.SourceFile): Set<string> {
+  const bindings = new Set<string>();
+  for (const statement of source.statements) {
+    if (ast.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        collectBindingName(declaration.name, bindings);
+      }
+      continue;
+    }
+    if (
+      (ast.isFunctionDeclaration(statement) || ast.isClassDeclaration(statement) || ast.isEnumDeclaration(statement)) &&
+      statement.name
+    ) {
+      bindings.add(statement.name.text);
+      continue;
+    }
+    if (!ast.isImportDeclaration(statement)) continue;
+    const importClause = statement.importClause;
+    if (!importClause || importClause.phaseModifier === ast.SyntaxKind.TypeKeyword) continue;
+    if (importClause.name) bindings.add(importClause.name.text);
+    const namedBindings = importClause.namedBindings;
+    if (namedBindings && ast.isNamespaceImport(namedBindings)) {
+      bindings.add(namedBindings.name.text);
+    } else if (namedBindings && ast.isNamedImports(namedBindings)) {
+      for (const element of namedBindings.elements) {
+        if (!element.isTypeOnly) bindings.add(element.name.text);
+      }
+    }
+  }
+  return bindings;
+}
+
+function collectBindingName(name: ast.BindingName, bindings: Set<string>): void {
+  if (ast.isIdentifier(name)) {
+    bindings.add(name.text);
+    return;
+  }
+  for (const element of name.elements) {
+    if (element.name) collectBindingName(element.name, bindings);
+  }
 }
 
 function areCommandsEqual(left: ParsedValue, right: ParsedValue): boolean {
@@ -383,6 +422,16 @@ function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
     command.value.trim()
   );
 }
+
+function isHistoricallyGeneratedWbStartTestCommand(command: ParsedValue): boolean {
+  if (isGeneratedWbStartTestCommand(command)) return true;
+  if (command.kind !== 'literal') return false;
+  return /^'(?:yarn start-test|bun run (?:wb start --mode test|start-test-server)|bun --bun wb start --mode test)'$/u.test(
+    command.value.trim()
+  );
+}
+
+const knownRuntimeGlobals = new Set(['Buffer', 'URL', 'clearTimeout', 'console', 'process', 'setTimeout', 'undefined']);
 
 function getWbStartTestCommand(): string {
   return `'bun wb start --mode test'`;
