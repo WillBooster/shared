@@ -177,8 +177,8 @@ export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
 export async function generateBunfigToml(
   config: PackageConfig,
   linker: BunLinker = 'isolated',
-  yarnMinimumReleaseAgeSeconds?: number,
-  useGlobalStore = !config.depending.next
+  yarnMinimumReleaseAgeSeconds: number | undefined,
+  useGlobalStore: boolean
 ): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');

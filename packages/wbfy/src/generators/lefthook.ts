@@ -380,11 +380,12 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   );
   const rmNextDirectories =
     nextCacheDirPaths.length > 0 ? ` && rm -Rf -- ${nextCacheDirPaths.map(quoteForEvaluatedShell).join(' ')}` : '';
-  // Bun does not relink an existing isolated tree when globalStore/linker settings change. Clean
-  // every workspace install first so contributors pulling a bunfig change get the intended layout.
+  // Bun does not relink an existing isolated tree when globalStore/linker settings change. Inspect
+  // those keys rather than every bunfig change: minimumReleaseAge updates must not destroy a
+  // contributor's working install before a potentially network-dependent replacement succeeds.
   const nodeModulesDirPaths = collectWorkspaceRelativeDirPaths(config, allConfigs, () => true, 'node_modules');
   postMergeCommands.push(
-    String.raw`run_if_changed "bunfig\.toml" "rm -Rf -- ${nodeModulesDirPaths.map(quoteForEvaluatedShell).join(' ')}"`
+    String.raw`if git diff -U0 ORIG_HEAD HEAD -- '*bunfig.toml' | grep --quiet -E '^[+-] *(globalStore|linker|publicHoistPattern)'; then rm -Rf -- ${nodeModulesDirPaths.map(quoteForEvaluatedShell).join(' ')}; fi`
   );
   // bun.lock-only merges (Renovate lockfile maintenance), bunfig.toml / .npmrc changes (linker,
   // registry, hoisting), and patch edits all change the installed tree without touching package.json.

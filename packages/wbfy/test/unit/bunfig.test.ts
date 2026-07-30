@@ -58,14 +58,14 @@ test('keeps Next.js dependencies inside the Turbopack filesystem root', async ()
 test('keeps a migrated .yarnrc.yml npmMinimalAgeGate across regenerations', async () => {
   const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-bunfig-')));
   try {
-    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), 'isolated', 172_800);
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), 'isolated', 172_800, true);
     await promisePool.promiseAll();
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).toContain('minimumReleaseAge = 172800');
 
     // A later run has no .yarnrc.yml to read anymore (removeYarnFiles deleted it), so the
     // repository's gate must survive via the existing bunfig.toml.
-    await generateBunfigToml(createConfig({ dirPath: tempDirPath }));
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), 'isolated', undefined, true);
     await promisePool.promiseAll();
     const regenerated = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(regenerated).toContain('minimumReleaseAge = 172800');
@@ -93,7 +93,7 @@ minimumReleaseAgeExcludes = [
 ]
 `
     );
-    await generateBunfigToml(createConfig({ dirPath: tempDirPath }));
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), 'isolated', undefined, true);
     await promisePool.promiseAll();
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).not.toContain('@next/eslint-plugin-next');

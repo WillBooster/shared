@@ -25,7 +25,7 @@ test('post-merge cache clearing covers workspace frameworks with workspace-relat
     const prepareScript = fs.readFileSync(path.join(tempDirPath, '.lefthook', 'post-merge', 'prepare.sh'), 'utf8');
     expect(prepareScript).toContain("bun install && rm -Rf -- 'apps/site/.next'");
     expect(prepareScript).toContain(
-      String.raw`run_if_changed "bunfig\.toml" "rm -Rf -- 'apps/site/node_modules' 'node_modules' 'packages/web/node_modules'"`
+      String.raw`if git diff -U0 ORIG_HEAD HEAD -- '*bunfig.toml' | grep --quiet -E '^[+-] *(globalStore|linker|publicHoistPattern)'; then rm -Rf -- 'apps/site/node_modules' 'node_modules' 'packages/web/node_modules'; fi`
     );
     expect(prepareScript).toContain(
       String.raw`run_if_changed "(bunfig\.toml|\.npmrc)" "rm -Rf -- 'packages/web/node_modules/.vite'"`
