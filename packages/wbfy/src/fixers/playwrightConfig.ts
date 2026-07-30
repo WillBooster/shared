@@ -31,6 +31,10 @@ interface FileHistoryEntry {
   commitPath: string;
   parentPath: string | undefined;
 }
+interface ExtractedCommand {
+  command: ParsedValue;
+  identifiers: Set<string>;
+}
 
 const literal = (value: string): ParsedValue => ({ kind: 'literal', value });
 const asArray = (value: ParsedValue[]): ParsedValue => ({ kind: 'array', value });
@@ -105,7 +109,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const defaultConfig = createDefaultConfig(config, shouldUseAppServerDefaults);
     const merged = mergeParsedObjects(defaultConfig, parsed);
     applyManagedUseDefaults(merged, defaultConfig);
-    await setWebServerCommand(merged, filePath);
+    await setWebServerCommand(merged, filePath, extractedObjectLiteral.source);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
     const oldContent = extractedObjectLiteral.source.text;
@@ -212,7 +216,11 @@ function getEnvFilePaths(dirPath: string): string[] {
   return envFilePaths;
 }
 
-async function setWebServerCommand(object: ParsedObject, filePath: string): Promise<void> {
+async function setWebServerCommand(
+  object: ParsedObject,
+  filePath: string,
+  currentSource: ast.SourceFile
+): Promise<void> {
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
 
@@ -222,7 +230,7 @@ async function setWebServerCommand(object: ParsedObject, filePath: string): Prom
   // commands; only add or migrate the command when wbfy already owns it.
   if (command && !isGeneratedWbStartTestCommand(command)) return;
 
-  const historicalCommand = command && (await findWbfyOverwrittenWebServerCommand(filePath, command));
+  const historicalCommand = command && (await findWbfyOverwrittenWebServerCommand(filePath, command, currentSource));
   if (historicalCommand) {
     webServer.value.properties.command = historicalCommand;
     return;
@@ -235,7 +243,8 @@ async function setWebServerCommand(object: ParsedObject, filePath: string): Prom
 
 async function findWbfyOverwrittenWebServerCommand(
   filePath: string,
-  currentCommand: ParsedValue
+  currentCommand: ParsedValue,
+  currentSource: ast.SourceFile
 ): Promise<ParsedValue | undefined> {
   try {
     const initialGit = simpleGit(path.dirname(filePath));
@@ -245,13 +254,14 @@ async function findWbfyOverwrittenWebServerCommand(
     // through a symlinked path (/var). Compare physical paths so history lookup stays repository-local.
     const relativeFilePath = path.relative(rootDirPath, fs.realpathSync(filePath));
     const git = simpleGit(rootDirPath);
-    const headCommand = extractWebServerCommand(await git.show([`HEAD:${relativeFilePath}`]));
+    const headCommand = extractWebServerCommand(await git.show([`HEAD:${relativeFilePath}`]))?.command;
     // An uncommitted switch to the standard server command is repository-owned, not historical
     // damage. Recover only when the working tree still matches the committed command.
     if (!headCommand || !areCommandsEqual(currentCommand, headCommand)) return undefined;
 
     const logOutput = await git.raw([
       'log',
+      '-z',
       '--follow',
       '--name-status',
       '--format=%x1e%H%x00%s',
@@ -263,14 +273,18 @@ async function findWbfyOverwrittenWebServerCommand(
 
       const commitCommand = extractWebServerCommand(await git.show([`${entry.commit}:${entry.commitPath}`]));
       const previousCommand = extractWebServerCommand(await git.show([`${entry.commit}^:${entry.parentPath}`]));
-      if (!commitCommand || !previousCommand || areCommandsEqual(commitCommand, previousCommand)) continue;
+      if (!commitCommand || !previousCommand || areCommandsEqual(commitCommand.command, previousCommand.command)) {
+        continue;
+      }
 
       // Only the latest command-changing transition can explain the current generated value. Older
       // wbfy overwrites are obsolete once a maintainer has deliberately changed the command again.
-      return isWbfyCommitSubject(entry.subject) &&
-        isGeneratedWbStartTestCommand(commitCommand) &&
-        !isGeneratedWbStartTestCommand(previousCommand)
-        ? previousCommand
+      if (!isWbfyCommitSubject(entry.subject) || !isGeneratedWbStartTestCommand(commitCommand.command)) {
+        return undefined;
+      }
+      if (isGeneratedWbStartTestCommand(previousCommand.command)) continue;
+      return areHistoricalIdentifiersAvailable(previousCommand.identifiers, currentSource)
+        ? previousCommand.command
         : undefined;
     }
   } catch {
@@ -284,13 +298,9 @@ function parseFileHistory(output: string): FileHistoryEntry[] {
     .split('\u001E')
     .slice(1)
     .flatMap((record): FileHistoryEntry[] => {
-      const [header = '', ...bodyLines] = record.trim().split('\n');
-      const [commit, subject] = header.split('\0', 2);
-      const statusLine = bodyLines.find((line) => /^[AMDRT]\d*\t/u.test(line));
-      if (!commit || subject === undefined || !statusLine) return [];
-
-      const [status, firstPath, secondPath] = statusLine.split('\t');
-      if (!status || !firstPath) return [];
+      const [commit, subject, rawStatus, firstPath, secondPath] = record.split('\0');
+      const status = rawStatus?.trimStart();
+      if (!commit || subject === undefined || !status || !firstPath) return [];
       if (status.startsWith('R')) {
         return secondPath ? [{ commit, subject, commitPath: secondPath, parentPath: firstPath }] : [];
       }
@@ -298,19 +308,65 @@ function parseFileHistory(output: string): FileHistoryEntry[] {
     });
 }
 
-function extractWebServerCommand(content: string): ParsedValue | undefined {
+function extractWebServerCommand(content: string): ExtractedCommand | undefined {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-playwright-history-'));
   const tempFilePath = path.resolve(tempDirPath, 'playwright.config.ts');
   try {
     fs.writeFileSync(tempFilePath, content);
     const extracted = extractDefineConfigObjectLiteral(tempFilePath);
     if (!extracted) return undefined;
-    const parsed = parseObjectLiteralExpression(extracted.node, extracted.source);
-    const webServer = parsed?.properties.webServer;
-    return webServer?.kind === 'object' ? webServer.value.properties.command : undefined;
+    const webServer = getObjectPropertyInitializer(extracted.node, 'webServer');
+    if (!webServer || !ast.isObjectLiteralExpression(webServer)) return undefined;
+    const commandExpression = getObjectPropertyInitializer(webServer, 'command');
+    const command = commandExpression && parseExpression(commandExpression, extracted.source);
+    return command ? { command, identifiers: collectReferencedIdentifiers(commandExpression) } : undefined;
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
+}
+
+function getObjectPropertyInitializer(
+  objectLiteral: ast.ObjectLiteralExpression,
+  propertyName: string
+): ast.Expression | undefined {
+  for (const property of objectLiteral.properties) {
+    if (
+      ast.isPropertyAssignment(property) &&
+      (ast.isIdentifier(property.name) || ast.isStringLiteral(property.name)) &&
+      property.name.text === propertyName
+    ) {
+      return property.initializer;
+    }
+  }
+  return undefined;
+}
+
+function collectReferencedIdentifiers(expression: ast.Expression): Set<string> {
+  const identifiers = new Set<string>();
+  const visit = (node: ast.Node): void => {
+    if (ast.isIdentifier(node)) {
+      identifiers.add(node.text);
+      return;
+    }
+    if (ast.isPropertyAccessExpression(node)) {
+      visit(node.expression);
+      return;
+    }
+    node.forEachChild(visit);
+  };
+  visit(expression);
+  return identifiers;
+}
+
+function areHistoricalIdentifiersAvailable(identifiers: Set<string>, currentSource: ast.SourceFile): boolean {
+  if (identifiers.size === 0) return true;
+  const currentIdentifiers = new Set<string>();
+  const visit = (node: ast.Node): void => {
+    if (ast.isIdentifier(node)) currentIdentifiers.add(node.text);
+    node.forEachChild(visit);
+  };
+  currentSource.forEachChild(visit);
+  return [...identifiers].every((identifier) => currentIdentifiers.has(identifier));
 }
 
 function areCommandsEqual(left: ParsedValue, right: ParsedValue): boolean {

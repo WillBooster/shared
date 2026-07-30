@@ -58,7 +58,7 @@ test.each(['chore: willboosterify this repo', 'chore: willboosterify this repo (
 
 test('restores an overwritten command in a nested workspace package', async () => {
   const dirPath = createGitRepository();
-  const packageDirPath = path.join(dirPath, 'packages', 'app');
+  const packageDirPath = path.join(dirPath, 'packages', '日本語');
   try {
     const customCommand = getCustomCommand('nested-app');
     commitConfig(packageDirPath, customCommand, 'test: add custom Playwright fixture');
@@ -69,6 +69,22 @@ test('restores an overwritten command in a nested workspace package', async () =
     expect(fs.readFileSync(path.join(packageDirPath, 'playwright.config.ts'), 'utf8')).toContain(
       `command: '${customCommand}'`
     );
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('continues through later wbfy-generated command migrations', async () => {
+  const dirPath = createGitRepository();
+  try {
+    const customCommand = getCustomCommand('migrated-app');
+    commitConfig(dirPath, customCommand, 'test: add custom Playwright fixture');
+    commitConfig(dirPath, 'yarn start-test-server', 'chore: willboosterify this repo');
+    commitConfig(dirPath, 'bun wb start --mode test', 'chore: willboosterify this repo');
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: '${customCommand}'`);
   } finally {
     fs.rmSync(dirPath, { force: true, recursive: true });
   }
@@ -90,6 +106,34 @@ test('follows a Playwright config moved after the overwrite', async () => {
     expect(fs.readFileSync(path.join(packageDirPath, 'playwright.config.ts'), 'utf8')).toContain(
       `command: '${customCommand}'`
     );
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('does not restore a command whose referenced identifier was renamed later', async () => {
+  const dirPath = createGitRepository();
+  try {
+    commitRawConfig(
+      dirPath,
+      createTemplateConfig('port', '`bun run next start test/e2e/next-app --port ${port}`'),
+      'test: add custom Playwright fixture'
+    );
+    commitRawConfig(
+      dirPath,
+      createTemplateConfig('port', "'bun wb start --mode test'"),
+      'chore: willboosterify this repo'
+    );
+    commitRawConfig(
+      dirPath,
+      createTemplateConfig('PORT', "'bun wb start --mode test'"),
+      'refactor: rename the port constant'
+    );
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: 'bun wb start --mode test'`);
+    expect(generated).not.toContain('${port}');
   } finally {
     fs.rmSync(dirPath, { force: true, recursive: true });
   }
@@ -121,6 +165,16 @@ function createGitRepository(): string {
 
 function commitConfig(dirPath: string, command: string, subject: string): void {
   writeConfig(dirPath, command);
+  commitPlaywrightConfig(dirPath, subject);
+}
+
+function commitRawConfig(dirPath: string, content: string, subject: string): void {
+  fs.mkdirSync(dirPath, { recursive: true });
+  fs.writeFileSync(path.join(dirPath, 'playwright.config.ts'), content);
+  commitPlaywrightConfig(dirPath, subject);
+}
+
+function commitPlaywrightConfig(dirPath: string, subject: string): void {
   const repositoryDirPath = findRepositoryDirPath(dirPath);
   git(repositoryDirPath, 'add', path.relative(repositoryDirPath, path.join(dirPath, 'playwright.config.ts')));
   git(repositoryDirPath, 'commit', '--quiet', '-m', subject);
@@ -134,6 +188,18 @@ function findRepositoryDirPath(dirPath: string): string {
 
 function getCustomCommand(appDirName: string): string {
   return `bun run build && bun run next build test/e2e/${appDirName} && bun run next start test/e2e/${appDirName}`;
+}
+
+function createTemplateConfig(constantName: string, commandExpression: string): string {
+  return `import { defineConfig } from '@playwright/test';
+const ${constantName} = 3010;
+export default defineConfig({
+  webServer: {
+    command: ${commandExpression},
+    url: \`http://127.0.0.1:\${${constantName}}\`,
+  },
+});
+`;
 }
 
 async function fixAndReadConfig(dirPath: string): Promise<string> {
