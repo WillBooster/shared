@@ -269,6 +269,15 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     if (rootConfig.cargoTomlDirPaths.length > 0) {
       mandatoryKinds.push('test-rust');
     }
+    // A previous run may have mistaken a gitignored third-party checkout for repository Rust code.
+    // Remove only the generated-style caller: a same-named custom workflow with any other job stays.
+    if (rootConfig.cargoTomlDirPaths.length === 0) {
+      const testRustFileName = fileNamesByKind.get('test-rust');
+      if (testRustFileName && jobsAllCallReusableWorkflow(workflowsPath, testRustFileName, 'test-rust')) {
+        fileNamesByKind.delete('test-rust');
+        await fsUtil.removeConfined(path.join(workflowsPath, testRustFileName));
+      }
+    }
     // The self-applying nightly wbfy caller is retired: automated fleet maintenance is driven by
     // developers and agents running wbfy directly instead. An existing generated caller is
     // removed (only when the file solely calls the reusable wbfy workflow — a same-named custom
@@ -378,7 +387,7 @@ async function writeWorkflowYaml(
     ? 'deploy-production.yml'
     : undefined;
 
-  // A test-rust.yml in a repo without Rust code is a custom workflow that merely shares the name; leave it alone.
+  // A non-generated test-rust.yml in a repo without Rust code merely shares the name; leave it alone.
   if (kind === 'test-rust' && config.cargoTomlDirPaths.length === 0) return;
 
   let newSettings = structuredClone(kind in workflows ? workflows[kind as keyof typeof workflows] : {}) as Workflow;

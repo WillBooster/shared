@@ -4,7 +4,9 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
+import { generateWorkflows } from '../../src/generators/workflow.js';
 import { getPackageConfig } from '../../src/packageConfig.js';
+import { promisePool } from '../../src/utils/promisePool.js';
 
 // Regression test for the direct workspace-child invocation (`wbfy <repo>/packages/<app>`):
 // the entry keeps its child classification, but repository visibility must still be fetched
@@ -37,6 +39,37 @@ test('accepts Cargo-only Tauri projects without a package.json', async () => {
     expect(config).toBeDefined();
     expect(config?.doesContainTauriConfig).toBe(true);
     expect(config?.depending.tauri).toBe(true);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('removes a generated Rust workflow based only on a cached Cargo project', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    const workflowsDirPath = path.join(packageDirPath, '.github', 'workflows');
+    fs.mkdirSync(path.join(packageDirPath, '.cache', 'clap-rs__clap'), { recursive: true });
+    fs.mkdirSync(workflowsDirPath, { recursive: true });
+    fs.writeFileSync(path.join(packageDirPath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(packageDirPath, '.cache', 'clap-rs__clap', 'Cargo.toml'), '');
+    fs.writeFileSync(
+      path.join(workflowsDirPath, 'test-rust.yml'),
+      `name: Test Rust
+on: push
+jobs:
+  test-rust:
+    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main
+`
+    );
+
+    const config = await getPackageConfig(packageDirPath);
+    if (!config) throw new Error('unreachable');
+    expect(config?.cargoTomlDirPaths).toEqual([]);
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+    expect(fs.existsSync(path.join(workflowsDirPath, 'test-rust.yml'))).toBe(false);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
