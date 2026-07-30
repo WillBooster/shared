@@ -219,7 +219,9 @@ function setWebServerCommand(object: ParsedObject): void {
 
 function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
   if (command.kind !== 'literal') return false;
-  return /^(['"`])(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+wb[ \t]+start[ \t]+--mode(?:=|[ \t]+)test\1$/u.test(
+  // Match only commands emitted by past wbfy versions. A broader command-shaped regex could
+  // overwrite a repository's deliberate wrapper while trying to recognize generated content.
+  return /^'(?:(?:bun|yarn) (?:wb start --mode test|start-test-server)|wb start --mode test)'$/u.test(
     command.value.trim()
   );
 }

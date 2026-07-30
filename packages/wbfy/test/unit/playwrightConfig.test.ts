@@ -21,16 +21,19 @@ test('preserves a custom Playwright web server lifecycle', async () => {
   expect(generated).toContain(`command: '${customCommand}'`);
 });
 
-test('migrates a legacy wbfy-managed Playwright web server command', async () => {
-  const generated = await fixConfig(`export default defineConfig({
+test.each(['wb start --mode test', 'yarn wb start --mode test', 'bun start-test-server', 'yarn start-test-server'])(
+  'migrates the legacy wbfy-managed Playwright web server command %s',
+  async (command) => {
+    const generated = await fixConfig(`export default defineConfig({
   webServer: {
-    command: 'yarn wb start --mode test',
+    command: '${command}',
     url: 'http://127.0.0.1:3010',
   },
 });`);
 
-  expect(generated).toContain(`command: 'bun wb start --mode test'`);
-});
+    expect(generated).toContain(`command: 'bun wb start --mode test'`);
+  }
+);
 
 async function fixConfig(content: string): Promise<string> {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-playwright-config-'));
