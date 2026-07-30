@@ -208,10 +208,24 @@ function setWebServerCommand(object: ParsedObject): void {
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
 
-  // wb owns the canonical test-server startup path; keep custom Playwright
-  // server settings while normalizing the command itself. Invoke wb through the
-  // package manager because target repos install wb as a package dependency.
+  const command = webServer.value.properties.command;
+  // Libraries can use Playwright's webServer to build and launch a fixture even though `wb start`
+  // intentionally has no test server for the library itself. Preserve those custom lifecycle
+  // commands; only add or migrate the command when wbfy already owns it.
+  if (command && !isGeneratedWbStartTestCommand(command)) return;
+
+  // Playwright requires `command` whenever `webServer` exists; an externally managed server should
+  // omit `webServer` instead. Keep filling this required field when a partial managed block lacks it.
   webServer.value.properties.command = literal(getWbStartTestCommand());
+}
+
+function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
+  if (command.kind !== 'literal') return false;
+  // Match only commands emitted by past wbfy versions. A broader command-shaped regex could
+  // overwrite a repository's deliberate wrapper while trying to recognize generated content.
+  return /^'(?:(?:bun|yarn) (?:wb start --mode test|start-test-server)|wb start --mode test)'$/u.test(
+    command.value.trim()
+  );
 }
 
 function getWbStartTestCommand(): string {
