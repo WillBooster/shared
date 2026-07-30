@@ -18,7 +18,7 @@ import { removeEnvFiles } from './fixers/envFiles.js';
 import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import type { BunLinker } from './generators/bunfig.js';
-import { generateBunfigToml, readBunGlobalStore, readBunLinker } from './generators/bunfig.js';
+import { generateBunfigToml, readBunGlobalStore, readBunLinker, shouldUseBunGlobalStore } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateFnoxToml } from './generators/fnoxToml.js';
@@ -252,8 +252,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     const previousBunGlobalStore = readBunGlobalStore(rootDirPath);
     // Root-level install layout must cover workspace apps too: Next.js commonly lives under
     // packages/* or apps/* while bunfig.toml exists only at the repository root.
-    const doesContainNext = allPackageConfigs.some((config) => config.depending.next);
-    const useGlobalStore = skipDeps ? (previousBunGlobalStore ?? !doesContainNext) : !doesContainNext;
+    const defaultUseGlobalStore = shouldUseBunGlobalStore(allPackageConfigs);
+    const useGlobalStore = skipDeps ? (previousBunGlobalStore ?? defaultUseGlobalStore) : defaultUseGlobalStore;
     // Read BEFORE removeYarnFiles deletes .yarnrc.yml: the generated bunfig.toml keeps the
     // repository's release-age gate (npmMinimalAgeGate). npmPreapprovedPackages is dropped —
     // minimumReleaseAgeExcludes is org policy managed solely by bunMinimumReleaseAgeExcludes.

@@ -4,7 +4,12 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { extractRawTestSections, generateBunfigToml, readBunGlobalStore } from '../../src/generators/bunfig.js';
+import {
+  extractRawTestSections,
+  generateBunfigToml,
+  readBunGlobalStore,
+  shouldUseBunGlobalStore,
+} from '../../src/generators/bunfig.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -35,6 +40,16 @@ preload = ["./test/unit/preloadDbClient.ts"]
 test('returns an empty string when there is no [test] section', () => {
   expect(extractRawTestSections(undefined)).toBe('');
   expect(extractRawTestSections('env = false\n\n[install]\nexact = true\n')).toBe('');
+});
+
+test('keeps Next.js and Blitz dependencies inside the project', () => {
+  expect(shouldUseBunGlobalStore([createConfig()])).toBe(true);
+  expect(
+    shouldUseBunGlobalStore([createConfig(), createConfig({ depending: { ...createConfig().depending, next: true } })])
+  ).toBe(false);
+  expect(
+    shouldUseBunGlobalStore([createConfig(), createConfig({ depending: { ...createConfig().depending, blitz: true } })])
+  ).toBe(false);
 });
 
 test('keeps Next.js dependencies inside the Turbopack filesystem root', async () => {

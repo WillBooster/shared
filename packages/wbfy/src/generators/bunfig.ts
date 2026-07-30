@@ -174,6 +174,12 @@ export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
 }
 
+export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
+  // Blitz builds on Next.js but need not declare it directly, and its codegen also patches Next
+  // inside node_modules. Both frameworks therefore require project-local isolated installs.
+  return !configs.some((config) => config.depending.next || config.depending.blitz);
+}
+
 export async function generateBunfigToml(
   config: PackageConfig,
   linker: BunLinker,
