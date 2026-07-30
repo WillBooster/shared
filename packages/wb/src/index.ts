@@ -44,11 +44,15 @@ await yargs(hideBin(process.argv))
       process.chdir(dirPath);
     }
 
-    if (process.env.PATH?.includes('/bun-node-')) {
+    // Warn only when a shim actually wins `node` resolution: oven/bun images append a harmless
+    // /usr/local/bun-node-fallback-bin (node -> bun) at the END of PATH, so a PATH substring
+    // check false-positives whenever a real node precedes it.
+    const nodeOnPath = findFirstNodeOnPath();
+    if (nodeOnPath && isBunNodeShim(nodeOnPath)) {
       // Not fixed up here: tools requiring real Node.js (Playwright, wrangler, vinext) may hang or
       // crash under the shim, and some (wrangler dev) fail silently, so surface the cause upfront.
       console.warn(
-        "Warning: PATH contains a bun-node shim (from `bun --bun` or bunfig's `run.bun`); " +
+        `Warning: \`node\` on PATH is a Bun shim (${nodeOnPath}); ` +
           'run wb without `--bun` and remove `[run] bun` from bunfig.toml.'
       );
     }
@@ -84,6 +88,38 @@ await yargs(hideBin(process.argv))
   .strict()
   .version(getVersion())
   .help().argv;
+
+/** The first executable `node` on PATH, i.e. the one child processes will run. */
+function findFirstNodeOnPath(): string | undefined {
+  for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+    if (!dir) continue;
+
+    const nodePath = path.join(dir, 'node');
+    try {
+      fs.accessSync(nodePath, fs.constants.X_OK);
+      // X_OK also passes for searchable directories, which execvp skips.
+      if (fs.statSync(nodePath).isFile()) return nodePath;
+    } catch {
+      // Not present or not executable in this directory; keep searching.
+    }
+  }
+  return undefined;
+}
+
+function isBunNodeShim(nodePath: string): boolean {
+  // `bun --bun` and bunfig's `run.bun` prepend a bun-node-<version> directory whose `node` links
+  // to bun, and oven/bun images symlink node -> bun in bun-node-fallback-bin, so the giveaway is
+  // either a bun-node- path segment or a resolution to the bun binary itself.
+  // Shims live directly in a bun-node-<version> directory, so check only the immediate parent
+  // (relative PATH entries included): matching ancestors would false-positive on e.g. a real node
+  // inside a bun-node-workspace checkout.
+  if (path.basename(path.dirname(nodePath)).startsWith('bun-node-')) return true;
+  try {
+    return path.basename(fs.realpathSync(nodePath)) === 'bun';
+  } catch {
+    return false;
+  }
+}
 
 function getVersion(): string {
   let packageJsonDir = path.dirname(new URL(import.meta.url).pathname);

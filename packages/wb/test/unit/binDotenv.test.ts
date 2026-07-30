@@ -451,15 +451,43 @@ describe('bin/index.js run command', () => {
     expect(result.status).toBe(0);
   });
 
-  it('warns when a Bun node shim is present on PATH', async () => {
+  it('warns when a bun-node shim wins node resolution on PATH', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
+    // The shim delegates to the current runtime so child processes still work under the test.
+    const shimDirPath = path.join(projectDirPath, 'bun-node-review');
+    await fs.mkdir(shimDirPath);
+    await fs.writeFile(path.join(shimDirPath, 'node'), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, { mode: 0o755 });
 
     const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
       cwd: projectDirPath,
       encoding: 'utf8',
-      env: { PATH: `/tmp/bun-node-review:${process.env.PATH}` },
+      env: { PATH: `${shimDirPath}:${process.env.PATH}` },
     });
-    expect(result.stderr).toContain('Warning: PATH contains a bun-node shim');
+    expect(result.stderr).toContain('is a Bun shim');
+    expect(result.stdout).toContain('executed');
+    expect(result.status).toBe(0);
+  });
+
+  it('does not warn about a trailing bun-node fallback that loses node resolution', async () => {
+    // oven/bun images append bun-node-fallback-bin (node -> bun) at the END of PATH; while a real
+    // node precedes it, wb must stay silent instead of telling users to remove a `[run] bun`
+    // setting they do not have.
+    await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
+    const realNodeDirPath = path.join(projectDirPath, 'real-node-bin');
+    await fs.mkdir(realNodeDirPath);
+    await fs.writeFile(path.join(realNodeDirPath, 'node'), `#!/bin/sh\nexec "${process.execPath}" "$@"\n`, {
+      mode: 0o755,
+    });
+    const fallbackDirPath = path.join(projectDirPath, 'bun-node-fallback-bin');
+    await fs.mkdir(fallbackDirPath);
+    await fs.symlink(process.execPath, path.join(fallbackDirPath, 'node'));
+
+    const result = childProcess.spawnSync(process.execPath, [binIndexPath, 'run', '--quiet-env', 'probe.js'], {
+      cwd: projectDirPath,
+      encoding: 'utf8',
+      env: { PATH: `${realNodeDirPath}:${process.env.PATH}:${fallbackDirPath}` },
+    });
+    expect(result.stderr).not.toContain('Bun shim');
     expect(result.stdout).toContain('executed');
     expect(result.status).toBe(0);
   });
