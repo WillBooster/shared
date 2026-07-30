@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { simpleGit } from 'simple-git';
 import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
@@ -97,7 +98,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const defaultConfig = createDefaultConfig(config, shouldUseAppServerDefaults);
     const merged = mergeParsedObjects(defaultConfig, parsed);
     applyManagedUseDefaults(merged, defaultConfig);
-    setWebServerCommand(merged);
+    await setWebServerCommand(merged, filePath);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
     const oldContent = extractedObjectLiteral.source.text;
@@ -204,7 +205,7 @@ function getEnvFilePaths(dirPath: string): string[] {
   return envFilePaths;
 }
 
-function setWebServerCommand(object: ParsedObject): void {
+async function setWebServerCommand(object: ParsedObject, filePath: string): Promise<void> {
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
 
@@ -214,9 +215,60 @@ function setWebServerCommand(object: ParsedObject): void {
   // commands; only add or migrate the command when wbfy already owns it.
   if (command && !isGeneratedWbStartTestCommand(command)) return;
 
+  const historicalCommand = command && (await findWbfyOverwrittenWebServerCommand(filePath));
+  if (historicalCommand) {
+    webServer.value.properties.command = historicalCommand;
+    return;
+  }
+
   // Playwright requires `command` whenever `webServer` exists; an externally managed server should
   // omit `webServer` instead. Keep filling this required field when a partial managed block lacks it.
   webServer.value.properties.command = literal(getWbStartTestCommand());
+}
+
+async function findWbfyOverwrittenWebServerCommand(filePath: string): Promise<ParsedValue | undefined> {
+  try {
+    const git = simpleGit(path.dirname(filePath));
+    const rootDirOutput = await git.revparse(['--show-toplevel']);
+    const rootDirPath = rootDirOutput.trim();
+    // Git reports canonical paths on macOS (/private/var), while callers can reach the same file
+    // through a symlinked path (/var). Compare physical paths so history lookup stays repository-local.
+    const relativeFilePath = path.relative(rootDirPath, fs.realpathSync(filePath));
+    const logOutput = await git.raw(['log', '--format=%H', '--follow', '--', relativeFilePath]);
+    const commits = logOutput.trim().split('\n').filter(Boolean);
+
+    for (const commit of commits) {
+      const subjectOutput = await git.raw(['show', '-s', '--format=%s', commit]);
+      const subject = subjectOutput.trim();
+      if (subject !== 'chore: willboosterify this repo') continue;
+
+      const generatedCommand = extractWebServerCommand(await git.show([`${commit}:${relativeFilePath}`]), rootDirPath);
+      if (!generatedCommand || !isGeneratedWbStartTestCommand(generatedCommand)) continue;
+
+      const previousCommand = extractWebServerCommand(await git.show([`${commit}^:${relativeFilePath}`]), rootDirPath);
+      if (previousCommand && !isGeneratedWbStartTestCommand(previousCommand)) return previousCommand;
+    }
+  } catch {
+    // Repositories without usable Git history still receive the canonical generated command below.
+  }
+  return undefined;
+}
+
+function extractWebServerCommand(content: string, rootDirPath: string): ParsedValue | undefined {
+  const tempRootDirPath = path.resolve(rootDirPath, '.tmp');
+  fs.mkdirSync(tempRootDirPath, { recursive: true });
+  const tempDirPath = fs.mkdtempSync(path.resolve(tempRootDirPath, 'wbfy-playwright-history-'));
+  const tempFilePath = path.resolve(tempDirPath, 'playwright.config.ts');
+  try {
+    fs.writeFileSync(tempFilePath, content);
+    const extracted = extractDefineConfigObjectLiteral(tempFilePath);
+    if (!extracted) return undefined;
+    const parsed = parseObjectLiteralExpression(extracted.node, extracted.source);
+    const webServer = parsed?.properties.webServer;
+    return webServer?.kind === 'object' ? webServer.value.properties.command : undefined;
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
 }
 
 function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
