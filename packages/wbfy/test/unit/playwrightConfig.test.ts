@@ -224,6 +224,117 @@ ${helper}export default defineConfig({
   }
 });
 
+test('does not restore an expression whose free binding only survives in an inner block', async () => {
+  const dirPath = createGitRepository();
+  try {
+    commitRawConfig(
+      dirPath,
+      `import { defineConfig } from '@playwright/test';
+const suffix = 'app';
+export default defineConfig({
+  webServer: {
+    command: (() => {
+      { const suffix = 'shadow'; console.log(suffix); }
+      return \`bun run next start test/e2e/\${suffix}\`;
+    })(),
+    url: 'http://127.0.0.1:3010',
+  },
+});
+`,
+      'test: add a scoped Playwright command'
+    );
+    commitConfig(dirPath, 'bun wb start --mode test', 'chore: willboosterify this repo');
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: 'bun wb start --mode test'`);
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('restores an expression using a TypeScript import-equals binding', async () => {
+  const dirPath = createGitRepository();
+  const importLine = `import path = require('node:path');\n`;
+  try {
+    commitRawConfig(
+      dirPath,
+      `${importLine}import { defineConfig } from '@playwright/test';
+export default defineConfig({
+  webServer: {
+    command: path.join('bun run next start', 'test/e2e/app'),
+    url: 'http://127.0.0.1:3010',
+  },
+});
+`,
+      'test: add an import-equals Playwright command'
+    );
+    commitRawConfig(
+      dirPath,
+      `${importLine}import { defineConfig } from '@playwright/test';
+export default defineConfig({
+  webServer: {
+    command: 'bun wb start --mode test',
+    url: 'http://127.0.0.1:3010',
+  },
+});
+`,
+      'chore: willboosterify this repo'
+    );
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: path.join('bun run next start', 'test/e2e/app')`);
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('restores a shorthand command property', async () => {
+  const dirPath = createGitRepository();
+  const declaration = `const command = 'bun run custom-fixture';\n`;
+  try {
+    commitRawConfig(
+      dirPath,
+      `import { defineConfig } from '@playwright/test';
+${declaration}export default defineConfig({
+  webServer: { command, url: 'http://127.0.0.1:3010' },
+});
+`,
+      'test: add a shorthand Playwright command'
+    );
+    commitRawConfig(
+      dirPath,
+      `import { defineConfig } from '@playwright/test';
+${declaration}export default defineConfig({
+  webServer: { command: 'bun wb start --mode test', url: 'http://127.0.0.1:3010' },
+});
+`,
+      'chore: willboosterify this repo'
+    );
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain('command: command');
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('does not recover over an uncommitted command change', async () => {
+  const dirPath = createGitRepository();
+  try {
+    commitConfig(dirPath, getCustomCommand('uncommitted-app'), 'test: add custom Playwright fixture');
+    writeConfig(dirPath, 'bun wb start --mode test');
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: 'bun wb start --mode test'`);
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
 test('does not restore an obsolete overwrite after a deliberate command transition', async () => {
   const dirPath = createGitRepository();
   try {

@@ -254,7 +254,14 @@ async function findWbfyOverwrittenWebServerCommand(
     // through a symlinked path (/var). Compare physical paths so history lookup stays repository-local.
     const relativeFilePath = path.relative(rootDirPath, fs.realpathSync(filePath));
     const git = simpleGit(rootDirPath);
-    const headCommand = extractWebServerCommand(await git.show([`HEAD:${relativeFilePath}`]))?.command;
+    const extractedCommandCache = new Map<string, ExtractedCommand | undefined>();
+    const extractCommand = (content: string): ExtractedCommand | undefined => {
+      if (extractedCommandCache.has(content)) return extractedCommandCache.get(content);
+      const extracted = extractWebServerCommand(content);
+      extractedCommandCache.set(content, extracted);
+      return extracted;
+    };
+    const headCommand = extractCommand(await git.show([`HEAD:${relativeFilePath}`]))?.command;
     // An uncommitted switch to the standard server command is repository-owned, not historical
     // damage. Recover only when the working tree still matches the committed command.
     if (!headCommand || !areCommandsEqual(currentCommand, headCommand)) return undefined;
@@ -268,11 +275,15 @@ async function findWbfyOverwrittenWebServerCommand(
       '--',
       relativeFilePath,
     ]);
-    for (const entry of parseFileHistory(logOutput)) {
+    const history = parseFileHistory(logOutput);
+    // Recovery is a one-time migration for recently overwritten configs. Bound the fallback scan so
+    // a long-lived generated config cannot add unbounded TypeScript parses to every wbfy invocation.
+    if (history.length > maxPlaywrightHistoryEntries) return undefined;
+    for (const entry of history) {
       if (!entry.parentPath) return undefined;
 
-      const commitCommand = extractWebServerCommand(await git.show([`${entry.commit}:${entry.commitPath}`]));
-      const previousCommand = extractWebServerCommand(await git.show([`${entry.commit}^:${entry.parentPath}`]));
+      const commitCommand = extractCommand(await git.show([`${entry.commit}:${entry.commitPath}`]));
+      const previousCommand = extractCommand(await git.show([`${entry.commit}^:${entry.parentPath}`]));
       if (!commitCommand || !previousCommand) return undefined;
       if (areCommandsEqual(commitCommand.command, previousCommand.command)) continue;
 
@@ -329,6 +340,13 @@ function getObjectPropertyInitializer(
 ): ast.Expression | undefined {
   for (const property of objectLiteral.properties) {
     if (
+      ast.isShorthandPropertyAssignment(property) &&
+      ast.isIdentifier(property.name) &&
+      property.name.text === propertyName
+    ) {
+      return property.name;
+    }
+    if (
       ast.isPropertyAssignment(property) &&
       (ast.isIdentifier(property.name) || ast.isStringLiteral(property.name)) &&
       property.name.text === propertyName
@@ -360,6 +378,12 @@ function collectReferencedIdentifiers(expression: ast.Expression): Set<string> {
       if (node.initializer) visit(node.initializer, boundIdentifiers);
       return;
     }
+    if (ast.isBlock(node)) {
+      const blockBindings = new Set(boundIdentifiers);
+      for (const statement of node.statements) collectStatementBindings(statement, blockBindings);
+      for (const statement of node.statements) visit(statement, blockBindings);
+      return;
+    }
     if (ast.isArrowFunction(node)) {
       const functionBindings = new Set(boundIdentifiers);
       for (const parameter of node.parameters) collectBindingName(parameter.name, functionBindings);
@@ -385,6 +409,21 @@ function collectReferencedIdentifiers(expression: ast.Expression): Set<string> {
   return identifiers;
 }
 
+function collectStatementBindings(statement: ast.Statement, bindings: Set<string>): void {
+  if (ast.isVariableStatement(statement)) {
+    for (const declaration of statement.declarationList.declarations) {
+      collectBindingName(declaration.name, bindings);
+    }
+    return;
+  }
+  if (
+    (ast.isFunctionDeclaration(statement) || ast.isClassDeclaration(statement) || ast.isEnumDeclaration(statement)) &&
+    statement.name
+  ) {
+    bindings.add(statement.name.text);
+  }
+}
+
 function areHistoricalIdentifiersAvailable(identifiers: Set<string>, currentSource: ast.SourceFile): boolean {
   if (identifiers.size === 0) return true;
   const availableIdentifiers = collectTopLevelValueBindings(currentSource);
@@ -406,6 +445,10 @@ function collectTopLevelValueBindings(source: ast.SourceFile): Set<string> {
       (ast.isFunctionDeclaration(statement) || ast.isClassDeclaration(statement) || ast.isEnumDeclaration(statement)) &&
       statement.name
     ) {
+      bindings.add(statement.name.text);
+      continue;
+    }
+    if (ast.isImportEqualsDeclaration(statement)) {
       bindings.add(statement.name.text);
       continue;
     }
@@ -485,6 +528,7 @@ const knownRuntimeGlobals = new Set([
   'setTimeout',
   'undefined',
 ]);
+const maxPlaywrightHistoryEntries = 100;
 
 function getWbStartTestCommand(): string {
   return `'bun wb start --mode test'`;
