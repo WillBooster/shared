@@ -1087,10 +1087,11 @@ test('adds no publishConfig in a private repository', async () => {
   expect(packageJson.publishConfig).toBeUndefined();
 });
 
-test('strips `bun --bun` from user-authored scripts invoking Node-based tools', async () => {
+test('strips `bun --bun` only from command-position invocations of Node-based tools', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: {
+        // Node-based tool invocations lose `--bun`.
         build: 'bun --bun next build',
         dev: 'bun --bun next dev',
         start: 'bun --bun next start && bun --bun wrangler tail',
@@ -1099,6 +1100,23 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
         'quoted-executable': '"bun" --bun next build',
         multiline: 'bun --bun next build\nbun --bun wrangler tail',
         'env-prefix': 'NODE_ENV=production bun --bun next build',
+        // Direct script-file executions keep `--bun`.
+        'file-exec': 'exec bun --bun src/index.ts',
+        'file-chained': 'bun --bun src/index.ts;echo done',
+        'file-quoted': 'bun --bun "src/index.ts"',
+        'file-spaced-path': 'bun --bun "src/my script.ts"',
+        'file-runtime-flags': 'bun --bun --smol src/index.ts',
+        'file-variable': 'bun --bun "$ENTRYPOINT"',
+        'file-run-file': 'bun --bun run ./src/index.ts',
+        'file-extensionless': 'bun --bun ./scripts/server',
+        'file-bare-file': 'bun --bun server',
+        'file-run-missing': 'bun --bun run server',
+        'file-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
+        'file-flag-value': 'bun --bun --cwd packages/app src/index.ts',
+        // `bun --bun` outside a command position is data, not a command.
+        'echo-literal': 'echo "bun --bun next build"',
+        'nested-literal': `node -e 'console.log("use bun --bun next")'`,
+        'other-tool': 'my-bun --bun next build',
       },
     },
     {}
@@ -1113,59 +1131,18 @@ test('strips `bun --bun` from user-authored scripts invoking Node-based tools', 
     'quoted-executable': '"bun" next build',
     multiline: 'bun next build\nbun wrangler tail',
     'env-prefix': 'NODE_ENV=production bun next build',
-  });
-});
-
-test('keeps `bun --bun` on direct script-file executions', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        start: 'exec bun --bun src/index.ts',
-        'start-chained': 'bun --bun src/index.ts;echo done',
-        'start-quoted': 'bun --bun "src/index.ts"',
-        'start-spaced-path': 'bun --bun "src/my script.ts"',
-        'start-runtime-flags': 'bun --bun --smol src/index.ts',
-        'start-variable': 'bun --bun "$ENTRYPOINT"',
-        'start-run-file': 'bun --bun run ./src/index.ts',
-        'start-extensionless': 'bun --bun ./scripts/server',
-        'start-bare-file': 'bun --bun server',
-        'start-run-missing': 'bun --bun run server',
-        'start-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
-        'start-flag-value': 'bun --bun --cwd packages/app src/index.ts',
-      },
-    },
-    {}
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    start: 'exec bun --bun src/index.ts',
-    'start-chained': 'bun --bun src/index.ts;echo done',
-    'start-quoted': 'bun --bun "src/index.ts"',
-    'start-spaced-path': 'bun --bun "src/my script.ts"',
-    'start-runtime-flags': 'bun --bun --smol src/index.ts',
-    'start-variable': 'bun --bun "$ENTRYPOINT"',
-    'start-run-file': 'bun --bun run ./src/index.ts',
-    'start-extensionless': 'bun --bun ./scripts/server',
-    'start-bare-file': 'bun --bun server',
-    'start-run-missing': 'bun --bun run server',
-    'start-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
-    'start-flag-value': 'bun --bun --cwd packages/app src/index.ts',
-  });
-});
-
-test('does not rewrite `bun --bun` outside a command position', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        'echo-literal': 'echo "bun --bun next build"',
-        'nested-literal': `node -e 'console.log("use bun --bun next")'`,
-        'other-tool': 'my-bun --bun next build',
-      },
-    },
-    {}
-  );
-
-  expect(packageJson.scripts).toMatchObject({
+    'file-exec': 'exec bun --bun src/index.ts',
+    'file-chained': 'bun --bun src/index.ts;echo done',
+    'file-quoted': 'bun --bun "src/index.ts"',
+    'file-spaced-path': 'bun --bun "src/my script.ts"',
+    'file-runtime-flags': 'bun --bun --smol src/index.ts',
+    'file-variable': 'bun --bun "$ENTRYPOINT"',
+    'file-run-file': 'bun --bun run ./src/index.ts',
+    'file-extensionless': 'bun --bun ./scripts/server',
+    'file-bare-file': 'bun --bun server',
+    'file-run-missing': 'bun --bun run server',
+    'file-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
+    'file-flag-value': 'bun --bun --cwd packages/app src/index.ts',
     'echo-literal': 'echo "bun --bun next build"',
     'nested-literal': `node -e 'console.log("use bun --bun next")'`,
     'other-tool': 'my-bun --bun next build',
