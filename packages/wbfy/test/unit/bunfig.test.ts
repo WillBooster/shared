@@ -4,7 +4,12 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { extractRawTestSections, generateBunfigToml, shouldUseBunGlobalStore } from '../../src/generators/bunfig.js';
+import {
+  extractRawTestSections,
+  generateBunfigToml,
+  readBunGlobalStore,
+  shouldUseBunGlobalStore,
+} from '../../src/generators/bunfig.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -59,6 +64,7 @@ test('keeps Next.js dependencies inside the Turbopack filesystem root', async ()
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(content).toContain('# Keep Turbopack dependencies inside the project root.\nglobalStore = false');
     expect(content).toContain('linker = "isolated"');
+    expect(readBunGlobalStore(tempDirPath)).toBe(false);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

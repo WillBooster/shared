@@ -86,9 +86,8 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
         // configuration — and via the containment guard so a symlinked .gemini directory can
         // never make cleanup delete files outside the repository.
         // Announce the removal of a git-tracked file (removeConfined itself logs only skips and
-        // returns true even for a nonexistent path), matching the convention of other wbfy
-        // removals (e.g. fixers/envExample.ts). lstat (not existsSync) keeps a dangling-symlink
-        // config.yml in scope for removal.
+        // returns true even for a nonexistent path). lstat (not existsSync) keeps a
+        // dangling-symlink config.yml in scope for removal.
         const legacyExists = !!(await fs.promises.lstat(legacyConfigFilePath).catch(() => {}));
         if (
           (await fsUtil.generateFile(configFilePath, yamlContent)) &&

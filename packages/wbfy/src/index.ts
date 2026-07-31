@@ -14,7 +14,7 @@ import { fixTypos } from './fixers/typos.js';
 import { untrackCloudflareEnv } from './fixers/cloudflareEnv.js';
 import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
-import { generateBunfigToml, shouldUseBunGlobalStore } from './generators/bunfig.js';
+import { generateBunfigToml, readBunGlobalStore, shouldUseBunGlobalStore } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateFnoxToml } from './generators/fnoxToml.js';
@@ -25,7 +25,7 @@ import { generateGitignore } from './generators/gitignore.js';
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
-import { generatePackageJson } from './generators/packageJson.js';
+import { generatePackageJson, getWorkspacePackageDirs } from './generators/packageJson.js';
 import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
@@ -105,8 +105,8 @@ async function main(): Promise<void> {
 }
 
 async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: boolean): Promise<boolean> {
-  // wbfy rewrites repositories to the Bun + mise toolchain and runs `bun add` / `bun install`;
-  // proceeding without Bun would delete Yarn state and then fail to produce a Bun lockfile.
+  // wbfy manages repositories through Bun + mise and runs `bun add` / `bun install`;
+  // proceeding without Bun cannot produce or validate the managed lockfile.
   // The version floor matters too: older Bun silently ignores the generated bunfig.toml options
   // (globalStore, publicHoistPattern) and would validate a different install layout than the one
   // repositories get once mise upgrades them. It stays unconditional even though the already-applied
@@ -216,6 +216,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     }
     assertSafeDependencySources(allPackageConfigs);
     // Managed repositories use Bun with mise (and optionally fnox).
+    const previousBunGlobalStore = readBunGlobalStore(rootDirPath);
     // Root-level install layout must cover workspace apps too: Next.js commonly lives under
     // packages/* or apps/* while bunfig.toml exists only at the repository root.
     const useGlobalStore = shouldUseBunGlobalStore(allPackageConfigs);
@@ -230,7 +231,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // The layout must be verified installable BEFORE any `bun add` mutates package.json files:
     // per-package installs tolerate failures (spawnSync discards their status), so a layout that
     // cannot install would silently drop every managed dependency update for the rest of the run.
-    if (!skipDeps && !probeIsolatedBunInstall(rootDirPath)) {
+    if (!skipDeps && !probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore)) {
       // refreshBunLock below is the authority on whether the final install failed.
       console.warn(`bun install currently fails in ${rootDirPath} under the isolated linker.`);
     }
@@ -366,12 +367,42 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
  * repository or in wbfy's managed lists, never by switching the linker. Returns false when the
  * install fails.
  */
-function probeIsolatedBunInstall(rootDirPath: string): boolean {
+function probeIsolatedBunInstall(
+  rootDirPath: string,
+  rootConfig: PackageConfig,
+  previousGlobalStore: boolean | undefined,
+  useGlobalStore: boolean
+): boolean {
+  if (previousGlobalStore !== useGlobalStore) {
+    removeNodeModules(rootDirPath, rootConfig);
+  }
   // Retry once so a transient failure (registry hiccup, flaky lifecycle script) does not
   // masquerade as a layout incompatibility.
   if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1) === 0) return true;
 
+  // Clean up the failed attempt so later installs do not run on a polluted tree.
+  removeNodeModules(rootDirPath, rootConfig);
   return false;
+}
+
+function removeNodeModules(rootDirPath: string, rootConfig: PackageConfig): void {
+  const nodeModulesPaths = [
+    path.resolve(rootDirPath, 'node_modules'),
+    ...[...getWorkspacePackageDirs(rootConfig).values()].map((workspaceDir) =>
+      path.resolve(rootDirPath, workspaceDir, 'node_modules')
+    ),
+  ];
+  const realRootDirPath = fs.realpathSync(rootDirPath);
+  for (const nodeModulesPath of nodeModulesPaths) {
+    const realParentDirPath = ignoreError(() => fs.realpathSync(path.dirname(nodeModulesPath)));
+    if (
+      !realParentDirPath ||
+      (realParentDirPath !== realRootDirPath && !realParentDirPath.startsWith(realRootDirPath + path.sep))
+    ) {
+      continue;
+    }
+    fs.rmSync(nodeModulesPath, { recursive: true, force: true });
+  }
 }
 
 function refreshBunLock(rootDirPath: string): void {

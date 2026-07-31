@@ -154,6 +154,12 @@ export const bunMinimumReleaseAgeExcludes = [
   'react-server-dom-webpack',
 ];
 
+export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  if (!fs.existsSync(filePath)) return undefined;
+  return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
+}
+
 export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
   // Blitz builds on Next.js but need not declare it directly, and its codegen also patches Next
   // inside node_modules. Both frameworks therefore require project-local isolated installs.

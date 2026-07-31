@@ -94,6 +94,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   await updateScripts(config, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
+  pruneCapabilityDependentCompilerDependencies(config, jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipAddingDeps);
@@ -130,6 +131,15 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   jsonObj.devDependencies = jsonObj.devDependencies ?? {};
   jsonObj.peerDependencies = jsonObj.peerDependencies ?? {};
   return jsonObj as WritablePackageJson;
+}
+
+function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jsonObj: WritablePackageJson): void {
+  delete jsonObj.dependencies[typescriptGoDependency];
+  delete jsonObj.devDependencies[typescriptGoDependency];
+  if (!config.doesContainTypeScript && !config.doesContainTypeScriptInPackages) {
+    delete jsonObj.dependencies[typescriptDependency];
+    delete jsonObj.devDependencies[typescriptDependency];
+  }
 }
 
 async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
@@ -1473,9 +1483,9 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
     // `typescript` compiler API; the TypeScript 7 `typescript` package is the tsgo binary
     // without that API, so `next build` aborts with "Failed to install required TypeScript
     // dependencies" (observed in WillBooster/survey-system). Cap `typescript` below 7 until
-    // Blitz supports a Next.js release that understands tsgo. Like the wb cap below, a failed
-    // registry lookup must resolve to a known-compatible release — falling back to
-    // latestVersion would reinstall the incompatible TypeScript 7.
+    // Blitz supports a Next.js release that understands tsgo. A failed registry lookup must
+    // resolve to a known-compatible release — falling back to latestVersion would reinstall the
+    // incompatible TypeScript 7.
     const validLatestVersion = semver.valid(latestVersion);
     if (validLatestVersion && semver.major(validLatestVersion) < 7) return latestVersion;
     return getLatestVersionBelow(typescriptDependency, '7.0.0') ?? lastKnownPreV7TypescriptVersion;
@@ -1664,9 +1674,9 @@ function keepGeneratedScriptWrappers(
     const oldScript = oldScripts[scriptName]?.trim();
     const generatedScript = scripts[scriptName];
     if (!oldScript || !generatedScript || oldScript === generatedScript) continue;
-    // The stored wrapper may lead with a legacy runner prefix (`yarn wb test && ...`) or with the
-    // `bun run wb test && ...` that convertYarnCommandsToBun produces from it later in this very
-    // run, so accept those prefixes and REWRITE the matched head to the generated command. Keeping
+    // Existing manifests may still lead with a legacy runner prefix (`yarn wb test && ...`) or
+    // `bun run wb test && ...`, so accept those prefixes and REWRITE the matched head to the
+    // generated command. Keeping
     // the old head verbatim would freeze a stale prefix — notably `--bun`, whose node->bun PATH
     // shim breaks Node-based tools — and leave a body the next run no longer recognizes as a
     // wrapper, silently dropping the chained commands one run later.

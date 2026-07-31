@@ -1018,6 +1018,17 @@ test('does not generate test/ci in a workspace package', async () => {
 
 const jsRootConfig = { doesContainTypeScript: true, isRoot: true } as const;
 
+test('removes TypeScript compilers from a repository without TypeScript', async () => {
+  const withoutTypeScript = await generatePackageJsonFrom({
+    devDependencies: {
+      '@typescript/native-preview': '7.0.0-dev.20260707.2',
+      typescript: '7.0.2',
+    },
+  });
+  expect(withoutTypeScript.devDependencies?.['@typescript/native-preview']).toBeUndefined();
+  expect(withoutTypeScript.devDependencies?.typescript).toBeUndefined();
+});
+
 test('keeps commands chained onto the generated test and verify-full scripts', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
