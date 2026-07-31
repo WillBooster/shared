@@ -90,12 +90,12 @@ test('deletes .idea/prettier.xml except in Java repositories', async () => {
 
 test('omits @willbooster/prettier-config from bunfig excludes except in Java repositories', async () => {
   await withTempDir(async (tempDirPath) => {
-    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), undefined, true);
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), true);
     await promisePool.promiseAll();
     const bunfigPath = path.join(tempDirPath, 'bunfig.toml');
     expect(fs.readFileSync(bunfigPath, 'utf8')).not.toContain('@willbooster/prettier-config');
 
-    await generateBunfigToml(createConfig({ dirPath: tempDirPath, doesContainJava: true }), undefined, true);
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath, doesContainJava: true }), true);
     await promisePool.promiseAll();
     expect(fs.readFileSync(bunfigPath, 'utf8')).toContain('@willbooster/prettier-config');
   });

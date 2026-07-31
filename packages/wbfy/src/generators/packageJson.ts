@@ -22,10 +22,9 @@ import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
-import { isEnvCascadeFileName } from '../utils/envFileName.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
-import { spawnSync, spawnSyncAndReturnStatusAndRawStdout, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 import { escapeRegExp } from '../utils/stringUtil.js';
 import { getTsconfigBaseDependencies, managedTsconfigBaseDependencies } from '../utils/tsconfigBase.js';
 import { parseSourceFile } from '../utils/typescriptApi.js';
@@ -51,11 +50,6 @@ const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
-// The exact format-code commands old wbfy versions generated for JS/TS repos.
-const legacyOxfmtFormatCodeScripts = new Set([
-  'oxfmt --write --no-error-on-unmatched-pattern .',
-  "oxfmt --write --no-error-on-unmatched-pattern . '!**/package.json'",
-]);
 const managedDependencyNames = new Set([
   wbDependency,
   buildTsDependency,
@@ -68,55 +62,6 @@ const managedDependencyNames = new Set([
   '@types/bun',
   ...oxlintDeps,
 ]);
-const willBoosterConfigsManagedDependencies = [
-  '@willbooster/prettier-config',
-  ...oxlintDeps.filter((dependency) => dependency.startsWith('@willbooster/')),
-];
-const obsoleteLintDependencies = [
-  '@biomejs/biome',
-  '@eslint-react/eslint-plugin',
-  '@eslint/js',
-  '@next/eslint-plugin-next',
-  '@types/eslint',
-  '@types/micromatch',
-  '@typescript-eslint/eslint-plugin',
-  '@typescript-eslint/parser',
-  '@willbooster/biome-config',
-  '@willbooster/eslint-config',
-  '@willbooster/eslint-config-blitz-next',
-  '@willbooster/eslint-config-js',
-  '@willbooster/eslint-config-js-react',
-  '@willbooster/eslint-config-next',
-  '@willbooster/eslint-config-react',
-  '@willbooster/eslint-config-ts',
-  '@willbooster/eslint-config-ts-react',
-  'biome',
-  'eslint',
-  'eslint-config-flat-gitignore',
-  'eslint-config-next',
-  'eslint-config-prettier',
-  'eslint-import-resolver-node',
-  'eslint-import-resolver-typescript',
-  'eslint-plugin-import',
-  'eslint-plugin-import-x',
-  'eslint-plugin-perfectionist',
-  'eslint-plugin-prettier',
-  'eslint-plugin-react',
-  'eslint-plugin-react-compiler',
-  'eslint-plugin-react-hooks',
-  'eslint-plugin-sort-class-members',
-  'eslint-plugin-sort-destructure-keys',
-  'eslint-plugin-storybook',
-  'eslint-plugin-unicorn',
-  'eslint-plugin-unused-imports',
-  'globals',
-  'micromatch',
-  'typescript-eslint',
-];
-const micromatchPackageNames = new Set(['micromatch', '@types/micromatch']);
-const micromatchImportPattern =
-  /\bfrom\s+['"]micromatch['"]|\brequire\(\s*['"]micromatch['"]\s*\)|\bimport\(\s*['"]micromatch['"]\s*\)/u;
-
 const latestDependencyVersionCache = new Map<string, string>();
 const npmPackageTimesCache = new Map<string, Record<string, string>>();
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
@@ -146,8 +91,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   const filePath = path.resolve(config.dirPath, 'package.json');
   const jsonObj = await readPackageJson(filePath);
 
-  await removeDeprecatedStuff(config, jsonObj);
-  await updateScripts(config, rootConfig, jsonObj);
+  await updateScripts(config, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
@@ -168,7 +112,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
-    formatPackageJsonWithProjectFormatter(config, 'bun', filePath);
+    formatPackageJsonWithProjectFormatter(config, filePath);
   }
 }
 
@@ -188,59 +132,9 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
   return jsonObj as WritablePackageJson;
 }
 
-async function updateScripts(
-  config: PackageConfig,
-  rootConfig: PackageConfig,
-  jsonObj: WritablePackageJson
-): Promise<void> {
-  removeLegacyInstallCommands(jsonObj.scripts);
-
+async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
-  delete jsonObj.scripts['start-test-server'];
-
-  delete jsonObj.scripts.prettify;
-  // `bun wb lint --format` owns JS/TS formatting, so the oxfmt-based format-code script wbfy used
-  // to generate is obsolete. Only the exact generated command is removed: custom format-code
-  // scripts (and the Dart/Python variants regenerated later in normalizePackageMetadata) survive.
-  if (legacyOxfmtFormatCodeScripts.has(jsonObj.scripts['format-code'] ?? '')) {
-    delete jsonObj.scripts['format-code'];
-  }
-  convertYarnCommandsToBun(jsonObj.scripts, config, rootConfig);
   removeBunRuntimeFlagFromScripts(jsonObj.scripts);
-}
-
-function removeLegacyInstallCommands(scripts: PackageJson.Scripts): void {
-  for (const [key, value] of Object.entries(scripts)) {
-    if (typeof value !== 'string' || !value.includes('yarn')) continue;
-    // Fresh repos still require standalone `yarn install`; only remove legacy install prefixes before another command.
-    if (value.includes('git clone')) continue;
-    scripts[key] = removeLegacyYarnInstallPrefixes(value);
-  }
-}
-
-/**
- * Removes each `yarn && ` / `yarn install && ` prefix that precedes another command. The scan is
- * quote- and command-position-aware (sharing convertYarnInvocationsToBun's tokenizer walk), so
- * quoted data such as `echo 'yarn install && deploy now'` stays untouched.
- */
-function removeLegacyYarnInstallPrefixes(script: string): string {
-  const tokens = tokenizeShellCommand(script);
-  const removalRanges: [number, number][] = [];
-  forEachCommandPositionToken(tokens, (token, index) => {
-    if (token.text !== 'yarn') return;
-    const next = tokens[index + 1];
-    // decodeSimpleShellWord: shell quoting makes `yarn 'install'` equivalent to `yarn install`.
-    const separatorToken = next && decodeSimpleShellWord(next.text) === 'install' ? tokens[index + 2] : next;
-    if (separatorToken?.text !== '&&') return;
-    let end = separatorToken.end;
-    while (end < script.length && /\s/u.test(script[end] ?? '')) end++;
-    removalRanges.push([token.start, end]);
-  });
-  let result = script;
-  for (const [start, end] of removalRanges.toReversed()) {
-    result = result.slice(0, start) + result.slice(end);
-  }
-  return result;
 }
 
 /**
@@ -357,343 +251,10 @@ function updatePostinstallScript(
   }
 }
 
-// Yarn CLI built-ins (v1 and Berry) that are not package scripts; converting them to
-// `bun run <name>` would invoke a nonexistent script or the wrong action, so they are left
-// untouched to surface during review.
-const yarnBuiltinSubcommands = new Set([
-  'add',
-  'audit',
-  'autoclean',
-  'bin',
-  'cache',
-  'check',
-  'config',
-  'constraints',
-  'create',
-  'dedupe',
-  'dlx',
-  'exec',
-  'explain',
-  'generate-lock-entry',
-  'global',
-  'help',
-  'import',
-  'info',
-  'init',
-  'install',
-  'licenses',
-  'link',
-  'list',
-  'login',
-  'logout',
-  'node',
-  'npm',
-  'outdated',
-  'owner',
-  'pack',
-  'patch',
-  'patch-commit',
-  'plugin',
-  'policies',
-  'prune',
-  'publish',
-  'rebuild',
-  'remove',
-  'run',
-  'search',
-  'set',
-  'stage',
-  'tag',
-  'team',
-  'unlink',
-  'unplug',
-  'up',
-  'upgrade',
-  'upgrade-interactive',
-  'version',
-  'versions',
-  'why',
-  'workspace',
-  'workspaces',
-]);
-
 interface ShellToken {
   text: string;
   start: number;
   end: number;
-}
-
-interface ShellReplacement {
-  start: number;
-  end: number;
-  text: string;
-}
-
-function convertYarnCommandsToBun(
-  scripts: PackageJson.Scripts,
-  config: PackageConfig,
-  rootConfig: PackageConfig
-): void {
-  // Yarn Berry treats ANY script name containing `:` as a potential "global" script: when the
-  // invoking workspace does not define it, Yarn runs the single workspace (root included) that
-  // does (plugin-essentials run.ts skips the lookup when several workspaces share the name). Bun
-  // has no such concept, so the invocation must be routed to the defining workspace explicitly.
-  // Resolved lazily: most scripts have no colon invocations.
-  let colonScriptOwners: Map<string, ColonScriptOwner | undefined> | undefined;
-  // Returns the `bun run ...` runner prefix to put before the (raw) script-name token, or
-  // undefined to keep the yarn form.
-  const resolveColonScriptInvocation = (scriptName: string, prefix: string): string | undefined => {
-    if (typeof scripts[scriptName] === 'string') return 'bun run';
-    colonScriptOwners ??= collectColonScriptOwners(rootConfig);
-    const owner = colonScriptOwners.get(scriptName);
-    const fallback = (): string | undefined =>
-      // A missing or ambiguous leading-colon script cannot run locally either, so its yarn form
-      // is kept (undefined) to surface in review; other unresolved colon names keep the plain
-      // conversion (e.g. `cd sub && yarn build:sub` targeting a non-workspace directory).
-      scriptName.startsWith(':') ? undefined : 'bun run';
-    if (!owner) return fallback();
-    // Bun's --filter never matches the workspace root, and its path filters resolve against the
-    // invoking cwd (both verified on Bun 1.3.14), so the root package and unnamed workspaces are
-    // addressed with --cwd relative to the invoking package instead.
-    if (owner.packageName && owner.dirPath !== path.resolve(rootConfig.dirPath)) {
-      return `bun run --filter ${owner.packageName}`;
-    }
-    // A `cd` BEFORE this invocation would make the package-relative --cwd resolve from the wrong
-    // directory at runtime, so such invocations fall back instead of getting a silently broken
-    // route; a cd after the invocation cannot affect it and must not prevent the conversion.
-    if (prefixMayChangeWorkingDirectory(prefix)) return fallback();
-    const relativeDirPath = path.relative(config.dirPath, owner.dirPath) || '.';
-    return `bun run --cwd '${relativeDirPath.replaceAll("'", String.raw`'\''`)}'`;
-  };
-  // Managed repositories are Bun projects and wbfy deletes Yarn's configuration, so any leftover
-  // yarn invocation in package scripts (e.g. postinstall) would fail on machines without Yarn.
-  for (const [key, value] of Object.entries(scripts)) {
-    if (typeof value !== 'string' || !/\byarn\b/u.test(value)) continue;
-    scripts[key] = convertYarnInvocationsToBun(value, resolveColonScriptInvocation);
-  }
-}
-
-/**
- * Rewrites the actual `yarn ...` command invocations in a script to their bun equivalents.
- *
- * The scan is quote- and command-position-aware (reusing removeBunRuntimeFlag's shell tokenizer
- * walk instead of bare regexes): `yarn` appearing as data — inside a quoted token (e.g.
- * `echo 'yarn build:cache'`) or as an argument of another command (e.g. `git commit -m yarn`) —
- * stays untouched, while a quoted argument token (e.g. `yarn ':build-cache'`) is decoded before
- * colon-owner resolution and re-emitted verbatim so its shell semantics never change. Anything
- * unconvertible keeps its yarn form verbatim to surface during review instead of being
- * mis-rewritten.
- *
- * Substitutions nested inside double quotes or backticks (`echo "$(yarn compile)"`) and quoted
- * script names containing whitespace (`yarn 'build docs'`) are deliberately NOT modeled: they
- * only produce conservative misses that keep the yarn form and surface during review (like the
- * regex-based predecessor), and covering them would require a full shell parser.
- */
-function convertYarnInvocationsToBun(
-  script: string,
-  resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
-): string {
-  const tokens = tokenizeShellCommand(script);
-  const replacements: ShellReplacement[] = [];
-  forEachCommandPositionToken(tokens, (token, index) => {
-    // Only a bare unquoted `yarn` word at command position starts an invocation.
-    if (token.text !== 'yarn') return;
-    const remainingTokens = tokens.slice(index + 1);
-    const terminatorIndex = remainingTokens.findIndex((argToken) => isShellSeparator(argToken.text));
-    const args = terminatorIndex === -1 ? remainingTokens : remainingTokens.slice(0, terminatorIndex);
-    if (args.length === 0) {
-      // A bare `yarn` (at the end or before a command separator) is an install. A control
-      // operator that does not simply chain commands (a backgrounding `&`, a subshell
-      // parenthesis) keeps the yarn form to surface in review.
-      const terminatorText = terminatorIndex === -1 ? undefined : remainingTokens[terminatorIndex]?.text;
-      if (terminatorText === undefined || /^(?:&&|\|{1,2}|;|\n)/u.test(terminatorText)) {
-        replacements.push({ start: token.start, end: token.end, text: 'bun install' });
-      }
-      return;
-    }
-    const replacement = convertSingleYarnInvocation(token, args, script, resolveColonScriptInvocation);
-    if (replacement) replacements.push(replacement);
-  });
-  let result = script;
-  for (const { start, end, text } of replacements.toReversed()) {
-    result = result.slice(0, start) + text + result.slice(end);
-  }
-  return result;
-}
-
-// `yarn workspaces foreach` flags under which `bun run --filter '*'` (which runs every workspace
-// respecting dependency order) is an accepted equivalent of the fan-out. Anything else keeps the
-// yarn form to surface during review: selection flags (--since, --from, --include, ...) restrict
-// the workspaces, --dry-run suppresses execution, and parallelism flags (--parallel,
-// --interlaced, --jobs) start dependent scripts concurrently — under Bun's dependency-ordered
-// concurrency a long-running dependency would block its dependents forever.
-const selectionNeutralForeachFlags = new Set(['--all', '--topological', '--topological-dev', '--verbose']);
-
-/**
- * Converts one `yarn <args...>` invocation (args already cut at the next command separator) into
- * the text replacing it, or undefined to keep the yarn form untouched.
- */
-function convertSingleYarnInvocation(
-  yarnToken: ShellToken,
-  args: readonly ShellToken[],
-  script: string,
-  resolveColonScriptInvocation: (scriptName: string, prefix: string) => string | undefined
-): ShellReplacement | undefined {
-  // A redirection ends the arguments that decide the conversion (`yarn install > /dev/null`): the
-  // rewrite never spans one, so the redirection survives verbatim after the replaced prefix.
-  const redirectionIndex = args.findIndex((argToken) => isRedirectionOperator(argToken.text));
-  const logicalArgs = redirectionIndex === -1 ? args : args.slice(0, redirectionIndex);
-  // Decoded (literal) argument values drive the matching, while emitted rewrites always reuse the
-  // raw token text (rawArg) so quoting and expansion semantics survive the conversion unchanged
-  // (e.g. `yarn 'build:$target'` keeps its single quotes). A shell-ambiguous token decodes to
-  // undefined, which keeps the invocation in its yarn form.
-  const argText = (argIndex: number): string | undefined => {
-    const arg = logicalArgs[argIndex];
-    return arg && decodeSimpleShellWord(arg.text);
-  };
-  const rawArg = (argIndex: number): string => logicalArgs[argIndex]?.text ?? '';
-  const replaceThroughArg = (argIndex: number, text: string): ShellReplacement | undefined => {
-    const arg = logicalArgs[argIndex];
-    return arg && { start: yarnToken.start, end: arg.end, text };
-  };
-  const first = argText(0);
-  const second = argText(1);
-  // `yarn workspaces foreach <selection-neutral flags> run <script>` fans a script out to every
-  // workspace; a selection-restricting or execution-suppressing flag keeps the yarn form.
-  if (first === 'workspaces' && second === 'foreach') {
-    let runIndex = -1;
-    // `--filter '*'` widens the fan-out to every workspace, so an explicit --all/-A selection is
-    // required: an unflagged foreach is either scoped (Yarn <4.1) or an error (Yarn >=4.1).
-    let selectsAllWorkspaces = false;
-    for (let index = 2; index < logicalArgs.length; index++) {
-      const flag = argText(index);
-      if (flag === 'run') {
-        runIndex = index;
-        break;
-      }
-      if (flag === undefined || !(selectionNeutralForeachFlags.has(flag) || /^-[Atv]+$/u.test(flag))) return undefined;
-      if (flag === '--all' || (flag.startsWith('-') && !flag.startsWith('--') && flag.includes('A'))) {
-        selectsAllWorkspaces = true;
-      }
-    }
-    const scriptName = runIndex === -1 || !selectsAllWorkspaces ? undefined : argText(runIndex + 1);
-    return scriptName === undefined || scriptName.startsWith('-')
-      ? undefined
-      : replaceThroughArg(runIndex + 1, `bun run --filter '*' ${rawArg(runIndex + 1)}`);
-  }
-  if (first === 'dlx') return replaceThroughArg(0, 'bunx');
-  if (first === 'workspace') {
-    const hasRun = argText(2) === 'run';
-    const commandIndex = hasRun ? 3 : 2;
-    const command = argText(commandIndex);
-    // Without an explicit `run`, a built-in like `yarn workspace pkg add -D x` is a Yarn CLI
-    // action, not a script; Bun's --filter only executes package scripts.
-    return second !== undefined &&
-      command !== undefined &&
-      /^[\w.:/-]+$/u.test(command) &&
-      (hasRun || !yarnBuiltinSubcommands.has(command))
-      ? replaceThroughArg(commandIndex, `bun run --filter ${rawArg(1)} ${rawArg(commandIndex)}`)
-      : undefined;
-  }
-  // A colon-containing script name (after `run` and its flags, if any) needs workspace-global
-  // resolution. The name may contain any non-metacharacter (e.g. `build:@scope`), not just
-  // \w./:-. Only a leading `-` (a yarn flag) is excluded: Yarn's global lookup has no
-  // first-character restriction, so names like `.build:cache` must resolve too.
-  let scriptNameIndex = 0;
-  if (first === 'run') {
-    scriptNameIndex = 1;
-    while (argText(scriptNameIndex)?.startsWith('-')) {
-      // `--require <path>` is the one `yarn run` flag taking a separate value; its value must not
-      // be mistaken for the script name (`--require=<path>` needs no special casing).
-      scriptNameIndex += argText(scriptNameIndex) === '--require' ? 2 : 1;
-    }
-  }
-  const scriptName = argText(scriptNameIndex);
-  if (scriptName !== undefined && scriptName.includes(':') && /^[^\s;&|<>()'"`]+$/u.test(scriptName)) {
-    const runnerPrefix = resolveColonScriptInvocation(scriptName, script.slice(0, yarnToken.start));
-    if (runnerPrefix === undefined) return undefined;
-    // With flags between `run` and the target (e.g. `yarn run --inspect-brk build:remote`), only
-    // a plain local `bun run` provably keeps their meaning; where flags would have to travel into
-    // a --filter/--cwd route, the yarn form is kept to surface in review.
-    if (scriptNameIndex > 1) {
-      return runnerPrefix === 'bun run' ? replaceThroughArg(0, 'bun run') : undefined;
-    }
-    return replaceThroughArg(scriptNameIndex, `${runnerPrefix} ${rawArg(scriptNameIndex)}`);
-  }
-  if (first === 'run') {
-    // An unresolvable `yarn run [flags] :name` keeps its yarn form (the colon rule above already
-    // converted every resolvable one), and so does an undecodable (dynamic or ambiguous) target:
-    // its expanded name could need Yarn's global routing. Otherwise `bun run` accepts the same
-    // flags and target.
-    const target = logicalArgs[scriptNameIndex];
-    return !target || scriptName === undefined || scriptName.startsWith(':') || target.text.startsWith(':')
-      ? undefined
-      : replaceThroughArg(0, 'bun run');
-  }
-  if (first === 'install') return replaceThroughArg(0, 'bun install');
-  // A bare `yarn <name>` invokes the package script; Yarn built-ins, flag forms
-  // (e.g. `yarn --cwd ...`), and still-unconverted `:` global scripts have no direct Bun
-  // equivalent and are intentionally left untouched to surface during review.
-  return first !== undefined && /^(?![-.:])[\w.:/-]+$/u.test(first) && !yarnBuiltinSubcommands.has(first)
-    ? replaceThroughArg(0, `bun run ${rawArg(0)}`)
-    : undefined;
-}
-
-/**
- * The literal value of a shell word that is either fully unquoted or wholly wrapped in one simple
- * quote pair, or undefined for anything shell-dynamic or ambiguous (unquoted expansions and
- * globs, embedded or mixed quotes, backslashes, expansions inside double quotes), whose
- * invocation must then stay in its yarn form.
- */
-function decodeSimpleShellWord(text: string): string | undefined {
-  // An unquoted `$var`, backtick, glob, or brace expansion resolves at runtime, so its literal
-  // spelling must not drive script-name matching or colon-owner routing.
-  if (!/['"\\]/u.test(text)) return /[$`*?[\]{}]|^~/u.test(text) ? undefined : text;
-  const quoted = /^'([^'\\]*)'$/u.exec(text) ?? /^"([^"'\\$`]*)"$/u.exec(text);
-  return quoted?.[1];
-}
-
-/**
- * Whether the script prefix may change the working directory before the command that follows it.
- * Any standalone `cd` (or `pushd`) token counts, wherever it appears — after separators, group
- * braces, or shell keywords like `then`/`do` — because a wrongly-suppressed --cwd route merely
- * surfaces in review, while a wrongly-emitted one breaks at runtime; false positives from `cd`
- * appearing as data are an acceptable cost of that asymmetry.
- */
-function prefixMayChangeWorkingDirectory(prefix: string): boolean {
-  return /(?<![\w./~-])(?:cd|pushd)(?![\w./~-])/u.test(prefix);
-}
-
-interface ColonScriptOwner {
-  dirPath: string;
-  packageName?: string;
-}
-
-/**
- * Maps each colon-containing (workspace-global) script name to the single workspace defining it,
- * or to undefined when several workspaces define it (Yarn refuses to run such an ambiguous
- * global script anyway).
- */
-function collectColonScriptOwners(rootConfig: PackageConfig): Map<string, ColonScriptOwner | undefined> {
-  const owners = new Map<string, ColonScriptOwner | undefined>();
-  // The root manifest participates too: Yarn treats the root as a workspace, so a child may
-  // invoke a root-owned global script. Unnamed manifests count as well — Yarn searches every
-  // workspace's scripts regardless of its name.
-  for (const packageJsonPath of new Set(['package.json', ...getWorkspacePackageJsonPaths(rootConfig)])) {
-    try {
-      const packageJson = JSON.parse(
-        fs.readFileSync(path.resolve(rootConfig.dirPath, packageJsonPath), 'utf8')
-      ) as PackageJson;
-      const dirPath = path.dirname(path.resolve(rootConfig.dirPath, packageJsonPath));
-      for (const scriptName of Object.keys(packageJson.scripts ?? {})) {
-        if (!scriptName.includes(':')) continue;
-        owners.set(scriptName, owners.has(scriptName) ? undefined : { dirPath, packageName: packageJson.name });
-      }
-    } catch {
-      // An unreadable manifest only leaves its own global scripts unresolved.
-    }
-  }
-  return owners;
 }
 
 function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
@@ -1422,7 +983,7 @@ async function normalizePackageMetadata(
     config.dirPath
   );
   // After the normalization above, which removes these invocations wholesale wherever wbfy owns the generation. What
-  // is left belongs to an unmanaged package, and a `--env-file` naming a file removeEnvFiles just deleted would make
+  // is left belongs to an unmanaged package, and a `--env-file` naming a missing file would make
   // every `wrangler types` — and therefore every install running it — exit non-zero.
   for (const [scriptName, script] of Object.entries(jsonObj.scripts)) {
     const stripped = stripMissingEnvFileArguments(script, config.dirPath);
@@ -1650,11 +1211,7 @@ function addPackageJsonDependencies(
   return dependenciesToInstall;
 }
 
-function formatPackageJsonWithProjectFormatter(
-  config: PackageConfig,
-  packageManager: 'bun' | 'yarn',
-  filePath: string
-): void {
+function formatPackageJsonWithProjectFormatter(config: PackageConfig, filePath: string): void {
   const relativeFilePath = path.relative(config.dirPath, filePath);
   if (!relativeFilePath) return;
 
@@ -1662,105 +1219,7 @@ function formatPackageJsonWithProjectFormatter(
   // package.json matches whatever its current sort-package-json version expects.
   // This avoids follow-up autofix commits caused only by formatter version drift
   // between wbfy and the project being updated.
-  if (packageManager === 'bun') {
-    spawnSync('bunx', ['sort-package-json', relativeFilePath], config.dirPath);
-  } else {
-    spawnSync(packageManager, ['sort-package-json', relativeFilePath], config.dirPath);
-  }
-}
-
-// TODO: remove the following migration code in future
-async function removeDeprecatedStuff(
-  config: PackageConfig,
-  jsonObj: SetRequired<PackageJson, 'scripts' | 'dependencies' | 'devDependencies' | 'peerDependencies'>
-): Promise<void> {
-  if (jsonObj.author === 'WillBooster LLC') {
-    jsonObj.author = 'WillBooster Inc.';
-  }
-  removeSelfDependency(config, jsonObj);
-  replaceWillBoosterConfigsWorkspaceDependencyRanges(config, jsonObj);
-  delete jsonObj.scripts['sort-package-json'];
-  delete jsonObj.scripts['sort-all-package-json'];
-  delete jsonObj.scripts['check-all-for-ai'];
-  delete jsonObj.scripts['check-for-ai'];
-  delete jsonObj.scripts['typecheck/warn'];
-  delete jsonObj.scripts['typecheck:gen-code'];
-  delete jsonObj.scripts['typecheck:codegen'];
-  delete jsonObj.dependencies.tslib;
-  delete jsonObj.devDependencies['@willbooster/renovate-config'];
-  delete jsonObj.devDependencies['@willbooster/tsconfig'];
-  // Drop `@typescript/native-preview` (tsgo) here so non-Next.js repos never carry it;
-  // this runs before applyPackageJsonConventions, which re-adds it for Next.js-family
-  // repos that need it alongside the `typescript` v7 package for `next build`.
-  delete jsonObj.dependencies[typescriptGoDependency];
-  delete jsonObj.devDependencies[typescriptGoDependency];
-  // Non-TypeScript repos should not keep a stray `typescript` package.
-  if (!config.doesContainTypeScript && !config.doesContainTypeScriptInPackages) {
-    delete jsonObj.dependencies[typescriptDependency];
-    delete jsonObj.devDependencies[typescriptDependency];
-  }
-  delete jsonObj.devDependencies.lerna;
-  // To install the latest pinst
-  delete jsonObj.devDependencies.pinst;
-  delete jsonObj.scripts['flutter-format'];
-  delete jsonObj.scripts['format-flutter'];
-  delete jsonObj.scripts['python-format'];
-  delete jsonObj.scripts['format-python'];
-  delete jsonObj.scripts.prettier;
-  delete jsonObj.scripts['check-all'];
-  delete jsonObj.scripts['verify-code'];
-  delete jsonObj.scripts['verify-code-with-tests'];
-  await promisePool.run(() => fs.promises.rm(path.resolve(config.dirPath, 'lerna.json'), { force: true }));
-
-  removeWillBoosterConfigsManagedDependencies(config, jsonObj);
-  removeObsoleteLintDependencies(jsonObj, config);
-}
-
-function removeSelfDependency(
-  config: PackageConfig,
-  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
-): void {
-  const packageName = jsonObj.name || path.basename(config.dirPath);
-
-  // A package can import itself through Node's package self-reference without
-  // declaring itself; keeping that edge breaks monorepo release topological sorting.
-  for (const section of getDependencySections(jsonObj)) {
-    Reflect.deleteProperty(section, packageName);
-  }
-}
-
-function replaceWillBoosterConfigsWorkspaceDependencyRanges(config: PackageConfig, jsonObj: PackageJson): void {
-  if (!config.isWillBoosterConfigs) return;
-
-  for (const section of getDependencySections(jsonObj)) {
-    for (const [dependency, version] of Object.entries(section)) {
-      if (!version) continue;
-      if (!isWorkspaceProtocolRange(version)) continue;
-      // willbooster-configs publishes these packages independently, so generated
-      // package metadata must describe npm release edges instead of local
-      // workspace edges that release tooling treats as monorepo graph links.
-      // The final `yarn install --no-immutable` syncs the lockfile after this
-      // migration, even when the dependency is not part of wbfy's managed list.
-      section[dependency] = getLatestDependencyVersion(config, dependency);
-    }
-  }
-}
-
-function removeWillBoosterConfigsManagedDependencies(
-  config: PackageConfig,
-  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>
-): void {
-  if (!config.isWillBoosterConfigs) return;
-
-  const sections = getDependencySections(jsonObj);
-  for (const dependency of willBoosterConfigsManagedDependencies) {
-    // willbooster-configs owns these config packages. Package-local formatter
-    // and linter config files are repo tooling, not published package data, so
-    // the package metadata only needs the formatter/linter executables.
-    for (const section of sections) {
-      Reflect.deleteProperty(section, dependency);
-    }
-  }
+  spawnSync('bunx', ['sort-package-json', relativeFilePath], config.dirPath);
 }
 
 async function removeUnusedTsconfigBaseDependencies(
@@ -1946,56 +1405,6 @@ function isBlitzRepository(config: PackageConfig, rootConfig: PackageConfig): bo
   return config.depending.blitz || rootConfig.depending.blitz;
 }
 
-function removeObsoleteLintDependencies(
-  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>,
-  config: PackageConfig
-): void {
-  const preserveMicromatch = shouldPreserveMicromatch(config);
-  for (const dependency of obsoleteLintDependencies) {
-    if (preserveMicromatch && micromatchPackageNames.has(dependency)) continue;
-    if (shouldPreserveConfigPackageLintDependency(jsonObj, config, dependency)) continue;
-    delete jsonObj.dependencies[dependency];
-    delete jsonObj.devDependencies[dependency];
-    delete jsonObj.peerDependencies[dependency];
-  }
-}
-
-function shouldPreserveConfigPackageLintDependency(
-  jsonObj: SetRequired<PackageJson, 'dependencies' | 'devDependencies' | 'peerDependencies'>,
-  config: PackageConfig,
-  dependency: string
-): boolean {
-  if (!isPublishedWillboosterConfigsPackage(config)) return false;
-  if (jsonObj.peerDependencies[dependency]) return true;
-
-  // Published config packages need local type-only deps to validate the
-  // package-provided config declarations under Yarn PnP.
-  return dependency === '@types/eslint' && !!jsonObj.peerDependencies.eslint;
-}
-
-function shouldPreserveMicromatch(config: PackageConfig): boolean {
-  // willbooster-configs subpackages publish config files as their product, so
-  // micromatch is package data there. Other repos keep micromatch only when
-  // product code imports it; otherwise it is treated as obsolete ESLint-era
-  // tooling.
-  return (config.isWillBoosterConfigs && !config.isRoot) || doesProductCodeImportMicromatch(config.dirPath);
-}
-
-function doesProductCodeImportMicromatch(dirPath: string): boolean {
-  const filePaths = fg.globSync('src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}', {
-    cwd: dirPath,
-    dot: true,
-    ignore: globIgnore,
-  });
-  return filePaths.some((filePath) => {
-    try {
-      return micromatchImportPattern.test(fs.readFileSync(path.resolve(dirPath, filePath), 'utf8'));
-    } catch {
-      return false;
-    }
-  });
-}
-
 const workspacePackageDirsCache = new Map<string, Map<string, string>>();
 
 /** Map from each workspace package's name to its directory (relative to the monorepo root). */
@@ -2031,23 +1440,7 @@ function shouldUpdateExistingManagedDependency(
   if (isWorkspaceProtocolRange(currentVersion)) return true;
   if (!managedDependencyNames.has(dependency)) return false;
   const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
-  // An existing fnox-only wb pin in a repository still relying on the .env cascade without fnox
-  // is an incompatible state (wb >= 19 ignores the repository's .env configuration), so the
-  // general no-downgrade rule below must not preserve it: rewrite it to the capped compatible
-  // release. Restricted to fnox-only MAJORS of the current pin so a merely-newer compatible pin
-  // (e.g. 18.0.2 while the registry lookup lags at 18.0.1) keeps the no-downgrade protection.
   const currentValidVersion = semver.valid(currentVersion);
-  if (
-    dependency === wbDependency &&
-    currentValidVersion &&
-    semver.major(currentValidVersion) >= semver.major(minimumFnoxOnlyWbVersion) &&
-    semver.valid(managedVersion) &&
-    isNewerPackageVersion(currentVersion, managedVersion) &&
-    !hasFnoxConfigForRepository(rootConfig.dirPath) &&
-    repositoryUsesEnvCascade(rootConfig.dirPath)
-  ) {
-    return true;
-  }
   // A TypeScript 7 pin in a Blitz repository is likewise incompatible (`next build` fails on
   // the Next.js 15 that Blitz pins — see getManagedDependencyVersion), so rewrite it to the
   // capped release instead of preserving it via the no-downgrade rule below. The pin may be a
@@ -2069,25 +1462,10 @@ function shouldUpdateExistingManagedDependency(
   return isNewerPackageVersion(managedVersion, currentVersion);
 }
 
-// wb >= 19 reads environment variables exclusively from fnox (the .env cascade was removed), so
-// installing it into a repository that has not migrated (no root fnox.toml) would silently drop
-// every .env-configured variable from its builds, tests, and deploys. A repository that uses
-// neither fnox nor the .env cascade has nothing to migrate, so it gets the latest wb.
-const minimumFnoxOnlyWbVersion = '19.0.0';
-// The newest release below minimumFnoxOnlyWbVersion at the time this guard shipped; used only
-// when the registry lookup for the actual newest pre-fnox-only release fails.
-const lastKnownPreFnoxOnlyWbVersion = '18.0.1';
 // The newest TypeScript 6 release at the time the Blitz cap shipped; used only when the registry
 // lookup for the actual newest pre-v7 release fails (see getManagedDependencyVersion).
 const lastKnownPreV7TypescriptVersion = '6.0.3';
 
-/**
- * The version wbfy materializes for a managed dependency: the latest release, except that
- * `@willbooster/wb` is capped to the latest pre-fnox-only release for repositories that still
- * rely on the .env cascade without a root fnox.toml (see minimumFnoxOnlyWbVersion). Capping at
- * the version source covers every path — upgrades of an existing pin, `*`/missing specifiers,
- * and fresh installs.
- */
 function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
   const latestVersion = getLatestDependencyVersion(config, dependency);
   if (dependency === typescriptDependency && isBlitzRepository(config, rootConfig)) {
@@ -2102,137 +1480,7 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
     if (validLatestVersion && semver.major(validLatestVersion) < 7) return latestVersion;
     return getLatestVersionBelow(typescriptDependency, '7.0.0') ?? lastKnownPreV7TypescriptVersion;
   }
-  if (dependency !== wbDependency) return latestVersion;
-  return selectManagedWbVersion(
-    !hasFnoxConfigForRepository(rootConfig.dirPath) && repositoryUsesEnvCascade(rootConfig.dirPath),
-    latestVersion,
-    getLatestPreFnoxOnlyWbVersion,
-    rootConfig.dirPath
-  );
-}
-
-/**
- * Whether fnox configures this repository: wbfy may be invoked directly on a workspace CHILD
- * (`wbfy <repo>/packages/<app>`), whose fnox migration lives in an ancestor's fnox.toml that
- * fnox resolves hierarchically — so walk up to the git repository boundary instead of checking
- * only the invoked directory.
- */
-export function hasFnoxConfigForRepository(rootDirPath: string): boolean {
-  for (let dirPath = path.resolve(rootDirPath); ; dirPath = path.dirname(dirPath)) {
-    if (fs.existsSync(path.join(dirPath, 'fnox.toml'))) return true;
-    // Stop at the repository boundary: a fnox.toml outside the repository must not count.
-    if (fs.existsSync(path.join(dirPath, '.git')) || path.dirname(dirPath) === dirPath) return false;
-  }
-}
-
-const repositoryUsesEnvCascadeCache = new Map<string, boolean>();
-
-/**
- * Whether the repository's .env cascade could still supply environment variables: a cascade file
- * (isEnvCascadeFileName) anywhere in the working tree — tracked, untracked, or gitignored,
- * because a gitignored `.env.local` is a real configuration source on developer machines — or a
- * legacy `DOT_ENV` secret wired into a workflow (CI materializes the cascade from it). The
- * ignored-files listing collapses wholly ignored directories (`--directory`), so e.g.
- * node_modules contents never count and the listing stays cheap. Like hasFnoxConfigForRepository,
- * scan from the git repository root: wbfy may be invoked on a workspace CHILD whose cascade files
- * and workflows live at the repository root.
- *
- * The verdict is memoized per repository root, and index.ts primes it BEFORE removeEnvExample
- * runs: on a fresh checkout a tracked `.env.example` may be the only visible signal that
- * developers keep gitignored cascade files, and it must count even though this same wbfy run
- * deletes it.
- */
-export function repositoryUsesEnvCascade(dirPath: string): boolean {
-  const rootDirPath = findGitRepositoryDirPath(dirPath);
-  let usesEnvCascade = repositoryUsesEnvCascadeCache.get(rootDirPath);
-  if (usesEnvCascade === undefined) {
-    usesEnvCascade = detectEnvCascadeUsage(rootDirPath);
-    repositoryUsesEnvCascadeCache.set(rootDirPath, usesEnvCascade);
-  }
-  return usesEnvCascade;
-}
-
-/** The nearest ancestor containing `.git` (the repository root), or the filesystem root. */
-function findGitRepositoryDirPath(dirPath: string): string {
-  for (let currentDirPath = path.resolve(dirPath); ; currentDirPath = path.dirname(currentDirPath)) {
-    if (fs.existsSync(path.join(currentDirPath, '.git')) || path.dirname(currentDirPath) === currentDirPath) {
-      return currentDirPath;
-    }
-  }
-}
-
-function detectEnvCascadeUsage(rootDirPath: string): boolean {
-  // Three listings: tracked files, untracked non-ignored files, and ignored files (`--ignored`
-  // limits `--others` to ignored files, so plain untracked files need their own listing).
-  for (const extraArgs of [
-    [],
-    ['--others', '--exclude-standard', '--directory'],
-    ['--others', '--ignored', '--exclude-standard', '--directory'],
-  ]) {
-    // -z + core.quotePath=false: git C-quotes non-ASCII paths by default, which would break the
-    // basename filter below. Raw (untrimmed) stdout, because a leading whitespace byte belongs
-    // to the first file name.
-    const [status, stdout] = spawnSyncAndReturnStatusAndRawStdout(
-      'git',
-      ['-c', 'core.quotePath=false', 'ls-files', '-z', ...extraArgs, '--', '.env*', '*/.env*'],
-      rootDirPath
-    );
-    // Fail CLOSED: when git itself fails (a stale worktree gitdir link, a dubious-ownership
-    // refusal, a missing binary), an empty listing must not read as "no cascade files" — this
-    // guard exists to prevent silent env loss, so assume the cascade is in use and keep the cap.
-    if (status !== 0) return true;
-    const listedPaths = stdout.split('\0');
-    // Collapsed directory entries end with '/'; a directory is not a cascade file.
-    if (
-      listedPaths.some(
-        (filePath) => filePath && !filePath.endsWith('/') && isEnvCascadeFileName(path.basename(filePath))
-      )
-    ) {
-      return true;
-    }
-  }
-  try {
-    const workflowsDirPath = path.join(rootDirPath, '.github', 'workflows');
-    for (const fileName of fs.readdirSync(workflowsDirPath)) {
-      const filePath = path.join(workflowsDirPath, fileName);
-      if (fs.statSync(filePath).isFile() && fs.readFileSync(filePath, 'utf8').includes('DOT_ENV')) return true;
-    }
-  } catch {
-    // No workflows directory.
-  }
-  return false;
-}
-
-const warnedPreFnoxOnlyWbRootDirPaths = new Set<string>();
-
-export function selectManagedWbVersion(
-  needsFnoxMigration: boolean,
-  latestVersion: string,
-  getLatestPreFnoxVersion: () => string | undefined,
-  rootDirPath: string
-): string {
-  if (!needsFnoxMigration) return latestVersion;
-  const validLatestVersion = semver.valid(latestVersion);
-  // Compare majors so a 19.x PRE-release (semver-less-than 19.0.0) is capped too.
-  if (validLatestVersion && semver.major(validLatestVersion) < semver.major(minimumFnoxOnlyWbVersion)) {
-    return latestVersion;
-  }
-  // Reached for a fnox-only latest release AND for a failed lookup (the '*' marker): both must
-  // resolve to a known-compatible release — `bun add wb@*` could otherwise install a fnox-only
-  // release that silently drops the repository's .env-configured variables. When the secondary
-  // registry lookup fails too, fall back to the last known compatible release.
-  const preFnoxVersion = getLatestPreFnoxVersion() ?? lastKnownPreFnoxOnlyWbVersion;
-  if (!warnedPreFnoxOnlyWbRootDirPaths.has(rootDirPath)) {
-    warnedPreFnoxOnlyWbRootDirPaths.add(rootDirPath);
-    console.warn(
-      `Capped ${wbDependency} at ${preFnoxVersion} in ${rootDirPath}: wb >= ${minimumFnoxOnlyWbVersion} loads environment variables only from fnox, and this repository still relies on the .env cascade (or a DOT_ENV secret) without a root fnox.toml. Migrate to fnox (see migrate-env-to-fnox), then rerun wbfy to upgrade.`
-    );
-  }
-  return preFnoxVersion;
-}
-
-function getLatestPreFnoxOnlyWbVersion(): string | undefined {
-  return getLatestVersionBelow(wbDependency, minimumFnoxOnlyWbVersion);
+  return latestVersion;
 }
 
 const latestVersionBelowCache = new Map<string, string | undefined>();

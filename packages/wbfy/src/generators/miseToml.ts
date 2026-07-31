@@ -7,7 +7,6 @@ import { parse, stringify } from 'smol-toml';
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 
 interface MiseToml {
@@ -19,47 +18,24 @@ interface MiseToml {
 export const minimumBunVersion = '1.3.14';
 
 /**
- * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions,
- * migrating versions from a legacy .tool-versions file and preserving unrelated mise settings.
+ * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions while
+ * preserving unrelated mise settings.
  */
 export async function generateMiseToml(config: PackageConfig, currentBunVersion: string): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
-    // A migration source that exists but is refused by the confined read (a symlink or a path
-    // resolving outside the repository) must abort generation: proceeding as if it were absent
-    // would silently replace its pins (e.g. a linked .node-version) with freshly resolved versions.
-    for (const sourceName of ['.tool-versions', '.node-version']) {
-      const sourcePath = path.resolve(config.dirPath, sourceName);
-      const sourceStats = await fs.promises.lstat(sourcePath).catch(() => {});
-      if (sourceStats && (await fsUtil.readFileConfinedIfExists(sourcePath)) === undefined) {
-        console.warn(`Skipped generating ${miseTomlPath} because ${sourcePath} exists but cannot be read safely.`);
-        return;
-      }
-    }
     // A parse failure must abort instead of falling back to {}: regenerating from an empty object
     // would silently replace the user's existing (albeit broken) mise.toml.
     const settings = parseMiseToml(miseTomlPath);
-    const toolVersions = await readToolVersions(config.dirPath);
     const tools = { ...settings.tools };
 
-    // Migrate every .tool-versions entry, not just Node.js and Bun: mise reads asdf tool names,
-    // so dropping e.g. python or ruby pins would silently unpin those tools.
-    for (const [tool, versions] of toolVersions) {
-      // asdf calls the Node.js plugin "nodejs"; mise's canonical name is "node".
-      const miseTool = tool === 'nodejs' ? 'node' : tool;
-      tools[miseTool] = tools[miseTool] ?? (versions.length > 1 ? versions : versions[0]);
-    }
     // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
     // unpinned Node would come from whatever happens to be on PATH.
     // Lift-then-pin: the lift only touches exact pins and the pin only touches selectors, so
     // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
     tools.node = pinConcreteToolVersion(
       'node',
-      liftOutdatedToolVersionWithinMajor(
-        'node@lts',
-        tools.node ?? (await readNodeVersionFile(config.dirPath)),
-        config.dirPath
-      ),
+      liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
     tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
@@ -72,17 +48,7 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     }
     settings.tools = tools;
 
-    // Delete the migration source only after the replacement actually landed; a refused write
-    // (e.g. a symlinked mise.toml) must not destroy the only tool configuration.
-    if (await fsUtil.generateFile(miseTomlPath, stringify(settings))) {
-      const toolVersionsPath = path.resolve(config.dirPath, '.tool-versions');
-      // The source-refusal guard at the top guarantees that an existing .tool-versions was
-      // safely read and migrated, so removing it (for a symlink: the link entry only) is safe —
-      // keeping it would leave an active duplicate configuration source that mise still reads.
-      if (await fs.promises.lstat(toolVersionsPath).catch(() => {})) {
-        await promisePool.run(() => fsUtil.removeConfined(toolVersionsPath));
-      }
-    }
+    await fsUtil.generateFile(miseTomlPath, stringify(settings));
   });
 }
 
@@ -145,9 +111,9 @@ function liftOutdatedToolVersionWithinMajor(selector: string, version: unknown, 
 function pinConcreteToolVersion(tool: string, version: unknown, cwd: string): unknown {
   if (version !== undefined && (typeof version !== 'string' || semver.valid(version))) return version;
   // Normalize selector forms `mise latest` cannot resolve even though mise configuration accepts
-  // them: `prefix:24` is rejected outright while `24` resolves, and `lts/*` (idiomatic in
-  // .node-version files) yields empty output while `lts` resolves. Modifier selectors such as
-  // `sub-2:lts` stay unresolvable and fall back to the original selector below.
+  // them: `prefix:24` is rejected outright while `24` resolves, and `lts/*` yields empty output
+  // while `lts` resolves. Modifier selectors such as `sub-2:lts` stay unresolvable and fall back
+  // to the original selector below.
   const range = typeof version === 'string' ? version.replace(/^prefix:/u, '').replace(/\/\*$/u, '') : undefined;
   // With no meaningful selector, Node.js pins to the latest LTS (matching the reusable workflows'
   // `lts/*` fallback) rather than the newest release.
@@ -168,26 +134,4 @@ function parseMiseToml(miseTomlPath: string): MiseToml {
     throw error;
   }
   return parse(content) as MiseToml;
-}
-
-async function readNodeVersionFile(dirPath: string): Promise<string | undefined> {
-  // Confined read: a committed .node-version symlink pointing outside the repository must not
-  // contribute an external file's content to the generated mise.toml.
-  const content = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, '.node-version'));
-  const version = content?.trim().replace(/^v/u, '');
-  return version || undefined;
-}
-
-async function readToolVersions(dirPath: string): Promise<Map<string, string[]>> {
-  const versions = new Map<string, string[]>();
-  // Confined read: a committed .tool-versions symlink pointing outside the repository must not
-  // get its target's content migrated into the tracked mise.toml (and the link deleted).
-  const content = await fsUtil.readFileConfinedIfExists(path.resolve(dirPath, '.tool-versions'));
-  for (const line of content?.split('\n') ?? []) {
-    const [tool, ...toolVersions] = line.replace(/#.*$/u, '').trim().split(/\s+/u);
-    if (tool && toolVersions.length > 0) {
-      versions.set(tool, toolVersions);
-    }
-  }
-  return versions;
 }

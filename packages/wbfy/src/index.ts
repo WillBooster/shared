@@ -11,13 +11,10 @@ import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
 import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js';
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
-import { fixWbDbCommand } from './fixers/wbDbCommand.js';
 import { untrackCloudflareEnv } from './fixers/cloudflareEnv.js';
-import { removeEnvExample } from './fixers/envExample.js';
-import { removeEnvFiles } from './fixers/envFiles.js';
 import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
-import { generateBunfigToml, readBunGlobalStore, readBunLinker, shouldUseBunGlobalStore } from './generators/bunfig.js';
+import { generateBunfigToml, shouldUseBunGlobalStore } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateFnoxToml } from './generators/fnoxToml.js';
@@ -28,7 +25,7 @@ import { generateGitignore } from './generators/gitignore.js';
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
-import { generatePackageJson, getWorkspacePackageDirs, repositoryUsesEnvCascade } from './generators/packageJson.js';
+import { generatePackageJson } from './generators/packageJson.js';
 import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
 import { generatePrettierignore } from './generators/prettierignore.js';
@@ -43,11 +40,6 @@ import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
 import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
-import {
-  findUnmigratableYarnSettings,
-  readYarnrcMinimumReleaseAgeSeconds,
-  removeYarnFiles,
-} from './generators/removeYarnFiles.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
 import { setupGitHubSettings } from './github/settings.js';
@@ -150,19 +142,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       console.info(`Skip ${rootDirPath}: wbfy ${skippableVersionLabel} is already applied. Pass --force to re-apply.`);
       continue;
     }
-    // Read-only preflight before ANY fixer mutates the repository: Yarn configuration without an
-    // automatic Bun translation must abort the whole migration for this path, not just the file
-    // removal — otherwise wbfy would leave a half-migrated repository that neither tool can build.
-    const unmigratableYarnSettings = findUnmigratableYarnSettings(rootDirPath);
-    if (unmigratableYarnSettings) {
-      console.error(
-        `Skip ${rootDirPath}: ${unmigratableYarnSettings}. ` +
-          'Migrate it to Bun manually (bunfig.toml install settings / patchedDependencies), then re-run wbfy.'
-      );
-      hasInvalidPackageConfig = true;
-      continue;
-    }
-
     const packagesDirPath = path.join(rootDirPath, 'packages');
     const dirents = (await ignoreErrorAsync(() => fs.promises.readdir(packagesDirPath, { withFileTypes: true }))) ?? [];
     const packagesSubDirPaths = dirents
@@ -186,9 +165,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       (subDirPath) => subDirPath !== path.resolve(rootDirPath)
     );
 
-    // Refused writes on core managed files would leave the migration half-applied (e.g. Yarn state
-    // removed but bunfig.toml unchanged, or a test directory renamed without its script), so skip
-    // the repository BEFORE any mutation when one of them is a symlink or resolves outside it.
+    // Refused writes on core managed files would leave the repository partially updated, so skip
+    // it BEFORE any mutation when one of them is a symlink or resolves outside the repository.
     const managedFilePaths = [
       ...['bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
         path.resolve(rootDirPath, name)
@@ -237,37 +215,14 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
     }
     assertSafeDependencySources(allPackageConfigs);
-    // Prime the cascade-usage memo BEFORE removeEnvExample deletes .env.example: on a fresh
-    // checkout that file may be the only visible signal that developers keep gitignored .env
-    // files, and generatePackageJson's wb version cap must still see it (see
-    // repositoryUsesEnvCascade).
-    repositoryUsesEnvCascade(rootConfig.dirPath);
-    for (const config of allPackageConfigs) await removeEnvExample(config);
-
-    // Managed repositories use Bun with mise (and optionally fnox); Yarn artifacts are removed.
-    // The isolated linker is the only supported layout (hoisted was retired org-wide); the
-    // previous linker is read solely so the install probe knows a layout switch needs a clean
-    // tree. --skip-deps skips the probe (and its node_modules cleanup) entirely.
-    const previousBunLinker = readBunLinker(rootDirPath);
-    const previousBunGlobalStore = readBunGlobalStore(rootDirPath);
+    // Managed repositories use Bun with mise (and optionally fnox).
     // Root-level install layout must cover workspace apps too: Next.js commonly lives under
     // packages/* or apps/* while bunfig.toml exists only at the repository root.
-    const defaultUseGlobalStore = shouldUseBunGlobalStore(allPackageConfigs);
-    const useGlobalStore = skipDeps ? (previousBunGlobalStore ?? defaultUseGlobalStore) : defaultUseGlobalStore;
-    // Read BEFORE removeYarnFiles deletes .yarnrc.yml: the generated bunfig.toml keeps the
-    // repository's release-age gate (npmMinimalAgeGate). npmPreapprovedPackages is dropped —
-    // minimumReleaseAgeExcludes is org policy managed solely by bunMinimumReleaseAgeExcludes.
-    const yarnMinimumReleaseAgeSeconds = readYarnrcMinimumReleaseAgeSeconds(rootDirPath);
-    await removeYarnFiles(rootConfig);
-    await generateBunfigToml(rootConfig, yarnMinimumReleaseAgeSeconds, useGlobalStore);
+    const useGlobalStore = shouldUseBunGlobalStore(allPackageConfigs);
+    await generateBunfigToml(rootConfig, useGlobalStore);
     await generateMiseToml(rootConfig, bunVersion);
     await generateFnoxToml(rootConfig);
-    // After generateFnoxToml so the insertion can never race the transactional recipient
-    // migration (which snapshots and may restore every fnox.toml).
     await ensureWbEnvDefinitions(rootConfig, allPackageConfigs);
-    // After ensureWbEnvDefinitions so a repository whose fnox.toml is being completed in the same
-    // run still gets its leftover committed .env files removed (fnox is the single source now).
-    await removeEnvFiles(rootConfig);
     // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
     // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
     await promisePool.promiseAll();
@@ -275,14 +230,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // The layout must be verified installable BEFORE any `bun add` mutates package.json files:
     // per-package installs tolerate failures (spawnSync discards their status), so a layout that
     // cannot install would silently drop every managed dependency update for the rest of the run.
-    if (
-      !skipDeps &&
-      !probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunLinker, previousBunGlobalStore, useGlobalStore)
-    ) {
-      // Do not fail the run here: the probe observes the pre-migration lifecycle scripts (e.g.
-      // still-Yarn-based postinstall commands that generatePackageJson converts later), so it can
-      // fail spuriously. refreshBunLock runs after the conversion and is the single authority on
-      // whether the final install — and therefore the run — failed.
+    if (!skipDeps && !probeIsolatedBunInstall(rootDirPath)) {
+      // refreshBunLock below is the authority on whether the final install failed.
       console.warn(`bun install currently fails in ${rootDirPath} under the isolated linker.`);
     }
 
@@ -387,16 +336,12 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     }
     await Promise.all(promises);
     await promisePool.promiseAll();
-    await fixWbDbCommand(rootConfig, allPackageConfigs);
-
     // Refresh lock files
-    let didRefreshBunLock = false;
     try {
       refreshBunLock(rootDirPath);
-      didRefreshBunLock = true;
     } catch (error) {
       // A failed install must fail the CLI: exiting 0 with a stale or missing Bun lockfile would
-      // hide a broken migration.
+      // hide a broken managed configuration.
       console.error('Failed to refresh the Bun lockfile:', (error as Error | undefined)?.message ?? error);
       hasInvalidPackageConfig = true;
     }
@@ -411,71 +356,22 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       console.error('Failed to normalize the Bun lockfile:', (error as Error | undefined)?.message ?? error);
       hasInvalidPackageConfig = true;
     }
-    if (didRefreshBunLock) {
-      try {
-        // Now that bun.lock exists (migrated from yarn.lock when there was none), the Yarn lockfile
-        // that removeYarnFiles intentionally preserved for the migration can be removed.
-        fs.rmSync(path.resolve(rootDirPath, 'yarn.lock'), { force: true });
-      } catch (error) {
-        console.error('Failed to remove the Yarn lockfile:', (error as Error | undefined)?.message ?? error);
-        hasInvalidPackageConfig = true;
-      }
-    }
     spawnSync('bun', ['cleanup'], rootDirPath);
   }
   return hasInvalidPackageConfig;
 }
 
 /**
- * Probes `bun install` under the isolated linker — the only layout wbfy generates since the
- * hoisted linker was retired org-wide. An incompatibility (e.g. a phantom dependency an isolated
- * layout refuses to resolve) must be fixed in the repository or in wbfy's managed lists, never by
- * switching the linker back. Returns false when the install fails.
+ * Probes `bun install` under the isolated linker. An incompatibility must be fixed in the
+ * repository or in wbfy's managed lists, never by switching the linker. Returns false when the
+ * install fails.
  */
-function probeIsolatedBunInstall(
-  rootDirPath: string,
-  rootConfig: PackageConfig,
-  previousLinker: 'isolated' | 'hoisted' | undefined,
-  previousGlobalStore: boolean | undefined,
-  useGlobalStore: boolean
-): boolean {
-  // A layout switch must probe from a clean tree: `bun install` does not remove packages the
-  // previous layout left behind, so e.g. still-hoisted phantom dependencies can make the isolated
-  // probe succeed although a fresh checkout could not install.
-  if (previousLinker !== 'isolated' || previousGlobalStore !== useGlobalStore) {
-    removeNodeModules(rootDirPath, rootConfig);
-  }
+function probeIsolatedBunInstall(rootDirPath: string): boolean {
   // Retry once so a transient failure (registry hiccup, flaky lifecycle script) does not
   // masquerade as a layout incompatibility.
   if (spawnSyncAndReturnStatus('bun', ['install'], rootDirPath, 1) === 0) return true;
 
-  // Clean up the failed attempt so later installs do not run on a polluted tree.
-  removeNodeModules(rootDirPath, rootConfig);
   return false;
-}
-
-function removeNodeModules(rootDirPath: string, rootConfig: PackageConfig): void {
-  // Cover every declared workspace (e.g. apps/*), not just packages/*: a leftover workspace tree
-  // can keep phantom dependencies resolvable and defeat the clean-tree probe.
-  const nodeModulesPaths = [
-    path.resolve(rootDirPath, 'node_modules'),
-    ...[...getWorkspacePackageDirs(rootConfig).values()].map((workspaceDir) =>
-      path.resolve(rootDirPath, workspaceDir, 'node_modules')
-    ),
-  ];
-  // Never delete through a symlink escaping the repository: a workspace directory (or one of its
-  // ancestors) linked to another project must not cost that project its node_modules.
-  const realRootDirPath = fs.realpathSync(rootDirPath);
-  for (const nodeModulesPath of nodeModulesPaths) {
-    const realParentDirPath = ignoreError(() => fs.realpathSync(path.dirname(nodeModulesPath)));
-    if (
-      !realParentDirPath ||
-      (realParentDirPath !== realRootDirPath && !realParentDirPath.startsWith(realRootDirPath + path.sep))
-    ) {
-      continue;
-    }
-    fs.rmSync(nodeModulesPath, { recursive: true, force: true });
-  }
 }
 
 function refreshBunLock(rootDirPath: string): void {

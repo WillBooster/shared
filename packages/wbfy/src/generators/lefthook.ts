@@ -360,10 +360,7 @@ function hasLocalWbWorkspace(config: PackageConfig): boolean {
 
 function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageConfig[]): string[] {
   const postMergeCommands: string[] = [];
-  // Always emit the mise hook: every managed repository receives mise.toml from generateMiseToml
-  // in the same run, and gating on a pre-run hasVersionSettings snapshot would omit the hook on
-  // the first migration run (non-idempotent output).
-  const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml|\.tool-versions|\..+-version)`;
+  const toolsChangedPattern = String.raw`(mise\.toml|\.mise\.toml)`;
   postMergeCommands.push(String.raw`run_if_changed "${toolsChangedPattern}" "mise install"`);
   const installCommand = 'bun install';
   // Do NOT add `.vinext` here: it holds only vinext's content-hashed font cache and the dev
