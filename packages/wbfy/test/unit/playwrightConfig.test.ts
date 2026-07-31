@@ -22,19 +22,25 @@ test('preserves a custom Playwright web server lifecycle', async () => {
   expect(generated).toContain(`command: '${customCommand}'`);
 });
 
-test.each(['wb start --mode test', 'yarn wb start --mode test', 'bun start-test-server', 'yarn start-test-server'])(
-  'migrates the legacy wbfy-managed Playwright web server command %s',
-  async (command) => {
-    const generated = await fixConfig(`export default defineConfig({
+test.each([
+  'wb start --mode test',
+  'yarn wb start --mode test',
+  'bun start-test-server',
+  'yarn start-test-server',
+  'yarn start-test',
+  'bun run wb start --mode test',
+  'bun run start-test-server',
+  'bun --bun wb start --mode test',
+])('migrates the legacy wbfy-managed Playwright web server command %s', async (command) => {
+  const generated = await fixConfig(`export default defineConfig({
   webServer: {
     command: '${command}',
     url: 'http://127.0.0.1:3010',
   },
 });`);
 
-    expect(generated).toContain(`command: 'bun wb start --mode test'`);
-  }
-);
+  expect(generated).toContain(`command: 'bun wb start --mode test'`);
+});
 
 test.each([
   'chore: willboosterify this repo',

@@ -79,7 +79,15 @@ test('drops a stale Rust workflow badge when the repository has no Rust code', a
   await withTempDir(async (dirPath) => {
     const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
     fs.mkdirSync(workflowsPath, { recursive: true });
-    fs.writeFileSync(path.resolve(workflowsPath, 'test-rust.yml'), 'name: Test Rust\n');
+    fs.writeFileSync(
+      path.resolve(workflowsPath, 'test-rust.yml'),
+      `name: Test Rust
+on: push
+jobs:
+  test-rust:
+    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main
+`
+    );
     fs.writeFileSync(
       path.resolve(dirPath, 'README.md'),
       `# Project
@@ -92,6 +100,30 @@ ${badgeOf('1.2.3')}
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).not.toContain('test-rust.yml');
     expect(content).toContain(badgeOf('1.2.3'));
+  });
+});
+
+test('keeps the badge of a custom test-rust workflow the workflow generator preserves', async () => {
+  await withTempDir(async (dirPath) => {
+    const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
+    fs.mkdirSync(workflowsPath, { recursive: true });
+    // A non-generated test-rust.yml merely shares the name; the workflow generator leaves it
+    // alone, so the README must keep its badge as well.
+    fs.writeFileSync(
+      path.resolve(workflowsPath, 'test-rust.yml'),
+      `name: Test Rust
+on: push
+jobs:
+  custom:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo --version
+`
+    );
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${badgeOf('1.2.3')}\n`);
+
+    const content = await runGenerateReadme(dirPath, '1.2.3');
+    expect(content).toContain('test-rust.yml/badge.svg');
   });
 });
 

@@ -354,7 +354,7 @@ export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string)
  * delete it: unparsable files and files with any other job return false — deleting a whole
  * workflow on a loose match would be too aggressive.
  */
-function jobsAllCallReusableWorkflow(workflowsPath: string, fileName: string, workflowName: string): boolean {
+export function jobsAllCallReusableWorkflow(workflowsPath: string, fileName: string, workflowName: string): boolean {
   if (!fileName.endsWith('.yml')) return false;
   let content: string;
   try {

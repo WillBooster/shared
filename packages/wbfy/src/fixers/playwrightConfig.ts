@@ -324,8 +324,8 @@ async function findWbfyOverwrittenWebServerCommand(
 
       // Only the latest command-changing transition can explain the current generated value. Older
       // wbfy overwrites are obsolete once a maintainer has deliberately changed the command again.
-      if (!isHistoricallyGeneratedWbStartTestCommand(commitCommand.command)) return undefined;
-      if (isHistoricallyGeneratedWbStartTestCommand(previousCommand.command)) continue;
+      if (!isGeneratedWbStartTestCommand(commitCommand.command)) return undefined;
+      if (isGeneratedWbStartTestCommand(previousCommand.command)) continue;
       if (!isWbfyCommitSubject(entry.subject)) return undefined;
       return areHistoricalBindingsUnchanged(previousCommand.bindingFingerprints, currentSource)
         ? previousCommand.command
@@ -502,17 +502,12 @@ function isWbfyCommitSubject(subject: string): boolean {
 
 function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
   if (command.kind !== 'literal') return false;
-  // Match only commands emitted by past wbfy versions. A broader command-shaped regex could
-  // overwrite a repository's deliberate wrapper while trying to recognize generated content.
-  return /^'(?:(?:bun|yarn) (?:wb start --mode test|start-test-server)|wb start --mode test)'$/u.test(
-    command.value.trim()
-  );
-}
-
-function isHistoricallyGeneratedWbStartTestCommand(command: ParsedValue): boolean {
-  if (isGeneratedWbStartTestCommand(command)) return true;
-  if (command.kind !== 'literal') return false;
-  return /^'(?:yarn start-test|bun run (?:wb start --mode test|start-test-server)|bun --bun wb start --mode test)'$/u.test(
+  // Match only commands emitted by past wbfy versions (every historical form, so none of them is
+  // preserved as "custom" pointing at a script wbfy has since removed). A broader command-shaped
+  // regex could overwrite a repository's deliberate wrapper while recognizing generated content.
+  // Single quotes only: every generated form is single-quoted (as is org formatting), and an
+  // unrecognized quoting style fails safe — the command is preserved, never overwritten.
+  return /^'(?:(?:(?:bun(?: --bun| run)?|yarn) )?wb start --mode test|(?:bun(?: run)?|yarn) start-test-server|yarn start-test)'$/u.test(
     command.value.trim()
   );
 }
