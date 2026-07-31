@@ -507,7 +507,7 @@ function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
   // regex could overwrite a repository's deliberate wrapper while recognizing generated content.
   // Single quotes only: every generated form is single-quoted (as is org formatting), and an
   // unrecognized quoting style fails safe — the command is preserved, never overwritten.
-  return /^'(?:(?:bun(?: run)?|yarn) (?:wb start --mode test|start-test-server)|wb start --mode test|yarn start-test|bun --bun wb start --mode test)'$/u.test(
+  return /^'(?:(?:(?:bun(?: --bun| run)?|yarn) )?wb start --mode test|(?:bun(?: run)?|yarn) start-test-server|yarn start-test)'$/u.test(
     command.value.trim()
   );
 }
