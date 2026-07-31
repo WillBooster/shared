@@ -6,7 +6,6 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { generatesWorkerTypes } from '../packageConfig.js';
-import { readBunLinker } from './bunfig.js';
 import { hasCloudflareDeployWorkflow, invokesWbDeploy } from './workflow.js';
 
 export async function generateAgentInstructions(rootConfig: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
@@ -72,14 +71,11 @@ function generateAgentInstruction(
   const miseInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'mise.toml'))
     ? '\n- Tool versions (node, bun, and others) are pinned in `mise.toml`; run `mise install` after changing it, and never install those tools globally instead.'
     : '';
-  // Isolated installs are the org standard and the most agent-hostile part of the stack: a package
-  // that is only reachable because a dependency hoisted it no longer resolves, and the reflex fix
-  // (switching the linker back) silently reintroduces the phantom dependencies the layout exists to
-  // catch.
-  const isolatedInstallInstruction =
-    readBunLinker(rootConfig.dirPath) === 'isolated'
-      ? `\n- \`bunfig.toml\` uses Bun's isolated linker, so only declared dependencies resolve. If an import fails to resolve, declare that package in the \`package.json\` that imports it; never switch \`linker\` to \`hoisted\` or add to \`publicHoistPattern\` to work around it.`
-      : '';
+  // Isolated installs are the org standard (wbfy generates no other linker) and the most
+  // agent-hostile part of the stack: a package that is only reachable because a dependency hoisted
+  // it no longer resolves, and the reflex fix (switching the linker back) silently reintroduces
+  // the phantom dependencies the layout exists to catch.
+  const isolatedInstallInstruction = `\n- \`bunfig.toml\` uses Bun's isolated linker, so only declared dependencies resolve. If an import fails to resolve, declare that package in the \`package.json\` that imports it; never switch \`linker\` to \`hoisted\` or add to \`publicHoistPattern\` to work around it.`;
   // Every clause states only a verified fact, reusing the workflow generator's own detectors: the
   // wrangler-config clause needs an actual config file (isCloudflare also matches a mere wrangler
   // mention in a script or workflow), the workflow clause needs a live reusable-deploy caller
