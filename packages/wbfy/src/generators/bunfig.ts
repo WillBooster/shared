@@ -154,14 +154,12 @@ export const bunMinimumReleaseAgeExcludes = [
   'react-server-dom-webpack',
 ];
 
-export type BunLinker = 'isolated' | 'hoisted';
-
 /**
  * Reads the linker explicitly declared in the repository's bunfig.toml. Returns undefined when
  * none is declared: Bun's default is context-dependent (isolated for new workspace projects with
  * `configVersion = 1` lockfiles, hoisted otherwise), so absence must not be read as hoisted.
  */
-export function readBunLinker(rootDirPath: string): BunLinker | undefined {
+export function readBunLinker(rootDirPath: string): 'isolated' | 'hoisted' | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
   if (!fs.existsSync(filePath)) return undefined;
   const linker = parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.linker;
@@ -182,21 +180,19 @@ export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
 
 export async function generateBunfigToml(
   config: PackageConfig,
-  linker: BunLinker,
   yarnMinimumReleaseAgeSeconds: number | undefined,
   useGlobalStore: boolean
 ): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, linker, config, yarnMinimumReleaseAgeSeconds, useGlobalStore);
+    const content = newContent(existingContent, config, yarnMinimumReleaseAgeSeconds, useGlobalStore);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
 
 const newContent = (
   existingContent: string | undefined,
-  linker: BunLinker,
   config: PackageConfig,
   yarnMinimumReleaseAgeSeconds: number | undefined,
   useGlobalStore: boolean
@@ -226,22 +222,19 @@ const newContent = (
     : '# Keep Turbopack dependencies inside the project root.\nglobalStore = false';
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
+  // publicHoistPattern — tsx: build-ts under Node.js spawns `node --import tsx`, which resolves
+  // tsx from the consumer package's directory, not from build-ts's own dependencies.
+  // undici-types: bun-types references it without declaring it as a dependency (oven-sh/bun#22805);
+  // generated tsconfigs also map undici-types to the hoisted copy (see tsconfig.ts) because the
+  // global store realpaths bun-types outside the repository.
   return `env = false
 telemetry = false
 
 ${extractRawTestSections(existingContent)}[install]
 exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 ${globalStoreLine}
-${
-  linker === 'isolated'
-    ? // tsx: build-ts under Node.js spawns `node --import tsx`, which resolves tsx from the
-      // consumer package's directory, not from build-ts's own dependencies.
-      // undici-types: bun-types references it without declaring it as a dependency
-      // (oven-sh/bun#22805); generated tsconfigs also map undici-types to the hoisted copy
-      // (see tsconfig.ts) because the global store realpaths bun-types outside the repository.
-      'linker = "isolated"\npublicHoistPattern = ["tsx", "undici-types"]'
-    : 'linker = "hoisted"'
-}
+linker = "isolated"
+publicHoistPattern = ["tsx", "undici-types"]
 minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
 # minimumReleaseAgeExcludes is managed by wbfy — repository-specific entries are prohibited and
 # removed on every run (the minimumReleaseAge above may still be repository-specific). To exclude
