@@ -5,6 +5,7 @@ import type { Image, Link, Paragraph, PhrasingContent, RootContent } from 'mdast
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 import { logger } from '../logger.js';
+import { jobsAllCallReusableWorkflow } from './workflow.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
@@ -99,8 +100,15 @@ async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
   for (const fileName of fs.readdirSync(workflowsPath)) {
     if (!fileName.startsWith('test') && !fileName.startsWith('deploy')) continue;
     // Workflow and README generation run concurrently. Do not retain a stale Rust badge while the
-    // workflow generator removes a caller created from a formerly misdetected local cache.
-    if (fileName === 'test-rust.yml' && config.cargoTomlDirPaths.length === 0) continue;
+    // workflow generator removes a caller created from a formerly misdetected local cache — but
+    // mirror its ownership check: a custom same-named workflow survives, so its badge must too.
+    if (
+      fileName === 'test-rust.yml' &&
+      config.cargoTomlDirPaths.length === 0 &&
+      jobsAllCallReusableWorkflow(workflowsPath, fileName, 'test-rust')
+    ) {
+      continue;
+    }
     // GitHub's badge endpoint returns 404 until the workflow has at least one run, so a badge for a
     // dispatch-only deploy workflow that has never run renders as a broken image. Test workflows run
     // on every PR, so only deploy badges need the guard.
