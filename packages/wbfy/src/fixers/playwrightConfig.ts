@@ -505,7 +505,9 @@ function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
   // Match only commands emitted by past wbfy versions (every historical form, so none of them is
   // preserved as "custom" pointing at a script wbfy has since removed). A broader command-shaped
   // regex could overwrite a repository's deliberate wrapper while recognizing generated content.
-  return /^'(?:(?:bun|yarn|bun run) (?:wb start --mode test|start-test-server)|wb start --mode test|yarn start-test|bun --bun wb start --mode test)'$/u.test(
+  // Single quotes only: every generated form is single-quoted (as is org formatting), and an
+  // unrecognized quoting style fails safe — the command is preserved, never overwritten.
+  return /^'(?:(?:bun(?: run)?|yarn) (?:wb start --mode test|start-test-server)|wb start --mode test|yarn start-test|bun --bun wb start --mode test)'$/u.test(
     command.value.trim()
   );
 }
