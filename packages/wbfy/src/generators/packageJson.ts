@@ -95,6 +95,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
+  removeSelfDependency(config, jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipAddingDeps);
@@ -139,6 +140,13 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
   if (!config.doesContainTypeScript && !config.doesContainTypeScriptInPackages) {
     delete jsonObj.dependencies[typescriptDependency];
     delete jsonObj.devDependencies[typescriptDependency];
+  }
+}
+
+function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJson): void {
+  const packageName = jsonObj.name || path.basename(config.dirPath);
+  for (const section of getDependencySections(jsonObj)) {
+    Reflect.deleteProperty(section, packageName);
   }
 }
 

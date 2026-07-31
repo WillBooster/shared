@@ -8,6 +8,7 @@ import {
   extractRawTestSections,
   generateBunfigToml,
   readBunGlobalStore,
+  resolveBunGlobalStore,
   shouldUseBunGlobalStore,
 } from '../../src/generators/bunfig.js';
 import { promisePool } from '../../src/utils/promisePool.js';
@@ -50,6 +51,13 @@ test('keeps Next.js and Blitz dependencies inside the project', () => {
   expect(
     shouldUseBunGlobalStore([createConfig(), createConfig({ depending: { ...createConfig().depending, blitz: true } })])
   ).toBe(false);
+});
+
+test('keeps the existing install layout when dependency updates are skipped', () => {
+  const nextConfig = createConfig({ depending: { ...createConfig().depending, next: true } });
+  expect(resolveBunGlobalStore([nextConfig], true, true)).toBe(true);
+  expect(resolveBunGlobalStore([createConfig()], false, true)).toBe(false);
+  expect(resolveBunGlobalStore([nextConfig], undefined, true)).toBe(false);
 });
 
 test('keeps Next.js dependencies inside the Turbopack filesystem root', async () => {

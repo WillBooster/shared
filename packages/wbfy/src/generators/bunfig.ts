@@ -160,6 +160,15 @@ export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
 }
 
+export function resolveBunGlobalStore(
+  configs: PackageConfig[],
+  previousGlobalStore: boolean | undefined,
+  skipDeps: boolean
+): boolean {
+  const defaultUseGlobalStore = shouldUseBunGlobalStore(configs);
+  return skipDeps ? (previousGlobalStore ?? defaultUseGlobalStore) : defaultUseGlobalStore;
+}
+
 export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
   // Blitz builds on Next.js but need not declare it directly, and its codegen also patches Next
   // inside node_modules. Both frameworks therefore require project-local isolated installs.

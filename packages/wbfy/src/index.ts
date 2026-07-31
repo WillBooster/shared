@@ -14,7 +14,7 @@ import { fixTypos } from './fixers/typos.js';
 import { untrackCloudflareEnv } from './fixers/cloudflareEnv.js';
 import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
-import { generateBunfigToml, readBunGlobalStore, shouldUseBunGlobalStore } from './generators/bunfig.js';
+import { generateBunfigToml, readBunGlobalStore, resolveBunGlobalStore } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateFnoxToml } from './generators/fnoxToml.js';
@@ -219,7 +219,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     const previousBunGlobalStore = readBunGlobalStore(rootDirPath);
     // Root-level install layout must cover workspace apps too: Next.js commonly lives under
     // packages/* or apps/* while bunfig.toml exists only at the repository root.
-    const useGlobalStore = shouldUseBunGlobalStore(allPackageConfigs);
+    const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
     await generateBunfigToml(rootConfig, useGlobalStore);
     await generateMiseToml(rootConfig, bunVersion);
     await generateFnoxToml(rootConfig);

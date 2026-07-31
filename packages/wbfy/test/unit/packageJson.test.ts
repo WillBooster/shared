@@ -11,6 +11,7 @@ import { createConfig } from '../helpers/testConfig.js';
 interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
   devDependencies?: Record<string, string | undefined>;
+  peerDependencies?: Record<string, string | undefined>;
   private?: boolean;
   publishConfig?: { access?: string; registry?: string };
   scripts?: Record<string, string | undefined>;
@@ -1027,6 +1028,18 @@ test('removes TypeScript compilers from a repository without TypeScript', async 
   });
   expect(withoutTypeScript.devDependencies?.['@typescript/native-preview']).toBeUndefined();
   expect(withoutTypeScript.devDependencies?.typescript).toBeUndefined();
+});
+
+test('removes a package self-dependency from every dependency section', async () => {
+  const packageJson = await generatePackageJsonFrom({
+    name: '@example/self-referencing',
+    dependencies: { '@example/self-referencing': '1.0.0' },
+    devDependencies: { '@example/self-referencing': '1.0.0' },
+    peerDependencies: { '@example/self-referencing': '1.0.0' },
+  });
+  expect(packageJson.dependencies?.['@example/self-referencing']).toBeUndefined();
+  expect(packageJson.devDependencies?.['@example/self-referencing']).toBeUndefined();
+  expect(packageJson.peerDependencies?.['@example/self-referencing']).toBeUndefined();
 });
 
 test('keeps commands chained onto the generated test and verify-full scripts', async () => {
