@@ -15,11 +15,11 @@ afterEach(() => {
   fsUtil.setRootDirPath(undefined);
 });
 
-async function generateFrom(migrationSources: Record<string, string>): Promise<string> {
+async function generateFrom(files: Record<string, string>): Promise<string> {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-mise-'));
   try {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
-    for (const [fileName, content] of Object.entries(migrationSources)) {
+    for (const [fileName, content] of Object.entries(files)) {
       fs.writeFileSync(path.join(dirPath, fileName), content);
     }
     fsUtil.setRootDirPath(dirPath);
@@ -31,20 +31,15 @@ async function generateFrom(migrationSources: Record<string, string>): Promise<s
   }
 }
 
-// The .tool-versions migration writes an array when an entry lists several versions, so those
-// arrays are wbfy's own output and must still meet the Bun floor: an older Bun silently ignores
-// the options in the generated bunfig.toml.
-test('lifts every Bun version migrated from a multi-version .tool-versions entry', async () => {
-  const content = await generateFrom({ '.tool-versions': 'bun 1.2.0 1.3.14\nnodejs 24.18.0\n' });
+test('lifts every configured Bun version in a multi-version mise entry', async () => {
+  const content = await generateFrom({ 'mise.toml': '[tools]\nbun = ["1.2.0", "1.3.14"]\nnode = "24.18.0"\n' });
 
   expect(content).not.toContain('1.2.0');
   expect(content).toContain('bun = [ "1.3.14" ]');
 });
 
-// `lts/*` is the idiomatic .node-version spelling, but `mise latest node@lts/*` exits 0 with empty
-// output (mise 2026.7.7), so it must be normalized before resolution or the pin stays unresolved.
-test('pins the concrete version behind an lts/* .node-version selector', async () => {
-  const content = await generateFrom({ '.node-version': 'lts/*\n' });
+test('pins the concrete version behind an lts/* mise selector', async () => {
+  const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "lts/*"\n' });
 
   expect(content).not.toContain('lts/*');
   expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);

@@ -1065,9 +1065,7 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // public repositories, PUBLIC_FNOX_AGE_KEY) organization secret.
   // Key the injection on the *called* reusable workflow, not the caller's filename: callers may have
   // arbitrary names (e.g. scheduled run-script callers), and GitHub rejects passing a secret that the
-  // callee does not declare. In a not-yet-migrated repository the legacy DOT_ENV pass-through is
-  // kept so CI keeps working from the still-existing DOT_ENV secret until the fnox migration
-  // completes; once fnox.toml exists, the pass-through (and dot_env_path) is removed below.
+  // callee does not declare.
   // Only an @main callee is known to follow the current secret contract: a workflow pinned to an
   // older tag or SHA may still declare NPM_TOKEN (and not VERDACCIO_TOKEN), and GitHub rejects a
   // caller whose secrets do not match the selected revision's declarations, so pinned callers keep
@@ -1075,6 +1073,9 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
+    delete secrets.DOT_ENV;
+    delete secrets.DOT_ENV_PRODUCTION;
+    delete job.with.dot_env_path;
     // The callee routes public (default-registry) installs through the Takumi Guard
     // malicious-package-blocking proxy when this token resolves; an unset organization secret
     // expands to '' and the callee treats that as "feature off", so passing it is always safe.
@@ -1101,11 +1102,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       if (mapping) {
         secrets.FNOX_AGE_KEY = mapping;
       }
-      // fnox.toml replaced the .env files (wb no longer reads them), so the legacy inputs would
-      // only keep dead configuration alive.
-      delete secrets.DOT_ENV;
-      delete secrets.DOT_ENV_PRODUCTION;
-      delete job.with.dot_env_path;
     }
   }
   // Callers pinned to a tag/SHA keep their secret SET untouched (the pinned revision's

@@ -19,8 +19,7 @@ const bareWranglerTypesPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wr
 
 // The same, plus only `--env-file` arguments. The flag names the files wrangler reads to infer local variables
 // and secrets, so it changes the generated `Env` WHENEVER A NAMED FILE EXISTS — dropping it would then shrink
-// the declaration. It is disposable only once every named file is gone, which is the state fnox migration leaves
-// behind (the `.env` cascade is deleted) and the case this normalization is for.
+// the declaration. It is disposable only once every named file is gone.
 const envFileWranglerTypesPattern =
   /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+(\S+))+$/u;
 const envFileArgumentPattern = /--env-file\s+(\S+)/gu;
@@ -64,9 +63,8 @@ function isDisposableWranglerTypes(segment: string, dirPath: string | undefined)
 
 /**
  * Drops the `--env-file` arguments of a `wrangler types` invocation whose files are absent, returning the rewritten
- * script (or undefined when nothing changed). wrangler exits non-zero on a `--env-file` naming a missing file, and
- * removeEnvFiles deletes the `.env` cascade of a fnox repository in the very same run, so a surviving flag breaks
- * every subsequent install. Normalizing to `wb gen-code` already drops these flags where wbfy owns the generation;
+ * script (or undefined when nothing changed). wrangler exits non-zero on a `--env-file` naming a missing file, so a
+ * surviving flag breaks every subsequent install. Normalizing to `wb gen-code` already drops these flags where wbfy owns the generation;
  * this covers the packages it deliberately leaves unmanaged (e.g. an untracked local `.env.production` makes the
  * inference irreproducible), which would otherwise be handed back unable to run `bun install` at all.
  */

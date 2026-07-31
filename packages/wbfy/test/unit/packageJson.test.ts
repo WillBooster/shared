@@ -11,6 +11,7 @@ import { createConfig } from '../helpers/testConfig.js';
 interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
   devDependencies?: Record<string, string | undefined>;
+  peerDependencies?: Record<string, string | undefined>;
   private?: boolean;
   publishConfig?: { access?: string; registry?: string };
   scripts?: Record<string, string | undefined>;
@@ -615,196 +616,6 @@ test('uses bun runner for generated Python scripts in bun projects', async () =>
   expect(packageJson.scripts?.['lint-fix']).not.toContain('yarn');
 });
 
-test('converts yarn script invocations to bun while leaving Yarn built-ins untouched', async () => {
-  const packageJson = await generatePackageJsonFrom({
-    scripts: {
-      'clean-all': 'yarn workspaces foreach --all exec rimraf dist',
-      'deps-up': 'yarn up -R typescript',
-      dollar: "yarn 'build:$target'",
-      dynamic: 'yarn build:$target && yarn run "build:$target"',
-      'quoted-assign': '"FOO=bar" yarn compile',
-      'foreach-bare': 'yarn workspaces foreach run build',
-      'fan-out': 'yarn workspaces foreach --all run build',
-      'gen:sub': 'cd sub && yarn build:sub',
-      hint: "echo 'run yarn build before deploying'",
-      'install-note': "echo 'yarn install && deploy now'",
-      mention: 'git commit -m yarn && echo yarn build',
-      'parallel-dev': 'yarn workspaces foreach --all --parallel run dev',
-      publish2: 'yarn npm publish --tolerate-republish',
-      'quoted-install': "yarn 'install' && yarn compile",
-      redirect: 'yarn build>out.log',
-      'redirect-first': '>build.log yarn compile',
-      'redirect-chain': 'yarn install > /dev/null && yarn format > /dev/null 2> /dev/null || true',
-      'setup-all': 'yarn install && yarn compile',
-      'since-build': 'yarn workspaces foreach --since run build',
-      'ws-add': 'yarn workspace components add -D react',
-      'ws-run': 'yarn workspace components run gen',
-    },
-  });
-
-  expect(packageJson.scripts).toMatchObject({
-    // Yarn built-ins have no bun run equivalent and must survive verbatim to surface in review.
-    'clean-all': 'yarn workspaces foreach --all exec rimraf dist',
-    'deps-up': 'yarn up -R typescript',
-    publish2: 'yarn npm publish --tolerate-republish',
-    'ws-add': 'yarn workspace components add -D react',
-    // `yarn` inside a quoted token, in argument position, or after a quoted command word is data,
-    // not a command.
-    'quoted-assign': '"FOO=bar" yarn compile',
-    hint: "echo 'run yarn build before deploying'",
-    'install-note': "echo 'yarn install && deploy now'",
-    mention: 'git commit -m yarn && echo yarn build',
-    // Without an explicit --all/-A selection, `--filter '*'` would widen the fan-out.
-    'foreach-bare': 'yarn workspaces foreach run build',
-    // An unquoted expansion is dynamic: its runtime value could need Yarn's global routing.
-    dynamic: 'yarn build:$target && yarn run "build:$target"',
-    // A parallelism foreach flag keeps the yarn form: Bun's dependency-ordered concurrency could
-    // block dependent long-running scripts forever.
-    'parallel-dev': 'yarn workspaces foreach --all --parallel run dev',
-    // A selection-restricting foreach flag keeps the yarn form: --filter '*' would widen it.
-    'since-build': 'yarn workspaces foreach --since run build',
-    // Script invocations are converted; quoted arguments are re-emitted verbatim so quoting and
-    // expansion semantics never change.
-    dollar: "bun run 'build:$target'",
-    'fan-out': "bun run --filter '*' build",
-    'gen:sub': 'cd sub && bun run build:sub',
-    // A redirection ends the arguments driving the conversion and survives after the rewrite.
-    redirect: 'bun run build>out.log',
-    'redirect-first': '>build.log bun run compile',
-    'redirect-chain': 'bun install > /dev/null && bun run format > /dev/null 2> /dev/null || true',
-    // The legacy `yarn install && ` prefix is removed before conversion, quoted or not.
-    'quoted-install': 'bun run compile',
-    'setup-all': 'bun run compile',
-    'ws-run': 'bun run --filter components gen',
-  });
-});
-
-test('routes yarn colon global scripts to the workspace defining them', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      workspaces: ['packages/*'],
-      scripts: {
-        ':local-cache': 'echo local',
-        at: 'yarn build:@scope',
-        'cache-all': 'yarn build:cache',
-        dot: 'yarn .build:cache',
-        echoed: 'echo \'yarn build:cache\' && node warn.js "prefer yarn :build-caches"',
-        flagged: 'yarn run --inspect-brk build:cache',
-        'redir-target': 'yarn run >out.log build:cache',
-        'require-flag': 'yarn run --require ./hook.cjs build:cache',
-        local: 'yarn :local-cache',
-        'local-flag': 'yarn run --silent :local-cache',
-        missing: 'yarn :unknown-script && yarn run :unknown-script',
-        quoted: `yarn ':build-caches' && yarn run ":build-caches"`,
-        'test/ci-setup': 'build-ts run scripts/rename.ts && yarn :build-caches && sh scripts/install.sh',
-        tools: 'yarn :tool-cache',
-      },
-    },
-    { isRoot: true, doesContainSubPackageJsons: true },
-    {
-      files: {
-        'packages/server/package.json': JSON.stringify({
-          name: '@judge/server',
-          scripts: {
-            ':build-caches': 'echo build',
-            '.build:cache': 'echo dot',
-            'build:@scope': 'echo at',
-            'build:cache': 'echo mid-colon',
-          },
-        }),
-        'packages/tools/package.json': JSON.stringify({
-          scripts: { ':tool-cache': 'echo tool' },
-        }),
-      },
-    }
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    // Script names are whole shell words, not just \w./:- characters.
-    at: 'bun run --filter @judge/server build:@scope',
-    // Yarn treats ANY colon-containing name as global, not only leading-colon ones.
-    'cache-all': 'bun run --filter @judge/server build:cache',
-    // Yarn's lookup has no first-character restriction, so dot-prefixed names resolve too.
-    dot: 'bun run --filter @judge/server .build:cache',
-    // `yarn ...` inside a quoted token is data, not a command; rewriting it would change the
-    // script's output (or worse, inject a --filter route into a string literal).
-    echoed: 'echo \'yarn build:cache\' && node warn.js "prefer yarn :build-caches"',
-    // Flags between `run` and a target routed to ANOTHER workspace keep the yarn form: their
-    // placement inside a --filter route is unmodeled.
-    flagged: 'yarn run --inspect-brk build:cache',
-    // A colon script defined in the invoking package stays a local bun run.
-    local: 'bun run :local-cache',
-    // Flags before a locally-defined target survive a plain `bun run` conversion.
-    'local-flag': 'bun run --silent :local-cache',
-    // A leading-colon script no workspace defines keeps its yarn form to surface in review.
-    missing: 'yarn :unknown-script && yarn run :unknown-script',
-    // A redirection ends the arguments driving the conversion, so the target behind it is unknown
-    // and the invocation keeps its yarn form.
-    'redir-target': 'yarn run >out.log build:cache',
-    // The value consumed by `--require` is not the target; the routed target keeps the yarn form.
-    'require-flag': 'yarn run --require ./hook.cjs build:cache',
-    // A quoted script-name token is unquoted before colon-owner resolution, and re-emitted with
-    // its original quoting so shell semantics never change.
-    quoted: `bun run --filter @judge/server ':build-caches' && bun run --filter @judge/server ":build-caches"`,
-    // A colon script defined in another workspace is routed there: bun has no global scripts.
-    'test/ci-setup':
-      'build-ts run scripts/rename.ts && bun run --filter @judge/server :build-caches && sh scripts/install.sh',
-    // An unnamed workspace cannot be addressed with --filter (path filters resolve against the
-    // invoking cwd), so its scripts run via --cwd relative to the invoking package.
-    tools: "bun run --cwd 'packages/tools' :tool-cache",
-  });
-});
-
-test('routes a root-owned colon global script invoked from a child workspace', async () => {
-  const dirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-colon-root-')));
-  try {
-    const rootPackageJson = {
-      name: 'root-pkg',
-      workspaces: ['packages/*'],
-      scripts: { ':root-cache': 'echo root' },
-    };
-    const childPackageJson = {
-      name: '@x/child',
-      scripts: {
-        after: 'yarn :root-cache && cd dist && echo done',
-        deep: 'cd src && yarn :root-cache',
-        group: '{ cd src; yarn :root-cache; }',
-        semi: 'echo setup; cd src; yarn :root-cache',
-        warm: 'yarn :root-cache',
-      },
-    };
-    await fs.writeFile(path.join(dirPath, 'package.json'), JSON.stringify(rootPackageJson));
-    await fs.mkdir(path.join(dirPath, 'packages', 'child'), { recursive: true });
-    const childPackageJsonPath = path.join(dirPath, 'packages', 'child', 'package.json');
-    await fs.writeFile(childPackageJsonPath, JSON.stringify(childPackageJson));
-
-    const rootConfig = createConfig({
-      dirPath,
-      isRoot: true,
-      doesContainSubPackageJsons: true,
-      packageJson: rootPackageJson,
-    });
-    const childConfig = createConfig({
-      dirPath: path.join(dirPath, 'packages', 'child'),
-      packageJson: childPackageJson,
-    });
-    await generatePackageJson(childConfig, rootConfig, true);
-
-    const generated = JSON.parse(await fs.readFile(childPackageJsonPath, 'utf8')) as GeneratedPackageJson;
-    // Bun's --filter never matches the workspace root, so root-owned scripts run via --cwd.
-    expect(generated.scripts?.warm).toBe("bun run --cwd '../..' :root-cache");
-    // A cd before the invocation would break the package-relative --cwd at runtime.
-    expect(generated.scripts?.deep).toBe('cd src && yarn :root-cache');
-    // The guard covers separators beyond && (e.g. `;`) and grouped commands too.
-    expect(generated.scripts?.semi).toBe('echo setup; cd src; yarn :root-cache');
-    expect(generated.scripts?.group).toBe('{ cd src; yarn :root-cache; }');
-    // A cd after the invocation cannot affect it and must not prevent the conversion.
-    expect(generated.scripts?.after).toBe("bun run --cwd '../..' :root-cache && cd dist && echo done");
-  } finally {
-    await fs.rm(dirPath, { force: true, recursive: true });
-  }
-});
-
 test('preserves an already-pinned git commit of a private package instead of bumping it', async () => {
   const pinnedSpecifier = 'git@github.com:WillBoosterLab/llm-proxy.git#4ef9b35e2d1d94adba17e167b7ae18a2e299f7f6';
   const packageJson = await generatePackageJsonFrom({
@@ -1149,9 +960,6 @@ test('strips `bun --bun` only from command-position invocations of Node-based to
   });
 });
 
-// removeEnvFiles deletes the `.env` cascade before the package.json generation, so an unmanaged Cloudflare package
-// (here: the wrangler config is untracked, making the inference irreproducible) would keep a `--env-file` pointing at
-// a file that no longer exists and fail every `bun install` that runs it.
 test('drops `--env-file` arguments naming removed files from an unmanaged wrangler types script', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
@@ -1211,6 +1019,29 @@ test('does not generate test/ci in a workspace package', async () => {
 
 const jsRootConfig = { doesContainTypeScript: true, isRoot: true } as const;
 
+test('removes TypeScript compilers from a repository without TypeScript', async () => {
+  const withoutTypeScript = await generatePackageJsonFrom({
+    devDependencies: {
+      '@typescript/native-preview': '7.0.0-dev.20260707.2',
+      typescript: '7.0.2',
+    },
+  });
+  expect(withoutTypeScript.devDependencies?.['@typescript/native-preview']).toBeUndefined();
+  expect(withoutTypeScript.devDependencies?.typescript).toBeUndefined();
+});
+
+test('removes a package self-dependency from every dependency section', async () => {
+  const packageJson = await generatePackageJsonFrom({
+    name: '@example/self-referencing',
+    dependencies: { '@example/self-referencing': '1.0.0' },
+    devDependencies: { '@example/self-referencing': '1.0.0' },
+    peerDependencies: { '@example/self-referencing': '1.0.0' },
+  });
+  expect(packageJson.dependencies?.['@example/self-referencing']).toBeUndefined();
+  expect(packageJson.devDependencies?.['@example/self-referencing']).toBeUndefined();
+  expect(packageJson.peerDependencies?.['@example/self-referencing']).toBeUndefined();
+});
+
 test('keeps commands chained onto the generated test and verify-full scripts', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
@@ -1229,9 +1060,8 @@ test('keeps commands chained onto the generated test and verify-full scripts', a
 });
 
 test('normalizes the runner prefix of a chained test script instead of freezing it', async () => {
-  // `bun run wb test` is what convertYarnCommandsToBun leaves behind for a `yarn wb test` wrapper,
-  // and `--bun` breaks Node-based tools; both must converge on the generated command so that the
-  // next run still recognizes the body as a wrapper.
+  // Existing manifests may spell the wrapper as `bun run wb test`, and `--bun` breaks Node-based
+  // tools; both must converge on the generated command so the next run still recognizes the body.
   const packageJson = await generatePackageJsonFrom(
     { scripts: { test: 'bun run wb test && mvn test', 'verify-full': 'bun --bun wb verify --full; mvn test' } },
     jsRootConfig

@@ -154,22 +154,19 @@ export const bunMinimumReleaseAgeExcludes = [
   'react-server-dom-webpack',
 ];
 
-/**
- * Reads the linker explicitly declared in the repository's bunfig.toml. Returns undefined when
- * none is declared: Bun's default is context-dependent (isolated for new workspace projects with
- * `configVersion = 1` lockfiles, hoisted otherwise), so absence must not be read as hoisted.
- */
-export function readBunLinker(rootDirPath: string): 'isolated' | 'hoisted' | undefined {
-  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
-  if (!fs.existsSync(filePath)) return undefined;
-  const linker = parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.linker;
-  return linker === 'isolated' || linker === 'hoisted' ? linker : undefined;
-}
-
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
   if (!fs.existsSync(filePath)) return undefined;
   return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
+}
+
+export function resolveBunGlobalStore(
+  configs: PackageConfig[],
+  previousGlobalStore: boolean | undefined,
+  skipDeps: boolean
+): boolean {
+  const defaultUseGlobalStore = shouldUseBunGlobalStore(configs);
+  return skipDeps ? (previousGlobalStore ?? defaultUseGlobalStore) : defaultUseGlobalStore;
 }
 
 export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
@@ -178,25 +175,16 @@ export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
   return !configs.some((config) => config.depending.next || config.depending.blitz);
 }
 
-export async function generateBunfigToml(
-  config: PackageConfig,
-  yarnMinimumReleaseAgeSeconds: number | undefined,
-  useGlobalStore: boolean
-): Promise<void> {
+export async function generateBunfigToml(config: PackageConfig, useGlobalStore: boolean): Promise<void> {
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, config, yarnMinimumReleaseAgeSeconds, useGlobalStore);
+    const content = newContent(existingContent, config, useGlobalStore);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
 
-const newContent = (
-  existingContent: string | undefined,
-  config: PackageConfig,
-  yarnMinimumReleaseAgeSeconds: number | undefined,
-  useGlobalStore: boolean
-): string => {
+const newContent = (existingContent: string | undefined, config: PackageConfig, useGlobalStore: boolean): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // Only Java repositories still depend on @willbooster/prettier-config (wbfy installs it with
   // prettier-plugin-java); everywhere else oxfmt replaced Prettier, so the exclusion is dead
@@ -212,8 +200,7 @@ const newContent = (
   // genuinely needs an exclusion must add it to bunMinimumReleaseAgeExcludes in wbfy so all
   // repositories share the same vetted list. The custom npmMinimalAgeGate (or an
   // already-customized minimumReleaseAge) is still carried over — only the excludes are locked.
-  const minimumReleaseAgeSeconds =
-    yarnMinimumReleaseAgeSeconds ?? bunfigToml?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
+  const minimumReleaseAgeSeconds = bunfigToml?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
   // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
