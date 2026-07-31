@@ -223,6 +223,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     await generateBunfigToml(rootConfig, useGlobalStore);
     await generateMiseToml(rootConfig, bunVersion);
     await generateFnoxToml(rootConfig);
+    // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
+    // over definitions inserted here.
     await ensureWbEnvDefinitions(rootConfig, allPackageConfigs);
     // promisePool.run resolves when a task STARTS, so the generated bunfig.toml is not
     // guaranteed to be on disk yet; the probe below must not validate a stale configuration.
@@ -386,12 +388,14 @@ function probeIsolatedBunInstall(
 }
 
 function removeNodeModules(rootDirPath: string, rootConfig: PackageConfig): void {
+  // Cover every declared workspace: leftovers can keep phantom dependencies resolvable.
   const nodeModulesPaths = [
     path.resolve(rootDirPath, 'node_modules'),
     ...[...getWorkspacePackageDirs(rootConfig).values()].map((workspaceDir) =>
       path.resolve(rootDirPath, workspaceDir, 'node_modules')
     ),
   ];
+  // Never delete through a workspace symlink that escapes this repository.
   const realRootDirPath = fs.realpathSync(rootDirPath);
   for (const nodeModulesPath of nodeModulesPaths) {
     const realParentDirPath = ignoreError(() => fs.realpathSync(path.dirname(nodeModulesPath)));

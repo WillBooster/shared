@@ -135,6 +135,7 @@ async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
 }
 
 function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jsonObj: WritablePackageJson): void {
+  // Run before applyPackageJsonConventions, which re-adds tsgo only for current Next.js-family repositories.
   delete jsonObj.dependencies[typescriptGoDependency];
   delete jsonObj.devDependencies[typescriptGoDependency];
   if (!config.doesContainTypeScript && !config.doesContainTypeScriptInPackages) {
@@ -145,6 +146,7 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
 
 function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJson): void {
   const packageName = jsonObj.name || path.basename(config.dirPath);
+  // Node self-references need no dependency edge, which would break monorepo release ordering.
   for (const section of getDependencySections(jsonObj)) {
     Reflect.deleteProperty(section, packageName);
   }

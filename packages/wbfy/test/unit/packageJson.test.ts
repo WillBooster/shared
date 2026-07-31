@@ -1060,9 +1060,8 @@ test('keeps commands chained onto the generated test and verify-full scripts', a
 });
 
 test('normalizes the runner prefix of a chained test script instead of freezing it', async () => {
-  // `bun run wb test` is what convertYarnCommandsToBun leaves behind for a `yarn wb test` wrapper,
-  // and `--bun` breaks Node-based tools; both must converge on the generated command so that the
-  // next run still recognizes the body as a wrapper.
+  // Existing manifests may spell the wrapper as `bun run wb test`, and `--bun` breaks Node-based
+  // tools; both must converge on the generated command so the next run still recognizes the body.
   const packageJson = await generatePackageJsonFrom(
     { scripts: { test: 'bun run wb test && mvn test', 'verify-full': 'bun --bun wb verify --full; mvn test' } },
     jsRootConfig

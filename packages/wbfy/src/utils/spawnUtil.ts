@@ -25,11 +25,6 @@ export function spawnSyncAndReturnRawStdout(command: string, args: string[], cwd
   return spawnSyncAndReturnStdoutInternal(command, args, cwd, false)[1];
 }
 
-/** Like spawnSyncAndReturnRawStdout, but also exposes the exit status so callers can fail closed. */
-export function spawnSyncAndReturnStatusAndRawStdout(command: string, args: string[], cwd: string): [number, string] {
-  return spawnSyncAndReturnStdoutInternal(command, args, cwd, false);
-}
-
 export function spawnSyncAndReturnStdout(command: string, args: string[], cwd: string): string {
   return spawnSyncAndReturnStdoutInternal(command, args, cwd, true)[1];
 }
