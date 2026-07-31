@@ -405,6 +405,23 @@ test('does not recover over an uncommitted command change', async () => {
   }
 });
 
+test('keeps the generated command in a web app without scanning history', async () => {
+  const dirPath = createGitRepository();
+  try {
+    // NEXT_PUBLIC_BASE_URL in an env file marks the package as a web app, which standardizes on
+    // the generated server command; a past overwrite must NOT be restored there.
+    fs.writeFileSync(path.join(dirPath, 'mise.toml'), `[env]\nNEXT_PUBLIC_BASE_URL = 'http://127.0.0.1:3010'\n`);
+    commitConfig(dirPath, getCustomCommand('web-app'), 'test: add custom Playwright fixture');
+    commitConfig(dirPath, 'bun wb start --mode test', 'chore: willboosterify this repo');
+
+    const generated = await fixAndReadConfig(dirPath);
+
+    expect(generated).toContain(`command: 'bun wb start --mode test'`);
+  } finally {
+    fs.rmSync(dirPath, { force: true, recursive: true });
+  }
+});
+
 test('does not restore an obsolete overwrite after a deliberate command transition', async () => {
   const dirPath = createGitRepository();
   try {

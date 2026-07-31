@@ -136,7 +136,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const defaultConfig = createDefaultConfig(config, shouldUseAppServerDefaults);
     const merged = mergeParsedObjects(defaultConfig, parsed);
     applyManagedUseDefaults(merged, defaultConfig);
-    await setWebServerCommand(merged, filePath, extractedObjectLiteral.source);
+    await setWebServerCommand(merged, filePath, extractedObjectLiteral.source, shouldUseAppServerDefaults);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
     const oldContent = extractedObjectLiteral.source.text;
@@ -246,7 +246,8 @@ function getEnvFilePaths(dirPath: string): string[] {
 async function setWebServerCommand(
   object: ParsedObject,
   filePath: string,
-  currentSource: ast.SourceFile
+  currentSource: ast.SourceFile,
+  isWebApp: boolean
 ): Promise<void> {
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
@@ -257,10 +258,17 @@ async function setWebServerCommand(
   // commands; only add or migrate the command when wbfy already owns it.
   if (command && !isGeneratedWbStartTestCommand(command)) return;
 
-  const historicalCommand = command && (await findWbfyOverwrittenWebServerCommand(filePath, command, currentSource));
-  if (historicalCommand) {
-    webServer.value.properties.command = historicalCommand;
-    return;
+  // A web app (it defines NEXT_PUBLIC_BASE_URL) standardizes on the generated server command, so a
+  // generated command there is intended, not overwrite damage. Only a non-web-app package (e.g. a
+  // React library serving a demo fixture) carrying the generated command can be a victim of the
+  // past overwrite bug — `wb start --mode test` has nothing to serve for a library — so the Git
+  // history recovery scan runs just for that small set instead of taxing every repository.
+  if (!isWebApp) {
+    const historicalCommand = command && (await findWbfyOverwrittenWebServerCommand(filePath, command, currentSource));
+    if (historicalCommand) {
+      webServer.value.properties.command = historicalCommand;
+      return;
+    }
   }
 
   // Playwright requires `command` whenever `webServer` exists; an externally managed server should
