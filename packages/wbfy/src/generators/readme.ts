@@ -96,19 +96,18 @@ async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
   const workflowsPath = path.resolve(config.dirPath, '.github', 'workflows');
   if (!repository || !fs.existsSync(workflowsPath)) return [];
 
+  // Workflow and README generation run concurrently. Do not retain a stale Rust badge while the
+  // workflow generator removes a caller created from a formerly misdetected local cache — but
+  // mirror its ownership check: a custom same-named workflow survives, so its badge must too.
+  // Decided synchronously before the loop's first await: the generator's delete can only land at
+  // an await point, and a post-delete read would misreport the wbfy-owned caller as custom.
+  const dropsTestRustBadge =
+    config.cargoTomlDirPaths.length === 0 && jobsAllCallReusableWorkflow(workflowsPath, 'test-rust.yml', 'test-rust');
+
   const badges: string[] = [];
   for (const fileName of fs.readdirSync(workflowsPath)) {
     if (!fileName.startsWith('test') && !fileName.startsWith('deploy')) continue;
-    // Workflow and README generation run concurrently. Do not retain a stale Rust badge while the
-    // workflow generator removes a caller created from a formerly misdetected local cache — but
-    // mirror its ownership check: a custom same-named workflow survives, so its badge must too.
-    if (
-      fileName === 'test-rust.yml' &&
-      config.cargoTomlDirPaths.length === 0 &&
-      jobsAllCallReusableWorkflow(workflowsPath, fileName, 'test-rust')
-    ) {
-      continue;
-    }
+    if (fileName === 'test-rust.yml' && dropsTestRustBadge) continue;
     // GitHub's badge endpoint returns 404 until the workflow has at least one run, so a badge for a
     // dispatch-only deploy workflow that has never run renders as a broken image. Test workflows run
     // on every PR, so only deploy badges need the guard.
