@@ -1412,9 +1412,9 @@ function getRawDependencyVersionFromNpm(dependency: string): string {
 }
 
 function getInstallDependencySpecifier(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
-  // wb and (in Blitz repositories) typescript are version-capped, so their install specifiers
-  // must carry the managed version — a bare `bun add` would install the incompatible latest.
-  if (dependency === wbDependency || (dependency === typescriptDependency && isBlitzRepository(config, rootConfig))) {
+  // TypeScript is version-capped in Blitz repositories, so its install specifier must carry the
+  // managed version — a bare `bun add` would install the incompatible latest.
+  if (dependency === typescriptDependency && isBlitzRepository(config, rootConfig)) {
     return `${dependency}@${getManagedDependencyVersion(config, rootConfig, dependency)}`;
   }
   return dependency;

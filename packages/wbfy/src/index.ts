@@ -375,6 +375,7 @@ function probeIsolatedBunInstall(
   previousGlobalStore: boolean | undefined,
   useGlobalStore: boolean
 ): boolean {
+  // A layout switch must probe from a clean tree because Bun does not remove the previous layout's leftovers.
   if (previousGlobalStore !== useGlobalStore) {
     removeNodeModules(rootDirPath, rootConfig);
   }
