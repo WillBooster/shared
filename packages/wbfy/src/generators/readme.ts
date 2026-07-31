@@ -101,6 +101,8 @@ async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
   // mirror its ownership check: a custom same-named workflow survives, so its badge must too.
   // Decided synchronously before the loop's first await: the generator's delete can only land at
   // an await point, and a post-delete read would misreport the wbfy-owned caller as custom.
+  // No existsSync pre-check: the helper already treats a missing file as not owned, and this runs
+  // once per repository, so the exceptional ENOENT read costs nothing worth a redundant stat.
   const dropsTestRustBadge =
     config.cargoTomlDirPaths.length === 0 && jobsAllCallReusableWorkflow(workflowsPath, 'test-rust.yml', 'test-rust');
 
