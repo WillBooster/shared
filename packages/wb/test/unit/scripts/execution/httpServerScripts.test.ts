@@ -75,18 +75,16 @@ describe('HttpServerScripts.testE2E', () => {
         '--success',
         'first',
         'echo "no build" && node dist/index.js && exit 1',
-        `NO_PROXY=localhost no_proxy=localhost wait-on -t 600000 -i 2000 http-get://localhost:3000 && ${buildShellCommand(
-          [
-            'YARN',
-            'vitest',
-            'run',
-            `test/e2e/quo'te.spec.ts`,
-            'test/e2e/space path.spec.ts',
-            '--passWithNoTests',
-            '--allowOnly',
-            '--watch=false',
-          ]
-        )}`,
+        `wait-on -t 600000 -i 2000 tcp:localhost:3000 && ${buildShellCommand([
+          'YARN',
+          'vitest',
+          'run',
+          `test/e2e/quo'te.spec.ts`,
+          'test/e2e/space path.spec.ts',
+          '--passWithNoTests',
+          '--allowOnly',
+          '--watch=false',
+        ])}`,
       ])
     );
   });
