@@ -5,13 +5,20 @@ import type { TestArgv } from '../../../../src/commands/test.js';
 import type { Project } from '../../../../src/project.js';
 import type { ScriptArgv } from '../../../../src/scripts/builder.js';
 import { normalizeArgs } from '../../../../src/scripts/builder.js';
-import { BaseScripts } from '../../../../src/scripts/execution/baseScripts.js';
+import { BaseScripts, buildWaitOnLoopbackCommand } from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
 
 vi.mock('../../../../src/utils/port.js', () => ({
   checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
 }));
+
+describe('buildWaitOnLoopbackCommand', () => {
+  it('fails before generating an invalid command when the port is missing', () => {
+    expect(() => buildWaitOnLoopbackCommand(undefined)).toThrow('Port is required');
+    expect(() => buildWaitOnLoopbackCommand('')).toThrow('Port is required');
+  });
+});
 
 class TestScripts extends BaseScripts {
   constructor() {

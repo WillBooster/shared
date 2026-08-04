@@ -279,6 +279,7 @@ export abstract class BaseScripts {
  * families when a dev server binds only IPv4 or IPv6.
  */
 export function buildWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
+  if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
   return `wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
 }
 
