@@ -7,6 +7,7 @@ import semver from 'semver';
 import yargs from 'yargs';
 
 import { fixNextConfigJson } from './fixers/nextConfig.js';
+import { fixChakraToaster } from './fixers/chakraToaster.js';
 import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
 import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js';
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
@@ -295,6 +296,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
       if (config.depending.next) {
         promises.push(fixNextConfigJson(config));
+      }
+      if (config.depending.chakra) {
+        promises.push(fixChakraToaster(config));
       }
       await generateGitignore(config, rootConfig);
       await promisePool.promiseAll();
