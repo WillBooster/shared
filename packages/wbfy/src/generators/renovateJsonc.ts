@@ -9,11 +9,15 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
+import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
 
 // The shared preset every WillBooster / WillBoosterLab repository extends. willbooster-configs IS
 // this preset, so injecting it there would make the preset extend itself.
 const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
+const privatePackagesPreset = 'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc';
+const privateRegistryHost = 'verdaccio-production-e389.up.railway.app';
+const privateRegistryScopeMapping = `@willbooster-private:registry=https://${privateRegistryHost}/`;
 
 const jsonObj = {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
@@ -26,6 +30,9 @@ const legacyPresets = new Set(['@willbooster', 'github>WillBooster/willbooster-c
 
 // $schema is optional: an existing config need not declare it.
 type Settings = Partial<typeof jsonObj> & {
+  hostRules?: { matchHost?: string }[];
+  npmrc?: string;
+  npmrcMerge?: boolean;
   packageRules?: { matchPackageNames: string[]; enabled?: boolean }[];
 };
 
@@ -169,8 +176,49 @@ function buildSettings(config: PackageConfig, liveSettings: Settings | undefined
         arrayMerge: overwriteMerge,
       }) as Settings)
     : generatedSettings;
-  newSettings.extends = mergeRenovateExtends(config, jsonObj.extends, liveSettings?.extends);
+  const generatedExtends = repoResolvesPrivatePackages(config)
+    ? [...jsonObj.extends, privatePackagesPreset]
+    : jsonObj.extends;
+  newSettings.extends = mergeRenovateExtends(config, generatedExtends, liveSettings?.extends);
+  if (generatedExtends.includes(privatePackagesPreset)) removeInlinePrivateRegistrySettings(newSettings);
   return newSettings;
+}
+
+/** The shared private-package preset and Mend organization host rule own all Verdaccio settings. */
+function removeInlinePrivateRegistrySettings(settings: Settings): void {
+  if (settings.hostRules) {
+    settings.hostRules = settings.hostRules.filter((rule) => !isPrivateRegistryHost(rule.matchHost));
+    // Keep an own property with an undefined value: jsonc-parser interprets it as a deliberate
+    // deletion while JSON.stringify omits it when generating a new file from scratch.
+    if (settings.hostRules.length === 0) settings.hostRules = undefined;
+  }
+
+  if (!settings.npmrc) return;
+  const remainingLines = settings.npmrc
+    .split(/\r?\n/u)
+    .filter((line) => line.trim() !== privateRegistryScopeMapping)
+    .filter((line) => !isPrivateRegistryTokenLine(line));
+  const remainingNpmrc = remainingLines.join('\n').trim();
+  if (remainingNpmrc) {
+    settings.npmrc = remainingNpmrc;
+  } else {
+    settings.npmrc = undefined;
+    settings.npmrcMerge = undefined;
+  }
+}
+
+function isPrivateRegistryHost(matchHost: string | undefined): boolean {
+  if (!matchHost) return false;
+  try {
+    return new URL(matchHost.includes('://') ? matchHost : `https://${matchHost}`).hostname === privateRegistryHost;
+  } catch {
+    return false;
+  }
+}
+
+function isPrivateRegistryTokenLine(line: string): boolean {
+  const trimmedLine = line.trim();
+  return trimmedLine.startsWith(`//${privateRegistryHost}/:_authToken=`);
 }
 
 interface ExistingConfig {
@@ -252,18 +300,26 @@ function mergeRenovateExtends(
   const presetsToAdd = config.isWillBoosterConfigs ? [] : generatedExtends;
   const presetsToDrop = config.isWillBoosterConfigs ? new Set(legacyPresets).add(sharedPreset) : legacyPresets;
 
-  // Only prepend the presets that are missing. Moving one that is already listed would reorder the
-  // array, and a later preset overrides an earlier one in Renovate — so re-sorting silently flips
-  // which config wins (and, being a reorder rather than an addition, also costs the array's
-  // comments, which can only be preserved by insertion).
+  // Only insert the presets that are missing. The private-package preset belongs immediately after
+  // the shared defaults so it can complement them; every other generated preset is prepended.
+  // Moving one that is already listed would reorder the array, and a later preset overrides an
+  // earlier one in Renovate — so re-sorting silently flips which config wins (and, being a reorder
+  // rather than an addition, also costs the array's comments, which can only be preserved by insertion).
   // Compared case-insensitively: GitHub owner and repository names are case-insensitive, so a differently-spelled
   // copy of the same preset would otherwise be duplicated, and a lowercase legacy preset would survive migration.
-  const missingExtends = presetsToAdd.filter(
-    (preset) => !existingExtends.some((existing) => isSamePreset(existing, preset))
-  );
-  return [...missingExtends, ...existingExtends].filter(
+  const mergedExtends = existingExtends.filter(
     (item) => ![...presetsToDrop].some((dropped) => isSamePreset(dropped, item))
   );
+  for (const preset of presetsToAdd) {
+    if (mergedExtends.some((existing) => isSamePreset(existing, preset))) continue;
+    if (isSamePreset(preset, privatePackagesPreset)) {
+      const sharedPresetIndex = mergedExtends.findIndex((existing) => isSamePreset(existing, sharedPreset));
+      mergedExtends.splice(sharedPresetIndex + 1, 0, preset);
+    } else {
+      mergedExtends.unshift(preset);
+    }
+  }
+  return mergedExtends;
 }
 
 function normalize(content: string): string {
