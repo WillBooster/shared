@@ -1,12 +1,25 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   isPrivateRegistryDependency,
   materializedVersionSatisfies,
   parseNpmrc,
+  resolvePrivateRegistryAuth,
   selectVersionFromPackument,
   specifierSubset,
 } from '../../src/utils/privateRegistry.js';
+
+const tempDirPaths: string[] = [];
+
+afterEach(async () => {
+  vi.restoreAllMocks();
+  delete process.env.CI;
+  await Promise.all(tempDirPaths.splice(0).map((dirPath) => fs.promises.rm(dirPath, { recursive: true, force: true })));
+});
 
 describe('isPrivateRegistryDependency', () => {
   it('accepts registry ranges for the private scope only', () => {
@@ -109,3 +122,45 @@ legacy-peer-deps=true
     });
   });
 });
+
+describe('resolvePrivateRegistryAuth', () => {
+  it('ignores a project npmrc during local development', async () => {
+    const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
+    vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
+
+    expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
+      registryUrl: 'https://home.example.test',
+      authToken: 'home-token',
+    });
+  });
+
+  it('allows the temporary project npmrc to override the home file on CI', async () => {
+    const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
+    vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
+    process.env.CI = 'true';
+
+    expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
+      registryUrl: 'https://project.example.test',
+      authToken: 'project-token',
+    });
+  });
+});
+
+async function makeNpmrcFixture(): Promise<{ homeDirPath: string; rootDirPath: string }> {
+  const parentDirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wb-private-registry-'));
+  tempDirPaths.push(parentDirPath);
+  const homeDirPath = path.join(parentDirPath, 'home');
+  const rootDirPath = path.join(parentDirPath, 'repo');
+  await Promise.all([fs.promises.mkdir(homeDirPath), fs.promises.mkdir(rootDirPath)]);
+  await Promise.all([
+    fs.promises.writeFile(
+      path.join(homeDirPath, '.npmrc'),
+      '@willbooster-private:registry=https://home.example.test/\n//home.example.test/:_authToken=home-token\n'
+    ),
+    fs.promises.writeFile(
+      path.join(rootDirPath, '.npmrc'),
+      '@willbooster-private:registry=https://project.example.test/\n//project.example.test/:_authToken=project-token\n'
+    ),
+  ]);
+  return { homeDirPath, rootDirPath };
+}

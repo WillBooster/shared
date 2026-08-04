@@ -40,6 +40,7 @@ import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
 import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
+import { removeRepositoryNpmrcFiles } from './generators/npmrc.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
 import { setupGitHubSettings } from './github/settings.js';
@@ -208,6 +209,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     );
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
+
+    await removeRepositoryNpmrcFiles(allPackageConfigs);
 
     if (options.isVerbose) {
       for (const config of allPackageConfigs) {

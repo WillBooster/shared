@@ -7,8 +7,8 @@ import semver from 'semver';
 
 /**
  * Materialization of `@willbooster-private/*` registry (Verdaccio) dependencies for Docker builds:
- * the packages are downloaded on the host (auth via .npmrc / ~/.npmrc locally, or VERDACCIO_TOKEN
- * on CI) and extracted next to the repository so image builds need no registry credentials
+ * the packages are downloaded on the host (auth via ~/.npmrc locally, or a temporary .npmrc plus
+ * VERDACCIO_TOKEN on CI) and extracted next to the repository so image builds need no registry credentials
  * (https://github.com/WillBooster/shared/issues/964).
  */
 export const PRIVATE_REGISTRY_SCOPE = '@willbooster-private';
@@ -57,14 +57,14 @@ export interface PrivateRegistryAuth {
 }
 
 /**
- * Resolve the registry URL and auth token for the private scope from the project's .npmrc and
- * ~/.npmrc (nearer file wins), expanding `${VAR}` references from the environment. On CI the
- * VERDACCIO_TOKEN environment variable serves as the fallback token.
+ * Resolve the registry URL and auth token for the private scope from ~/.npmrc locally. CI may also
+ * supply a temporary project .npmrc; VERDACCIO_TOKEN serves as its fallback token.
  */
 export function resolvePrivateRegistryAuth(rootDirPath: string): PrivateRegistryAuth | undefined {
   const entries: Record<string, string> = {};
-  // Reverse order so nearer files overwrite the home-directory defaults.
-  for (const npmrcPath of [path.join(os.homedir(), '.npmrc'), path.join(rootDirPath, '.npmrc')]) {
+  const npmrcPaths = [path.join(os.homedir(), '.npmrc')];
+  if (process.env.CI) npmrcPaths.push(path.join(rootDirPath, '.npmrc'));
+  for (const npmrcPath of npmrcPaths) {
     try {
       Object.assign(entries, parseNpmrc(fs.readFileSync(npmrcPath, 'utf8')));
     } catch {
