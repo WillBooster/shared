@@ -273,15 +273,14 @@ export abstract class BaseScripts {
 }
 
 /**
- * Builds a wait-on boot check polling `http-get://localhost:<port>`. `localhost` (not `127.0.0.1`)
- * lets Node's Happy Eyeballs try both address families: on macOS, dev servers without an explicit
- * host (e.g. vinext/Vite) can bind IPv6-only (`::1`), so an IPv4-only poll would hang until timeout
- * even though the server is up. The `NO_PROXY`/`no_proxy` prefix keeps the loopback poll off HTTP
- * proxies: wait-on's axios applies `HTTP(S)_PROXY` env vars unless `NO_PROXY` matches the polled
- * host, and existing `NO_PROXY` conventions may list `127.0.0.1` without `localhost`.
+ * Builds a wait-on boot check for a listening loopback port. A TCP check treats redirects and
+ * authentication responses as a successfully started server; an HTTP status check would keep
+ * waiting even though Playwright can already use the app. `localhost` lets Node try both address
+ * families when a dev server binds only IPv4 or IPv6.
  */
 export function buildWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
-  return `NO_PROXY=localhost no_proxy=localhost wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}http-get://localhost:${port}`;
+  if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
+  return `wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
 }
 
 function findCustomProductionStartScriptPath(project: Project): string | undefined {
