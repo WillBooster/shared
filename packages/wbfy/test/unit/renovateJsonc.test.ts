@@ -29,6 +29,7 @@ async function withRepo(files: Record<string, string>, run: (dirPath: string) =>
 }
 
 const preset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
+const privatePackagesPreset = 'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc';
 const legacyPreset = 'github>WillBooster/willbooster-configs:renovate.json5';
 
 test('never makes willbooster-configs extend its own preset', async () => {
@@ -54,6 +55,78 @@ test('generates renovate.jsonc in a repository without any Renovate config', asy
     const content = fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8');
     expect(parseSettings(content).extends).toEqual([preset]);
   });
+});
+
+test.each([
+  {
+    name: 'dependency',
+    packageJson: { name: 'private-consumer', dependencies: { '@willbooster-private/llm-proxy': '1.0.0' } },
+  },
+  {
+    name: 'publisher',
+    packageJson: { name: '@willbooster-private/private-publisher' },
+  },
+])('adds the private-package preset for a private-package $name', async ({ packageJson }) => {
+  await withRepo({ 'package.json': JSON.stringify(packageJson) }, async (dirPath) => {
+    const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
+    expect(settings.extends).toEqual([preset, privatePackagesPreset]);
+  });
+});
+
+test('replaces inline Verdaccio authentication and npmrc with the shared preset', async () => {
+  await withRepo(
+    {
+      'package.json': JSON.stringify({
+        name: 'private-consumer',
+        dependencies: { '@willbooster-private/llm-proxy': '1.0.0' },
+      }),
+      'renovate.jsonc': `{
+  "extends": ["${preset}"],
+  "hostRules": [
+    {
+      "matchHost": "https://verdaccio-production-e389.up.railway.app/",
+      "token": "{{ secrets.VerdaccioBasicAuth }}"
+    }
+  ],
+  // Scope mapping only; authentication used to come from the inline host rule.
+  "npmrc": "@willbooster-private:registry=https://verdaccio-production-e389.up.railway.app/\\n//verdaccio-production-e389.up.railway.app/:_authToken=\${NPM_TOKEN}",
+  "npmrcMerge": true
+}
+`,
+    },
+    async (dirPath) => {
+      const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
+      expect(settings.extends).toEqual([preset, privatePackagesPreset]);
+      expect(settings.hostRules).toBeUndefined();
+      expect(settings.npmrc).toBeUndefined();
+      expect(settings.npmrcMerge).toBeUndefined();
+      expect(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8')).not.toContain('Scope mapping only');
+    }
+  );
+});
+
+test('preserves unrelated inline npm and host settings while removing Verdaccio entries', async () => {
+  await withRepo(
+    {
+      'package.json': JSON.stringify({ name: '@willbooster-private/private-publisher' }),
+      'renovate.jsonc': JSON.stringify({
+        hostRules: [
+          { matchHost: 'verdaccio-production-e389.up.railway.app', token: 'remove-me' },
+          { matchHost: 'npm.example.test', token: 'keep-me' },
+        ],
+        npmrc:
+          '@willbooster-private:registry=https://verdaccio-production-e389.up.railway.app/\n' +
+          '@example:registry=https://npm.example.test/',
+        npmrcMerge: true,
+      }),
+    },
+    async (dirPath) => {
+      const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
+      expect(settings.hostRules).toEqual([{ matchHost: 'npm.example.test', token: 'keep-me' }]);
+      expect(settings.npmrc).toBe('@example:registry=https://npm.example.test/');
+      expect(settings.npmrcMerge).toBe(true);
+    }
+  );
 });
 
 test('migrates renovate.json and deletes it so it stops outranking renovate.jsonc', async () => {
