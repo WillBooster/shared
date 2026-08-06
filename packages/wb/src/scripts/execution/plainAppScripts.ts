@@ -53,10 +53,8 @@ class PlainAppScripts extends BaseScripts {
   override testE2EDocker(): Promise<string> {
     return Promise.resolve(`echo 'do nothing.'`);
   }
-  /**
-   * A plain project's e2e tests need credentials or paid services (e.g. real LLM calls), which CI
-   * does not provide; a Playwright fixture with its own `webServer` is self-contained and CI-safe.
-   */
+  // A plain project's e2e tests need credentials or paid services (e.g. real LLM calls), which CI
+  // does not provide; a Playwright fixture with its own `webServer` is self-contained and CI-safe.
   override runsE2eOnCi(project: Project): boolean {
     return project.hasPlaywrightWebServerConfig;
   }
@@ -64,40 +62,36 @@ class PlainAppScripts extends BaseScripts {
     return !project.hasPlaywrightConfig;
   }
 
-  /**
-   * A library has no server of its own, but it may ship a self-contained Playwright fixture whose
-   * config builds and starts the app under test via a `webServer` block (e.g. a Next.js fixture that
-   * verifies the published package imports cleanly). Run Playwright directly in that case — including
-   * on CI, where Playwright's own `webServer` starts the fixture. Otherwise run `test/e2e/` with the
-   * unit-test runner: CLI and library projects keep slow tests hitting real external dependencies
-   * there, and without this path they would never run.
-   */
-  private testE2EWithoutServer(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+  // A library has no server of its own, but it may ship a self-contained Playwright fixture whose
+  // config builds and starts the app under test via a `webServer` block (e.g. a Next.js fixture that
+  // verifies the published package imports cleanly). Run Playwright directly in that case — including
+  // on CI, where Playwright's own `webServer` starts the fixture. Otherwise run `test/e2e/` with the
+  // unit-test runner: CLI and library projects keep slow tests hitting real external dependencies
+  // there, and without this path they would never run.
+  private async testE2EWithoutServer(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
     if (project.hasPlaywrightWebServerConfig) {
-      return Promise.resolve(this.buildPlaywrightOnlyCommand(project, argv, options));
+      return this.buildPlaywrightOnlyCommand(project, argv, options);
     }
     // A Playwright config without `webServer` expects an externally managed server (the shape wbfy's
     // playwrightConfig fixer documents); its specs cannot run under the unit runner.
     if (project.hasPlaywrightConfig) {
-      return Promise.resolve(`echo 'do nothing.'`);
+      return `echo 'do nothing.'`;
     }
     // `wb test -- <args>` enables the e2e phase, so dropping the forwarded args here would run the
     // whole (potentially paid) suite unfiltered; translate what the unit runners understand.
     const forwarded = adaptForwardedArgsForUnitRunner(options.forwardedPlaywrightArgs ?? []);
     if (forwarded.unsupportedOption !== undefined) {
-      return Promise.resolve(
-        buildShellCommand([
-          'echo',
-          `Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: ${forwarded.unsupportedOption}).`,
-        ])
-      );
+      return buildShellCommand([
+        'echo',
+        `Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: ${forwarded.unsupportedOption}).`,
+      ]);
     }
     const explicitTargets = [...(argv.targets ?? []), ...forwarded.targets];
     const targets = explicitTargets.length > 0 ? explicitTargets : ['test/e2e/'];
     const unitRunnerCommand = this.testUnit(project, { ...argv, targets });
-    return Promise.resolve(
-      forwarded.flags.length > 0 ? `${unitRunnerCommand} ${buildShellCommand(forwarded.flags)}` : unitRunnerCommand
-    );
+    return forwarded.flags.length > 0
+      ? `${unitRunnerCommand} ${buildShellCommand(forwarded.flags)}`
+      : unitRunnerCommand;
   }
   override testStart(): Promise<string> {
     return Promise.resolve(`echo 'do nothing.'`);

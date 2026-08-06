@@ -227,7 +227,6 @@ export abstract class BaseScripts {
     return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
   }
 
-  /** Whether `wb test-on-ci` should run this project's `test/e2e/` suite. */
   runsE2eOnCi(_: Project): boolean {
     return true;
   }
