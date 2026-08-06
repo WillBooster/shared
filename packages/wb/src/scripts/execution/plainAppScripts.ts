@@ -133,9 +133,9 @@ function adaptForwardedArgsForUnitRunner(args: string[]): {
     const filterMatch = NAME_FILTER_OPTION_REGEXP.exec(arg);
     if (filterMatch) {
       const value = filterMatch.groups?.value ?? args[++index];
-      // A value-less filter (e.g. `--grep "$UNSET_VAR"` after shell word-splitting) must not fall
-      // through to an unfiltered run of the whole (potentially paid) suite.
-      if (value === undefined) return { targets, flags, unsupportedOption: arg };
+      // A missing or empty filter value (e.g. `--grep "$UNSET_VAR"`) must not fall through to an
+      // unfiltered run of the whole (potentially paid) suite — `-t ''` matches every test.
+      if (!value) return { targets, flags, unsupportedOption: arg };
       flags.push('-t', value);
       continue;
     }

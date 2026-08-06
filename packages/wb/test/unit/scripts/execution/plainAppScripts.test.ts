@@ -76,13 +76,19 @@ describe('PlainAppScripts.testE2EProduction', () => {
   it('skips the suite instead of running it unfiltered when a name filter lacks its value', async () => {
     const project = createProject();
 
-    const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {
-      forwardedPlaywrightArgs: ['--grep'],
-    });
+    for (const [forwardedPlaywrightArgs, reportedArg] of [
+      [['--grep'], '--grep'],
+      [['--grep', ''], '--grep'],
+      [['--grep='], '--grep='],
+    ] as const) {
+      const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {
+        forwardedPlaywrightArgs: [...forwardedPlaywrightArgs],
+      });
 
-    expect(command).toBe(
-      `echo 'Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: --grep).'`
-    );
+      expect(command).toBe(
+        `echo 'Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: ${reportedArg}).'`
+      );
+    }
   });
 
   it('forwards explicit e2e targets to the unit-test runner', async () => {

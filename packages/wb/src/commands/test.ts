@@ -142,8 +142,10 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
 
     // Playwright's output dedupe (for noisy server logs) would drop the near-identical failure
     // details of a unit-runner suite, so route those through the unit runner's output handling.
+    // A skip-notice `echo` must stay on the default path: the unit runner's silent mode hides
+    // successful output and would report the skipped suite as "E2E tests passed.".
     const runE2eTestCommand = (script: string): Promise<number> =>
-      scripts.usesUnitRunnerForE2e(project)
+      scripts.usesUnitRunnerForE2e(project) && !script.startsWith('echo ')
         ? runUnitTestCommand(script, project, testArgv, {
             exitIfFailed: options.exitIfFailed,
             silentSuccessMessage: 'E2E tests passed.',
