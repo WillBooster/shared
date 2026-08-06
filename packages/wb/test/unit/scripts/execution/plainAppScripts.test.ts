@@ -69,7 +69,19 @@ describe('PlainAppScripts.testE2EProduction', () => {
     });
 
     expect(command).toBe(
-      `echo 'Skipping test/e2e/ (Playwright-only option is not supported without Playwright: --headed).'`
+      `echo 'Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: --headed).'`
+    );
+  });
+
+  it('skips the suite instead of running it unfiltered when a name filter lacks its value', async () => {
+    const project = createProject();
+
+    const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {
+      forwardedPlaywrightArgs: ['--grep'],
+    });
+
+    expect(command).toBe(
+      `echo 'Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: --grep).'`
     );
   });
 

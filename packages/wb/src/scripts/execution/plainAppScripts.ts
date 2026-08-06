@@ -88,7 +88,7 @@ class PlainAppScripts extends BaseScripts {
       return Promise.resolve(
         buildShellCommand([
           'echo',
-          `Skipping test/e2e/ (Playwright-only option is not supported without Playwright: ${forwarded.unsupportedOption}).`,
+          `Skipping test/e2e/ (cannot forward the Playwright arg to the unit-test runner: ${forwarded.unsupportedOption}).`,
         ])
       );
     }
@@ -133,7 +133,10 @@ function adaptForwardedArgsForUnitRunner(args: string[]): {
     const filterMatch = NAME_FILTER_OPTION_REGEXP.exec(arg);
     if (filterMatch) {
       const value = filterMatch.groups?.value ?? args[++index];
-      if (value !== undefined) flags.push('-t', value);
+      // A value-less filter (e.g. `--grep "$UNSET_VAR"` after shell word-splitting) must not fall
+      // through to an unfiltered run of the whole (potentially paid) suite.
+      if (value === undefined) return { targets, flags, unsupportedOption: arg };
+      flags.push('-t', value);
       continue;
     }
     if (arg.startsWith('-') && arg !== '-') {

@@ -233,8 +233,10 @@ export abstract class BaseScripts {
   }
 
   /**
-   * Whether the e2e commands emit the unit-test runner instead of Playwright, so `wb test` applies
-   * the unit runner's output handling (Playwright's log dedupe would drop repeated failure details).
+   * Whether `wb test` should apply the unit runner's output handling to the e2e phase (the default
+   * path's log dedupe would drop repeated failure details). True only when the e2e command is the
+   * bare unit runner: http-server and Workers projects may also emit it, but wrapped in
+   * `wb concurrently` with a live server whose repetitive logs are what the dedupe exists for.
    */
   usesUnitRunnerForE2e(_: Project): boolean {
     return false;
