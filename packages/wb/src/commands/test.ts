@@ -140,29 +140,33 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     const e2eTargets = testTargets.filter((target) => isE2eTarget(target));
     const e2eArgv = { ...testArgv, targets: e2eTargets.length > 0 ? e2eTargets : undefined };
 
+    // Playwright's output dedupe (for noisy server logs) would drop the near-identical failure
+    // details of a unit-runner suite, so route those through the unit runner's output handling.
+    const runE2eTestCommand = (script: string): Promise<number> =>
+      scripts.usesUnitRunnerForE2e(project)
+        ? runUnitTestCommand(script, project, testArgv, {
+            exitIfFailed: options.exitIfFailed,
+            silentSuccessMessage: 'E2E tests passed.',
+          })
+        : runTestCommand(script, project, testArgv, { exitIfFailed: options.exitIfFailed });
+
     switch (testArgv.e2e) {
       case 'headless': {
-        const exitCode = await runTestCommand(
+        const exitCode = await runE2eTestCommand(
           await scripts.testE2EProduction(project, e2eArgv, {
             playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
             forwardedPlaywrightArgs,
-          }),
-          project,
-          testArgv,
-          { exitIfFailed: options.exitIfFailed }
+          })
         );
         if (exitCode !== 0) return exitCode;
         continue;
       }
       case 'headless-dev': {
-        const exitCode = await runTestCommand(
+        const exitCode = await runE2eTestCommand(
           await scripts.testE2EDev(project, e2eArgv, {
             playwrightArgs: buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
             forwardedPlaywrightArgs,
-          }),
-          project,
-          testArgv,
-          { exitIfFailed: options.exitIfFailed }
+          })
         );
         if (exitCode !== 0) return exitCode;
         continue;
@@ -328,11 +332,11 @@ function runUnitTestCommand(
   options: Parameters<typeof runWithSpawn>[3] = {}
 ): Promise<number> {
   return runWithSpawn(script, project, argv, {
-    ...options,
     omitSilentStart: true,
     printSilentOutputOnFailureOnly: true,
     silentProgressIntervalMs: 10_000,
     silentSuccessMessage: 'Unit tests passed.',
+    ...options,
   });
 }
 

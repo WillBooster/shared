@@ -231,6 +231,14 @@ export abstract class BaseScripts {
   runsE2eOnCi(_: Project): boolean {
     return true;
   }
+
+  /**
+   * Whether the e2e commands emit the unit-test runner instead of Playwright, so `wb test` applies
+   * the unit runner's output handling (Playwright's log dedupe would drop repeated failure details).
+   */
+  usesUnitRunnerForE2e(_: Project): boolean {
+    return false;
+  }
   // ------------ END: test (e2e) commands ------------
 
   testUnit(project: Project, argv: TestArgv): string {

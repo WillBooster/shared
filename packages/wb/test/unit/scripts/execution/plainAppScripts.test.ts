@@ -32,6 +32,16 @@ describe('PlainAppScripts.testE2EProduction', () => {
     expect(command).toBe('bun test test/e2e/');
   });
 
+  it('appends `wb test -- ...` args to the unit-test runner instead of dropping the filter', async () => {
+    const project = createProject();
+
+    const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {
+      forwardedPlaywrightArgs: ['-t', 'case name'],
+    });
+
+    expect(command).toBe(`bun test test/e2e/ -t 'case name'`);
+  });
+
   it('forwards explicit e2e targets to the unit-test runner', async () => {
     const project = createProject();
 

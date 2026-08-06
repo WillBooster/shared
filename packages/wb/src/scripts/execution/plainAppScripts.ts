@@ -1,6 +1,7 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import { SERVER_LOG_FILE } from '../../utils/log.js';
+import { buildShellCommand } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
 
@@ -59,6 +60,9 @@ class PlainAppScripts extends BaseScripts {
   override runsE2eOnCi(project: Project): boolean {
     return project.hasPlaywrightWebServerConfig;
   }
+  override usesUnitRunnerForE2e(project: Project): boolean {
+    return !project.hasPlaywrightWebServerConfig;
+  }
 
   /**
    * A library has no server of its own, but it may ship a self-contained Playwright fixture whose
@@ -73,7 +77,13 @@ class PlainAppScripts extends BaseScripts {
       return Promise.resolve(this.buildPlaywrightOnlyCommand(project, argv, options));
     }
     const targets = argv.targets?.length ? argv.targets : ['test/e2e/'];
-    return Promise.resolve(this.testUnit(project, { ...argv, targets }));
+    const unitRunnerCommand = this.testUnit(project, { ...argv, targets });
+    // `wb test -- <args>` enables the e2e phase, so dropping the forwarded args here would run the
+    // whole (potentially paid) suite unfiltered; both `bun test` and vitest accept e.g. `-t`.
+    const forwardedArgs = options.forwardedPlaywrightArgs ?? [];
+    return Promise.resolve(
+      forwardedArgs.length > 0 ? `${unitRunnerCommand} ${buildShellCommand(forwardedArgs)}` : unitRunnerCommand
+    );
   }
   override testStart(): Promise<string> {
     return Promise.resolve(`echo 'do nothing.'`);
