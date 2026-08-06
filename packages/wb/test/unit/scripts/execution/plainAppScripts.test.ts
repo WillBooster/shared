@@ -128,11 +128,12 @@ describe('PlainAppScripts.testE2EProduction', () => {
   });
 });
 
-describe('PlainAppScripts.runsE2eOnCi', () => {
-  it('skips CI e2e without a Playwright fixture and allows it with one', () => {
-    expect(plainAppScripts.runsE2eOnCi(createProject())).toBe(false);
-    expect(
-      plainAppScripts.runsE2eOnCi(createProject({ hasPlaywrightConfig: true, hasPlaywrightWebServerConfig: true }))
-    ).toBe(true);
+describe('PlainAppScripts.testE2EDocker', () => {
+  it('runs the same host-side suite as the non-Docker path so CI never skips e2e', async () => {
+    const project = createProject();
+
+    const command = await plainAppScripts.testE2EDocker(project, {} as TestArgv, {});
+
+    expect(command).toBe('bun test test/e2e/');
   });
 });

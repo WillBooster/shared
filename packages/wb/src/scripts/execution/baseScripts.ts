@@ -227,10 +227,6 @@ export abstract class BaseScripts {
     return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
   }
 
-  runsE2eOnCi(_: Project): boolean {
-    return true;
-  }
-
   /**
    * Whether `wb test` should apply the unit runner's output handling to the e2e phase (the default
    * path's log dedupe would drop repeated failure details). True only when the e2e command is the
