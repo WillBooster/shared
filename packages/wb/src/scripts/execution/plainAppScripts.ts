@@ -92,11 +92,8 @@ class PlainAppScripts extends BaseScripts {
         ])
       );
     }
-    const targets = argv.targets?.length
-      ? argv.targets
-      : forwarded.targets.length > 0
-        ? forwarded.targets
-        : ['test/e2e/'];
+    const explicitTargets = [...(argv.targets ?? []), ...forwarded.targets];
+    const targets = explicitTargets.length > 0 ? explicitTargets : ['test/e2e/'];
     const unitRunnerCommand = this.testUnit(project, { ...argv, targets });
     return Promise.resolve(
       forwarded.flags.length > 0 ? `${unitRunnerCommand} ${buildShellCommand(forwarded.flags)}` : unitRunnerCommand
@@ -114,8 +111,10 @@ const NAME_FILTER_OPTION_REGEXP = /^(?:-t|-g|--grep|--test-name-pattern)(?:=(?<v
 /**
  * Splits `wb test -- <args>` (documented as Playwright flags) into what `bun test`/vitest accept:
  * bare paths become positional targets, and the name-filter flags both runners share are translated
- * to `-t`. Any other option is reported instead of being spliced into the runner command — vitest
- * aborts on unknown options, which would kill the whole monorepo test run.
+ * to a single `-t=<pattern>` token (`=`-joined so a pattern starting with `-` is not parsed as an
+ * option; last filter wins, matching Playwright's CLI). Any other option is reported instead of
+ * being spliced into the runner command — vitest aborts on unknown or duplicated options, which
+ * would kill the whole monorepo test run.
  */
 function adaptForwardedArgsForUnitRunner(args: string[]): {
   targets: string[];
@@ -123,7 +122,7 @@ function adaptForwardedArgsForUnitRunner(args: string[]): {
   unsupportedOption?: string;
 } {
   const targets: string[] = [];
-  const flags: string[] = [];
+  let nameFilter: string | undefined;
   for (let index = 0; index < args.length; index++) {
     const arg = args[index] as string;
     if (arg === '--') {
@@ -135,14 +134,14 @@ function adaptForwardedArgsForUnitRunner(args: string[]): {
       const value = filterMatch.groups?.value ?? args[++index];
       // A missing or empty filter value (e.g. `--grep "$UNSET_VAR"`) must not fall through to an
       // unfiltered run of the whole (potentially paid) suite — `-t ''` matches every test.
-      if (!value) return { targets, flags, unsupportedOption: arg };
-      flags.push('-t', value);
+      if (!value) return { targets, flags: [], unsupportedOption: arg };
+      nameFilter = value;
       continue;
     }
     if (arg.startsWith('-') && arg !== '-') {
-      return { targets, flags, unsupportedOption: arg };
+      return { targets, flags: [], unsupportedOption: arg };
     }
     targets.push(arg);
   }
-  return { targets, flags };
+  return { targets, flags: nameFilter === undefined ? [] : [`-t=${nameFilter}`] };
 }

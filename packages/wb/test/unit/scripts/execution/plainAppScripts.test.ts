@@ -47,8 +47,22 @@ describe('PlainAppScripts.testE2EProduction', () => {
     for (const forwardedPlaywrightArgs of [['-t', 'case name'], ['--grep', 'case name'], ['--grep=case name']]) {
       const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, { forwardedPlaywrightArgs });
 
-      expect(command).toBe(`bun test test/e2e/ -t 'case name'`);
+      expect(command).toBe(`bun test test/e2e/ '-t=case name'`);
     }
+  });
+
+  it('keeps only the last name filter and joins it with `=` so hyphen-leading patterns stay values', async () => {
+    const project = createProject();
+
+    const lastWins = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {
+      forwardedPlaywrightArgs: ['-g', 'alpha', '--grep', 'beta'],
+    });
+    expect(lastWins).toBe('bun test test/e2e/ -t=beta');
+
+    const hyphenValue = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {
+      forwardedPlaywrightArgs: ['--grep=--help'],
+    });
+    expect(hyphenValue).toBe('bun test test/e2e/ -t=--help');
   });
 
   it('uses a target forwarded after `--` instead of unioning it with the default test/e2e/', async () => {
@@ -59,6 +73,16 @@ describe('PlainAppScripts.testE2EProduction', () => {
     });
 
     expect(command).toBe('bun test test/e2e/foo.test.ts');
+  });
+
+  it('combines positional targets with targets forwarded after `--`', async () => {
+    const project = createProject();
+
+    const command = await plainAppScripts.testE2EProduction(project, { targets: ['test/e2e/a.test.ts'] } as TestArgv, {
+      forwardedPlaywrightArgs: ['test/e2e/b.test.ts'],
+    });
+
+    expect(command).toBe('bun test test/e2e/a.test.ts test/e2e/b.test.ts');
   });
 
   it('skips the suite instead of crashing the runner on Playwright-only options', async () => {
