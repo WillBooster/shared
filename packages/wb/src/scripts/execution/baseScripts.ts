@@ -226,6 +226,11 @@ export abstract class BaseScripts {
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
   }
+
+  /** Whether `wb test-on-ci` should run this project's `test/e2e/` suite. */
+  runsE2eOnCi(_: Project): boolean {
+    return true;
+  }
   // ------------ END: test (e2e) commands ------------
 
   testUnit(project: Project, argv: TestArgv): string {

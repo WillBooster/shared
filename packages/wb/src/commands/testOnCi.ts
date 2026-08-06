@@ -73,7 +73,7 @@ export async function testOnCi(
       const unitArgv = { ...argv, targets: defaultUnitTargets };
       await runWithSpawnInParallel(scripts.testUnit(project, unitArgv).replaceAll(' --allowOnly', ''), project, argv);
     }
-    if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
+    if (fs.existsSync(path.join(project.dirPath, 'test', 'e2e')) && scripts.runsE2eOnCi(project)) {
       // Confirm dev server startup for consistency across projects with E2E tests.
       await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
       await promisePool.promiseAll();

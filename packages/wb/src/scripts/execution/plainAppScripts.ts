@@ -44,31 +44,36 @@ class PlainAppScripts extends BaseScripts {
   }
 
   override testE2EDev(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
-    return this.testE2EWithPlaywrightManagedServer(project, argv, options);
+    return this.testE2EWithoutServer(project, argv, options);
   }
   override testE2EProduction(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
-    return this.testE2EWithPlaywrightManagedServer(project, argv, options);
+    return this.testE2EWithoutServer(project, argv, options);
   }
   override testE2EDocker(): Promise<string> {
     return Promise.resolve(`echo 'do nothing.'`);
+  }
+  /**
+   * A plain project's e2e tests need credentials or paid services (e.g. real LLM calls), which CI
+   * does not provide; a Playwright fixture with its own `webServer` is self-contained and CI-safe.
+   */
+  override runsE2eOnCi(project: Project): boolean {
+    return project.hasPlaywrightWebServerConfig;
   }
 
   /**
    * A library has no server of its own, but it may ship a self-contained Playwright fixture whose
    * config builds and starts the app under test via a `webServer` block (e.g. a Next.js fixture that
    * verifies the published package imports cleanly). Run Playwright directly in that case — including
-   * on CI, where Playwright's own `webServer` starts the fixture — otherwise there is nothing to run.
+   * on CI, where Playwright's own `webServer` starts the fixture. Otherwise run `test/e2e/` with the
+   * unit-test runner: CLI and library projects keep slow tests hitting real external dependencies
+   * there, and without this path they would never run.
    */
-  private testE2EWithPlaywrightManagedServer(
-    project: Project,
-    argv: TestArgv,
-    options: TestE2EOptions
-  ): Promise<string> {
-    return Promise.resolve(
-      project.hasPlaywrightWebServerConfig
-        ? this.buildPlaywrightOnlyCommand(project, argv, options)
-        : `echo 'do nothing.'`
-    );
+  private testE2EWithoutServer(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    if (project.hasPlaywrightWebServerConfig) {
+      return Promise.resolve(this.buildPlaywrightOnlyCommand(project, argv, options));
+    }
+    const targets = argv.targets?.length ? argv.targets : ['test/e2e/'];
+    return Promise.resolve(this.testUnit(project, { ...argv, targets }));
   }
   override testStart(): Promise<string> {
     return Promise.resolve(`echo 'do nothing.'`);
