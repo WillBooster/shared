@@ -61,7 +61,7 @@ class PlainAppScripts extends BaseScripts {
     return project.hasPlaywrightWebServerConfig;
   }
   override usesUnitRunnerForE2e(project: Project): boolean {
-    return !project.hasPlaywrightWebServerConfig;
+    return !project.hasPlaywrightConfig;
   }
 
   /**
@@ -76,13 +76,30 @@ class PlainAppScripts extends BaseScripts {
     if (project.hasPlaywrightWebServerConfig) {
       return Promise.resolve(this.buildPlaywrightOnlyCommand(project, argv, options));
     }
-    const targets = argv.targets?.length ? argv.targets : ['test/e2e/'];
-    const unitRunnerCommand = this.testUnit(project, { ...argv, targets });
+    // A Playwright config without `webServer` expects an externally managed server (the shape wbfy's
+    // playwrightConfig fixer documents); its specs cannot run under the unit runner.
+    if (project.hasPlaywrightConfig) {
+      return Promise.resolve(`echo 'do nothing.'`);
+    }
     // `wb test -- <args>` enables the e2e phase, so dropping the forwarded args here would run the
-    // whole (potentially paid) suite unfiltered; both `bun test` and vitest accept e.g. `-t`.
-    const forwardedArgs = options.forwardedPlaywrightArgs ?? [];
+    // whole (potentially paid) suite unfiltered; translate what the unit runners understand.
+    const forwarded = adaptForwardedArgsForUnitRunner(options.forwardedPlaywrightArgs ?? []);
+    if (forwarded.unsupportedOption !== undefined) {
+      return Promise.resolve(
+        buildShellCommand([
+          'echo',
+          `Skipping test/e2e/ (Playwright-only option is not supported without Playwright: ${forwarded.unsupportedOption}).`,
+        ])
+      );
+    }
+    const targets = argv.targets?.length
+      ? argv.targets
+      : forwarded.targets.length > 0
+        ? forwarded.targets
+        : ['test/e2e/'];
+    const unitRunnerCommand = this.testUnit(project, { ...argv, targets });
     return Promise.resolve(
-      forwardedArgs.length > 0 ? `${unitRunnerCommand} ${buildShellCommand(forwardedArgs)}` : unitRunnerCommand
+      forwarded.flags.length > 0 ? `${unitRunnerCommand} ${buildShellCommand(forwarded.flags)}` : unitRunnerCommand
     );
   }
   override testStart(): Promise<string> {
@@ -91,3 +108,38 @@ class PlainAppScripts extends BaseScripts {
 }
 
 export const plainAppScripts = new PlainAppScripts();
+
+const NAME_FILTER_OPTION_REGEXP = /^(?:-t|-g|--grep|--test-name-pattern)(?:=(?<value>.*))?$/;
+
+/**
+ * Splits `wb test -- <args>` (documented as Playwright flags) into what `bun test`/vitest accept:
+ * bare paths become positional targets, and the name-filter flags both runners share are translated
+ * to `-t`. Any other option is reported instead of being spliced into the runner command — vitest
+ * aborts on unknown options, which would kill the whole monorepo test run.
+ */
+function adaptForwardedArgsForUnitRunner(args: string[]): {
+  targets: string[];
+  flags: string[];
+  unsupportedOption?: string;
+} {
+  const targets: string[] = [];
+  const flags: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index] as string;
+    if (arg === '--') {
+      targets.push(...args.slice(index + 1));
+      break;
+    }
+    const filterMatch = NAME_FILTER_OPTION_REGEXP.exec(arg);
+    if (filterMatch) {
+      const value = filterMatch.groups?.value ?? args[++index];
+      if (value !== undefined) flags.push('-t', value);
+      continue;
+    }
+    if (arg.startsWith('-') && arg !== '-') {
+      return { targets, flags, unsupportedOption: arg };
+    }
+    targets.push(arg);
+  }
+  return { targets, flags };
+}

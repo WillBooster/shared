@@ -8,6 +8,7 @@ function createProject(overrides: Record<string, unknown> = {}): Project {
   return {
     env: { WB_ENV: 'test', PORT: '3000' },
     packageJson: { scripts: {} },
+    hasPlaywrightConfig: false,
     hasPlaywrightWebServerConfig: false,
     hasVitest: false,
     isBunAvailable: true,
@@ -17,14 +18,22 @@ function createProject(overrides: Record<string, unknown> = {}): Project {
 
 describe('PlainAppScripts.testE2EProduction', () => {
   it('runs Playwright directly when the library ships a self-managed webServer fixture', async () => {
-    const project = createProject({ hasPlaywrightWebServerConfig: true });
+    const project = createProject({ hasPlaywrightConfig: true, hasPlaywrightWebServerConfig: true });
 
     const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {});
 
     expect(command).toBe('BUN playwright test test/e2e/');
   });
 
-  it('runs test/e2e/ with the unit-test runner when there is no Playwright fixture', async () => {
+  it('does nothing when a Playwright config expects an externally managed server', async () => {
+    const project = createProject({ hasPlaywrightConfig: true });
+
+    const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {});
+
+    expect(command).toBe(`echo 'do nothing.'`);
+  });
+
+  it('runs test/e2e/ with the unit-test runner when there is no Playwright config', async () => {
     const project = createProject();
 
     const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {});
@@ -32,14 +41,36 @@ describe('PlainAppScripts.testE2EProduction', () => {
     expect(command).toBe('bun test test/e2e/');
   });
 
-  it('appends `wb test -- ...` args to the unit-test runner instead of dropping the filter', async () => {
+  it('translates `wb test -- ...` name filters for the unit-test runner instead of dropping them', async () => {
+    const project = createProject();
+
+    for (const forwardedPlaywrightArgs of [['-t', 'case name'], ['--grep', 'case name'], ['--grep=case name']]) {
+      const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, { forwardedPlaywrightArgs });
+
+      expect(command).toBe(`bun test test/e2e/ -t 'case name'`);
+    }
+  });
+
+  it('uses a target forwarded after `--` instead of unioning it with the default test/e2e/', async () => {
     const project = createProject();
 
     const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {
-      forwardedPlaywrightArgs: ['-t', 'case name'],
+      forwardedPlaywrightArgs: ['test/e2e/foo.test.ts'],
     });
 
-    expect(command).toBe(`bun test test/e2e/ -t 'case name'`);
+    expect(command).toBe('bun test test/e2e/foo.test.ts');
+  });
+
+  it('skips the suite instead of crashing the runner on Playwright-only options', async () => {
+    const project = createProject({ hasVitest: true, isBunAvailable: false });
+
+    const command = await plainAppScripts.testE2EProduction(project, {} as TestArgv, {
+      forwardedPlaywrightArgs: ['--headed'],
+    });
+
+    expect(command).toBe(
+      `echo 'Skipping test/e2e/ (Playwright-only option is not supported without Playwright: --headed).'`
+    );
   });
 
   it('forwards explicit e2e targets to the unit-test runner', async () => {
@@ -58,6 +89,8 @@ describe('PlainAppScripts.testE2EProduction', () => {
 describe('PlainAppScripts.runsE2eOnCi', () => {
   it('skips CI e2e without a Playwright fixture and allows it with one', () => {
     expect(plainAppScripts.runsE2eOnCi(createProject())).toBe(false);
-    expect(plainAppScripts.runsE2eOnCi(createProject({ hasPlaywrightWebServerConfig: true }))).toBe(true);
+    expect(
+      plainAppScripts.runsE2eOnCi(createProject({ hasPlaywrightConfig: true, hasPlaywrightWebServerConfig: true }))
+    ).toBe(true);
   });
 });
