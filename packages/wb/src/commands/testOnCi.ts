@@ -77,26 +77,29 @@ export async function testOnCi(
       // Confirm dev server startup for consistency across projects with E2E tests.
       await runWithSpawnInParallel(await scripts.testStart(project, argv), project, argv);
       await promisePool.promiseAll();
+      // Keep validating the Docker test-image build even when the e2e suite itself is skipped.
       if (hasDockerfile) {
         project.env.WB_DOCKER ||= '1';
         await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv);
       }
-      const script = hasDockerfile
-        ? await scripts.testE2EDocker(project, argv, {})
-        : await scripts.testE2EProduction(project, argv, {});
-      // Preserve a nonzero exit code from an earlier project (e.g. a layout violation): a later
-      // successful project must not reset the failure.
-      const e2eExitCode = await runWithSpawn(
-        // CI mode disallows `only` to avoid including debug tests
-        script.replaceAll(' --allowOnly', ''),
-        project,
-        argv,
-        {
-          exitIfFailed: false,
+      if (scripts.runsE2eOnCi(project)) {
+        const script = hasDockerfile
+          ? await scripts.testE2EDocker(project, argv, {})
+          : await scripts.testE2EProduction(project, argv, {});
+        // Preserve a nonzero exit code from an earlier project (e.g. a layout violation): a later
+        // successful project must not reset the failure.
+        const e2eExitCode = await runWithSpawn(
+          // CI mode disallows `only` to avoid including debug tests
+          script.replaceAll(' --allowOnly', ''),
+          project,
+          argv,
+          {
+            exitIfFailed: false,
+          }
+        );
+        if (e2eExitCode !== 0) {
+          process.exitCode = e2eExitCode;
         }
-      );
-      if (e2eExitCode !== 0) {
-        process.exitCode = e2eExitCode;
       }
       if (hasDockerfile) {
         await runWithSpawn(dockerScripts.stop(project), project, argv);

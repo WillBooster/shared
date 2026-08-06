@@ -226,6 +226,20 @@ export abstract class BaseScripts {
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     return `${buildPlaywrightCommand(playwrightArgs, argv.targets, argv.bail, forwardedPlaywrightArgs)}${suffix}`;
   }
+
+  runsE2eOnCi(_: Project): boolean {
+    return true;
+  }
+
+  /**
+   * Whether `wb test` should apply the unit runner's output handling to the e2e phase (the default
+   * path's log dedupe would drop repeated failure details). True only when the e2e command is the
+   * bare unit runner: http-server and Workers projects may also emit it, but wrapped in
+   * `wb concurrently` with a live server whose repetitive logs are what the dedupe exists for.
+   */
+  usesUnitRunnerForE2e(_: Project): boolean {
+    return false;
+  }
   // ------------ END: test (e2e) commands ------------
 
   testUnit(project: Project, argv: TestArgv): string {
