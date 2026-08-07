@@ -1,10 +1,10 @@
 #!/bin/bash
 # Writes the organization's minimum-release-age policy — releaseAgeGate.json next to this script is
 # its single source of truth — into the global package-manager configs of the user running it:
-# ~/.npmrc (npm, bun, yarn 1), ~/.yarnrc.yml (Yarn Berry) and ~/.bunfig.toml (bun), plus the same
-# files under $XDG_CONFIG_HOME (bun reads its global configs ONLY from there once that variable is
-# set). Run it once per user whose configs must be gated: `sudo -H env -u XDG_CONFIG_HOME bash
-# applyReleaseAgeGate.sh` covers root, whose configs `sudo npm install --global` reads.
+# ~/.npmrc (npm, bun, yarn 1), ~/.yarnrc.yml (Yarn Berry), ~/.bunfig.toml (bun) and bun's copies
+# under $XDG_CONFIG_HOME. Run it once per user whose configs must be gated: `sudo -H env -u
+# XDG_CONFIG_HOME bash applyReleaseAgeGate.sh` covers root, whose configs `sudo npm install
+# --global` reads.
 #
 # Every managed setting is rewritten on each run, so a hand-weakened gate never survives:
 # - .npmrc and .yarnrc.yml keep every setting except the gate keys, because npm and Yarn append
@@ -31,11 +31,13 @@ emitHeader() {
   return 0
 }
 
-npmrcHeader=${NPMRC_HEADER-$(sed '/^min-release-age/d' "$HOME/.npmrc" 2> /dev/null || true)}
+# `! [ -e … ] ||` skips an absent file but lets a read failure abort the run: overwriting a config
+# whose current settings could not be read would silently drop them.
+npmrcHeader=${NPMRC_HEADER-$(! [ -e "$HOME/.npmrc" ] || sed '/^min-release-age/d' "$HOME/.npmrc")}
 # Drop the two managed top-level keys with their indented values, keep every other key.
-yarnrcHeader=${YARNRC_HEADER-$(awk '
+yarnrcHeader=${YARNRC_HEADER-$(! [ -e "$HOME/.yarnrc.yml" ] || awk '
   /^[^ ]/ { drop = ($1 == "npmMinimalAgeGate:" || $1 == "npmPreapprovedPackages:") }
-  !drop' "$HOME/.yarnrc.yml" 2> /dev/null || true)}
+  !drop' "$HOME/.yarnrc.yml")}
 
 npmrc=$(
   emitHeader "$npmrcHeader"
@@ -58,14 +60,17 @@ bunfig=$(
   echo ']'
 )
 
-write() { # $1: directory
-  mkdir -p "$1"
-  printf '%s\n' "$npmrc" > "$1/.npmrc"
-  printf '%s\n' "$yarnrc" > "$1/.yarnrc.yml"
-  printf '%s\n' "$bunfig" > "$1/.bunfig.toml"
-}
+printf '%s\n' "$npmrc" > "$HOME/.npmrc"
+printf '%s\n' "$yarnrc" > "$HOME/.yarnrc.yml"
+printf '%s\n' "$bunfig" > "$HOME/.bunfig.toml"
 
-write "$HOME"
-if [ -n "${XDG_CONFIG_HOME:-}" ]; then write "$XDG_CONFIG_HOME"; fi
+# Once $XDG_CONFIG_HOME is set, bun reads BOTH its .bunfig.toml and its .npmrc from there and never
+# falls back to $HOME (verified with bun 1.3.14), so its installs would otherwise run ungated and
+# bypass the registry settings. npm and Yarn Berry always read $HOME, hence no .yarnrc.yml here.
+if [ -n "${XDG_CONFIG_HOME:-}" ]; then
+  mkdir -p "$XDG_CONFIG_HOME"
+  printf '%s\n' "$npmrc" > "$XDG_CONFIG_HOME/.npmrc"
+  printf '%s\n' "$bunfig" > "$XDG_CONFIG_HOME/.bunfig.toml"
+fi
 
 echo "Applied the ${days}-day minimum-release-age policy to ${HOME}'s global package-manager configs."

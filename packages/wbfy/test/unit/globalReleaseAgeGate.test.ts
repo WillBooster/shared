@@ -53,12 +53,15 @@ npmRegistries:
     expect(yarnrc).toContain(`npmMinimalAgeGate: ${bunMinimumReleaseAgeSeconds / 60}\n`);
     expect(yarnrc).toContain("  - '@willbooster/wb'\n");
 
-    // bun reads its global bunfig ONLY from $XDG_CONFIG_HOME once that variable is set.
+    // bun reads its global configs ONLY from $XDG_CONFIG_HOME once that variable is set, while
+    // Yarn always reads $HOME, so no .yarnrc.yml belongs there.
     for (const dirPath of [homeDirPath, xdgDirPath]) {
       const bunfig = await fs.readFile(path.join(dirPath, '.bunfig.toml'), 'utf8');
       expect(bunfig).toContain(`minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}\n`);
       expect(bunfig).toContain(`  "${bunMinimumReleaseAgeExcludes.at(-1)}",\n`);
     }
+    expect(await fs.readFile(path.join(xdgDirPath, '.npmrc'), 'utf8')).toBe(npmrc);
+    await expect(fs.access(path.join(xdgDirPath, '.yarnrc.yml'))).rejects.toThrow();
 
     // Re-running must not stack another copy of the gate on top of the previous one.
     expect(run()).toBe(0);
