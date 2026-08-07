@@ -25,12 +25,12 @@ const minimumReleaseAgeMinutes = bunMinimumReleaseAgeSeconds / 60;
  * wbfied repositories; a brand-new local project has no bunfig.toml yet, so the global files are
  * the only gate between `bun create` / `npm init` and a freshly compromised release. Project-level
  * configuration takes precedence in all three managers, so wbfied repositories keep their own
- * (identical) gate and exclusion list. The generated settings assume up-to-date package managers
- * (Bun >= 1.3, Yarn >= 4.12, npm >= 11.17) — the org policy is to upgrade, not to accommodate
- * older versions.
+ * (identical) gate and exclusion list.
  *
- * These files live outside every repository, so writes deliberately bypass fsUtil's
- * repository-containment guards and go through plain fs instead.
+ * Deliberately minimal by org policy: it assumes up-to-date package managers (upgrade instead of
+ * accommodating older versions) and plain regular files — exceptional setups (symlinked dotfiles,
+ * npm userconfig overrides, crash-safe replacement) are ignored, not handled. These files live
+ * outside every repository, so writes bypass fsUtil's repository-containment guards.
  */
 export async function ensureGlobalReleaseAgeGates(): Promise<void> {
   return logger.functionIgnoringException('ensureGlobalReleaseAgeGates', async () => {
@@ -53,7 +53,8 @@ export async function ensureGlobalReleaseAgeGates(): Promise<void> {
         const existingContent = fs.existsSync(filePath) ? await fs.promises.readFile(filePath, 'utf8') : undefined;
         const newContent = computeContent(existingContent);
         if (newContent === undefined || newContent === existingContent) continue;
-        await writeFileAtomically(filePath, newContent);
+        await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.promises.writeFile(filePath, newContent);
         console.info(`Applied the minimum-release-age policy to ${filePath}`);
       } catch (error) {
         // ~/.npmrc may hold credentials and ~/.yarnrc.yml personal settings; a single unreadable or
@@ -198,45 +199,4 @@ function parseTomlSafely(content: string): unknown {
   } catch {
     return undefined;
   }
-}
-
-/**
- * These files hold credentials and personal settings, and fs.writeFile truncates before its
- * (possibly multiple) writes — a crash or full disk mid-write would destroy content the update was
- * required to preserve. Write a sibling temp file and rename it into place instead. Symlinked
- * dotfiles are replaced at their resolved target so the symlink itself survives.
- */
-async function writeFileAtomically(filePath: string, content: string): Promise<void> {
-  const targetFilePath = await resolveWriteTarget(filePath);
-  await fs.promises.mkdir(path.dirname(targetFilePath), { recursive: true });
-  const stats = await fs.promises.stat(targetFilePath).catch(() => {});
-  // Unique name + exclusive create: a stale temp file from an interrupted or concurrent run must
-  // never be reused — writeFile applies `mode` only on creation, so reusing one would hand its
-  // (possibly looser) permissions to a credential-bearing target on rename.
-  const tempFilePath = `${targetFilePath}.${process.pid}.wbfy-tmp`;
-  try {
-    await fs.promises.writeFile(tempFilePath, content, { flag: 'wx', mode: stats ? stats.mode : undefined });
-    // writeFile's mode is masked by the umask; restore the target's exact mode (e.g. 0600 .npmrc).
-    if (stats) await fs.promises.chmod(tempFilePath, stats.mode);
-    await fs.promises.rename(tempFilePath, targetFilePath);
-  } catch (error) {
-    await fs.promises.rm(tempFilePath, { force: true });
-    throw error;
-  }
-}
-
-/**
- * Resolves the path the content must land at, following symlinks so a dotfiles link keeps pointing
- * at its repository. realpath alone is not enough: it fails on a DANGLING link (target not created
- * yet), whose link must also survive — so walk lstat/readlink manually.
- */
-async function resolveWriteTarget(filePath: string): Promise<string> {
-  let currentPath = filePath;
-  for (let i = 0; i < 8; i++) {
-    const stats = await fs.promises.lstat(currentPath).catch(() => {});
-    if (!stats || !stats.isSymbolicLink()) return currentPath;
-    currentPath = path.resolve(path.dirname(currentPath), await fs.promises.readlink(currentPath));
-  }
-  // A chain this deep is a cycle; renaming onto it would silently replace one of its links.
-  throw new Error(`Too many levels of symbolic links: ${filePath}`);
 }
