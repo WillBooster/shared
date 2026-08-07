@@ -138,11 +138,10 @@ function parseTableSafely(fileLabel: string, parse: () => unknown): Record<strin
       console.warn(`Replacing the global ${fileLabel} wholesale because it is not a top-level table.`);
     }
     return table;
-  } catch (error) {
-    console.warn(
-      `Replacing the unparseable global ${fileLabel} wholesale:`,
-      (error as Error | undefined)?.message ?? error
-    );
+  } catch {
+    // Deliberately omit the parser error: js-yaml/smol-toml messages embed source snippets of the
+    // broken file, which may hold credentials that must not reach terminal captures or CI logs.
+    console.warn(`Replacing the unparseable global ${fileLabel} wholesale with the org-managed content.`);
     return {};
   }
 }
