@@ -1,12 +1,11 @@
 // GitHub Actions valueless events such as `pull_request:` require YAML null values.
-// oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make load/dump usage clearer.
 /* eslint-disable unicorn/no-null */
 
 import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
 import { hasFnoxSyncFailed, resolveFnoxCiAgeKeySecretName } from './fnoxToml.js';
@@ -1224,13 +1223,6 @@ async function writeYaml(newSettings: Workflow, filePath: string): Promise<void>
   if (newSettings.permissions && Object.keys(newSettings.permissions).length === 0) {
     delete newSettings.permissions;
   }
-  const yamlText = removeTrailingSpaces(
-    yaml.dump(newSettings, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } })
-  );
+  const yamlText = yaml.dump(newSettings, { lineWidth: -1 });
   await fsUtil.writeFileConfined(filePath, yamlText);
-}
-
-export function removeTrailingSpaces(text: string): string {
-  // js-yaml emits valueless GitHub Actions events as `event: ` when using the empty null style.
-  return text.replaceAll(/[ \t]+$/gm, '');
 }

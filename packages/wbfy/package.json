@@ -33,7 +33,7 @@
     "deepmerge": "4.3.1",
     "fast-glob": "3.3.3",
     "fastest-levenshtein": "1.0.16",
-    "js-yaml": "4.3.0",
+    "js-yaml": "5.2.2",
     "json5": "2.2.3",
     "jsonc-parser": "3.3.1",
     "mdast-util-from-markdown": "2.0.3",

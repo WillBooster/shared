@@ -63,9 +63,7 @@ myorg = "https://example.com/myorg/"
 
   const yarnrc = newGlobalYarnrcContent(`nodeLinker: node-modules
 npmMinimalAgeGate: 60
-npmPreapprovedPackages: [
-  '@myorg/foo',
-]
+npmPreapprovedPackages: ['@myorg/foo']
 npmRegistries:
   //npm.pkg.github.com:
     npmAuthToken: SECRET_TOKEN
@@ -102,9 +100,9 @@ nodeLinker: node-modules
   );
   expect(newGlobalYarnrcContent(numericTokenYarnrc)).toBe(numericTokenYarnrc);
 
-  // An explicit empty value is meaningful to Yarn (ANY-typed plugin settings distinguish
-  // set-to-null from absent), so it must survive as an empty scalar — never as a `null` token,
-  // which a FAILSAFE re-read would turn into the STRING 'null'.
+  // An empty value parses as the empty string under js-yaml v5's FAILSAFE schema, so it survives
+  // as an explicit empty scalar (`key: ''`) — never as a `null` token, which a FAILSAFE re-read
+  // would turn into the STRING 'null'.
   const emptyValueYarnrc = newGlobalYarnrcContent('foo:\nbar: baz\nnested:\n  child:\n');
   expect(emptyValueYarnrc).not.toContain('null');
   const parsedEmptyValueYarnrc = loadYaml(emptyValueYarnrc) as {
@@ -112,8 +110,8 @@ nodeLinker: node-modules
     bar: string;
     nested: { child: unknown };
   };
-  expect(parsedEmptyValueYarnrc.foo).toBeNull();
-  expect(parsedEmptyValueYarnrc.nested.child).toBeNull();
+  expect(parsedEmptyValueYarnrc.foo).toBe('');
+  expect(parsedEmptyValueYarnrc.nested.child).toBe('');
   expect(parsedEmptyValueYarnrc.bar).toBe('baz');
   expect(newGlobalYarnrcContent(emptyValueYarnrc)).toBe(emptyValueYarnrc);
 
