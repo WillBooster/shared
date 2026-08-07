@@ -21,6 +21,7 @@ __generated__/
 .claude/*.local.*
 .claude/scheduled_tasks.lock
 .devcontainer/
+.docker.env
 .env*
 .idea/AugmentWebviewStateStore.xml
 .idea/copilot.*
