@@ -212,6 +212,37 @@ enableGlobalCache: true
   expect(yarnrc3).not.toContain('@myorg');
 });
 
+test('normalizes CRLF files and still removes hand-written gate keys', () => {
+  const bunfig = newGlobalBunfigContent('[install]\r\nminimumReleaseAge = 60\r\nregistry = "https://example.com/"\r\n');
+  const parsedBunfig = parseToml(bunfig) as { install: { registry: string; minimumReleaseAge: number } };
+  expect(parsedBunfig.install.registry).toBe('https://example.com/');
+  expect(parsedBunfig.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
+
+  const yarnrc = newGlobalYarnrcContent('npmMinimalAgeGate: 60\r\nnodeLinker: node-modules\r\n');
+  const parsedYarnrc = loadYaml(yarnrc) as { nodeLinker: string; npmMinimalAgeGate: number };
+  expect(parsedYarnrc.nodeLinker).toBe('node-modules');
+  expect(parsedYarnrc.npmMinimalAgeGate).toBe(bunMinimumReleaseAgeSeconds / 60);
+});
+
+test('never swallows content after a flow value whose brackets never balance', () => {
+  const yarnrc = newGlobalYarnrcContent(`npmPreapprovedPackages: [
+  '@myorg/foo'
+npmRegistries:
+  //npm.pkg.github.com:
+    npmAuthToken: SECRET_TOKEN
+`);
+  expect(yarnrc).toContain('SECRET_TOKEN');
+
+  const bunfig = newGlobalBunfigContent(`[install]
+minimumReleaseAgeExcludes = [
+  "a"
+registry = "https://example.com/"
+ca = "MY-CERT"
+`);
+  expect(bunfig).toContain('registry = "https://example.com/"');
+  expect(bunfig).toContain('ca = "MY-CERT"');
+});
+
 test('appends the gate even to files with broken syntax, preserving their content', () => {
   const bunfig = newGlobalBunfigContent('[install\nbroken');
   expect(bunfig).toContain('[install\nbroken');

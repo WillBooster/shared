@@ -181,7 +181,9 @@ function findFlowValueEnd(lines: string[], startIndex: number, firstLineValue: s
     depth += bracketDelta(lineIndex === startIndex ? firstLineValue : (lines[lineIndex] ?? ''));
     if (depth <= 0) return lineIndex;
   }
-  return lines.length - 1;
+  // Never-balancing brackets mean a syntactically broken file; remove only the key line instead of
+  // swallowing the rest of the file, which may hold credentials that must never be destroyed.
+  return startIndex;
 }
 
 /** Counts the line's bracket balance, ignoring brackets inside strings and after a `#` comment. */
@@ -205,7 +207,9 @@ function bracketDelta(lineText: string): number {
 }
 
 function removeManagedBlock(content: string | undefined): string {
-  return content?.replaceAll(managedBlockPattern, '') ?? '';
+  // CRLF is normalized to LF up front so every matcher below can assume LF-only lines; the org
+  // targets macOS/Linux and Bun, Yarn, and npm all accept LF.
+  return content?.replaceAll('\r\n', '\n').replaceAll(managedBlockPattern, '') ?? '';
 }
 
 function appendBlock(rest: string, block: string): string {
