@@ -82,6 +82,26 @@ npmRegistries:
   expect(parsedYarnrc.npmRegistries['//npm.pkg.github.com']?.npmAuthToken).toBe('SECRET_TOKEN');
   expect(newGlobalYarnrcContent(yarnrc)).toBe(yarnrc);
 
+  // Yarn-schema parity (FAILSAFE_SCHEMA + json): a digit-only credential keeps its exact text
+  // instead of being coerced to a number, and duplicate keys — which Yarn accepts, last wins — do
+  // not cause a wholesale replacement.
+  const numericTokenYarnrc = newGlobalYarnrcContent(`nodeLinker: pnp
+npmRegistries:
+  //npm.pkg.github.com:
+    npmAuthToken: 0123456789012345678901234567890
+nodeLinker: node-modules
+`);
+  expect(numericTokenYarnrc).toContain('0123456789012345678901234567890');
+  const parsedNumericTokenYarnrc = loadYaml(numericTokenYarnrc) as {
+    nodeLinker: string;
+    npmRegistries: Record<string, { npmAuthToken: string }>;
+  };
+  expect(parsedNumericTokenYarnrc.nodeLinker).toBe('node-modules');
+  expect(parsedNumericTokenYarnrc.npmRegistries['//npm.pkg.github.com']?.npmAuthToken).toBe(
+    '0123456789012345678901234567890'
+  );
+  expect(newGlobalYarnrcContent(numericTokenYarnrc)).toBe(numericTokenYarnrc);
+
   const npmrc = newGlobalNpmrcContent(
     '//registry.npmjs.org/:_authToken=secret\nmin-release-age=1\nmin-release-age-exclude[]=@myorg/foo\n'
   );
@@ -93,13 +113,15 @@ npmRegistries:
 });
 
 test('replaces files that do not parse into a top-level table with the org-managed content', () => {
-  for (const [newContent, parse, broken] of [
-    [newGlobalBunfigContent, parseToml, '[install\nbroken'],
-    [newGlobalYarnrcContent, loadYaml, 'foo: [broken\n'],
-    [newGlobalYarnrcContent, loadYaml, 'just a scalar document\n'],
+  for (const [newContent, parse, broken, leftover] of [
+    [newGlobalBunfigContent, parseToml, '[install\nbroken', 'broken'],
+    [newGlobalYarnrcContent, loadYaml, 'foo: [broken\n', 'broken'],
+    [newGlobalYarnrcContent, loadYaml, 'just a scalar document\n', 'scalar'],
+    // A lone timestamp scalar: the parser returns a non-plain object (or string), never a mapping.
+    [newGlobalYarnrcContent, loadYaml, '2026-01-01T00:00:00Z\n', '2026-01-01'],
   ] as const) {
     const created = newContent(broken);
-    expect(created).not.toContain('broken');
+    expect(created).not.toContain(leftover);
     expect(parse(created)).toBeTruthy();
   }
 });

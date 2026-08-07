@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { dump as dumpYaml, load as loadYaml } from 'js-yaml';
+import { dump as dumpYaml, FAILSAFE_SCHEMA, load as loadYaml } from 'js-yaml';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
 import { logger } from '../logger.js';
@@ -86,7 +86,13 @@ export function newGlobalBunfigContent(existingContent: string | undefined): str
 
 /** Returns the canonical ~/.yarnrc.yml content with the managed gate enforced. */
 export function newGlobalYarnrcContent(existingContent: string | undefined): string {
-  const config = parseSafely(() => loadYaml(existingContent ?? ''));
+  // Parse exactly like Yarn itself: parseSyml = load(source, {schema: FAILSAFE_SCHEMA, json: true})
+  // (yarnpkg/berry packages/yarnpkg-parsers/sources/syml.ts). All scalars stay strings — the
+  // default schema would corrupt digit-only credentials (0-prefix loss, float rounding) and turn
+  // date-shaped values into Date objects — and duplicate keys overwrite instead of throwing, so a
+  // file Yarn accepts is never mistaken for unparseable and wiped. Yarn coerces typed settings
+  // from strings, so the quoting that dump adds to such scalars is behavior-neutral.
+  const config = parseSafely(() => loadYaml(existingContent ?? '', { schema: FAILSAFE_SCHEMA, json: true }));
   // Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
   // miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
   // bare number is unambiguous, while duration strings were misparsed by the pre-DURATION versions
@@ -111,16 +117,17 @@ export function newGlobalNpmrcContent(existingContent: string | undefined): stri
 /** Returns the parsed top-level table, or an empty one when the file cannot serve as a base. */
 function parseSafely(parse: () => unknown): Record<string, unknown> {
   try {
-    const parsed = parse();
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+    return asTable(parse());
   } catch {
     // Fall through: an unparseable file is replaced wholesale with the org-managed content.
   }
   return {};
 }
 
+// Only a PLAIN object counts as a table: parsers hand back typed objects for some scalars (Date
+// for TOML datetimes and default-schema YAML timestamps, Uint8Array for YAML binary), and
+// assigning gate keys onto those would be silently dropped by stringify.
 function asTable(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)
-    ? (value as Record<string, unknown>)
-    : {};
+  const proto = value !== null && typeof value === 'object' ? Object.getPrototypeOf(value) : undefined;
+  return proto === Object.prototype || proto === null ? (value as Record<string, unknown>) : {};
 }
