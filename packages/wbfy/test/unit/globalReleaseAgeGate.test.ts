@@ -72,6 +72,8 @@ test('keeps a key the developer appends after the managed block under [install] 
 test('leaves files with a hand-written gate or broken syntax untouched', () => {
   expect(newGlobalBunfigContent('[install]\nminimumReleaseAge = 60\n')).toBeUndefined();
   expect(newGlobalBunfigContent('[install\nbroken')).toBeUndefined();
+  // A scalar `install` key must fall through to the merged-result validation, not crash the run.
+  expect(newGlobalBunfigContent('install = "https://example.com/"\n')).toBeUndefined();
   expect(newGlobalYarnrcContent('npmMinimalAgeGate: 60\n')).toBeUndefined();
   expect(newGlobalYarnrcContent('foo: [broken\n')).toBeUndefined();
   expect(newGlobalNpmrcContent('min-release-age=1\n')).toBeUndefined();

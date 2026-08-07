@@ -72,11 +72,17 @@ export function newGlobalBunfigContent(existingContent: string | undefined): str
     console.warn('Skipped updating the global bunfig.toml because it is not valid TOML.');
     return undefined;
   }
-  const install = (parsed as { install?: Record<string, unknown> } | undefined)?.install;
+  // `install` may be any TOML value (a hand-written `install = "…"` scalar parses fine), so it
+  // must be narrowed before the `in` checks below.
+  const install = (parsed as { install?: unknown } | undefined)?.install;
   // A gate the developer wrote outside the managed block would collide with the managed keys
   // (TOML rejects duplicate keys). Fail safe: leave the file alone and tell them to remove it —
   // silently rewriting hand-written lines in a personal file risks destroying unrelated content.
-  if (install && ('minimumReleaseAge' in install || 'minimumReleaseAgeExcludes' in install)) {
+  if (
+    install &&
+    typeof install === 'object' &&
+    ('minimumReleaseAge' in install || 'minimumReleaseAgeExcludes' in install)
+  ) {
     console.warn(
       'Skipped updating the global bunfig.toml: it already sets minimumReleaseAge(Excludes) outside the wbfy-managed block. Remove them to let wbfy manage the gate.'
     );
@@ -201,11 +207,36 @@ function parseTomlSafely(content: string): unknown {
  * dotfiles are replaced at their resolved target so the symlink itself survives.
  */
 async function writeFileAtomically(filePath: string, content: string): Promise<void> {
-  const realFilePath = await fs.promises.realpath(filePath).catch(() => filePath);
-  await fs.promises.mkdir(path.dirname(realFilePath), { recursive: true });
-  const stats = await fs.promises.stat(realFilePath).catch(() => {});
-  const mode = stats ? stats.mode : undefined;
-  const tempFilePath = `${realFilePath}.wbfy-tmp`;
-  await fs.promises.writeFile(tempFilePath, content, { mode });
-  await fs.promises.rename(tempFilePath, realFilePath);
+  const targetFilePath = await resolveWriteTarget(filePath);
+  await fs.promises.mkdir(path.dirname(targetFilePath), { recursive: true });
+  const stats = await fs.promises.stat(targetFilePath).catch(() => {});
+  // Unique name + exclusive create: a stale temp file from an interrupted or concurrent run must
+  // never be reused — writeFile applies `mode` only on creation, so reusing one would hand its
+  // (possibly looser) permissions to a credential-bearing target on rename.
+  const tempFilePath = `${targetFilePath}.${process.pid}.wbfy-tmp`;
+  try {
+    await fs.promises.writeFile(tempFilePath, content, { flag: 'wx', mode: stats ? stats.mode : undefined });
+    // writeFile's mode is masked by the umask; restore the target's exact mode (e.g. 0600 .npmrc).
+    if (stats) await fs.promises.chmod(tempFilePath, stats.mode);
+    await fs.promises.rename(tempFilePath, targetFilePath);
+  } catch (error) {
+    await fs.promises.rm(tempFilePath, { force: true });
+    throw error;
+  }
+}
+
+/**
+ * Resolves the path the content must land at, following symlinks so a dotfiles link keeps pointing
+ * at its repository. realpath alone is not enough: it fails on a DANGLING link (target not created
+ * yet), whose link must also survive — so walk lstat/readlink manually.
+ */
+async function resolveWriteTarget(filePath: string): Promise<string> {
+  let currentPath = filePath;
+  for (let i = 0; i < 8; i++) {
+    const stats = await fs.promises.lstat(currentPath).catch(() => {});
+    if (!stats || !stats.isSymbolicLink()) return currentPath;
+    currentPath = path.resolve(path.dirname(currentPath), await fs.promises.readlink(currentPath));
+  }
+  // A chain this deep is a cycle; renaming onto it would silently replace one of its links.
+  throw new Error(`Too many levels of symbolic links: ${filePath}`);
 }
