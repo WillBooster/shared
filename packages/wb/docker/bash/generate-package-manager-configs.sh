@@ -40,21 +40,10 @@ minutes=$((seconds / 60))
   done
 } > ~/.yarnrc.yml
 
-{
-  echo 'env = false'
-  echo 'telemetry = false'
-  echo ''
-  echo '[install]'
-  echo 'exact = true'
-  # A single-use image never reuses a global store, and store symlinks outside the project root
-  # break multi-stage COPY of node_modules.
-  echo 'globalStore = false'
-  echo 'linker = "isolated"'
-  echo 'publicHoistPattern = ["tsx", "undici-types"]'
-  echo "minimumReleaseAge = ${seconds} # ${days} days"
-  echo 'minimumReleaseAgeExcludes = ['
-  for package in ${excludes}; do
-    echo "    \"${package}\","
-  done
-  echo ']'
-} > bunfig.toml
+# Keep the wbfy-generated bunfig.toml as the single source of the Bun settings; drop only the
+# project-owned [test] sections and force globalStore off (a single-use image never reuses a
+# global store, and store symlinks outside the project root break multi-stage COPY of
+# node_modules).
+awk '/^\[/ { inTestSection = ($0 ~ /^\[test/) } !inTestSection' bunfig.toml |
+  sed 's/^globalStore = true$/globalStore = false/' > bunfig.toml.tmp
+mv bunfig.toml.tmp bunfig.toml

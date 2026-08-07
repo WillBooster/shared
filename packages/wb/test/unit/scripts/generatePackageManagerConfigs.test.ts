@@ -66,11 +66,13 @@ npmPreapprovedPackages:
 telemetry = false
 
 [install]
-exact = true
+exact = false
 globalStore = false
 linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
 minimumReleaseAge = 604800 # 7 days
+# minimumReleaseAge and minimumReleaseAgeExcludes are managed by wbfy — repository-specific
+# changes are prohibited and overwritten on every run.
 minimumReleaseAgeExcludes = [
     "@willbooster/wb",
     "at-decorators",
