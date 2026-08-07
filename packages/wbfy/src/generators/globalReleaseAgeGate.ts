@@ -93,6 +93,10 @@ export function newGlobalYarnrcContent(existingContent: string | undefined): str
   // file Yarn accepts is never mistaken for unparseable and wiped. Yarn coerces typed settings
   // from strings, so the quoting that dump adds to such scalars is behavior-neutral.
   const config = parseSafely(() => loadYaml(existingContent ?? '', { schema: FAILSAFE_SCHEMA, json: true }));
+  // FAILSAFE parsing yields strings and collections plus `null` for an empty value — the one token
+  // a FAILSAFE re-read cannot resolve back (dump would emit `null`, which re-parses as the STRING
+  // 'null'). Yarn treats an absent key and an empty one identically, so empty values are dropped.
+  pruneNullValues(config, new Set());
   // Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
   // miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
   // bare number is unambiguous, while duration strings were misparsed by the pre-DURATION versions
@@ -112,6 +116,24 @@ export function newGlobalNpmrcContent(existingContent: string | undefined): stri
     .replaceAll(npmrcGateLinePattern, '')
     .replace(/\n+$/, '');
   return rest ? `${rest}\n${npmrcGateLines}` : npmrcGateLines;
+}
+
+function pruneNullValues(container: Record<string, unknown> | unknown[], seen: Set<object>): void {
+  // YAML anchors/aliases can make the structure cyclic; visit each container once.
+  if (seen.has(container)) return;
+  seen.add(container);
+  if (Array.isArray(container)) {
+    for (let index = container.length - 1; index >= 0; index--) {
+      const item = container[index];
+      if (item === null) container.splice(index, 1);
+      else if (item && typeof item === 'object') pruneNullValues(item as Record<string, unknown>, seen);
+    }
+    return;
+  }
+  for (const [key, child] of Object.entries(container)) {
+    if (child === null) delete container[key];
+    else if (child && typeof child === 'object') pruneNullValues(child as Record<string, unknown>, seen);
+  }
 }
 
 /** Returns the parsed top-level table, or an empty one when the file cannot serve as a base. */

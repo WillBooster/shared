@@ -102,6 +102,13 @@ nodeLinker: node-modules
   );
   expect(newGlobalYarnrcContent(numericTokenYarnrc)).toBe(numericTokenYarnrc);
 
+  // An empty value (FAILSAFE null) is dropped instead of being dumped as a `null` token, which a
+  // FAILSAFE re-read would turn into the STRING 'null'; the first run must already be canonical.
+  const emptyValueYarnrc = newGlobalYarnrcContent('foo:\nbar: baz\nnested:\n  child:\n');
+  expect(emptyValueYarnrc).not.toContain('null');
+  expect((loadYaml(emptyValueYarnrc) as { bar: string }).bar).toBe('baz');
+  expect(newGlobalYarnrcContent(emptyValueYarnrc)).toBe(emptyValueYarnrc);
+
   const npmrc = newGlobalNpmrcContent(
     '//registry.npmjs.org/:_authToken=secret\nmin-release-age=1\nmin-release-age-exclude[]=@myorg/foo\n'
   );
