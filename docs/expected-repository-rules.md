@@ -12,7 +12,7 @@ A repository that deviates from these rules is fixed manually (or by re-running 
 - Every managed file is a regular in-repository file: symlinks and paths resolving outside the repository are refused.
 - Git dependency specifiers in `package.json` files may point only at `WillBooster/*` or `WillBoosterLab/*`; anything else aborts the run (other ecosystems' manifests are not checked).
 - The wbfy badge in `README.md` records the applied `wbfy` version and is the idempotency marker; do not edit or remove it.
-- Tool versions are pinned in `mise.toml`; environment variables and secrets live in `fnox.toml`, never in `.env*` application files — the sole exception is `.env.cloudflare`, a gitignored, untracked file holding Cloudflare deploy credentials; `bunfig.toml` uses Bun's isolated linker; `bun.lock` contains no Takumi Guard (`npm.flatt.tech`) URLs (legitimate scoped private-registry URLs such as Verdaccio's remain).
+- Tool versions are pinned in `mise.toml`; environment variables and secrets live in `fnox.toml`, never in `.env*` application files — the sole exception is `.env.cloudflare`, a gitignored, untracked file holding Cloudflare deploy credentials; `bunfig.toml` uses Bun's isolated linker; `bun.lock` carries no Takumi Guard (`npm.flatt.tech`) URLs in its `resolved` fields (explicit direct tarball dependency URLs and legitimate scoped private-registry URLs such as Verdaccio's remain).
 
 ## Ownership markers: what a human may edit
 
