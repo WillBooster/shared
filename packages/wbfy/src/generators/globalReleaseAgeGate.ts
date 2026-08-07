@@ -2,50 +2,26 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { dump as dumpYaml, load as loadYaml } from 'js-yaml';
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
+
 import { logger } from '../logger.js';
 
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
-
-const startMarker = '# wbfy:start release-age-gate';
-const endMarker = '# wbfy:end release-age-gate';
-
-const managedBlockPattern = new RegExp(`[ \\t]*${startMarker}[\\s\\S]*?${endMarker}[ \\t]*\\n?`, 'g');
 
 // Repository bunfig.toml files receive the same 7-day gate; keep every package manager's global
 // value derived from the single Bun constant so the org policy cannot drift per manager.
 const minimumReleaseAgeDays = bunMinimumReleaseAgeSeconds / 86_400;
 const minimumReleaseAgeMinutes = bunMinimumReleaseAgeSeconds / 60;
 
-const bunfigManagedBlock = `${startMarker}
-minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # ${minimumReleaseAgeDays} days
-minimumReleaseAgeExcludes = [
-${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
-]
-${endMarker}`;
+// Legacy files from the marker-based format: parse + stringify drops the markers from TOML/YAML
+// automatically (they are comments), but the line-based .npmrc needs explicit removal.
+const legacyMarkerLinePattern = /^[ \t]*# wbfy:(?:start|end) release-age-gate[ \t]*\n?/gm;
+const npmrcGateLinePattern = /^[ \t]*min-release-age(?:-exclude)?\s*(?:\[\s*])?\s*=[^\n]*\n?/gm;
 
-// Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
-// miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
-// bare number is unambiguous, while duration strings were misparsed by the pre-DURATION versions
-// of the setting (day suffixes went through parseInt; see yarnpkg/berry#6942).
-const yarnrcManagedBlock = `${startMarker}
-npmMinimalAgeGate: ${minimumReleaseAgeMinutes} # ${minimumReleaseAgeDays} days
-npmPreapprovedPackages:
-${bunMinimumReleaseAgeExcludes.map((packageName) => `  - '${packageName}'`).join('\n')}
-${endMarker}
-`;
-
-const npmrcManagedBlock = `${startMarker}
-min-release-age=${minimumReleaseAgeDays}
+const npmrcGateLines = `min-release-age=${minimumReleaseAgeDays}
 ${bunMinimumReleaseAgeExcludes.map((packageName) => `min-release-age-exclude[]=${packageName}`).join('\n')}
-${endMarker}
 `;
-
-// Gate keys hand-written outside the managed block are removed unconditionally so the org policy
-// always wins; the removal is done in removeBunfigGateKeys / removeYarnrcGateKeys below because a
-// multi-line value must be consumed exactly through its real end (bracket balance for flow values,
-// the next top-level key for block sequences) — line regexes cannot do that without leaving orphan
-// lines that would corrupt the file.
-const npmrcGateKeyPattern = /^[ \t]*min-release-age(?:-exclude)?\s*(?:\[\s*])?\s*=[^\n]*\n?/gm;
 
 /**
  * Applies the organization's minimum-release-age policy to the developer machine's GLOBAL
@@ -55,15 +31,14 @@ const npmrcGateKeyPattern = /^[ \t]*min-release-age(?:-exclude)?\s*(?:\[\s*])?\s
  * configuration takes precedence in all three managers, so wbfied repositories keep their own
  * (identical) gate and exclusion list.
  *
- * Operational rules keep this purely textual with no exception paths:
- * - The gate keys are wbfy-managed everywhere in these files: hand-written gate keys outside the
- *   managed block are removed and replaced on every run.
- * - The files are assumed syntactically valid and in standard form (bunfig declares install
- *   settings under an `[install]` header, yarnrc is a top-level mapping). Deviating or broken
- *   files must be fixed manually; wbfy still writes the block without validating the result.
- * - Only filesystem errors (e.g. permissions) skip a file, because ~/.npmrc may hold credentials
- *   wbfy must never destroy. These files live outside every repository, so writes bypass fsUtil's
- *   repository-containment guards.
+ * Operational rules (org policy: company machines leave no room for personal configuration):
+ * - The files are machine-generated and machine-managed: every run re-canonicalizes them via
+ *   parse + stringify, so comments, formatting, and layout are never preserved. Settings other
+ *   than the gate keys survive as parsed data (e.g. registry credentials needed for work).
+ * - A file that does not parse into a top-level table/mapping is replaced wholesale with the
+ *   org-managed content; allowing unexpected content is a bigger risk than discarding it.
+ * - Only filesystem errors (e.g. permissions) skip a file. These files live outside every
+ *   repository, so writes bypass fsUtil's repository-containment guards.
  */
 export async function ensureGlobalReleaseAgeGates(): Promise<void> {
   return logger.functionIgnoringException('ensureGlobalReleaseAgeGates', async () => {
@@ -98,121 +73,54 @@ export async function ensureGlobalReleaseAgeGates(): Promise<void> {
   });
 }
 
-/** Returns the ~/.bunfig.toml content with the managed gate enforced. */
+/** Returns the canonical ~/.bunfig.toml content with the managed gate enforced. */
 export function newGlobalBunfigContent(existingContent: string | undefined): string {
-  const rest = removeBunfigGateKeys(removeManagedBlock(existingContent));
-  // The [install] header stays OUTSIDE the managed markers: TOML table scope continues past the
-  // block, so a developer appending their own install key after it writes into [install] — a
-  // header inside the block would take that key with it (reparenting it to top level) when the
-  // next run strips the block. Reuse the existing header when present because TOML forbids a
-  // second [install] header.
-  const headerMatch = /^[ \t]*\[install][ \t]*(?:#.*)?$/m.exec(rest);
-  if (headerMatch) {
-    const insertAt = headerMatch.index + headerMatch[0].length;
-    return `${rest.slice(0, insertAt)}\n${bunfigManagedBlock}${rest.slice(insertAt)}`;
-  }
-  return appendBlock(rest, `[install]\n${bunfigManagedBlock}\n`);
+  const config = parseSafely(() => parseToml(existingContent ?? ''));
+  const install = asTable(config.install);
+  install.minimumReleaseAge = bunMinimumReleaseAgeSeconds;
+  install.minimumReleaseAgeExcludes = [...bunMinimumReleaseAgeExcludes];
+  config.install = install;
+  const content = stringifyToml(config);
+  return content.endsWith('\n') ? content : `${content}\n`;
 }
 
-/** Returns the ~/.yarnrc.yml content with the managed gate enforced. */
+/** Returns the canonical ~/.yarnrc.yml content with the managed gate enforced. */
 export function newGlobalYarnrcContent(existingContent: string | undefined): string {
-  return appendBlock(removeYarnrcGateKeys(removeManagedBlock(existingContent)), yarnrcManagedBlock);
+  const config = parseSafely(() => loadYaml(existingContent ?? ''));
+  // Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
+  // miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
+  // bare number is unambiguous, while duration strings were misparsed by the pre-DURATION versions
+  // of the setting (day suffixes went through parseInt; see yarnpkg/berry#6942).
+  config.npmMinimalAgeGate = minimumReleaseAgeMinutes;
+  config.npmPreapprovedPackages = [...bunMinimumReleaseAgeExcludes];
+  return dumpYaml(config);
 }
 
 /** Returns the ~/.npmrc content with the managed gate enforced. */
 export function newGlobalNpmrcContent(existingContent: string | undefined): string {
-  return appendBlock(removeManagedBlock(existingContent).replaceAll(npmrcGateKeyPattern, ''), npmrcManagedBlock);
+  // npmrc is a plain ini of independent lines (often holding credentials), so the non-gate lines
+  // are already canonical enough and are preserved verbatim.
+  const rest = (existingContent ?? '')
+    .replaceAll('\r\n', '\n')
+    .replaceAll(legacyMarkerLinePattern, '')
+    .replaceAll(npmrcGateLinePattern, '')
+    .replace(/\n+$/, '');
+  return rest ? `${rest}\n${npmrcGateLines}` : npmrcGateLines;
 }
 
-function removeBunfigGateKeys(content: string): string {
-  const lines = content.split('\n');
-  const result: string[] = [];
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const line = lines[lineIndex] ?? '';
-    const match = /^[ \t]*(['"]?)minimumReleaseAge(Excludes)?\1\s*=\s*(.*)$/.exec(line);
-    if (!match) {
-      result.push(line);
-      continue;
-    }
-    const value = match[3] ?? '';
-    if (match[2] && value.startsWith('[')) {
-      lineIndex = findFlowValueEnd(lines, lineIndex, value);
-    }
+/** Returns the parsed top-level table, or an empty one when the file cannot serve as a base. */
+function parseSafely(parse: () => unknown): Record<string, unknown> {
+  try {
+    const parsed = parse();
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  } catch {
+    // Fall through: an unparseable file is replaced wholesale with the org-managed content.
   }
-  return result.join('\n');
+  return {};
 }
 
-// Keys are matched at column 0 only, where Yarn's own writer places top-level keys; a uniformly
-// indented mapping is out of contract, and matching indented keys would risk consuming a sibling
-// key's lines instead.
-function removeYarnrcGateKeys(content: string): string {
-  const lines = content.split('\n');
-  const result: string[] = [];
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const line = lines[lineIndex] ?? '';
-    const match = /^(['"]?)(?:npmMinimalAgeGate|npmPreapprovedPackages)\1\s*:\s*(.*)$/.exec(line);
-    if (!match) {
-      result.push(line);
-      continue;
-    }
-    const value = match[2] ?? '';
-    // An anchor (&name) or tag (!type) may precede the collection; look past them when deciding
-    // whether the value is a flow collection (their names cannot contain brackets, so the
-    // bracket count over the full value stays correct).
-    const valueBody = value.replace(/^(?:[&!]\S+[ \t]+)+/, '');
-    if (valueBody.startsWith('[') || valueBody.startsWith('{')) {
-      lineIndex = findFlowValueEnd(lines, lineIndex, value);
-    } else {
-      // A block value ends before the next top-level key. Trailing comment and blank lines are
-      // given back because they document whatever follows, not the removed key.
-      let end = lineIndex + 1;
-      while (end < lines.length && /^(?:[ \t#-]|$)/.test(lines[end] ?? '')) end++;
-      while (end > lineIndex + 1 && /^[ \t]*(?:#|$)/.test(lines[end - 1] ?? '')) end--;
-      lineIndex = end - 1;
-    }
-  }
-  return result.join('\n');
-}
-
-/** Returns the index of the line on which the flow value's brackets balance (its last line). */
-function findFlowValueEnd(lines: string[], startIndex: number, firstLineValue: string): number {
-  let depth = 0;
-  for (let lineIndex = startIndex; lineIndex < lines.length; lineIndex++) {
-    depth += bracketDelta(lineIndex === startIndex ? firstLineValue : (lines[lineIndex] ?? ''));
-    if (depth <= 0) return lineIndex;
-  }
-  // Never-balancing brackets mean a syntactically broken file; remove only the key line instead of
-  // swallowing the rest of the file, which may hold credentials that must never be destroyed.
-  return startIndex;
-}
-
-/** Counts the line's bracket balance, ignoring brackets inside strings and after a `#` comment. */
-function bracketDelta(lineText: string): number {
-  let delta = 0;
-  let quote: string | undefined;
-  for (let charIndex = 0; charIndex < lineText.length; charIndex++) {
-    const char = lineText.charAt(charIndex);
-    if (quote) {
-      // Backslash escapes exist only in double-quoted strings; TOML literal strings and YAML
-      // single-quoted scalars treat it literally (YAML's doubled '' also closes and reopens the
-      // string here, which counts brackets between them as quoted — the correct outcome).
-      if (char === '\\' && quote === '"') charIndex++;
-      else if (char === quote) quote = undefined;
-    } else if (char === '"' || char === "'") quote = char;
-    else if (char === '#') break;
-    else if (char === '[' || char === '{') delta++;
-    else if (char === ']' || char === '}') delta--;
-  }
-  return delta;
-}
-
-function removeManagedBlock(content: string | undefined): string {
-  // CRLF is normalized to LF up front so every matcher below can assume LF-only lines; the org
-  // targets macOS/Linux and Bun, Yarn, and npm all accept LF.
-  return content?.replaceAll('\r\n', '\n').replaceAll(managedBlockPattern, '') ?? '';
-}
-
-function appendBlock(rest: string, block: string): string {
-  const trimmedRest = rest.replace(/\n+$/, '');
-  return trimmedRest ? `${trimmedRest}\n\n${block}` : block;
+function asTable(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)
+    ? (value as Record<string, unknown>)
+    : {};
 }
