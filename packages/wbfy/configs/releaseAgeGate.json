@@ -4,6 +4,7 @@
     "@exercode/problem-utils",
     "@willbooster-private/agentic-workflows",
     "@willbooster-private/ai-ocr",
+    "@willbooster-private/judge",
     "@willbooster-private/llm-proxy",
     "@willbooster/agent-skills",
     "@willbooster/babel-configs",

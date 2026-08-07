@@ -1,5 +1,6 @@
-- Use `project.env` instead of `process.env` on `wb` package.
+- Use `project.env` instead of `process.env` in the `wb` package.
 - Always drop any Windows support.
-- `wbfy` specializes in repositories of the WillBooster / WillBoosterLab organizations; support for other repositories is a best-effort extra.
-- `wbfy` is primarily a re-configuration tool: its input is almost always what `wbfy` itself generated in a previous run. Design and implement for that input format only; do NOT generalize parsers or generators to handle arbitrary hand-written or third-party files.
-- Files that deviate from `wbfy`-generated output are exceptional cases to be fixed manually in the target repository as a rule; do not add code to `wbfy` to accommodate them.
+- `wbfy` targets WillBooster / WillBoosterLab repositories; others are best-effort.
+- Simplify implementation to the extreme: whenever a problem can be solved either by code or by an operational rule (a constraint on developers or target repositories), choose the rule.
+- `wbfy` re-configures its own previous output: support exactly one canonical format per file, and on deviating input, fail fast, overwrite with canonical output, or skip it with a warning — never partially accommodate it. Never add fallback, auto-detection, compatibility, or migration code for hand-written, legacy, or third-party files; fix such files manually in the target repository instead.
+- `docs/expected-repository-rules.md` lists the rules `wbfy` and `wb` expect of target repositories; update it in the same change when adding or relying on a new expectation.
