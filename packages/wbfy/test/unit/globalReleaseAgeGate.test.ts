@@ -59,12 +59,30 @@ minimumReleaseAge = 1 # stale
   );
 });
 
+test('keeps a key the developer appends after the managed block under [install] across runs', () => {
+  const created = newGlobalBunfigContent(undefined) as string;
+  const edited = `${created}registry = "https://example.com/"\n`;
+  const rerun = newGlobalBunfigContent(edited) as string;
+  const parsed = parseToml(rerun) as { install: { registry: string; minimumReleaseAge: number } };
+  expect(parsed.install.registry).toBe('https://example.com/');
+  expect(parsed.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
+  expect(parsed).not.toHaveProperty('registry');
+});
+
 test('leaves files with a hand-written gate or broken syntax untouched', () => {
   expect(newGlobalBunfigContent('[install]\nminimumReleaseAge = 60\n')).toBeUndefined();
   expect(newGlobalBunfigContent('[install\nbroken')).toBeUndefined();
   expect(newGlobalYarnrcContent('npmMinimalAgeGate: 60\n')).toBeUndefined();
   expect(newGlobalYarnrcContent('foo: [broken\n')).toBeUndefined();
   expect(newGlobalNpmrcContent('min-release-age=1\n')).toBeUndefined();
+  expect(newGlobalNpmrcContent('min-release-age-exclude[]=@myorg/foo\n')).toBeUndefined();
+});
+
+test('skips yarnrc content whose merged result would be invalid YAML', () => {
+  // Yarn accepts a document-end marker and scalar documents, but appending a mapping after them is
+  // invalid; writing the merge would break every subsequent yarn command.
+  expect(newGlobalYarnrcContent('nodeLinker: node-modules\n...\n')).toBeUndefined();
+  expect(newGlobalYarnrcContent('hello\n')).toBeUndefined();
 });
 
 test('yarnrc gate uses minutes and preserves user settings', () => {
@@ -83,4 +101,5 @@ test('npmrc gate preserves unrelated lines such as credentials', () => {
   const created = newGlobalNpmrcContent('//registry.npmjs.org/:_authToken=secret\n') as string;
   expect(created).toContain('//registry.npmjs.org/:_authToken=secret');
   expect(created).toContain(`min-release-age=${bunMinimumReleaseAgeSeconds / 86_400}`);
+  expect(created).toContain('min-release-age-exclude[]=@willbooster/wb');
 });

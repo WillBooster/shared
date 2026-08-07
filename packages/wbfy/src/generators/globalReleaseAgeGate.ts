@@ -25,7 +25,9 @@ const minimumReleaseAgeMinutes = bunMinimumReleaseAgeSeconds / 60;
  * wbfied repositories; a brand-new local project has no bunfig.toml yet, so the global files are
  * the only gate between `bun create` / `npm init` and a freshly compromised release. Project-level
  * configuration takes precedence in all three managers, so wbfied repositories keep their own
- * (identical) gate and exclusion list.
+ * (identical) gate and exclusion list. The generated settings assume up-to-date package managers
+ * (Bun >= 1.3, Yarn >= 4.12, npm >= 11.17) — the org policy is to upgrade, not to accommodate
+ * older versions.
  *
  * These files live outside every repository, so writes deliberately bypass fsUtil's
  * repository-containment guards and go through plain fs instead.
@@ -33,11 +35,13 @@ const minimumReleaseAgeMinutes = bunMinimumReleaseAgeSeconds / 60;
 export async function ensureGlobalReleaseAgeGates(): Promise<void> {
   return logger.functionIgnoringException('ensureGlobalReleaseAgeGates', async () => {
     const homeDirPath = os.homedir();
-    // Bun reads either location; when both exist their precedence is undocumented, so update both.
-    const xdgBunfigPath = process.env.XDG_CONFIG_HOME && path.join(process.env.XDG_CONFIG_HOME, '.bunfig.toml');
+    // Bun reads EITHER location, not both: when XDG_CONFIG_HOME is set, get_home_config_path in
+    // oven-sh/bun src/bunfig/arguments.rs returns $XDG_CONFIG_HOME/.bunfig.toml without ever
+    // consulting $HOME, so the XDG file must be created even when absent. ~/.bunfig.toml is still
+    // written so the gate survives the variable being unset later.
     const bunfigPaths = [
+      ...(process.env.XDG_CONFIG_HOME ? [path.join(process.env.XDG_CONFIG_HOME, '.bunfig.toml')] : []),
       path.join(homeDirPath, '.bunfig.toml'),
-      ...(xdgBunfigPath && fs.existsSync(xdgBunfigPath) ? [xdgBunfigPath] : []),
     ];
     const targets: [string, (existingContent: string | undefined) => string | undefined][] = [
       ...bunfigPaths.map((filePath): [string, typeof newGlobalBunfigContent] => [filePath, newGlobalBunfigContent]),
@@ -49,7 +53,7 @@ export async function ensureGlobalReleaseAgeGates(): Promise<void> {
         const existingContent = fs.existsSync(filePath) ? await fs.promises.readFile(filePath, 'utf8') : undefined;
         const newContent = computeContent(existingContent);
         if (newContent === undefined || newContent === existingContent) continue;
-        await fs.promises.writeFile(filePath, newContent);
+        await writeFileAtomically(filePath, newContent);
         console.info(`Applied the minimum-release-age policy to ${filePath}`);
       } catch (error) {
         // ~/.npmrc may hold credentials and ~/.yarnrc.yml personal settings; a single unreadable or
@@ -79,21 +83,29 @@ export function newGlobalBunfigContent(existingContent: string | undefined): str
     return undefined;
   }
 
-  const managedKeys = `minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # ${minimumReleaseAgeDays} days
+  const managedBlock = `${startMarker}
+minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # ${minimumReleaseAgeDays} days
 minimumReleaseAgeExcludes = [
 ${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
-]`;
-  // Keys must live under [install]; reuse the developer's own section when present because TOML
-  // forbids a second [install] header.
+]
+${endMarker}`;
+  // The [install] header stays OUTSIDE the managed markers: TOML table scope continues past the
+  // block, so a developer appending their own install key after it writes into [install] — a
+  // header inside the block would take that key with it (reparenting it to top level) when the
+  // next run strips the block. Reuse the developer's own header when present because TOML forbids
+  // a second [install] header.
   const installHeaderPattern = /^[ \t]*\[install][ \t]*(?:#.*)?$/m;
   const headerMatch = installHeaderPattern.exec(rest);
   let content: string;
   if (headerMatch) {
     const insertAt = headerMatch.index + headerMatch[0].length;
-    content = `${rest.slice(0, insertAt)}\n${startMarker}\n${managedKeys}\n${endMarker}${rest.slice(insertAt)}`;
+    content = `${rest.slice(0, insertAt)}\n${managedBlock}${rest.slice(insertAt)}`;
   } else {
-    content = appendBlock(rest, `${startMarker}\n[install]\n${managedKeys}\n${endMarker}\n`);
+    content = appendBlock(rest, `[install]\n${managedBlock}\n`);
   }
+  // Also catches exotic-but-valid declarations the header regex cannot place keys into (dotted
+  // `install.x = …` or a quoted `["install"]` header): the appended second [install] table makes
+  // this reparse fail, so such files are skipped with a warning instead of being corrupted.
   if (parseTomlSafely(content) === undefined) {
     console.warn('Skipped updating the global bunfig.toml because the merged result is not valid TOML.');
     return undefined;
@@ -118,18 +130,29 @@ export function newGlobalYarnrcContent(existingContent: string | undefined): str
     return undefined;
   }
 
-  // Minutes as a plain number: Yarn advertises duration strings ("7d"), but their parser has
-  // silently ignored day suffixes (yarnpkg/berry#6899), which would disable the gate entirely.
-  return appendBlock(
+  // Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
+  // miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
+  // bare number is unambiguous, while duration strings were misparsed by the pre-DURATION versions
+  // of the setting (day suffixes went through parseInt; see yarnpkg/berry#6942).
+  const content = appendBlock(
     rest,
     `${startMarker}
-# Requires Yarn >= 4.10; older Yarn versions reject unknown settings, so upgrade instead of removing this.
 npmMinimalAgeGate: ${minimumReleaseAgeMinutes} # ${minimumReleaseAgeDays} days
 npmPreapprovedPackages:
 ${bunMinimumReleaseAgeExcludes.map((packageName) => `  - '${packageName}'`).join('\n')}
 ${endMarker}
 `
   );
+  // Appending a mapping is invalid after non-mapping YAML (a scalar or sequence document, or a
+  // `...` document-end marker) even though Yarn itself accepts such files; corrupting the file
+  // would break every subsequent yarn command, so skip instead.
+  try {
+    loadYaml(content);
+  } catch {
+    console.warn('Skipped updating the global .yarnrc.yml because the merged result is not valid YAML.');
+    return undefined;
+  }
+  return content;
 }
 
 /** Returns the updated ~/.npmrc content, or undefined when the file must be left as-is. */
@@ -137,19 +160,18 @@ export function newGlobalNpmrcContent(existingContent: string | undefined): stri
   const rest = removeManagedBlock(existingContent);
   // npmrc is a plain ini of independent lines (often holding credentials), so only a conflicting
   // gate line blocks the update; everything else is preserved verbatim.
-  if (rest.split('\n').some((line) => /^\s*min-release-age\s*=/.test(line))) {
+  if (rest.split('\n').some((line) => /^\s*min-release-age(-exclude)?\s*(\[\s*])?\s*=/.test(line))) {
     console.warn(
-      'Skipped updating the global .npmrc: it already sets min-release-age outside the wbfy-managed block. Remove it to let wbfy manage the gate.'
+      'Skipped updating the global .npmrc: it already sets min-release-age(-exclude) outside the wbfy-managed block. Remove it to let wbfy manage the gate.'
     );
     return undefined;
   }
 
-  // npm (>= 11.10.0) has no exclusion setting yet; the organization's own packages are installed
-  // through Bun in managed repositories, so the loss is acceptable.
   return appendBlock(
     rest,
     `${startMarker}
 min-release-age=${minimumReleaseAgeDays}
+${bunMinimumReleaseAgeExcludes.map((packageName) => `min-release-age-exclude[]=${packageName}`).join('\n')}
 ${endMarker}
 `
   );
@@ -170,4 +192,20 @@ function parseTomlSafely(content: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * These files hold credentials and personal settings, and fs.writeFile truncates before its
+ * (possibly multiple) writes — a crash or full disk mid-write would destroy content the update was
+ * required to preserve. Write a sibling temp file and rename it into place instead. Symlinked
+ * dotfiles are replaced at their resolved target so the symlink itself survives.
+ */
+async function writeFileAtomically(filePath: string, content: string): Promise<void> {
+  const realFilePath = await fs.promises.realpath(filePath).catch(() => filePath);
+  await fs.promises.mkdir(path.dirname(realFilePath), { recursive: true });
+  const stats = await fs.promises.stat(realFilePath).catch(() => {});
+  const mode = stats ? stats.mode : undefined;
+  const tempFilePath = `${realFilePath}.wbfy-tmp`;
+  await fs.promises.writeFile(tempFilePath, content, { mode });
+  await fs.promises.rename(tempFilePath, realFilePath);
 }
