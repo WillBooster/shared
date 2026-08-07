@@ -5,9 +5,11 @@ import path from 'node:path';
 import { expect, test } from 'vitest';
 
 import {
+  bunMinimumReleaseAgeSeconds,
   extractRawTestSections,
   generateBunfigToml,
   readBunGlobalStore,
+  readBunMinimumReleaseAgeSeconds,
   resolveBunGlobalStore,
   shouldUseBunGlobalStore,
 } from '../../src/generators/bunfig.js';
@@ -91,6 +93,24 @@ test('keeps a configured minimumReleaseAge across regenerations', async () => {
     await promisePool.promiseAll();
     const regenerated = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
     expect(regenerated).toContain('minimumReleaseAge = 172800');
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
+test('migrates a minimumReleaseAge left over from an earlier org default', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-bunfig-migrate-')));
+  try {
+    // 432000 is what the previous wbfy release generated, so it is a stale default rather than a
+    // repository choice; raising the org default must reach these repositories too.
+    fs.writeFileSync(path.join(tempDirPath, 'bunfig.toml'), '[install]\nminimumReleaseAge = 432000 # 5 days\n');
+    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), true);
+    await promisePool.promiseAll();
+
+    const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
+    expect(content).toContain(`minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 7 days`);
+    expect(content).not.toContain('repository-specific override');
+    expect(readBunMinimumReleaseAgeSeconds(tempDirPath)).toBe(bunMinimumReleaseAgeSeconds);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

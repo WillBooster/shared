@@ -1328,7 +1328,7 @@ function getLatestDependencyVersion(rootConfig: PackageConfig, dependency: strin
   // The gate belongs in the key: a run spanning repositories with different minimumReleaseAge
   // overrides must not serve one repository's version from another's cache entry.
   const packageAgeGateMs = getPackageAgeGateMs(rootConfig);
-  const cacheKey = `${dependency} ${packageAgeGateMs}`;
+  const cacheKey = `${dependency} ${packageAgeGateMs}`;
   const cachedVersion = latestDependencyVersionCache.get(cacheKey);
   if (cachedVersion) return cachedVersion;
 
@@ -1415,7 +1415,8 @@ function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
 
 function getRawDependencyVersionFromNpm(dependency: string): string {
   // No cache here: the only caller chain goes through getLatestDependencyVersion, which already
-  // memoizes per dependency, so this can run at most once per dependency.
+  // memoizes per dependency and age gate, so this can run at most once per (dependency, age gate)
+  // — twice for one dependency only across repositories whose minimumReleaseAge differs.
   return spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
 }
 
@@ -1507,10 +1508,11 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
     const validLatestVersion = semver.valid(latestVersion);
     if (validLatestVersion && semver.major(validLatestVersion) < 7) return latestVersion;
     // The capped lookup must respect the age gate too: this version is written as an exact pin,
-    // and Bun refuses to resolve one published inside the minimum-release-age window.
+    // and Bun refuses to resolve one published inside the minimum-release-age window. There is no
+    // ungated fallback — without publication metadata the age of a range result is unknown, so a
+    // partial registry failure would otherwise write a version Bun then refuses to install.
     return (
       getLatestAgeGatedVersionBelow(typescriptDependency, '7.0.0', getPackageAgeGateMs(rootConfig)) ??
-      getLatestVersionBelow(typescriptDependency, '7.0.0') ??
       lastKnownPreV7TypescriptVersion
     );
   }
@@ -1529,33 +1531,6 @@ function getLatestAgeGatedVersionBelow(
   return getAgeGatedVersionsDescending(getNpmPackageTimes(packageName), packageAgeGateMs).find((version) =>
     semver.lt(version, exclusiveUpperBound)
   );
-}
-
-const latestVersionBelowCache = new Map<string, string | undefined>();
-
-/** The highest release of `packageName` below `exclusiveUpperBound`, or undefined when the registry lookup fails. */
-function getLatestVersionBelow(packageName: string, exclusiveUpperBound: string): string | undefined {
-  const rangeSpecifier = `${packageName}@<${exclusiveUpperBound}`;
-  if (!latestVersionBelowCache.has(rangeSpecifier)) {
-    const output = spawnSyncAndReturnStdout(
-      'npm',
-      ['show', rangeSpecifier, 'version', '--json', '--workspaces=false'],
-      process.cwd()
-    );
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(output);
-    } catch {
-      parsed = undefined;
-    }
-    // `npm show pkg@<range> version --json` prints an array for multiple matches and a bare
-    // string for a single match.
-    const versions = (Array.isArray(parsed) ? parsed : [parsed]).filter(
-      (version): version is string => typeof version === 'string' && !!semver.valid(version)
-    );
-    latestVersionBelowCache.set(rangeSpecifier, versions.toSorted(semver.compare).at(-1));
-  }
-  return latestVersionBelowCache.get(rangeSpecifier);
 }
 
 function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {

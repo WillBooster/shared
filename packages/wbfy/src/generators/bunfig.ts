@@ -20,6 +20,12 @@ interface BunfigToml {
 
 export const bunMinimumReleaseAgeSeconds = 604_800;
 
+// Every org default wbfy has shipped before the current one. A preserved value matching one of
+// these came from an earlier wbfy run, not from a deliberate repository choice, so it is replaced
+// with the current default — otherwise raising bunMinimumReleaseAgeSeconds would reach only
+// repositories wbfy has never generated. Append the outgoing value here whenever it changes.
+const previousBunMinimumReleaseAgeSeconds = new Set([432_000]);
+
 // Only our own packages are exempt from the minimum release age: we control who publishes them,
 // so a compromised release cannot reach us through an upstream maintainer's stolen credentials.
 // Third-party packages — including tooling wbfy pins itself — stay age-gated;
@@ -64,7 +70,16 @@ export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
 export function readBunMinimumReleaseAgeSeconds(rootDirPath: string): number {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
   if (!fs.existsSync(filePath)) return bunMinimumReleaseAgeSeconds;
-  return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
+  return resolveMinimumReleaseAgeSeconds(parseBunfigToml(fs.readFileSync(filePath, 'utf8')));
+}
+
+/** The gate the regenerated bunfig.toml will carry: a genuine override, or the current org default. */
+function resolveMinimumReleaseAgeSeconds(bunfigToml: BunfigToml | undefined): number {
+  const existingSeconds = bunfigToml?.install?.minimumReleaseAge;
+  if (existingSeconds === undefined || previousBunMinimumReleaseAgeSeconds.has(existingSeconds)) {
+    return bunMinimumReleaseAgeSeconds;
+  }
+  return existingSeconds;
 }
 
 export function resolveBunGlobalStore(
@@ -105,9 +120,10 @@ const newContent = (existingContent: string | undefined, config: PackageConfig, 
   // entry is dropped on regeneration. Dropping is fail-safe — an uncovered package becomes
   // age-gated and surfaces at install time instead of weakening the gate. A repository that
   // genuinely needs an exclusion must add it to bunMinimumReleaseAgeExcludes in wbfy so all
-  // repositories share the same vetted list. The custom npmMinimalAgeGate (or an
-  // already-customized minimumReleaseAge) is still carried over — only the excludes are locked.
-  const minimumReleaseAgeSeconds = bunfigToml?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
+  // repositories share the same vetted list. A genuinely customized minimumReleaseAge is still
+  // carried over — only the excludes are locked, and a value left over from an earlier org default
+  // is migrated (see resolveMinimumReleaseAgeSeconds).
+  const minimumReleaseAgeSeconds = resolveMinimumReleaseAgeSeconds(bunfigToml);
   // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
