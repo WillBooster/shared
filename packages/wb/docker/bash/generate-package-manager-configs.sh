@@ -10,7 +10,7 @@
 # Like the wbfy global gate, this assumes up-to-date package managers (e.g. Yarn >= 4.10 for
 # npmMinimalAgeGate); older versions must be upgraded, not accommodated.
 
-set -eu
+set -euo pipefail
 
 seconds=$(sed -n 's/^minimumReleaseAge = \([0-9]*\).*/\1/p' bunfig.toml)
 # sed exits 0 on no match, so an unregenerated bunfig.toml (older than wbfy's gate) must be

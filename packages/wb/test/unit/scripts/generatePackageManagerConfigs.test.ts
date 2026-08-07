@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+// The project.env rule covers wb runtime source only: tests have no Project instance (project.ts
+// exports the Project class, not an instance), so child processes inherit process.env directly.
+
 const scriptPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../docker/bash/generate-package-manager-configs.sh'
