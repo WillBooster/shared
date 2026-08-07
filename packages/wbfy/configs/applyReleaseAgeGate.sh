@@ -16,7 +16,7 @@
 #
 # A failed write aborts the run instead of moving on: leaving some package managers ungated must be
 # reported, not silently downgraded. Only up-to-date package managers are supported: npm >= 12
-# (`min-release-age-exclude`), Yarn Berry >= 4.11 (`npmMinimalAgeGate`) and bun >= 1.3
+# (`min-release-age-exclude`), Yarn Berry >= 4.10.3 (`npmMinimalAgeGate`) and bun >= 1.3
 # (`minimumReleaseAge`) — older ones must be upgraded instead of accommodated.
 
 set -euo pipefail
@@ -65,17 +65,41 @@ bunfig=$(
   echo ']'
 )
 
-printf '%s\n' "$npmrc" > "$HOME/.npmrc"
-printf '%s\n' "$yarnrc" > "$HOME/.yarnrc.yml"
-printf '%s\n' "$bunfig" > "$HOME/.bunfig.toml"
+# Staged and renamed into place: a package manager installing on this machine while the configs are
+# rewritten must never read a half-written file and resolve packages ungated or from the wrong
+# registry. It also replaces a pre-existing symlink instead of writing through it.
+# The staging file holds the credentials kept from the existing config, so an aborted or signalled
+# run must not leave it behind. One write finishes before the next starts, so a single global path
+# covers them all.
+staging=''
+trap 'rm -f "$staging"' EXIT
+# Explicit exits: a cleanup-only signal trap would swallow the signal, and the run would go on to
+# finish and report success after being cancelled.
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+writeFile() { # $1: content, $2: destination
+  # `mv` would move the staging file INTO a destination directory and report success, leaving the
+  # config unwritten while this script claims the policy was applied.
+  [ ! -d "$2" ] || { echo "$2 is a directory, not a package-manager config." >&2; exit 1; }
+  # mktemp, not a fixed name: two concurrent runs would otherwise publish each other's half-written
+  # staging file. It also creates the file with mode 600, which the rename preserves.
+  staging=$(mktemp "$2.XXXXXX")
+  printf '%s\n' "$1" > "$staging"
+  mv -f "$staging" "$2"
+}
+
+writeFile "$npmrc" "$HOME/.npmrc"
+writeFile "$yarnrc" "$HOME/.yarnrc.yml"
+writeFile "$bunfig" "$HOME/.bunfig.toml"
 
 # Once $XDG_CONFIG_HOME is set, bun reads BOTH its .bunfig.toml and its .npmrc from there and never
 # falls back to $HOME (verified with bun 1.3.14), so its installs would otherwise run ungated and
 # bypass the registry settings. npm and Yarn Berry always read $HOME, hence no .yarnrc.yml here.
 if [ -n "${XDG_CONFIG_HOME:-}" ]; then
   mkdir -p "$XDG_CONFIG_HOME"
-  printf '%s\n' "$npmrc" > "$XDG_CONFIG_HOME/.npmrc"
-  printf '%s\n' "$bunfig" > "$XDG_CONFIG_HOME/.bunfig.toml"
+  writeFile "$npmrc" "$XDG_CONFIG_HOME/.npmrc"
+  writeFile "$bunfig" "$XDG_CONFIG_HOME/.bunfig.toml"
 fi
 
 echo "Applied the ${days}-day minimum-release-age policy to ${HOME}'s global package-manager configs."
