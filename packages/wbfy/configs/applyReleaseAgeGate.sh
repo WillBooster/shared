@@ -16,7 +16,7 @@
 #
 # A failed write aborts the run instead of moving on: leaving some package managers ungated must be
 # reported, not silently downgraded. Only up-to-date package managers are supported: npm >= 12
-# (`min-release-age-exclude`), Yarn Berry >= 4.10.2 (`npmMinimalAgeGate`) and bun >= 1.3
+# (`min-release-age-exclude`), Yarn Berry >= 4.10.3 (`npmMinimalAgeGate`) and bun >= 1.3
 # (`minimumReleaseAge`) — older ones must be upgraded instead of accommodated.
 
 set -euo pipefail
@@ -72,7 +72,11 @@ bunfig=$(
 # run must not leave it behind. One write finishes before the next starts, so a single global path
 # covers them all.
 staging=''
-trap 'rm -f "$staging"' EXIT INT TERM
+trap 'rm -f "$staging"' EXIT
+# Explicit exits: a cleanup-only signal trap would swallow the signal, and the run would go on to
+# finish and report success after being cancelled.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 writeFile() { # $1: content, $2: destination
   # `mv` would move the staging file INTO a destination directory and report success, leaving the
