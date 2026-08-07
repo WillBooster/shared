@@ -156,7 +156,11 @@ function removeYarnrcGateKeys(content: string): string {
       continue;
     }
     const value = match[2] ?? '';
-    if (value.startsWith('[') || value.startsWith('{')) {
+    // An anchor (&name) or tag (!type) may precede the collection; look past them when deciding
+    // whether the value is a flow collection (their names cannot contain brackets, so the
+    // bracket count over the full value stays correct).
+    const valueBody = value.replace(/^(?:[&!]\S+[ \t]+)+/, '');
+    if (valueBody.startsWith('[') || valueBody.startsWith('{')) {
       lineIndex = findFlowValueEnd(lines, lineIndex, value);
     } else {
       // A block value ends before the next top-level key. Trailing comment and blank lines are

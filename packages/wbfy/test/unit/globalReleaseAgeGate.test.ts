@@ -200,6 +200,16 @@ enableGlobalCache: true
   const parsedYarnrc2 = loadYaml(yarnrc2) as { nodeLinker: string; enableGlobalCache: boolean };
   expect(parsedYarnrc2.nodeLinker).toBe('node-modules');
   expect(parsedYarnrc2.enableGlobalCache).toBe(true);
+
+  // An anchor before a flow collection must still be recognized as a flow value.
+  const yarnrc3 = newGlobalYarnrcContent(`npmPreapprovedPackages: &approved [
+  '@myorg/foo',
+]
+enableGlobalCache: true
+`);
+  const parsedYarnrc3 = loadYaml(yarnrc3) as { enableGlobalCache: boolean };
+  expect(parsedYarnrc3.enableGlobalCache).toBe(true);
+  expect(yarnrc3).not.toContain('@myorg');
 });
 
 test('appends the gate even to files with broken syntax, preserving their content', () => {
