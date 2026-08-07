@@ -112,7 +112,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // package-manager configs must receive the org's minimum-release-age policy on EVERY run,
   // because they are what guards brand-new local projects that have no wbfy-generated repository
   // config yet, and that protection must not depend on a working Bun installation.
-  await ensureGlobalReleaseAgeGates();
+  ensureGlobalReleaseAgeGates();
 
   // wbfy manages repositories through Bun + mise and runs `bun add` / `bun install`;
   // proceeding without Bun cannot produce or validate the managed lockfile.

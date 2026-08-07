@@ -1,0 +1,30 @@
+{
+  "days": 7,
+  "excludes": [
+    "@exercode/problem-utils",
+    "@willbooster-private/agentic-workflows",
+    "@willbooster-private/ai-ocr",
+    "@willbooster-private/llm-proxy",
+    "@willbooster/agent-skills",
+    "@willbooster/babel-configs",
+    "@willbooster/monaco-loader",
+    "@willbooster/monaco-react",
+    "@willbooster/oxfmt-config",
+    "@willbooster/oxlint-config",
+    "@willbooster/prettier-config",
+    "@willbooster/react-frame-component",
+    "@willbooster/shared-lib",
+    "@willbooster/shared-lib-blitz-next",
+    "@willbooster/shared-lib-next",
+    "@willbooster/shared-lib-node",
+    "@willbooster/shared-lib-react",
+    "@willbooster/wb",
+    "@willbooster/wbfy",
+    "agent-runtime-kit",
+    "at-decorators",
+    "build-ts",
+    "gen-i18n-ts",
+    "one-way-git-sync",
+    "vinext-progress"
+  ]
+}

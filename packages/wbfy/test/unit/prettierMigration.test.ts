@@ -4,7 +4,6 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { generateBunfigToml } from '../../src/generators/bunfig.js';
 import { generateIdeaSettings } from '../../src/generators/idea.js';
 import { fixVscodeExtensions, generateVscodeSettings } from '../../src/generators/vscodeSettings.js';
 import { promisePool } from '../../src/utils/promisePool.js';
@@ -85,19 +84,6 @@ test('deletes .idea/prettier.xml except in Java repositories', async () => {
     await generateIdeaSettings(createConfig({ dirPath: tempDirPath }));
     await promisePool.promiseAll();
     expect(fs.existsSync(prettierXmlPath)).toBe(false);
-  });
-});
-
-test('omits @willbooster/prettier-config from bunfig excludes except in Java repositories', async () => {
-  await withTempDir(async (tempDirPath) => {
-    await generateBunfigToml(createConfig({ dirPath: tempDirPath }), true);
-    await promisePool.promiseAll();
-    const bunfigPath = path.join(tempDirPath, 'bunfig.toml');
-    expect(fs.readFileSync(bunfigPath, 'utf8')).not.toContain('@willbooster/prettier-config');
-
-    await generateBunfigToml(createConfig({ dirPath: tempDirPath, doesContainJava: true }), true);
-    await promisePool.promiseAll();
-    expect(fs.readFileSync(bunfigPath, 'utf8')).toContain('@willbooster/prettier-config');
   });
 });
 
