@@ -16,7 +16,7 @@
 #
 # A failed write aborts the run instead of moving on: leaving some package managers ungated must be
 # reported, not silently downgraded. Only up-to-date package managers are supported: npm >= 12
-# (`min-release-age-exclude`), Yarn Berry >= 4.10 (`npmMinimalAgeGate`) and bun >= 1.3
+# (`min-release-age-exclude`), Yarn Berry >= 4.10.2 (`npmMinimalAgeGate`) and bun >= 1.3
 # (`minimumReleaseAge`) — older ones must be upgraded instead of accommodated.
 
 set -euo pipefail
@@ -73,8 +73,9 @@ writeFile() { # $1: content, $2: destination
   # staging file. It also creates the file with mode 600, which the rename preserves.
   local staging
   staging=$(mktemp "$2.XXXXXX")
-  printf '%s\n' "$1" > "$staging"
-  mv -f "$staging" "$2"
+  # The staging file holds the credentials kept from the existing config, so a failed write must not
+  # leave it behind.
+  { printf '%s\n' "$1" > "$staging" && mv -f "$staging" "$2"; } || { rm -f "$staging"; return 1; }
 }
 
 writeFile "$npmrc" "$HOME/.npmrc"
