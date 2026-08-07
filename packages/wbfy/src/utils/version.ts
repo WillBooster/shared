@@ -54,11 +54,11 @@ function computeWbfyVersionLabel(): string | undefined {
   const commitHash = runGit(['rev-parse', '--short=8', 'HEAD'], dirPath);
   if (!commitHash) return undefined;
   // The commit alone would misidentify a build made from an edited checkout, so uncommitted changes
-  // are reported too — but only under packages/*/src and packages/*/bin, the source and entry-point
-  // wrapper wbfy and its workspace dependencies actually run from. Everything wbfy GENERATES when it
-  // targets its own repository lives outside those (the root README this label goes into, and each
-  // package's .gitignore, package.json, tsconfig, …), so a first run cannot make the next one
-  // relabel the badge `-dirty-local` by itself.
+  // are reported too — but only under packages/*/src, packages/*/bin and packages/*/configs, the
+  // source, entry-point wrapper and policy files wbfy and its workspace dependencies actually run
+  // from. Everything wbfy GENERATES when it targets its own repository lives outside those (the
+  // root README this label goes into, and each package's .gitignore, package.json, tsconfig, …), so
+  // a first run cannot make the next one relabel the badge `-dirty-local` by itself.
   // Manifests stay out on purpose, even though an edited `exports` map can redirect which code
   // loads: wbfy GENERATES package.json, so including it would make every run report itself dirty.
   // The label is best-effort build provenance, not a reproducible-build attestation.
@@ -122,7 +122,6 @@ function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
       '--',
       `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/src/**`,
       `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/bin/**`,
-      // configs/ holds the release-age policy wbfy writes into every generated repository.
       `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/configs/**`,
     ],
     { cwd: gitRootDirPath, encoding: 'utf8', stdio: 'pipe' }
