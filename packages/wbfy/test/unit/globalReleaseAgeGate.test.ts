@@ -104,6 +104,43 @@ npmPreapprovedPackages:
   expect(npmrc).not.toContain('@myorg/foo');
 });
 
+test('removes multi-line gate values without leaving orphan lines that would corrupt the file', () => {
+  // A `]` inside an item's comment must not terminate the bunfig array early.
+  const bunfig = newGlobalBunfigContent(`[install]
+minimumReleaseAgeExcludes = [
+  "@myorg/foo", # bracket ] in comment
+  "@myorg/bar",
+]
+registry = "https://example.com/"
+`);
+  const parsedBunfig = parseToml(bunfig) as { install: { registry: string; minimumReleaseAgeExcludes: string[] } };
+  expect(parsedBunfig.install.registry).toBe('https://example.com/');
+  expect(parsedBunfig.install.minimumReleaseAgeExcludes).not.toContain('@myorg/foo');
+
+  // Flow sequences with a column-0 closing bracket, comment lines, indentation-less `- ` items,
+  // and blank lines between items must all be consumed with the key.
+  for (const existing of [
+    'nodeLinker: node-modules\nnpmPreapprovedPackages: [\n  "@myorg/foo",\n  "@myorg/bar"\n]\nenableGlobalCache: true\n',
+    'nodeLinker: node-modules\nnpmPreapprovedPackages:\n# approved packages\n- "@myorg/foo"\nenableGlobalCache: true\n',
+    'nodeLinker: node-modules\nnpmPreapprovedPackages:\n  - "@myorg/foo"\n\n  - "@myorg/bar"\nenableGlobalCache: true\n',
+  ]) {
+    const yarnrc = newGlobalYarnrcContent(existing);
+    const parsed = loadYaml(yarnrc) as { nodeLinker: string; enableGlobalCache: boolean };
+    expect(parsed.nodeLinker).toBe('node-modules');
+    expect(parsed.enableGlobalCache).toBe(true);
+    expect(yarnrc).not.toContain('@myorg');
+    expect(newGlobalYarnrcContent(yarnrc)).toBe(yarnrc);
+  }
+
+  // The consumption must stop at the next top-level key so following settings (e.g. credentials
+  // under npmRegistries) survive.
+  const yarnrcWithCreds = newGlobalYarnrcContent(
+    "npmPreapprovedPackages:\n  - '@myorg/foo'\nnpmRegistries:\n  //npm.pkg.github.com:\n    npmAuthToken: SECRET_TOKEN\n"
+  );
+  expect(yarnrcWithCreds).toContain('SECRET_TOKEN');
+  expect(loadYaml(yarnrcWithCreds)).toHaveProperty('npmRegistries');
+});
+
 test('appends the gate even to files with broken syntax, preserving their content', () => {
   const bunfig = newGlobalBunfigContent('[install\nbroken');
   expect(bunfig).toContain('[install\nbroken');

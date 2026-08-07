@@ -41,14 +41,23 @@ ${endMarker}
 `;
 
 // Gate keys hand-written outside the managed block are removed unconditionally so the org policy
-// always wins (multi-line bunfig arrays and indented yarnrc sequences included).
+// always wins. A multi-line value is consumed through its closing line (bunfig) or until the next
+// top-level key (yarnrc), so comments, blank lines, and flow-style brackets inside the value
+// cannot leave orphan lines that would corrupt the file.
 const bunfigGateKeyPatterns = [
-  /^[ \t]*minimumReleaseAgeExcludes\s*=\s*\[[^\]]*][^\n]*\n?/gm,
+  // A multi-line array (opening line without `]`) ends at the first line STARTING with `]`; a `]`
+  // inside an item's comment or string must not terminate it.
+  /^[ \t]*minimumReleaseAgeExcludes\s*=\s*\[[^\]\n]*\n(?:(?![ \t]*])[^\n]*\n?)*(?:[ \t]*][^\n]*\n?)?/gm,
+  /^[ \t]*minimumReleaseAgeExcludes\s*=[^\n]*\n?/gm,
   /^[ \t]*minimumReleaseAge\s*=[^\n]*\n?/gm,
 ];
+// Keys are matched at column 0 only, where Yarn's own writer places top-level keys; a uniformly
+// indented mapping is out of contract, and matching indented keys would risk consuming a sibling
+// key's lines instead. The sequence value consumes indented lines, `- ` items, comments, closing
+// flow brackets, and blank lines until the next top-level key.
 const yarnrcGateKeyPatterns = [
   /^npmMinimalAgeGate\s*:[^\n]*\n?/gm,
-  /^npmPreapprovedPackages\s*:[^\n]*\n?(?:(?:[ \t]+[^\n]*|-[^\n]*)\n?)*/gm,
+  /^npmPreapprovedPackages\s*:[^\n]*\n?(?:(?:[ \t]+[^\n]*|[#\]}-][^\n]*)\n?|\n)*/gm,
 ];
 const npmrcGateKeyPatterns = [/^[ \t]*min-release-age(?:-exclude)?\s*(?:\[\s*])?\s*=[^\n]*\n?/gm];
 
