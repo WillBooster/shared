@@ -16,7 +16,7 @@
 #
 # A failed write aborts the run instead of moving on: leaving some package managers ungated must be
 # reported, not silently downgraded. Only up-to-date package managers are supported: npm >= 12
-# (`min-release-age-exclude`), Yarn Berry >= 4.11 (`npmMinimalAgeGate`) and bun >= 1.3
+# (`min-release-age-exclude`), Yarn Berry >= 4.10 (`npmMinimalAgeGate`) and bun >= 1.3
 # (`minimumReleaseAge`) — older ones must be upgraded instead of accommodated.
 
 set -euo pipefail
@@ -69,8 +69,12 @@ bunfig=$(
 # rewritten must never read a half-written file and resolve packages ungated or from the wrong
 # registry. It also replaces a pre-existing symlink instead of writing through it.
 writeFile() { # $1: content, $2: destination
-  printf '%s\n' "$1" > "$2.staging"
-  mv -f "$2.staging" "$2"
+  # mktemp, not a fixed name: two concurrent runs would otherwise publish each other's half-written
+  # staging file. It also creates the file with mode 600, which the rename preserves.
+  local staging
+  staging=$(mktemp "$2.XXXXXX")
+  printf '%s\n' "$1" > "$staging"
+  mv -f "$staging" "$2"
 }
 
 writeFile "$npmrc" "$HOME/.npmrc"
