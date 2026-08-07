@@ -1,183 +1,62 @@
-import { load as loadYaml } from 'js-yaml';
-import { parse as parseToml } from 'smol-toml';
-import { expect, test, vi } from 'vitest';
+import childProcess from 'node:child_process';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
-import { bunMinimumReleaseAgeSeconds } from '../../src/generators/bunfig.js';
-import {
-  newGlobalBunfigContent,
-  newGlobalNpmrcContent,
-  newGlobalYarnrcContent,
-} from '../../src/generators/globalReleaseAgeGate.js';
+import { expect, test } from 'vitest';
 
-test('creates each global config from scratch and stays idempotent', () => {
-  for (const newContent of [newGlobalBunfigContent, newGlobalYarnrcContent, newGlobalNpmrcContent]) {
-    const created = newContent(undefined);
-    // Re-running on its own output must be a no-op.
-    expect(newContent(created)).toBe(created);
-  }
-  const bunfig = parseToml(newGlobalBunfigContent(undefined)) as {
-    install: { minimumReleaseAge: number; minimumReleaseAgeExcludes: string[] };
-  };
-  expect(bunfig.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
-  expect(bunfig.install.minimumReleaseAgeExcludes).toContain('@willbooster/wb');
+import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from '../../src/generators/bunfig.js';
+import { getWbfyDirPath } from '../../src/utils/version.js';
 
-  const yarnrc = loadYaml(newGlobalYarnrcContent(undefined)) as {
-    npmMinimalAgeGate: number;
-    npmPreapprovedPackages: string[];
-  };
-  expect(yarnrc.npmMinimalAgeGate).toBe(bunMinimumReleaseAgeSeconds / 60);
-  expect(yarnrc.npmPreapprovedPackages).toContain('@willbooster/wb');
+const scriptPath = path.join(getWbfyDirPath(), 'configs', 'applyReleaseAgeGate.sh');
 
-  const npmrc = newGlobalNpmrcContent(undefined);
-  expect(npmrc).toContain(`min-release-age=${bunMinimumReleaseAgeSeconds / 86_400}`);
-  expect(npmrc).toContain('min-release-age-exclude[]=@willbooster/wb');
-});
-
-test('treats an absent or comment-only .yarnrc.yml as an empty config without a replacement warning', () => {
-  // js-yaml v5's load throws on a contentless document, so this guards the loadAll-based parse
-  // against regressing back to the misleading "unparseable ... replacing wholesale" warning.
-  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+test('writes the gate into every global config while keeping the registry settings above it', async () => {
+  const workDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-release-age-gate-'));
   try {
-    expect(newGlobalYarnrcContent(undefined)).toContain('npmMinimalAgeGate');
-    expect(newGlobalYarnrcContent('# only a comment\n')).toContain('npmMinimalAgeGate');
-    expect(warnSpy).not.toHaveBeenCalled();
+    const homeDirPath = path.join(workDirPath, 'home');
+    const xdgDirPath = path.join(workDirPath, 'xdg');
+    // A failing sudo keeps the test from touching root's real configs on a machine that grants
+    // passwordless sudo (every self-hosted runner does).
+    const binDirPath = path.join(workDirPath, 'bin');
+    await fs.mkdir(homeDirPath);
+    await fs.mkdir(binDirPath);
+    await fs.writeFile(path.join(binDirPath, 'sudo'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+    await fs.writeFile(path.join(homeDirPath, '.npmrc'), 'registry=https://example.com/\nmin-release-age=1\n');
+
+    const run = (): number | null =>
+      childProcess.spawnSync('bash', [scriptPath], {
+        env: {
+          ...process.env,
+          HOME: homeDirPath,
+          PATH: `${binDirPath}:${process.env['PATH'] ?? ''}`,
+          XDG_CONFIG_HOME: xdgDirPath,
+        },
+        stdio: 'inherit',
+      }).status;
+    expect(run()).toBe(0);
+
+    const npmrc = await fs.readFile(path.join(homeDirPath, '.npmrc'), 'utf8');
+    expect(npmrc).toContain('registry=https://example.com/');
+    expect(npmrc).toContain(`min-release-age=${bunMinimumReleaseAgeSeconds / 86_400}\n`);
+    expect(npmrc).not.toContain('min-release-age=1\n');
+    expect(npmrc).toContain('min-release-age-exclude[]=@willbooster/wb\n');
+
+    const yarnrc = await fs.readFile(path.join(homeDirPath, '.yarnrc.yml'), 'utf8');
+    expect(yarnrc).toContain(`npmMinimalAgeGate: ${bunMinimumReleaseAgeSeconds / 60}\n`);
+    expect(yarnrc).toContain("  - '@willbooster/wb'\n");
+
+    // bun reads its global bunfig ONLY from $XDG_CONFIG_HOME once that variable is set.
+    for (const dirPath of [homeDirPath, xdgDirPath]) {
+      const bunfig = await fs.readFile(path.join(dirPath, '.bunfig.toml'), 'utf8');
+      expect(bunfig).toContain(`minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}\n`);
+      expect(bunfig).toContain(`  "${bunMinimumReleaseAgeExcludes.at(-1)}",\n`);
+    }
+
+    // Re-running must not stack another copy of the gate on top of the previous one.
+    expect(run()).toBe(0);
+    expect(await fs.readFile(path.join(homeDirPath, '.npmrc'), 'utf8')).toBe(npmrc);
+    expect(await fs.readFile(path.join(homeDirPath, '.yarnrc.yml'), 'utf8')).toBe(yarnrc);
   } finally {
-    warnSpy.mockRestore();
+    await fs.rm(workDirPath, { force: true, recursive: true });
   }
-});
-
-test('preserves existing parsed settings while forcing the gate over any hand-written value', () => {
-  const bunfig = newGlobalBunfigContent(`telemetry = false
-# a comment that must disappear
-[install]
-registry = "https://example.com/"
-'minimumReleaseAge' = 60
-minimumReleaseAgeExcludes = ["@myorg/foo"]
-
-[install.scopes]
-myorg = "https://example.com/myorg/"
-`);
-  const parsedBunfig = parseToml(bunfig) as {
-    telemetry: boolean;
-    install: {
-      registry: string;
-      minimumReleaseAge: number;
-      minimumReleaseAgeExcludes: string[];
-      scopes: Record<string, string>;
-    };
-  };
-  expect(parsedBunfig.telemetry).toBe(false);
-  expect(parsedBunfig.install.registry).toBe('https://example.com/');
-  expect(parsedBunfig.install.scopes['myorg']).toBe('https://example.com/myorg/');
-  expect(parsedBunfig.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
-  expect(parsedBunfig.install.minimumReleaseAgeExcludes).not.toContain('@myorg/foo');
-  expect(bunfig).not.toContain('#');
-  expect(newGlobalBunfigContent(bunfig)).toBe(bunfig);
-
-  const yarnrc = newGlobalYarnrcContent(`nodeLinker: node-modules
-npmMinimalAgeGate: 60
-npmPreapprovedPackages: ['@myorg/foo']
-npmRegistries:
-  //npm.pkg.github.com:
-    npmAuthToken: SECRET_TOKEN
-`);
-  const parsedYarnrc = loadYaml(yarnrc) as {
-    nodeLinker: string;
-    npmMinimalAgeGate: number;
-    npmPreapprovedPackages: string[];
-    npmRegistries: Record<string, { npmAuthToken: string }>;
-  };
-  expect(parsedYarnrc.nodeLinker).toBe('node-modules');
-  expect(parsedYarnrc.npmMinimalAgeGate).toBe(bunMinimumReleaseAgeSeconds / 60);
-  expect(parsedYarnrc.npmPreapprovedPackages).not.toContain('@myorg/foo');
-  expect(parsedYarnrc.npmRegistries['//npm.pkg.github.com']?.npmAuthToken).toBe('SECRET_TOKEN');
-  expect(newGlobalYarnrcContent(yarnrc)).toBe(yarnrc);
-
-  // Yarn-schema parity (FAILSAFE_SCHEMA + json): a digit-only credential keeps its exact text
-  // instead of being coerced to a number, and duplicate keys — which Yarn accepts, last wins — do
-  // not cause a wholesale replacement.
-  const numericTokenYarnrc = newGlobalYarnrcContent(`nodeLinker: pnp
-npmRegistries:
-  //npm.pkg.github.com:
-    npmAuthToken: 0123456789012345678901234567890
-nodeLinker: node-modules
-`);
-  expect(numericTokenYarnrc).toContain('0123456789012345678901234567890');
-  const parsedNumericTokenYarnrc = loadYaml(numericTokenYarnrc) as {
-    nodeLinker: string;
-    npmRegistries: Record<string, { npmAuthToken: string }>;
-  };
-  expect(parsedNumericTokenYarnrc.nodeLinker).toBe('node-modules');
-  expect(parsedNumericTokenYarnrc.npmRegistries['//npm.pkg.github.com']?.npmAuthToken).toBe(
-    '0123456789012345678901234567890'
-  );
-  expect(newGlobalYarnrcContent(numericTokenYarnrc)).toBe(numericTokenYarnrc);
-
-  // An empty value parses as the empty string under js-yaml v5's FAILSAFE schema, so it survives
-  // as an explicit empty scalar (`key: ''`) — never as a `null` token, which a FAILSAFE re-read
-  // would turn into the STRING 'null'.
-  const emptyValueYarnrc = newGlobalYarnrcContent('foo:\nbar: baz\nnested:\n  child:\n');
-  expect(emptyValueYarnrc).not.toContain('null');
-  const parsedEmptyValueYarnrc = loadYaml(emptyValueYarnrc) as {
-    foo: unknown;
-    bar: string;
-    nested: { child: unknown };
-  };
-  expect(parsedEmptyValueYarnrc.foo).toBe('');
-  expect(parsedEmptyValueYarnrc.nested.child).toBe('');
-  expect(parsedEmptyValueYarnrc.bar).toBe('baz');
-  expect(newGlobalYarnrcContent(emptyValueYarnrc)).toBe(emptyValueYarnrc);
-
-  const npmrc = newGlobalNpmrcContent(
-    '//registry.npmjs.org/:_authToken=secret\nmin-release-age=1\nmin-release-age-exclude[]=@myorg/foo\n'
-  );
-  expect(npmrc).toContain('//registry.npmjs.org/:_authToken=secret');
-  expect(npmrc).toContain(`min-release-age=${bunMinimumReleaseAgeSeconds / 86_400}`);
-  expect(npmrc).not.toContain('min-release-age=1\n');
-  expect(npmrc).not.toContain('@myorg/foo');
-  expect(newGlobalNpmrcContent(npmrc)).toBe(npmrc);
-});
-
-test('replaces files that do not parse into a top-level table with the org-managed content', () => {
-  for (const [newContent, parse, broken, leftover] of [
-    [newGlobalBunfigContent, parseToml, '[install\nbroken', 'broken'],
-    [newGlobalYarnrcContent, loadYaml, 'foo: [broken\n', 'broken'],
-    [newGlobalYarnrcContent, loadYaml, 'just a scalar document\n', 'scalar'],
-    // A TOML datetime `install`: the parser hands asTable a Date subclass, which must be replaced
-    // by a plain table instead of silently dropping the gate keys assigned onto it.
-    [newGlobalBunfigContent, parseToml, 'install = 2026-01-01T00:00:00Z\n', '2026-01-01'],
-  ] as const) {
-    const created = newContent(broken);
-    expect(created).not.toContain(leftover);
-    expect(parse(created)).toBeTruthy();
-  }
-});
-
-test('migrates legacy marker-based files without duplicating the gate', () => {
-  const legacyBunfig = `[install]
-# wbfy:start release-age-gate
-minimumReleaseAge = 1 # stale
-minimumReleaseAgeExcludes = [
-    "@willbooster/wb",
-]
-# wbfy:end release-age-gate
-registry = "https://example.com/"
-`;
-  const bunfig = newGlobalBunfigContent(legacyBunfig);
-  expect(bunfig).not.toContain('wbfy:start');
-  expect(bunfig.match(/minimumReleaseAge =/g)).toHaveLength(1);
-  const parsedBunfig = parseToml(bunfig) as { install: { registry: string; minimumReleaseAge: number } };
-  expect(parsedBunfig.install.registry).toBe('https://example.com/');
-  expect(parsedBunfig.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
-
-  const legacyNpmrc = `//registry.npmjs.org/:_authToken=secret
-# wbfy:start release-age-gate
-min-release-age=1
-min-release-age-exclude[]=@willbooster/wb
-# wbfy:end release-age-gate
-`;
-  const npmrc = newGlobalNpmrcContent(legacyNpmrc);
-  expect(npmrc).not.toContain('wbfy:start');
-  expect(npmrc).toContain('//registry.npmjs.org/:_authToken=secret');
-  expect(npmrc.match(/^min-release-age=/gm)).toHaveLength(1);
 });

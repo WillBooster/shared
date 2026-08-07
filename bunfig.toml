@@ -6,14 +6,11 @@ exact = true
 globalStore = true
 linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
-minimumReleaseAge = 604800 # 7 days
-# minimumReleaseAge and minimumReleaseAgeExcludes are managed by wbfy — repository-specific
-# changes are prohibited and overwritten on every run. To exclude a package, add it to
-# bunMinimumReleaseAgeExcludes in WillBooster/shared (packages/wbfy/src/generators/bunfig.ts)
-# so every repository shares the same vetted list.
+minimumReleaseAge = 604800
 minimumReleaseAgeExcludes = [
   "@exercode/problem-utils",
   "@willbooster-private/agentic-workflows",
+  "@willbooster-private/ai-ocr",
   "@willbooster-private/llm-proxy",
   "@willbooster/agent-skills",
   "@willbooster/babel-configs",
@@ -21,6 +18,7 @@ minimumReleaseAgeExcludes = [
   "@willbooster/monaco-react",
   "@willbooster/oxfmt-config",
   "@willbooster/oxlint-config",
+  "@willbooster/prettier-config",
   "@willbooster/react-frame-component",
   "@willbooster/shared-lib",
   "@willbooster/shared-lib-blitz-next",
@@ -28,6 +26,7 @@ minimumReleaseAgeExcludes = [
   "@willbooster/shared-lib-node",
   "@willbooster/shared-lib-react",
   "@willbooster/wb",
+  "@willbooster/wbfy",
   "agent-runtime-kit",
   "at-decorators",
   "build-ts",

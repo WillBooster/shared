@@ -89,7 +89,7 @@ test('overwrites any existing minimumReleaseAge with the org default — the gat
     await promisePool.promiseAll();
 
     const content = fs.readFileSync(path.join(tempDirPath, 'bunfig.toml'), 'utf8');
-    expect(content).toContain(`minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 7 days`);
+    expect(content).toContain(`minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}\n`);
     expect(content).not.toContain('172800');
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });

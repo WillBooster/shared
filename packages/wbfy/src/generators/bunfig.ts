@@ -3,10 +3,10 @@ import path from 'node:path';
 
 import { parse } from 'smol-toml';
 
+import releaseAgeGate from '../../configs/releaseAgeGate.json' with { type: 'json' };
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { doesContainJava } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 interface BunfigToml {
@@ -17,39 +17,15 @@ interface BunfigToml {
   };
 }
 
-export const bunMinimumReleaseAgeSeconds = 604_800;
-
-// Only our own packages are exempt from the minimum release age: we control who publishes them,
-// so a compromised release cannot reach us through an upstream maintainer's stolen credentials.
-// Third-party packages — including tooling wbfy pins itself — stay age-gated;
-// getLatestAgeGatedDependencyVersion in packageJson.ts pins the newest release old enough to pass
-// the gate, so pinning keeps working without an exemption.
-export const bunMinimumReleaseAgeExcludes = [
-  '@exercode/problem-utils',
-  '@willbooster-private/agentic-workflows',
-  '@willbooster-private/ai-ocr',
-  '@willbooster-private/llm-proxy',
-  '@willbooster/agent-skills',
-  '@willbooster/babel-configs',
-  '@willbooster/monaco-loader',
-  '@willbooster/monaco-react',
-  '@willbooster/oxfmt-config',
-  '@willbooster/oxlint-config',
-  '@willbooster/prettier-config',
-  '@willbooster/react-frame-component',
-  '@willbooster/shared-lib',
-  '@willbooster/shared-lib-blitz-next',
-  '@willbooster/shared-lib-next',
-  '@willbooster/shared-lib-node',
-  '@willbooster/shared-lib-react',
-  '@willbooster/wb',
-  'agent-runtime-kit',
-  'at-decorators',
-  'build-ts',
-  'gen-i18n-ts',
-  'one-way-git-sync',
-  'vinext-progress',
-];
+// configs/releaseAgeGate.json is the organization's single source of truth for the policy: the
+// machines' global configs get it through configs/applyReleaseAgeGate.sh (run by wbfy itself, by
+// reusable-workflows on CI, and by self-host-utils on the runners), and repositories get it here.
+// Only our own packages are exempt: we control who publishes them, so a compromised release cannot
+// reach us through an upstream maintainer's stolen credentials. Third-party packages — including
+// tooling wbfy pins itself — stay age-gated; getLatestAgeGatedDependencyVersion in packageJson.ts
+// pins the newest release old enough to pass the gate, so pinning keeps working without an exemption.
+export const bunMinimumReleaseAgeSeconds = releaseAgeGate.days * 24 * 60 * 60;
+export const bunMinimumReleaseAgeExcludes = releaseAgeGate.excludes;
 
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
@@ -83,19 +59,10 @@ export async function generateBunfigToml(config: PackageConfig, useGlobalStore: 
 
 const newContent = (existingContent: string | undefined, config: PackageConfig, useGlobalStore: boolean): string => {
   const bunfigToml = parseBunfigToml(existingContent);
-  // Only Java repositories still depend on @willbooster/prettier-config (wbfy installs it with
-  // prettier-plugin-java); everywhere else oxfmt replaced Prettier, so the exclusion is dead
-  // weight in the generated file. The exported list keeps the entry because packageJson.ts's
-  // version age gate matters only where wbfy actually pins the package (i.e. Java repositories).
-  const managedExcludes = doesContainJava(config)
-    ? bunMinimumReleaseAgeExcludes
-    : bunMinimumReleaseAgeExcludes.filter((packageName) => packageName !== '@willbooster/prettier-config');
   // minimumReleaseAge and minimumReleaseAgeExcludes are org policy, never repository policy: both
-  // are rewritten to wbfy's values on every run, so a hand-edited (weakened) gate cannot survive
-  // regeneration. Dropping repository-specific exclude entries is fail-safe — an uncovered package
-  // becomes age-gated and surfaces at install time instead of weakening the gate. A repository
-  // that genuinely needs an exclusion must add it to bunMinimumReleaseAgeExcludes in wbfy so all
-  // repositories share the same vetted list.
+  // are rewritten to configs/releaseAgeGate.json's values on every run, so a hand-edited (weakened)
+  // gate cannot survive regeneration. Dropping repository-specific exclude entries is fail-safe — an
+  // uncovered package becomes age-gated and surfaces at install time instead of weakening the gate.
   // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
@@ -117,13 +84,9 @@ exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 ${globalStoreLine}
 linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
-minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 7 days
-# minimumReleaseAge and minimumReleaseAgeExcludes are managed by wbfy — repository-specific
-# changes are prohibited and overwritten on every run. To exclude a package, add it to
-# bunMinimumReleaseAgeExcludes in WillBooster/shared (packages/wbfy/src/generators/bunfig.ts)
-# so every repository shares the same vetted list.
+minimumReleaseAge = ${bunMinimumReleaseAgeSeconds}
 minimumReleaseAgeExcludes = [
-${managedExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
+${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
 ]
 `;
 };

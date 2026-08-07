@@ -135,6 +135,11 @@ function runGit(args: string[], cwd: string): string | undefined {
 
 let cachedWbfyPackageJson: { name: string; version: string; dirPath: string } | undefined;
 
+/** Returns wbfy's own package directory, which also holds its configs (e.g. releaseAgeGate.json). */
+export function getWbfyDirPath(): string {
+  return readWbfyPackageJson().dirPath;
+}
+
 function readWbfyPackageJson(): { name: string; version: string; dirPath: string } {
   if (cachedWbfyPackageJson) return cachedWbfyPackageJson;
   // fileURLToPath, not URL.pathname: the latter keeps percent-encoding, so an installation path
