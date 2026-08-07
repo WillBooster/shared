@@ -65,17 +65,25 @@ bunfig=$(
   echo ']'
 )
 
-printf '%s\n' "$npmrc" > "$HOME/.npmrc"
-printf '%s\n' "$yarnrc" > "$HOME/.yarnrc.yml"
-printf '%s\n' "$bunfig" > "$HOME/.bunfig.toml"
+# Staged and renamed into place: a package manager installing on this machine while the configs are
+# rewritten must never read a half-written file and resolve packages ungated or from the wrong
+# registry. It also replaces a pre-existing symlink instead of writing through it.
+writeFile() { # $1: content, $2: destination
+  printf '%s\n' "$1" > "$2.staging"
+  mv -f "$2.staging" "$2"
+}
+
+writeFile "$npmrc" "$HOME/.npmrc"
+writeFile "$yarnrc" "$HOME/.yarnrc.yml"
+writeFile "$bunfig" "$HOME/.bunfig.toml"
 
 # Once $XDG_CONFIG_HOME is set, bun reads BOTH its .bunfig.toml and its .npmrc from there and never
 # falls back to $HOME (verified with bun 1.3.14), so its installs would otherwise run ungated and
 # bypass the registry settings. npm and Yarn Berry always read $HOME, hence no .yarnrc.yml here.
 if [ -n "${XDG_CONFIG_HOME:-}" ]; then
   mkdir -p "$XDG_CONFIG_HOME"
-  printf '%s\n' "$npmrc" > "$XDG_CONFIG_HOME/.npmrc"
-  printf '%s\n' "$bunfig" > "$XDG_CONFIG_HOME/.bunfig.toml"
+  writeFile "$npmrc" "$XDG_CONFIG_HOME/.npmrc"
+  writeFile "$bunfig" "$XDG_CONFIG_HOME/.bunfig.toml"
 fi
 
 echo "Applied the ${days}-day minimum-release-age policy to ${HOME}'s global package-manager configs."
