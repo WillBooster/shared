@@ -1,5 +1,5 @@
 import child_process from 'node:child_process';
-import type { BinaryLike, Hash } from 'node:crypto';
+import type { Hash } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -298,7 +298,7 @@ async function updateHashWithDiffResult(
     // `git diff HEAD` (not plain `git diff`) so staged-only changes invalidate the cache too;
     // 'git diff --' works only on rootDirPath.
     const proc = child_process.spawn('git', ['diff', 'HEAD', '--', ...trackedPaths], { cwd: project.rootDirPath });
-    proc.stdout.on('data', (data: BinaryLike) => {
+    proc.stdout.on('data', (data: Buffer) => {
       hash.update(data);
       if (argv.verbose) {
         console.info('Data:', data);
