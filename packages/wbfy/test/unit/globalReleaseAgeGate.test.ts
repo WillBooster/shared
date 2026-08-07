@@ -1,6 +1,6 @@
 import { load as loadYaml } from 'js-yaml';
 import { parse as parseToml } from 'smol-toml';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 
 import { bunMinimumReleaseAgeSeconds } from '../../src/generators/bunfig.js';
 import {
@@ -31,6 +31,19 @@ test('creates each global config from scratch and stays idempotent', () => {
   const npmrc = newGlobalNpmrcContent(undefined);
   expect(npmrc).toContain(`min-release-age=${bunMinimumReleaseAgeSeconds / 86_400}`);
   expect(npmrc).toContain('min-release-age-exclude[]=@willbooster/wb');
+});
+
+test('treats an absent or comment-only .yarnrc.yml as an empty config without a replacement warning', () => {
+  // js-yaml v5's load throws on a contentless document, so this guards the loadAll-based parse
+  // against regressing back to the misleading "unparseable ... replacing wholesale" warning.
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    expect(newGlobalYarnrcContent(undefined)).toContain('npmMinimalAgeGate');
+    expect(newGlobalYarnrcContent('# only a comment\n')).toContain('npmMinimalAgeGate');
+    expect(warnSpy).not.toHaveBeenCalled();
+  } finally {
+    warnSpy.mockRestore();
+  }
 });
 
 test('preserves existing parsed settings while forcing the gate over any hand-written value', () => {

@@ -103,7 +103,7 @@ export function newGlobalYarnrcContent(existingContent: string | undefined): str
   // the empty-table path, not the unparseable-replacement warning.
   const config = parseTableSafely('.yarnrc.yml', () => {
     const documents = loadAllYaml(existingContent ?? '', { schema: FAILSAFE_SCHEMA, json: true });
-    return documents.length === 1 ? documents[0] : documents.length === 0 ? undefined : documents;
+    return documents.length <= 1 ? documents[0] : documents;
   });
   // Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
   // miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
