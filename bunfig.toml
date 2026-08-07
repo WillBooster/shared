@@ -7,10 +7,10 @@ globalStore = true
 linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
 minimumReleaseAge = 604800 # 7 days
-# minimumReleaseAgeExcludes is managed by wbfy — repository-specific entries are prohibited and
-# removed on every run (the minimumReleaseAge above may still be repository-specific). To exclude
-# a package, add it to bunMinimumReleaseAgeExcludes in WillBooster/shared
-# (packages/wbfy/src/generators/bunfig.ts) so every repository shares the same vetted list.
+# minimumReleaseAge and minimumReleaseAgeExcludes are managed by wbfy — repository-specific
+# changes are prohibited and overwritten on every run. To exclude a package, add it to
+# bunMinimumReleaseAgeExcludes in WillBooster/shared (packages/wbfy/src/generators/bunfig.ts)
+# so every repository shares the same vetted list.
 minimumReleaseAgeExcludes = [
   "@exercode/problem-utils",
   "@willbooster-private/agentic-workflows",

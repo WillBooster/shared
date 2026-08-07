@@ -14,17 +14,10 @@ interface BunfigToml {
     exact?: boolean;
     globalStore?: boolean;
     linker?: string;
-    minimumReleaseAge?: number;
   };
 }
 
 export const bunMinimumReleaseAgeSeconds = 604_800;
-
-// Every org default wbfy has shipped before the current one. A preserved value matching one of
-// these came from an earlier wbfy run, not from a deliberate repository choice, so it is replaced
-// with the current default — otherwise raising bunMinimumReleaseAgeSeconds would reach only
-// repositories wbfy has never generated. Append the outgoing value here whenever it changes.
-const previousBunMinimumReleaseAgeSeconds = new Set([432_000]);
 
 // Only our own packages are exempt from the minimum release age: we control who publishes them,
 // so a compromised release cannot reach us through an upstream maintainer's stolen credentials.
@@ -64,25 +57,6 @@ export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
 }
 
-/**
- * The minimum release age Bun enforces in `rootDirPath`, in seconds: the repository-specific
- * override newContent preserves, or the org default when the repository has none.
- */
-export function readBunMinimumReleaseAgeSeconds(rootDirPath: string): number {
-  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
-  if (!fs.existsSync(filePath)) return bunMinimumReleaseAgeSeconds;
-  return resolveMinimumReleaseAgeSeconds(parseBunfigToml(fs.readFileSync(filePath, 'utf8')));
-}
-
-/** The gate the regenerated bunfig.toml will carry: a genuine override, or the current org default. */
-function resolveMinimumReleaseAgeSeconds(bunfigToml: BunfigToml | undefined): number {
-  const existingSeconds = bunfigToml?.install?.minimumReleaseAge;
-  if (existingSeconds === undefined || previousBunMinimumReleaseAgeSeconds.has(existingSeconds)) {
-    return bunMinimumReleaseAgeSeconds;
-  }
-  return existingSeconds;
-}
-
 export function resolveBunGlobalStore(
   configs: PackageConfig[],
   previousGlobalStore: boolean | undefined,
@@ -116,15 +90,12 @@ const newContent = (existingContent: string | undefined, config: PackageConfig, 
   const managedExcludes = doesContainJava(config)
     ? bunMinimumReleaseAgeExcludes
     : bunMinimumReleaseAgeExcludes.filter((packageName) => packageName !== '@willbooster/prettier-config');
-  // minimumReleaseAgeExcludes is org policy, never repository policy: every entry comes from
-  // bunMinimumReleaseAgeExcludes, and any hand-added (or previously migrated) repository-specific
-  // entry is dropped on regeneration. Dropping is fail-safe — an uncovered package becomes
-  // age-gated and surfaces at install time instead of weakening the gate. A repository that
-  // genuinely needs an exclusion must add it to bunMinimumReleaseAgeExcludes in wbfy so all
-  // repositories share the same vetted list. A genuinely customized minimumReleaseAge is still
-  // carried over — only the excludes are locked, and a value left over from an earlier org default
-  // is migrated (see resolveMinimumReleaseAgeSeconds).
-  const minimumReleaseAgeSeconds = resolveMinimumReleaseAgeSeconds(bunfigToml);
+  // minimumReleaseAge and minimumReleaseAgeExcludes are org policy, never repository policy: both
+  // are rewritten to wbfy's values on every run, so a hand-edited (weakened) gate cannot survive
+  // regeneration. Dropping repository-specific exclude entries is fail-safe — an uncovered package
+  // becomes age-gated and surfaces at install time instead of weakening the gate. A repository
+  // that genuinely needs an exclusion must add it to bunMinimumReleaseAgeExcludes in wbfy so all
+  // repositories share the same vetted list.
   // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
@@ -146,11 +117,11 @@ exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 ${globalStoreLine}
 linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
-minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 7 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 7 days)`}
-# minimumReleaseAgeExcludes is managed by wbfy — repository-specific entries are prohibited and
-# removed on every run (the minimumReleaseAge above may still be repository-specific). To exclude
-# a package, add it to bunMinimumReleaseAgeExcludes in WillBooster/shared
-# (packages/wbfy/src/generators/bunfig.ts) so every repository shares the same vetted list.
+minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # 7 days
+# minimumReleaseAge and minimumReleaseAgeExcludes are managed by wbfy — repository-specific
+# changes are prohibited and overwritten on every run. To exclude a package, add it to
+# bunMinimumReleaseAgeExcludes in WillBooster/shared (packages/wbfy/src/generators/bunfig.ts)
+# so every repository shares the same vetted list.
 minimumReleaseAgeExcludes = [
 ${managedExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
 ]
