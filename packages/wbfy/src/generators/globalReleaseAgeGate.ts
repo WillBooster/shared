@@ -148,7 +148,9 @@ function pruneNullValues(container: Record<string, unknown> | unknown[], seen: S
 function parseTableSafely(fileLabel: string, parse: () => unknown): Record<string, unknown> {
   try {
     const parsed = parse();
-    if (parsed === undefined) return {};
+    // js-yaml returns undefined for an empty string but null for a comment-only or blank document;
+    // Yarn's parseViaJsYaml maps both to an empty config, so neither deserves a replacement warning.
+    if (parsed === undefined || parsed === null) return {};
     const table = asTable(parsed);
     if (table !== parsed) {
       console.warn(`Replacing the global ${fileLabel} wholesale because it is not a top-level table.`);
