@@ -210,6 +210,7 @@ export abstract class BaseScripts {
       'first',
       `${startCommand} && exit 1`,
       `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')}
+        && ${buildHttpReadinessCommand(port)}
         && ${playwrightCommand}`,
     ]);
   }
@@ -291,6 +292,18 @@ export abstract class BaseScripts {
 export function buildWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
   if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
   return `wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
+}
+
+/**
+ * Builds an HTTP readiness check that requires an actual response from the app. A TCP check alone
+ * is not enough for Dockerized servers: docker-proxy accepts connections as soon as the port is
+ * published, long before the app inside the container listens, so tests would start against a dead
+ * backend and the run dies in a kill-others cascade. Any HTTP status counts as ready (curl without
+ * -f), so redirecting or auth-guarded servers still pass — the reason the boot check moved from
+ * http-get to tcp in the first place.
+ */
+export function buildHttpReadinessCommand(port: string | number): string {
+  return `curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:${port}`;
 }
 
 function findCustomProductionStartScriptPath(project: Project): string | undefined {
