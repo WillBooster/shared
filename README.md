@@ -5,3 +5,7 @@
 [![wbfy](https://img.shields.io/badge/wbfy-12.5.5-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)
 
 :recycle: An npm package designed for reusing general code across multiple projects at WillBooster Inc.
+
+## Documents
+
+- [Rules that `wbfy` and `wb` expect of target repositories](docs/expected-repository-rules.md)
