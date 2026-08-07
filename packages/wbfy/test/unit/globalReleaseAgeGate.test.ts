@@ -19,7 +19,7 @@ test('creates each global config from scratch and stays idempotent', () => {
 });
 
 test('generated bunfig content parses and carries the gate', () => {
-  const created = newGlobalBunfigContent(undefined) as string;
+  const created = newGlobalBunfigContent(undefined);
   const parsed = parseToml(created) as { install: { minimumReleaseAge: number; minimumReleaseAgeExcludes: string[] } };
   expect(parsed.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
   expect(parsed.install.minimumReleaseAgeExcludes).toContain('@willbooster/wb');
@@ -34,7 +34,7 @@ registry = "https://example.com/"
 [install.scopes]
 myorg = "https://example.com/myorg/"
 `;
-  const created = newGlobalBunfigContent(existing) as string;
+  const created = newGlobalBunfigContent(existing);
   const parsed = parseToml(created) as {
     telemetry: boolean;
     install: { registry: string; minimumReleaseAge: number; scopes: Record<string, string> };
@@ -52,7 +52,7 @@ test('replaces an outdated managed block instead of stacking a second one', () =
 minimumReleaseAge = 1 # stale
 # wbfy:end release-age-gate
 `;
-  const created = newGlobalBunfigContent(outdated) as string;
+  const created = newGlobalBunfigContent(outdated);
   expect(created.match(/wbfy:start/g)).toHaveLength(1);
   expect((parseToml(created) as { install: { minimumReleaseAge: number } }).install.minimumReleaseAge).toBe(
     bunMinimumReleaseAgeSeconds
@@ -60,35 +60,62 @@ minimumReleaseAge = 1 # stale
 });
 
 test('keeps a key the developer appends after the managed block under [install] across runs', () => {
-  const created = newGlobalBunfigContent(undefined) as string;
+  const created = newGlobalBunfigContent(undefined);
   const edited = `${created}registry = "https://example.com/"\n`;
-  const rerun = newGlobalBunfigContent(edited) as string;
+  const rerun = newGlobalBunfigContent(edited);
   const parsed = parseToml(rerun) as { install: { registry: string; minimumReleaseAge: number } };
   expect(parsed.install.registry).toBe('https://example.com/');
   expect(parsed.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
   expect(parsed).not.toHaveProperty('registry');
 });
 
-test('leaves files with a hand-written gate or broken syntax untouched', () => {
-  expect(newGlobalBunfigContent('[install]\nminimumReleaseAge = 60\n')).toBeUndefined();
-  expect(newGlobalBunfigContent('[install\nbroken')).toBeUndefined();
-  // A scalar `install` key must fall through to the merged-result validation, not crash the run.
-  expect(newGlobalBunfigContent('install = "https://example.com/"\n')).toBeUndefined();
-  expect(newGlobalYarnrcContent('npmMinimalAgeGate: 60\n')).toBeUndefined();
-  expect(newGlobalYarnrcContent('foo: [broken\n')).toBeUndefined();
-  expect(newGlobalNpmrcContent('min-release-age=1\n')).toBeUndefined();
-  expect(newGlobalNpmrcContent('min-release-age-exclude[]=@myorg/foo\n')).toBeUndefined();
+test('replaces hand-written gate values outside the managed block with the org policy', () => {
+  const bunfig = newGlobalBunfigContent(`[install]
+registry = "https://example.com/"
+minimumReleaseAge = 60
+minimumReleaseAgeExcludes = [
+  "@myorg/foo",
+]
+`);
+  const parsedBunfig = parseToml(bunfig) as {
+    install: { registry: string; minimumReleaseAge: number; minimumReleaseAgeExcludes: string[] };
+  };
+  expect(parsedBunfig.install.registry).toBe('https://example.com/');
+  expect(parsedBunfig.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
+  expect(parsedBunfig.install.minimumReleaseAgeExcludes).not.toContain('@myorg/foo');
+
+  const yarnrc = newGlobalYarnrcContent(`nodeLinker: node-modules
+npmMinimalAgeGate: 60
+npmPreapprovedPackages:
+  - '@myorg/foo'
+`);
+  const parsedYarnrc = loadYaml(yarnrc) as {
+    nodeLinker: string;
+    npmMinimalAgeGate: number;
+    npmPreapprovedPackages: string[];
+  };
+  expect(parsedYarnrc.nodeLinker).toBe('node-modules');
+  expect(parsedYarnrc.npmMinimalAgeGate).toBe(bunMinimumReleaseAgeSeconds / 60);
+  expect(parsedYarnrc.npmPreapprovedPackages).not.toContain('@myorg/foo');
+
+  const npmrc = newGlobalNpmrcContent('min-release-age=1\nmin-release-age-exclude[]=@myorg/foo\n');
+  expect(npmrc).toContain(`min-release-age=${bunMinimumReleaseAgeSeconds / 86_400}`);
+  expect(npmrc).not.toContain('min-release-age=1\n');
+  expect(npmrc).not.toContain('@myorg/foo');
 });
 
-test('skips yarnrc content whose merged result would be invalid YAML', () => {
-  // Yarn accepts a document-end marker and scalar documents, but appending a mapping after them is
-  // invalid; writing the merge would break every subsequent yarn command.
-  expect(newGlobalYarnrcContent('nodeLinker: node-modules\n...\n')).toBeUndefined();
-  expect(newGlobalYarnrcContent('hello\n')).toBeUndefined();
+test('appends the gate even to files with broken syntax, preserving their content', () => {
+  const bunfig = newGlobalBunfigContent('[install\nbroken');
+  expect(bunfig).toContain('[install\nbroken');
+  expect(bunfig).toContain('# wbfy:start release-age-gate');
+
+  const yarnrc = newGlobalYarnrcContent('foo: [broken\n');
+  expect(yarnrc).toContain('foo: [broken');
+  expect(yarnrc).toContain('npmMinimalAgeGate:');
 });
 
 test('yarnrc gate uses minutes and preserves user settings', () => {
-  const created = newGlobalYarnrcContent('nodeLinker: node-modules\n') as string;
+  const created = newGlobalYarnrcContent('nodeLinker: node-modules\n');
   const parsed = loadYaml(created) as {
     nodeLinker: string;
     npmMinimalAgeGate: number;
@@ -100,7 +127,7 @@ test('yarnrc gate uses minutes and preserves user settings', () => {
 });
 
 test('npmrc gate preserves unrelated lines such as credentials', () => {
-  const created = newGlobalNpmrcContent('//registry.npmjs.org/:_authToken=secret\n') as string;
+  const created = newGlobalNpmrcContent('//registry.npmjs.org/:_authToken=secret\n');
   expect(created).toContain('//registry.npmjs.org/:_authToken=secret');
   expect(created).toContain(`min-release-age=${bunMinimumReleaseAgeSeconds / 86_400}`);
   expect(created).toContain('min-release-age-exclude[]=@willbooster/wb');

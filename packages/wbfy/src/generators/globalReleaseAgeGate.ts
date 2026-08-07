@@ -2,9 +2,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { load as loadYaml } from 'js-yaml';
-import { parse as parseToml } from 'smol-toml';
-
 import { logger } from '../logger.js';
 
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
@@ -19,6 +16,42 @@ const managedBlockPattern = new RegExp(`[ \\t]*${startMarker}[\\s\\S]*?${endMark
 const minimumReleaseAgeDays = bunMinimumReleaseAgeSeconds / 86_400;
 const minimumReleaseAgeMinutes = bunMinimumReleaseAgeSeconds / 60;
 
+const bunfigManagedBlock = `${startMarker}
+minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # ${minimumReleaseAgeDays} days
+minimumReleaseAgeExcludes = [
+${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
+]
+${endMarker}`;
+
+// Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
+// miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
+// bare number is unambiguous, while duration strings were misparsed by the pre-DURATION versions
+// of the setting (day suffixes went through parseInt; see yarnpkg/berry#6942).
+const yarnrcManagedBlock = `${startMarker}
+npmMinimalAgeGate: ${minimumReleaseAgeMinutes} # ${minimumReleaseAgeDays} days
+npmPreapprovedPackages:
+${bunMinimumReleaseAgeExcludes.map((packageName) => `  - '${packageName}'`).join('\n')}
+${endMarker}
+`;
+
+const npmrcManagedBlock = `${startMarker}
+min-release-age=${minimumReleaseAgeDays}
+${bunMinimumReleaseAgeExcludes.map((packageName) => `min-release-age-exclude[]=${packageName}`).join('\n')}
+${endMarker}
+`;
+
+// Gate keys hand-written outside the managed block are removed unconditionally so the org policy
+// always wins (multi-line bunfig arrays and indented yarnrc sequences included).
+const bunfigGateKeyPatterns = [
+  /^[ \t]*minimumReleaseAgeExcludes\s*=\s*\[[^\]]*][^\n]*\n?/gm,
+  /^[ \t]*minimumReleaseAge\s*=[^\n]*\n?/gm,
+];
+const yarnrcGateKeyPatterns = [
+  /^npmMinimalAgeGate\s*:[^\n]*\n?/gm,
+  /^npmPreapprovedPackages\s*:[^\n]*\n?(?:(?:[ \t]+[^\n]*|-[^\n]*)\n?)*/gm,
+];
+const npmrcGateKeyPatterns = [/^[ \t]*min-release-age(?:-exclude)?\s*(?:\[\s*])?\s*=[^\n]*\n?/gm];
+
 /**
  * Applies the organization's minimum-release-age policy to the developer machine's GLOBAL
  * package-manager configs (~/.bunfig.toml, ~/.yarnrc.yml, ~/.npmrc). Repository configs guard only
@@ -27,10 +60,15 @@ const minimumReleaseAgeMinutes = bunMinimumReleaseAgeSeconds / 60;
  * configuration takes precedence in all three managers, so wbfied repositories keep their own
  * (identical) gate and exclusion list.
  *
- * Deliberately minimal by org policy: it assumes up-to-date package managers (upgrade instead of
- * accommodating older versions) and plain regular files — exceptional setups (symlinked dotfiles,
- * npm userconfig overrides, crash-safe replacement) are ignored, not handled. These files live
- * outside every repository, so writes bypass fsUtil's repository-containment guards.
+ * Operational rules keep this purely textual with no exception paths:
+ * - The gate keys are wbfy-managed everywhere in these files: hand-written gate keys outside the
+ *   managed block are removed and replaced on every run.
+ * - The files are assumed syntactically valid and in standard form (bunfig declares install
+ *   settings under an `[install]` header, yarnrc is a top-level mapping). Deviating or broken
+ *   files must be fixed manually; wbfy still writes the block without validating the result.
+ * - Only filesystem errors (e.g. permissions) skip a file, because ~/.npmrc may hold credentials
+ *   wbfy must never destroy. These files live outside every repository, so writes bypass fsUtil's
+ *   repository-containment guards.
  */
 export async function ensureGlobalReleaseAgeGates(): Promise<void> {
   return logger.functionIgnoringException('ensureGlobalReleaseAgeGates', async () => {
@@ -43,7 +81,7 @@ export async function ensureGlobalReleaseAgeGates(): Promise<void> {
       ...(process.env.XDG_CONFIG_HOME ? [path.join(process.env.XDG_CONFIG_HOME, '.bunfig.toml')] : []),
       path.join(homeDirPath, '.bunfig.toml'),
     ];
-    const targets: [string, (existingContent: string | undefined) => string | undefined][] = [
+    const targets: [string, (existingContent: string | undefined) => string][] = [
       ...bunfigPaths.map((filePath): [string, typeof newGlobalBunfigContent] => [filePath, newGlobalBunfigContent]),
       [path.join(homeDirPath, '.yarnrc.yml'), newGlobalYarnrcContent],
       [path.join(homeDirPath, '.npmrc'), newGlobalNpmrcContent],
@@ -52,7 +90,7 @@ export async function ensureGlobalReleaseAgeGates(): Promise<void> {
       try {
         const existingContent = fs.existsSync(filePath) ? await fs.promises.readFile(filePath, 'utf8') : undefined;
         const newContent = computeContent(existingContent);
-        if (newContent === undefined || newContent === existingContent) continue;
+        if (newContent === existingContent) continue;
         await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
         await fs.promises.writeFile(filePath, newContent);
         console.info(`Applied the minimum-release-age policy to ${filePath}`);
@@ -65,138 +103,43 @@ export async function ensureGlobalReleaseAgeGates(): Promise<void> {
   });
 }
 
-/** Returns the updated ~/.bunfig.toml content, or undefined when the file must be left as-is. */
-export function newGlobalBunfigContent(existingContent: string | undefined): string | undefined {
-  const rest = removeManagedBlock(existingContent);
-  const parsed = parseTomlSafely(rest);
-  if (rest.trim() && parsed === undefined) {
-    console.warn('Skipped updating the global bunfig.toml because it is not valid TOML.');
-    return undefined;
-  }
-  // `install` may be any TOML value (a hand-written `install = "…"` scalar parses fine), so it
-  // must be narrowed before the `in` checks below.
-  const install = (parsed as { install?: unknown } | undefined)?.install;
-  // A gate the developer wrote outside the managed block would collide with the managed keys
-  // (TOML rejects duplicate keys). Fail safe: leave the file alone and tell them to remove it —
-  // silently rewriting hand-written lines in a personal file risks destroying unrelated content.
-  if (
-    install &&
-    typeof install === 'object' &&
-    ('minimumReleaseAge' in install || 'minimumReleaseAgeExcludes' in install)
-  ) {
-    console.warn(
-      'Skipped updating the global bunfig.toml: it already sets minimumReleaseAge(Excludes) outside the wbfy-managed block. Remove them to let wbfy manage the gate.'
-    );
-    return undefined;
-  }
-
-  const managedBlock = `${startMarker}
-minimumReleaseAge = ${bunMinimumReleaseAgeSeconds} # ${minimumReleaseAgeDays} days
-minimumReleaseAgeExcludes = [
-${bunMinimumReleaseAgeExcludes.map((packageName) => `    "${packageName}",`).join('\n')}
-]
-${endMarker}`;
+/** Returns the ~/.bunfig.toml content with the managed gate enforced. */
+export function newGlobalBunfigContent(existingContent: string | undefined): string {
+  const rest = removeGateKeys(removeManagedBlock(existingContent), bunfigGateKeyPatterns);
   // The [install] header stays OUTSIDE the managed markers: TOML table scope continues past the
   // block, so a developer appending their own install key after it writes into [install] — a
   // header inside the block would take that key with it (reparenting it to top level) when the
-  // next run strips the block. Reuse the developer's own header when present because TOML forbids
-  // a second [install] header.
-  const installHeaderPattern = /^[ \t]*\[install][ \t]*(?:#.*)?$/m;
-  const headerMatch = installHeaderPattern.exec(rest);
-  let content: string;
+  // next run strips the block. Reuse the existing header when present because TOML forbids a
+  // second [install] header.
+  const headerMatch = /^[ \t]*\[install][ \t]*(?:#.*)?$/m.exec(rest);
   if (headerMatch) {
     const insertAt = headerMatch.index + headerMatch[0].length;
-    content = `${rest.slice(0, insertAt)}\n${managedBlock}${rest.slice(insertAt)}`;
-  } else {
-    content = appendBlock(rest, `[install]\n${managedBlock}\n`);
+    return `${rest.slice(0, insertAt)}\n${bunfigManagedBlock}${rest.slice(insertAt)}`;
   }
-  // Also catches exotic-but-valid declarations the header regex cannot place keys into (dotted
-  // `install.x = …` or a quoted `["install"]` header): the appended second [install] table makes
-  // this reparse fail, so such files are skipped with a warning instead of being corrupted.
-  if (parseTomlSafely(content) === undefined) {
-    console.warn('Skipped updating the global bunfig.toml because the merged result is not valid TOML.');
-    return undefined;
-  }
-  return content;
+  return appendBlock(rest, `[install]\n${bunfigManagedBlock}\n`);
 }
 
-/** Returns the updated ~/.yarnrc.yml content, or undefined when the file must be left as-is. */
-export function newGlobalYarnrcContent(existingContent: string | undefined): string | undefined {
-  const rest = removeManagedBlock(existingContent);
-  let parsed: unknown;
-  try {
-    parsed = loadYaml(rest);
-  } catch {
-    console.warn('Skipped updating the global .yarnrc.yml because it is not valid YAML.');
-    return undefined;
-  }
-  if (parsed && typeof parsed === 'object' && ('npmMinimalAgeGate' in parsed || 'npmPreapprovedPackages' in parsed)) {
-    console.warn(
-      'Skipped updating the global .yarnrc.yml: it already sets npmMinimalAgeGate or npmPreapprovedPackages outside the wbfy-managed block. Remove them to let wbfy manage the gate.'
-    );
-    return undefined;
-  }
-
-  // Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
-  // miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
-  // bare number is unambiguous, while duration strings were misparsed by the pre-DURATION versions
-  // of the setting (day suffixes went through parseInt; see yarnpkg/berry#6942).
-  const content = appendBlock(
-    rest,
-    `${startMarker}
-npmMinimalAgeGate: ${minimumReleaseAgeMinutes} # ${minimumReleaseAgeDays} days
-npmPreapprovedPackages:
-${bunMinimumReleaseAgeExcludes.map((packageName) => `  - '${packageName}'`).join('\n')}
-${endMarker}
-`
-  );
-  // Appending a mapping is invalid after non-mapping YAML (a scalar or sequence document, or a
-  // `...` document-end marker) even though Yarn itself accepts such files; corrupting the file
-  // would break every subsequent yarn command, so skip instead.
-  try {
-    loadYaml(content);
-  } catch {
-    console.warn('Skipped updating the global .yarnrc.yml because the merged result is not valid YAML.');
-    return undefined;
-  }
-  return content;
+/** Returns the ~/.yarnrc.yml content with the managed gate enforced. */
+export function newGlobalYarnrcContent(existingContent: string | undefined): string {
+  return appendBlock(removeGateKeys(removeManagedBlock(existingContent), yarnrcGateKeyPatterns), yarnrcManagedBlock);
 }
 
-/** Returns the updated ~/.npmrc content, or undefined when the file must be left as-is. */
-export function newGlobalNpmrcContent(existingContent: string | undefined): string | undefined {
-  const rest = removeManagedBlock(existingContent);
-  // npmrc is a plain ini of independent lines (often holding credentials), so only a conflicting
-  // gate line blocks the update; everything else is preserved verbatim.
-  if (rest.split('\n').some((line) => /^\s*min-release-age(-exclude)?\s*(\[\s*])?\s*=/.test(line))) {
-    console.warn(
-      'Skipped updating the global .npmrc: it already sets min-release-age(-exclude) outside the wbfy-managed block. Remove it to let wbfy manage the gate.'
-    );
-    return undefined;
-  }
-
-  return appendBlock(
-    rest,
-    `${startMarker}
-min-release-age=${minimumReleaseAgeDays}
-${bunMinimumReleaseAgeExcludes.map((packageName) => `min-release-age-exclude[]=${packageName}`).join('\n')}
-${endMarker}
-`
-  );
+/** Returns the ~/.npmrc content with the managed gate enforced. */
+export function newGlobalNpmrcContent(existingContent: string | undefined): string {
+  return appendBlock(removeGateKeys(removeManagedBlock(existingContent), npmrcGateKeyPatterns), npmrcManagedBlock);
 }
 
 function removeManagedBlock(content: string | undefined): string {
   return content?.replaceAll(managedBlockPattern, '') ?? '';
 }
 
+function removeGateKeys(content: string, patterns: RegExp[]): string {
+  let result = content;
+  for (const pattern of patterns) result = result.replaceAll(pattern, '');
+  return result;
+}
+
 function appendBlock(rest: string, block: string): string {
   const trimmedRest = rest.replace(/\n+$/, '');
   return trimmedRest ? `${trimmedRest}\n\n${block}` : block;
-}
-
-function parseTomlSafely(content: string): unknown {
-  try {
-    return parseToml(content);
-  } catch {
-    return undefined;
-  }
 }
