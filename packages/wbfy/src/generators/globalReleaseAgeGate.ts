@@ -129,13 +129,13 @@ function removeBunfigGateKeys(content: string): string {
   const result: string[] = [];
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex] ?? '';
-    const match = /^[ \t]*minimumReleaseAge(Excludes)?\s*=\s*(.*)$/.exec(line);
+    const match = /^[ \t]*(['"]?)minimumReleaseAge(Excludes)?\1\s*=\s*(.*)$/.exec(line);
     if (!match) {
       result.push(line);
       continue;
     }
-    const value = match[2] ?? '';
-    if (match[1] && value.startsWith('[')) {
+    const value = match[3] ?? '';
+    if (match[2] && value.startsWith('[')) {
       lineIndex = findFlowValueEnd(lines, lineIndex, value);
     }
   }
@@ -150,12 +150,12 @@ function removeYarnrcGateKeys(content: string): string {
   const result: string[] = [];
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex] ?? '';
-    const match = /^(?:npmMinimalAgeGate|npmPreapprovedPackages)\s*:\s*(.*)$/.exec(line);
+    const match = /^(['"]?)(?:npmMinimalAgeGate|npmPreapprovedPackages)\1\s*:\s*(.*)$/.exec(line);
     if (!match) {
       result.push(line);
       continue;
     }
-    const value = match[1] ?? '';
+    const value = match[2] ?? '';
     if (value.startsWith('[') || value.startsWith('{')) {
       lineIndex = findFlowValueEnd(lines, lineIndex, value);
     } else {
@@ -187,7 +187,10 @@ function bracketDelta(lineText: string): number {
   for (let charIndex = 0; charIndex < lineText.length; charIndex++) {
     const char = lineText.charAt(charIndex);
     if (quote) {
-      if (char === '\\') charIndex++;
+      // Backslash escapes exist only in double-quoted strings; TOML literal strings and YAML
+      // single-quoted scalars treat it literally (YAML's doubled '' also closes and reopens the
+      // string here, which counts brackets between them as quoted — the correct outcome).
+      if (char === '\\' && quote === '"') charIndex++;
       else if (char === quote) quote = undefined;
     } else if (char === '"' || char === "'") quote = char;
     else if (char === '#') break;

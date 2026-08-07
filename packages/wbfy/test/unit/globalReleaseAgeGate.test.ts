@@ -162,6 +162,46 @@ cache = true
   expect(yarnrcWithComment).not.toContain('@myorg');
 });
 
+test('removes quoted gate keys and treats backslashes in literal strings literally', () => {
+  // TOML and YAML allow quoting a key; the quoted spellings are the same semantic key and must be
+  // removed to avoid a duplicate definition with the managed block.
+  const bunfig = newGlobalBunfigContent(`[install]
+'minimumReleaseAge' = 60
+registry = "https://example.com/"
+`);
+  const parsedBunfig = parseToml(bunfig) as { install: { registry: string; minimumReleaseAge: number } };
+  expect(parsedBunfig.install.registry).toBe('https://example.com/');
+  expect(parsedBunfig.install.minimumReleaseAge).toBe(bunMinimumReleaseAgeSeconds);
+
+  const yarnrc = newGlobalYarnrcContent(`"npmMinimalAgeGate": 60
+nodeLinker: node-modules
+`);
+  const parsedYarnrc = loadYaml(yarnrc) as { nodeLinker: string; npmMinimalAgeGate: number };
+  expect(parsedYarnrc.nodeLinker).toBe('node-modules');
+  expect(parsedYarnrc.npmMinimalAgeGate).toBe(bunMinimumReleaseAgeSeconds / 60);
+
+  // In TOML literal strings and YAML single-quoted scalars a backslash is literal, so `'foo\']`
+  // still closes the array on that line and the following settings must survive.
+  const bunfig2 = newGlobalBunfigContent(`[install]
+minimumReleaseAgeExcludes = [
+  'foo\\']
+registry = "https://example.com/"
+cache = true
+`);
+  const parsedBunfig2 = parseToml(bunfig2) as { install: { registry: string; cache: boolean } };
+  expect(parsedBunfig2.install.registry).toBe('https://example.com/');
+  expect(parsedBunfig2.install.cache).toBe(true);
+
+  const yarnrc2 = newGlobalYarnrcContent(`nodeLinker: node-modules
+npmPreapprovedPackages: [
+  'foo\\']
+enableGlobalCache: true
+`);
+  const parsedYarnrc2 = loadYaml(yarnrc2) as { nodeLinker: string; enableGlobalCache: boolean };
+  expect(parsedYarnrc2.nodeLinker).toBe('node-modules');
+  expect(parsedYarnrc2.enableGlobalCache).toBe(true);
+});
+
 test('appends the gate even to files with broken syntax, preserving their content', () => {
   const bunfig = newGlobalBunfigContent('[install\nbroken');
   expect(bunfig).toContain('[install\nbroken');
