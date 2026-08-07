@@ -36,33 +36,34 @@ minimumReleaseAgeExcludes = [
 describe('generate-package-manager-configs.sh', () => {
   it('force-overwrites the npm / yarn / bun configs with the org-standard content', async () => {
     const workDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-pm-configs-'));
-    const homeDirPath = path.join(workDirPath, 'home');
-    await fs.mkdir(homeDirPath);
-    await fs.writeFile(path.join(homeDirPath, '.npmrc'), 'registry=https://example.com/\n');
-    await fs.writeFile(path.join(workDirPath, 'bunfig.toml'), wbfyGeneratedBunfig);
+    try {
+      const homeDirPath = path.join(workDirPath, 'home');
+      await fs.mkdir(homeDirPath);
+      await fs.writeFile(path.join(homeDirPath, '.npmrc'), 'registry=https://example.com/\n');
+      await fs.writeFile(path.join(workDirPath, 'bunfig.toml'), wbfyGeneratedBunfig);
 
-    const ret = childProcess.spawnSync('bash', [scriptPath], {
-      cwd: workDirPath,
-      env: { ...process.env, HOME: homeDirPath },
-      stdio: 'inherit',
-    });
-    expect(ret.status).toBe(0);
+      const ret = childProcess.spawnSync('bash', [scriptPath], {
+        cwd: workDirPath,
+        env: { ...process.env, HOME: homeDirPath },
+        stdio: 'inherit',
+      });
+      expect(ret.status).toBe(0);
 
-    await expect(fs.readFile(path.join(homeDirPath, '.npmrc'), 'utf8')).resolves.toBe(
-      `min-release-age=7
+      await expect(fs.readFile(path.join(homeDirPath, '.npmrc'), 'utf8')).resolves.toBe(
+        `min-release-age=7
 min-release-age-exclude[]=@willbooster/wb
 min-release-age-exclude[]=at-decorators
 `
-    );
-    await expect(fs.readFile(path.join(homeDirPath, '.yarnrc.yml'), 'utf8')).resolves.toBe(
-      `npmMinimalAgeGate: 10080 # 7 days
+      );
+      await expect(fs.readFile(path.join(homeDirPath, '.yarnrc.yml'), 'utf8')).resolves.toBe(
+        `npmMinimalAgeGate: 10080 # 7 days
 npmPreapprovedPackages:
   - '@willbooster/wb'
   - 'at-decorators'
 `
-    );
-    await expect(fs.readFile(path.join(workDirPath, 'bunfig.toml'), 'utf8')).resolves.toBe(
-      `env = false
+      );
+      await expect(fs.readFile(path.join(workDirPath, 'bunfig.toml'), 'utf8')).resolves.toBe(
+        `env = false
 telemetry = false
 
 [install]
@@ -78,25 +79,28 @@ minimumReleaseAgeExcludes = [
     "at-decorators",
 ]
 `
-    );
-
-    await fs.rm(workDirPath, { force: true, recursive: true });
+      );
+    } finally {
+      await fs.rm(workDirPath, { force: true, recursive: true });
+    }
   });
 
   it('fails fast on a bunfig.toml not regenerated since wbfy introduced the release-age gate', async () => {
     const workDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-pm-configs-'));
-    const homeDirPath = path.join(workDirPath, 'home');
-    await fs.mkdir(homeDirPath);
-    await fs.writeFile(path.join(workDirPath, 'bunfig.toml'), 'env = false\n\n[install]\nexact = true\n');
+    try {
+      const homeDirPath = path.join(workDirPath, 'home');
+      await fs.mkdir(homeDirPath);
+      await fs.writeFile(path.join(workDirPath, 'bunfig.toml'), 'env = false\n\n[install]\nexact = true\n');
 
-    const ret = childProcess.spawnSync('bash', [scriptPath], {
-      cwd: workDirPath,
-      env: { ...process.env, HOME: homeDirPath },
-      encoding: 'utf8',
-    });
-    expect(ret.status).toBe(1);
-    expect(ret.stderr).toContain('minimumReleaseAge');
-
-    await fs.rm(workDirPath, { force: true, recursive: true });
+      const ret = childProcess.spawnSync('bash', [scriptPath], {
+        cwd: workDirPath,
+        env: { ...process.env, HOME: homeDirPath },
+        encoding: 'utf8',
+      });
+      expect(ret.status).toBe(1);
+      expect(ret.stderr).toContain('minimumReleaseAge');
+    } finally {
+      await fs.rm(workDirPath, { force: true, recursive: true });
+    }
   });
 });
