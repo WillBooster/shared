@@ -1,8 +1,7 @@
-// oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make dump usage clearer.
 import fs from 'node:fs';
 import path from 'node:path';
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -178,16 +177,7 @@ async function core(config: PackageConfig, allConfigs: PackageConfig[]): Promise
     delete settings['pre-push'];
   }
   await Promise.all([
-    fsUtil.writeFileConfined(
-      path.join(config.dirPath, 'lefthook.yml'),
-      yaml.dump(settings, {
-        lineWidth: -1,
-        noCompatMode: true,
-        styles: {
-          '!!null': 'empty',
-        },
-      })
-    ),
+    fsUtil.writeFileConfined(path.join(config.dirPath, 'lefthook.yml'), yaml.dump(settings, { lineWidth: -1 })),
     fs.promises.rm(dirPath, { force: true, recursive: true }),
   ]);
   if (hasHuskyDir) {

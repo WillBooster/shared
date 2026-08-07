@@ -1,17 +1,15 @@
 // GitHub Actions valueless events such as `pull_request:` require YAML null values.
-// oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make load/dump usage clearer.
 /* eslint-disable unicorn/no-null */
 
 import fs from 'node:fs';
 import path from 'node:path';
 
-import yaml from 'js-yaml';
+import * as yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { removeTrailingSpaces } from './workflow.js';
 
 /**
  * Repositories outside WillBooster / WillBoosterLab cannot call the organization's reusable
@@ -122,8 +120,8 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
   }
 
   const header = `${selfContainedWorkflowMarker} Remove this line to stop wbfy from overwriting this file.\n`;
-  const yamlText = yaml.dump(workflow, { lineWidth: -1, noCompatMode: true, styles: { '!!null': 'empty' } });
-  await fsUtil.writeFileConfined(filePath, header + removeTrailingSpaces(yamlText));
+  const yamlText = yaml.dump(workflow, { lineWidth: -1 });
+  await fsUtil.writeFileConfined(filePath, header + yamlText);
 }
 
 function workingDir(dirPath: string): Pick<Step, 'working-directory'> {

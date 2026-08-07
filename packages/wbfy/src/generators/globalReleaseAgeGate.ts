@@ -107,11 +107,9 @@ export function newGlobalYarnrcContent(existingContent: string | undefined): str
   // of the setting (day suffixes went through parseInt; see yarnpkg/berry#6942).
   config.npmMinimalAgeGate = minimumReleaseAgeMinutes;
   config.npmPreapprovedPackages = [...bunMinimumReleaseAgeExcludes];
-  // FAILSAFE parsing maps an empty value (`key:`) to null, and an explicit empty value is
-  // meaningful to Yarn (ANY-typed plugin settings distinguish set-to-null from absent). Dumping
-  // null in the 'empty' style writes `key:` back, which a FAILSAFE re-read resolves to null again;
-  // the default `null` token would instead re-parse as the STRING 'null'.
-  return dumpYaml(config, { styles: { '!!null': 'empty' } });
+  // FAILSAFE parsing maps an empty value (`key:`) to the empty string, which dumps as `key: ''`
+  // and round-trips stably, so no value in the table can be null and no null handling is needed.
+  return dumpYaml(config);
 }
 
 /** Returns the ~/.npmrc content with the managed gate enforced. */
