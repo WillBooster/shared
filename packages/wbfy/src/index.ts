@@ -23,6 +23,7 @@ import { generateGeminiConfig } from './generators/geminiConfig.js';
 import { removeGeminiSettings } from './generators/geminiSettings.js';
 import { generateGitattributes } from './generators/gitattributes.js';
 import { generateGitignore } from './generators/gitignore.js';
+import { ensureGlobalReleaseAgeGates } from './generators/globalReleaseAgeGate.js';
 import { generateIdeaSettings } from './generators/idea.js';
 import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
 import { generateLintstagedrc } from './generators/lintstagedrc.js';
@@ -123,6 +124,12 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }
+
+  // Before (and independent of) any repository processing, including the already-applied skip
+  // below: the developer machine's global package-manager configs must receive the org's
+  // minimum-release-age policy on EVERY run, because they are what guards brand-new local projects
+  // that have no wbfy-generated repository config yet.
+  await ensureGlobalReleaseAgeGates();
 
   // A `-dirty-local` label identifies an edited checkout, whose next build produces different files
   // under the same label, so such a run is never treated as already applied.
