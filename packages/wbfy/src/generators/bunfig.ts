@@ -20,57 +20,12 @@ interface BunfigToml {
 
 export const bunMinimumReleaseAgeSeconds = 432_000;
 
-// Platform sets must match each package's optionalDependencies on npm because
-// Bun checks all platform binaries in the lockfile, not just the current one.
-// Keep win32 entries even though we drop Windows support: omitting any
-// platform makes `bun add` fail until the minimum-release-age window elapses.
-const typescriptPlatforms = [
-  'aix-ppc64',
-  'darwin-arm64',
-  'darwin-x64',
-  'freebsd-arm64',
-  'freebsd-x64',
-  'linux-arm',
-  'linux-arm64',
-  'linux-loong64',
-  'linux-mips64el',
-  'linux-ppc64',
-  'linux-riscv64',
-  'linux-s390x',
-  'linux-x64',
-  'netbsd-arm64',
-  'netbsd-x64',
-  'openbsd-arm64',
-  'openbsd-x64',
-  'sunos-x64',
-  'win32-arm64',
-  'win32-x64',
-];
-const oxcBindingPlatforms = [
-  'android-arm-eabi',
-  'android-arm64',
-  'darwin-arm64',
-  'darwin-x64',
-  'freebsd-x64',
-  'linux-arm-gnueabihf',
-  'linux-arm-musleabihf',
-  'linux-arm64-gnu',
-  'linux-arm64-musl',
-  'linux-ppc64-gnu',
-  'linux-riscv64-gnu',
-  'linux-riscv64-musl',
-  'linux-s390x-gnu',
-  'linux-x64-gnu',
-  'linux-x64-musl',
-  'openharmony-arm64',
-  'win32-arm64-msvc',
-  'win32-ia32-msvc',
-  'win32-x64-msvc',
-];
-const tsgolintPlatforms = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-arm64', 'win32-x64'];
-
+// Only our own packages are exempt from the minimum release age: we control who publishes them,
+// so a compromised release cannot reach us through an upstream maintainer's stolen credentials.
+// Third-party packages — including tooling wbfy pins itself — stay age-gated;
+// getLatestAgeGatedDependencyVersion in packageJson.ts pins the newest release old enough to pass
+// the gate, so pinning keeps working without an exemption.
 export const bunMinimumReleaseAgeExcludes = [
-  // ---------- START: We believe our packages are safe ----------
   '@exercode/problem-utils',
   '@willbooster-private/agentic-workflows',
   '@willbooster-private/llm-proxy',
@@ -94,22 +49,6 @@ export const bunMinimumReleaseAgeExcludes = [
   'gen-i18n-ts',
   'one-way-git-sync',
   'vinext-progress',
-  // ---------- END: We believe our packages are safe ----------
-
-  // wbfy pins these tooling packages and may apply them immediately after a
-  // release, before the global minimum-release-age window has elapsed.
-  'typescript',
-  ...typescriptPlatforms.map((platform) => `@typescript/typescript-${platform}`),
-  // Bun itself releases its first-party type packages in lockstep with the
-  // runtime, so generated Bun repos must be able to install them immediately.
-  '@types/bun',
-  'bun-types',
-  'oxfmt',
-  ...oxcBindingPlatforms.map((platform) => `@oxfmt/binding-${platform}`),
-  'oxlint',
-  ...oxcBindingPlatforms.map((platform) => `@oxlint/binding-${platform}`),
-  'oxlint-tsgolint',
-  ...tsgolintPlatforms.map((platform) => `@oxlint-tsgolint/${platform}`),
 ];
 
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
