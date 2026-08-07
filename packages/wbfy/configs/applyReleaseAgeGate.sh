@@ -24,10 +24,12 @@ umask 077
 
 gateJsonPath="$(dirname "${BASH_SOURCE[0]}")/releaseAgeGate.json"
 days=$(sed -n 's/.*"days"[^0-9]*\([0-9]*\).*/\1/p' "$gateJsonPath")
-excludes=$(tr -d ' \n' < "$gateJsonPath" | sed 's/.*"excludes":\[//; s/].*//; s/"//g' | tr ',' '\n')
-# sed exits 0 without a match, and an empty value would write a disabled gate (`min-release-age=`,
-# `minimumReleaseAge = 0`) while reporting success, so a truncated or stale JSON must fail here.
-[ "$days" -gt 0 ] 2> /dev/null || { echo "$gateJsonPath has no positive \"days\"." >&2; exit 1; }
+# `sed -n …p` prints only on a match, so a truncated array (no closing bracket) yields nothing.
+excludes=$(tr -d ' \n' < "$gateJsonPath" | sed -n 's/.*"excludes":\[\(.*\)].*/\1/p' | tr -d '"' | tr ',' '\n')
+# Without this, a truncated or stale JSON would write a disabled gate (`min-release-age=`,
+# `minimumReleaseAge = 0`) or a silently shortened exclusion list while reporting success.
+[ "$days" -gt 0 ] 2> /dev/null && [ -n "$excludes" ] ||
+  { echo "$gateJsonPath is not a valid release-age gate." >&2; exit 1; }
 
 emitHeader() {
   [ -n "$1" ] && printf '%s\n' "$1"
