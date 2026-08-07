@@ -35,7 +35,7 @@ import {
   hasDeclaredPackagesStarPattern,
   hasImplicitWorkspaceBaseline,
 } from '../utils/workspaceUtil.js';
-import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
+import { bunMinimumReleaseAgeExcludes, readBunMinimumReleaseAgeSeconds } from './bunfig.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptDependency = 'typescript';
@@ -1324,24 +1324,28 @@ function getDependencySections(jsonObj: PackageJson): Partial<Record<string, str
     .filter((section): section is Partial<Record<string, string>> => !!section);
 }
 
-function getLatestDependencyVersion(config: PackageConfig, dependency: string): string {
-  const cacheKey = dependency;
+function getLatestDependencyVersion(rootConfig: PackageConfig, dependency: string): string {
+  // The gate belongs in the key: a run spanning repositories with different minimumReleaseAge
+  // overrides must not serve one repository's version from another's cache entry.
+  const packageAgeGateMs = getPackageAgeGateMs(rootConfig);
+  const cacheKey = `${dependency} ${packageAgeGateMs}`;
   const cachedVersion = latestDependencyVersionCache.get(cacheKey);
   if (cachedVersion) return cachedVersion;
 
-  const version = getDependencyVersionFromNpm(dependency);
+  const version = getDependencyVersionFromNpm(dependency, packageAgeGateMs);
   latestDependencyVersionCache.set(cacheKey, version);
   return version;
 }
 
-function getDependencyVersionFromNpm(dependency: string): string {
-  // wbfy-managed tooling (preapproved packages) adopts the latest release immediately,
-  // bypassing the minimum-release-age gate applied to unreviewed dependencies.
+function getDependencyVersionFromNpm(dependency: string, packageAgeGateMs: number): string {
+  // Only our own packages (bunMinimumReleaseAgeExcludes) are exempt from the gate; every
+  // third-party package, including the tooling wbfy pins, resolves to the newest release that
+  // already cleared it, because Bun rejects an exact pin younger than minimumReleaseAge.
   if (!shouldApplyPackageAgeGate(dependency)) {
     return getRawDependencyVersionFromNpm(dependency);
   }
 
-  return getLatestAgeGatedDependencyVersion(dependency, getPackageAgeGateMs());
+  return getLatestAgeGatedDependencyVersion(dependency, packageAgeGateMs);
 }
 
 function getLatestAgeGatedDependencyVersion(dependency: string, packageAgeGateMs: number): string {
@@ -1351,15 +1355,19 @@ function getLatestAgeGatedDependencyVersion(dependency: string, packageAgeGateMs
     return latestVersion;
   }
 
+  return getAgeGatedVersionsDescending(times, packageAgeGateMs)[0] ?? '*';
+}
+
+/** Every stable release in `times` that already cleared the age gate, newest first. */
+function getAgeGatedVersionsDescending(times: Record<string, string>, packageAgeGateMs: number): string[] {
   const now = Date.now();
-  const versions = Object.entries(times)
+  return Object.entries(times)
     .filter(([version]) => semver.valid(version))
     .filter(([version]) => (semver.prerelease(version)?.length ?? 0) === 0)
     .filter(([, publishedAt]) => Number.isFinite(Date.parse(publishedAt)))
     .filter(([, publishedAt]) => now - Date.parse(publishedAt) >= packageAgeGateMs)
-    .toSorted(([versionA], [versionB]) => semver.rcompare(versionA, versionB));
-
-  return versions[0]?.[0] ?? '*';
+    .toSorted(([versionA], [versionB]) => semver.rcompare(versionA, versionB))
+    .map(([version]) => version);
 }
 
 function isPublishedBeforeAgeGate(publishedAt: string | undefined, packageAgeGateMs: number): boolean {
@@ -1393,8 +1401,8 @@ function shouldApplyPackageAgeGate(dependency: string): boolean {
   return !bunMinimumReleaseAgeExcludes.some((pattern) => doesPackagePatternMatch(pattern, dependency));
 }
 
-function getPackageAgeGateMs(): number {
-  return bunMinimumReleaseAgeSeconds * 1000;
+function getPackageAgeGateMs(rootConfig: PackageConfig): number {
+  return readBunMinimumReleaseAgeSeconds(rootConfig.dirPath) * 1000;
 }
 
 function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
@@ -1487,7 +1495,7 @@ function shouldUpdateExistingManagedDependency(
 const lastKnownPreV7TypescriptVersion = '6.0.3';
 
 function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
-  const latestVersion = getLatestDependencyVersion(config, dependency);
+  const latestVersion = getLatestDependencyVersion(rootConfig, dependency);
   if (dependency === typescriptDependency && isBlitzRepository(config, rootConfig)) {
     // Blitz pins Next.js 15, whose build-time `verifyTypeScriptSetup` requires the classic
     // `typescript` compiler API; the TypeScript 7 `typescript` package is the tsgo binary
@@ -1498,9 +1506,29 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
     // incompatible TypeScript 7.
     const validLatestVersion = semver.valid(latestVersion);
     if (validLatestVersion && semver.major(validLatestVersion) < 7) return latestVersion;
-    return getLatestVersionBelow(typescriptDependency, '7.0.0') ?? lastKnownPreV7TypescriptVersion;
+    // The capped lookup must respect the age gate too: this version is written as an exact pin,
+    // and Bun refuses to resolve one published inside the minimum-release-age window.
+    return (
+      getLatestAgeGatedVersionBelow(typescriptDependency, '7.0.0', getPackageAgeGateMs(rootConfig)) ??
+      getLatestVersionBelow(typescriptDependency, '7.0.0') ??
+      lastKnownPreV7TypescriptVersion
+    );
   }
   return latestVersion;
+}
+
+/**
+ * The highest release of `packageName` below `exclusiveUpperBound` that already cleared the age
+ * gate, or undefined when the registry lookup fails or no such release exists yet.
+ */
+function getLatestAgeGatedVersionBelow(
+  packageName: string,
+  exclusiveUpperBound: string,
+  packageAgeGateMs: number
+): string | undefined {
+  return getAgeGatedVersionsDescending(getNpmPackageTimes(packageName), packageAgeGateMs).find((version) =>
+    semver.lt(version, exclusiveUpperBound)
+  );
 }
 
 const latestVersionBelowCache = new Map<string, string | undefined>();

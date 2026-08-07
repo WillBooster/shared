@@ -104,7 +104,7 @@ test('removes repository-specific minimumReleaseAgeExcludes entries — the list
     fs.writeFileSync(
       path.join(tempDirPath, 'bunfig.toml'),
       `[install]
-minimumReleaseAge = 432000 # 5 days
+minimumReleaseAge = 604800 # 7 days
 minimumReleaseAgeExcludes = [
     "@next/eslint-plugin-next",
     "build-ts",

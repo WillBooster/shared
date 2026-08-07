@@ -18,7 +18,7 @@ interface BunfigToml {
   };
 }
 
-export const bunMinimumReleaseAgeSeconds = 432_000;
+export const bunMinimumReleaseAgeSeconds = 604_800;
 
 // Only our own packages are exempt from the minimum release age: we control who publishes them,
 // so a compromised release cannot reach us through an upstream maintainer's stolen credentials.
@@ -55,6 +55,16 @@ export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
   if (!fs.existsSync(filePath)) return undefined;
   return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
+}
+
+/**
+ * The minimum release age Bun enforces in `rootDirPath`, in seconds: the repository-specific
+ * override newContent preserves, or the org default when the repository has none.
+ */
+export function readBunMinimumReleaseAgeSeconds(rootDirPath: string): number {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  if (!fs.existsSync(filePath)) return bunMinimumReleaseAgeSeconds;
+  return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
 }
 
 export function resolveBunGlobalStore(
@@ -119,7 +129,7 @@ exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 ${globalStoreLine}
 linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
-minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
+minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 7 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 7 days)`}
 # minimumReleaseAgeExcludes is managed by wbfy — repository-specific entries are prohibited and
 # removed on every run (the minimumReleaseAge above may still be repository-specific). To exclude
 # a package, add it to bunMinimumReleaseAgeExcludes in WillBooster/shared

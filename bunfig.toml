@@ -6,7 +6,7 @@ exact = true
 globalStore = true
 linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
-minimumReleaseAge = 432000 # 5 days
+minimumReleaseAge = 604800 # 7 days
 # minimumReleaseAgeExcludes is managed by wbfy — repository-specific entries are prohibited and
 # removed on every run (the minimumReleaseAge above may still be repository-specific). To exclude
 # a package, add it to bunMinimumReleaseAgeExcludes in WillBooster/shared
