@@ -107,7 +107,7 @@ test('removes repository-specific minimumReleaseAgeExcludes entries — the list
 minimumReleaseAge = 432000 # 5 days
 minimumReleaseAgeExcludes = [
     "@next/eslint-plugin-next",
-    "react",
+    "typescript",
     # ---------- repository-specific entries ----------
     "my-repo-specific-package",
 ]
@@ -120,7 +120,7 @@ minimumReleaseAgeExcludes = [
     expect(content).not.toContain('my-repo-specific-package');
     expect(content).not.toContain('---------- repository-specific entries');
     // Managed entries stay, each exactly once.
-    expect(content.match(/^\s+"react",$/gmu)).toHaveLength(1);
+    expect(content.match(/^\s+"typescript",$/gmu)).toHaveLength(1);
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

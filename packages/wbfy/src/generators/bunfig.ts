@@ -68,37 +68,6 @@ const oxcBindingPlatforms = [
   'win32-x64-msvc',
 ];
 const tsgolintPlatforms = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-arm64', 'win32-x64'];
-const nextRspackPlatforms = [
-  'android-arm-eabi',
-  'android-arm64',
-  'darwin-arm64',
-  'darwin-x64',
-  'linux-arm-gnueabihf',
-  'linux-arm64-gnu',
-  'linux-arm64-musl',
-  'linux-x64-gnu',
-  'linux-x64-musl',
-  'win32-arm64-msvc',
-  'win32-ia32-msvc',
-  'win32-x64-msvc',
-];
-const nextSwcPlatforms = [
-  'android-arm-eabi',
-  'android-arm64',
-  'darwin-arm64',
-  'darwin-x64',
-  'freebsd-x64',
-  'linux-arm-gnueabihf',
-  'linux-arm64-gnu',
-  'linux-arm64-musl',
-  'linux-x64-gnu',
-  'linux-x64-musl',
-  'wasm-nodejs',
-  'wasm-web',
-  'win32-arm64-msvc',
-  'win32-ia32-msvc',
-  'win32-x64-msvc',
-];
 
 export const bunMinimumReleaseAgeExcludes = [
   // ---------- START: We believe our packages are safe ----------
@@ -141,17 +110,6 @@ export const bunMinimumReleaseAgeExcludes = [
   ...oxcBindingPlatforms.map((platform) => `@oxlint/binding-${platform}`),
   'oxlint-tsgolint',
   ...tsgolintPlatforms.map((platform) => `@oxlint-tsgolint/${platform}`),
-  '@next/env',
-  '@next/font',
-  '@next/rspack-binding',
-  ...nextRspackPlatforms.map((platform) => `@next/rspack-binding-${platform}`),
-  ...nextSwcPlatforms.map((platform) => `@next/swc-${platform}`),
-  '@next/third-parties',
-  'next',
-  'react',
-  'react-dom',
-  'react-is',
-  'react-server-dom-webpack',
 ];
 
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
