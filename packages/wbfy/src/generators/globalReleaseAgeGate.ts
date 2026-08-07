@@ -32,11 +32,13 @@ ${bunMinimumReleaseAgeExcludes.map((packageName) => `min-release-age-exclude[]=$
  * (identical) gate and exclusion list.
  *
  * Operational rules (org policy: company machines leave no room for personal configuration):
- * - The files are machine-generated and machine-managed: every run re-canonicalizes them via
- *   parse + stringify, so comments, formatting, and layout are never preserved. Settings other
- *   than the gate keys survive as parsed data (e.g. registry credentials needed for work).
- * - A file that does not parse into a top-level table/mapping is replaced wholesale with the
- *   org-managed content; allowing unexpected content is a bigger risk than discarding it.
+ * - ~/.bunfig.toml and ~/.yarnrc.yml are machine-generated and machine-managed: every run
+ *   re-canonicalizes them via parse + stringify, so comments, formatting, and layout are never
+ *   preserved, and a file that does not parse into a top-level table/mapping is replaced
+ *   wholesale with a warning; allowing unexpected content is a bigger risk than discarding it.
+ *   Settings other than the gate keys survive as parsed data (e.g. registry credentials).
+ * - ~/.npmrc stays line-based: the gate lines are managed and every other line (credentials,
+ *   comments) is preserved verbatim.
  * - Only filesystem errors (e.g. permissions) skip a file. These files live outside every
  *   repository, so writes bypass fsUtil's repository-containment guards.
  */
@@ -75,7 +77,11 @@ export async function ensureGlobalReleaseAgeGates(): Promise<void> {
 
 /** Returns the canonical ~/.bunfig.toml content with the managed gate enforced. */
 export function newGlobalBunfigContent(existingContent: string | undefined): string {
-  const config = parseSafely(() => parseToml(existingContent ?? ''));
+  // Bun accepts a UTF-8 BOM but smol-toml rejects it; strip it so an otherwise valid file is not
+  // replaced. Beyond that, smol-toml's spec-strict TOML 1.0 is the reference syntax by org
+  // decision: Bun-only leniencies (a bare `@scope` key under [install.scopes], duplicate table
+  // headers) take the wholesale-replacement path, and quoting the scope key is the manual fix.
+  const config = parseTableSafely('.bunfig.toml', () => parseToml((existingContent ?? '').replace(/^\uFEFF/, '')));
   const install = asTable(config.install);
   install.minimumReleaseAge = bunMinimumReleaseAgeSeconds;
   install.minimumReleaseAgeExcludes = [...bunMinimumReleaseAgeExcludes];
@@ -92,7 +98,9 @@ export function newGlobalYarnrcContent(existingContent: string | undefined): str
   // date-shaped values into Date objects — and duplicate keys overwrite instead of throwing, so a
   // file Yarn accepts is never mistaken for unparseable and wiped. Yarn coerces typed settings
   // from strings, so the quoting that dump adds to such scalars is behavior-neutral.
-  const config = parseSafely(() => loadYaml(existingContent ?? '', { schema: FAILSAFE_SCHEMA, json: true }));
+  const config = parseTableSafely('.yarnrc.yml', () =>
+    loadYaml(existingContent ?? '', { schema: FAILSAFE_SCHEMA, json: true })
+  );
   // FAILSAFE parsing yields strings and collections plus `null` for an empty value — the one token
   // a FAILSAFE re-read cannot resolve back (dump would emit `null`, which re-parses as the STRING
   // 'null'). Yarn treats an absent key and an empty one identically, so empty values are dropped.
@@ -137,18 +145,27 @@ function pruneNullValues(container: Record<string, unknown> | unknown[], seen: S
 }
 
 /** Returns the parsed top-level table, or an empty one when the file cannot serve as a base. */
-function parseSafely(parse: () => unknown): Record<string, unknown> {
+function parseTableSafely(fileLabel: string, parse: () => unknown): Record<string, unknown> {
   try {
-    return asTable(parse());
-  } catch {
-    // Fall through: an unparseable file is replaced wholesale with the org-managed content.
+    const parsed = parse();
+    if (parsed === undefined) return {};
+    const table = asTable(parsed);
+    if (table !== parsed) {
+      console.warn(`Replacing the global ${fileLabel} wholesale because it is not a top-level table.`);
+    }
+    return table;
+  } catch (error) {
+    console.warn(
+      `Replacing the unparseable global ${fileLabel} wholesale:`,
+      (error as Error | undefined)?.message ?? error
+    );
+    return {};
   }
-  return {};
 }
 
-// Only a PLAIN object counts as a table: parsers hand back typed objects for some scalars (Date
-// for TOML datetimes and default-schema YAML timestamps, Uint8Array for YAML binary), and
-// assigning gate keys onto those would be silently dropped by stringify.
+// Only a PLAIN object counts as a table: the parsers can hand back typed non-table objects — e.g.
+// a TOML datetime value (a Date subclass) or an array of tables reaching this via
+// `config.install` — and assigning gate keys onto those would be silently dropped by stringify.
 function asTable(value: unknown): Record<string, unknown> {
   const proto = value !== null && typeof value === 'object' ? Object.getPrototypeOf(value) : undefined;
   return proto === Object.prototype || proto === null ? (value as Record<string, unknown>) : {};

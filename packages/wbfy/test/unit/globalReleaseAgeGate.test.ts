@@ -124,8 +124,9 @@ test('replaces files that do not parse into a top-level table with the org-manag
     [newGlobalBunfigContent, parseToml, '[install\nbroken', 'broken'],
     [newGlobalYarnrcContent, loadYaml, 'foo: [broken\n', 'broken'],
     [newGlobalYarnrcContent, loadYaml, 'just a scalar document\n', 'scalar'],
-    // A lone timestamp scalar: the parser returns a non-plain object (or string), never a mapping.
-    [newGlobalYarnrcContent, loadYaml, '2026-01-01T00:00:00Z\n', '2026-01-01'],
+    // A TOML datetime `install`: the parser hands asTable a Date subclass, which must be replaced
+    // by a plain table instead of silently dropping the gate keys assigned onto it.
+    [newGlobalBunfigContent, parseToml, 'install = 2026-01-01T00:00:00Z\n', '2026-01-01'],
   ] as const) {
     const created = newContent(broken);
     expect(created).not.toContain(leftover);
