@@ -12,6 +12,7 @@ A repository that deviates from these rules is fixed manually (or by re-running 
 - Every managed file is a regular in-repository file: symlinks and paths resolving outside the repository are refused.
 - Git dependency specifiers in `package.json` files may point only at `WillBooster/*` or `WillBoosterLab/*`; anything else aborts the run (other ecosystems' manifests are not checked).
 - The wbfy badge in `README.md` records the applied `wbfy` version and is the idempotency marker; do not edit or remove it.
+- Package managers are up to date, because the organization's minimum-release-age policy is silently ignored by older ones: npm >= 11.10 for the gate and >= 11.17 for its exclusion list, Yarn Berry >= 4.10.3, and Bun >= 1.3; the machines' global `~/.npmrc`, `~/.yarnrc.yml` and `~/.bunfig.toml` are machine-managed by `packages/wbfy/configs/applyReleaseAgeGate.sh` (only registry settings survive in the first two, and only in `~/.npmrc` on developer machines).
 - Tool versions are pinned in `mise.toml`; environment variables and secrets live in `fnox.toml`, never in `.env*` application files — the sole exception is `.env.cloudflare`, a gitignored, untracked file holding Cloudflare deploy credentials; `bunfig.toml` uses Bun's isolated linker; `bun.lock` carries no Takumi Guard (`npm.flatt.tech`) URLs in its `resolved` fields (explicit direct tarball dependency URLs and legitimate scoped private-registry URLs such as Verdaccio's remain).
 
 ## Ownership markers: what a human may edit
