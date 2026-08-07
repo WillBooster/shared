@@ -41,25 +41,11 @@ ${endMarker}
 `;
 
 // Gate keys hand-written outside the managed block are removed unconditionally so the org policy
-// always wins. A multi-line value is consumed through its closing line (bunfig) or until the next
-// top-level key (yarnrc), so comments, blank lines, and flow-style brackets inside the value
-// cannot leave orphan lines that would corrupt the file.
-const bunfigGateKeyPatterns = [
-  // A multi-line array (opening line without `]`) ends at the first line STARTING with `]`; a `]`
-  // inside an item's comment or string must not terminate it.
-  /^[ \t]*minimumReleaseAgeExcludes\s*=\s*\[[^\]\n]*\n(?:(?![ \t]*])[^\n]*\n?)*(?:[ \t]*][^\n]*\n?)?/gm,
-  /^[ \t]*minimumReleaseAgeExcludes\s*=[^\n]*\n?/gm,
-  /^[ \t]*minimumReleaseAge\s*=[^\n]*\n?/gm,
-];
-// Keys are matched at column 0 only, where Yarn's own writer places top-level keys; a uniformly
-// indented mapping is out of contract, and matching indented keys would risk consuming a sibling
-// key's lines instead. The sequence value consumes indented lines, `- ` items, comments, closing
-// flow brackets, and blank lines until the next top-level key.
-const yarnrcGateKeyPatterns = [
-  /^npmMinimalAgeGate\s*:[^\n]*\n?/gm,
-  /^npmPreapprovedPackages\s*:[^\n]*\n?(?:(?:[ \t]+[^\n]*|[#\]}-][^\n]*)\n?|\n)*/gm,
-];
-const npmrcGateKeyPatterns = [/^[ \t]*min-release-age(?:-exclude)?\s*(?:\[\s*])?\s*=[^\n]*\n?/gm];
+// always wins; the removal is done in removeBunfigGateKeys / removeYarnrcGateKeys below because a
+// multi-line value must be consumed exactly through its real end (bracket balance for flow values,
+// the next top-level key for block sequences) — line regexes cannot do that without leaving orphan
+// lines that would corrupt the file.
+const npmrcGateKeyPattern = /^[ \t]*min-release-age(?:-exclude)?\s*(?:\[\s*])?\s*=[^\n]*\n?/gm;
 
 /**
  * Applies the organization's minimum-release-age policy to the developer machine's GLOBAL
@@ -114,7 +100,7 @@ export async function ensureGlobalReleaseAgeGates(): Promise<void> {
 
 /** Returns the ~/.bunfig.toml content with the managed gate enforced. */
 export function newGlobalBunfigContent(existingContent: string | undefined): string {
-  const rest = removeGateKeys(removeManagedBlock(existingContent), bunfigGateKeyPatterns);
+  const rest = removeBunfigGateKeys(removeManagedBlock(existingContent));
   // The [install] header stays OUTSIDE the managed markers: TOML table scope continues past the
   // block, so a developer appending their own install key after it writes into [install] — a
   // header inside the block would take that key with it (reparenting it to top level) when the
@@ -130,22 +116,89 @@ export function newGlobalBunfigContent(existingContent: string | undefined): str
 
 /** Returns the ~/.yarnrc.yml content with the managed gate enforced. */
 export function newGlobalYarnrcContent(existingContent: string | undefined): string {
-  return appendBlock(removeGateKeys(removeManagedBlock(existingContent), yarnrcGateKeyPatterns), yarnrcManagedBlock);
+  return appendBlock(removeYarnrcGateKeys(removeManagedBlock(existingContent)), yarnrcManagedBlock);
 }
 
 /** Returns the ~/.npmrc content with the managed gate enforced. */
 export function newGlobalNpmrcContent(existingContent: string | undefined): string {
-  return appendBlock(removeGateKeys(removeManagedBlock(existingContent), npmrcGateKeyPatterns), npmrcManagedBlock);
+  return appendBlock(removeManagedBlock(existingContent).replaceAll(npmrcGateKeyPattern, ''), npmrcManagedBlock);
+}
+
+function removeBunfigGateKeys(content: string): string {
+  const lines = content.split('\n');
+  const result: string[] = [];
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex] ?? '';
+    const match = /^[ \t]*minimumReleaseAge(Excludes)?\s*=\s*(.*)$/.exec(line);
+    if (!match) {
+      result.push(line);
+      continue;
+    }
+    const value = match[2] ?? '';
+    if (match[1] && value.startsWith('[')) {
+      lineIndex = findFlowValueEnd(lines, lineIndex, value);
+    }
+  }
+  return result.join('\n');
+}
+
+// Keys are matched at column 0 only, where Yarn's own writer places top-level keys; a uniformly
+// indented mapping is out of contract, and matching indented keys would risk consuming a sibling
+// key's lines instead.
+function removeYarnrcGateKeys(content: string): string {
+  const lines = content.split('\n');
+  const result: string[] = [];
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex] ?? '';
+    const match = /^(?:npmMinimalAgeGate|npmPreapprovedPackages)\s*:\s*(.*)$/.exec(line);
+    if (!match) {
+      result.push(line);
+      continue;
+    }
+    const value = match[1] ?? '';
+    if (value.startsWith('[') || value.startsWith('{')) {
+      lineIndex = findFlowValueEnd(lines, lineIndex, value);
+    } else {
+      // A block value ends before the next top-level key. Trailing comment and blank lines are
+      // given back because they document whatever follows, not the removed key.
+      let end = lineIndex + 1;
+      while (end < lines.length && /^(?:[ \t#-]|$)/.test(lines[end] ?? '')) end++;
+      while (end > lineIndex + 1 && /^[ \t]*(?:#|$)/.test(lines[end - 1] ?? '')) end--;
+      lineIndex = end - 1;
+    }
+  }
+  return result.join('\n');
+}
+
+/** Returns the index of the line on which the flow value's brackets balance (its last line). */
+function findFlowValueEnd(lines: string[], startIndex: number, firstLineValue: string): number {
+  let depth = 0;
+  for (let lineIndex = startIndex; lineIndex < lines.length; lineIndex++) {
+    depth += bracketDelta(lineIndex === startIndex ? firstLineValue : (lines[lineIndex] ?? ''));
+    if (depth <= 0) return lineIndex;
+  }
+  return lines.length - 1;
+}
+
+/** Counts the line's bracket balance, ignoring brackets inside strings and after a `#` comment. */
+function bracketDelta(lineText: string): number {
+  let delta = 0;
+  let quote: string | undefined;
+  for (let charIndex = 0; charIndex < lineText.length; charIndex++) {
+    const char = lineText.charAt(charIndex);
+    if (quote) {
+      if (char === '\\') charIndex++;
+      else if (char === quote) quote = undefined;
+    } else if (char === '"' || char === "'") quote = char;
+    else if (char === '#') break;
+    else if (char === '[' || char === '{') delta++;
+    else if (char === ']' || char === '}') delta--;
+  }
+  return delta;
 }
 
 function removeManagedBlock(content: string | undefined): string {
   return content?.replaceAll(managedBlockPattern, '') ?? '';
-}
-
-function removeGateKeys(content: string, patterns: RegExp[]): string {
-  let result = content;
-  for (const pattern of patterns) result = result.replaceAll(pattern, '');
-  return result;
 }
 
 function appendBlock(rest: string, block: string): string {

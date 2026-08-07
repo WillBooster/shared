@@ -117,10 +117,24 @@ registry = "https://example.com/"
   expect(parsedBunfig.install.registry).toBe('https://example.com/');
   expect(parsedBunfig.install.minimumReleaseAgeExcludes).not.toContain('@myorg/foo');
 
-  // Flow sequences with a column-0 closing bracket, comment lines, indentation-less `- ` items,
-  // and blank lines between items must all be consumed with the key.
+  // A closing bracket at the end of an item line must end the array there, not swallow the
+  // following settings.
+  const bunfig2 = newGlobalBunfigContent(`[install]
+minimumReleaseAgeExcludes = [
+  "@myorg/foo"]
+registry = "https://example.com/"
+cache = true
+`);
+  const parsedBunfig2 = parseToml(bunfig2) as { install: { registry: string; cache: boolean } };
+  expect(parsedBunfig2.install.registry).toBe('https://example.com/');
+  expect(parsedBunfig2.install.cache).toBe(true);
+  expect(bunfig2).not.toContain('@myorg');
+
+  // Flow sequences (including column-0 continuation lines and closing brackets), comment lines,
+  // indentation-less `- ` items, and blank lines between items must all be consumed with the key.
   for (const existing of [
     'nodeLinker: node-modules\nnpmPreapprovedPackages: [\n  "@myorg/foo",\n  "@myorg/bar"\n]\nenableGlobalCache: true\n',
+    'nodeLinker: node-modules\nnpmPreapprovedPackages: [\n"@myorg/foo"]\nenableGlobalCache: true\n',
     'nodeLinker: node-modules\nnpmPreapprovedPackages:\n# approved packages\n- "@myorg/foo"\nenableGlobalCache: true\n',
     'nodeLinker: node-modules\nnpmPreapprovedPackages:\n  - "@myorg/foo"\n\n  - "@myorg/bar"\nenableGlobalCache: true\n',
   ]) {
@@ -139,6 +153,13 @@ registry = "https://example.com/"
   );
   expect(yarnrcWithCreds).toContain('SECRET_TOKEN');
   expect(loadYaml(yarnrcWithCreds)).toHaveProperty('npmRegistries');
+
+  // A comment right before the next key documents that key, not the removed value; keep it.
+  const yarnrcWithComment = newGlobalYarnrcContent(
+    'npmPreapprovedPackages:\n  - "@myorg/foo"\n# Keep the global cache enabled for offline work.\nenableGlobalCache: true\n'
+  );
+  expect(yarnrcWithComment).toContain('# Keep the global cache enabled for offline work.');
+  expect(yarnrcWithComment).not.toContain('@myorg');
 });
 
 test('appends the gate even to files with broken syntax, preserving their content', () => {
