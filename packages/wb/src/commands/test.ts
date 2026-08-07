@@ -144,13 +144,16 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     // details of a unit-runner suite, so route those through the unit runner's output handling.
     // A skip-notice `echo` must stay on the default path: the unit runner's silent mode hides
     // successful output and would report the skipped suite as "E2E tests passed.".
-    const runE2eTestCommand = (script: string): Promise<number> =>
+    const runE2eTestCommand = (
+      script: string,
+      { exitIfFailed = options.exitIfFailed }: TestRunOptions = {}
+    ): Promise<number> =>
       scripts.usesUnitRunnerForE2e(project) && !script.startsWith('echo ')
         ? runUnitTestCommand(script, project, testArgv, {
-            exitIfFailed: options.exitIfFailed,
+            exitIfFailed,
             silentSuccessMessage: 'E2E tests passed.',
           })
-        : runTestCommand(script, project, testArgv, { exitIfFailed: options.exitIfFailed });
+        : runTestCommand(script, project, testArgv, { exitIfFailed });
 
     switch (testArgv.e2e) {
       case 'headless': {
@@ -178,6 +181,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
           project,
           e2eArgv,
           scripts,
+          runE2eTestCommand,
           buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs),
           forwardedPlaywrightArgs,
           options
@@ -190,6 +194,7 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
           project,
           e2eArgv,
           scripts,
+          runE2eTestCommand,
           buildPlaywrightArgsForE2E(e2eTargets, forwardedPlaywrightArgs, ['--debug']),
           forwardedPlaywrightArgs,
           options
@@ -286,6 +291,7 @@ async function testOnDocker(
   project: Project,
   argv: ArgumentsCamelCase<InferredOptionTypes<typeof builder & typeof argumentsBuilder>>,
   scripts: BaseScripts,
+  runE2eTestCommand: (script: string, options?: TestRunOptions) => Promise<number>,
   playwrightArgs?: string[],
   forwardedPlaywrightArgs?: string[],
   options: TestRunOptions = {}
@@ -297,13 +303,12 @@ async function testOnDocker(
   if (buildExitCode !== 0) {
     return buildExitCode;
   }
-  const testExitCode = await runTestCommand(
+  // exitIfFailed stays false so the Docker container is always stopped below.
+  const testExitCode = await runE2eTestCommand(
     await scripts.testE2EDocker(project, argv, {
       playwrightArgs,
       forwardedPlaywrightArgs,
     }),
-    project,
-    argv,
     { exitIfFailed: false }
   );
   const stopExitCode = await runWithSpawn(dockerScripts.stop(project), project, argv, {
