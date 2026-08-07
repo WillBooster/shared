@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { dump as dumpYaml, FAILSAFE_SCHEMA, load as loadYaml } from 'js-yaml';
+import { dump as dumpYaml, FAILSAFE_SCHEMA, loadAll as loadAllYaml } from 'js-yaml';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 
 import { logger } from '../logger.js';
@@ -92,15 +92,19 @@ export function newGlobalBunfigContent(existingContent: string | undefined): str
 
 /** Returns the canonical ~/.yarnrc.yml content with the managed gate enforced. */
 export function newGlobalYarnrcContent(existingContent: string | undefined): string {
-  // Parse exactly like Yarn itself: parseSyml = load(source, {schema: FAILSAFE_SCHEMA, json: true})
+  // Parse like Yarn itself: parseSyml uses load(source, {schema: FAILSAFE_SCHEMA, json: true})
   // (yarnpkg/berry packages/yarnpkg-parsers/sources/syml.ts). All scalars stay strings — the
   // default schema would corrupt digit-only credentials (0-prefix loss, float rounding) and turn
   // date-shaped values into Date objects — and duplicate keys overwrite instead of throwing, so a
   // file Yarn accepts is never mistaken for unparseable and wiped. Yarn coerces typed settings
   // from strings, so the quoting that dump adds to such scalars is behavior-neutral.
-  const config = parseTableSafely('.yarnrc.yml', () =>
-    loadYaml(existingContent ?? '', { schema: FAILSAFE_SCHEMA, json: true })
-  );
+  // loadAll instead of load: js-yaml v5's load throws "expected a document" on an absent, empty,
+  // or comment-only file, which Yarn treats as an empty config — a no-document parse must reach
+  // the empty-table path, not the unparseable-replacement warning.
+  const config = parseTableSafely('.yarnrc.yml', () => {
+    const documents = loadAllYaml(existingContent ?? '', { schema: FAILSAFE_SCHEMA, json: true });
+    return documents.length <= 1 ? documents[0] : documents;
+  });
   // Minutes as a plain number: Yarn's home-rc scalars all parse as strings (FAILSAFE_SCHEMA) and
   // miscUtils.parseDuration passes a unit-less value through in the setting's unit (minutes), so a
   // bare number is unambiguous, while duration strings were misparsed by the pre-DURATION versions
@@ -128,8 +132,8 @@ export function newGlobalNpmrcContent(existingContent: string | undefined): stri
 function parseTableSafely(fileLabel: string, parse: () => unknown): Record<string, unknown> {
   try {
     const parsed = parse();
-    // js-yaml returns undefined for an empty string but null for a comment-only or blank document;
-    // Yarn's parseViaJsYaml maps both to an empty config, so neither deserves a replacement warning.
+    // A contentless file (absent, blank, or comment-only) parses to undefined/null and maps to an
+    // empty config, exactly like Yarn's parseViaJsYaml, so it deserves no replacement warning.
     if (parsed === undefined || parsed === null) return {};
     const table = asTable(parsed);
     if (table !== parsed) {
