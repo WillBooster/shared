@@ -108,6 +108,12 @@ async function main(): Promise<void> {
 }
 
 async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: boolean): Promise<boolean> {
+  // Before anything else — even the Bun check below: the developer machine's global
+  // package-manager configs must receive the org's minimum-release-age policy on EVERY run,
+  // because they are what guards brand-new local projects that have no wbfy-generated repository
+  // config yet, and that protection must not depend on a working Bun installation.
+  await ensureGlobalReleaseAgeGates();
+
   // wbfy manages repositories through Bun + mise and runs `bun add` / `bun install`;
   // proceeding without Bun cannot produce or validate the managed lockfile.
   // The version floor matters too: older Bun silently ignores the generated bunfig.toml options
@@ -124,12 +130,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }
-
-  // Before (and independent of) any repository processing, including the already-applied skip
-  // below: the developer machine's global package-manager configs must receive the org's
-  // minimum-release-age policy on EVERY run, because they are what guards brand-new local projects
-  // that have no wbfy-generated repository config yet.
-  await ensureGlobalReleaseAgeGates();
 
   // A `-dirty-local` label identifies an edited checkout, whose next build produces different files
   // under the same label, so such a run is never treated as already applied.
