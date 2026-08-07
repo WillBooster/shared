@@ -35,7 +35,7 @@ import {
   hasDeclaredPackagesStarPattern,
   hasImplicitWorkspaceBaseline,
 } from '../utils/workspaceUtil.js';
-import { bunMinimumReleaseAgeExcludes, readBunMinimumReleaseAgeSeconds } from './bunfig.js';
+import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from './bunfig.js';
 
 const oxlintDeps = ['@willbooster/oxfmt-config', '@willbooster/oxlint-config', 'oxfmt', 'oxlint', 'oxlint-tsgolint'];
 const typescriptDependency = 'typescript';
@@ -63,6 +63,7 @@ const managedDependencyNames = new Set([
   ...oxlintDeps,
 ]);
 const latestDependencyVersionCache = new Map<string, string>();
+const packageAgeGateMs = bunMinimumReleaseAgeSeconds * 1000;
 const npmPackageTimesCache = new Map<string, Record<string, string>>();
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
 
@@ -1324,20 +1325,16 @@ function getDependencySections(jsonObj: PackageJson): Partial<Record<string, str
     .filter((section): section is Partial<Record<string, string>> => !!section);
 }
 
-function getLatestDependencyVersion(rootConfig: PackageConfig, dependency: string): string {
-  // The gate belongs in the key: a run spanning repositories with different minimumReleaseAge
-  // overrides must not serve one repository's version from another's cache entry.
-  const packageAgeGateMs = getPackageAgeGateMs(rootConfig);
-  const cacheKey = `${dependency} ${packageAgeGateMs}`;
-  const cachedVersion = latestDependencyVersionCache.get(cacheKey);
+function getLatestDependencyVersion(dependency: string): string {
+  const cachedVersion = latestDependencyVersionCache.get(dependency);
   if (cachedVersion) return cachedVersion;
 
-  const version = getDependencyVersionFromNpm(dependency, packageAgeGateMs);
-  latestDependencyVersionCache.set(cacheKey, version);
+  const version = getDependencyVersionFromNpm(dependency);
+  latestDependencyVersionCache.set(dependency, version);
   return version;
 }
 
-function getDependencyVersionFromNpm(dependency: string, packageAgeGateMs: number): string {
+function getDependencyVersionFromNpm(dependency: string): string {
   // Only our own packages (bunMinimumReleaseAgeExcludes) are exempt from the gate; every
   // third-party package, including the tooling wbfy pins, resolves to the newest release that
   // already cleared it, because Bun rejects an exact pin younger than minimumReleaseAge.
@@ -1345,21 +1342,21 @@ function getDependencyVersionFromNpm(dependency: string, packageAgeGateMs: numbe
     return getRawDependencyVersionFromNpm(dependency);
   }
 
-  return getLatestAgeGatedDependencyVersion(dependency, packageAgeGateMs);
+  return getLatestAgeGatedDependencyVersion(dependency);
 }
 
-function getLatestAgeGatedDependencyVersion(dependency: string, packageAgeGateMs: number): string {
+function getLatestAgeGatedDependencyVersion(dependency: string): string {
   const times = getNpmPackageTimes(dependency);
   const latestVersion = getRawDependencyVersionFromNpm(dependency);
-  if (latestVersion !== '*' && isPublishedBeforeAgeGate(times[latestVersion], packageAgeGateMs)) {
+  if (latestVersion !== '*' && isPublishedBeforeAgeGate(times[latestVersion])) {
     return latestVersion;
   }
 
-  return getAgeGatedVersionsDescending(times, packageAgeGateMs)[0] ?? '*';
+  return getAgeGatedVersionsDescending(times)[0] ?? '*';
 }
 
 /** Every stable release in `times` that already cleared the age gate, newest first. */
-function getAgeGatedVersionsDescending(times: Record<string, string>, packageAgeGateMs: number): string[] {
+function getAgeGatedVersionsDescending(times: Record<string, string>): string[] {
   const now = Date.now();
   return Object.entries(times)
     .filter(([version]) => semver.valid(version))
@@ -1370,7 +1367,7 @@ function getAgeGatedVersionsDescending(times: Record<string, string>, packageAge
     .map(([version]) => version);
 }
 
-function isPublishedBeforeAgeGate(publishedAt: string | undefined, packageAgeGateMs: number): boolean {
+function isPublishedBeforeAgeGate(publishedAt: string | undefined): boolean {
   if (!publishedAt) return false;
   const publishedTime = Date.parse(publishedAt);
   return Number.isFinite(publishedTime) && Date.now() - publishedTime >= packageAgeGateMs;
@@ -1401,10 +1398,6 @@ function shouldApplyPackageAgeGate(dependency: string): boolean {
   return !bunMinimumReleaseAgeExcludes.some((pattern) => doesPackagePatternMatch(pattern, dependency));
 }
 
-function getPackageAgeGateMs(rootConfig: PackageConfig): number {
-  return readBunMinimumReleaseAgeSeconds(rootConfig.dirPath) * 1000;
-}
-
 function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
   if (pattern === dependency) return true;
   if (!pattern.includes('*')) return false;
@@ -1415,8 +1408,7 @@ function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
 
 function getRawDependencyVersionFromNpm(dependency: string): string {
   // No cache here: the only caller chain goes through getLatestDependencyVersion, which already
-  // memoizes per dependency and age gate, so this can run at most once per (dependency, age gate)
-  // — twice for one dependency only across repositories whose minimumReleaseAge differs.
+  // memoizes per dependency, so this can run at most once per dependency.
   return spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
 }
 
@@ -1496,7 +1488,7 @@ function shouldUpdateExistingManagedDependency(
 const lastKnownPreV7TypescriptVersion = '6.0.3';
 
 function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
-  const latestVersion = getLatestDependencyVersion(rootConfig, dependency);
+  const latestVersion = getLatestDependencyVersion(dependency);
   if (dependency === typescriptDependency && isBlitzRepository(config, rootConfig)) {
     // Blitz pins Next.js 15, whose build-time `verifyTypeScriptSetup` requires the classic
     // `typescript` compiler API; the TypeScript 7 `typescript` package is the tsgo binary
@@ -1511,10 +1503,7 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
     // and Bun refuses to resolve one published inside the minimum-release-age window. There is no
     // ungated fallback — without publication metadata the age of a range result is unknown, so a
     // partial registry failure would otherwise write a version Bun then refuses to install.
-    return (
-      getLatestAgeGatedVersionBelow(typescriptDependency, '7.0.0', getPackageAgeGateMs(rootConfig)) ??
-      lastKnownPreV7TypescriptVersion
-    );
+    return getLatestAgeGatedVersionBelow(typescriptDependency, '7.0.0') ?? lastKnownPreV7TypescriptVersion;
   }
   return latestVersion;
 }
@@ -1523,12 +1512,8 @@ function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageC
  * The highest release of `packageName` below `exclusiveUpperBound` that already cleared the age
  * gate, or undefined when the registry lookup fails or no such release exists yet.
  */
-function getLatestAgeGatedVersionBelow(
-  packageName: string,
-  exclusiveUpperBound: string,
-  packageAgeGateMs: number
-): string | undefined {
-  return getAgeGatedVersionsDescending(getNpmPackageTimes(packageName), packageAgeGateMs).find((version) =>
+function getLatestAgeGatedVersionBelow(packageName: string, exclusiveUpperBound: string): string | undefined {
+  return getAgeGatedVersionsDescending(getNpmPackageTimes(packageName)).find((version) =>
     semver.lt(version, exclusiveUpperBound)
   );
 }
