@@ -50,13 +50,10 @@ class PlainAppScripts extends BaseScripts {
   override testE2EProduction(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
     return this.testE2EWithoutServer(project, argv, options);
   }
-  override testE2EDocker(): Promise<string> {
-    return Promise.resolve(`echo 'do nothing.'`);
-  }
-  // A plain project's e2e tests need credentials or paid services (e.g. real LLM calls), which CI
-  // does not provide; a Playwright fixture with its own `webServer` is self-contained and CI-safe.
-  override runsE2eOnCi(project: Project): boolean {
-    return project.hasPlaywrightWebServerConfig;
+  // A plain project has no server to containerize; `wb test-on-ci` must still run every non-debug
+  // test, so the Docker path runs the same suite on the host as the non-Docker path.
+  override testE2EDocker(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    return this.testE2EWithoutServer(project, argv, options);
   }
   override usesUnitRunnerForE2e(project: Project): boolean {
     return !project.hasPlaywrightConfig;
