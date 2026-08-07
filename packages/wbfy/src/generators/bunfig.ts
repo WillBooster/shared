@@ -18,90 +18,20 @@ interface BunfigToml {
   };
 }
 
-export const bunMinimumReleaseAgeSeconds = 432_000;
+export const bunMinimumReleaseAgeSeconds = 604_800;
 
-// Platform sets must match each package's optionalDependencies on npm because
-// Bun checks all platform binaries in the lockfile, not just the current one.
-// Keep win32 entries even though we drop Windows support: omitting any
-// platform makes `bun add` fail until the minimum-release-age window elapses.
-const typescriptPlatforms = [
-  'aix-ppc64',
-  'darwin-arm64',
-  'darwin-x64',
-  'freebsd-arm64',
-  'freebsd-x64',
-  'linux-arm',
-  'linux-arm64',
-  'linux-loong64',
-  'linux-mips64el',
-  'linux-ppc64',
-  'linux-riscv64',
-  'linux-s390x',
-  'linux-x64',
-  'netbsd-arm64',
-  'netbsd-x64',
-  'openbsd-arm64',
-  'openbsd-x64',
-  'sunos-x64',
-  'win32-arm64',
-  'win32-x64',
-];
-const oxcBindingPlatforms = [
-  'android-arm-eabi',
-  'android-arm64',
-  'darwin-arm64',
-  'darwin-x64',
-  'freebsd-x64',
-  'linux-arm-gnueabihf',
-  'linux-arm-musleabihf',
-  'linux-arm64-gnu',
-  'linux-arm64-musl',
-  'linux-ppc64-gnu',
-  'linux-riscv64-gnu',
-  'linux-riscv64-musl',
-  'linux-s390x-gnu',
-  'linux-x64-gnu',
-  'linux-x64-musl',
-  'openharmony-arm64',
-  'win32-arm64-msvc',
-  'win32-ia32-msvc',
-  'win32-x64-msvc',
-];
-const tsgolintPlatforms = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64', 'win32-arm64', 'win32-x64'];
-const nextRspackPlatforms = [
-  'android-arm-eabi',
-  'android-arm64',
-  'darwin-arm64',
-  'darwin-x64',
-  'linux-arm-gnueabihf',
-  'linux-arm64-gnu',
-  'linux-arm64-musl',
-  'linux-x64-gnu',
-  'linux-x64-musl',
-  'win32-arm64-msvc',
-  'win32-ia32-msvc',
-  'win32-x64-msvc',
-];
-const nextSwcPlatforms = [
-  'android-arm-eabi',
-  'android-arm64',
-  'darwin-arm64',
-  'darwin-x64',
-  'freebsd-x64',
-  'linux-arm-gnueabihf',
-  'linux-arm64-gnu',
-  'linux-arm64-musl',
-  'linux-x64-gnu',
-  'linux-x64-musl',
-  'wasm-nodejs',
-  'wasm-web',
-  'win32-arm64-msvc',
-  'win32-ia32-msvc',
-  'win32-x64-msvc',
-];
+// Every org default wbfy has shipped before the current one. A preserved value matching one of
+// these came from an earlier wbfy run, not from a deliberate repository choice, so it is replaced
+// with the current default — otherwise raising bunMinimumReleaseAgeSeconds would reach only
+// repositories wbfy has never generated. Append the outgoing value here whenever it changes.
+const previousBunMinimumReleaseAgeSeconds = new Set([432_000]);
 
+// Only our own packages are exempt from the minimum release age: we control who publishes them,
+// so a compromised release cannot reach us through an upstream maintainer's stolen credentials.
+// Third-party packages — including tooling wbfy pins itself — stay age-gated;
+// getLatestAgeGatedDependencyVersion in packageJson.ts pins the newest release old enough to pass
+// the gate, so pinning keeps working without an exemption.
 export const bunMinimumReleaseAgeExcludes = [
-  // ---------- START: We believe our packages are safe ----------
   '@exercode/problem-utils',
   '@willbooster-private/agentic-workflows',
   '@willbooster-private/llm-proxy',
@@ -125,39 +55,31 @@ export const bunMinimumReleaseAgeExcludes = [
   'gen-i18n-ts',
   'one-way-git-sync',
   'vinext-progress',
-  // ---------- END: We believe our packages are safe ----------
-
-  // wbfy pins these tooling packages and may apply them immediately after a
-  // release, before the global minimum-release-age window has elapsed.
-  'typescript',
-  ...typescriptPlatforms.map((platform) => `@typescript/typescript-${platform}`),
-  // Bun itself releases its first-party type packages in lockstep with the
-  // runtime, so generated Bun repos must be able to install them immediately.
-  '@types/bun',
-  'bun-types',
-  'oxfmt',
-  ...oxcBindingPlatforms.map((platform) => `@oxfmt/binding-${platform}`),
-  'oxlint',
-  ...oxcBindingPlatforms.map((platform) => `@oxlint/binding-${platform}`),
-  'oxlint-tsgolint',
-  ...tsgolintPlatforms.map((platform) => `@oxlint-tsgolint/${platform}`),
-  '@next/env',
-  '@next/font',
-  '@next/rspack-binding',
-  ...nextRspackPlatforms.map((platform) => `@next/rspack-binding-${platform}`),
-  ...nextSwcPlatforms.map((platform) => `@next/swc-${platform}`),
-  '@next/third-parties',
-  'next',
-  'react',
-  'react-dom',
-  'react-is',
-  'react-server-dom-webpack',
 ];
 
 export function readBunGlobalStore(rootDirPath: string): boolean | undefined {
   const filePath = path.resolve(rootDirPath, 'bunfig.toml');
   if (!fs.existsSync(filePath)) return undefined;
   return parseBunfigToml(fs.readFileSync(filePath, 'utf8'))?.install?.globalStore;
+}
+
+/**
+ * The minimum release age Bun enforces in `rootDirPath`, in seconds: the repository-specific
+ * override newContent preserves, or the org default when the repository has none.
+ */
+export function readBunMinimumReleaseAgeSeconds(rootDirPath: string): number {
+  const filePath = path.resolve(rootDirPath, 'bunfig.toml');
+  if (!fs.existsSync(filePath)) return bunMinimumReleaseAgeSeconds;
+  return resolveMinimumReleaseAgeSeconds(parseBunfigToml(fs.readFileSync(filePath, 'utf8')));
+}
+
+/** The gate the regenerated bunfig.toml will carry: a genuine override, or the current org default. */
+function resolveMinimumReleaseAgeSeconds(bunfigToml: BunfigToml | undefined): number {
+  const existingSeconds = bunfigToml?.install?.minimumReleaseAge;
+  if (existingSeconds === undefined || previousBunMinimumReleaseAgeSeconds.has(existingSeconds)) {
+    return bunMinimumReleaseAgeSeconds;
+  }
+  return existingSeconds;
 }
 
 export function resolveBunGlobalStore(
@@ -198,9 +120,10 @@ const newContent = (existingContent: string | undefined, config: PackageConfig, 
   // entry is dropped on regeneration. Dropping is fail-safe — an uncovered package becomes
   // age-gated and surfaces at install time instead of weakening the gate. A repository that
   // genuinely needs an exclusion must add it to bunMinimumReleaseAgeExcludes in wbfy so all
-  // repositories share the same vetted list. The custom npmMinimalAgeGate (or an
-  // already-customized minimumReleaseAge) is still carried over — only the excludes are locked.
-  const minimumReleaseAgeSeconds = bunfigToml?.install?.minimumReleaseAge ?? bunMinimumReleaseAgeSeconds;
+  // repositories share the same vetted list. A genuinely customized minimumReleaseAge is still
+  // carried over — only the excludes are locked, and a value left over from an earlier org default
+  // is migrated (see resolveMinimumReleaseAgeSeconds).
+  const minimumReleaseAgeSeconds = resolveMinimumReleaseAgeSeconds(bunfigToml);
   // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
@@ -222,7 +145,7 @@ exact = ${bunfigToml?.install?.exact === false ? 'false' : 'true'}
 ${globalStoreLine}
 linker = "isolated"
 publicHoistPattern = ["tsx", "undici-types"]
-minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 5 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 5 days)`}
+minimumReleaseAge = ${minimumReleaseAgeSeconds}${minimumReleaseAgeSeconds === bunMinimumReleaseAgeSeconds ? ' # 7 days' : ` # repository-specific override (org default: ${bunMinimumReleaseAgeSeconds} = 7 days)`}
 # minimumReleaseAgeExcludes is managed by wbfy — repository-specific entries are prohibited and
 # removed on every run (the minimumReleaseAge above may still be repository-specific). To exclude
 # a package, add it to bunMinimumReleaseAgeExcludes in WillBooster/shared

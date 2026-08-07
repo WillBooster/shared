@@ -59,9 +59,10 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
  * the newest locally INSTALLED matching version — not the newest release — so only an exact pin
  * at or above the minimum proves the floor. Selectors that cannot prove it are replaced with the
  * Bun version running wbfy (which the startup guard proved meets the floor) rather than the
- * frozen minimum, so repositories keep tracking the current toolchain — and stay aligned with
- * @types/bun, which wbfy updates to the latest release. Handles mise's string, array, and
- * `{ version = "…" }` tool forms.
+ * frozen minimum, so repositories keep tracking the current toolchain. The runtime pin is
+ * independent of @types/bun: that package is age-gated like every other third-party dependency, so
+ * it can sit behind the pinned runtime until the minimum-release-age window elapses. Handles
+ * mise's string, array, and `{ version = "…" }` tool forms.
  */
 function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string): unknown {
   if (typeof bunVersion === 'string') {
