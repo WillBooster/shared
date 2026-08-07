@@ -34,6 +34,7 @@ const previousBunMinimumReleaseAgeSeconds = new Set([432_000]);
 export const bunMinimumReleaseAgeExcludes = [
   '@exercode/problem-utils',
   '@willbooster-private/agentic-workflows',
+  '@willbooster-private/ai-ocr',
   '@willbooster-private/llm-proxy',
   '@willbooster/agent-skills',
   '@willbooster/babel-configs',
