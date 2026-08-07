@@ -68,14 +68,21 @@ bunfig=$(
 # Staged and renamed into place: a package manager installing on this machine while the configs are
 # rewritten must never read a half-written file and resolve packages ungated or from the wrong
 # registry. It also replaces a pre-existing symlink instead of writing through it.
+# The staging file holds the credentials kept from the existing config, so an aborted or signalled
+# run must not leave it behind. One write finishes before the next starts, so a single global path
+# covers them all.
+staging=''
+trap 'rm -f "$staging"' EXIT INT TERM
+
 writeFile() { # $1: content, $2: destination
+  # `mv` would move the staging file INTO a destination directory and report success, leaving the
+  # config unwritten while this script claims the policy was applied.
+  [ ! -d "$2" ] || { echo "$2 is a directory, not a package-manager config." >&2; exit 1; }
   # mktemp, not a fixed name: two concurrent runs would otherwise publish each other's half-written
   # staging file. It also creates the file with mode 600, which the rename preserves.
-  local staging
   staging=$(mktemp "$2.XXXXXX")
-  # The staging file holds the credentials kept from the existing config, so a failed write must not
-  # leave it behind.
-  { printf '%s\n' "$1" > "$staging" && mv -f "$staging" "$2"; } || { rm -f "$staging"; return 1; }
+  printf '%s\n' "$1" > "$staging"
+  mv -f "$staging" "$2"
 }
 
 writeFile "$npmrc" "$HOME/.npmrc"
