@@ -1,14 +1,21 @@
 #!/bin/bash
 # Writes the organization's minimum-release-age policy — releaseAgeGate.json next to this script is
-# its single source of truth — into every global package-manager config this machine can read:
+# its single source of truth — into the global package-manager configs of the user running it:
 # ~/.npmrc (npm, bun, yarn 1), ~/.yarnrc.yml (Yarn Berry) and ~/.bunfig.toml (bun), plus the same
 # files under $XDG_CONFIG_HOME (bun reads its global configs ONLY from there once that variable is
-# set) and under root's home (self-hosted setup runs `sudo npm install --global`).
+# set). Run it once per user whose configs must be gated: `sudo -H env -u XDG_CONFIG_HOME bash
+# applyReleaseAgeGate.sh` covers root, whose configs `sudo npm install --global` reads.
 #
-# The gate keys are always rewritten, so a hand-weakened gate never survives; the registry settings
-# that precede them are kept as they are, or replaced by $NPMRC_HEADER / $YARNRC_HEADER when the
-# caller provisions them (self-host-utils passes the Takumi Guard proxy that way). Run this as the
-# user whose configs it should update. Only up-to-date package managers are supported: npm >= 12
+# Every managed setting is rewritten on each run, so a hand-weakened gate never survives:
+# - .npmrc and .yarnrc.yml keep every setting except the gate keys, because npm and Yarn append
+#   settings a user writes later (e.g. `npm config set`, `yarn config set --home`) below them.
+#   $NPMRC_HEADER / $YARNRC_HEADER replace what is kept when the caller provisions those settings
+#   itself (self-host-utils passes the Takumi Guard proxy that way).
+# - .bunfig.toml is replaced wholesale: bun reads its registry settings and credentials from
+#   .npmrc, so the organization keeps nothing else in this file.
+#
+# A failed write aborts the run instead of moving on: leaving some package managers ungated must be
+# reported, not silently downgraded. Only up-to-date package managers are supported: npm >= 12
 # (`min-release-age-exclude`), Yarn Berry >= 4.11 (`npmMinimalAgeGate`) and bun >= 1.3
 # (`minimumReleaseAge`) — older ones must be upgraded instead of accommodated.
 
@@ -24,8 +31,11 @@ emitHeader() {
   return 0
 }
 
-npmrcHeader=${NPMRC_HEADER-$(sed '/^min-release-age/,$d' "$HOME/.npmrc" 2> /dev/null || true)}
-yarnrcHeader=${YARNRC_HEADER-$(sed '/^npmMinimalAgeGate:/,$d' "$HOME/.yarnrc.yml" 2> /dev/null || true)}
+npmrcHeader=${NPMRC_HEADER-$(sed '/^min-release-age/d' "$HOME/.npmrc" 2> /dev/null || true)}
+# Drop the two managed top-level keys with their indented values, keep every other key.
+yarnrcHeader=${YARNRC_HEADER-$(awk '
+  /^[^ ]/ { drop = ($1 == "npmMinimalAgeGate:" || $1 == "npmPreapprovedPackages:") }
+  !drop' "$HOME/.yarnrc.yml" 2> /dev/null || true)}
 
 npmrc=$(
   emitHeader "$npmrcHeader"
@@ -48,16 +58,14 @@ bunfig=$(
   echo ']'
 )
 
-write() { # $1: directory, $2: command prefix granting write access to it
-  $2 mkdir -p "$1"
-  printf '%s\n' "$npmrc" | $2 tee "$1/.npmrc" > /dev/null
-  printf '%s\n' "$yarnrc" | $2 tee "$1/.yarnrc.yml" > /dev/null
-  printf '%s\n' "$bunfig" | $2 tee "$1/.bunfig.toml" > /dev/null
+write() { # $1: directory
+  mkdir -p "$1"
+  printf '%s\n' "$npmrc" > "$1/.npmrc"
+  printf '%s\n' "$yarnrc" > "$1/.yarnrc.yml"
+  printf '%s\n' "$bunfig" > "$1/.bunfig.toml"
 }
 
-write "$HOME" ''
-if [ -n "${XDG_CONFIG_HOME:-}" ]; then write "$XDG_CONFIG_HOME" ''; fi
-# -n: a developer machine without passwordless sudo skips root's configs instead of prompting.
-if sudo -n true 2> /dev/null; then write ~root sudo; fi
+write "$HOME"
+if [ -n "${XDG_CONFIG_HOME:-}" ]; then write "$XDG_CONFIG_HOME"; fi
 
-echo "Applied the ${days}-day minimum-release-age policy to the global package-manager configs."
+echo "Applied the ${days}-day minimum-release-age policy to ${HOME}'s global package-manager configs."

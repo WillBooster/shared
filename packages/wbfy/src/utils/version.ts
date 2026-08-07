@@ -122,6 +122,8 @@ function getGitDirtyState(gitRootDirPath: string): boolean | undefined {
       '--',
       `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/src/**`,
       `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/bin/**`,
+      // configs/ holds the release-age policy wbfy writes into every generated repository.
+      `:(glob)${path.dirname(wbfyDirPathInRepo)}/*/configs/**`,
     ],
     { cwd: gitRootDirPath, encoding: 'utf8', stdio: 'pipe' }
   );

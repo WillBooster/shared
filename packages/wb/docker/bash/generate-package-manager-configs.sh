@@ -11,6 +11,11 @@
 
 set -euo pipefail
 
+# The image's only release-age gate is this file, so an unregenerated bunfig.toml (older than wbfy's
+# gate) must fail the build instead of silently producing an ungated image.
+grep -q '^minimumReleaseAge = [0-9]' bunfig.toml ||
+  { echo 'bunfig.toml has no minimumReleaseAge; run wbfy to regenerate it.' >&2; exit 1; }
+
 awk '/^\[/ { inTestSection = ($0 ~ /^\[test/) } !inTestSection' bunfig.toml |
   sed 's/^globalStore = true$/globalStore = false/' > bunfig.toml.tmp
 mv bunfig.toml.tmp bunfig.toml

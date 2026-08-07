@@ -52,12 +52,12 @@ export async function generateBunfigToml(config: PackageConfig, useGlobalStore: 
   return logger.functionIgnoringException('generateBunfigToml', async () => {
     const filePath = path.resolve(config.dirPath, 'bunfig.toml');
     const existingContent = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : undefined;
-    const content = newContent(existingContent, config, useGlobalStore);
+    const content = newContent(existingContent, useGlobalStore);
     await promisePool.run(() => fsUtil.generateFile(filePath, content));
   });
 }
 
-const newContent = (existingContent: string | undefined, config: PackageConfig, useGlobalStore: boolean): string => {
+const newContent = (existingContent: string | undefined, useGlobalStore: boolean): string => {
   const bunfigToml = parseBunfigToml(existingContent);
   // minimumReleaseAge and minimumReleaseAgeExcludes are org policy, never repository policy: both
   // are rewritten to configs/releaseAgeGate.json's values on every run, so a hand-edited (weakened)
