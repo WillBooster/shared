@@ -80,4 +80,21 @@ minimumReleaseAgeExcludes = [
 
     await fs.rm(workDirPath, { force: true, recursive: true });
   });
+
+  it('fails fast on a bunfig.toml not regenerated since wbfy introduced the release-age gate', async () => {
+    const workDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-pm-configs-'));
+    const homeDirPath = path.join(workDirPath, 'home');
+    await fs.mkdir(homeDirPath);
+    await fs.writeFile(path.join(workDirPath, 'bunfig.toml'), 'env = false\n\n[install]\nexact = true\n');
+
+    const ret = childProcess.spawnSync('bash', [scriptPath], {
+      cwd: workDirPath,
+      env: { ...process.env, HOME: homeDirPath },
+      encoding: 'utf8',
+    });
+    expect(ret.status).toBe(1);
+    expect(ret.stderr).toContain('minimumReleaseAge');
+
+    await fs.rm(workDirPath, { force: true, recursive: true });
+  });
 });
