@@ -17,7 +17,7 @@ import { isCI } from '../utils/ci.js';
 import { buildShellEnvironmentAssignment, shellEscapeArgument } from '../utils/shell.js';
 import { findWranglerConfigPath } from '../utils/wrangler.js';
 import type { ResolvedWranglerConfig, WranglerD1Database } from '../utils/wranglerConfig.js';
-import { resolveWranglerConfigForEnv, usesWranglerNativeMigrations } from '../utils/wranglerConfig.js';
+import { resolveWranglerConfigForEnv, selectD1MigrationMechanisms } from '../utils/wranglerConfig.js';
 
 /**
  * Keys that drive the deploy itself (or are meaningful only locally) and thus must never be
@@ -127,38 +127,18 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
     const accountId = resolvedConfig.accountId ?? project.env.CLOUDFLARE_ACCOUNT_ID;
     // Prefer wrangler-native migrations whenever the resolved environment's D1 bindings have an
-    // existing migrations directory. A drizzle-orm dependency alone does not imply the project
-    // migrates D1 with drizzle-kit's d1-http driver: the explicit marker is a drizzle config
-    // whose dialect/driver targets sqlite / d1-http / durable-sqlite (see usesDrizzleKitForD1;
+    // explicit migrations pattern or flat SQL migrations. A drizzle-orm dependency alone does
+    // not imply the project migrates D1 with drizzle-kit's d1-http driver: the explicit marker is
+    // a drizzle config whose dialect/driver targets sqlite / d1-http / durable-sqlite (see usesDrizzleKitForD1;
     // https://github.com/WillBooster/shared/issues/942). A drizzle config targeting another
     // database (e.g. PostgreSQL via Hyperdrive) leaves the D1 bindings unmanaged by wb deploy.
-    const wranglerNativeD1Databases = resolvedConfig.d1Databases.filter((database) =>
-      usesWranglerNativeMigrations(project, database)
-    );
     const drizzleKitManagesD1 = usesDrizzleKitForD1(project);
-    if (
-      drizzleKitManagesD1 &&
-      wranglerNativeD1Databases.length > 0 &&
-      wranglerNativeD1Databases.length < resolvedConfig.d1Databases.length
-    ) {
-      // Migrating only the wrangler-native subset would silently deploy code against the
-      // other, unmigrated databases.
-      console.error(
-        chalk.red('wb deploy does not support mixing wrangler-native and non-native D1 migration layouts.')
-      );
+    const { drizzleD1Database, errorMessage, unmanagedD1Databases, wranglerNativeD1Databases } =
+      selectD1MigrationMechanisms(project, resolvedConfig.d1Databases, drizzleKitManagesD1);
+    if (errorMessage) {
+      console.error(chalk.red(errorMessage));
       process.exit(1);
     }
-    const drizzleD1Database =
-      wranglerNativeD1Databases.length === 0 && drizzleKitManagesD1 ? resolvedConfig.d1Databases[0] : undefined;
-    if (wranglerNativeD1Databases.length === 0 && drizzleKitManagesD1 && resolvedConfig.d1Databases.length > 1) {
-      console.error(
-        chalk.red('wb deploy supports drizzle-kit migrations only for a single D1 binding; found multiple.')
-      );
-      process.exit(1);
-    }
-    const managedD1Databases = new Set(wranglerNativeD1Databases);
-    if (drizzleD1Database) managedD1Databases.add(drizzleD1Database);
-    const unmanagedD1Databases = resolvedConfig.d1Databases.filter((database) => !managedD1Databases.has(database));
     if (unmanagedD1Databases.length > 0) {
       // Say so out loud instead of silently deploying code against unmigrated databases: the
       // drizzle marker detection is heuristic (text scan of drizzle.config.*), so a project that
@@ -368,7 +348,7 @@ export const deployCommand: CommandModule<unknown, DeployCommandOptions> = {
     }
 
     // 3. Apply D1 migrations to the remote database with the project's single migration
-    //    mechanism (wrangler-native when a migrations directory exists, else drizzle-kit when
+    //    mechanism (wrangler-native for an explicit pattern or flat SQL, else drizzle-kit when
     //    the drizzle config targets sqlite/d1-http/durable-sqlite). Migrations must be backward
     //    compatible: the old Worker serves
     //    traffic until the deploy below.

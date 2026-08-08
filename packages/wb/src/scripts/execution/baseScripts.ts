@@ -6,16 +6,12 @@ import { isProjectEnvironment } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
-import {
-  findD1MigrationsDirPath,
-  findWranglerConfigPath,
-  getLocalWranglerStateDir,
-  wrapWithLocalD1DatabaseUrl,
-} from '../../utils/wrangler.js';
+import { findWranglerConfigPath, getLocalWranglerStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
+import { resolveWranglerConfig, selectD1MigrationMechanisms } from '../../utils/wranglerConfig.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
-import { drizzleScripts } from '../drizzleScripts.js';
+import { drizzleScripts, findDrizzleConfig, usesDrizzleKitForD1 } from '../drizzleScripts.js';
 import { prismaScripts } from '../prismaScripts.js';
 
 export interface TestE2EOptions {
@@ -140,17 +136,37 @@ export abstract class BaseScripts {
       isProjectEnvironment(project, 'test') && findWranglerConfigPath(project)
         ? [`rm -Rf "${getLocalWranglerStateDir(project)}"`]
         : [];
-    // A project whose D1 bindings carry wrangler-native migrations applies them with wrangler
-    // (see WorkersScripts / buildD1MigrationsApplyCommand). Running drizzle-kit migrate against
-    // the same local D1 would apply the same SQL twice — drizzle's generated statements are not
-    // idempotent (`CREATE INDEX` without IF NOT EXISTS) — so drizzle stays ORM-only there.
-    const migratesD1WithWrangler = !!findD1MigrationsDirPath(project);
+    const d1Databases = resolveWranglerConfig(project)?.d1Databases ?? [];
+    const drizzleKitManagesD1 = usesDrizzleKitForD1(project);
+    const { drizzleD1Database, errorMessage, unmanagedD1Databases } = selectD1MigrationMechanisms(
+      project,
+      d1Databases,
+      drizzleKitManagesD1
+    );
+    if (errorMessage) throw new Error(errorMessage);
+    if (unmanagedD1Databases.length > 0) {
+      console.warn(
+        `No D1 migration mechanism detected for ${unmanagedD1Databases
+          .map((database) => database.binding ?? database.database_name ?? 'unnamed binding')
+          .join(', ')}; wb will not run local D1 migrations for them.`
+      );
+    }
+    // The start commands apply wrangler-native migrations separately. Drizzle must stay ORM-only
+    // for those bindings because its generated SQL is not idempotent. A config targeting another
+    // database still needs to migrate that database, without receiving the local D1 URL.
+    const drizzleMigrationCommand = !project.hasDrizzle
+      ? undefined
+      : drizzleD1Database
+        ? wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))
+        : d1Databases.length === 0
+          ? drizzleScripts.migrateForStart(project)
+          : !drizzleKitManagesD1 && findDrizzleConfig(project)
+            ? drizzleScripts.migrate(project)
+            : undefined;
     return [
       ...wranglerStateWipeCommands,
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
-      ...(project.hasDrizzle && !migratesD1WithWrangler
-        ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))]
-        : []),
+      ...(drizzleMigrationCommand ? [drizzleMigrationCommand] : []),
     ];
   }
   // ------------ END: start commands ------------

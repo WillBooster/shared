@@ -16,6 +16,13 @@ export interface WranglerD1Database {
   migrations_pattern?: string;
 }
 
+export interface D1MigrationMechanisms {
+  drizzleD1Database?: WranglerD1Database;
+  errorMessage?: string;
+  unmanagedD1Databases: WranglerD1Database[];
+  wranglerNativeD1Databases: WranglerD1Database[];
+}
+
 /**
  * Whether the D1 binding uses wrangler-native migrations that `wrangler d1 migrations apply`
  * would actually discover: an explicit `migrations_pattern` opts in, otherwise the migrations
@@ -31,6 +38,36 @@ export function usesWranglerNativeMigrations(project: Pick<Project, 'dirPath'>, 
   const migrationsDirPath = path.resolve(project.dirPath, database.migrations_dir ?? 'migrations');
   if (!fs.existsSync(migrationsDirPath)) return false;
   return fs.readdirSync(migrationsDirPath).some((fileName) => fileName.endsWith('.sql'));
+}
+
+export function selectD1MigrationMechanisms(
+  project: Pick<Project, 'dirPath'>,
+  d1Databases: WranglerD1Database[],
+  drizzleKitManagesD1: boolean
+): D1MigrationMechanisms {
+  const wranglerNativeD1Databases = d1Databases.filter((database) => usesWranglerNativeMigrations(project, database));
+  const hasMixedLayouts =
+    drizzleKitManagesD1 &&
+    wranglerNativeD1Databases.length > 0 &&
+    wranglerNativeD1Databases.length < d1Databases.length;
+  const hasMultipleDrizzleBindings =
+    wranglerNativeD1Databases.length === 0 && drizzleKitManagesD1 && d1Databases.length > 1;
+  const errorMessage = hasMixedLayouts
+    ? 'wb does not support mixing wrangler-native and non-native D1 migration layouts.'
+    : hasMultipleDrizzleBindings
+      ? 'wb supports drizzle-kit migrations only for a single D1 binding; found multiple.'
+      : undefined;
+  const drizzleD1Database =
+    !errorMessage && wranglerNativeD1Databases.length === 0 && drizzleKitManagesD1 ? d1Databases[0] : undefined;
+  const managedD1Databases = new Set(wranglerNativeD1Databases);
+  if (drizzleD1Database) managedD1Databases.add(drizzleD1Database);
+
+  return {
+    drizzleD1Database,
+    errorMessage,
+    unmanagedD1Databases: d1Databases.filter((database) => !managedD1Databases.has(database)),
+    wranglerNativeD1Databases,
+  };
 }
 
 const NAME_KEYED_BINDING_PARENTS = new Set(['bindings', 'send_email', 'ratelimits']);
@@ -101,6 +138,11 @@ interface RawWranglerConfig {
   env?: Record<string, RawWranglerConfig>;
 }
 
+export function resolveWranglerConfig(project: Pick<Project, 'dirPath'>): ResolvedWranglerConfig | undefined {
+  const config = readWranglerConfig(project);
+  return config ? resolveTopLevelConfig(config) : undefined;
+}
+
 // Workers Sites implicitly binds its KV namespace as __STATIC_CONTENT.
 function siteBindingNames(config: RawWranglerConfig, envConfig?: RawWranglerConfig): string[] {
   return (envConfig?.site ?? config.site) ? ['__STATIC_CONTENT'] : [];
@@ -115,21 +157,7 @@ export function resolveWranglerConfigForEnv(
   project: Pick<Project, 'dirPath'>,
   envName: string
 ): ResolvedWranglerConfig | undefined {
-  const configPath = findWranglerConfigPath(project);
-  if (!configPath) return;
-  if (path.extname(configPath) === '.toml') {
-    throw new Error('wb deploy supports wrangler.jsonc/wrangler.json configs only; migrate wrangler.toml first.');
-  }
-
-  // jsonc-parser is fault tolerant and would return a partial object for malformed input,
-  // which could migrate a remote database from a half-read config; reject any parse error.
-  const parseErrors: ParseError[] = [];
-  const config = parse(fs.readFileSync(configPath, 'utf8'), parseErrors, {
-    allowTrailingComma: true,
-  }) as RawWranglerConfig | undefined;
-  if (parseErrors.length > 0) {
-    throw new Error(`Failed to parse ${configPath}: ${parseErrors.length} JSONC syntax error(s).`);
-  }
+  const config = readWranglerConfig(project);
   if (!config) return;
 
   const envConfig = config.env?.[envName];
@@ -165,14 +193,37 @@ export function resolveWranglerConfigForEnv(
         requiredSecretNames: envConfig.secrets?.required ?? [],
         usesEnvSection: true,
       }
-    : {
-        workerName: config.name,
-        accountId: config.account_id,
-        varKeys: Object.keys(config.vars ?? {}),
-        vars: config.vars ?? {},
-        bindingNames: [...collectBindingNames(config), ...siteBindingNames(config)],
-        d1Databases: config.d1_databases ?? [],
-        requiredSecretNames: config.secrets?.required ?? [],
-        usesEnvSection: false,
-      };
+    : resolveTopLevelConfig(config);
+}
+
+function readWranglerConfig(project: Pick<Project, 'dirPath'>): RawWranglerConfig | undefined {
+  const configPath = findWranglerConfigPath(project);
+  if (!configPath) return;
+  if (path.extname(configPath) === '.toml') {
+    throw new Error('wb supports wrangler.jsonc/wrangler.json configs only; migrate wrangler.toml first.');
+  }
+
+  // jsonc-parser is fault tolerant and would return a partial object for malformed input,
+  // which could migrate a remote database from a half-read config; reject any parse error.
+  const parseErrors: ParseError[] = [];
+  const config = parse(fs.readFileSync(configPath, 'utf8'), parseErrors, {
+    allowTrailingComma: true,
+  }) as RawWranglerConfig | undefined;
+  if (parseErrors.length > 0) {
+    throw new Error(`Failed to parse ${configPath}: ${parseErrors.length} JSONC syntax error(s).`);
+  }
+  return config;
+}
+
+function resolveTopLevelConfig(config: RawWranglerConfig): ResolvedWranglerConfig {
+  return {
+    workerName: config.name,
+    accountId: config.account_id,
+    varKeys: Object.keys(config.vars ?? {}),
+    vars: config.vars ?? {},
+    bindingNames: [...collectBindingNames(config), ...siteBindingNames(config)],
+    d1Databases: config.d1_databases ?? [],
+    requiredSecretNames: config.secrets?.required ?? [],
+    usesEnvSection: false,
+  };
 }

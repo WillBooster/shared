@@ -1,6 +1,6 @@
 import type { Project } from '../../project.js';
 import {
-  buildD1MigrationsApplyCommand,
+  buildD1MigrationsApplyCommands,
   buildGenDevVarsCommand,
   buildWranglerDevCommand,
   getLocalWranglerStateDir,
@@ -32,18 +32,14 @@ class WorkersScripts extends HttpServerScripts {
 
     // These helpers read the default-named wrangler config; that is safe because workersScripts
     // itself is only selected when such a config file exists in the project directory.
-    const commands = [buildGenDevVarsCommand(argv, '.dev.vars')];
-    // Apply wrangler-native D1 migrations (if any) so the local database matches the deployed one.
-    const d1MigrationsCommand = buildD1MigrationsApplyCommand(project);
-    if (d1MigrationsCommand) {
-      commands.push(d1MigrationsCommand);
-    }
-    commands.push(
+    return [
+      buildGenDevVarsCommand(argv, '.dev.vars'),
+      // Apply wrangler-native D1 migrations (if any) so the local database matches the deployed one.
+      ...buildD1MigrationsApplyCommands(project),
       buildWranglerDevCommand(
         `dev --ip 127.0.0.1 --port ${project.env.PORT} --persist-to "${stateDir}" ${argv.normalizedArgsText ?? ''}`.trim()
-      )
-    );
-    return commands;
+      ),
+    ];
   }
 }
 

@@ -13,6 +13,7 @@ import {
 import { quoteDotenvValue } from '../../src/commands/genDevVars.js';
 import {
   collectBindingNames,
+  resolveWranglerConfig,
   resolveWranglerConfigForEnv,
   usesWranglerNativeMigrations,
 } from '../../src/utils/wranglerConfig.js';
@@ -153,6 +154,7 @@ describe('resolveWranglerConfigForEnv', () => {
       d1Databases: [{ binding: 'DB', database_id: 'prod-id' }],
       usesEnvSection: true,
     });
+    expect(resolveWranglerConfig({ dirPath })?.d1Databases).toEqual([{ binding: 'DB', database_id: 'staging-id' }]);
   });
 
   it('throws for a missing env section, malformed JSONC, and TOML configs', async () => {
