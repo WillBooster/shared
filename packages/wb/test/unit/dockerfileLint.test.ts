@@ -84,4 +84,11 @@ RUN --mount=target=/tmp/x true
   it('applies the same source check to ADD', () => {
     expect(lintDockerfile('ADD .env ./\n', { railwayConfigured: false })).toHaveLength(1);
   });
+
+  it('does not parse heredoc bodies as instructions', () => {
+    const dockerfileText =
+      'RUN --mount=type=cache,target=/c <<EOF\nenv FNOX_AGE_KEY="$(cat /run/secrets/k)" fnox export\nEOF\nCOPY .env ./\n';
+    // The heredoc body is skipped, but the instruction after the delimiter is still linted.
+    expect(lintDockerfile(dockerfileText, { railwayConfigured: true })).toHaveLength(1);
+  });
 });

@@ -62,11 +62,20 @@ function parseLogicalInstructions(dockerfileText: string): [string, string][] {
     .replaceAll(/\\\r?\n/g, ' ')
     .split('\n');
   const instructions: [string, string][] = [];
-  for (const line of logicalLines) {
+  for (let index = 0; index < logicalLines.length; index++) {
+    const line = logicalLines[index] ?? '';
     const match = /^\s*([A-Za-z]+)\s+(.*)$/.exec(line);
-    if (match?.[1] && match[2]) {
-      // Dockerfile instructions are case-insensitive.
-      instructions.push([match[1].toUpperCase(), match[2].trim()]);
+    if (!match?.[1] || !match[2]) continue;
+    // Dockerfile instructions are case-insensitive.
+    const args = match[2].trim();
+    instructions.push([match[1].toUpperCase(), args]);
+    // Docker treats lines through each heredoc delimiter as part of this instruction, so the
+    // body (e.g. a shell command like `env FNOX_AGE_KEY=... fnox export`) must not be parsed
+    // as further instructions.
+    for (const heredocMatch of args.matchAll(/<<-?["']?([A-Za-z_][A-Za-z0-9_]*)["']?/g)) {
+      while (index + 1 < logicalLines.length && logicalLines[++index]?.trim() !== heredocMatch[1]) {
+        // Skip the heredoc body.
+      }
     }
   }
   return instructions;

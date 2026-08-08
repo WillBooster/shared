@@ -7,7 +7,12 @@ import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { DatabaseOrm, Project } from '../project.js';
-import { findDescendantProjects, getAbsoluteFileDatabaseUrlPath, isProjectEnvironment } from '../project.js';
+import {
+  findDescendantProjects,
+  findSelfProject,
+  getAbsoluteFileDatabaseUrlPath,
+  isProjectEnvironment,
+} from '../project.js';
 import { buildDrizzleKitCommand, drizzleScripts } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
@@ -89,9 +94,18 @@ const createLitestreamConfigCommand: CommandModule<
     // With --env-refs, every value comes from the committed plaintext fnox defaults so generation
     // stays possible in secret-less builds (reading `project.env` would spawn `fnox export`).
     const envRefs = argv['env-refs'];
-    // Mirror gen-docker-env: an unresolved cascade or a nonstandard mode is a hard error —
-    // falling back to (or silently collecting) another profile could make Litestream back up
-    // the wrong database.
+    // With --env-refs the profile must be selected EXPLICITLY: the cascade's implicit
+    // development fallback (auto-cascade with no WB_ENV/NODE_ENV) or a nonstandard mode could
+    // make Litestream back up the wrong database, and the intended call sites (secret-less
+    // image builds / entrypoints) have no other guard.
+    const processEnvView = envRefs ? (findSelfProject(argv, false)?.env ?? {}) : {};
+    const explicitlySelected =
+      Boolean(argv.cascadeEnv) ||
+      Boolean(processEnvView.WB_ENV) ||
+      Boolean(argv.cascadeNodeEnv && processEnvView.NODE_ENV);
+    if (envRefs && !explicitlySelected) {
+      throw new Error('With --env-refs, select the profile explicitly: export WB_ENV or pass --cascade-env=<mode>.');
+    }
     const envName = envRefs ? resolveCascade(argv) : undefined;
     if (envRefs && !envName) {
       throw new Error('No environment selected; pass --cascade-env=<mode> (or drop --auto-cascade-env=false).');
