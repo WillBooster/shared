@@ -1216,6 +1216,14 @@ function addPackageJsonDependencies(
       packageJsonDependencies[dependency]
     );
     if (shouldUpdateExistingDependency) {
+      const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
+      if (shouldDowngradeAgeGatedManagedDependency(dependency, packageJsonDependencies[dependency], managedVersion)) {
+        // `bun add dependency` preserves an existing exact pin, so write the age-cleared version
+        // directly. The final repository-wide install refreshes the lockfile after every package
+        // manifest has converged on the generated release-age policy.
+        packageJsonDependencies[dependency] = managedVersion;
+        continue;
+      }
       dependenciesToInstall.push(dependency);
       if (!skipAddingDeps) continue;
     }
@@ -1478,9 +1486,31 @@ function shouldUpdateExistingManagedDependency(
   ) {
     return true;
   }
+  // The generated bunfig applies the organization age gate even to exact pins. If a managed
+  // third-party tool is newer than the newest release that cleared that gate, preserving the pin
+  // produces a package.json that a fresh install without the old lockfile cannot resolve (notably
+  // optimized Docker builds). Keep the no-downgrade policy only when the dependency is exempt from
+  // the gate; age-gated managed tools must converge on the version the generated bunfig accepts.
+  if (shouldDowngradeAgeGatedManagedDependency(dependency, currentVersion, managedVersion)) {
+    return true;
+  }
   // wbfy owns these tool dependencies, but applying wbfy should not downgrade a
-  // repository that already pins a newer reviewed release.
+  // repository that already pins a newer reviewed release when the org policy exempts it.
   return isNewerPackageVersion(managedVersion, currentVersion);
+}
+
+function shouldDowngradeAgeGatedManagedDependency(
+  dependency: string,
+  currentVersion: string | undefined,
+  managedVersion: string
+): currentVersion is string {
+  return (
+    shouldApplyPackageAgeGate(dependency) &&
+    !!currentVersion &&
+    !!semver.valid(currentVersion) &&
+    !!semver.valid(managedVersion) &&
+    isNewerPackageVersion(currentVersion, managedVersion)
+  );
 }
 
 // The newest TypeScript 6 release at the time the Blitz cap shipped; used only when the registry

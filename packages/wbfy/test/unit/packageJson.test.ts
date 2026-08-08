@@ -1019,6 +1019,19 @@ test('does not generate test/ci in a workspace package', async () => {
 
 const jsRootConfig = { doesContainTypeScript: true, isRoot: true } as const;
 
+test('downgrades a managed tool pin that the generated release-age gate rejects', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      devDependencies: { oxfmt: '999.0.0' },
+    },
+    jsRootConfig,
+    { skipAddingDeps: false }
+  );
+
+  expect(packageJson.devDependencies?.oxfmt).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.devDependencies?.oxfmt).not.toBe('999.0.0');
+});
+
 test('removes TypeScript compilers from a repository without TypeScript', async () => {
   const withoutTypeScript = await generatePackageJsonFrom({
     devDependencies: {
@@ -1086,7 +1099,7 @@ test('replaces a plain generated test script body', async () => {
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},
-  options: { createI18nDir?: boolean; files?: Record<string, string> } = {}
+  options: { createI18nDir?: boolean; files?: Record<string, string>; skipAddingDeps?: boolean } = {}
 ): Promise<GeneratedPackageJson> {
   const dirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-')));
   const packageJsonPath = path.join(dirPath, 'package.json');
@@ -1107,7 +1120,7 @@ async function generatePackageJsonFrom(
       ...configOverrides,
       dirPath,
     });
-    await generatePackageJson(config, config, true);
+    await generatePackageJson(config, config, options.skipAddingDeps ?? true);
 
     return JSON.parse(await fs.readFile(packageJsonPath, 'utf8')) as GeneratedPackageJson;
   } finally {
