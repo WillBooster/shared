@@ -500,7 +500,7 @@ function hasWranglerDependency(packageJson: PackageJson | undefined): boolean {
 }
 
 const wranglerTypesTextPattern =
-  /["']?\bwrangler\b["']?(?:\s+(?:--(?:config|cwd|env|env-file|log-level)|-[ce])(?:=\S+|\s+\S+))*\s+types\b/u;
+  /["']?\bwrangler\b["']?(?:\s+(?:(?:--(?:config|cwd|env|env-file|log-level|profile)|-[ce])(?:=\S+|\s+\S+)|--(?:help|install-skills|version)|-[hv]))*\s+types\b/u;
 
 function mentionsPackageScript(script: string | undefined, scriptName: string): boolean {
   return script !== undefined && new RegExp(`\\b${escapeRegExp(scriptName)}\\b`, 'u').test(script);

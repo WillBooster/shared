@@ -341,6 +341,8 @@ test.each([
   ['a global config flag', { 'gen-types': 'wrangler --config=wrangler.jsonc types' }],
   ['a short global config flag', { 'gen-types': 'wrangler -c wrangler.jsonc types' }],
   ['a global environment flag', { 'gen-types': 'wrangler --env=staging types' }],
+  ['a global profile flag', { 'gen-types': 'wrangler --profile staging types' }],
+  ['a global boolean flag', { 'gen-types': 'wrangler --install-skills types' }],
   ['a subcommand config flag', { 'gen-types': 'wrangler types --config=wrangler.other.jsonc' }],
   ['a short subcommand config flag', { 'gen-types': 'wrangler types -c wrangler.other.jsonc' }],
   ['a positional output path after a flag', { postinstall: 'wrangler types --strict-vars=false src/env.d.ts' }],
