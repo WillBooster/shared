@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import chalk from 'chalk';
-import { parse as parseToml } from 'smol-toml';
+
+import type { FnoxSecretsTable } from './fnoxToml.js';
+import { findAncestorFnoxConfigPaths, parseFnoxConfig } from './fnoxToml.js';
 
 /**
  * Write the key-only stub that `wrangler types --env-file` reads to type the Cloudflare `Env`.
@@ -39,28 +41,6 @@ export function collectWorkerBindingKeyNames(projectDirPath: string, rootDirPath
   return [...keyNames].toSorted((a, b) => a.localeCompare(b));
 }
 
-/** Every `fnox.toml` from `projectDirPath` up to (and including) `rootDirPath`, nearest first. */
-function findAncestorFnoxConfigPaths(projectDirPath: string, rootDirPath: string): string[] {
-  const configPaths: string[] = [];
-  const rootPath = path.resolve(rootDirPath);
-  for (let dirPath = path.resolve(projectDirPath); ; dirPath = path.dirname(dirPath)) {
-    const configPath = path.join(dirPath, 'fnox.toml');
-    if (fs.existsSync(configPath)) configPaths.push(configPath);
-    // Stop at the repository root (its parent's secrets are not part of this repo) or, defensively,
-    // at the filesystem root when rootDirPath is not actually an ancestor.
-    if (dirPath === rootPath || path.dirname(dirPath) === dirPath) break;
-  }
-  return configPaths;
-}
-
-interface FnoxSecretsTable {
-  [keyName: string]: unknown;
-}
-interface FnoxConfig {
-  secrets?: FnoxSecretsTable;
-  profiles?: Record<string, { secrets?: FnoxSecretsTable } | undefined>;
-}
-
 /**
  * Parse the key names under `fnox.toml`'s `[secrets]` and every `[profiles.<name>.secrets]` table.
  * fnox stores key names in plaintext (only values are encrypted), so this needs no age key. Every
@@ -68,7 +48,7 @@ interface FnoxConfig {
  * (like the former committed .env.example), independent of the profile a given run resolves.
  */
 function parseFnoxSecretKeyNames(configPath: string): string[] {
-  const config = parseToml(fs.readFileSync(configPath, 'utf8')) as FnoxConfig;
+  const config = parseFnoxConfig(configPath);
   const keyNames: string[] = [];
   const collect = (secrets: FnoxSecretsTable | undefined): void => {
     for (const [keyName, entry] of Object.entries(secrets ?? {})) {

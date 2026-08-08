@@ -16,6 +16,7 @@ export {
   readAndApplyEnvironmentVariables,
   readFnoxEnvironmentVariables,
   removeNpmAndYarnEnvironmentVariables,
+  resolveCascade,
   resolveFallbackWbEnv,
   shouldSuppressEnvironmentOutput,
   yargsOptionsBuilderForEnv,

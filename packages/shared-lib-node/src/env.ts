@@ -42,6 +42,26 @@ export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<ty
 const standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
 
 /**
+ * Resolves the cascade (fnox profile / env-file suffix) the reader loads for the given options:
+ * the forced `--cascade-env` first, then `--cascade-node-env`'s NODE_ENV, then the auto cascade
+ * driven by the ambient WB_ENV/NODE_ENV. Exported so commands that select a profile WITHOUT
+ * loading environment sources (e.g. `wb gen-docker-env`) cannot drift from the reader's selection.
+ */
+export function resolveCascade(argv: EnvReaderOptions): string | undefined {
+  // Read NODE_ENV through an alias, never as the `process.env.NODE_ENV` member expression:
+  // bundlers replace that exact expression at build time (see readEnvironmentVariables).
+  const runtimeEnv = process.env;
+  return (
+    argv.cascadeEnv ??
+    (argv.cascadeNodeEnv
+      ? runtimeEnv.NODE_ENV || 'development'
+      : argv.autoCascadeEnv
+        ? runtimeEnv.WB_ENV || runtimeEnv.NODE_ENV || 'development'
+        : undefined)
+  );
+}
+
+/**
  * Resolves the WB_ENV value wb falls back to when no env source and no exported variable defines
  * it: the command-level default first (`wb test --cascade-env=staging` loads the staging files
  * but its tests must still run as `test`, mirroring the pre-15 `||= 'test'` behavior), then the
@@ -88,13 +108,7 @@ export function readEnvironmentVariables(
   // 'production'), which constant-folds the fallback below and made the published wb select
   // the production profile whenever WB_ENV was unset.
   const runtimeEnv = process.env;
-  const cascade =
-    argv.cascadeEnv ??
-    (argv.cascadeNodeEnv
-      ? runtimeEnv.NODE_ENV || 'development'
-      : argv.autoCascadeEnv
-        ? runtimeEnv.WB_ENV || runtimeEnv.NODE_ENV || 'development'
-        : undefined);
+  const cascade = resolveCascade(argv);
   const shouldSuppressOutput = shouldSuppressEnvironmentOutput(argv);
   if (argv.verbose && !shouldSuppressOutput) {
     console.info(`WB_ENV: ${runtimeEnv.WB_ENV}, NODE_ENV: ${runtimeEnv.NODE_ENV}`);
