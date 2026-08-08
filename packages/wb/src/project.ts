@@ -129,7 +129,7 @@ export class Project {
   private declaredEnvKeyCache: Set<string> | undefined;
 
   /**
-   * The names of the environment variables the PROJECT declares (its fnox/.env sources), excluding
+   * The names of the environment variables the PROJECT declares (its fnox sources), excluding
    * both the ambient process environment and the `mise env` pseudo-source that reports host/tool
    * variables such as PATH. `env` cannot answer this: it merges process.env, so a project variable
    * is indistinguishable from an inherited one there.

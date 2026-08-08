@@ -943,25 +943,6 @@ test('strips `bun --bun` only from command-position invocations of Node-based to
   });
 });
 
-test('drops `--env-file` arguments naming removed files from an unmanaged wrangler types script', async () => {
-  // No wrangler dependency, so the package stays unmanaged and keeps its own generation script.
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        'gen-types': 'wrangler types --env-file .env.example',
-        postinstall: 'bun run gen-types',
-      },
-    },
-    { doesContainWranglerConfig: true },
-    { files: { 'wrangler.jsonc': '{}' } }
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    'gen-types': 'wrangler types',
-    postinstall: 'bun run gen-types',
-  });
-});
-
 // `wb gen-code` supplies its own `--env-file` stub from the committed fnox.toml, so an env-file-only invocation
 // is equivalent to the managed generation even when the named file exists on this machine. Classifying it by
 // local file existence would flip the worker-types management decision between dev machines (where `wb deploy`
