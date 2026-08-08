@@ -438,7 +438,6 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
 export function getWorkerTypesScriptError(
   config: Pick<PackageConfig, 'doesContainWranglerConfig' | 'packageJson'>
 ): string | undefined {
-  if (!config.doesContainWranglerConfig) return;
   const scripts = config.packageJson?.scripts ?? {};
   let hasInvocation = false;
   for (const [name, script] of Object.entries(scripts)) {
@@ -514,15 +513,29 @@ interface ShellWord {
 function findWranglerTypesInvocations(script: string): { direct: boolean; indirect: boolean } {
   const executableScript = stripHeredocBodies(script);
   let direct = false;
-  let indirect = [...executableScript.matchAll(/`([^`]*)`/gu)].some((match) => {
-    const nested = findWranglerTypesInvocations(match[1] ?? '');
+  let indirect = getCommandSubstitutions(executableScript).some((substitution) => {
+    const nested = findWranglerTypesInvocations(substitution);
     return nested.direct || nested.indirect;
   });
-  for (const commandWords of getShellCommands(executableScript)) {
+  const commands = getShellCommands(executableScript);
+  const wranglerVariables = new Set(
+    commands
+      .flat()
+      .map((word) => /^([A-Za-z_][A-Za-z0-9_]*)=wrangler$/u.exec(word)?.[1])
+      .filter((name): name is string => name !== undefined)
+  );
+  for (const commandWords of commands) {
     direct ||= hasWranglerTypesInvocation(commandWords.join(' '));
 
     const commandIndex = getShellCommandIndex(commandWords);
     const command = commandWords[commandIndex];
+    const expandedCommand = /^\$(?:\{([^}]+)\}|([A-Za-z_][A-Za-z0-9_]*))$/u.exec(command ?? '');
+    if (
+      wranglerVariables.has(expandedCommand?.[1] ?? expandedCommand?.[2] ?? '') &&
+      commandWords[commandIndex + 1] === 'types'
+    ) {
+      indirect = true;
+    }
     if (command === 'eval' && /\bwrangler\s+types\b/u.test(commandWords.slice(commandIndex + 1).join(' '))) {
       indirect = true;
     }
@@ -542,11 +555,20 @@ function getShellCommands(script: string): string[][] {
   const words = tokenizeShell(script);
   const commands: string[][] = [];
   let commandStart = true;
+  let redirectionOperand = false;
   for (let index = 0; index < words.length; index += 1) {
     const word = words[index];
     if (!word) continue;
     if (word.isOperator) {
-      commandStart = true;
+      if (word.text === '<' || word.text === '>') {
+        redirectionOperand = true;
+      } else {
+        commandStart = true;
+      }
+      continue;
+    }
+    if (redirectionOperand) {
+      redirectionOperand = false;
       continue;
     }
     if (!commandStart) continue;
@@ -562,6 +584,53 @@ function getShellCommands(script: string): string[][] {
     commandStart = false;
   }
   return commands;
+}
+
+function getCommandSubstitutions(script: string): string[] {
+  const substitutions: string[] = [];
+  let quote = '';
+  for (let index = 0; index < script.length; index += 1) {
+    const character = script[index] ?? '';
+    if (character === '\\') {
+      index += 1;
+      continue;
+    }
+    if (character === "'") {
+      if (!quote) quote = character;
+      else if (quote === character) quote = '';
+      continue;
+    }
+    if (character === '"') {
+      if (!quote) quote = character;
+      else if (quote === character) quote = '';
+      continue;
+    }
+    if (quote === "'") continue;
+    if (character === '#' && (index === 0 || /\s/u.test(script[index - 1] ?? ''))) {
+      const lineEnd = script.indexOf('\n', index + 1);
+      if (lineEnd === -1) break;
+      index = lineEnd;
+      continue;
+    }
+    if (character === '`') {
+      const end = script.indexOf('`', index + 1);
+      if (end === -1) continue;
+      substitutions.push(script.slice(index + 1, end));
+      index = end;
+      continue;
+    }
+    if (character !== '$' || script[index + 1] !== '(') continue;
+    let depth = 1;
+    let end = index + 2;
+    while (end < script.length && depth > 0) {
+      if (script[end] === '(') depth += 1;
+      if (script[end] === ')') depth -= 1;
+      end += 1;
+    }
+    if (depth === 0) substitutions.push(script.slice(index + 2, end - 1));
+    index = end - 1;
+  }
+  return substitutions;
 }
 
 function stripHeredocBodies(script: string): string {

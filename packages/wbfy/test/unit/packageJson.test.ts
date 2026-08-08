@@ -370,19 +370,29 @@ test.each([
   ['a timed command', { postinstall: 'time wrangler types' }],
   ['a command-env prefix', { postinstall: 'command env wrangler types' }],
   ['a backtick substitution', { postinstall: 'echo `wrangler types`' }],
-])('rejects %s instead of partially normalizing it', async (_description, scripts) => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    {
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    }
-  );
+  ['a quoted command substitution', { postinstall: 'echo "$(wrangler types)"' }],
+  ['an expanded executable', { postinstall: 'workerCommand=wrangler; "$workerCommand" types' }],
+  [
+    'a cross-package generator without a local config',
+    { postinstall: 'wrangler types --config packages/app/wrangler.jsonc' },
+    false,
+  ],
+])(
+  'rejects %s instead of partially normalizing it',
+  async (_description, scripts, doesContainWranglerConfig = true) => {
+    const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+    const packageJson = await generatePackageJsonFrom(
+      { ...wranglerPackageJson },
+      {
+        isCloudflare: true,
+        doesContainWranglerConfig,
+        packageJson: wranglerPackageJson,
+      }
+    );
 
-  expect(packageJson.scripts).toEqual(scripts);
-});
+    expect(packageJson.scripts).toEqual(scripts);
+  }
+);
 
 test('does not treat wrangler types in command arguments as an invocation', async () => {
   const scripts = { help: 'echo wrangler types' };
@@ -463,6 +473,22 @@ test('does not reject wrangler types text in a heredoc body', async () => {
   );
 
   expect(packageJson.scripts?.help).toBe("cat <<'EOF'\nwrangler types\nEOF");
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+test.each([
+  ['a single-quoted backtick', "node -e 'console.log(`wrangler types`)'"],
+  ['a redirection target', 'echo ok > "wrangler types"'],
+  ['a commented substitution', 'echo ok # `wrangler types`'],
+])('does not reject %s as worker type generation', async (_description, help) => {
+  const scripts = { help };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.help).toBe(help);
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 

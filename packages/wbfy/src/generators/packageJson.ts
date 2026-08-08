@@ -245,10 +245,7 @@ function updatePostinstallScript(
     // unmanaged reason (a missing dependency) leaves the
     // project's own generator as the ONLY one, so deleting it there would break generation outright.
     const segments = splitScriptSegments(scripts.postinstall);
-    const remaining = segments?.filter((segment) => {
-      const kind = classifyScriptSegment(segment, scripts, true);
-      return kind !== 'wranglerTypes';
-    });
+    const remaining = segments?.filter((segment) => classifyScriptSegment(segment, scripts, true) !== 'wranglerTypes');
     if (remaining && remaining.length !== segments?.length) {
       if (remaining.length > 0) {
         scripts.postinstall = remaining.join(' && ');
@@ -975,10 +972,9 @@ async function normalizePackageMetadata(
     // assets) instead of discarding them; only the managed gen-code and the `wrangler types` invocations it now
     // subsumes are wbfy's to regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
     const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
-    const customSegments = segments?.filter((segment) => {
-      const kind = classifyScriptSegment(segment, jsonObj.scripts, true);
-      return kind === 'custom';
-    });
+    const customSegments = segments?.filter(
+      (segment) => classifyScriptSegment(segment, jsonObj.scripts, true) === 'custom'
+    );
     if (customSegments) {
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
     }
