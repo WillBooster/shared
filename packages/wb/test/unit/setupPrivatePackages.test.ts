@@ -95,7 +95,8 @@ describe('materializePrivatePackages', () => {
       });
       await fs.writeFile(
         path.join(rootDirPath, '.npmrc'),
-        '@willbooster-private:registry=http://wb-unreachable-registry.invalid\n'
+        '@willbooster-private:registry=http://wb-unreachable-registry.invalid\n' +
+          '//wb-unreachable-registry.invalid/:_authToken=dummy-token\n'
       );
       // Installed only for the git dependency: the registry package has no installed copy, so it
       // must be downloaded — and that download fails.
