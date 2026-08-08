@@ -152,28 +152,18 @@ src-tauri/gen/schemas/
     if (generatesWorkerTypes(config)) {
       headUserContent += `/worker-configuration.d.ts
 `;
-    } else {
-      // Demoting a previously managed package must never happen silently: dropping the rule while a
-      // generated copy sits on disk lets the follow-up commit track the ~15k-line file (the
-      // ai-game-builder oscillation), so surface every demotion for a human to review.
-      if (/^\/worker-configuration\.d\.ts$/mu.test(content)) {
-        console.warn(
-          `Dropping /worker-configuration.d.ts from ${filePath}: the package no longer qualifies for managed worker types. An existing generated copy may get committed — verify this demotion is intended.`
-        );
-      }
-      if (config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config)) {
-        // On a genuine worker-types opt-out (nothing consumes the generated file; generatesWorkerTypes
-        // alone is false for unrelated reasons such as a missing local wrangler dependency, where the
-        // file may still be consumed) the ignore rule
-        // above disappears, so an already-generated file would surface as untracked noise on every
-        // checkout — delete it, but only an UNTRACKED copy (a tracked one is the user's own file).
-        const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
-        if (
-          fs.existsSync(workerTypesPath) &&
-          !spawnSyncAndReturnStdout('git', ['ls-files', '--', 'worker-configuration.d.ts'], config.dirPath).trim()
-        ) {
-          await promisePool.run(() => fs.promises.rm(workerTypesPath, { force: true }));
-        }
+    } else if (config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config)) {
+      // On a genuine worker-types opt-out (nothing consumes the generated file; generatesWorkerTypes
+      // alone is false for unrelated reasons such as a missing local wrangler dependency, where the
+      // file may still be consumed) the ignore rule
+      // above disappears, so an already-generated file would surface as untracked noise on every
+      // checkout — delete it, but only an UNTRACKED copy (a tracked one is the user's own file).
+      const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
+      if (
+        fs.existsSync(workerTypesPath) &&
+        !spawnSyncAndReturnStdout('git', ['ls-files', '--', 'worker-configuration.d.ts'], config.dirPath).trim()
+      ) {
+        await promisePool.run(() => fs.promises.rm(workerTypesPath, { force: true }));
       }
     }
     if (rootConfig.depending.vinext || config.depending.vinext) {

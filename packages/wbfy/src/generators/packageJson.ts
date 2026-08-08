@@ -163,8 +163,8 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
  * gen-code spelling, a disposable `wrangler types`, an argument-free `gen-i18n-ts`) with `wb gen-code` and
  * dropping the rest. Appends the generation only when the script contained none, so nothing is reordered.
  */
-function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scripts, dirPath: string): string[] {
-  const kinds = segments.map((segment) => classifyScriptSegment(segment, scripts, true, dirPath));
+function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scripts): string[] {
+  const kinds = segments.map((segment) => classifyScriptSegment(segment, scripts, true));
   // A wrapper around a customized gen-code already generates; adding another invocation would run every
   // generator twice.
   let generationPlaced = kinds.includes('genCodeWrapper');
@@ -188,17 +188,13 @@ function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scr
  * step that consumes generated output still runs after it. Returns undefined when nothing should change or the
  * script cannot be parsed.
  */
-function stripSubsumedGenCodeSegments(
-  script: string,
-  scripts: PackageJson.Scripts,
-  dirPath: string
-): string | undefined {
+function stripSubsumedGenCodeSegments(script: string, scripts: PackageJson.Scripts): string | undefined {
   const segments = splitScriptSegments(script);
   if (!segments) return undefined;
   const rebuilt: string[] = [];
   let generationPlaced = false;
   for (const segment of segments) {
-    const kind = classifyScriptSegment(segment, scripts, true, dirPath);
+    const kind = classifyScriptSegment(segment, scripts, true);
     if (kind === 'custom' || kind === 'genCodeWrapper') {
       rebuilt.push(segment);
     } else if (!generationPlaced) {
@@ -214,8 +210,7 @@ function stripSubsumedGenCodeSegments(
 function updatePostinstallScript(
   scripts: PackageJson.Scripts,
   managesWorkerTypes: boolean,
-  hasOptedOutOfWorkerTypes: boolean,
-  dirPath: string
+  hasOptedOutOfWorkerTypes: boolean
 ): void {
   // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a code-generation or
   // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
@@ -227,7 +222,7 @@ function updatePostinstallScript(
     // appended only when the script had none. A wrapper around a customized gen-code already performs the
     // generation plus the project's own steps, so it suppresses the replacement entirely.
     const segments = scripts.postinstall === undefined ? [] : splitScriptSegments(scripts.postinstall);
-    const keptSegments = segments && rebuildPostinstallSegments(segments, scripts, dirPath);
+    const keptSegments = segments && rebuildPostinstallSegments(segments, scripts);
     if (keptSegments) {
       scripts.postinstall = keptSegments.join(' && ');
     } else if (runsOnlyRedundantGeneration(scripts.postinstall)) {
@@ -244,9 +239,7 @@ function updatePostinstallScript(
     // unmanaged reasons (an output-changing command, a missing dependency) leave the
     // project's own generator as the ONLY one, so deleting it there would break generation outright.
     const segments = splitScriptSegments(scripts.postinstall);
-    const remaining = segments?.filter(
-      (segment) => classifyScriptSegment(segment, scripts, true, dirPath) !== 'wranglerTypes'
-    );
+    const remaining = segments?.filter((segment) => classifyScriptSegment(segment, scripts, true) !== 'wranglerTypes');
     if (remaining && remaining.length !== segments?.length) {
       if (remaining.length > 0) {
         scripts.postinstall = remaining.join(' && ');
@@ -260,7 +253,7 @@ function updatePostinstallScript(
   // break any `postinstall: bun run gen-types` still pointing at it.
   if (
     managesWorkerTypes &&
-    classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false, dirPath) === 'wranglerTypes' &&
+    classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false) === 'wranglerTypes' &&
     // Package scripts compose, so another script (typically `build`) may run this one. Deleting a script that is
     // still referenced would leave `bun run build` failing on a missing script.
     // Whole-token match: a `gen-types-foo` or `gen-types:db` script is a different script, not a reference.
@@ -983,7 +976,7 @@ async function normalizePackageMetadata(
     // subsumes are wbfy's to regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
     const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
     const customSegments = segments?.filter(
-      (segment) => classifyScriptSegment(segment, jsonObj.scripts, true, config.dirPath) === 'custom'
+      (segment) => classifyScriptSegment(segment, jsonObj.scripts, true) === 'custom'
     );
     if (customSegments) {
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
@@ -993,15 +986,14 @@ async function normalizePackageMetadata(
     // now subsumes; without this the redundant `wrangler types` survives every future run, which is the drift this
     // consolidation exists to remove. Only wbfy's own segments go — custom steps keep their position, and an
     // unparseable script is left alone.
-    const stripped = stripSubsumedGenCodeSegments(genCodeScript, jsonObj.scripts, config.dirPath);
+    const stripped = stripSubsumedGenCodeSegments(genCodeScript, jsonObj.scripts);
     if (stripped !== undefined) jsonObj.scripts['gen-code'] = stripped;
   }
   normalizeGenI18nTsScript(config, jsonObj);
   updatePostinstallScript(
     jsonObj.scripts,
     generatesWorkerTypes(config),
-    config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config),
-    config.dirPath
+    config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config)
   );
   // After the normalization above, which removes these invocations wholesale wherever wbfy owns the generation. What
   // is left belongs to an unmanaged package, and a `--env-file` naming a missing file would make

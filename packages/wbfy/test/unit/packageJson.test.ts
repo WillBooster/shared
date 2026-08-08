@@ -962,21 +962,25 @@ test('drops `--env-file` arguments naming removed files from an unmanaged wrangl
   });
 });
 
-test('keeps `--env-file` arguments whose files still exist', async () => {
+// `wb gen-code` supplies its own `--env-file` stub from the committed fnox.toml, so an env-file-only invocation
+// is equivalent to the managed generation even when the named file exists on this machine. Classifying it by
+// local file existence would flip the worker-types management decision between dev machines (where `wb deploy`
+// creates `.env.cloudflare`) and clean checkouts — the tracked/untracked oscillation this predicate must avoid.
+test('normalizes an env-file wrangler types script even when the named file exists locally', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.107.0' } };
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: {
         'gen-types': 'wrangler types --env-file .env.cloudflare',
       },
-      devDependencies: { wrangler: '4.107.0' },
+      ...wranglerPackageJson,
     },
-    { doesContainWranglerConfig: true },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson },
     { files: { 'wrangler.jsonc': '{}', '.env.cloudflare': 'CLOUDFLARE_API_TOKEN=dummy\n' } }
   );
 
-  expect(packageJson.scripts).toMatchObject({
-    'gen-types': 'wrangler types --env-file .env.cloudflare',
-  });
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
 });
 
 test('generates test/ci script running wb test-on-ci at the root', async () => {

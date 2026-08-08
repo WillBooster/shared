@@ -419,11 +419,13 @@ export async function getPackageConfig(
  * config (`wrangler types` exits non-zero without one), to depend on wrangler (a package deploying via a
  * CI action cannot resolve the command), and to consume the generated file.
  *
- * INVARIANT — this decision must be identical on every machine holding the same commit. Every condition below
- * reads only the repository's committed/managed state. It must NEVER consult untracked or gitignored files
- * (`.dev.vars*`, `.env*`, ...): `wb start` and `wb deploy` create those routinely, and a former check that
- * treated them as irreproducible inputs made wbfy runs on dev machines re-track the ~15k-line generated file
- * that runs from clean checkouts had untracked, oscillating forever (e.g. ai-game-builder #684 → #746).
+ * INVARIANT — this decision must converge across machines holding the same commit. It must NEVER consult
+ * gitignored files (`.dev.vars*`, `.env*`, ...), which `wb start` and `wb deploy` create routinely and which
+ * therefore stay untracked on dev machines forever: a former check that treated them as irreproducible inputs
+ * made wbfy runs on dev machines re-track the ~15k-line generated file that runs from clean checkouts had
+ * untracked, oscillating eternally (e.g. ai-game-builder #684 → #746). Reading committable repository files
+ * from the working tree (the wrangler config, package.json, tsconfig — as every wbfy generator does) is fine:
+ * any divergence there is transient and disappears once the file is committed or removed.
  * The hazard that check guarded against no longer exists: `wb gen-code` runs `wrangler types --env-file` with
  * a key stub derived solely from the committed fnox.toml (see wb's writeWorkerTypesEnvStub), so local dotenv
  * files never influence the generated `Env`.
@@ -437,7 +439,7 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
     // scripts pass flags that change the generated file (e.g. `--strict-vars=false`, repeated `-c` for RPC
     // types) must stay unmanaged: managing it would delete the only record of that choice and regenerate a
     // different `Env`.
-    !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}, config.dirPath) &&
+    !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}) &&
     consumesGeneratedWorkerTypes(config)
   );
 }

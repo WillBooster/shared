@@ -132,7 +132,12 @@ test('manages worker types regardless of machine-local untracked dotenv files or
     const config = createConfig({
       dirPath,
       doesContainWranglerConfig: true,
-      packageJson: { dependencies: { wrangler: '4.114.0' } },
+      packageJson: {
+        dependencies: { wrangler: '4.114.0' },
+        // An env-file-only invocation is equivalent to the managed generation whether or not the named
+        // file exists locally, so it must not affect the decision either (see managedScriptSegment.ts).
+        scripts: { 'gen-types': 'wrangler types --env-file .dev.vars' },
+      },
     });
     expect(generatesWorkerTypes(config)).toBe(true);
 
