@@ -1504,12 +1504,16 @@ function shouldDowngradeAgeGatedManagedDependency(
   currentVersion: string | undefined,
   managedVersion: string
 ): currentVersion is string {
+  if (!currentVersion) {
+    return false;
+  }
+  const validCurrentVersion = semver.valid(currentVersion);
+  const validManagedVersion = semver.valid(managedVersion);
   return (
     shouldApplyPackageAgeGate(dependency) &&
-    !!currentVersion &&
-    !!semver.valid(currentVersion) &&
-    !!semver.valid(managedVersion) &&
-    isNewerPackageVersion(currentVersion, managedVersion)
+    validCurrentVersion !== null &&
+    validManagedVersion !== null &&
+    semver.gt(validCurrentVersion, validManagedVersion)
   );
 }
 
