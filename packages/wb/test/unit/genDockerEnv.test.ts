@@ -180,6 +180,6 @@ describe('serializeDockerEnvLine', () => {
     expect(() => serializeDockerEnvLine('KEY', String.raw`\$1`)).toThrow('does not expand references');
     expect(() => serializeDockerEnvLine('INVALID-KEY', 'x')).toThrow('not a POSIX shell identifier');
     // dotenv's parser drops a `__proto__` assignment even though it is a valid shell identifier.
-    expect(() => serializeDockerEnvLine('__proto__', 'x')).toThrow('not a POSIX shell identifier');
+    expect(() => serializeDockerEnvLine('__proto__', 'x')).toThrow('silently drop a __proto__ assignment');
   });
 });

@@ -98,10 +98,15 @@ export const genDockerEnvCommand: CommandModule<unknown, GenDockerEnvCommandOpti
  * one consumer would corrupt.
  */
 export function serializeDockerEnvLine(key: string, value: string): string {
-  // `__proto__` is a valid shell identifier, but dotenv's parser drops the assignment (the legacy
-  // prototype setter swallows it), so the consumers would disagree on the key's very existence.
-  if (!/^[A-Za-z_]\w*$/.test(key) || key === '__proto__') {
+  if (!/^[A-Za-z_]\w*$/.test(key)) {
     throw new Error(`The key ${key} cannot be written to a .docker.env file: it is not a POSIX shell identifier.`);
+  }
+  // `__proto__` IS a valid shell identifier, but dotenv's parser drops the assignment (the legacy
+  // prototype setter swallows it), so the consumers would disagree on the key's very existence.
+  if (key === '__proto__') {
+    throw new Error(
+      `The key __proto__ cannot be written to a .docker.env file: dotenv parsers silently drop a __proto__ assignment.`
+    );
   }
   // A bare `$NAME` (which fnox exports literally) is resolved by dotenv-expand-style consumers
   // while shell sourcing keeps it literal, dotenv-expand also rewrites `\$` to `$`, and a residual
