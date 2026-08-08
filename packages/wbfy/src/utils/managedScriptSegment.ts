@@ -65,8 +65,8 @@ function isDisposableWranglerTypes(segment: string, dirPath: string | undefined)
  * Drops the `--env-file` arguments of a `wrangler types` invocation whose files are absent, returning the rewritten
  * script (or undefined when nothing changed). wrangler exits non-zero on a `--env-file` naming a missing file, so a
  * surviving flag breaks every subsequent install. Normalizing to `wb gen-code` already drops these flags where wbfy owns the generation;
- * this covers the packages it deliberately leaves unmanaged (e.g. an untracked local `.env.production` makes the
- * inference irreproducible), which would otherwise be handed back unable to run `bun install` at all.
+ * this covers the packages it deliberately leaves unmanaged (a custom invocation, a missing wrangler dependency,
+ * or an unconsumed file), which would otherwise be handed back unable to run `bun install` at all.
  */
 export function stripMissingEnvFileArguments(script: string | undefined, dirPath: string): string | undefined {
   if (!script) return undefined;

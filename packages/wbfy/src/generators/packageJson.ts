@@ -241,7 +241,7 @@ function updatePostinstallScript(
     // The package genuinely opted out (its tsconfig no longer includes the declaration), and generateGitignore
     // drops the ignore rule and the untracked file with it. A leftover default-output `wrangler types` would then
     // recreate that ~500KB file as workspace noise on every install. Only a real opt-out qualifies: the other
-    // unmanaged reasons (irreproducible inference, an output-changing command, a missing dependency) leave the
+    // unmanaged reasons (an output-changing command, a missing dependency) leave the
     // project's own generator as the ONLY one, so deleting it there would break generation outright.
     const segments = splitScriptSegments(scripts.postinstall);
     const remaining = segments?.filter(

@@ -499,51 +499,34 @@ test('runs wb gen-code after a project postinstall that has no gen-code script',
 // wbfy gitignores and untracks worker-configuration.d.ts only where postinstall regenerates it, so a package that
 // cannot run wrangler must not gain the install-time generation either.
 test.each([
-  ['the package does not depend on wrangler', {}, true, {}],
-  ['the package owns no wrangler config', { devDependencies: { wrangler: '4.69.0' } }, false, {}],
-  [
-    // The temp directory is not a git repository, so the file counts as uncommitted, making the `Env` inference
-    // irreproducible: wbfy must not manage a file CI would regenerate differently.
-    'an uncommitted .dev.vars drives the Env inference',
-    { devDependencies: { wrangler: '4.69.0' } },
-    true,
-    { '.dev.vars': 'AUTH_SECRET=local-secret\n', 'wrangler.jsonc': '{}' },
-  ],
-  [
-    // Wranglers older than 4.70.0 warn about the unexpected top-level `secrets` field and keep inferring from
-    // .dev.vars, so the declaration must not count as a reproducible inference source for them.
-    'secrets.required predates the wrangler dependency support',
-    { devDependencies: { wrangler: '4.69.0' } },
-    true,
-    { '.dev.vars': 'AUTH_SECRET=local-secret\n', 'wrangler.jsonc': `{ "secrets": { "required": ["AUTH_SECRET"] } }` },
-  ],
-])('omits the install-time generation when %s', async (_description, wranglerPackageJson, hasConfig, files) => {
+  ['the package does not depend on wrangler', {}, true],
+  ['the package owns no wrangler config', { devDependencies: { wrangler: '4.69.0' } }, false],
+])('omits the install-time generation when %s', async (_description, wranglerPackageJson, hasConfig) => {
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: hasConfig, packageJson: wranglerPackageJson },
-    { files }
+    { isCloudflare: true, doesContainWranglerConfig: hasConfig, packageJson: wranglerPackageJson }
   );
 
   expect(packageJson.scripts?.postinstall).toBeUndefined();
 });
 
-// A `secrets.required` declaration at any config level replaces the .dev.vars/.env inference, making the generated
-// declarations a pure function of committed inputs again. 4.70.0 is the first wrangler supporting it.
-test.each([
-  [
-    'a top-level declaration',
-    `{
-      // JSONC comments and trailing commas must parse.
-      "secrets": { "required": ["AUTH_SECRET"], },
-    }`,
-  ],
-  ['an env-level declaration', `{ "env": { "staging": { "secrets": { "required": ["AUTH_SECRET"] } } } }`],
-])('generates worker types on install when %s makes the Env inference reproducible', async (_description, config) => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.70.0' } };
+// `wb gen-code` pins the `Env` inference to the committed fnox.toml key names via `wrangler types --env-file`,
+// so machine-local dotenv files (which `wb start`/`wb deploy` create routinely) never affect the generated file.
+// They must therefore never disable the install-time generation either: when a local `.dev.vars` flipped this
+// decision, wbfy runs on dev machines re-tracked the generated file that clean-checkout runs had untracked,
+// oscillating forever (ai-game-builder #684 → #746).
+test('generates worker types on install despite machine-local dotenv files', async () => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
     { scripts: {}, ...wranglerPackageJson },
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson },
-    { files: { '.dev.vars': 'AUTH_SECRET=local-secret\n', 'wrangler.jsonc': config } }
+    {
+      files: {
+        '.dev.vars': 'AUTH_SECRET=local-secret\n',
+        '.env.cloudflare': 'CLOUDFLARE_API_TOKEN=x\n',
+        'wrangler.jsonc': '{}',
+      },
+    }
   );
 
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
@@ -961,13 +944,13 @@ test('strips `bun --bun` only from command-position invocations of Node-based to
 });
 
 test('drops `--env-file` arguments naming removed files from an unmanaged wrangler types script', async () => {
+  // No wrangler dependency, so the package stays unmanaged and keeps its own generation script.
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: {
         'gen-types': 'wrangler types --env-file .env.example',
         postinstall: 'bun run gen-types',
       },
-      devDependencies: { wrangler: '4.107.0' },
     },
     { doesContainWranglerConfig: true },
     { files: { 'wrangler.jsonc': '{}' } }

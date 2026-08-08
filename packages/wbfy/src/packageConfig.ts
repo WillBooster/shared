@@ -3,7 +3,6 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import fg from 'fast-glob';
-import semver from 'semver';
 import { simpleGit } from 'simple-git';
 import { parse as parseToml } from 'smol-toml';
 import type { PackageJson } from 'type-fest';
@@ -415,23 +414,31 @@ export async function getPackageConfig(
 }
 
 /**
- * Tells whether wbfy manages worker-configuration.d.ts for the package. The file is gitignored and untracked on the
- * assumption that the `wb gen-code` postinstall regenerates it on install, so all three steps must agree: the package has to own a
- * wrangler config (`wrangler types` exits non-zero without one), to depend on wrangler (a package deploying via a
- * CI action cannot resolve the command), and to regenerate the same file on every checkout. Otherwise wbfy would
- * ignore and delete a file that nothing recreates identically.
+ * Tells whether wbfy manages worker-configuration.d.ts for the package. The file is gitignored and untracked
+ * because the `wb gen-code` postinstall regenerates it on every install, so the package has to own a wrangler
+ * config (`wrangler types` exits non-zero without one), to depend on wrangler (a package deploying via a
+ * CI action cannot resolve the command), and to consume the generated file.
+ *
+ * INVARIANT — this decision must be identical on every machine holding the same commit. Every condition below
+ * reads only the repository's committed/managed state. It must NEVER consult untracked or gitignored files
+ * (`.dev.vars*`, `.env*`, ...): `wb start` and `wb deploy` create those routinely, and a former check that
+ * treated them as irreproducible inputs made wbfy runs on dev machines re-track the ~15k-line generated file
+ * that runs from clean checkouts had untracked, oscillating forever (e.g. ai-game-builder #684 → #746).
+ * The hazard that check guarded against no longer exists: `wb gen-code` runs `wrangler types --env-file` with
+ * a key stub derived solely from the committed fnox.toml (see wb's writeWorkerTypesEnvStub), so local dotenv
+ * files never influence the generated `Env`.
  */
 export function generatesWorkerTypes(config: PackageConfig): boolean {
   const packageJson = config.packageJson;
   return (
     config.doesContainWranglerConfig &&
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
-    // `wb gen-code` runs a bare `wrangler types`, so a package whose own scripts pass flags that change the
-    // generated file (e.g. `--strict-vars=false`, repeated `-c` for RPC types) must stay unmanaged: managing it
-    // would delete the only record of that choice and regenerate a different `Env`.
+    // `wb gen-code` runs `wrangler types` with no flags besides its own `--env-file` stub, so a package whose
+    // scripts pass flags that change the generated file (e.g. `--strict-vars=false`, repeated `-c` for RPC
+    // types) must stay unmanaged: managing it would delete the only record of that choice and regenerate a
+    // different `Env`.
     !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}, config.dirPath) &&
-    consumesGeneratedWorkerTypes(config) &&
-    hasReproducibleWorkerTypesInference(config)
+    consumesGeneratedWorkerTypes(config)
   );
 }
 
@@ -589,110 +596,6 @@ function tsconfigPatternCouldMatchPath(pattern: string, targetPath: string, expa
   const directorySuffix =
     expandsDirectories && !/[*?]/u.test(lastSegment) && !lastSegment.includes('.') ? String.raw`(?:/.*)?` : '';
   return new RegExp(`^${regexSource}${directorySuffix}$`, 'u').test(targetPath);
-}
-
-/**
- * `wrangler types` infers `Env` members from the .dev.vars/.env files beside the wrangler config — including the
- * layered variants wrangler resolves, such as .env.local and environment-specific files — unless the config
- * declares `secrets.required`. Untracking worker-configuration.d.ts is safe only when every such input is
- * identical on every checkout: with a gitignored or locally modified file, CI would regenerate an `Env` without
- * the secret members that type-check locally.
- */
-function hasReproducibleWorkerTypesInference(config: PackageConfig): boolean {
-  const dirPath = config.dirPath;
-  // With a secrets declaration, `wrangler types` reads only the wrangler config, so a missing or
-  // stale config on CI fails the generation LOUDLY instead of silently inferring a wrong Env; the
-  // tracked-clean checks below guard only the silent-drift hazard of the dotenv-inference path.
-  if (declaresSupportedRequiredSecrets(config)) return true;
-  // The wrangler config itself drives the generation, so an untracked, modified, or symlinked config makes the
-  // generated file irreproducible whatever the dotenv inputs say.
-  const configFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].filter((fileName) =>
-    fs.existsSync(path.resolve(dirPath, fileName))
-  );
-  if (!areTrackedCleanRegularFiles(dirPath, configFileNames)) return false;
-  const inferenceSourceNames = fs
-    .readdirSync(dirPath)
-    .filter((fileName) => /^\.(?:dev\.vars|env)(?:\..+)?$/u.test(fileName));
-  return areTrackedCleanRegularFiles(dirPath, inferenceSourceNames);
-}
-
-/**
- * Whether every listed file is a regular file (a tracked symlink's git state says nothing about its target's
- * content), tracked, AND unmodified: `git ls-files` prints nothing for an untracked file (and fails printing
- * nothing outside a repository), while `git status --porcelain` prints nothing for a clean file — wrangler reads
- * the working tree, but CI reads the committed contents, so local edits break reproducibility too. (An ignored
- * file also produces empty status output, which the tracked check catches.)
- */
-function areTrackedCleanRegularFiles(dirPath: string, fileNames: string[]): boolean {
-  if (fileNames.length === 0) return true;
-  if (fileNames.some((fileName) => fs.lstatSync(path.resolve(dirPath, fileName)).isSymbolicLink())) return false;
-  const trackedOutput = spawnSyncAndReturnStdout('git', ['ls-files', '--', ...fileNames], dirPath);
-  const trackedCount = trackedOutput === '' ? 0 : trackedOutput.split('\n').length;
-  return (
-    trackedCount === fileNames.length &&
-    spawnSyncAndReturnStdout('git', ['status', '--porcelain', '--', ...fileNames], dirPath) === ''
-  );
-}
-
-// `wrangler types` generates from `secrets.required` since wrangler 4.70.0 (4.77.0 only added deploy/upload
-// validation of the field); older wranglers warn about the unexpected field and keep inferring from .dev.vars.
-const minimumWranglerVersionForRequiredSecrets = '4.70.0';
-
-function declaresSupportedRequiredSecrets(config: PackageConfig): boolean {
-  const wranglerVersionRange =
-    config.packageJson?.dependencies?.['wrangler'] ?? config.packageJson?.devDependencies?.['wrangler'];
-  if (!wranglerVersionRange) return false;
-  try {
-    const minimumVersion = semver.minVersion(wranglerVersionRange);
-    if (!minimumVersion || semver.lt(minimumVersion, minimumWranglerVersionForRequiredSecrets)) return false;
-  } catch {
-    return false;
-  }
-  return wranglerConfigDeclaresRequiredSecrets(config.dirPath);
-}
-
-interface WranglerConfigSecretsSubtree {
-  secrets?: { required?: string[] };
-  env?: Record<string, { secrets?: { required?: string[] } } | undefined>;
-}
-
-function wranglerConfigDeclaresRequiredSecrets(dirPath: string): boolean {
-  try {
-    for (const fileName of ['wrangler.jsonc', 'wrangler.json']) {
-      const filePath = path.resolve(dirPath, fileName);
-      if (!fs.existsSync(filePath)) continue;
-      // A config that does not parse cannot prove a declaration.
-      const config = jsoncUtil.parseObjectIgnoringError<WranglerConfigSecretsSubtree>(
-        fs.readFileSync(filePath, 'utf8')
-      );
-      return !!config && declaresRequiredSecretsAnywhere(config);
-    }
-    const tomlPath = path.resolve(dirPath, 'wrangler.toml');
-    if (fs.existsSync(tomlPath)) {
-      const config = parseToml(fs.readFileSync(tomlPath, 'utf8')) as WranglerConfigSecretsSubtree;
-      return declaresRequiredSecretsAnywhere(config);
-    }
-  } catch {
-    // A config that does not parse cannot prove a declaration.
-  }
-  return false;
-}
-
-// A declaration at any config level replaces the .dev.vars/.env inference: `wrangler types` aggregates
-// per-environment secrets into the generated type (Cloudflare changelog 2026-03-24).
-function declaresRequiredSecretsAnywhere(config: WranglerConfigSecretsSubtree): boolean {
-  if (declaresSecrets(config.secrets)) return true;
-  return Object.values(config.env ?? {}).some((envConfig) => declaresSecrets(envConfig?.secrets));
-}
-
-// Defining `secrets` at any config level makes `wrangler types` use it exclusively instead of
-// inferring from .dev.vars/.env, so even an empty declaration is reproducible. The parsed config
-// comes from an unvalidated file, so check the documented `string[]` shape at runtime: a malformed
-// declaration (e.g. a plain string) must not prove reproducibility.
-function declaresSecrets(secrets: WranglerConfigSecretsSubtree['secrets']): boolean {
-  if (secrets === undefined || secrets === null || typeof secrets !== 'object' || Array.isArray(secrets)) return false;
-  const required: unknown = secrets.required;
-  return required === undefined || (Array.isArray(required) && required.every((name) => typeof name === 'string'));
 }
 
 /**
