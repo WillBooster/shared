@@ -118,9 +118,11 @@ export function serializeDockerEnvLine(key: string, value: string): string {
       `The value of ${key} contains an expansion-sensitive $ reference; wb gen-docker-env does not expand references — inline the value in fnox.toml.`
     );
   }
-  if (/['\n\r]/.test(value)) {
+  // A trailing backslash makes dotenv's parser read the closing quote as an escaped quote and
+  // swallow the following lines, while shell sourcing reads the value correctly.
+  if (/['\n\r]/.test(value) || value.endsWith('\\')) {
     throw new Error(
-      `The value of ${key} cannot be written to a .docker.env file: apostrophes and newlines are not representable in its single-quoted, shell-sourceable format.`
+      `The value of ${key} cannot be written to a .docker.env file: apostrophes, newlines, and a trailing backslash are not representable in its single-quoted, shell-sourceable format.`
     );
   }
   return `${key}='${value}'`;

@@ -163,15 +163,17 @@ describe('collectPlaintextFnoxValues', () => {
 
 describe('serializeDockerEnvLine', () => {
   it('single-quotes every representable value', () => {
-    for (const value of ['a\\', 'a # b', '$(id)', ' pad ', '', 'a"b', 'a`b', 'costs $100', 'x$', 'a=b']) {
+    for (const value of [String.raw`a\b`, 'a # b', '$(id)', ' pad ', '', 'a"b', 'a`b', 'costs $100', 'x$', 'a=b']) {
       expect(serializeDockerEnvLine('KEY', value)).toBe(`KEY='${value}'`);
     }
   });
 
   it('rejects values and keys no consumer reads back identically', () => {
-    expect(() => serializeDockerEnvLine('KEY', "it's")).toThrow('apostrophes and newlines');
-    expect(() => serializeDockerEnvLine('KEY', 'a\nb')).toThrow('apostrophes and newlines');
-    expect(() => serializeDockerEnvLine('KEY', 'a\rb')).toThrow('apostrophes and newlines');
+    expect(() => serializeDockerEnvLine('KEY', "it's")).toThrow('not representable');
+    expect(() => serializeDockerEnvLine('KEY', 'a\nb')).toThrow('not representable');
+    expect(() => serializeDockerEnvLine('KEY', 'a\rb')).toThrow('not representable');
+    // A trailing backslash makes dotenv read the closing quote as escaped and swallow later lines.
+    expect(() => serializeDockerEnvLine('KEY', 'v1\\')).toThrow('not representable');
     expect(() => serializeDockerEnvLine('KEY', 'https://${DOMAIN}/api')).toThrow('does not expand references');
     // dotenv-expand resolves a bare $NAME (and $$), and rewrites \$ to $, while shell sourcing
     // keeps them literal.
