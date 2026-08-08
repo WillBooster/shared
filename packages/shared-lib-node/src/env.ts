@@ -42,14 +42,6 @@ export type EnvReaderOptions = Partial<ArgumentsCamelCase<InferredOptionTypes<ty
 const standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
 
 /**
- * Resolves the WB_ENV value wb falls back to when no env source and no exported variable defines
- * it: the command-level default first (`wb test --cascade-env=staging` loads the staging files
- * but its tests must still run as `test`, mirroring the pre-15 `||= 'test'` behavior), then the
- * forced cascade, then the ambient-NODE_ENV-driven auto cascade clamped to a standard mode (a
- * non-standard NODE_ENV such as `qa` still selects the cascade suffix, but must not produce a
- * non-standard WB_ENV).
- */
-/**
  * Resolves the cascade (fnox profile / env-file suffix) the reader loads for the given options:
  * the forced `--cascade-env` first, then `--cascade-node-env`'s NODE_ENV, then the auto cascade
  * driven by the ambient WB_ENV/NODE_ENV. Exported so commands that select a profile WITHOUT
@@ -69,6 +61,14 @@ export function resolveCascade(argv: EnvReaderOptions): string | undefined {
   );
 }
 
+/**
+ * Resolves the WB_ENV value wb falls back to when no env source and no exported variable defines
+ * it: the command-level default first (`wb test --cascade-env=staging` loads the staging files
+ * but its tests must still run as `test`, mirroring the pre-15 `||= 'test'` behavior), then the
+ * forced cascade, then the ambient-NODE_ENV-driven auto cascade clamped to a standard mode (a
+ * non-standard NODE_ENV such as `qa` still selects the cascade suffix, but must not produce a
+ * non-standard WB_ENV).
+ */
 export function resolveFallbackWbEnv(argv: EnvReaderOptions): string {
   if (argv.commandDefaultWbEnv) return argv.commandDefaultWbEnv;
   if (argv.cascadeEnv) return argv.cascadeEnv;

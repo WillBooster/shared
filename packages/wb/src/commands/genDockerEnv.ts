@@ -60,8 +60,10 @@ export const genDockerEnvCommand: CommandModule<unknown, GenDockerEnvCommandOpti
         process.exit(1);
       }
     }
+    // Code-point order, not localeCompare: the file must be byte-identical across build hosts so
+    // Docker layer caching and image reproducibility are locale-independent.
     const lines = Object.entries(envVars)
-      .toSorted(([a], [b]) => a.localeCompare(b))
+      .toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
       .map(([key, value]) => serializeDockerEnvLine(key, value));
     const outputPath = path.resolve(project.dirPath, argv.path ?? '.docker.env');
     if (argv.dryRun) {
@@ -92,9 +94,13 @@ export function serializeDockerEnvLine(key: string, value: string): string {
   if (!/^[A-Za-z_]\w*$/.test(key)) {
     throw new Error(`The key ${key} cannot be written to a .docker.env file: it is not a POSIX shell identifier.`);
   }
-  if (value.includes('${')) {
+  // `${NAME}` is a real fnox reference, and even a bare `$NAME` (which fnox exports literally) is
+  // resolved by dotenv-expand-style consumers while shell sourcing keeps it literal, so any
+  // expansion-sensitive `$` makes the consumers disagree. `$` before a digit, space, `(`, or the
+  // end of the value is inert in both families and stays representable.
+  if (/\$[A-Za-z_${]/.test(value)) {
     throw new Error(
-      `The value of ${key} references another variable (\${...}); wb gen-docker-env does not expand references — inline the value in fnox.toml.`
+      `The value of ${key} contains an expansion-sensitive $ reference; wb gen-docker-env does not expand references — inline the value in fnox.toml.`
     );
   }
   if (/['\n\r]/.test(value)) {

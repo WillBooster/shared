@@ -77,6 +77,42 @@ describe('collectPlaintextFnoxValues', () => {
     }
   });
 
+  it('stops the ancestor walk at a config declaring root = true', async () => {
+    const rootDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-docker-env-'));
+    const appDirPath = path.join(rootDirPath, 'packages', 'app');
+    await fs.mkdir(appDirPath, { recursive: true });
+    await fs.writeFile(path.join(rootDirPath, 'fnox.toml'), '[secrets]\nANCESTOR = { default = "ancestor" }\n');
+    await fs.writeFile(path.join(appDirPath, 'fnox.toml'), 'root = true\n\n[secrets]\nCHILD = { default = "child" }\n');
+
+    try {
+      expect({ ...collectPlaintextFnoxValues(appDirPath, rootDirPath, undefined) }).toStrictEqual({ CHILD: 'child' });
+    } finally {
+      await fs.rm(rootDirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('fails fast on fnox settings outside the canonical wbfy layout', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-docker-env-'));
+
+    try {
+      await fs.writeFile(path.join(dirPath, 'fnox.toml'), 'env = false\n\n[secrets]\nA = { default = "x" }\n');
+      expect(() => collectPlaintextFnoxValues(dirPath, dirPath, undefined)).toThrow('top-level env setting');
+
+      await fs.writeFile(
+        path.join(dirPath, 'fnox.toml'),
+        '[secrets]\nA = { default = \'{"a":1}\', json_path = "a" }\n'
+      );
+      expect(() => collectPlaintextFnoxValues(dirPath, dirPath, undefined)).toThrow('value transformation');
+
+      // A `value` without an explicit provider is still provider-backed (default_provider-style
+      // configs); it must never be baked.
+      await fs.writeFile(path.join(dirPath, 'fnox.toml'), '[secrets]\nA = { value = "bogus", default = "fb" }\n');
+      expect({ ...collectPlaintextFnoxValues(dirPath, dirPath, undefined) }).toStrictEqual({});
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
   it('keeps a `__proto__` key as ordinary data', async () => {
     const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-docker-env-'));
     await fs.writeFile(path.join(dirPath, 'fnox.toml'), '[secrets]\n"__proto__" = { default = "kept" }\n');
@@ -91,7 +127,7 @@ describe('collectPlaintextFnoxValues', () => {
 
 describe('serializeDockerEnvLine', () => {
   it('single-quotes every representable value', () => {
-    for (const value of ['a\\', 'a # b', '$(id)', ' pad ', '', 'a"b', 'a`b', '$HOME', 'a=b']) {
+    for (const value of ['a\\', 'a # b', '$(id)', ' pad ', '', 'a"b', 'a`b', 'costs $100', 'x$', 'a=b']) {
       expect(serializeDockerEnvLine('KEY', value)).toBe(`KEY='${value}'`);
     }
   });
@@ -101,6 +137,9 @@ describe('serializeDockerEnvLine', () => {
     expect(() => serializeDockerEnvLine('KEY', 'a\nb')).toThrow('apostrophes and newlines');
     expect(() => serializeDockerEnvLine('KEY', 'a\rb')).toThrow('apostrophes and newlines');
     expect(() => serializeDockerEnvLine('KEY', 'https://${DOMAIN}/api')).toThrow('does not expand references');
+    // dotenv-expand resolves a bare $NAME (and $$) while shell sourcing keeps it literal.
+    expect(() => serializeDockerEnvLine('KEY', '$HOME')).toThrow('does not expand references');
+    expect(() => serializeDockerEnvLine('KEY', 'a$$b')).toThrow('does not expand references');
     expect(() => serializeDockerEnvLine('INVALID-KEY', 'x')).toThrow('not a POSIX shell identifier');
   });
 });
