@@ -57,22 +57,6 @@ test('generates renovate.jsonc in a repository without any Renovate config', asy
   });
 });
 
-test.each([
-  {
-    name: 'dependency',
-    packageJson: { name: 'private-consumer', dependencies: { '@willbooster-private/llm-proxy': '1.0.0' } },
-  },
-  {
-    name: 'publisher',
-    packageJson: { name: '@willbooster-private/private-publisher' },
-  },
-])('adds the private-package preset for a private-package $name', async ({ packageJson }) => {
-  await withRepo({ 'package.json': JSON.stringify(packageJson) }, async (dirPath) => {
-    const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
-    expect(settings.extends).toEqual([preset, privatePackagesPreset]);
-  });
-});
-
 test('replaces inline Verdaccio authentication and npmrc with the shared preset', async () => {
   await withRepo(
     {
@@ -81,7 +65,7 @@ test('replaces inline Verdaccio authentication and npmrc with the shared preset'
         dependencies: { '@willbooster-private/llm-proxy': '1.0.0' },
       }),
       'renovate.jsonc': `{
-  "extends": ["${preset}"],
+  "extends": ["${preset}", "${privatePackagesPreset}"],
   "hostRules": [
     {
       "matchHost": "https://verdaccio-production-e389.up.railway.app/",
@@ -96,7 +80,7 @@ test('replaces inline Verdaccio authentication and npmrc with the shared preset'
     },
     async (dirPath) => {
       const settings = parseSettings(fs.readFileSync(path.join(dirPath, 'renovate.jsonc'), 'utf8'));
-      expect(settings.extends).toEqual([preset, privatePackagesPreset]);
+      expect(settings.extends).toEqual([preset]);
       expect(settings.hostRules).toBeUndefined();
       expect(settings.npmrc).toBeUndefined();
       expect(settings.npmrcMerge).toBeUndefined();

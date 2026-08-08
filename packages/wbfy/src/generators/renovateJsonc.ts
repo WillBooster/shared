@@ -9,17 +9,12 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
-import {
-  privateRegistryHost,
-  privateRegistryScopeMapping,
-  repoResolvesPrivatePackages,
-} from '../utils/privatePackages.js';
+import { privateRegistryHost, privateRegistryScopeMapping } from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
 
 // The shared preset every WillBooster / WillBoosterLab repository extends. willbooster-configs IS
 // this preset, so injecting it there would make the preset extend itself.
 const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
-const privatePackagesPreset = 'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc';
 const jsonObj = {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [sharedPreset],
@@ -27,7 +22,11 @@ const jsonObj = {
 
 // The preset used to live in renovate.json5; it was renamed to renovate.jsonc, so the old reference
 // now fails to resolve ("Cannot find preset's package"). Drop it while migrating, like @willbooster.
-const legacyPresets = new Set(['@willbooster', 'github>WillBooster/willbooster-configs:renovate.json5']);
+const legacyPresets = new Set([
+  '@willbooster',
+  'github>WillBooster/willbooster-configs:renovate.json5',
+  'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc',
+]);
 
 // $schema is optional: an existing config need not declare it.
 type Settings = Partial<typeof jsonObj> & {
@@ -177,11 +176,8 @@ function buildSettings(config: PackageConfig, liveSettings: Settings | undefined
         arrayMerge: overwriteMerge,
       }) as Settings)
     : generatedSettings;
-  const generatedExtends = repoResolvesPrivatePackages(config)
-    ? [...jsonObj.extends, privatePackagesPreset]
-    : jsonObj.extends;
-  newSettings.extends = mergeRenovateExtends(config, generatedExtends, liveSettings?.extends);
-  if (generatedExtends.includes(privatePackagesPreset)) removeInlinePrivateRegistrySettings(newSettings);
+  newSettings.extends = mergeRenovateExtends(config, jsonObj.extends, liveSettings?.extends);
+  removeInlinePrivateRegistrySettings(newSettings);
   return newSettings;
 }
 
@@ -301,8 +297,7 @@ function mergeRenovateExtends(
   const presetsToAdd = config.isWillBoosterConfigs ? [] : generatedExtends;
   const presetsToDrop = config.isWillBoosterConfigs ? new Set(legacyPresets).add(sharedPreset) : legacyPresets;
 
-  // Only insert the presets that are missing. The private-package preset belongs immediately after
-  // the shared defaults so it can complement them; every other generated preset is prepended.
+  // Only insert the presets that are missing. Generated presets are prepended.
   // Moving one that is already listed would reorder the array, and a later preset overrides an
   // earlier one in Renovate — so re-sorting silently flips which config wins (and, being a reorder
   // rather than an addition, also costs the array's comments, which can only be preserved by insertion).
@@ -313,12 +308,7 @@ function mergeRenovateExtends(
   );
   for (const preset of presetsToAdd) {
     if (mergedExtends.some((existing) => isSamePreset(existing, preset))) continue;
-    if (isSamePreset(preset, privatePackagesPreset)) {
-      const sharedPresetIndex = mergedExtends.findIndex((existing) => isSamePreset(existing, sharedPreset));
-      mergedExtends.splice(sharedPresetIndex + 1, 0, preset);
-    } else {
-      mergedExtends.unshift(preset);
-    }
+    mergedExtends.unshift(preset);
   }
   return mergedExtends;
 }
