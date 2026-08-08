@@ -496,7 +496,7 @@ test('runs wb gen-code after a project postinstall that has no gen-code script',
   expect(packageJson.scripts?.['gen-code']).toBeUndefined();
 });
 
-// wbfy gitignores and untracks worker-configuration.d.ts only where postinstall regenerates it, so a package that
+// wbfy gitignores worker-configuration.d.ts only where postinstall regenerates it, so a package that
 // cannot run wrangler must not gain the install-time generation either.
 test.each([
   ['the package does not depend on wrangler', {}, true],
