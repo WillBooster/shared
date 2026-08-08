@@ -444,17 +444,18 @@ export function getWorkerTypesScriptError(
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
     const segments = splitScriptSegments(script);
-    const detectionSegments = segments ?? splitShellCommandsForDetection(script);
-    if ([script, ...splitShellCommands(script)].some(hasIndirectWranglerTypesInvocation)) {
+    const invocations = findWranglerTypesInvocations(script);
+    if (invocations.indirect) {
       return `${name} uses unsupported shell indirection around wrangler types`;
     }
-    const hasDirectInvocation = detectionSegments.some(hasWranglerTypesInvocation);
-    if (!hasDirectInvocation) continue;
+    if (!invocations.direct) continue;
     hasInvocation = true;
     if (!segments) return `${name} contains unsupported shell syntax around wrangler types`;
+    let hasValidatedInvocation = false;
     for (const segment of segments) {
       const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
       if (!hasWranglerTypesInvocation(normalized)) continue;
+      hasValidatedInvocation = true;
       const kind = classifyScriptSegment(segment, scripts, false);
       if (kind !== 'wranglerTypes') {
         return `${name} uses an unsupported wrangler types spelling`;
@@ -467,6 +468,7 @@ export function getWorkerTypesScriptError(
         return `${name} uses unsupported wrangler types arguments`;
       }
     }
+    if (!hasValidatedInvocation) return `${name} uses an unsupported wrangler types spelling`;
     const generatedSegments = segments.filter(
       (segment) => classifyScriptSegment(segment, scripts, false) === 'wranglerTypes'
     );
@@ -498,19 +500,95 @@ function hasWranglerDependency(packageJson: PackageJson | undefined): boolean {
   ].some((dependencies) => dependencies?.wrangler !== undefined);
 }
 
-function splitShellCommandsForDetection(script: string): string[] {
-  return script
-    .replaceAll(/'[^']*'|"[^"]*"|`[^`]*`/gu, '')
-    .split(/&&|\|\||[;|]/u)
-    .map((command) => command.trim())
-    .filter(Boolean);
+interface ShellWord {
+  isOperator: boolean;
+  text: string;
 }
 
-function splitShellCommands(script: string): string[] {
-  return script
-    .split(/&&|\|\||[;|]/u)
-    .map((command) => command.trim())
-    .filter(Boolean);
+function findWranglerTypesInvocations(script: string): { direct: boolean; indirect: boolean } {
+  const words = tokenizeShell(script);
+  let direct = false;
+  let indirect = false;
+  let commandStart = true;
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    if (!word) continue;
+    if (word.isOperator) {
+      commandStart = true;
+      continue;
+    }
+    if (!commandStart) continue;
+    if (['!', '{', 'do', 'elif', 'else', 'if', 'then', 'until', 'while'].includes(word.text)) continue;
+
+    const commandWords: string[] = [];
+    while (index < words.length && !words[index]?.isOperator) {
+      commandWords.push(words[index]?.text ?? '');
+      index += 1;
+    }
+    index -= 1;
+    direct ||= hasWranglerTypesInvocation(commandWords.join(' '));
+
+    const commandIndex = getShellCommandIndex(commandWords);
+    const command = commandWords[commandIndex];
+    if (command === 'eval' && /\bwrangler\s+types\b/u.test(commandWords.slice(commandIndex + 1).join(' '))) {
+      indirect = true;
+    }
+    if (['bash', 'sh', 'zsh'].includes(command ?? '')) {
+      const optionIndex = commandWords.findIndex(
+        (argument, argumentIndex) => argumentIndex > commandIndex && /^-[A-Za-z]*c[A-Za-z]*$/u.test(argument)
+      );
+      const payload = optionIndex === -1 ? undefined : commandWords[optionIndex + 1];
+      if (payload) {
+        const nested = findWranglerTypesInvocations(payload);
+        indirect ||= nested.direct || nested.indirect;
+      }
+    }
+    commandStart = false;
+  }
+  return { direct, indirect };
+}
+
+function tokenizeShell(script: string): ShellWord[] {
+  const words: ShellWord[] = [];
+  let current = '';
+  let quote = '';
+  const pushCurrent = (): void => {
+    if (!current) return;
+    words.push({ isOperator: false, text: current });
+    current = '';
+  };
+  for (let index = 0; index < script.length; index += 1) {
+    const character = script[index] ?? '';
+    if (quote) {
+      if (character === quote) {
+        quote = '';
+      } else if (character === '\\' && quote !== "'" && index + 1 < script.length) {
+        index += 1;
+        current += script[index] ?? '';
+      } else {
+        current += character;
+      }
+      continue;
+    }
+    if (character === "'" || character === '"' || character === '`') {
+      quote = character;
+    } else if (character === '\\' && index + 1 < script.length) {
+      index += 1;
+      current += script[index] ?? '';
+    } else if (/\s/u.test(character)) {
+      pushCurrent();
+      if (character === '\n') words.push({ isOperator: true, text: character });
+    } else if (';&|()'.includes(character)) {
+      pushCurrent();
+      const isDouble = (character === '|' || character === '&') && script[index + 1] === character;
+      words.push({ isOperator: true, text: isDouble ? character.repeat(2) : character });
+      if (isDouble) index += 1;
+    } else {
+      current += character;
+    }
+  }
+  pushCurrent();
+  return words;
 }
 
 function hasWranglerTypesInvocation(script: string): boolean {
@@ -541,26 +619,15 @@ function hasWranglerTypesInvocation(script: string): boolean {
   return false;
 }
 
-function hasIndirectWranglerTypesInvocation(script: string): boolean {
-  const tokens = script.trim().split(/\s+/u);
-  const commandIndex = getShellCommandIndex(tokens);
-  const command = tokens[commandIndex];
-  const shellOption = tokens[commandIndex + 1] ?? '';
-  const isIndirect =
-    command === 'eval' ||
-    (['bash', 'sh', 'zsh'].includes(command ?? '') && /^-[A-Za-z]*c[A-Za-z]*$/u.test(shellOption));
-  return isIndirect && /\bwrangler\s+types\b/u.test(script);
-}
-
 function invokesPackageScript(script: string | undefined, scriptName: string): boolean {
   if (!script) return false;
-  return (splitScriptSegments(script) ?? splitShellCommandsForDetection(script)).some((segment) => {
+  return (splitScriptSegments(script) ?? [script]).some((segment) => {
     const tokens = segment.trim().split(/\s+/u);
     const commandIndex = getShellCommandIndex(tokens);
     if (!['bun', 'npm', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '')) return false;
     let nameIndex = commandIndex + 1;
     while (tokens[nameIndex]?.startsWith('-')) nameIndex += 1;
-    if (tokens[nameIndex] === 'run') nameIndex += 1;
+    if (['run', 'run-script'].includes(tokens[nameIndex] ?? '')) nameIndex += 1;
     while (tokens[nameIndex]?.startsWith('-')) nameIndex += 1;
     return tokens[nameIndex] === scriptName;
   });

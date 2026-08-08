@@ -22,11 +22,11 @@ const wranglerTypesSegmentPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)
 const genI18nTsSegmentPattern = /^(?:(?:bun|bunx|yarn|pnpm|npm)\s+)?(?:run\s+)?gen-i18n-ts$/u;
 
 // A runner delegating to one of this package's own scripts, e.g. `bun run gen-types`.
-const scriptRunnerPattern = /^(?:bun|bunx|yarn|pnpm|npm)\s+(?:run\s+)?(\S+)$/u;
+const scriptRunnerPattern = /^(?:bun|bunx|yarn|pnpm|npm)\s+(?:run(?:-script)?\s+)?(\S+)$/u;
 
 // Anything wbfy's `&&` split cannot model (pipes, sequencing, redirections, quoting, substitutions, directory
 // changes). Scripts containing it are left untouched instead of being rewritten from a wrong parse.
-const unsupportedShellSyntaxPattern = /[;|<>`$'"()]|\bcd\s/u;
+const unsupportedShellSyntaxPattern = /[\n;|<>`$'"()]|\bcd\s/u;
 
 /**
  * Splits a script into `&&`-separated segments, or returns undefined when the script uses shell syntax wbfy

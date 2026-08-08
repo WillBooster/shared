@@ -320,6 +320,7 @@ test('normalizes a package carrying output-changing worker-types flags', async (
 
 test.each([
   ['a referenced alias', { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' }],
+  ['an npm run-script alias reference', { 'gen-types': 'wrangler types', build: 'npm run-script gen-types' }],
   ['a compound alias', { 'gen-types': 'wrangler types && echo custom', postinstall: 'bun run gen-types' }],
   ['an arbitrary generator name', { 'types:worker': 'wrangler types --strict-vars=false' }],
   ['an arbitrary generator name with extra whitespace', { 'types:worker': 'wrangler  types --strict-vars=false' }],
@@ -351,6 +352,12 @@ test.each([
   ['eval indirection', { postinstall: 'eval wrangler types' }],
   ['shell indirection', { postinstall: "sh -c 'wrangler types'" }],
   ['combined shell-option indirection', { postinstall: 'echo before && sh -lc "wrangler types"' }],
+  ['a quoted executable', { postinstall: '"wrangler" types' }],
+  ['an if command', { postinstall: 'if wrangler types; then echo done; fi' }],
+  ['a subshell command', { postinstall: '(wrangler types)' }],
+  ['an escaped executable', { postinstall: String.raw`wrang\ler types` }],
+  ['a newline-separated command', { postinstall: 'echo before\nwrangler types' }],
+  ['a case branch command', { postinstall: 'case x in x) wrangler types;; esac' }],
 ])('rejects %s instead of partially normalizing it', async (_description, scripts) => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
   const packageJson = await generatePackageJsonFrom(
@@ -409,6 +416,30 @@ test('does not treat gen-types in command arguments as a script invocation', asy
 
   expect(packageJson.scripts).toMatchObject({ help: 'echo gen-types', postinstall: 'wb gen-code' });
   expect(packageJson.scripts?.['gen-types']).toBeUndefined();
+});
+
+test('normalizes an npm run-script reference from postinstall', async () => {
+  const scripts = { 'gen-types': 'wrangler types', postinstall: 'npm run-script gen-types' };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
+});
+
+test('does not reject a shell payload that only prints wrangler types', async () => {
+  const scripts = { help: 'sh -c "echo wrangler types"' };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.help).toBe('sh -c "echo wrangler types"');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
 test('recognizes wrangler in optionalDependencies as a direct dependency', async () => {
