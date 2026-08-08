@@ -188,7 +188,7 @@ export async function materializePrivatePackages(
   if (downloadedPackages.length > 0 && !auth) {
     throw new Error(
       `Cannot download ${downloadedPackages.map((p) => p.name).join(', ')}: no registry configured for the ${PRIVATE_REGISTRY_SCOPE} scope; ` +
-        `add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to ~/.npmrc. Only installed copies satisfying an exact version or ` +
+        `run wbfy to generate the repository .npmrc. Only installed copies satisfying an exact version or ` +
         'semver range are reused without registry access; dist-tag specifiers (e.g. `latest`) always require it.'
     );
   }

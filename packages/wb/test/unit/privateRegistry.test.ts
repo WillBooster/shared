@@ -18,6 +18,7 @@ const tempDirPaths: string[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
   delete process.env.CI;
+  delete process.env.VERDACCIO_TOKEN;
   await Promise.all(tempDirPaths.splice(0).map((dirPath) => fs.promises.rm(dirPath, { recursive: true, force: true })));
 });
 
@@ -124,12 +125,12 @@ legacy-peer-deps=true
 });
 
 describe('resolvePrivateRegistryAuth', () => {
-  it('ignores a project npmrc during local development', async () => {
+  it('combines the project registry mapping with the home token during local development', async () => {
     const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
     vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
 
     expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
-      registryUrl: 'https://home.example.test',
+      registryUrl: 'https://project.example.test',
       authToken: 'home-token',
     });
   });
@@ -138,6 +139,10 @@ describe('resolvePrivateRegistryAuth', () => {
     const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
     vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
     process.env.CI = 'true';
+    await fs.promises.appendFile(
+      path.join(rootDirPath, '.npmrc'),
+      '//project.example.test/:_authToken=project-token\n'
+    );
 
     expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
       registryUrl: 'https://project.example.test',
@@ -153,13 +158,10 @@ async function makeNpmrcFixture(): Promise<{ homeDirPath: string; rootDirPath: s
   const rootDirPath = path.join(parentDirPath, 'repo');
   await Promise.all([fs.promises.mkdir(homeDirPath), fs.promises.mkdir(rootDirPath)]);
   await Promise.all([
-    fs.promises.writeFile(
-      path.join(homeDirPath, '.npmrc'),
-      '@willbooster-private:registry=https://home.example.test/\n//home.example.test/:_authToken=home-token\n'
-    ),
+    fs.promises.writeFile(path.join(homeDirPath, '.npmrc'), '//project.example.test/:_authToken=home-token\n'),
     fs.promises.writeFile(
       path.join(rootDirPath, '.npmrc'),
-      '@willbooster-private:registry=https://project.example.test/\n//project.example.test/:_authToken=project-token\n'
+      '@willbooster-private:registry=https://project.example.test/\n'
     ),
   ]);
   return { homeDirPath, rootDirPath };
