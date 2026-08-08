@@ -9,6 +9,9 @@ import { getWorkspacePackageJsonPaths } from './workspaceUtil.js';
 
 const PRIVATE_SCOPE = '@willbooster-private/';
 
+export const privateRegistryHost = 'verdaccio-production-e389.up.railway.app';
+export const privateRegistryScopeMapping = `@willbooster-private:registry=https://${privateRegistryHost}/`;
+
 /**
  * Whether this repository deals with `@willbooster-private/*` packages — by convention that scope
  * lives exclusively on the private Verdaccio registry, so exactly these repositories need the
