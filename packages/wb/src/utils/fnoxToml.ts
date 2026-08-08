@@ -42,7 +42,9 @@ export function collectPlaintextFnoxValues(
   rootDirPath: string,
   profileName: string | undefined
 ): Record<string, string> {
-  const effectiveEntries: Record<string, unknown> = {};
+  // Null-prototype records: fnox accepts `__proto__` as an ordinary key, and Object.assign on a
+  // default-prototype object would treat it as the legacy prototype setter and drop the entry.
+  const effectiveEntries: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
   // Root-most first so nearer configs overlay ancestor values; the profile table always overlays
   // the base table, matching fnox's profile resolution.
   const configs = findAncestorFnoxConfigPaths(projectDirPath, rootDirPath).toReversed().map(parseFnoxConfig);
@@ -51,7 +53,7 @@ export function collectPlaintextFnoxValues(
     for (const config of configs) Object.assign(effectiveEntries, config.profiles?.[profileName]?.secrets);
   }
 
-  const values: Record<string, string> = {};
+  const values: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const [keyName, entry] of Object.entries(effectiveEntries)) {
     if (typeof entry !== 'object' || entry === null) continue;
     const { default: defaultValue, env, provider } = entry as { default?: unknown; env?: unknown; provider?: unknown };

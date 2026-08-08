@@ -49,6 +49,26 @@ const standardWbEnvModes = new Set(['development', 'test', 'staging', 'productio
  * non-standard NODE_ENV such as `qa` still selects the cascade suffix, but must not produce a
  * non-standard WB_ENV).
  */
+/**
+ * Resolves the cascade (fnox profile / env-file suffix) the reader loads for the given options:
+ * the forced `--cascade-env` first, then `--cascade-node-env`'s NODE_ENV, then the auto cascade
+ * driven by the ambient WB_ENV/NODE_ENV. Exported so commands that select a profile WITHOUT
+ * loading environment sources (e.g. `wb gen-docker-env`) cannot drift from the reader's selection.
+ */
+export function resolveCascade(argv: EnvReaderOptions): string | undefined {
+  // Read NODE_ENV through an alias, never as the `process.env.NODE_ENV` member expression:
+  // bundlers replace that exact expression at build time (see readEnvironmentVariables).
+  const runtimeEnv = process.env;
+  return (
+    argv.cascadeEnv ??
+    (argv.cascadeNodeEnv
+      ? runtimeEnv.NODE_ENV || 'development'
+      : argv.autoCascadeEnv
+        ? runtimeEnv.WB_ENV || runtimeEnv.NODE_ENV || 'development'
+        : undefined)
+  );
+}
+
 export function resolveFallbackWbEnv(argv: EnvReaderOptions): string {
   if (argv.commandDefaultWbEnv) return argv.commandDefaultWbEnv;
   if (argv.cascadeEnv) return argv.cascadeEnv;
@@ -88,13 +108,7 @@ export function readEnvironmentVariables(
   // 'production'), which constant-folds the fallback below and made the published wb select
   // the production profile whenever WB_ENV was unset.
   const runtimeEnv = process.env;
-  const cascade =
-    argv.cascadeEnv ??
-    (argv.cascadeNodeEnv
-      ? runtimeEnv.NODE_ENV || 'development'
-      : argv.autoCascadeEnv
-        ? runtimeEnv.WB_ENV || runtimeEnv.NODE_ENV || 'development'
-        : undefined);
+  const cascade = resolveCascade(argv);
   const shouldSuppressOutput = shouldSuppressEnvironmentOutput(argv);
   if (argv.verbose && !shouldSuppressOutput) {
     console.info(`WB_ENV: ${runtimeEnv.WB_ENV}, NODE_ENV: ${runtimeEnv.NODE_ENV}`);

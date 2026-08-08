@@ -1,0 +1,106 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { serializeDockerEnvLine } from '../../src/commands/genDockerEnv.js';
+import { collectPlaintextFnoxValues } from '../../src/utils/fnoxToml.js';
+
+const FNOX_TOML = `[secrets]
+WB_ENV = { default = "development" }
+APP_TITLE = { default = "dev title" }
+EMPTY_VALUE = { default = "" }
+BUILD_ONLY = { default = "x", env = false }
+EXEC_ONLY = { default = "y", env = "exec" }
+PLAIN_TO_SECRET = { default = "plain-in-dev" }
+SECRET_TO_PLAIN = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCg==" }
+ALWAYS_SECRET = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCg==" }
+
+[profiles.production.secrets]
+WB_ENV = { default = "production" }
+APP_TITLE = { default = "prod title" }
+PLAIN_TO_SECRET = { provider = "age", value = "YWdlLWVuY3J5cHRpb24ub3JnL3YxCg==" }
+SECRET_TO_PLAIN = { default = "plain-in-prod" }
+
+[providers.age]
+recipients = ["age1examplerecipientkey"]
+`;
+
+describe('collectPlaintextFnoxValues', () => {
+  it('returns only effective plaintext defaults for the selected profile', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-docker-env-'));
+    await fs.writeFile(path.join(dirPath, 'fnox.toml'), FNOX_TOML);
+
+    try {
+      // A profile plaintext override of an encrypted base IS returned; a plaintext base
+      // overridden by an encrypted profile value is NOT; env=false / env="exec" never are.
+      expect({ ...collectPlaintextFnoxValues(dirPath, dirPath, 'production') }).toStrictEqual({
+        WB_ENV: 'production',
+        APP_TITLE: 'prod title',
+        EMPTY_VALUE: '',
+        SECRET_TO_PLAIN: 'plain-in-prod',
+      });
+      expect({ ...collectPlaintextFnoxValues(dirPath, dirPath, 'development') }).toStrictEqual({
+        WB_ENV: 'development',
+        APP_TITLE: 'dev title',
+        EMPTY_VALUE: '',
+        PLAIN_TO_SECRET: 'plain-in-dev',
+      });
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('overlays ancestor configs with any profile entry beating any base entry', async () => {
+    const rootDirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-docker-env-'));
+    const appDirPath = path.join(rootDirPath, 'packages', 'app');
+    await fs.mkdir(appDirPath, { recursive: true });
+    // fnox 1.31.1 precedence (verified with `fnox export`): all base [secrets] tables merge
+    // root-most→nearest first, then all profile tables merge root-most→nearest on top, so a ROOT
+    // profile entry still beats a NEARER base entry.
+    await fs.writeFile(
+      path.join(rootDirPath, 'fnox.toml'),
+      '[secrets]\nOVERLAP = { default = "root-base" }\n\n[profiles.production.secrets]\nOVERLAP = { default = "root-prod" }\n'
+    );
+    await fs.writeFile(path.join(appDirPath, 'fnox.toml'), '[secrets]\nOVERLAP = { default = "app-base" }\n');
+
+    try {
+      expect({ ...collectPlaintextFnoxValues(appDirPath, rootDirPath, 'production') }).toStrictEqual({
+        OVERLAP: 'root-prod',
+      });
+      expect({ ...collectPlaintextFnoxValues(appDirPath, rootDirPath, undefined) }).toStrictEqual({
+        OVERLAP: 'app-base',
+      });
+    } finally {
+      await fs.rm(rootDirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('keeps a `__proto__` key as ordinary data', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-docker-env-'));
+    await fs.writeFile(path.join(dirPath, 'fnox.toml'), '[secrets]\n"__proto__" = { default = "kept" }\n');
+
+    try {
+      expect(collectPlaintextFnoxValues(dirPath, dirPath, undefined)['__proto__']).toBe('kept');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+});
+
+describe('serializeDockerEnvLine', () => {
+  it('single-quotes every representable value', () => {
+    for (const value of ['a\\', 'a # b', '$(id)', ' pad ', '', 'a"b', 'a`b', '$HOME', 'a=b']) {
+      expect(serializeDockerEnvLine('KEY', value)).toBe(`KEY='${value}'`);
+    }
+  });
+
+  it('rejects values and keys no consumer reads back identically', () => {
+    expect(() => serializeDockerEnvLine('KEY', "it's")).toThrow('apostrophes and newlines');
+    expect(() => serializeDockerEnvLine('KEY', 'a\nb')).toThrow('apostrophes and newlines');
+    expect(() => serializeDockerEnvLine('KEY', 'a\rb')).toThrow('apostrophes and newlines');
+    expect(() => serializeDockerEnvLine('KEY', 'https://${DOMAIN}/api')).toThrow('does not expand references');
+    expect(() => serializeDockerEnvLine('INVALID-KEY', 'x')).toThrow('not a POSIX shell identifier');
+  });
+});
