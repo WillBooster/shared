@@ -115,7 +115,9 @@ describe('materializePrivatePackages', () => {
       });
 
       const projects = await findDescendantProjects({}, false, rootDirPath);
-      await expect(materializePrivatePackages(projects!.root.dirPath, collectManifests(projects!))).rejects.toThrow();
+      await expect(materializePrivatePackages(projects!.root.dirPath, collectManifests(projects!))).rejects.toThrow(
+        /fetch failed|Unable to connect/
+      );
 
       expect(await readVersion(gitDirPath)).toBe('0.9.0');
       expect(await readVersion(registryDirPath)).toBe('0.9.0');

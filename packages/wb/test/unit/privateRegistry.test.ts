@@ -168,7 +168,10 @@ async function makeNpmrcFixture(): Promise<{ homeDirPath: string; rootDirPath: s
   const rootDirPath = path.join(parentDirPath, 'repo');
   await Promise.all([fs.promises.mkdir(homeDirPath), fs.promises.mkdir(rootDirPath)]);
   await Promise.all([
-    fs.promises.writeFile(path.join(homeDirPath, '.npmrc'), '//project.example.test/:_authToken=home-token\n'),
+    fs.promises.writeFile(
+      path.join(homeDirPath, '.npmrc'),
+      '@willbooster-private:registry=https://home.example.test/\n' + '//project.example.test/:_authToken=home-token\n'
+    ),
     fs.promises.writeFile(
       path.join(rootDirPath, '.npmrc'),
       '@willbooster-private:registry=https://project.example.test/\n'
