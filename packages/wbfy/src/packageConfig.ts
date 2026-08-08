@@ -441,17 +441,13 @@ export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJs
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
     const segments = splitScriptSegments(script);
-    const invocations = findWranglerTypesInvocations(script);
-    if (invocations.indirect) {
-      return `${name} uses unsupported shell indirection around wrangler types`;
-    }
-    if (!invocations.direct) continue;
+    if (!wranglerTypesTextPattern.test(script)) continue;
     hasInvocation = true;
     if (!segments) return `${name} contains unsupported shell syntax around wrangler types`;
     let hasValidatedInvocation = false;
     for (const segment of segments) {
       const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
-      if (!hasWranglerTypesInvocation(normalized)) continue;
+      if (!wranglerTypesTextPattern.test(normalized)) continue;
       hasValidatedInvocation = true;
       const kind = classifyScriptSegment(segment, scripts, false);
       if (kind !== 'wranglerTypes') {
@@ -472,13 +468,13 @@ export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJs
     if (name === 'gen-types' && generatedSegments.length > 0) {
       const referencedOutsidePostinstall = Object.entries(scripts).some(
         ([otherName, otherScript]) =>
-          otherName !== 'gen-types' && otherName !== 'postinstall' && invokesPackageScript(otherScript, 'gen-types')
+          otherName !== 'gen-types' && otherName !== 'postinstall' && mentionsPackageScript(otherScript, 'gen-types')
       );
       if (segments.length !== 1 || referencedOutsidePostinstall) {
         return 'gen-types must contain only wrangler types and must not be referenced outside postinstall';
       }
       const postinstall = scripts.postinstall;
-      if (postinstall && invokesPackageScript(postinstall, 'gen-types')) {
+      if (postinstall && mentionsPackageScript(postinstall, 'gen-types')) {
         const postinstallSegments = splitScriptSegments(postinstall);
         if (
           !postinstallSegments ||
@@ -503,284 +499,10 @@ function hasWranglerDependency(packageJson: PackageJson | undefined): boolean {
   ].some((dependencies) => dependencies?.wrangler !== undefined);
 }
 
-interface ShellWord {
-  isOperator: boolean;
-  text: string;
-}
+const wranglerTypesTextPattern = /\bwrangler\s+types\b/u;
 
-function findWranglerTypesInvocations(script: string): { direct: boolean; indirect: boolean } {
-  const { executableScript, interpolatedBodies } = stripHeredocBodies(script);
-  let direct = false;
-  let indirect = getCommandSubstitutions([executableScript, ...interpolatedBodies].join('\n')).some((substitution) => {
-    const nested = findWranglerTypesInvocations(substitution);
-    return nested.direct || nested.indirect;
-  });
-  const commands = getShellCommands(executableScript);
-  const wranglerVariables = new Set(
-    commands
-      .flat()
-      .map((word) => /^([A-Za-z_][A-Za-z0-9_]*)=wrangler$/u.exec(word)?.[1])
-      .filter((name): name is string => name !== undefined)
-  );
-  for (const commandWords of commands) {
-    direct ||= hasWranglerTypesInvocation(commandWords.join(' '));
-
-    const commandIndex = getShellCommandIndex(commandWords);
-    const command = commandWords[commandIndex];
-    const expandedCommand = /^\$(?:\{([^}]+)\}|([A-Za-z_][A-Za-z0-9_]*))$/u.exec(command ?? '');
-    if (
-      wranglerVariables.has(expandedCommand?.[1] ?? expandedCommand?.[2] ?? '') &&
-      commandWords[commandIndex + 1] === 'types'
-    ) {
-      indirect = true;
-    }
-    if (command === 'eval' && /\bwrangler\s+types\b/u.test(commandWords.slice(commandIndex + 1).join(' '))) {
-      indirect = true;
-    }
-    if (!['bash', 'sh', 'zsh'].includes(command ?? '')) continue;
-    const optionIndex = commandWords.findIndex(
-      (argument, argumentIndex) => argumentIndex > commandIndex && /^-[A-Za-z]*c[A-Za-z]*$/u.test(argument)
-    );
-    const candidateIndex = optionIndex + 1;
-    const payloadIndex = commandWords[candidateIndex] === '--' ? candidateIndex + 1 : candidateIndex;
-    const payload = optionIndex === -1 ? undefined : commandWords[payloadIndex];
-    if (!payload) continue;
-    const nested = findWranglerTypesInvocations(payload);
-    indirect ||= nested.direct || nested.indirect;
-  }
-  return { direct, indirect };
-}
-
-function getShellCommands(script: string): string[][] {
-  const words = tokenizeShell(script);
-  const commands: string[][] = [];
-  let commandStart = true;
-  let redirectionOperand = false;
-  for (let index = 0; index < words.length; index += 1) {
-    const word = words[index];
-    if (!word) continue;
-    if (word.isOperator) {
-      if (word.text === '<' || word.text === '>') {
-        redirectionOperand = true;
-      } else {
-        commandStart = true;
-      }
-      continue;
-    }
-    if (redirectionOperand) {
-      redirectionOperand = false;
-      continue;
-    }
-    if (!commandStart) continue;
-    if (['!', '{', 'do', 'elif', 'else', 'if', 'then', 'until', 'while'].includes(word.text)) continue;
-
-    const commandWords: string[] = [];
-    while (index < words.length && !words[index]?.isOperator) {
-      commandWords.push(words[index]?.text ?? '');
-      index += 1;
-    }
-    index -= 1;
-    commands.push(commandWords);
-    commandStart = false;
-  }
-  return commands;
-}
-
-function getCommandSubstitutions(script: string): string[] {
-  const substitutions: string[] = [];
-  let quote = '';
-  for (let index = 0; index < script.length; index += 1) {
-    const character = script[index] ?? '';
-    if (character === '\\' && quote !== "'") {
-      index += 1;
-      continue;
-    }
-    if (character === "'") {
-      if (!quote) quote = character;
-      else if (quote === character) quote = '';
-      continue;
-    }
-    if (character === '"') {
-      if (!quote) quote = character;
-      else if (quote === character) quote = '';
-      continue;
-    }
-    if (quote === "'") continue;
-    if (!quote && character === '#' && (index === 0 || /\s/u.test(script[index - 1] ?? ''))) {
-      const lineEnd = script.indexOf('\n', index + 1);
-      if (lineEnd === -1) break;
-      index = lineEnd;
-      continue;
-    }
-    if (character === '`') {
-      const end = script.indexOf('`', index + 1);
-      if (end === -1) continue;
-      substitutions.push(script.slice(index + 1, end));
-      index = end;
-      continue;
-    }
-    if (character !== '$' || script[index + 1] !== '(') continue;
-    let depth = 1;
-    let end = index + 2;
-    while (end < script.length && depth > 0) {
-      if (script[end] === '(') depth += 1;
-      if (script[end] === ')') depth -= 1;
-      end += 1;
-    }
-    if (depth === 0) substitutions.push(script.slice(index + 2, end - 1));
-    index = end - 1;
-  }
-  return substitutions;
-}
-
-function stripHeredocBodies(script: string): { executableScript: string; interpolatedBodies: string[] } {
-  const executableLines: string[] = [];
-  const interpolatedBodies: string[] = [];
-  let heredoc: { delimiter: string; interpolated: boolean } | undefined;
-  for (const line of script.split('\n')) {
-    if (heredoc) {
-      if (line.trim() === heredoc.delimiter) {
-        heredoc = undefined;
-      } else if (heredoc.interpolated) {
-        interpolatedBodies.push(line);
-      }
-      continue;
-    }
-    executableLines.push(line);
-    heredoc = findHeredoc(line);
-  }
-  return { executableScript: executableLines.join('\n'), interpolatedBodies };
-}
-
-function findHeredoc(line: string): { delimiter: string; interpolated: boolean } | undefined {
-  let quote = '';
-  let arithmeticDepth = 0;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index] ?? '';
-    if (character === '\\' && quote !== "'") {
-      index += 1;
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      if (!quote) quote = character;
-      else if (quote === character) quote = '';
-      continue;
-    }
-    if (quote) continue;
-    if (line.slice(index, index + 3) === '$((') {
-      arithmeticDepth += 1;
-      index += 2;
-      continue;
-    }
-    if (arithmeticDepth > 0 && line.slice(index, index + 2) === '))') {
-      arithmeticDepth -= 1;
-      index += 1;
-      continue;
-    }
-    if (arithmeticDepth > 0 || line.slice(index, index + 2) !== '<<') continue;
-    const match = /^-?\s*(?:(['"])([A-Za-z_][A-Za-z0-9_]*)\1|([A-Za-z_][A-Za-z0-9_]*))/u.exec(line.slice(index + 2));
-    const delimiter = match?.[2] ?? match?.[3];
-    if (delimiter) return { delimiter, interpolated: match?.[1] === undefined };
-  }
-}
-
-function tokenizeShell(script: string): ShellWord[] {
-  const words: ShellWord[] = [];
-  let current = '';
-  let quote = '';
-  const pushCurrent = (): void => {
-    if (!current) return;
-    words.push({ isOperator: false, text: current });
-    current = '';
-  };
-  for (let index = 0; index < script.length; index += 1) {
-    const character = script[index] ?? '';
-    if (quote) {
-      if (character === quote) {
-        quote = '';
-      } else if (character === '\\' && quote !== "'" && index + 1 < script.length) {
-        index += 1;
-        current += script[index] ?? '';
-      } else {
-        current += character;
-      }
-      continue;
-    }
-    if (character === "'" || character === '"' || character === '`') {
-      quote = character;
-    } else if (character === '\\' && index + 1 < script.length) {
-      index += 1;
-      current += script[index] ?? '';
-    } else if (/\s/u.test(character)) {
-      pushCurrent();
-      if (character === '\n') words.push({ isOperator: true, text: character });
-    } else if (';&|()<>'.includes(character)) {
-      pushCurrent();
-      const isDouble = (character === '|' || character === '&') && script[index + 1] === character;
-      words.push({ isOperator: true, text: isDouble ? character.repeat(2) : character });
-      if (isDouble) index += 1;
-    } else {
-      current += character;
-    }
-  }
-  pushCurrent();
-  return words;
-}
-
-function hasWranglerTypesInvocation(script: string): boolean {
-  const tokens = script.trim().split(/\s+/u);
-  let commandIndex = getShellCommandIndex(tokens);
-  if (
-    ['bun', 'npm', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '') &&
-    ['dlx', 'exec', 'run', 'x'].includes(tokens[commandIndex + 1] ?? '')
-  ) {
-    commandIndex += 2;
-  } else if (['bun', 'bunx', 'npx', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '')) {
-    commandIndex += 1;
-  }
-  const runnerValueOptions = new Set(['--package', '-p']);
-  while (tokens[commandIndex]?.startsWith('-')) {
-    const [option, inlineValue] = tokens[commandIndex]?.split('=', 2) ?? [];
-    commandIndex += 1;
-    if (inlineValue === undefined && runnerValueOptions.has(option ?? '')) commandIndex += 1;
-  }
-  const command = tokens[commandIndex] ?? '';
-  if (!/(?:^|\/)wrangler(?:@[^/]+)?$/u.test(command)) return false;
-  const globalValueOptions = new Set(['--config', '-c', '--cwd', '--env', '-e', '--env-file', '--log-level']);
-  for (let index = commandIndex + 1; index < tokens.length; index += 1) {
-    const argument = tokens[index];
-    if (!argument) continue;
-    const [option, inlineValue] = argument.split('=', 2);
-    if (option?.startsWith('-')) {
-      if (inlineValue === undefined && globalValueOptions.has(option)) index += 1;
-      continue;
-    }
-    return argument === 'types';
-  }
-  return false;
-}
-
-function invokesPackageScript(script: string | undefined, scriptName: string): boolean {
-  if (!script) return false;
-  return getShellCommands(stripHeredocBodies(script).executableScript).some((tokens) => {
-    const commandIndex = getShellCommandIndex(tokens);
-    if (!['bun', 'npm', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '')) return false;
-    let nameIndex = commandIndex + 1;
-    while (tokens[nameIndex]?.startsWith('-')) nameIndex += 1;
-    if (['run', 'run-script'].includes(tokens[nameIndex] ?? '')) nameIndex += 1;
-    while (tokens[nameIndex]?.startsWith('-')) nameIndex += 1;
-    return tokens[nameIndex] === scriptName;
-  });
-}
-
-function getShellCommandIndex(tokens: string[]): number {
-  let index = 0;
-  while (index < tokens.length) {
-    while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index += 1;
-    if (!['command', 'env', 'exec', 'time'].includes(tokens[index] ?? '')) break;
-    index += 1;
-  }
-  return index;
+function mentionsPackageScript(script: string | undefined, scriptName: string): boolean {
+  return script !== undefined && new RegExp(`\\b${escapeRegExp(scriptName)}\\b`, 'u').test(script);
 }
 
 function hasUnsupportedWorkerTypesArguments(segment: string): boolean {
@@ -966,7 +688,7 @@ function tsconfigPatternCouldMatchPath(pattern: string, targetPath: string, expa
  * Tells whether the directory owns a Worker, unlike the isCloudflare heuristic, which also matches a package that
  * merely mentions wrangler in a script or workflow (e.g. the root of a monorepo whose Worker lives in a sub-package).
  */
-export function detectWranglerConfig(dirPath: string): boolean {
+function detectWranglerConfig(dirPath: string): boolean {
   return ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
     fs.existsSync(path.resolve(dirPath, fileName))
   );

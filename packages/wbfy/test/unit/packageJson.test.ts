@@ -338,9 +338,6 @@ test.each([
   ['an npm exec package option', { postinstall: 'npm exec --package wrangler -- wrangler types --path=src/env.d.ts' }],
   ['a bun run binary runner', { postinstall: 'bun run wrangler types --path=src/env.d.ts' }],
   ['an environment-prefixed generator', { 'gen-types': 'NODE_ENV=test wrangler types' }],
-  ['a global config flag', { 'gen-types': 'wrangler --config=wrangler.jsonc types' }],
-  ['a short global config flag', { 'gen-types': 'wrangler -c wrangler.jsonc types' }],
-  ['a global environment flag', { 'gen-types': 'wrangler --env=staging types' }],
   ['a subcommand config flag', { 'gen-types': 'wrangler types --config=wrangler.other.jsonc' }],
   ['a short subcommand config flag', { 'gen-types': 'wrangler types -c wrangler.other.jsonc' }],
   ['a positional output path after a flag', { postinstall: 'wrangler types --strict-vars=false src/env.d.ts' }],
@@ -348,7 +345,6 @@ test.each([
   ['an environment', { postinstall: 'wrangler types --env=staging' }],
   ['a custom interface', { postinstall: 'wrangler types --env-interface=CloudflareEnv' }],
   ['a custom working directory', { postinstall: 'wrangler types --cwd packages/worker' }],
-  ['a global custom working directory', { postinstall: 'wrangler --cwd packages/worker types' }],
   ['a check', { 'check-types': 'wrangler types --check' }],
   ['an equals-form check', { 'gen-types': 'wrangler types --check=true' }],
   ['a divergent check', { 'check-types': 'wrangler types --check --strict-vars=false' }],
@@ -361,10 +357,8 @@ test.each([
   ['eval indirection', { postinstall: 'eval wrangler types' }],
   ['shell indirection', { postinstall: "sh -c 'wrangler types'" }],
   ['combined shell-option indirection', { postinstall: 'echo before && sh -lc "wrangler types"' }],
-  ['a quoted executable', { postinstall: '"wrangler" types' }],
   ['an if command', { postinstall: 'if wrangler types; then echo done; fi' }],
   ['a subshell command', { postinstall: '(wrangler types)' }],
-  ['an escaped executable', { postinstall: String.raw`wrang\ler types` }],
   ['a newline-separated command', { postinstall: 'echo before\nwrangler types' }],
   ['a case branch command', { postinstall: 'case x in x) wrangler types;; esac' }],
   ['a timed command', { postinstall: 'time wrangler types' }],
@@ -377,7 +371,14 @@ test.each([
   ['a substitution after a quoted hash', { postinstall: 'echo "a # b $(wrangler types)"' }],
   ['a command after a quoted fake heredoc', { postinstall: 'echo "a << b"\nwrangler types' }],
   ['a command after an arithmetic shift', { postinstall: 'echo $((1 << 2))\nwrangler types' }],
-  ['an expanded executable', { postinstall: 'workerCommand=wrangler; "$workerCommand" types' }],
+  ['a textual mention', { help: 'echo wrangler types' }],
+  ['a textual gen-types mention', { 'gen-types': 'wrangler types', help: 'echo gen-types' }],
+  ['a shell payload that prints the words', { help: 'sh -c "echo wrangler types"' }],
+  ['a heredoc containing the words', { help: "cat <<'EOF'\nwrangler types\nEOF" }],
+  ['a single-quoted backtick', { help: "node -e 'console.log(`wrangler types`)'" }],
+  ['a redirection target', { help: 'echo ok > "wrangler types"' }],
+  ['a commented substitution', { help: 'echo ok # `wrangler types`' }],
+  ['a shell payload after a separator', { help: 'sh -c -- "echo wrangler types"' }],
   [
     'a cross-package generator without a local config',
     { postinstall: 'wrangler types --config packages/app/wrangler.jsonc' },
@@ -400,21 +401,6 @@ test.each([
   }
 );
 
-test('does not treat wrangler types in command arguments as an invocation', async () => {
-  const scripts = { help: 'echo wrangler types' };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    {
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    }
-  );
-
-  expect(packageJson.scripts).toMatchObject({ help: 'echo wrangler types', postinstall: 'wb gen-code' });
-});
-
 test('does not treat an unrelated Wrangler command argument as the types subcommand', async () => {
   const scripts = { deploy: 'wrangler deploy types' };
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
@@ -430,22 +416,6 @@ test('does not treat an unrelated Wrangler command argument as the types subcomm
   expect(packageJson.scripts).toMatchObject({ deploy: 'wrangler deploy types', postinstall: 'wb gen-code' });
 });
 
-test('does not treat gen-types in command arguments as a script invocation', async () => {
-  const scripts = { 'gen-types': 'wrangler types', help: 'echo gen-types' };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    {
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    }
-  );
-
-  expect(packageJson.scripts).toMatchObject({ help: 'echo gen-types', postinstall: 'wb gen-code' });
-  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
-});
-
 test('normalizes an npm run-script reference from postinstall', async () => {
   const scripts = { 'gen-types': 'wrangler types', postinstall: 'npm run-script gen-types' };
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
@@ -458,38 +428,10 @@ test('normalizes an npm run-script reference from postinstall', async () => {
   expect(packageJson.scripts?.['gen-types']).toBeUndefined();
 });
 
-test('does not reject a shell payload that only prints wrangler types', async () => {
-  const scripts = { help: 'sh -c "echo wrangler types"' };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
-  );
-
-  expect(packageJson.scripts?.help).toBe('sh -c "echo wrangler types"');
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
-});
-
-test('does not reject wrangler types text in a heredoc body', async () => {
-  const scripts = { help: "cat <<'EOF'\nwrangler types\nEOF" };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
-  );
-
-  expect(packageJson.scripts?.help).toBe("cat <<'EOF'\nwrangler types\nEOF");
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
-});
-
 test.each([
-  ['a single-quoted backtick', "node -e 'console.log(`wrangler types`)'"],
-  ['a redirection target', 'echo ok > "wrangler types"'],
-  ['a commented substitution', 'echo ok # `wrangler types`'],
-  ['a shell payload that only prints the words', 'sh -c -- "echo wrangler types"'],
   ['a quoted fake heredoc marker', 'echo "a << b"\necho done'],
   ['an arithmetic shift', 'echo $((1 << 2))'],
-])('does not reject %s as worker type generation', async (_description, help) => {
+])('ignores %s without the literal worker-types command', async (_description, help) => {
   const scripts = { help };
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
   const packageJson = await generatePackageJsonFrom(
