@@ -499,8 +499,12 @@ function hasWranglerDependency(packageJson: PackageJson | undefined): boolean {
   ].some((dependencies) => dependencies?.wrangler !== undefined);
 }
 
-const wranglerTypesTextPattern =
-  /["']?\bwrangler(?:@[^\s"']+)?\b["']?(?:\s+--?[A-Za-z][\w-]*(?:=\S+|\s+(?!types\b)\S+)?)*\s+types\b/u;
+const shellWordPattern = String.raw`(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:\\.|[^\s"'\\])+)`;
+const wranglerOptionPattern = String.raw`\s+--?[A-Za-z][\w-]*(?:=${shellWordPattern}|\s+(?!-|types\b)${shellWordPattern})?`;
+const wranglerTypesTextPattern = new RegExp(
+  String.raw`["']?\bwrangler(?:@[^\s"']+)?\b["']?(?:${wranglerOptionPattern})*\s+types\b`,
+  'u'
+);
 
 function mentionsPackageScript(script: string | undefined, scriptName: string): boolean {
   return script !== undefined && new RegExp(`\\b${escapeRegExp(scriptName)}\\b`, 'u').test(script);
