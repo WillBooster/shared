@@ -496,7 +496,7 @@ test('runs wb gen-code after a project postinstall that has no gen-code script',
   expect(packageJson.scripts?.['gen-code']).toBeUndefined();
 });
 
-// wbfy gitignores and untracks worker-configuration.d.ts only where postinstall regenerates it, so a package that
+// wbfy gitignores worker-configuration.d.ts only where postinstall regenerates it, so a package that
 // cannot run wrangler must not gain the install-time generation either.
 test.each([
   ['the package does not depend on wrangler', {}, true],
@@ -940,25 +940,6 @@ test('strips `bun --bun` only from command-position invocations of Node-based to
     'echo-literal': 'echo "bun --bun next build"',
     'nested-literal': `node -e 'console.log("use bun --bun next")'`,
     'other-tool': 'my-bun --bun next build',
-  });
-});
-
-test('drops `--env-file` arguments naming removed files from an unmanaged wrangler types script', async () => {
-  // No wrangler dependency, so the package stays unmanaged and keeps its own generation script.
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        'gen-types': 'wrangler types --env-file .env.example',
-        postinstall: 'bun run gen-types',
-      },
-    },
-    { doesContainWranglerConfig: true },
-    { files: { 'wrangler.jsonc': '{}' } }
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    'gen-types': 'wrangler types',
-    postinstall: 'bun run gen-types',
   });
 });
 

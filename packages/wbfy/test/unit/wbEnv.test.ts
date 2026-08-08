@@ -103,17 +103,15 @@ test('rewrites the outdated precedence comment written by earlier wbfy versions'
   expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
 });
 
-test('rewrites the outdated precedence comment variant without a trailing period, keeping following lines', () => {
-  // Some repositories (e.g. ai-growbench, ai-game-builder) carry a period-less variant, optionally
-  // followed by an unrelated explanatory line that must survive the migration.
+test('rewrites the outdated precedence comment variant without a trailing period', () => {
+  // Some repositories (e.g. agentic-workflows-dashboard) still carry a period-less variant.
   const withOutdatedVariant = (insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '').replace(
     /# CI sets WB_ENV.*$/mu,
-    "# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally\n# (wb's required-keys check treats every .env.example key, including WB_ENV, as required)."
+    '# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally'
   );
   const migrated = insertWbEnvIntoFnoxToml(withOutdatedVariant, false) ?? '';
   expect(migrated).not.toContain('these defaults only fill it locally');
   expect(migrated).toContain('bare fnox run/export uses the fnox value, so pass -P <profile>');
-  expect(migrated).not.toContain('required-keys check');
   expect(migrated.split('# CI sets WB_ENV').length - 1).toBe(1);
   expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
 });

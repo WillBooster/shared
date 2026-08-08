@@ -13,7 +13,6 @@ import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js
 import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
 import { untrackCloudflareEnv } from './fixers/cloudflareEnv.js';
-import { untrackWorkerTypes } from './fixers/workerTypes.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import { generateBunfigToml, readBunGlobalStore, resolveBunGlobalStore } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
@@ -49,7 +48,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
-import { generatesWorkerTypes, getPackageConfig } from './packageConfig.js';
+import { getPackageConfig } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
@@ -314,15 +313,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
       await generatePrettierignore(config);
       await generatePackageJson(config, rootConfig, skipDeps);
-      // Only after both the barrier above — where the pooled .gitignore write actually completes — and the
-      // package.json generation: untracking a file that did not get ignored (e.g. the gitignore.io fetch failed) or
-      // whose postinstall does not actually regenerate it (generatePackageJson swallows its own exceptions, so a
-      // partial run is possible) would delete the declaration with nothing recreating it on fresh checkouts.
-      if (generatesWorkerTypes(config)) {
-        await untrackWorkerTypes(config);
-      }
-      // Same barrier reasoning as untrackWorkerTypes: the pooled .gitignore write (which carries
-      // the managed .env.cloudflare rule) completed above, and the fixer re-verifies the rule via
+      // Only after the barrier above: the pooled .gitignore write (which carries the managed
+      // .env.cloudflare rule) completed there, and the fixer re-verifies the rule via
       // `git check-ignore` before untracking.
       if (config.isCloudflare || rootConfig.isCloudflare) {
         await untrackCloudflareEnv(config);
