@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import type { PackageJson } from 'type-fest';
 
 /**
@@ -23,7 +20,6 @@ const genCodeSegmentPattern = /^(?:(?:bun|bunx|yarn|pnpm|npm)\s+)?(?:run\s+)?wb\
 // same spellings as wb's `hasOutputChangingWranglerTypes`, which keys on the gitignore rule this answer writes.
 const disposableWranglerTypesPattern =
   /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
-const envFileArgumentPattern = /--env-file\s+(\S+)/gu;
 
 // Any `wrangler types` invocation, whatever its flags.
 const anyWranglerTypesPattern = /(?:^|\s)wrangler\s+types(?:\s|$)/u;
@@ -47,34 +43,6 @@ function isNonConflictingWranglerTypes(segment: string): boolean {
 /** Whether the segment is a `wrangler types` invocation equivalent to the one `wb gen-code` runs. */
 function isDisposableWranglerTypes(segment: string): boolean {
   return disposableWranglerTypesPattern.test(segment);
-}
-
-/**
- * Drops the `--env-file` arguments of a `wrangler types` invocation whose files are absent, returning the rewritten
- * script (or undefined when nothing changed). wrangler exits non-zero on a `--env-file` naming a missing file, so a
- * surviving flag breaks every subsequent install. Normalizing to `wb gen-code` already drops these flags where wbfy owns the generation;
- * this covers the packages it deliberately leaves unmanaged (a custom invocation, a missing wrangler dependency,
- * or an unconsumed file), which would otherwise be handed back unable to run `bun install` at all.
- */
-export function stripMissingEnvFileArguments(script: string | undefined, dirPath: string): string | undefined {
-  if (!script) return undefined;
-  const segments = splitScriptSegments(script);
-  if (!segments) return undefined;
-  let changed = false;
-  const rebuilt = segments.map((segment) => {
-    const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
-    if (!anyWranglerTypesPattern.test(normalized)) return segment;
-    const stripped = normalized
-      .replaceAll(envFileArgumentPattern, (match, filePath: string) =>
-        fs.existsSync(path.resolve(dirPath, filePath)) ? match : ''
-      )
-      .replaceAll(/\s+/gu, ' ')
-      .trim();
-    if (stripped === normalized) return segment;
-    changed = true;
-    return stripped;
-  });
-  return changed ? rebuilt.join(' && ') : undefined;
 }
 
 // `wb gen-code` runs gen-i18n-ts itself, so an invocation EQUIVALENT to the one it runs is redundant rather than
@@ -130,18 +98,6 @@ export function classifyScriptSegment(
       : 'custom';
   }
   return classifyScriptSegment(segments[0] ?? '', scripts, false);
-}
-
-/**
- * Tells whether a script (re)generates worker-configuration.d.ts through the managed `wb gen-code`.
- */
-export function runsManagedGenCode(script: string | undefined, scripts: PackageJson.Scripts): boolean {
-  if (!script) return false;
-  const segments = splitScriptSegments(script);
-  return !!segments?.some((segment) => {
-    const kind = classifyScriptSegment(segment, scripts);
-    return kind === 'genCode' || kind === 'genCodeWrapper';
-  });
 }
 
 /**
