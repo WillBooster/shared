@@ -11,19 +11,35 @@ function fakePrismaProject(dirPath: string): Project {
   return { dirPath, prismaDirName: 'prisma', env: {} } as unknown as Project;
 }
 
+function fakeDrizzleProject(dirPath: string, env: Record<string, string>): Project {
+  return {
+    dirPath,
+    rootDirPath: '/repo',
+    env: { DATABASE_URL: 'file:./drizzle/mount/prod.sqlite3', ...env },
+  } as unknown as Project;
+}
+
+const credentials = {
+  CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID: 'account',
+  CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME: 'bucket',
+  CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID: 'access',
+  CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY: 'secret',
+};
+
 describe('selectLitestreamConfigProjects', () => {
   it('keeps a single candidate as-is', () => {
     const candidates = [{ project: fakePrismaProject('/repo'), orm: 'prisma' as const }];
     expect(selectLitestreamConfigProjects(candidates)).toEqual(candidates);
   });
 
-  it('picks one project when all candidates resolve to the same database file', () => {
-    // At a monorepo root, the root project and a workspace can share one root-level database.
+  it('picks one project when all candidates resolve to the same database file and credentials', () => {
+    // A Drizzle `file:` URL resolves against the repository root, so the root project and a
+    // workspace genuinely collapse to one database.
     const candidates = [
-      { project: fakePrismaProject('/repo'), orm: 'prisma' as const },
-      { project: fakePrismaProject('/repo'), orm: 'prisma' as const },
+      { project: fakeDrizzleProject('/repo', credentials), orm: 'drizzle' as const },
+      { project: fakeDrizzleProject('/repo/packages/server', credentials), orm: 'drizzle' as const },
     ];
-    expect(selectLitestreamConfigProjects(candidates)).toHaveLength(1);
+    expect(selectLitestreamConfigProjects(candidates)).toEqual(candidates.slice(0, 1));
   });
 
   it('rejects candidates with genuinely different database files', () => {
@@ -33,10 +49,37 @@ describe('selectLitestreamConfigProjects', () => {
     ];
     expect(() => selectLitestreamConfigProjects(candidates)).toThrow(/multiple projects/);
   });
+
+  it('rejects same-database candidates whose rendered credentials differ, unless --env-refs', () => {
+    const candidates = [
+      { project: fakeDrizzleProject('/repo', credentials), orm: 'drizzle' as const },
+      {
+        project: fakeDrizzleProject('/repo/packages/server', {
+          ...credentials,
+          CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME: 'other-bucket',
+        }),
+        orm: 'drizzle' as const,
+      },
+    ];
+    expect(() => selectLitestreamConfigProjects(candidates)).toThrow(/multiple projects/);
+    // With --env-refs the rendered config holds only ${VAR} placeholders, so it is identical.
+    expect(selectLitestreamConfigProjects(candidates, true)).toHaveLength(1);
+  });
+
+  it('propagates a project-specific resolution error instead of silently skipping the project', () => {
+    const candidates = [
+      { project: fakeDrizzleProject('/repo', credentials), orm: 'drizzle' as const },
+      {
+        project: { dirPath: '/repo/packages/api', rootDirPath: '/repo', env: {} } as unknown as Project,
+        orm: 'drizzle' as const,
+      },
+    ];
+    expect(() => selectLitestreamConfigProjects(candidates)).toThrow(/file: DATABASE_URL/);
+  });
 });
 
 describe('createLitestreamConfig with --env-refs', () => {
-  it('writes ${VAR} placeholders without requiring the credentials in the environment', () => {
+  it('writes ${VAR} placeholders without reading credentials from the environment', () => {
     const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wb-litestream-')), 'litestream.yml');
     try {
       createLitestreamConfig(fakePrismaProject('/repo'), 'prisma', outputPath, true);

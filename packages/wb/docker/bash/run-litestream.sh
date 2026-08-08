@@ -10,7 +10,9 @@ fi
 # Fail fast when the config references environment variables (e.g. the ${VAR} placeholders of
 # `wb db create-litestream-config --env-refs`) that the platform did not supply: Litestream
 # itself only logs and retries replica errors, which would silently disable backups.
-config_path="${LITESTREAM_CONFIG_PATH:-/etc/litestream.yml}"
+# LITESTREAM_CONFIG is Litestream's own config-path override, so the validated file is always
+# the file `litestream replicate` below actually reads.
+config_path="${LITESTREAM_CONFIG:-/etc/litestream.yml}"
 if [[ -f "$config_path" ]]; then
   while IFS= read -r key; do
     if [[ -z "$(printenv "$key" || true)" ]]; then

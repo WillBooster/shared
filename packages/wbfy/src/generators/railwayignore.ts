@@ -18,9 +18,10 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     let newContent = content.replace(/^scripts\/$/m, managedScriptsBlock);
     // `railway up` strips gitignored files from the uploaded build context, so the generated
     // non-secret .docker.env (`wb gen-docker-env` output) needs an explicit un-ignore to reach
-    // the remote Docker build.
+    // the remote Docker build. Appended, not prepended: ignore files are last-match-wins, so a
+    // hand-written pattern such as `*.env` earlier in the file must not silently re-exclude it.
     if (config.doesContainDockerfile && !/^!\.docker\.env$/m.test(newContent)) {
-      newContent = `!.docker.env\n${newContent}`;
+      newContent = `${newContent.replace(/\n?$/, '\n')}!.docker.env\n`;
     }
     if (newContent === content) return;
 

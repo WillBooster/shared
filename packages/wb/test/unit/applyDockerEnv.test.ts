@@ -25,6 +25,22 @@ describe('apply-docker-env.sh', () => {
     }
   });
 
+  it('keeps a deliberately empty platform value and reads a final line without a trailing newline', () => {
+    const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
+    try {
+      fs.writeFileSync(path.join(dirPath, '.docker.env'), "EMPTY_ON_PLATFORM='baked'\nLAST='last'");
+      const result = child_process.spawnSync('bash', [scriptPath, 'sh', '-c', 'echo "[$EMPTY_ON_PLATFORM][$LAST]"'], {
+        cwd: dirPath,
+        encoding: 'utf8',
+        env: { ...process.env, EMPTY_ON_PLATFORM: '' },
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('[][last]');
+    } finally {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+  });
+
   it('execs the command unchanged when no env file exists', () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {

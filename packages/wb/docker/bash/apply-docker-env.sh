@@ -8,8 +8,9 @@ if [[ "$#" -eq 0 ]]; then
 fi
 
 # Applies the baked non-secret env file (`wb gen-docker-env` output) before running the given
-# command, assigning only keys the environment does not already provide (unset or empty), so
-# build args and platform-injected runtime values always win over the baked defaults.
+# command, assigning only keys absent from the inherited environment, so build args and
+# platform-injected runtime values — including deliberately empty ones — always win over the
+# baked defaults (colon-less `${KEY=...}` semantics).
 env_path="${DOCKER_ENV_PATH:-}"
 if [[ -z "$env_path" ]]; then
   for candidate in ./.docker.env ./.env; do
@@ -22,10 +23,14 @@ fi
 
 if [[ -n "$env_path" && -f "$env_path" ]]; then
   set -a
-  while IFS= read -r line; do
+  # `|| [[ -n "$line" ]]` keeps a final line that lacks a trailing newline (legacy .env files).
+  while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
-    [[ -n "${!key:-}" ]] || eval "$line"
+    # printenv inspects the inherited environment, not Bash's variable namespace, so
+    # shell-internal names (UID, RANDOM, ...) do not shadow baked keys and a platform value
+    # deliberately set to the empty string survives.
+    printenv "$key" > /dev/null || eval "$line"
   done < "$env_path"
   set +a
 fi

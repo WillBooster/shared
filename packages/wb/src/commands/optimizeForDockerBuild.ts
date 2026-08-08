@@ -84,7 +84,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     // per-project rewrite below emitting the existing "run wb setup-private-packages" hint. This
     // keeps the step a pure convenience that lets repositories drop the explicit command.
     if (argv.outside) {
-      prepareDockerBuildInputs(argv as GenDockerEnvCommandArgv & typeof argv, projects.root.dirPath);
+      prepareDockerBuildInputs(argv as GenDockerEnvCommandArgv & typeof argv, projects);
       // Resolve the full workspace set from the repository root so a private dependency declared in
       // any sibling workspace is materialized even when optimize runs from a subpackage directory.
       const rootProjects = await findDescendantProjects(argv, false, projects.root.dirPath);
@@ -136,18 +136,24 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
 };
 
 /**
- * Lints the root Dockerfile and generates the non-secret `.docker.env` before an outside
- * optimization pass, i.e. before every Docker build (wb's docker flows and deploy scripts all run
+ * Lints the Dockerfile and generates the non-secret `.docker.env` before an outside optimization
+ * pass, i.e. before every Docker build (wb's docker flows and deploy scripts all run
  * `optimizeForDockerBuild --outside` first).
  */
-function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, rootDirPath: string): void {
-  const dockerfilePath = path.join(rootDirPath, 'Dockerfile');
-  const dockerfileText = fs.existsSync(dockerfilePath) ? fs.readFileSync(dockerfilePath, 'utf8') : undefined;
-  if (dockerfileText) {
+function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { root: Project; self: Project }): void {
+  // Resolve the Dockerfile the same way the build does: the self project's own Dockerfile wins
+  // over the repository root's, so workspace-level Dockerfiles are linted too.
+  const candidateDirPaths = [...new Set([projects.self.dirPath, projects.root.dirPath])];
+  const dockerfileDirPath = candidateDirPaths.find((dirPath) => fs.existsSync(path.join(dirPath, 'Dockerfile')));
+  const dockerfileText = dockerfileDirPath
+    ? fs.readFileSync(path.join(dockerfileDirPath, 'Dockerfile'), 'utf8')
+    : undefined;
+  if (dockerfileText && projects.root.env.WB_SKIP_DOCKERFILE_LINT !== '1') {
     // Plain BuildKit (local builds, CI) accepts these problems silently, so without this check
-    // they are first detected by a failed production deploy.
-    const railwayConfigured = ['railway.toml', 'railway.json', '.railwayignore'].some((name) =>
-      fs.existsSync(path.join(rootDirPath, name))
+    // they are first detected by a failed production deploy. WB_SKIP_DOCKERFILE_LINT=1 is the
+    // escape hatch for repositories that keep a Railway config but build their image elsewhere.
+    const railwayConfigured = candidateDirPaths.some((dirPath) =>
+      ['railway.toml', 'railway.json', '.railwayignore'].some((name) => fs.existsSync(path.join(dirPath, name)))
     );
     const problems = lintDockerfile(dockerfileText, { railwayConfigured });
     if (problems.length > 0) {
@@ -155,10 +161,13 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, rootDirPath: st
     }
   }
 
-  if (fs.existsSync(path.join(rootDirPath, 'fnox.toml'))) {
+  if (candidateDirPaths.some((dirPath) => fs.existsSync(path.join(dirPath, 'fnox.toml')))) {
     try {
       generateDockerEnv({ ...argv, path: undefined });
     } catch (error) {
+      // A stale file from a previous build must not survive a failed generation: a broad
+      // `COPY . .` or apply-docker-env.sh's auto-discovery would silently bake and apply it.
+      fs.rmSync(path.resolve(projects.self.dirPath, '.docker.env'), { force: true });
       // Baking is mandatory only when the Dockerfile consumes the file; other repositories (e.g.
       // legacy runtime-fnox images) keep building without it.
       if (dockerfileText?.includes('.docker.env')) throw error;

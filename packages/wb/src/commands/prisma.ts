@@ -83,7 +83,7 @@ const createLitestreamConfigCommand: CommandModule<
   builder: createLitestreamConfigBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
-    const selectedProjects = selectLitestreamConfigProjects(allProjects);
+    const selectedProjects = selectLitestreamConfigProjects(allProjects, argv['env-refs']);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
       'db create-litestream-config',
       selectedProjects
@@ -351,30 +351,39 @@ function withLocalD1IfNeeded(orm: DatabaseOrm, project: Project, script: string)
   return orm === 'drizzle' ? wrapWithLocalD1DatabaseUrl(project, script) : script;
 }
 
-// At a monorepo root, multiple workspace projects can qualify (e.g. the root and a server
-// package sharing one root-level database), but their configs would overwrite each other. When
-// every candidate resolves to the same database file, the configs are identical, so pick one
-// instead of failing; genuinely different databases remain unsupported.
-export function selectLitestreamConfigProjects(allProjects: DatabaseOrmProject[]): DatabaseOrmProject[] {
+// At a monorepo root, multiple workspace projects can qualify — for a Drizzle `file:` URL, the
+// root project and a server package resolve the same root-relative database, so their configs
+// would be identical; pick one instead of failing. Every candidate must resolve (an unresolvable
+// one is a configuration error, not a silent skip), and without --env-refs the rendered R2
+// credentials must also match, because equal database paths alone do not imply equal
+// configurations. (Prisma paths resolve per project directory and thus never collapse.)
+export function selectLitestreamConfigProjects(
+  allProjects: DatabaseOrmProject[],
+  envRefs?: boolean
+): DatabaseOrmProject[] {
   if (allProjects.length <= 1) return allProjects;
 
-  const resolvable = allProjects.filter(({ orm, project }) => {
-    try {
-      getLitestreamDbPath(project, orm);
-      return true;
-    } catch {
-      return false;
-    }
-  });
   const uniqueDbPaths = new Set(
-    resolvable.map(({ orm, project }) => path.resolve(project.dirPath, getLitestreamDbPath(project, orm)))
+    allProjects.map(({ orm, project }) => path.resolve(project.dirPath, getLitestreamDbPath(project, orm)))
   );
-  if (uniqueDbPaths.size !== 1) {
+  const uniqueCredentials = new Set(
+    allProjects.map(({ project }) =>
+      envRefs
+        ? ''
+        : JSON.stringify([
+            project.env.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID,
+            project.env.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME,
+            project.env.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID,
+            project.env.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY,
+          ])
+    )
+  );
+  if (uniqueDbPaths.size !== 1 || uniqueCredentials.size !== 1) {
     throw new Error(
       'Creating Litestream configuration for multiple projects at once is not supported because they would overwrite each other.'
     );
   }
-  return resolvable.slice(0, 1);
+  return allProjects.slice(0, 1);
 }
 
 export function createLitestreamConfig(
@@ -384,26 +393,26 @@ export function createLitestreamConfig(
   envRefs?: boolean
 ): void {
   const dbPath = getLitestreamDbPath(project, orm);
-  const requiredEnvVars = {
-    CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID,
-    CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME: project.env.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME,
-    CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID,
-    CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY: project.env.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY,
-  } as const;
+  const credentialKeys = [
+    'CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID',
+    'CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME',
+    'CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID',
+    'CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY',
+  ] as const;
   // With --env-refs, Litestream expands the ${VAR} placeholders from the runtime environment
-  // (run-litestream.sh asserts they are set), so no decrypted value is needed at generation time.
-  const credentialValues = envRefs
-    ? (Object.fromEntries(Object.keys(requiredEnvVars).map((key) => [key, `\${${key}}`])) as {
-        [K in keyof typeof requiredEnvVars]: string;
-      })
-    : requiredEnvVars;
-  if (!envRefs) {
-    const missingEnvVars = Object.entries(requiredEnvVars)
-      .filter(([, value]) => !value)
-      .map(([key]) => key);
+  // (run-litestream.sh asserts they are set), so `project.env` — whose credential values may
+  // require secret decryption — is never read on this path.
+  let credentialValues: Record<(typeof credentialKeys)[number], string>;
+  if (envRefs) {
+    credentialValues = Object.fromEntries(credentialKeys.map((key) => [key, `\${${key}}`])) as typeof credentialValues;
+  } else {
+    const missingEnvVars = credentialKeys.filter((key) => !project.env[key]);
     if (missingEnvVars.length > 0) {
       throw new Error(`Missing environment variables for Litestream: ${missingEnvVars.join(', ')}`);
     }
+    credentialValues = Object.fromEntries(
+      credentialKeys.map((key) => [key, project.env[key] as string])
+    ) as typeof credentialValues;
   }
 
   const litestreamConfig = `snapshot:
