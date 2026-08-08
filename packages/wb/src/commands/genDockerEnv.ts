@@ -40,9 +40,16 @@ export const genDockerEnvCommand: CommandModule<unknown, GenDockerEnvCommandOpti
     }
 
     // The shared cascade resolution keeps this command's profile identical to the one every other
-    // wb command loads. A non-standard mode is a hard error: it would silently bake the base
-    // (development) values into a deploy artifact.
-    const envName = resolveCascade(argv) ?? 'development';
+    // wb command loads. An unresolved cascade (--auto-cascade-env=false without --cascade-env) or
+    // a non-standard mode is a hard error: it would silently bake the base (development) values
+    // into a deploy artifact.
+    const envName = resolveCascade(argv);
+    if (!envName) {
+      console.error(
+        chalk.red('No environment selected; pass --cascade-env=<mode> (or drop --auto-cascade-env=false).')
+      );
+      process.exit(1);
+    }
     if (!standardWbEnvModes.has(envName)) {
       console.error(chalk.red(`WB_ENV must be one of ${[...standardWbEnvModes].join(', ')}, but is ${envName}.`));
       process.exit(1);
