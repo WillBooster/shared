@@ -88,10 +88,16 @@ const createLitestreamConfigCommand: CommandModule<
     // With --env-refs, every value comes from the committed plaintext fnox defaults so generation
     // stays possible in secret-less builds (reading `project.env` would spawn `fnox export`).
     const envRefs = argv['env-refs'];
-    const plainEnvFor = envRefs
-      ? (project: Project) =>
-          collectPlaintextFnoxValues(project.dirPath, project.rootDirPath, resolveCascade(argv) ?? 'development')
-      : undefined;
+    // Mirror gen-docker-env: an unresolved cascade is a hard error, because falling back to the
+    // development profile could make Litestream back up the wrong database.
+    const envName = envRefs ? resolveCascade(argv) : undefined;
+    if (envRefs && !envName) {
+      throw new Error('No environment selected; pass --cascade-env=<mode> (or drop --auto-cascade-env=false).');
+    }
+    const plainEnvFor =
+      envRefs && envName
+        ? (project: Project) => collectPlaintextFnoxValues(project.dirPath, project.rootDirPath, envName)
+        : undefined;
     const selectedProjects = selectLitestreamConfigProjects(allProjects, envRefs, plainEnvFor);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
       'db create-litestream-config',

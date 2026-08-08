@@ -80,4 +80,8 @@ RUN --mount=target=/tmp/x true
     // Sources of a --from COPY come from another stage, not the build-context root.
     expect(lintDockerfile('COPY --from=builder /app/.env ./.env\n', { railwayConfigured: false })).toHaveLength(0);
   });
+
+  it('applies the same source check to ADD', () => {
+    expect(lintDockerfile('ADD .env ./\n', { railwayConfigured: false })).toHaveLength(1);
+  });
 });

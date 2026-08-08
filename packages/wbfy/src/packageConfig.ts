@@ -741,7 +741,11 @@ function detectRailway(dirPath: string, packageJson: PackageJson, workflowConten
     return true;
   }
 
-  if (fs.existsSync(path.resolve(dirPath, '.railwayignore')) || fs.existsSync(path.resolve(dirPath, 'railway.json'))) {
+  if (
+    fs.existsSync(path.resolve(dirPath, '.railwayignore')) ||
+    fs.existsSync(path.resolve(dirPath, 'railway.json')) ||
+    fs.existsSync(path.resolve(dirPath, 'railway.toml'))
+  ) {
     return true;
   }
 

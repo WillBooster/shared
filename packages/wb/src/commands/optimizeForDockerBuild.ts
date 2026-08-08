@@ -15,7 +15,7 @@ import {
   getFileDatabaseUrlPath,
   type Project,
 } from '../project.js';
-import { isDockerEnabled } from '../utils/ci.js';
+import { isCI, isDockerEnabled } from '../utils/ci.js';
 import { lintDockerfile } from '../utils/dockerfileLint.js';
 
 import {
@@ -157,8 +157,11 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
     // Plain BuildKit (local builds, CI) accepts these problems silently, so without this check
     // they are first detected by a failed production deploy. WB_SKIP_DOCKERFILE_LINT=1 is the
     // escape hatch for repositories that keep a Railway config but build their image elsewhere.
+    // `.railwayignore` is deliberately NOT a signal: wbfy creates it for any Railway-related
+    // repository (including ones whose image is built elsewhere), so using it here would turn
+    // the lint on circularly.
     const railwayConfigured = candidateDirPaths.some((dirPath) =>
-      ['railway.toml', 'railway.json', '.railwayignore'].some((name) => fs.existsSync(path.join(dirPath, name)))
+      ['railway.toml', 'railway.json'].some((name) => fs.existsSync(path.join(dirPath, name)))
     );
     const problems = lintDockerfile(dockerfileText, { railwayConfigured });
     if (problems.length > 0) {
@@ -167,6 +170,16 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
   }
 
   if (candidateDirPaths.some((dirPath) => fs.existsSync(path.join(dirPath, 'fnox.toml')))) {
+    // Mirror Project.completeAndValidateWbEnv WITHOUT loading fnox: generateDockerEnv resolves
+    // the profile via the cascade, which silently falls back to development when CI forgets to
+    // export WB_ENV — that must fail the build, not bake a development-profile image. Raised
+    // before the try below so the no-`.docker.env`-consumer warning path cannot swallow it.
+    const processEnvView = findSelfProject(argv, false)?.env ?? {};
+    if (isCI(processEnvView.CI) && !processEnvView.WB_ENV && processEnvView.WB_SKIP_ENV_CHECK !== '1') {
+      throw new Error(
+        'WB_ENV is not exported on CI; export it before building the image so .docker.env bakes the right profile (or set WB_SKIP_ENV_CHECK=1).'
+      );
+    }
     try {
       generateDockerEnv({ ...argv, path: undefined });
     } catch (error) {
@@ -174,9 +187,13 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
       // `COPY . .` or apply-docker-env.sh's auto-discovery would silently bake and apply it.
       // A dry run mutates nothing, matching the rest of this command.
       if (!argv.dryRun) fs.rmSync(path.resolve(projects.self.dirPath, '.docker.env'), { force: true });
-      // Baking is mandatory only when the Dockerfile consumes the file; other repositories (e.g.
-      // legacy runtime-fnox images) keep building without it.
-      if (dockerfileText?.includes('.docker.env')) throw error;
+      // Baking is mandatory only when the Dockerfile consumes the file (comments do not count);
+      // other repositories (e.g. legacy runtime-fnox images) keep building without it.
+      const dockerfileConsumesDockerEnv = (dockerfileText ?? '')
+        .split('\n')
+        .filter((line) => !/^\s*#/.test(line))
+        .some((line) => line.includes('.docker.env'));
+      if (dockerfileConsumesDockerEnv) throw error;
       console.warn(
         chalk.yellow(`Skipped .docker.env generation: ${error instanceof Error ? error.message : String(error)}`)
       );

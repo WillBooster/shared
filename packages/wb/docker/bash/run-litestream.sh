@@ -14,12 +14,14 @@ fi
 # the file `litestream replicate` below actually reads.
 config_path="${LITESTREAM_CONFIG:-/etc/litestream.yml}"
 if [[ -f "$config_path" ]]; then
+  # YAML comments are stripped first: a documentation example mentioning ${VAR} must not become
+  # a runtime dependency.
   while IFS= read -r key; do
     if [[ -z "$(printenv "$key" || true)" ]]; then
       echo "run-litestream.sh: environment variable $key is required by $config_path but is not set." >&2
       exit 1
     fi
-  done < <(grep -o '\${[A-Za-z_][A-Za-z0-9_]*}' "$config_path" | tr -d '${}' | sort -u)
+  done < <(sed -e 's/[[:space:]]#.*$//' -e '/^[[:space:]]*#/d' "$config_path" | grep -o '\${[A-Za-z_][A-Za-z0-9_]*}' | tr -d '${}' | sort -u)
 fi
 
 litestream replicate -exec "$*" &
