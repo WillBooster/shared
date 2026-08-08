@@ -147,6 +147,18 @@ describe('resolvePrivateRegistryAuth', () => {
       authToken: 'project-token',
     });
   });
+
+  it('falls back to VERDACCIO_TOKEN when the npmrc files contain no token', async () => {
+    const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
+    vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
+    await fs.promises.writeFile(path.join(homeDirPath, '.npmrc'), '');
+    process.env.VERDACCIO_TOKEN = 'environment-token';
+
+    expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
+      registryUrl: 'https://project.example.test',
+      authToken: 'environment-token',
+    });
+  });
 });
 
 async function makeNpmrcFixture(): Promise<{ homeDirPath: string; rootDirPath: string }> {
