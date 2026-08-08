@@ -13,15 +13,15 @@ class DockerScripts {
     const prefix = project.dockerPackageJson.scripts?.['docker/build/prepare']
       ? 'YARN run docker/build/prepare && '
       : '';
-    const miseAgeKeySecretOption = project.env.MISE_AGE_KEY
-      ? '\n        --secret id=mise_age_key,env=MISE_AGE_KEY'
+    const fnoxAgeKeySecretOption = project.env.FNOX_AGE_KEY
+      ? '\n        --secret id=fnox_age_key,env=FNOX_AGE_KEY'
       : '';
     return `cd ${path.dirname(project.findFile('Dockerfile'))}
     && ${prefix}YARN wb optimizeForDockerBuild --outside
     && YARN wb retry -- docker build -t ${project.dockerImageName}
         --build-arg ARCH=$([ $(uname -m) = 'arm64' ] && echo arm64 || echo x86_64)
         --build-arg WB_ENV=${project.env.WB_ENV}
-        --build-arg WB_VERSION=${version}${miseAgeKeySecretOption} .`;
+        --build-arg WB_VERSION=${version}${fnoxAgeKeySecretOption} .`;
   }
 
   stopAndStart(project: Project, additionalOptions = '', additionalArgs = ''): string {
@@ -31,8 +31,11 @@ class DockerScripts {
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop(project), project);
     const allocateTty = additionalArgs.includes('/bin/bash');
-    const miseAgeKeyEnvOption = project.env.MISE_AGE_KEY ? '--env MISE_AGE_KEY ' : '';
-    return `docker run --rm ${allocateTty ? '-it ' : ''}${miseAgeKeyEnvOption}${selectContainerEnvOptions(project)}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
+    // No age-key forwarding: a running container gets its configuration from the declared
+    // variables forwarded below (or the platform's store in production), and handing the
+    // organization-wide identity to every tested container would let any application or
+    // dependency code read it.
+    return `docker run --rm ${allocateTty ? '-it ' : ''}${selectContainerEnvOptions(project)}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
   }
 
   stop(project: Project): string {
