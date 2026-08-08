@@ -208,7 +208,7 @@ test('leaves extends untouched when the generated preset is already listed out o
   );
 });
 
-test('reports the comments lost when dropping the legacy preset forces a rewrite', async () => {
+test('reports the comments lost when dropping an obsolete preset forces a rewrite', async () => {
   const warnings: string[] = [];
   const warn = console.warn;
   console.warn = (message: string): void => void warnings.push(message);
@@ -217,7 +217,7 @@ test('reports the comments lost when dropping the legacy preset forces a rewrite
       {
         'renovate.jsonc': `{
   "extends": [
-    // Keep the local preset after the legacy preset.
+    // Keep the local preset after the obsolete preset.
     "github>WillBooster/willbooster-configs:renovate.json5",
     "local>team/config"
   ]

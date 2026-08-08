@@ -124,7 +124,7 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
     // Only report losses once the managed file actually holds the new content — a refused write
     // leaves every source untouched, and warning there would claim a data loss that never happened.
     // Editing in place preserves comments property by property, but a property whose value had to
-    // be rewritten wholesale (e.g. `extends` losing the legacy @willbooster preset) takes its
+    // be rewritten wholesale (e.g. `extends` losing an obsolete preset) takes its
     // nested comments with it.
     for (const key of keysLosingComments) {
       console.warn(`Comments inside "${key}" were dropped while rewriting it in ${filePath}.`);
