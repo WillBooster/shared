@@ -435,14 +435,20 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
   return config.doesContainWranglerConfig && hasWranglerDependency(packageJson) && consumesGeneratedWorkerTypes(config);
 }
 
-export function getWorkerTypesScriptError(config: PackageConfig): string | undefined {
+export function getWorkerTypesScriptError(
+  config: Pick<PackageConfig, 'doesContainWranglerConfig' | 'packageJson'>
+): string | undefined {
   if (!config.doesContainWranglerConfig) return;
   const scripts = config.packageJson?.scripts ?? {};
   let hasInvocation = false;
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
     const segments = splitScriptSegments(script);
-    const hasDirectInvocation = (segments ?? splitShellCommandsForDetection(script)).some(hasWranglerTypesInvocation);
+    const detectionSegments = segments ?? splitShellCommandsForDetection(script);
+    if ([script, ...detectionSegments].some(hasIndirectWranglerTypesInvocation)) {
+      return `${name} uses unsupported shell indirection around wrangler types`;
+    }
+    const hasDirectInvocation = detectionSegments.some(hasWranglerTypesInvocation);
     if (!hasDirectInvocation) continue;
     hasInvocation = true;
     if (!segments) return `${name} contains unsupported shell syntax around wrangler types`;
@@ -472,15 +478,13 @@ export function getWorkerTypesScriptError(config: PackageConfig): string | undef
     if (name === 'gen-types' && generatedSegments.length > 0) {
       const referencedOutsidePostinstall = Object.entries(scripts).some(
         ([otherName, otherScript]) =>
-          otherName !== 'gen-types' &&
-          otherName !== 'postinstall' &&
-          /(?<![\w:-])gen-types(?![\w:-])/u.test(otherScript ?? '')
+          otherName !== 'gen-types' && otherName !== 'postinstall' && invokesPackageScript(otherScript, 'gen-types')
       );
       if (segments.length !== 1 || referencedOutsidePostinstall) {
         return 'gen-types must contain only wrangler types and must not be referenced outside postinstall';
       }
       const postinstall = scripts.postinstall;
-      if (postinstall && /(?<![\w:-])gen-types(?![\w:-])/u.test(postinstall) && !splitScriptSegments(postinstall)) {
+      if (postinstall && invokesPackageScript(postinstall, 'gen-types') && !splitScriptSegments(postinstall)) {
         return 'postinstall must use parseable shell syntax when it references gen-types';
       }
     }
@@ -509,24 +513,62 @@ function splitShellCommandsForDetection(script: string): string[] {
 
 function hasWranglerTypesInvocation(script: string): boolean {
   const tokens = script.trim().split(/\s+/u);
-  let commandIndex = 0;
-  while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[commandIndex] ?? '')) commandIndex += 1;
-  if (tokens[commandIndex] === 'env') {
-    commandIndex += 1;
-    while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[commandIndex] ?? '')) commandIndex += 1;
-  }
-  if (['command', 'exec'].includes(tokens[commandIndex] ?? '')) commandIndex += 1;
+  let commandIndex = getShellCommandIndex(tokens);
   if (['bunx', 'npx'].includes(tokens[commandIndex] ?? '')) {
     commandIndex += 1;
   } else if (
     ['bun', 'npm', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '') &&
-    ['dlx', 'exec', 'x'].includes(tokens[commandIndex + 1] ?? '')
+    ['dlx', 'exec', 'run', 'x'].includes(tokens[commandIndex + 1] ?? '')
   ) {
     commandIndex += 2;
+  } else if (tokens[commandIndex] === 'yarn') {
+    commandIndex += 1;
   }
   const command = tokens[commandIndex] ?? '';
   if (!/(?:^|\/)wrangler(?:@[^/]+)?$/u.test(command)) return false;
-  return tokens.slice(commandIndex + 1).includes('types');
+  const globalValueOptions = new Set(['--config', '-c', '--cwd', '--env', '-e', '--env-file', '--log-level']);
+  for (let index = commandIndex + 1; index < tokens.length; index += 1) {
+    const argument = tokens[index];
+    if (!argument) continue;
+    const [option, inlineValue] = argument.split('=', 2);
+    if (option?.startsWith('-')) {
+      if (inlineValue === undefined && globalValueOptions.has(option)) index += 1;
+      continue;
+    }
+    return argument === 'types';
+  }
+  return false;
+}
+
+function hasIndirectWranglerTypesInvocation(script: string): boolean {
+  const tokens = script.trim().split(/\s+/u);
+  const commandIndex = getShellCommandIndex(tokens);
+  const command = tokens[commandIndex];
+  const isIndirect =
+    command === 'eval' || (['bash', 'sh', 'zsh'].includes(command ?? '') && tokens[commandIndex + 1] === '-c');
+  return isIndirect && /\bwrangler\s+types\b/u.test(script);
+}
+
+function invokesPackageScript(script: string | undefined, scriptName: string): boolean {
+  if (!script) return false;
+  return (splitScriptSegments(script) ?? splitShellCommandsForDetection(script)).some((segment) => {
+    const tokens = segment.trim().split(/\s+/u);
+    const commandIndex = getShellCommandIndex(tokens);
+    if (!['bun', 'npm', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '')) return false;
+    const nameIndex = tokens[commandIndex + 1] === 'run' ? commandIndex + 2 : commandIndex + 1;
+    return tokens[nameIndex] === scriptName;
+  });
+}
+
+function getShellCommandIndex(tokens: string[]): number {
+  let index = 0;
+  while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index += 1;
+  if (tokens[index] === 'env') {
+    index += 1;
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index += 1;
+  }
+  if (['command', 'exec'].includes(tokens[index] ?? '')) index += 1;
+  return index;
 }
 
 function hasUnsupportedWorkerTypesArguments(segment: string): boolean {
@@ -535,7 +577,7 @@ function hasUnsupportedWorkerTypesArguments(segment: string): boolean {
     .trim()
     .split(/\s+/u)
     .filter(Boolean);
-  const valueOptions = new Set(['--config', '-c', '--env-file']);
+  const valueOptions = new Set(['--env-file']);
   const booleanOptions = new Set(['--include-env', '--include-runtime', '--strict-vars', '--x-include-runtime']);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];

@@ -324,10 +324,14 @@ test.each([
   ['an arbitrary generator name', { 'types:worker': 'wrangler types --strict-vars=false' }],
   ['an arbitrary generator name with extra whitespace', { 'types:worker': 'wrangler  types --strict-vars=false' }],
   ['an unsupported runner', { 'gen-types': 'npm exec wrangler types --strict-vars=false' }],
+  ['a yarn binary runner', { postinstall: 'yarn wrangler types --strict-vars=false' }],
+  ['a bun run binary runner', { postinstall: 'bun run wrangler types --path=src/env.d.ts' }],
   ['an environment-prefixed generator', { 'gen-types': 'NODE_ENV=test wrangler types' }],
   ['a global config flag', { 'gen-types': 'wrangler --config=wrangler.jsonc types' }],
   ['a short global config flag', { 'gen-types': 'wrangler -c wrangler.jsonc types' }],
   ['a global environment flag', { 'gen-types': 'wrangler --env=staging types' }],
+  ['a subcommand config flag', { 'gen-types': 'wrangler types --config=wrangler.other.jsonc' }],
+  ['a short subcommand config flag', { 'gen-types': 'wrangler types -c wrangler.other.jsonc' }],
   ['a positional output path after a flag', { postinstall: 'wrangler types --strict-vars=false src/env.d.ts' }],
   ['an equals-form output path', { postinstall: 'wrangler types --path=src/env.d.ts' }],
   ['an environment', { postinstall: 'wrangler types --env=staging' }],
@@ -337,6 +341,8 @@ test.each([
   ['a divergent check', { 'check-types': 'wrangler types --check --strict-vars=false' }],
   ['an unparseable postinstall alias', { 'gen-types': 'wrangler types', postinstall: 'bun run gen-types > /dev/null' }],
   ['unsupported shell syntax', { postinstall: 'cd sub && wrangler types' }],
+  ['eval indirection', { postinstall: 'eval wrangler types' }],
+  ['shell indirection', { postinstall: "sh -c 'wrangler types'" }],
 ])('rejects %s instead of partially normalizing it', async (_description, scripts) => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
   const packageJson = await generatePackageJsonFrom(
@@ -364,6 +370,37 @@ test('does not treat wrangler types in command arguments as an invocation', asyn
   );
 
   expect(packageJson.scripts).toMatchObject({ help: 'echo wrangler types', postinstall: 'wb gen-code' });
+});
+
+test('does not treat an unrelated Wrangler command argument as the types subcommand', async () => {
+  const scripts = { deploy: 'wrangler deploy types' };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    }
+  );
+
+  expect(packageJson.scripts).toMatchObject({ deploy: 'wrangler deploy types', postinstall: 'wb gen-code' });
+});
+
+test('does not treat gen-types in command arguments as a script invocation', async () => {
+  const scripts = { 'gen-types': 'wrangler types', help: 'echo gen-types' };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    }
+  );
+
+  expect(packageJson.scripts).toMatchObject({ help: 'echo gen-types', postinstall: 'wb gen-code' });
+  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
 });
 
 test('recognizes wrangler in optionalDependencies as a direct dependency', async () => {
@@ -425,6 +462,22 @@ test('generates worker types before checking them in postinstall', async () => {
   );
 
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code && wrangler types --check=true');
+});
+
+test('removes a worker types check when the package opts out of generation', async () => {
+  const scripts = { postinstall: 'wrangler types --check' };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    },
+    { files: { 'src/index.ts': '', 'tsconfig.json': '{ "include": ["src"] }' } }
+  );
+
+  expect(packageJson.scripts?.postinstall).toBeUndefined();
 });
 
 // A wrapper around a CUSTOMIZED gen-code is the install-time entry point for BOTH the managed generation and the

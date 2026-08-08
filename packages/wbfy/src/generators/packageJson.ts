@@ -251,7 +251,10 @@ function updatePostinstallScript(
     // unmanaged reason (a missing dependency) leaves the
     // project's own generator as the ONLY one, so deleting it there would break generation outright.
     const segments = splitScriptSegments(scripts.postinstall);
-    const remaining = segments?.filter((segment) => classifyScriptSegment(segment, scripts, true) !== 'wranglerTypes');
+    const remaining = segments?.filter((segment) => {
+      const kind = classifyScriptSegment(segment, scripts, true);
+      return kind !== 'wranglerTypes' && kind !== 'wranglerTypesCheck';
+    });
     if (remaining && remaining.length !== segments?.length) {
       if (remaining.length > 0) {
         scripts.postinstall = remaining.join(' && ');
