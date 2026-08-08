@@ -17,7 +17,6 @@ const tempDirPaths: string[] = [];
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  delete process.env.CI;
   delete process.env.VERDACCIO_TOKEN;
   await Promise.all(tempDirPaths.splice(0).map((dirPath) => fs.promises.rm(dirPath, { recursive: true, force: true })));
 });
@@ -135,10 +134,9 @@ describe('resolvePrivateRegistryAuth', () => {
     });
   });
 
-  it('allows the temporary project npmrc to override the home file on CI', async () => {
+  it('prefers the project npmrc token over the home token', async () => {
     const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
     vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
-    process.env.CI = 'true';
     await fs.promises.appendFile(
       path.join(rootDirPath, '.npmrc'),
       '//project.example.test/:_authToken=project-token\n'

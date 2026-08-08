@@ -57,8 +57,8 @@ export interface PrivateRegistryAuth {
 }
 
 /**
- * Resolve the private scope's registry URL from the project .npmrc and its auth token from the
- * merged ~/.npmrc. VERDACCIO_TOKEN serves as the fallback token on CI.
+ * Merge ~/.npmrc and the project .npmrc (project settings take precedence) to resolve the private
+ * scope's registry URL and token. VERDACCIO_TOKEN serves as the fallback token on CI.
  */
 export function resolvePrivateRegistryAuth(rootDirPath: string): PrivateRegistryAuth | undefined {
   const entries: Record<string, string> = {};
