@@ -101,6 +101,11 @@ interface RawWranglerConfig {
   env?: Record<string, RawWranglerConfig>;
 }
 
+export function resolveWranglerConfig(project: Pick<Project, 'dirPath'>): ResolvedWranglerConfig | undefined {
+  const config = readWranglerConfig(project);
+  return config ? resolveTopLevelConfig(config) : undefined;
+}
+
 // Workers Sites implicitly binds its KV namespace as __STATIC_CONTENT.
 function siteBindingNames(config: RawWranglerConfig, envConfig?: RawWranglerConfig): string[] {
   return (envConfig?.site ?? config.site) ? ['__STATIC_CONTENT'] : [];
@@ -115,21 +120,7 @@ export function resolveWranglerConfigForEnv(
   project: Pick<Project, 'dirPath'>,
   envName: string
 ): ResolvedWranglerConfig | undefined {
-  const configPath = findWranglerConfigPath(project);
-  if (!configPath) return;
-  if (path.extname(configPath) === '.toml') {
-    throw new Error('wb deploy supports wrangler.jsonc/wrangler.json configs only; migrate wrangler.toml first.');
-  }
-
-  // jsonc-parser is fault tolerant and would return a partial object for malformed input,
-  // which could migrate a remote database from a half-read config; reject any parse error.
-  const parseErrors: ParseError[] = [];
-  const config = parse(fs.readFileSync(configPath, 'utf8'), parseErrors, {
-    allowTrailingComma: true,
-  }) as RawWranglerConfig | undefined;
-  if (parseErrors.length > 0) {
-    throw new Error(`Failed to parse ${configPath}: ${parseErrors.length} JSONC syntax error(s).`);
-  }
+  const config = readWranglerConfig(project);
   if (!config) return;
 
   const envConfig = config.env?.[envName];
@@ -165,14 +156,37 @@ export function resolveWranglerConfigForEnv(
         requiredSecretNames: envConfig.secrets?.required ?? [],
         usesEnvSection: true,
       }
-    : {
-        workerName: config.name,
-        accountId: config.account_id,
-        varKeys: Object.keys(config.vars ?? {}),
-        vars: config.vars ?? {},
-        bindingNames: [...collectBindingNames(config), ...siteBindingNames(config)],
-        d1Databases: config.d1_databases ?? [],
-        requiredSecretNames: config.secrets?.required ?? [],
-        usesEnvSection: false,
-      };
+    : resolveTopLevelConfig(config);
+}
+
+function readWranglerConfig(project: Pick<Project, 'dirPath'>): RawWranglerConfig | undefined {
+  const configPath = findWranglerConfigPath(project);
+  if (!configPath) return;
+  if (path.extname(configPath) === '.toml') {
+    throw new Error('wb deploy supports wrangler.jsonc/wrangler.json configs only; migrate wrangler.toml first.');
+  }
+
+  // jsonc-parser is fault tolerant and would return a partial object for malformed input,
+  // which could migrate a remote database from a half-read config; reject any parse error.
+  const parseErrors: ParseError[] = [];
+  const config = parse(fs.readFileSync(configPath, 'utf8'), parseErrors, {
+    allowTrailingComma: true,
+  }) as RawWranglerConfig | undefined;
+  if (parseErrors.length > 0) {
+    throw new Error(`Failed to parse ${configPath}: ${parseErrors.length} JSONC syntax error(s).`);
+  }
+  return config;
+}
+
+function resolveTopLevelConfig(config: RawWranglerConfig): ResolvedWranglerConfig {
+  return {
+    workerName: config.name,
+    accountId: config.account_id,
+    varKeys: Object.keys(config.vars ?? {}),
+    vars: config.vars ?? {},
+    bindingNames: [...collectBindingNames(config), ...siteBindingNames(config)],
+    d1Databases: config.d1_databases ?? [],
+    requiredSecretNames: config.secrets?.required ?? [],
+    usesEnvSection: false,
+  };
 }

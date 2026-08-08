@@ -5,6 +5,7 @@ import type { Project } from '../project.js';
 import { buildEnvReaderOptionArgs } from '../sharedOptionsBuilder.js';
 import type { ScriptArgv } from '../scripts/builder.js';
 import { buildShellCommand } from './shell.js';
+import { resolveWranglerConfig, usesWranglerNativeMigrations } from './wranglerConfig.js';
 
 const wranglerConfigFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'];
 
@@ -31,10 +32,12 @@ export function buildWranglerDevCommand(args: string): string {
  * CI=true suppresses wrangler's interactive confirmation prompt.
  */
 export function buildD1MigrationsApplyCommand(project: Pick<Project, 'dirPath' | 'env'>): string | undefined {
-  const databaseName = getD1DatabaseName(project);
-  if (!databaseName || !findD1MigrationsDirPath(project)) return;
+  const database = resolveWranglerConfig(project)?.d1Databases.find((candidate) =>
+    usesWranglerNativeMigrations(project, candidate)
+  );
+  if (!database?.database_name) return;
 
-  return `CI=true YARN wrangler d1 migrations apply ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}"`;
+  return `CI=true YARN wrangler d1 migrations apply ${database.database_name} --local --persist-to "${getLocalWranglerStateDir(project)}"`;
 }
 
 /**

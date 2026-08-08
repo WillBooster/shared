@@ -1,3 +1,7 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 import yargs from 'yargs';
 
@@ -8,6 +12,7 @@ import { normalizeArgs } from '../../../../src/scripts/builder.js';
 import { BaseScripts, buildWaitOnLoopbackCommand } from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
+import { buildD1MigrationsApplyCommand } from '../../../../src/utils/wrangler.js';
 
 vi.mock('../../../../src/utils/port.js', () => ({
   checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
@@ -67,6 +72,10 @@ class TestProductionScripts extends BaseScripts {
 
   protected override buildDefaultProductionStartCommands(_project: Project, _argv: ScriptArgv): string[] {
     return ['build', 'start'];
+  }
+
+  getMigrationCommands(project: Project): string[] {
+    return this.buildMigrationCommands(project);
   }
 }
 
@@ -260,3 +269,72 @@ describe('BaseScripts.testE2E', () => {
     expect(command).toContain('build && start');
   });
 });
+
+describe('BaseScripts D1 migration selection', () => {
+  const scripts = new TestProductionScripts();
+
+  it('does not treat an unrelated drizzle config as a D1 migration mechanism', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
+    try {
+      await fs.writeFile(
+        path.join(dirPath, 'wrangler.jsonc'),
+        JSON.stringify({ d1_databases: [{ binding: 'DB', database_name: 'app' }] })
+      );
+      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'postgresql' };`);
+      const project = buildD1Project(dirPath);
+
+      expect(scripts.getMigrationCommands(project)).not.toContain('YARN drizzle-kit migrate');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('uses drizzle-kit when an empty migrations directory is not wrangler-native', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
+    try {
+      await fs.mkdir(path.join(dirPath, 'migrations'));
+      await fs.writeFile(
+        path.join(dirPath, 'wrangler.jsonc'),
+        JSON.stringify({ d1_databases: [{ binding: 'DB', database_name: 'app', migrations_dir: 'migrations' }] })
+      );
+      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
+      const project = buildD1Project(dirPath);
+
+      expect(scripts.getMigrationCommands(project).join(' && ')).toContain('YARN drizzle-kit migrate');
+      expect(buildD1MigrationsApplyCommand(project)).toBeUndefined();
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('uses wrangler-native migrations when an explicit pattern opts in before the directory exists', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
+    try {
+      await fs.writeFile(
+        path.join(dirPath, 'wrangler.jsonc'),
+        JSON.stringify({
+          d1_databases: [{ binding: 'DB', database_name: 'app', migrations_pattern: 'migrations/*/migration.sql' }],
+        })
+      );
+      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
+      const project = buildD1Project(dirPath);
+
+      expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
+      expect(buildD1MigrationsApplyCommand(project)).toContain('YARN wrangler d1 migrations apply app');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+});
+
+function buildD1Project(dirPath: string): Project {
+  return {
+    buildCommand: 'build',
+    dirPath,
+    env: { WB_ENV: 'test', PORT: '3000' },
+    hasDrizzle: true,
+    hasPrisma: false,
+    packageJson: { scripts: {} },
+    rootDirPath: dirPath,
+  } as unknown as Project;
+}

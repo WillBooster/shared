@@ -6,16 +6,12 @@ import { isProjectEnvironment } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
 import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
-import {
-  findD1MigrationsDirPath,
-  findWranglerConfigPath,
-  getLocalWranglerStateDir,
-  wrapWithLocalD1DatabaseUrl,
-} from '../../utils/wrangler.js';
+import { findWranglerConfigPath, getLocalWranglerStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
+import { resolveWranglerConfig, usesWranglerNativeMigrations } from '../../utils/wranglerConfig.js';
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
-import { drizzleScripts } from '../drizzleScripts.js';
+import { drizzleScripts, usesDrizzleKitForD1 } from '../drizzleScripts.js';
 import { prismaScripts } from '../prismaScripts.js';
 
 export interface TestE2EOptions {
@@ -140,15 +136,13 @@ export abstract class BaseScripts {
       isProjectEnvironment(project, 'test') && findWranglerConfigPath(project)
         ? [`rm -Rf "${getLocalWranglerStateDir(project)}"`]
         : [];
-    // A project whose D1 bindings carry wrangler-native migrations applies them with wrangler
-    // (see WorkersScripts / buildD1MigrationsApplyCommand). Running drizzle-kit migrate against
-    // the same local D1 would apply the same SQL twice — drizzle's generated statements are not
-    // idempotent (`CREATE INDEX` without IF NOT EXISTS) — so drizzle stays ORM-only there.
-    const migratesD1WithWrangler = !!findD1MigrationsDirPath(project);
+    const d1Databases = resolveWranglerConfig(project)?.d1Databases ?? [];
+    const migratesD1WithWrangler = d1Databases.some((database) => usesWranglerNativeMigrations(project, database));
+    const migratesD1WithDrizzle = d1Databases.length === 0 || usesDrizzleKitForD1(project);
     return [
       ...wranglerStateWipeCommands,
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
-      ...(project.hasDrizzle && !migratesD1WithWrangler
+      ...(project.hasDrizzle && migratesD1WithDrizzle && !migratesD1WithWrangler
         ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))]
         : []),
     ];
