@@ -499,7 +499,8 @@ function hasWranglerDependency(packageJson: PackageJson | undefined): boolean {
   ].some((dependencies) => dependencies?.wrangler !== undefined);
 }
 
-const wranglerTypesTextPattern = /\bwrangler\s+types\b/u;
+const wranglerTypesTextPattern =
+  /["']?\bwrangler\b["']?(?:\s+(?:--(?:config|cwd|env|env-file|log-level)|-[ce])(?:=\S+|\s+\S+))*\s+types\b/u;
 
 function mentionsPackageScript(script: string | undefined, scriptName: string): boolean {
   return script !== undefined && new RegExp(`\\b${escapeRegExp(scriptName)}\\b`, 'u').test(script);
