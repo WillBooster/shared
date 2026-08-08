@@ -177,13 +177,7 @@ function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scr
   const result: string[] = [];
   for (const [index, segment] of segments.entries()) {
     const kind = kinds[index];
-    if (kind === 'wranglerTypesCheck') {
-      if (!generationPlaced) {
-        result.push('wb gen-code');
-        generationPlaced = true;
-      }
-      result.push(segment);
-    } else if (kind === 'custom' || kind === 'genCodeWrapper') {
+    if (kind === 'custom' || kind === 'genCodeWrapper') {
       result.push(segment);
     } else if (!generationPlaced) {
       result.push('wb gen-code');
@@ -207,7 +201,7 @@ function stripSubsumedGenCodeSegments(script: string, scripts: PackageJson.Scrip
   let generationPlaced = false;
   for (const segment of segments) {
     const kind = classifyScriptSegment(segment, scripts, true);
-    if (kind === 'custom' || kind === 'genCodeWrapper' || kind === 'wranglerTypesCheck') {
+    if (kind === 'custom' || kind === 'genCodeWrapper') {
       rebuilt.push(segment);
     } else if (!generationPlaced) {
       rebuilt.push('bun wb gen-code');
@@ -253,7 +247,7 @@ function updatePostinstallScript(
     const segments = splitScriptSegments(scripts.postinstall);
     const remaining = segments?.filter((segment) => {
       const kind = classifyScriptSegment(segment, scripts, true);
-      return kind !== 'wranglerTypes' && kind !== 'wranglerTypesCheck';
+      return kind !== 'wranglerTypes';
     });
     if (remaining && remaining.length !== segments?.length) {
       if (remaining.length > 0) {
@@ -983,7 +977,7 @@ async function normalizePackageMetadata(
     const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
     const customSegments = segments?.filter((segment) => {
       const kind = classifyScriptSegment(segment, jsonObj.scripts, true);
-      return kind === 'custom' || kind === 'wranglerTypesCheck';
+      return kind === 'custom';
     });
     if (customSegments) {
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
