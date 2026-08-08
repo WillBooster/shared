@@ -21,7 +21,11 @@ interface BunfigToml {
 // machines' global configs get it through configs/applyReleaseAgeGate.sh (run by wbfy itself, by
 // reusable-workflows on CI, and by self-host-utils on the runners), and repositories get it here.
 // Only our own packages are exempt: we control who publishes them, so a compromised release cannot
-// reach us through an upstream maintainer's stolen credentials. Third-party packages — including
+// reach us through an upstream maintainer's stolen credentials. That covers every
+// @willbooster-private package (the scope resolves only from our own registry), but bun, npm, and
+// Yarn match exclude entries by exact name — no @scope/* patterns — so each new package in the
+// scope must be added to configs/releaseAgeGate.json when it is first published. Third-party
+// packages — including
 // tooling wbfy pins itself — stay age-gated; getLatestAgeGatedDependencyVersion in packageJson.ts
 // pins the newest release old enough to pass the gate, so pinning keeps working without an exemption.
 export const bunMinimumReleaseAgeSeconds = releaseAgeGate.days * 24 * 60 * 60;

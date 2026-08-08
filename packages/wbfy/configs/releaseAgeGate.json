@@ -3,10 +3,13 @@
   "excludes": [
     "@exercode/problem-utils",
     "@openai/codex",
+    "@willbooster-private/agent-workflows",
     "@willbooster-private/agentic-workflows",
     "@willbooster-private/ai-ocr",
+    "@willbooster-private/code-analyzer",
     "@willbooster-private/judge",
     "@willbooster-private/llm-proxy",
+    "@willbooster-private/review-booster-cli",
     "@willbooster/agent-skills",
     "@willbooster/babel-configs",
     "@willbooster/monaco-loader",
