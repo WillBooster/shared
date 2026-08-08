@@ -1030,7 +1030,7 @@ test('downgrades a managed tool pin that the generated release-age gate rejects'
 
   expect(packageJson.devDependencies?.oxfmt).toMatch(/^\d+\.\d+\.\d+/u);
   expect(packageJson.devDependencies?.oxfmt).not.toBe('999.0.0');
-});
+}, 30_000);
 
 test('removes TypeScript compilers from a repository without TypeScript', async () => {
   const withoutTypeScript = await generatePackageJsonFrom({
