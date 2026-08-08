@@ -10,7 +10,12 @@ import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
-import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig } from '../packageConfig.js';
+import {
+  consumesGeneratedWorkerTypes,
+  generatesWorkerTypes,
+  getWorkerTypesScriptError,
+  type PackageConfig,
+} from '../packageConfig.js';
 import {
   classifyScriptSegment,
   runsOnlyRedundantGeneration,
@@ -88,6 +93,8 @@ export async function generatePackageJson(
 }
 
 async function core(config: PackageConfig, rootConfig: PackageConfig, skipAddingDeps: boolean): Promise<void> {
+  const workerTypesScriptError = getWorkerTypesScriptError(config);
+  if (workerTypesScriptError) throw new Error(workerTypesScriptError);
   const filePath = path.resolve(config.dirPath, 'package.json');
   const jsonObj = await readPackageJson(filePath);
 
@@ -170,7 +177,7 @@ function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scr
   const result: string[] = [];
   for (const [index, segment] of segments.entries()) {
     const kind = kinds[index];
-    if (kind === 'custom' || kind === 'genCodeWrapper') {
+    if (kind === 'custom' || kind === 'genCodeWrapper' || kind === 'wranglerTypesCheck') {
       result.push(segment);
     } else if (!generationPlaced) {
       result.push('wb gen-code');
@@ -194,7 +201,7 @@ function stripSubsumedGenCodeSegments(script: string, scripts: PackageJson.Scrip
   let generationPlaced = false;
   for (const segment of segments) {
     const kind = classifyScriptSegment(segment, scripts, true);
-    if (kind === 'custom' || kind === 'genCodeWrapper') {
+    if (kind === 'custom' || kind === 'genCodeWrapper' || kind === 'wranglerTypesCheck') {
       rebuilt.push(segment);
     } else if (!generationPlaced) {
       rebuilt.push('bun wb gen-code');
@@ -211,7 +218,6 @@ function updatePostinstallScript(
   managesWorkerTypes: boolean,
   hasOptedOutOfWorkerTypes: boolean
 ): void {
-  validateWorkerTypesScripts(scripts, managesWorkerTypes || hasOptedOutOfWorkerTypes);
   // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a code-generation or
   // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
   // scripts wrapping them) repositories used to carry are wbfy's to remove now that it owns the generation.
@@ -251,37 +257,7 @@ function updatePostinstallScript(
   if (managesWorkerTypes) {
     const genTypesSegments = splitScriptSegments(scripts['gen-types'] ?? '');
     if (genTypesSegments?.some((segment) => classifyScriptSegment(segment, scripts, false) === 'wranglerTypes')) {
-      const referenced = Object.entries(scripts).some(
-        ([name, script]) => name !== 'gen-types' && /(?<![\w:-])gen-types(?![\w:-])/u.test(script ?? '')
-      );
-      if (genTypesSegments.length !== 1 || referenced) {
-        throw new Error('gen-types must contain only wrangler types and must not be referenced by another script');
-      }
       delete scripts['gen-types'];
-    }
-  }
-}
-
-function validateWorkerTypesScripts(scripts: PackageJson.Scripts, validatesWorkerTypes: boolean): void {
-  if (!validatesWorkerTypes) return;
-  for (const [name, script] of Object.entries(scripts)) {
-    if (script === undefined) continue;
-    if (!script.includes('wrangler types')) continue;
-    const segments = splitScriptSegments(script);
-    if (!segments) throw new Error(`${name} contains unsupported shell syntax around wrangler types`);
-    for (const segment of segments) {
-      if (
-        classifyScriptSegment(segment, scripts, false) !== 'wranglerTypes' ||
-        /(?:^|\s)--check(?:\s|$)/u.test(segment)
-      ) {
-        continue;
-      }
-      if (!['gen-code', 'gen-types', 'postinstall'].includes(name)) {
-        throw new Error(`${name} must not invoke wrangler types directly`);
-      }
-      if (/(?:^|\s)(?:--path(?:=|\s)|-p(?:\s|$))/u.test(segment) || /\bwrangler\s+types\s+(?!-)\S+/u.test(segment)) {
-        throw new Error(`${name} must generate worker-configuration.d.ts at the default path`);
-      }
     }
   }
 }
@@ -996,9 +972,10 @@ async function normalizePackageMetadata(
     // assets) instead of discarding them; only the managed gen-code and the `wrangler types` invocations it now
     // subsumes are wbfy's to regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
     const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
-    const customSegments = segments?.filter(
-      (segment) => classifyScriptSegment(segment, jsonObj.scripts, true) === 'custom'
-    );
+    const customSegments = segments?.filter((segment) => {
+      const kind = classifyScriptSegment(segment, jsonObj.scripts, true);
+      return kind === 'custom' || kind === 'wranglerTypesCheck';
+    });
     if (customSegments) {
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
     }

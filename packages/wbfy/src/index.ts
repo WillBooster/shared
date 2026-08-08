@@ -48,7 +48,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
-import { getPackageConfig } from './packageConfig.js';
+import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
@@ -192,8 +192,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       continue;
     }
 
-    await fixTestDirectoriesUpdatingPackageJson([rootDirPath, ...subDirPaths]);
-
     // Let getPackageConfig derive isRoot for the entry path: `wbfy <repo>/packages/<app>` is a
     // supported invocation whose target must keep its child classification, so forcing
     // `isRoot: true` here would apply root-only processing (lefthook install, root tsconfig,
@@ -207,15 +205,30 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       hasInvalidPackageConfig = true;
       continue;
     }
-    const abbreviationPromise = fixTypos(rootConfig);
-
     // Every discovered workspace (including non-packages/* layouts such as apps/*) is a child
     // package; the packages/* heuristic inside getPackageConfig would misclassify apps/* as roots.
     const nullableSubPackageConfigs = await Promise.all(
       subDirPaths.map((subDirPath) => getPackageConfig(subDirPath, { isRoot: false }))
     );
+    if (nullableSubPackageConfigs.some((config) => !config)) {
+      console.error(`Skip ${rootDirPath}: a workspace package has no valid package.json.`);
+      hasInvalidPackageConfig = true;
+      continue;
+    }
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
+    const workerTypesScriptErrors = allPackageConfigs.flatMap((config) => {
+      const error = getWorkerTypesScriptError(config);
+      return error ? [`${config.dirPath}: ${error}`] : [];
+    });
+    if (workerTypesScriptErrors.length > 0) {
+      console.error(`Skip ${rootDirPath}:\n${workerTypesScriptErrors.join('\n')}`);
+      hasInvalidPackageConfig = true;
+      continue;
+    }
+
+    await fixTestDirectoriesUpdatingPackageJson([rootDirPath, ...subDirPaths]);
+    const abbreviationPromise = fixTypos(rootConfig);
 
     await generateRepositoryNpmrc(allPackageConfigs);
 

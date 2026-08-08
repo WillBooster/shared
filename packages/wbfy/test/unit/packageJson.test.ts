@@ -322,7 +322,12 @@ test.each([
   ['a referenced alias', { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' }],
   ['a compound alias', { 'gen-types': 'wrangler types && echo custom', postinstall: 'bun run gen-types' }],
   ['an arbitrary generator name', { 'types:worker': 'wrangler types --strict-vars=false' }],
-  ['an output path', { postinstall: 'wrangler types --path src/env.d.ts' }],
+  ['an arbitrary generator name with extra whitespace', { 'types:worker': 'wrangler  types --strict-vars=false' }],
+  ['an unsupported runner', { 'gen-types': 'npm exec wrangler types --strict-vars=false' }],
+  ['a positional output path after a flag', { postinstall: 'wrangler types --strict-vars=false src/env.d.ts' }],
+  ['a custom working directory', { postinstall: 'wrangler types --cwd packages/worker' }],
+  ['a global custom working directory', { postinstall: 'wrangler --cwd packages/worker types' }],
+  ['a divergent check', { 'check-types': 'wrangler types --check --strict-vars=false' }],
   ['unsupported shell syntax', { postinstall: 'cd sub && wrangler types' }],
 ])('rejects %s instead of partially normalizing it', async (_description, scripts) => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
@@ -338,10 +343,20 @@ test.each([
   expect(packageJson.scripts).toEqual(scripts);
 });
 
+test('rejects worker type generation without a direct wrangler dependency', async () => {
+  const scripts = { postinstall: 'wrangler types --strict-vars=false' };
+  const packageJson = await generatePackageJsonFrom(
+    { scripts },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: { scripts } }
+  );
+
+  expect(packageJson.scripts).toEqual(scripts);
+});
+
 // `--check` validates freshness and writes nothing, so it cannot conflict with the managed generator and must
 // not strip the managed setup from the package.
 test('keeps managing a package whose extra script only checks the types', async () => {
-  const scripts = { 'check-types': 'wrangler types --check' };
+  const scripts = { 'check-types': 'wrangler types --check', 'gen-types': 'wrangler types --check=true' };
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
   const packageJson = await generatePackageJsonFrom(
     { ...wranglerPackageJson },
@@ -355,6 +370,8 @@ test('keeps managing a package whose extra script only checks the types', async 
   );
 
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.['check-types']).toBe('wrangler types --check');
+  expect(packageJson.scripts?.['gen-types']).toBe('wrangler types --check=true');
 });
 
 // A wrapper around a CUSTOMIZED gen-code is the install-time entry point for BOTH the managed generation and the

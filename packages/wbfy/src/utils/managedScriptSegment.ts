@@ -5,7 +5,7 @@ import type { PackageJson } from 'type-fest';
  * worker-configuration.d.ts generated. It only needs to recognize the two segments it owns — the managed
  * `wb gen-code` and a direct `wrangler types` invocation — and to leave everything else alone.
  */
-type ScriptSegmentKind = 'custom' | 'genCode' | 'genCodeWrapper' | 'genI18nTs' | 'wranglerTypes';
+type ScriptSegmentKind = 'custom' | 'genCode' | 'genCodeWrapper' | 'genI18nTs' | 'wranglerTypes' | 'wranglerTypesCheck';
 
 // Runner spellings wbfy has generated over time (`wb gen-code`, `bun wb gen-code`) plus wrappers around the
 // package's own `gen-code` script.
@@ -14,6 +14,7 @@ const genCodeSegmentPattern = /^(?:(?:bun|bunx|yarn|pnpm|npm)\s+)?(?:run\s+)?wb\
 // `wb gen-code` is the only supported worker-types generator. Any direct invocation is replaced with the
 // canonical command, including flags that would otherwise make the generated file differ between repositories.
 const wranglerTypesSegmentPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s|$)/u;
+const wranglerTypesCheckFlagPattern = /(?:^|\s)--check(?:=true)?(?:\s|$)/u;
 
 // `wb gen-code` runs gen-i18n-ts itself, so an invocation EQUIVALENT to the one it runs is redundant rather than
 // a project-specific step. Equivalent means no arguments: `wb gen-code` either delegates to the package's own
@@ -47,6 +48,9 @@ export function classifyScriptSegment(
 ): ScriptSegmentKind {
   const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
   if (genCodeSegmentPattern.test(normalized)) return 'genCode';
+  if (wranglerTypesSegmentPattern.test(normalized) && wranglerTypesCheckFlagPattern.test(normalized)) {
+    return 'wranglerTypesCheck';
+  }
   if (wranglerTypesSegmentPattern.test(normalized)) return 'wranglerTypes';
   if (genI18nTsSegmentPattern.test(normalized)) return 'genI18nTs';
   // A one-level wrapper lookup covers `"postinstall": "bun run gen-types"`, the shape these repositories use;

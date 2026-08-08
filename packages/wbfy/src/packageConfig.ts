@@ -13,6 +13,7 @@ import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { escapeRegExp } from './utils/stringUtil.js';
+import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
@@ -436,6 +437,82 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
     consumesGeneratedWorkerTypes(config)
   );
+}
+
+export function getWorkerTypesScriptError(config: PackageConfig): string | undefined {
+  if (!config.doesContainWranglerConfig) return;
+  const scripts = config.packageJson?.scripts ?? {};
+  const hasWrangler = Boolean(
+    config.packageJson?.dependencies?.wrangler || config.packageJson?.devDependencies?.wrangler
+  );
+  let hasInvocation = false;
+  for (const [name, script] of Object.entries(scripts)) {
+    if (script === undefined) continue;
+    const normalizedScript = script.replaceAll(/\s+/gu, ' ');
+    if (!hasWranglerTypesInvocation(normalizedScript)) continue;
+    hasInvocation = true;
+    const segments = splitScriptSegments(script);
+    if (!segments) return `${name} contains unsupported shell syntax around wrangler types`;
+    for (const segment of segments) {
+      const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
+      if (!hasWranglerTypesInvocation(normalized)) continue;
+      const kind = classifyScriptSegment(segment, scripts, false);
+      if (kind !== 'wranglerTypes' && kind !== 'wranglerTypesCheck') {
+        return `${name} uses an unsupported wrangler types spelling`;
+      }
+      if (kind === 'wranglerTypesCheck') {
+        if (!/^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types\s+--check(?:=true)?$/u.test(normalized)) {
+          return `${name} must check the canonical worker types output`;
+        }
+        continue;
+      }
+      if (!['gen-code', 'gen-types', 'postinstall'].includes(name)) {
+        return `${name} must not invoke wrangler types directly`;
+      }
+      if (hasCustomWorkerTypesOutput(normalized)) {
+        return `${name} must generate worker-configuration.d.ts at the default path`;
+      }
+    }
+    const generatedSegments = segments.filter(
+      (segment) => classifyScriptSegment(segment, scripts, false) === 'wranglerTypes'
+    );
+    if (name === 'gen-types' && generatedSegments.length > 0) {
+      const referencedOutsidePostinstall = Object.entries(scripts).some(
+        ([otherName, otherScript]) =>
+          otherName !== 'gen-types' &&
+          otherName !== 'postinstall' &&
+          /(?<![\w:-])gen-types(?![\w:-])/u.test(otherScript ?? '')
+      );
+      if (segments.length !== 1 || referencedOutsidePostinstall) {
+        return 'gen-types must contain only wrangler types and must not be referenced outside postinstall';
+      }
+    }
+  }
+  if (hasInvocation && !hasWrangler) return 'wrangler types requires a direct wrangler dependency';
+}
+
+function hasWranglerTypesInvocation(script: string): boolean {
+  return /(?:^|\s)wrangler(?:\s+--cwd(?:=\S+|\s+\S+))?\s+types(?:\s|$)/u.test(script);
+}
+
+function hasCustomWorkerTypesOutput(segment: string): boolean {
+  const args = segment
+    .replace(/^.*?\bwrangler\s+types\b/u, '')
+    .trim()
+    .split(/\s+/u)
+    .filter(Boolean);
+  const valueOptions = new Set(['--config', '-c', '--env-file', '--env-interface']);
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (!argument) continue;
+    if (argument === '--cwd' || argument.startsWith('--cwd=')) return true;
+    if (valueOptions.has(argument)) {
+      index += 1;
+    } else if (!argument.startsWith('-')) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
