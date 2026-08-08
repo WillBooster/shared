@@ -506,9 +506,35 @@ interface ShellWord {
 }
 
 function findWranglerTypesInvocations(script: string): { direct: boolean; indirect: boolean } {
-  const words = tokenizeShell(script);
+  const executableScript = stripHeredocBodies(script);
   let direct = false;
-  let indirect = false;
+  let indirect = [...executableScript.matchAll(/`([^`]*)`/gu)].some((match) => {
+    const nested = findWranglerTypesInvocations(match[1] ?? '');
+    return nested.direct || nested.indirect;
+  });
+  for (const commandWords of getShellCommands(executableScript)) {
+    direct ||= hasWranglerTypesInvocation(commandWords.join(' '));
+
+    const commandIndex = getShellCommandIndex(commandWords);
+    const command = commandWords[commandIndex];
+    if (command === 'eval' && /\bwrangler\s+types\b/u.test(commandWords.slice(commandIndex + 1).join(' '))) {
+      indirect = true;
+    }
+    if (!['bash', 'sh', 'zsh'].includes(command ?? '')) continue;
+    const optionIndex = commandWords.findIndex(
+      (argument, argumentIndex) => argumentIndex > commandIndex && /^-[A-Za-z]*c[A-Za-z]*$/u.test(argument)
+    );
+    const payload = optionIndex === -1 ? undefined : commandWords[optionIndex + 1];
+    if (!payload) continue;
+    const nested = findWranglerTypesInvocations(payload);
+    indirect ||= nested.direct || nested.indirect;
+  }
+  return { direct, indirect };
+}
+
+function getShellCommands(script: string): string[][] {
+  const words = tokenizeShell(script);
+  const commands: string[][] = [];
   let commandStart = true;
   for (let index = 0; index < words.length; index += 1) {
     const word = words[index];
@@ -526,26 +552,24 @@ function findWranglerTypesInvocations(script: string): { direct: boolean; indire
       index += 1;
     }
     index -= 1;
-    direct ||= hasWranglerTypesInvocation(commandWords.join(' '));
-
-    const commandIndex = getShellCommandIndex(commandWords);
-    const command = commandWords[commandIndex];
-    if (command === 'eval' && /\bwrangler\s+types\b/u.test(commandWords.slice(commandIndex + 1).join(' '))) {
-      indirect = true;
-    }
-    if (['bash', 'sh', 'zsh'].includes(command ?? '')) {
-      const optionIndex = commandWords.findIndex(
-        (argument, argumentIndex) => argumentIndex > commandIndex && /^-[A-Za-z]*c[A-Za-z]*$/u.test(argument)
-      );
-      const payload = optionIndex === -1 ? undefined : commandWords[optionIndex + 1];
-      if (payload) {
-        const nested = findWranglerTypesInvocations(payload);
-        indirect ||= nested.direct || nested.indirect;
-      }
-    }
+    commands.push(commandWords);
     commandStart = false;
   }
-  return { direct, indirect };
+  return commands;
+}
+
+function stripHeredocBodies(script: string): string {
+  const executableLines: string[] = [];
+  let delimiter: string | undefined;
+  for (const line of script.split('\n')) {
+    if (delimiter) {
+      if (line.trim() === delimiter) delimiter = undefined;
+      continue;
+    }
+    executableLines.push(line);
+    delimiter = /<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?/u.exec(line)?.[1];
+  }
+  return executableLines.join('\n');
 }
 
 function tokenizeShell(script: string): ShellWord[] {
@@ -621,8 +645,7 @@ function hasWranglerTypesInvocation(script: string): boolean {
 
 function invokesPackageScript(script: string | undefined, scriptName: string): boolean {
   if (!script) return false;
-  return (splitScriptSegments(script) ?? [script]).some((segment) => {
-    const tokens = segment.trim().split(/\s+/u);
+  return getShellCommands(stripHeredocBodies(script)).some((tokens) => {
     const commandIndex = getShellCommandIndex(tokens);
     if (!['bun', 'npm', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '')) return false;
     let nameIndex = commandIndex + 1;
@@ -635,12 +658,11 @@ function invokesPackageScript(script: string | undefined, scriptName: string): b
 
 function getShellCommandIndex(tokens: string[]): number {
   let index = 0;
-  while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index += 1;
-  if (tokens[index] === 'env') {
-    index += 1;
+  while (index < tokens.length) {
     while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index += 1;
+    if (!['command', 'env', 'exec', 'time'].includes(tokens[index] ?? '')) break;
+    index += 1;
   }
-  if (['command', 'exec'].includes(tokens[index] ?? '')) index += 1;
   return index;
 }
 

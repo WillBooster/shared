@@ -321,6 +321,11 @@ test('normalizes a package carrying output-changing worker-types flags', async (
 test.each([
   ['a referenced alias', { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' }],
   ['an npm run-script alias reference', { 'gen-types': 'wrangler types', build: 'npm run-script gen-types' }],
+  ['a quoted alias reference', { 'gen-types': 'wrangler types', build: 'bun run "gen-types"' }],
+  [
+    'an alias reference after an unparseable command',
+    { 'gen-types': 'wrangler types', build: 'patch-package > /dev/null && bun run gen-types' },
+  ],
   ['a compound alias', { 'gen-types': 'wrangler types && echo custom', postinstall: 'bun run gen-types' }],
   ['an arbitrary generator name', { 'types:worker': 'wrangler types --strict-vars=false' }],
   ['an arbitrary generator name with extra whitespace', { 'types:worker': 'wrangler  types --strict-vars=false' }],
@@ -358,6 +363,9 @@ test.each([
   ['an escaped executable', { postinstall: String.raw`wrang\ler types` }],
   ['a newline-separated command', { postinstall: 'echo before\nwrangler types' }],
   ['a case branch command', { postinstall: 'case x in x) wrangler types;; esac' }],
+  ['a timed command', { postinstall: 'time wrangler types' }],
+  ['a command-env prefix', { postinstall: 'command env wrangler types' }],
+  ['a backtick substitution', { postinstall: 'echo `wrangler types`' }],
 ])('rejects %s instead of partially normalizing it', async (_description, scripts) => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
   const packageJson = await generatePackageJsonFrom(
@@ -439,6 +447,18 @@ test('does not reject a shell payload that only prints wrangler types', async ()
   );
 
   expect(packageJson.scripts?.help).toBe('sh -c "echo wrangler types"');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+});
+
+test('does not reject wrangler types text in a heredoc body', async () => {
+  const scripts = { help: "cat <<'EOF'\nwrangler types\nEOF" };
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
+  );
+
+  expect(packageJson.scripts?.help).toBe("cat <<'EOF'\nwrangler types\nEOF");
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
