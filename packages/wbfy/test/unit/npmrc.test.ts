@@ -62,6 +62,24 @@ describe('generateRepositoryNpmrc', () => {
     }
   );
 
+  it('does not treat a directly targeted workspace as the repository root', async () => {
+    const workspaceDirPath = await makeTempDir();
+    const npmrcPath = path.join(workspaceDirPath, '.npmrc');
+    await fs.promises.writeFile(
+      path.join(workspaceDirPath, 'package.json'),
+      JSON.stringify({
+        name: 'app',
+        dependencies: { '@willbooster-private/shared': '1.0.0' },
+      })
+    );
+    await fs.promises.writeFile(npmrcPath, 'registry=https://example.test/\n');
+    fsUtil.setRootDirPath(workspaceDirPath);
+
+    await generateRepositoryNpmrc([packageConfig(workspaceDirPath, 'WillBooster', false)]);
+
+    await expect(fs.promises.lstat(npmrcPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('preserves repository npmrc files outside the organizations', async () => {
     const rootDirPath = await makeTempDir();
     const npmrcPath = path.join(rootDirPath, '.npmrc');

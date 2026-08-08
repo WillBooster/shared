@@ -12,19 +12,18 @@ import { privateRegistryScopeMapping, repoResolvesPrivatePackages } from '../uti
  * developer's ~/.npmrc locally and in temporary CI or Mend configuration.
  */
 export async function generateRepositoryNpmrc(configs: PackageConfig[]): Promise<void> {
-  const rootConfig = configs.find((config) => config.isRoot) ?? configs[0];
-  if (rootConfig?.repoAuthor !== 'WillBooster' && rootConfig?.repoAuthor !== 'WillBoosterLab') return;
+  const repoAuthor = configs[0]?.repoAuthor;
+  if (repoAuthor !== 'WillBooster' && repoAuthor !== 'WillBoosterLab') return;
 
-  const rootNpmrcPath = path.resolve(rootConfig.dirPath, '.npmrc');
-  if (repoResolvesPrivatePackages(rootConfig)) {
-    if (!(await fsUtil.generateFile(rootNpmrcPath, privateRegistryScopeMapping))) return;
-  } else {
-    await removeNpmrc(rootNpmrcPath);
+  const npmrcPaths = new Set(configs.map((config) => path.resolve(config.dirPath, '.npmrc')));
+  const rootConfig = configs.find((config) => config.isRoot);
+  if (rootConfig && repoResolvesPrivatePackages(rootConfig)) {
+    const rootNpmrcPath = path.resolve(rootConfig.dirPath, '.npmrc');
+    await fsUtil.generateFile(rootNpmrcPath, privateRegistryScopeMapping);
+    npmrcPaths.delete(rootNpmrcPath);
   }
 
-  for (const npmrcPath of new Set(configs.map((config) => path.resolve(config.dirPath, '.npmrc')))) {
-    if (npmrcPath !== rootNpmrcPath) await removeNpmrc(npmrcPath);
-  }
+  for (const npmrcPath of npmrcPaths) await removeNpmrc(npmrcPath);
 }
 
 async function removeNpmrc(npmrcPath: string): Promise<void> {
