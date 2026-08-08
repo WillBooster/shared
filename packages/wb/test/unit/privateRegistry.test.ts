@@ -17,7 +17,7 @@ const tempDirPaths: string[] = [];
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  delete process.env.CI;
+  delete process.env.VERDACCIO_TOKEN;
   await Promise.all(tempDirPaths.splice(0).map((dirPath) => fs.promises.rm(dirPath, { recursive: true, force: true })));
 });
 
@@ -124,24 +124,39 @@ legacy-peer-deps=true
 });
 
 describe('resolvePrivateRegistryAuth', () => {
-  it('ignores a project npmrc during local development', async () => {
+  it('combines the project registry mapping with the home token during local development', async () => {
     const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
     vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
 
     expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
-      registryUrl: 'https://home.example.test',
+      registryUrl: 'https://project.example.test',
       authToken: 'home-token',
     });
   });
 
-  it('allows the temporary project npmrc to override the home file on CI', async () => {
+  it('prefers the project npmrc token over the home token', async () => {
     const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
     vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
-    process.env.CI = 'true';
+    await fs.promises.appendFile(
+      path.join(rootDirPath, '.npmrc'),
+      '//project.example.test/:_authToken=project-token\n'
+    );
 
     expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
       registryUrl: 'https://project.example.test',
       authToken: 'project-token',
+    });
+  });
+
+  it('falls back to VERDACCIO_TOKEN when the npmrc files contain no token', async () => {
+    const { homeDirPath, rootDirPath } = await makeNpmrcFixture();
+    vi.spyOn(os, 'homedir').mockReturnValue(homeDirPath);
+    await fs.promises.writeFile(path.join(homeDirPath, '.npmrc'), '');
+    process.env.VERDACCIO_TOKEN = 'environment-token';
+
+    expect(resolvePrivateRegistryAuth(rootDirPath)).toEqual({
+      registryUrl: 'https://project.example.test',
+      authToken: 'environment-token',
     });
   });
 });
@@ -155,11 +170,11 @@ async function makeNpmrcFixture(): Promise<{ homeDirPath: string; rootDirPath: s
   await Promise.all([
     fs.promises.writeFile(
       path.join(homeDirPath, '.npmrc'),
-      '@willbooster-private:registry=https://home.example.test/\n//home.example.test/:_authToken=home-token\n'
+      '@willbooster-private:registry=https://home.example.test/\n' + '//project.example.test/:_authToken=home-token\n'
     ),
     fs.promises.writeFile(
       path.join(rootDirPath, '.npmrc'),
-      '@willbooster-private:registry=https://project.example.test/\n//project.example.test/:_authToken=project-token\n'
+      '@willbooster-private:registry=https://project.example.test/\n'
     ),
   ]);
   return { homeDirPath, rootDirPath };

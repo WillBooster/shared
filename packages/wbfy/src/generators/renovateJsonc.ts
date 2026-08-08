@@ -9,16 +9,17 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { jsoncUtil } from '../utils/jsoncUtil.js';
 import { overwriteMerge } from '../utils/mergeUtil.js';
-import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
+import {
+  privateRegistryHost,
+  privateRegistryScopeMapping,
+  repoResolvesPrivatePackages,
+} from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
 
 // The shared preset every WillBooster / WillBoosterLab repository extends. willbooster-configs IS
 // this preset, so injecting it there would make the preset extend itself.
 const sharedPreset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
 const privatePackagesPreset = 'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc';
-const privateRegistryHost = 'verdaccio-production-e389.up.railway.app';
-const privateRegistryScopeMapping = `@willbooster-private:registry=https://${privateRegistryHost}/`;
-
 const jsonObj = {
   $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [sharedPreset],

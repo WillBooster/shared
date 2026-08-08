@@ -95,7 +95,8 @@ describe('materializePrivatePackages', () => {
       });
       await fs.writeFile(
         path.join(rootDirPath, '.npmrc'),
-        '@willbooster-private:registry=http://wb-unreachable-registry.invalid\n'
+        '@willbooster-private:registry=http://wb-unreachable-registry.invalid\n' +
+          '//wb-unreachable-registry.invalid/:_authToken=dummy-token\n'
       );
       // Installed only for the git dependency: the registry package has no installed copy, so it
       // must be downloaded — and that download fails.
@@ -114,7 +115,9 @@ describe('materializePrivatePackages', () => {
       });
 
       const projects = await findDescendantProjects({}, false, rootDirPath);
-      await expect(materializePrivatePackages(projects!.root.dirPath, collectManifests(projects!))).rejects.toThrow();
+      await expect(materializePrivatePackages(projects!.root.dirPath, collectManifests(projects!))).rejects.toThrow(
+        /fetch failed|Unable to connect/
+      );
 
       expect(await readVersion(gitDirPath)).toBe('0.9.0');
       expect(await readVersion(registryDirPath)).toBe('0.9.0');

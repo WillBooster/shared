@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { removeRepositoryNpmrcFiles } from '../../src/generators/npmrc.js';
+import { generateRepositoryNpmrc } from '../../src/generators/npmrc.js';
 import type { PackageConfig } from '../../src/packageConfig.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 
@@ -15,7 +15,7 @@ afterEach(async () => {
   await Promise.all(tempDirPaths.splice(0).map((dirPath) => fs.promises.rm(dirPath, { recursive: true, force: true })));
 });
 
-describe('removeRepositoryNpmrcFiles', () => {
+describe('generateRepositoryNpmrc', () => {
   it.each(['WillBooster', 'WillBoosterLab'])('removes root and workspace npmrc files for %s', async (repoAuthor) => {
     const rootDirPath = await makeTempDir();
     const workspaceDirPath = path.join(rootDirPath, 'packages', 'app');
@@ -24,7 +24,7 @@ describe('removeRepositoryNpmrcFiles', () => {
     await fs.promises.symlink('../../.npmrc', path.join(workspaceDirPath, '.npmrc'));
     fsUtil.setRootDirPath(rootDirPath);
 
-    await removeRepositoryNpmrcFiles([
+    await generateRepositoryNpmrc([
       packageConfig(rootDirPath, repoAuthor, true),
       packageConfig(workspaceDirPath, repoAuthor, false),
     ]);
@@ -33,13 +33,60 @@ describe('removeRepositoryNpmrcFiles', () => {
     await expect(fs.promises.lstat(path.join(workspaceDirPath, '.npmrc'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it.each(['WillBooster', 'WillBoosterLab'])(
+    'generates only the non-secret private registry mapping for %s repositories that need it',
+    async (repoAuthor) => {
+      const rootDirPath = await makeTempDir();
+      const workspaceDirPath = path.join(rootDirPath, 'packages', 'app');
+      await fs.promises.mkdir(workspaceDirPath, { recursive: true });
+      await fs.promises.writeFile(
+        path.join(rootDirPath, 'package.json'),
+        JSON.stringify({
+          name: 'app',
+          dependencies: { '@willbooster-private/shared': '1.0.0' },
+        })
+      );
+      await fs.promises.writeFile(path.join(rootDirPath, '.npmrc'), '//example.test/:_authToken=secret\n');
+      await fs.promises.writeFile(path.join(workspaceDirPath, '.npmrc'), 'registry=https://example.test/\n');
+      fsUtil.setRootDirPath(rootDirPath);
+
+      await generateRepositoryNpmrc([
+        packageConfig(rootDirPath, repoAuthor, true),
+        packageConfig(workspaceDirPath, repoAuthor, false),
+      ]);
+
+      await expect(fs.promises.readFile(path.join(rootDirPath, '.npmrc'), 'utf8')).resolves.toBe(
+        '@willbooster-private:registry=https://verdaccio-production-e389.up.railway.app/\n'
+      );
+      await expect(fs.promises.lstat(path.join(workspaceDirPath, '.npmrc'))).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+  );
+
+  it('does not treat a directly targeted workspace as the repository root', async () => {
+    const workspaceDirPath = await makeTempDir();
+    const npmrcPath = path.join(workspaceDirPath, '.npmrc');
+    await fs.promises.writeFile(
+      path.join(workspaceDirPath, 'package.json'),
+      JSON.stringify({
+        name: 'app',
+        dependencies: { '@willbooster-private/shared': '1.0.0' },
+      })
+    );
+    await fs.promises.writeFile(npmrcPath, 'registry=https://example.test/\n');
+    fsUtil.setRootDirPath(workspaceDirPath);
+
+    await generateRepositoryNpmrc([packageConfig(workspaceDirPath, 'WillBooster', false)]);
+
+    await expect(fs.promises.lstat(npmrcPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('preserves repository npmrc files outside the organizations', async () => {
     const rootDirPath = await makeTempDir();
     const npmrcPath = path.join(rootDirPath, '.npmrc');
     await fs.promises.writeFile(npmrcPath, 'registry=https://example.test/\n');
     fsUtil.setRootDirPath(rootDirPath);
 
-    await removeRepositoryNpmrcFiles([packageConfig(rootDirPath, 'example', true)]);
+    await generateRepositoryNpmrc([packageConfig(rootDirPath, 'example', true)]);
 
     await expect(fs.promises.readFile(npmrcPath, 'utf8')).resolves.toBe('registry=https://example.test/\n');
   });

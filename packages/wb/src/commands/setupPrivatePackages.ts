@@ -185,10 +185,10 @@ export async function materializePrivatePackages(
   // automatic `wb optimizeForDockerBuild --outside` step catches it and continues, leaving the
   // existing output untouched (nothing has been deleted yet at this point).
   const auth = downloadedPackages.length > 0 ? resolvePrivateRegistryAuth(rootDirPath) : undefined;
-  if (downloadedPackages.length > 0 && !auth) {
+  if (downloadedPackages.length > 0 && !auth?.authToken) {
     throw new Error(
-      `Cannot download ${downloadedPackages.map((p) => p.name).join(', ')}: no registry configured for the ${PRIVATE_REGISTRY_SCOPE} scope; ` +
-        `add "${PRIVATE_REGISTRY_SCOPE}:registry=..." to ~/.npmrc. Only installed copies satisfying an exact version or ` +
+      `Cannot download ${downloadedPackages.map((p) => p.name).join(', ')}: run wbfy to generate the repository .npmrc and configure its token in ~/.npmrc (or VERDACCIO_TOKEN on CI). ` +
+        `Only installed copies satisfying an exact version or ` +
         'semver range are reused without registry access; dist-tag specifiers (e.g. `latest`) always require it.'
     );
   }

@@ -3,20 +3,32 @@ import path from 'node:path';
 
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
+import { privateRegistryScopeMapping, repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 
 /**
- * Organization repositories authenticate local package-manager commands exclusively through the
- * developer's ~/.npmrc. CI may create a temporary repository .npmrc, but it must never become
- * persistent repository configuration.
+ * Bun reads registry scope mappings from a physical repository .npmrc during Renovate artifact
+ * updates; Renovate's npmrc setting is used only by its datasource layer. Keep the non-secret
+ * mapping in repositories that resolve private packages, while authentication remains in the
+ * developer's ~/.npmrc locally and in temporary CI or Mend configuration.
  */
-export async function removeRepositoryNpmrcFiles(configs: PackageConfig[]): Promise<void> {
-  const rootConfig = configs.find((config) => config.isRoot) ?? configs[0];
-  if (rootConfig?.repoAuthor !== 'WillBooster' && rootConfig?.repoAuthor !== 'WillBoosterLab') return;
+export async function generateRepositoryNpmrc(configs: PackageConfig[]): Promise<void> {
+  const repoAuthor = configs[0]?.repoAuthor;
+  if (repoAuthor !== 'WillBooster' && repoAuthor !== 'WillBoosterLab') return;
 
-  for (const npmrcPath of new Set(configs.map((config) => path.resolve(config.dirPath, '.npmrc')))) {
-    if (!(await fs.promises.lstat(npmrcPath).catch(() => {}))) continue;
-    if (await fsUtil.removeConfined(npmrcPath)) {
-      console.info(`Removed repository npmrc ${npmrcPath}; local authentication belongs in ~/.npmrc.`);
-    }
+  const npmrcPaths = new Set(configs.map((config) => path.resolve(config.dirPath, '.npmrc')));
+  const rootConfig = configs.find((config) => config.isRoot);
+  if (rootConfig && repoResolvesPrivatePackages(rootConfig)) {
+    const rootNpmrcPath = path.resolve(rootConfig.dirPath, '.npmrc');
+    await fsUtil.generateFile(rootNpmrcPath, privateRegistryScopeMapping);
+    npmrcPaths.delete(rootNpmrcPath);
+  }
+
+  for (const npmrcPath of npmrcPaths) await removeNpmrc(npmrcPath);
+}
+
+async function removeNpmrc(npmrcPath: string): Promise<void> {
+  if (!(await fs.promises.lstat(npmrcPath).catch(() => {}))) return;
+  if (await fsUtil.removeConfined(npmrcPath)) {
+    console.info(`Removed non-canonical repository npmrc ${npmrcPath}.`);
   }
 }
