@@ -25,20 +25,25 @@ describe('apply-docker-env.sh', () => {
     }
   });
 
-  it('does not leak bookkeeping variables and keeps inherited line/key values', () => {
+  it('does not leak or clobber bookkeeping names and applies Bash readonly names via env', () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {
-      fs.writeFileSync(path.join(dirPath, '.docker.env'), "line='baked-line'\nOTHER='o'\n");
+      fs.writeFileSync(path.join(dirPath, '.docker.env'), "line='baked-line'\nUID='9999'\nOTHER='o'\n");
       const result = child_process.spawnSync('bash', [scriptPath, 'env'], {
         cwd: dirPath,
         encoding: 'utf8',
-        env: { ...process.env, line: 'platform-line' },
+        // Inherited variables sharing the script's internal names must reach the child unchanged.
+        env: { ...process.env, line: 'platform-line', value: 'platform-value', assignments: 'platform-a' },
       });
       expect(result.status).toBe(0);
       const envLines = result.stdout.split('\n');
       expect(envLines).toContain('line=platform-line');
+      expect(envLines).toContain('value=platform-value');
+      expect(envLines).toContain('assignments=platform-a');
       expect(envLines).toContain('OTHER=o');
-      expect(envLines.some((entry) => entry.startsWith('wb_baked_'))).toBe(false);
+      // A Bash readonly name is a valid baked key because values are passed via `env`.
+      expect(envLines).toContain('UID=9999');
+      expect(envLines.some((entry) => entry.startsWith('env_path=') || entry.startsWith('candidate='))).toBe(false);
     } finally {
       fs.rmSync(dirPath, { recursive: true, force: true });
     }

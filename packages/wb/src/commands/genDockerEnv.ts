@@ -20,7 +20,7 @@ const builder = {} as const;
 type GenDockerEnvCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
 export type GenDockerEnvCommandArgv = ArgumentsCamelCase<GenDockerEnvCommandOptions & { path?: string }>;
 
-const standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
+export const standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
 
 export const genDockerEnvCommand: CommandModule<unknown, GenDockerEnvCommandOptions> = {
   command: 'gen-docker-env [path]',

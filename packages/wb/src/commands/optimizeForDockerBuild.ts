@@ -175,7 +175,13 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
     // export WB_ENV — that must fail the build, not bake a development-profile image. Raised
     // before the try below so the no-`.docker.env`-consumer warning path cannot swallow it.
     const processEnvView = findSelfProject(argv, false)?.env ?? {};
-    if (isCI(processEnvView.CI) && !processEnvView.WB_ENV && processEnvView.WB_SKIP_ENV_CHECK !== '1') {
+    if (
+      isCI(processEnvView.CI) &&
+      !processEnvView.WB_ENV &&
+      // Match Project.completeAndValidateWbEnv's opt-out values exactly.
+      processEnvView.WB_SKIP_ENV_CHECK !== '1' &&
+      processEnvView.WB_SKIP_ENV_CHECK !== 'true'
+    ) {
       throw new Error(
         'WB_ENV is not exported on CI; export it before building the image so .docker.env bakes the right profile (or set WB_SKIP_ENV_CHECK=1).'
       );

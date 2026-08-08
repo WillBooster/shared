@@ -18,6 +18,7 @@ import { buildShellCommand } from '../utils/shell.js';
 import { wrapWithLocalD1DatabaseUrl } from '../utils/wrangler.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
+import { standardWbEnvModes } from './genDockerEnv.js';
 
 const builder = {} as const;
 
@@ -88,22 +89,31 @@ const createLitestreamConfigCommand: CommandModule<
     // With --env-refs, every value comes from the committed plaintext fnox defaults so generation
     // stays possible in secret-less builds (reading `project.env` would spawn `fnox export`).
     const envRefs = argv['env-refs'];
-    // Mirror gen-docker-env: an unresolved cascade is a hard error, because falling back to the
-    // development profile could make Litestream back up the wrong database.
+    // Mirror gen-docker-env: an unresolved cascade or a nonstandard mode is a hard error —
+    // falling back to (or silently collecting) another profile could make Litestream back up
+    // the wrong database.
     const envName = envRefs ? resolveCascade(argv) : undefined;
     if (envRefs && !envName) {
       throw new Error('No environment selected; pass --cascade-env=<mode> (or drop --auto-cascade-env=false).');
     }
+    if (envRefs && envName && !standardWbEnvModes.has(envName)) {
+      throw new Error(`WB_ENV must be one of ${[...standardWbEnvModes].join(', ')}, but is ${envName}.`);
+    }
+    // Resolved only for Drizzle candidates: Prisma needs no fnox value at all, and the collector
+    // validates every entry of the ancestor fnox.toml chain, so resolving it needlessly would let
+    // an unrelated non-bakeable entry abort the generation.
     const plainEnvFor =
       envRefs && envName
         ? (project: Project) => collectPlaintextFnoxValues(project.dirPath, project.rootDirPath, envName)
         : undefined;
-    const selectedProjects = selectLitestreamConfigProjects(allProjects, envRefs, plainEnvFor);
+    const envOverrideFor = (orm: DatabaseOrm, project: Project): Record<string, string | undefined> | undefined =>
+      envRefs ? (orm === 'drizzle' ? (plainEnvFor?.(project) ?? {}) : {}) : undefined;
+    const selectedProjects = selectLitestreamConfigProjects(allProjects, envRefs, envOverrideFor);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
       'db create-litestream-config',
       selectedProjects
     )) {
-      createLitestreamConfig(project, orm, argv.output, envRefs, plainEnvFor?.(project));
+      createLitestreamConfig(project, orm, argv.output, envRefs, envOverrideFor(orm, project));
     }
   },
 };
@@ -375,7 +385,7 @@ function withLocalD1IfNeeded(orm: DatabaseOrm, project: Project, script: string)
 export function selectLitestreamConfigProjects(
   allProjects: DatabaseOrmProject[],
   envRefs?: boolean,
-  plainEnvFor?: (project: Project) => Record<string, string | undefined>
+  envOverrideFor?: (orm: DatabaseOrm, project: Project) => Record<string, string | undefined> | undefined
 ): DatabaseOrmProject[] {
   if (allProjects.length <= 1) return allProjects;
 
@@ -383,7 +393,7 @@ export function selectLitestreamConfigProjects(
     allProjects.map(({ orm, project }) =>
       path.resolve(
         project.dirPath,
-        getLitestreamDbPath(project, orm, envRefs ? (plainEnvFor?.(project) ?? {}) : undefined)
+        getLitestreamDbPath(project, orm, envRefs ? (envOverrideFor?.(orm, project) ?? {}) : undefined)
       )
     )
   );
