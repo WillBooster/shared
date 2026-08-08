@@ -5,6 +5,7 @@ import type { Project } from '../project.js';
 import { buildEnvReaderOptionArgs } from '../sharedOptionsBuilder.js';
 import type { ScriptArgv } from '../scripts/builder.js';
 import { buildShellCommand } from './shell.js';
+import { resolveWranglerConfig, usesWranglerNativeMigrations } from './wranglerConfig.js';
 
 const wranglerConfigFileNames = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'];
 
@@ -26,15 +27,21 @@ export function buildWranglerDevCommand(args: string): string {
 }
 
 /**
- * Build a command applying wrangler-native D1 migrations to the local database, or undefined
- * if the project has no D1 database or no wrangler-native migrations directory.
+ * Build commands applying wrangler-native D1 migrations to every selected local binding that has
+ * a database name or binding name.
  * CI=true suppresses wrangler's interactive confirmation prompt.
  */
-export function buildD1MigrationsApplyCommand(project: Pick<Project, 'dirPath' | 'env'>): string | undefined {
-  const databaseName = getD1DatabaseName(project);
-  if (!databaseName || !findD1MigrationsDirPath(project)) return;
-
-  return `CI=true YARN wrangler d1 migrations apply ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}"`;
+export function buildD1MigrationsApplyCommands(project: Pick<Project, 'dirPath' | 'env'>): string[] {
+  return (resolveWranglerConfig(project)?.d1Databases ?? [])
+    .filter((database) => usesWranglerNativeMigrations(project, database))
+    .flatMap((database) => {
+      const databaseName = database.database_name ?? database.binding;
+      return databaseName
+        ? [
+            `env -u CLOUDFLARE_ENV CI=true YARN wrangler d1 migrations apply ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}"`,
+          ]
+        : [];
+    });
 }
 
 /**
@@ -84,21 +91,6 @@ export function findWranglerConfigPath(project: Pick<Project, 'dirPath'>): strin
     .find((filePath) => fs.existsSync(filePath));
   wranglerConfigPathCache.set(project, { configPath });
   return configPath;
-}
-
-/**
- * Get the path of the wrangler-native D1 migrations directory (`migrations_dir` in the wrangler
- * config, defaulting to `migrations`) if it exists on disk.
- */
-export function findD1MigrationsDirPath(project: Pick<Project, 'dirPath'>): string | undefined {
-  const configPath = findWranglerConfigPath(project);
-  if (!configPath) return;
-
-  const migrationsDirPath = path.join(
-    project.dirPath,
-    scanWranglerConfigValue(configPath, 'migrations_dir') ?? 'migrations'
-  );
-  return fs.existsSync(migrationsDirPath) ? migrationsDirPath : undefined;
 }
 
 /**

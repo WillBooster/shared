@@ -1,7 +1,7 @@
 import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
 import {
-  buildD1MigrationsApplyCommand,
+  buildD1MigrationsApplyCommands,
   buildGenDevVarsCommand,
   buildWranglerDevCommand,
   getLocalWranglerStateDir,
@@ -28,8 +28,7 @@ class VinextScripts extends BaseScripts {
     const commands = [buildGenDevVarsCommand(argv, '.dev.vars')];
     // `vinext dev` (miniflare) starts with an empty local D1 and applies no migrations itself;
     // the test environment wipes its state directory, so every page would 500 without this.
-    const migrationCommand = isProjectEnvironment(project, 'test') ? buildD1MigrationsApplyCommand(project) : undefined;
-    if (migrationCommand) commands.push(migrationCommand);
+    if (isProjectEnvironment(project, 'test')) commands.push(...buildD1MigrationsApplyCommands(project));
     return [...commands, devCommand].join(' && ');
   }
 
@@ -39,7 +38,7 @@ class VinextScripts extends BaseScripts {
     // Serving the built worker starts from an empty (or wiped) local D1, so wrangler-native
     // migrations (if any) must be applied first; drizzle/prisma migrations are handled by
     // buildProductionCommand.
-    const d1MigrationsCommand = buildD1MigrationsApplyCommand(project);
+    const d1MigrationCommands = buildD1MigrationsApplyCommands(project);
     // `vinext build` emits a worker bundle and its wrangler config under dist/server, so the
     // .dev.vars file exposing wb-managed environment variables must be generated after building.
     // `--local-upstream` keeps request URLs on the local host; otherwise, wrangler dev simulates
@@ -47,7 +46,7 @@ class VinextScripts extends BaseScripts {
     return [
       project.buildCommand,
       buildGenDevVarsCommand(argv, 'dist/server/.dev.vars'),
-      ...(d1MigrationsCommand ? [d1MigrationsCommand] : []),
+      ...d1MigrationCommands,
       buildWranglerDevCommand(
         `dev --config dist/server/wrangler.json --ip 127.0.0.1 --port ${port} --persist-to "${getLocalWranglerStateDir(project)}" --local-upstream localhost:${port} ${argv.normalizedArgsText ?? ''}`.trim()
       ),
