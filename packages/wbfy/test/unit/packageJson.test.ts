@@ -975,7 +975,9 @@ test('normalizes an env-file wrangler types script even when the named file exis
       },
       ...wranglerPackageJson,
     },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson },
+    // No packageJson override: config.packageJson must stay the on-disk package.json (scripts included)
+    // so `generatesWorkerTypes` evaluates `hasCustomWranglerTypesInvocation` against the env-file script.
+    { isCloudflare: true, doesContainWranglerConfig: true },
     { files: { 'wrangler.jsonc': '{}', '.env.cloudflare': 'CLOUDFLARE_API_TOKEN=dummy\n' } }
   );
 

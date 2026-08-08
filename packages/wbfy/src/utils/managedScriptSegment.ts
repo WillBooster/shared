@@ -14,17 +14,15 @@ type ScriptSegmentKind = 'custom' | 'genCode' | 'genCodeWrapper' | 'genI18nTs' |
 // package's own `gen-code` script.
 const genCodeSegmentPattern = /^(?:(?:bun|bunx|yarn|pnpm|npm)\s+)?(?:run\s+)?wb\s+gen-code$/u;
 
-// A bare `wrangler types`, which is exactly what `wb gen-code` runs.
-const bareWranglerTypesPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types$/u;
-
-// The same, plus only `--env-file` arguments — a legacy shape from before `wb gen-code` supplied its own
-// `--env-file` stub derived from the committed fnox.toml. That stub replaces the dotenv inference canonically,
-// so the invocation is equivalent to the managed generation REGARDLESS of whether the named files exist on the
+// A `wrangler types` carrying at most `--env-file` arguments, which is equivalent to what `wb gen-code` runs:
+// gen-code supplies its own `--env-file` stub derived from the committed fnox.toml, replacing the dotenv
+// inference canonically, so the invocation is disposable REGARDLESS of whether the named files exist on the
 // current machine. Classification must never test local file existence: fnox repositories keep dotenv files
 // gitignored (`wb start`/`wb deploy` create them), so an existence check would flip the worker-types management
-// decision between dev machines and clean checkouts, re-tracking the generated file forever.
-const envFileWranglerTypesPattern =
-  /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+(\S+))+$/u;
+// decision between dev machines and clean checkouts, re-tracking the generated file forever. Must accept the
+// same spellings as wb's `hasOutputChangingWranglerTypes`, which keys on the gitignore rule this answer writes.
+const disposableWranglerTypesPattern =
+  /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
 const envFileArgumentPattern = /--env-file\s+(\S+)/gu;
 
 // Any `wrangler types` invocation, whatever its flags.
@@ -48,7 +46,7 @@ function isNonConflictingWranglerTypes(segment: string): boolean {
 
 /** Whether the segment is a `wrangler types` invocation equivalent to the one `wb gen-code` runs. */
 function isDisposableWranglerTypes(segment: string): boolean {
-  return bareWranglerTypesPattern.test(segment) || envFileWranglerTypesPattern.test(segment);
+  return disposableWranglerTypesPattern.test(segment);
 }
 
 /**
