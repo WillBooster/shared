@@ -48,7 +48,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
-import { getPackageConfig } from './packageConfig.js';
+import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
@@ -192,6 +192,23 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       continue;
     }
 
+    const preflightErrors = [rootDirPath, ...subDirPaths].flatMap((dirPath) => {
+      const packageJsonPath = path.resolve(dirPath, 'package.json');
+      if (!fs.existsSync(packageJsonPath)) return [];
+      try {
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageConfig['packageJson'];
+        const error = getWorkerTypesScriptError({ packageJson });
+        return error ? [`${dirPath}: ${error}`] : [];
+      } catch {
+        return [`${packageJsonPath} is invalid`];
+      }
+    });
+    if (preflightErrors.length > 0) {
+      console.error(`Skip ${rootDirPath}:\n${preflightErrors.join('\n')}`);
+      hasInvalidPackageConfig = true;
+      continue;
+    }
+
     await fixTestDirectoriesUpdatingPackageJson([rootDirPath, ...subDirPaths]);
 
     // Let getPackageConfig derive isRoot for the entry path: `wbfy <repo>/packages/<app>` is a
@@ -207,15 +224,22 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       hasInvalidPackageConfig = true;
       continue;
     }
-    const abbreviationPromise = fixTypos(rootConfig);
-
     // Every discovered workspace (including non-packages/* layouts such as apps/*) is a child
     // package; the packages/* heuristic inside getPackageConfig would misclassify apps/* as roots.
     const nullableSubPackageConfigs = await Promise.all(
       subDirPaths.map((subDirPath) => getPackageConfig(subDirPath, { isRoot: false }))
     );
+    const invalidSubPackageDirPath = subDirPaths.find(
+      (subDirPath, index) => !nullableSubPackageConfigs[index] && fs.existsSync(path.join(subDirPath, 'package.json'))
+    );
+    if (invalidSubPackageDirPath) {
+      console.error(`Skip ${rootDirPath}: ${invalidSubPackageDirPath}/package.json is invalid.`);
+      hasInvalidPackageConfig = true;
+      continue;
+    }
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
+    const abbreviationPromise = fixTypos(rootConfig);
 
     await generateRepositoryNpmrc(allPackageConfigs);
 

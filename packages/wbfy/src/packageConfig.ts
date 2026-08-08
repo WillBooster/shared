@@ -11,9 +11,9 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
-import { hasCustomWranglerTypesInvocation } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { escapeRegExp } from './utils/stringUtil.js';
+import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import {
   getDeclaredWorkspacePatterns,
   getWorkspacePackageJsonPaths,
@@ -432,16 +432,105 @@ export async function getPackageConfig(
  */
 export function generatesWorkerTypes(config: PackageConfig): boolean {
   const packageJson = config.packageJson;
-  return (
-    config.doesContainWranglerConfig &&
-    Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
-    // `wb gen-code` runs `wrangler types` with no flags besides its own `--env-file` stub, so a package whose
-    // scripts pass flags that change the generated file (e.g. `--strict-vars=false`, repeated `-c` for RPC
-    // types) must stay unmanaged: managing it would delete the only record of that choice and regenerate a
-    // different `Env`.
-    !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}) &&
-    consumesGeneratedWorkerTypes(config)
-  );
+  return config.doesContainWranglerConfig && hasWranglerDependency(packageJson) && consumesGeneratedWorkerTypes(config);
+}
+
+export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
+  const scripts = config.packageJson?.scripts ?? {};
+  let hasInvocation = false;
+  for (const [name, script] of Object.entries(scripts)) {
+    if (script === undefined) continue;
+    const segments = splitScriptSegments(script);
+    if (!wranglerTypesTextPattern.test(script)) continue;
+    hasInvocation = true;
+    if (!segments) return `${name} contains unsupported shell syntax around wrangler types`;
+    let hasValidatedInvocation = false;
+    for (const segment of segments) {
+      const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
+      if (!wranglerTypesTextPattern.test(normalized)) continue;
+      hasValidatedInvocation = true;
+      const kind = classifyScriptSegment(segment, scripts, false);
+      if (kind !== 'wranglerTypes') {
+        return `${name} uses an unsupported wrangler types spelling`;
+      }
+      if (/(?:^|\s)--check(?:=true)?(?:\s|$)/u.test(normalized)) return `${name} must not check worker types directly`;
+      if (!['gen-code', 'gen-types', 'postinstall'].includes(name)) {
+        return `${name} must not invoke wrangler types directly`;
+      }
+      if (hasUnsupportedWorkerTypesArguments(normalized)) {
+        return `${name} uses unsupported wrangler types arguments`;
+      }
+    }
+    if (!hasValidatedInvocation) return `${name} uses an unsupported wrangler types spelling`;
+    const generatedSegments = segments.filter(
+      (segment) => classifyScriptSegment(segment, scripts, false) === 'wranglerTypes'
+    );
+    if (name === 'gen-types' && generatedSegments.length > 0) {
+      const referencedOutsidePostinstall = Object.entries(scripts).some(
+        ([otherName, otherScript]) =>
+          otherName !== 'gen-types' && otherName !== 'postinstall' && mentionsPackageScript(otherScript, 'gen-types')
+      );
+      if (segments.length !== 1 || referencedOutsidePostinstall) {
+        return 'gen-types must contain only wrangler types and must not be referenced outside postinstall';
+      }
+      const postinstall = scripts.postinstall;
+      if (postinstall && mentionsPackageScript(postinstall, 'gen-types')) {
+        const postinstallSegments = splitScriptSegments(postinstall);
+        if (
+          !postinstallSegments ||
+          !postinstallSegments.some((segment) => classifyScriptSegment(segment, scripts, true) === 'wranglerTypes')
+        ) {
+          return 'postinstall must use a canonical gen-types reference';
+        }
+      }
+    }
+  }
+  if (hasInvocation && !hasWranglerDependency(config.packageJson)) {
+    return 'wrangler types requires a direct wrangler dependency';
+  }
+}
+
+function hasWranglerDependency(packageJson: PackageJson | undefined): boolean {
+  return [
+    packageJson?.dependencies,
+    packageJson?.devDependencies,
+    packageJson?.optionalDependencies,
+    packageJson?.peerDependencies,
+  ].some((dependencies) => dependencies?.wrangler !== undefined);
+}
+
+const shellWordPattern = String.raw`(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?:\\.|[^\s"'\\])+)`;
+const wranglerOptionPattern = String.raw`\s+--?[A-Za-z][\w-]*(?:=${shellWordPattern}|\s+(?!-|types\b)${shellWordPattern})?`;
+const wranglerTypesTextPattern = new RegExp(
+  String.raw`["']?\bwrangler(?:@[^\s"']+)?\b["']?(?:${wranglerOptionPattern})*\s+types\b`,
+  'u'
+);
+
+function mentionsPackageScript(script: string | undefined, scriptName: string): boolean {
+  return script !== undefined && new RegExp(`\\b${escapeRegExp(scriptName)}\\b`, 'u').test(script);
+}
+
+function hasUnsupportedWorkerTypesArguments(segment: string): boolean {
+  const args = segment
+    .replace(/^.*?\bwrangler\s+types\b/u, '')
+    .trim()
+    .split(/\s+/u)
+    .filter(Boolean);
+  const valueOptions = new Set(['--env-file']);
+  const booleanOptions = new Set(['--include-env', '--include-runtime', '--strict-vars', '--x-include-runtime']);
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (!argument) continue;
+    const [option, inlineValue] = argument.split('=', 2);
+    if (option && valueOptions.has(option)) {
+      if (inlineValue === undefined) index += 1;
+    } else if (option && booleanOptions.has(option)) {
+      if (inlineValue === undefined && /^(?:false|true)$/u.test(args[index + 1] ?? '')) index += 1;
+    } else {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -604,7 +693,7 @@ function tsconfigPatternCouldMatchPath(pattern: string, targetPath: string, expa
  * Tells whether the directory owns a Worker, unlike the isCloudflare heuristic, which also matches a package that
  * merely mentions wrangler in a script or workflow (e.g. the root of a monorepo whose Worker lives in a sub-package).
  */
-export function detectWranglerConfig(dirPath: string): boolean {
+function detectWranglerConfig(dirPath: string): boolean {
   return ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'].some((fileName) =>
     fs.existsSync(path.resolve(dirPath, fileName))
   );
