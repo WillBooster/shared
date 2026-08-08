@@ -211,6 +211,7 @@ function updatePostinstallScript(
   managesWorkerTypes: boolean,
   hasOptedOutOfWorkerTypes: boolean
 ): void {
+  validateWorkerTypesScripts(scripts, managesWorkerTypes || hasOptedOutOfWorkerTypes);
   // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a code-generation or
   // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
   // scripts wrapping them) repositories used to carry are wbfy's to remove now that it owns the generation.
@@ -247,9 +248,41 @@ function updatePostinstallScript(
       }
     }
   }
-  // A direct `gen-types` invocation is dead weight where `wb gen-code` regenerates the file.
-  if (managesWorkerTypes && classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false) === 'wranglerTypes') {
-    delete scripts['gen-types'];
+  if (managesWorkerTypes) {
+    const genTypesSegments = splitScriptSegments(scripts['gen-types'] ?? '');
+    if (genTypesSegments?.some((segment) => classifyScriptSegment(segment, scripts, false) === 'wranglerTypes')) {
+      const referenced = Object.entries(scripts).some(
+        ([name, script]) => name !== 'gen-types' && /(?<![\w:-])gen-types(?![\w:-])/u.test(script ?? '')
+      );
+      if (genTypesSegments.length !== 1 || referenced) {
+        throw new Error('gen-types must contain only wrangler types and must not be referenced by another script');
+      }
+      delete scripts['gen-types'];
+    }
+  }
+}
+
+function validateWorkerTypesScripts(scripts: PackageJson.Scripts, validatesWorkerTypes: boolean): void {
+  if (!validatesWorkerTypes) return;
+  for (const [name, script] of Object.entries(scripts)) {
+    if (script === undefined) continue;
+    if (!script.includes('wrangler types')) continue;
+    const segments = splitScriptSegments(script);
+    if (!segments) throw new Error(`${name} contains unsupported shell syntax around wrangler types`);
+    for (const segment of segments) {
+      if (
+        classifyScriptSegment(segment, scripts, false) !== 'wranglerTypes' ||
+        /(?:^|\s)--check(?:\s|$)/u.test(segment)
+      ) {
+        continue;
+      }
+      if (!['gen-code', 'gen-types', 'postinstall'].includes(name)) {
+        throw new Error(`${name} must not invoke wrangler types directly`);
+      }
+      if (/(?:^|\s)(?:--path(?:=|\s)|-p(?:\s|$))/u.test(segment) || /\bwrangler\s+types\s+(?!-)\S+/u.test(segment)) {
+        throw new Error(`${name} must generate worker-configuration.d.ts at the default path`);
+      }
+    }
   }
 }
 

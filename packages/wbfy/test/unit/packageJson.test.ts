@@ -318,6 +318,26 @@ test('normalizes a package carrying output-changing worker-types flags', async (
   expect(packageJson.scripts?.['gen-types']).toBeUndefined();
 });
 
+test.each([
+  ['a referenced alias', { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' }],
+  ['a compound alias', { 'gen-types': 'wrangler types && echo custom', postinstall: 'bun run gen-types' }],
+  ['an arbitrary generator name', { 'types:worker': 'wrangler types --strict-vars=false' }],
+  ['an output path', { postinstall: 'wrangler types --path src/env.d.ts' }],
+  ['unsupported shell syntax', { postinstall: 'cd sub && wrangler types' }],
+])('rejects %s instead of partially normalizing it', async (_description, scripts) => {
+  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
+  const packageJson = await generatePackageJsonFrom(
+    { ...wranglerPackageJson },
+    {
+      isCloudflare: true,
+      doesContainWranglerConfig: true,
+      packageJson: wranglerPackageJson,
+    }
+  );
+
+  expect(packageJson.scripts).toEqual(scripts);
+});
+
 // `--check` validates freshness and writes nothing, so it cannot conflict with the managed generator and must
 // not strip the managed setup from the package.
 test('keeps managing a package whose extra script only checks the types', async () => {
