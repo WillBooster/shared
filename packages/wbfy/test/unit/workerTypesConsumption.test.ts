@@ -5,7 +5,8 @@ import path from 'node:path';
 
 import { expect, test } from 'vitest';
 
-import { consumesGeneratedWorkerTypes } from '../../src/packageConfig.js';
+import { consumesGeneratedWorkerTypes, generatesWorkerTypes } from '../../src/packageConfig.js';
+import { createConfig } from '../helpers/testConfig.js';
 
 async function consumesWithTsconfig(tsconfigContent: string | undefined): Promise<boolean> {
   const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wbfy-worker-types-'));
@@ -114,6 +115,42 @@ test('counts tracked source mentions as consumption but ignores the managed .git
     );
     git('add', '-A');
     expect(consumesGeneratedWorkerTypes({ dirPath })).toBe(true);
+  } finally {
+    await fs.promises.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
+test('manages worker types regardless of machine-local untracked dotenv files or local config edits', async () => {
+  const dirPath = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'wbfy-worker-types-determinism-'));
+  const git = (...args: string[]): Buffer =>
+    execFileSync('git', args, { cwd: dirPath, env: { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null' } });
+  try {
+    git('init', '--initial-branch=main');
+    await fs.promises.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{ "name": "app" }');
+    await fs.promises.writeFile(path.join(dirPath, 'tsconfig.json'), '{ "include": ["**/*"] }');
+    git('add', '-A');
+    const config = createConfig({
+      dirPath,
+      doesContainWranglerConfig: true,
+      packageJson: {
+        dependencies: { wrangler: '4.114.0' },
+        // An env-file-only invocation is equivalent to the managed generation whether or not the named
+        // file exists locally, so it must not affect the decision either (see managedScriptSegment.ts).
+        scripts: { 'gen-types': 'wrangler types --env-file .dev.vars' },
+      },
+    });
+    expect(generatesWorkerTypes(config)).toBe(true);
+
+    // `wb start` and `wb deploy` create gitignored dotenv files on every dev machine, and `wb gen-code`
+    // never reads them (`wrangler types --env-file` pins inference to the committed fnox.toml stub).
+    // If their presence — or a locally modified wrangler config — flipped this decision, wbfy runs on
+    // dev machines would re-track the generated file that clean-checkout runs untracked, oscillating
+    // forever (ai-game-builder #684 → #746). This invariant must hold on every machine.
+    await fs.promises.writeFile(path.join(dirPath, '.dev.vars'), 'SECRET=1\n');
+    await fs.promises.writeFile(path.join(dirPath, '.env.cloudflare'), 'CLOUDFLARE_API_TOKEN=x\n');
+    await fs.promises.writeFile(path.join(dirPath, '.env.local'), 'X=1\n');
+    await fs.promises.writeFile(path.join(dirPath, 'wrangler.jsonc'), '{ "name": "app", "vars": { "A": "1" } }');
+    expect(generatesWorkerTypes(config)).toBe(true);
   } finally {
     await fs.promises.rm(dirPath, { force: true, recursive: true });
   }

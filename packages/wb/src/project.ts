@@ -301,7 +301,7 @@ export class Project {
     // Defense in depth against wbfy's gitignore rule and this predicate drifting apart: if the package still
     // runs its own output-changing `wrangler types` (e.g. `--strict-vars=false`), the bare invocation here would
     // overwrite that file with a different `Env`.
-    if (hasOutputChangingWranglerTypes(this.packageJson.scripts ?? {}, this.dirPath)) return false;
+    if (hasOutputChangingWranglerTypes(this.packageJson.scripts ?? {})) return false;
     return hasManagedGitignoreRule(this.dirPath, WORKER_TYPES_FILE_NAME);
   }
 
@@ -746,12 +746,13 @@ function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
 /**
  * Whether a package script runs a `wrangler types` that would write something other than what the bare
  * invocation writes. `--check`/`--help` validate or print and write nothing, so they do not count. `--env-file`
- * counts whenever a file it names EXISTS: the flag selects what wrangler reads to infer local vars and secrets,
- * so the bare invocation here would regenerate a smaller `Env`. Mirrors wbfy's `hasCustomWranglerTypesInvocation`
- * (including its `namesOnlyMissingEnvFiles` rule); the two must agree, since wbfy's answer decides the
- * gitignore rule this predicate keys on.
+ * never counts: `wb gen-code` supplies its own `--env-file` stub from the committed fnox.toml, which replaces
+ * the dotenv inference canonically, so an env-file-only invocation is equivalent to the managed generation
+ * whether or not the named files exist on this machine — and testing local existence would make this predicate
+ * disagree across machines. Mirrors wbfy's `hasCustomWranglerTypesInvocation`; the two must agree, since wbfy's
+ * answer decides the gitignore rule this predicate keys on.
  */
-function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefined>, dirPath: string): boolean {
+function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefined>): boolean {
   const wranglerTypesPattern = /(?:^|\s)wrangler\s+types(?:\s|$)/u;
   const envFileOnlyPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
   return Object.values(scripts).some((script) => {
@@ -775,10 +776,7 @@ function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefin
         const candidate = withoutCheck === segment ? segment : withoutCheck;
         // Not equivalent to the bare invocation, with or without `--check`: `--check` compares the result FOR
         // THE SUPPLIED OPTIONS, so `--check --strict-vars=false` still describes a different file.
-        if (!envFileOnlyPattern.test(candidate)) return true;
-        return [...candidate.matchAll(/--env-file\s+(\S+)/gu)].some(
-          (match) => !!match[1] && fs.existsSync(path.resolve(dirPath, match[1]))
-        );
+        return !envFileOnlyPattern.test(candidate);
       });
   });
 }

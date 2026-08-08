@@ -48,9 +48,10 @@ describe('getGenCodeScripts', () => {
     }
   });
 
-  it('does not generate worker types when an env-file invocation would be overwritten', async () => {
-    // The named file exists, so the project's own invocation infers Env members from it that the bare
-    // invocation here would drop.
+  it('generates worker types despite an env-file invocation naming an existing file', async () => {
+    // gen-code's own `--env-file` stub (derived from the committed fnox.toml) replaces the dotenv inference,
+    // so an env-file-only invocation is equivalent to the managed generation. Local file existence must not
+    // change the answer, or this predicate would disagree with wbfy's across machines.
     const dirPath = await createWorkerProject(
       { devDependencies: { wrangler: '4.70.0' }, scripts: { 'gen-types': 'wrangler types --env-file custom.env' } },
       true
@@ -58,7 +59,7 @@ describe('getGenCodeScripts', () => {
     await fs.writeFile(path.join(dirPath, 'custom.env'), 'API_KEY=\n');
 
     try {
-      expect(getGenCodeScripts(new Project(dirPath, {}, false))).not.toContain(WRANGLER_TYPES);
+      expect(getGenCodeScripts(new Project(dirPath, {}, false))).toContain(WRANGLER_TYPES);
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
