@@ -62,8 +62,11 @@ describe('selectLitestreamConfigProjects', () => {
       },
     ];
     expect(() => selectLitestreamConfigProjects(candidates)).toThrow(/multiple projects/);
-    // With --env-refs the rendered config holds only ${VAR} placeholders, so it is identical.
-    expect(selectLitestreamConfigProjects(candidates, true)).toHaveLength(1);
+    // With --env-refs the rendered config holds only ${VAR} placeholders, so it is identical;
+    // the database path comes from the committed plaintext fnox values, not project.env.
+    expect(
+      selectLitestreamConfigProjects(candidates, true, () => ({ DATABASE_URL: 'file:./drizzle/mount/prod.sqlite3' }))
+    ).toHaveLength(1);
   });
 
   it('propagates a project-specific resolution error instead of silently skipping the project', () => {
@@ -89,6 +92,19 @@ describe('createLitestreamConfig with --env-refs', () => {
       expect(content).toContain('access-key-id: ${CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}');
       expect(content).toContain('secret-access-key: ${CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}');
       expect(content).toContain('path: prisma/mount/prod.sqlite3');
+    } finally {
+      fs.rmSync(path.dirname(outputPath), { recursive: true, force: true });
+    }
+  });
+
+  it('resolves the Drizzle database path from the provided plaintext values, not project.env', () => {
+    const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'wb-litestream-')), 'litestream.yml');
+    try {
+      const project = { dirPath: '/repo', rootDirPath: '/repo', env: {} } as unknown as Project;
+      createLitestreamConfig(project, 'drizzle', outputPath, true, {
+        DATABASE_URL: 'file:./drizzle/mount/prod.sqlite3',
+      });
+      expect(fs.readFileSync(outputPath, 'utf8')).toContain('path: /repo/drizzle/mount/prod.sqlite3');
     } finally {
       fs.rmSync(path.dirname(outputPath), { recursive: true, force: true });
     }

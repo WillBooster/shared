@@ -22,17 +22,22 @@ if [[ -z "$env_path" ]]; then
 fi
 
 if [[ -n "$env_path" && -f "$env_path" ]]; then
-  set -a
-  # `|| [[ -n "$line" ]]` keeps a final line that lacks a trailing newline (legacy .env files).
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    key="${line%%=*}"
-    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+  # Bookkeeping variables use collision-improbable names and stay unexported (allexport is
+  # scoped to each applied assignment), so they neither leak into the executed process nor
+  # overwrite inherited variables such as `line`/`key`, which remain valid baked keys.
+  # `|| [[ -n "$wb_baked_line" ]]` keeps a final line that lacks a trailing newline.
+  while IFS= read -r wb_baked_line || [[ -n "$wb_baked_line" ]]; do
+    wb_baked_key="${wb_baked_line%%=*}"
+    [[ "$wb_baked_key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
     # printenv inspects the inherited environment, not Bash's variable namespace, so
     # shell-internal names (UID, RANDOM, ...) do not shadow baked keys and a platform value
     # deliberately set to the empty string survives.
-    printenv "$key" > /dev/null || eval "$line"
+    if ! printenv "$wb_baked_key" > /dev/null; then
+      set -a
+      eval "$wb_baked_line"
+      set +a
+    fi
   done < "$env_path"
-  set +a
 fi
 
 exec "$@"

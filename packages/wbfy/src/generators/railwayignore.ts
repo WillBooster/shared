@@ -13,7 +13,14 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixRailwayignore', async () => {
     const filePath = path.resolve(config.dirPath, '.railwayignore');
     const content = await fsUtil.readFileIfExists(filePath);
-    if (!content) return;
+    if (!content) {
+      // A Railway Docker repository needs the file even if it never wrote one: without the
+      // un-ignore below, the gitignored .docker.env never reaches the uploaded build context.
+      if (config.isRailway && config.doesContainDockerfile) {
+        await promisePool.run(() => fsUtil.generateFile(filePath, '!.docker.env\n'));
+      }
+      return;
+    }
 
     let newContent = content.replace(/^scripts\/$/m, managedScriptsBlock);
     // `railway up` strips gitignored files from the uploaded build context, so the generated

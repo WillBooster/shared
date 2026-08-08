@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { resolveCascade } from '@willbooster/shared-lib-node/src';
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
@@ -12,6 +13,7 @@ import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isDockerEnabled } from '../utils/ci.js';
+import { collectPlaintextFnoxValues } from '../utils/fnoxToml.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { wrapWithLocalD1DatabaseUrl } from '../utils/wrangler.js';
 
@@ -83,12 +85,19 @@ const createLitestreamConfigCommand: CommandModule<
   builder: createLitestreamConfigBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
-    const selectedProjects = selectLitestreamConfigProjects(allProjects, argv['env-refs']);
+    // With --env-refs, every value comes from the committed plaintext fnox defaults so generation
+    // stays possible in secret-less builds (reading `project.env` would spawn `fnox export`).
+    const envRefs = argv['env-refs'];
+    const plainEnvFor = envRefs
+      ? (project: Project) =>
+          collectPlaintextFnoxValues(project.dirPath, project.rootDirPath, resolveCascade(argv) ?? 'development')
+      : undefined;
+    const selectedProjects = selectLitestreamConfigProjects(allProjects, envRefs, plainEnvFor);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
       'db create-litestream-config',
       selectedProjects
     )) {
-      createLitestreamConfig(project, orm, argv.output, argv['env-refs']);
+      createLitestreamConfig(project, orm, argv.output, envRefs, plainEnvFor?.(project));
     }
   },
 };
@@ -359,12 +368,18 @@ function withLocalD1IfNeeded(orm: DatabaseOrm, project: Project, script: string)
 // configurations. (Prisma paths resolve per project directory and thus never collapse.)
 export function selectLitestreamConfigProjects(
   allProjects: DatabaseOrmProject[],
-  envRefs?: boolean
+  envRefs?: boolean,
+  plainEnvFor?: (project: Project) => Record<string, string | undefined>
 ): DatabaseOrmProject[] {
   if (allProjects.length <= 1) return allProjects;
 
   const uniqueDbPaths = new Set(
-    allProjects.map(({ orm, project }) => path.resolve(project.dirPath, getLitestreamDbPath(project, orm)))
+    allProjects.map(({ orm, project }) =>
+      path.resolve(
+        project.dirPath,
+        getLitestreamDbPath(project, orm, envRefs ? (plainEnvFor?.(project) ?? {}) : undefined)
+      )
+    )
   );
   const uniqueCredentials = new Set(
     allProjects.map(({ project }) =>
@@ -390,9 +405,10 @@ export function createLitestreamConfig(
   project: Project,
   orm: DatabaseOrm,
   configPath: string,
-  envRefs?: boolean
+  envRefs?: boolean,
+  plainEnv?: Record<string, string | undefined>
 ): void {
-  const dbPath = getLitestreamDbPath(project, orm);
+  const dbPath = getLitestreamDbPath(project, orm, envRefs ? (plainEnv ?? {}) : undefined);
   const credentialKeys = [
     'CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID',
     'CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME',
@@ -447,14 +463,24 @@ function getDefaultRestoreOutput(project: Project, orm: DatabaseOrm): string {
   return 'drizzle/restored.sqlite3';
 }
 
-function getLitestreamDbPath(project: Project, orm: DatabaseOrm): string {
+function getLitestreamDbPath(
+  project: Project,
+  orm: DatabaseOrm,
+  envOverride?: Record<string, string | undefined>
+): string {
   if (orm === 'prisma') {
     return `${project.prismaDirName}/mount/prod.sqlite3`;
   }
 
-  const dbPath = getAbsoluteFileDatabaseUrlPath(project);
+  const dbPath = getAbsoluteFileDatabaseUrlPath(
+    envOverride ? { env: envOverride, dirPath: project.dirPath, rootDirPath: project.rootDirPath } : project
+  );
   if (!dbPath) {
-    throw new Error('wb db create-litestream-config for Drizzle requires file: DATABASE_URL.');
+    throw new Error(
+      envOverride
+        ? 'wb db create-litestream-config --env-refs for Drizzle requires a plaintext file: DATABASE_URL default in fnox.toml.'
+        : 'wb db create-litestream-config for Drizzle requires file: DATABASE_URL.'
+    );
   }
   return dbPath;
 }

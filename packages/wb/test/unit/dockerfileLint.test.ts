@@ -65,4 +65,19 @@ RUN --mount=target=/tmp/x true
     expect(lintDockerfile('COPY ./.env ./\n', { railwayConfigured: false })).toHaveLength(1);
     expect(lintDockerfile('COPY .env.production ./\n', { railwayConfigured: false })).toHaveLength(1);
   });
+
+  it('handles quoted tokens and COPY flags', () => {
+    // A quoted flag value containing a space must not hide a later non-cache mount.
+    expect(
+      lintDockerfile('RUN --mount=type=cache,target="/tmp/cache dir" --mount=type=secret,id=fnox_age_key bun build\n', {
+        railwayConfigured: true,
+      })
+    ).toHaveLength(1);
+    expect(lintDockerfile('COPY ".env" "./"\n', { railwayConfigured: false })).toHaveLength(1);
+    expect(lintDockerfile('COPY --chown=1000:1000 [".env", "/app/.env"]\n', { railwayConfigured: false })).toHaveLength(
+      1
+    );
+    // Sources of a --from COPY come from another stage, not the build-context root.
+    expect(lintDockerfile('COPY --from=builder /app/.env ./.env\n', { railwayConfigured: false })).toHaveLength(0);
+  });
 });

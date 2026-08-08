@@ -25,6 +25,25 @@ describe('apply-docker-env.sh', () => {
     }
   });
 
+  it('does not leak bookkeeping variables and keeps inherited line/key values', () => {
+    const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
+    try {
+      fs.writeFileSync(path.join(dirPath, '.docker.env'), "line='baked-line'\nOTHER='o'\n");
+      const result = child_process.spawnSync('bash', [scriptPath, 'env'], {
+        cwd: dirPath,
+        encoding: 'utf8',
+        env: { ...process.env, line: 'platform-line' },
+      });
+      expect(result.status).toBe(0);
+      const envLines = result.stdout.split('\n');
+      expect(envLines).toContain('line=platform-line');
+      expect(envLines).toContain('OTHER=o');
+      expect(envLines.some((entry) => entry.startsWith('wb_baked_'))).toBe(false);
+    } finally {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+  });
+
   it('keeps a deliberately empty platform value and reads a final line without a trailing newline', () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {

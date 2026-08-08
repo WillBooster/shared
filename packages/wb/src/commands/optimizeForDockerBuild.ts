@@ -10,6 +10,7 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import {
   findDescendantProjects,
+  findSelfProject,
   getAbsoluteFileDatabaseUrlPath,
   getFileDatabaseUrlPath,
   type Project,
@@ -148,7 +149,11 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
   const dockerfileText = dockerfileDirPath
     ? fs.readFileSync(path.join(dockerfileDirPath, 'Dockerfile'), 'utf8')
     : undefined;
-  if (dockerfileText && projects.root.env.WB_SKIP_DOCKERFILE_LINT !== '1') {
+  // The escape hatch is read WITHOUT loading the project environment (loading would spawn
+  // `fnox export`, i.e. decrypt every secret, and hard-fail keyless CI runs), so it must be
+  // exported in the build environment rather than declared in fnox.toml.
+  const skipLint = findSelfProject(argv, false)?.env.WB_SKIP_DOCKERFILE_LINT === '1';
+  if (dockerfileText && !skipLint) {
     // Plain BuildKit (local builds, CI) accepts these problems silently, so without this check
     // they are first detected by a failed production deploy. WB_SKIP_DOCKERFILE_LINT=1 is the
     // escape hatch for repositories that keep a Railway config but build their image elsewhere.
@@ -167,7 +172,8 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
     } catch (error) {
       // A stale file from a previous build must not survive a failed generation: a broad
       // `COPY . .` or apply-docker-env.sh's auto-discovery would silently bake and apply it.
-      fs.rmSync(path.resolve(projects.self.dirPath, '.docker.env'), { force: true });
+      // A dry run mutates nothing, matching the rest of this command.
+      if (!argv.dryRun) fs.rmSync(path.resolve(projects.self.dirPath, '.docker.env'), { force: true });
       // Baking is mandatory only when the Dockerfile consumes the file; other repositories (e.g.
       // legacy runtime-fnox images) keep building without it.
       if (dockerfileText?.includes('.docker.env')) throw error;

@@ -16,12 +16,13 @@ export function lintDockerfile(dockerfileText: string, options: { railwayConfigu
   for (const [instruction, args] of parseLogicalInstructions(dockerfileText)) {
     if (instruction === 'RUN' && options.railwayConfigured) {
       // Mount flags may appear only in the flag section before the command, so a `--mount` inside
-      // the shell command itself never triggers a (build-blocking) false positive.
-      for (const token of args.split(/\s+/)) {
+      // the shell command itself never triggers a (build-blocking) false positive. Quote-aware
+      // tokenization keeps a flag whose value contains spaces (e.g. a quoted target) as one token.
+      for (const token of tokenizeRespectingQuotes(args)) {
         if (!token.startsWith('--')) break;
         const mountMatch = /^--mount=(.*)$/.exec(token);
         if (!mountMatch) continue;
-        const spec = (mountMatch[1] ?? '').replaceAll(/^["']|["']$/g, '');
+        const spec = (mountMatch[1] ?? '').replaceAll(/["']/g, '');
         if (!/(?:^|,)type=cache(?:,|$)/.test(spec)) {
           problems.push(
             `Railway's builder rejects \`--mount=${spec}\` at Dockerfile validation time (only type=cache is supported); use COPY or plain commands instead.`
@@ -71,10 +72,19 @@ function parseLogicalInstructions(dockerfileText: string): [string, string][] {
 }
 
 function parseCopySources(args: string): string[] {
-  if (args.startsWith('[')) {
+  // Strip leading COPY options (which may precede either form). Sources of a `--from=` COPY come
+  // from another stage or context rather than the build-context root, so there is nothing to lint.
+  let rest = args.trim();
+  while (rest.startsWith('--')) {
+    if (rest.startsWith('--from')) return [];
+    const flagMatch = /^(?:[^\s"']+|"[^"]*"|'[^']*')+\s*/.exec(rest);
+    if (!flagMatch) return [];
+    rest = rest.slice(flagMatch[0].length);
+  }
+  if (rest.startsWith('[')) {
     // JSON (exec) form: COPY ["src", ..., "dst"]
     try {
-      const tokens = JSON.parse(args) as unknown;
+      const tokens = JSON.parse(rest) as unknown;
       if (Array.isArray(tokens) && tokens.every((token) => typeof token === 'string')) {
         return tokens.slice(0, -1);
       }
@@ -83,6 +93,12 @@ function parseCopySources(args: string): string[] {
     }
     return [];
   }
-  const tokens = args.split(/\s+/).filter((token) => token && !token.startsWith('--'));
+  // Shell form: strip surrounding quotes so `COPY ".env" "./"` is judged by its real path.
+  const tokens = tokenizeRespectingQuotes(rest).map((token) => token.replaceAll(/^["']|["']$/g, ''));
   return tokens.slice(0, -1);
+}
+
+/** Splits on whitespace while keeping quoted spans (which may contain spaces) inside one token. */
+function tokenizeRespectingQuotes(text: string): string[] {
+  return [...text.matchAll(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)].map((match) => match[0]);
 }
