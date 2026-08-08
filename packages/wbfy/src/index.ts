@@ -48,7 +48,7 @@ import { setupGitHubSettings } from './github/settings.js';
 import { generateGitHubTemplates } from './github/template.js';
 import { options } from './options.js';
 import type { PackageConfig } from './packageConfig.js';
-import { detectWranglerConfig, getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
+import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
@@ -197,10 +197,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       if (!fs.existsSync(packageJsonPath)) return [];
       try {
         const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as PackageConfig['packageJson'];
-        const error = getWorkerTypesScriptError({
-          doesContainWranglerConfig: detectWranglerConfig(dirPath),
-          packageJson,
-        });
+        const error = getWorkerTypesScriptError({ packageJson });
         return error ? [`${dirPath}: ${error}`] : [];
       } catch {
         return [`${packageJsonPath} is invalid`];

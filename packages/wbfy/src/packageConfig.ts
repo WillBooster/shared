@@ -435,9 +435,7 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
   return config.doesContainWranglerConfig && hasWranglerDependency(packageJson) && consumesGeneratedWorkerTypes(config);
 }
 
-export function getWorkerTypesScriptError(
-  config: Pick<PackageConfig, 'doesContainWranglerConfig' | 'packageJson'>
-): string | undefined {
+export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
   const scripts = config.packageJson?.scripts ?? {};
   let hasInvocation = false;
   for (const [name, script] of Object.entries(scripts)) {
@@ -511,9 +509,9 @@ interface ShellWord {
 }
 
 function findWranglerTypesInvocations(script: string): { direct: boolean; indirect: boolean } {
-  const executableScript = stripHeredocBodies(script);
+  const { executableScript, interpolatedBodies } = stripHeredocBodies(script);
   let direct = false;
-  let indirect = getCommandSubstitutions(executableScript).some((substitution) => {
+  let indirect = getCommandSubstitutions([executableScript, ...interpolatedBodies].join('\n')).some((substitution) => {
     const nested = findWranglerTypesInvocations(substitution);
     return nested.direct || nested.indirect;
   });
@@ -543,7 +541,9 @@ function findWranglerTypesInvocations(script: string): { direct: boolean; indire
     const optionIndex = commandWords.findIndex(
       (argument, argumentIndex) => argumentIndex > commandIndex && /^-[A-Za-z]*c[A-Za-z]*$/u.test(argument)
     );
-    const payload = optionIndex === -1 ? undefined : commandWords[optionIndex + 1];
+    const candidateIndex = optionIndex + 1;
+    const payloadIndex = commandWords[candidateIndex] === '--' ? candidateIndex + 1 : candidateIndex;
+    const payload = optionIndex === -1 ? undefined : commandWords[payloadIndex];
     if (!payload) continue;
     const nested = findWranglerTypesInvocations(payload);
     indirect ||= nested.direct || nested.indirect;
@@ -591,7 +591,7 @@ function getCommandSubstitutions(script: string): string[] {
   let quote = '';
   for (let index = 0; index < script.length; index += 1) {
     const character = script[index] ?? '';
-    if (character === '\\') {
+    if (character === '\\' && quote !== "'") {
       index += 1;
       continue;
     }
@@ -606,7 +606,7 @@ function getCommandSubstitutions(script: string): string[] {
       continue;
     }
     if (quote === "'") continue;
-    if (character === '#' && (index === 0 || /\s/u.test(script[index - 1] ?? ''))) {
+    if (!quote && character === '#' && (index === 0 || /\s/u.test(script[index - 1] ?? ''))) {
       const lineEnd = script.indexOf('\n', index + 1);
       if (lineEnd === -1) break;
       index = lineEnd;
@@ -633,18 +633,55 @@ function getCommandSubstitutions(script: string): string[] {
   return substitutions;
 }
 
-function stripHeredocBodies(script: string): string {
+function stripHeredocBodies(script: string): { executableScript: string; interpolatedBodies: string[] } {
   const executableLines: string[] = [];
-  let delimiter: string | undefined;
+  const interpolatedBodies: string[] = [];
+  let heredoc: { delimiter: string; interpolated: boolean } | undefined;
   for (const line of script.split('\n')) {
-    if (delimiter) {
-      if (line.trim() === delimiter) delimiter = undefined;
+    if (heredoc) {
+      if (line.trim() === heredoc.delimiter) {
+        heredoc = undefined;
+      } else if (heredoc.interpolated) {
+        interpolatedBodies.push(line);
+      }
       continue;
     }
     executableLines.push(line);
-    delimiter = /<<-?\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?/u.exec(line)?.[1];
+    heredoc = findHeredoc(line);
   }
-  return executableLines.join('\n');
+  return { executableScript: executableLines.join('\n'), interpolatedBodies };
+}
+
+function findHeredoc(line: string): { delimiter: string; interpolated: boolean } | undefined {
+  let quote = '';
+  let arithmeticDepth = 0;
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index] ?? '';
+    if (character === '\\' && quote !== "'") {
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      if (!quote) quote = character;
+      else if (quote === character) quote = '';
+      continue;
+    }
+    if (quote) continue;
+    if (line.slice(index, index + 3) === '$((') {
+      arithmeticDepth += 1;
+      index += 2;
+      continue;
+    }
+    if (arithmeticDepth > 0 && line.slice(index, index + 2) === '))') {
+      arithmeticDepth -= 1;
+      index += 1;
+      continue;
+    }
+    if (arithmeticDepth > 0 || line.slice(index, index + 2) !== '<<') continue;
+    const match = /^-?\s*(?:(['"])([A-Za-z_][A-Za-z0-9_]*)\1|([A-Za-z_][A-Za-z0-9_]*))/u.exec(line.slice(index + 2));
+    const delimiter = match?.[2] ?? match?.[3];
+    if (delimiter) return { delimiter, interpolated: match?.[1] === undefined };
+  }
 }
 
 function tokenizeShell(script: string): ShellWord[] {
@@ -725,7 +762,7 @@ function hasWranglerTypesInvocation(script: string): boolean {
 
 function invokesPackageScript(script: string | undefined, scriptName: string): boolean {
   if (!script) return false;
-  return getShellCommands(stripHeredocBodies(script)).some((tokens) => {
+  return getShellCommands(stripHeredocBodies(script).executableScript).some((tokens) => {
     const commandIndex = getShellCommandIndex(tokens);
     if (!['bun', 'npm', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '')) return false;
     let nameIndex = commandIndex + 1;

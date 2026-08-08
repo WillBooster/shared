@@ -371,6 +371,12 @@ test.each([
   ['a command-env prefix', { postinstall: 'command env wrangler types' }],
   ['a backtick substitution', { postinstall: 'echo `wrangler types`' }],
   ['a quoted command substitution', { postinstall: 'echo "$(wrangler types)"' }],
+  ['a shell separator before a payload', { postinstall: "sh -c -- 'wrangler types'" }],
+  ['a combined shell option before a payload', { postinstall: "bash -lc -- 'wrangler types'" }],
+  ['an interpolated heredoc body', { postinstall: 'cat <<EOF\n$(wrangler types)\nEOF' }],
+  ['a substitution after a quoted hash', { postinstall: 'echo "a # b $(wrangler types)"' }],
+  ['a command after a quoted fake heredoc', { postinstall: 'echo "a << b"\nwrangler types' }],
+  ['a command after an arithmetic shift', { postinstall: 'echo $((1 << 2))\nwrangler types' }],
   ['an expanded executable', { postinstall: 'workerCommand=wrangler; "$workerCommand" types' }],
   [
     'a cross-package generator without a local config',
@@ -480,6 +486,9 @@ test.each([
   ['a single-quoted backtick', "node -e 'console.log(`wrangler types`)'"],
   ['a redirection target', 'echo ok > "wrangler types"'],
   ['a commented substitution', 'echo ok # `wrangler types`'],
+  ['a shell payload that only prints the words', 'sh -c -- "echo wrangler types"'],
+  ['a quoted fake heredoc marker', 'echo "a << b"\necho done'],
+  ['an arithmetic shift', 'echo $((1 << 2))'],
 ])('does not reject %s as worker type generation', async (_description, help) => {
   const scripts = { help };
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
