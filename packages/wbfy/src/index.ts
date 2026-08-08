@@ -210,8 +210,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     const nullableSubPackageConfigs = await Promise.all(
       subDirPaths.map((subDirPath) => getPackageConfig(subDirPath, { isRoot: false }))
     );
-    if (nullableSubPackageConfigs.some((config) => !config)) {
-      console.error(`Skip ${rootDirPath}: a workspace package has no valid package.json.`);
+    const invalidSubPackageDirPath = subDirPaths.find(
+      (subDirPath, index) => !nullableSubPackageConfigs[index] && fs.existsSync(path.join(subDirPath, 'package.json'))
+    );
+    if (invalidSubPackageDirPath) {
+      console.error(`Skip ${rootDirPath}: ${invalidSubPackageDirPath}/package.json is invalid.`);
       hasInvalidPackageConfig = true;
       continue;
     }

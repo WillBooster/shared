@@ -432,26 +432,19 @@ export async function getPackageConfig(
  */
 export function generatesWorkerTypes(config: PackageConfig): boolean {
   const packageJson = config.packageJson;
-  return (
-    config.doesContainWranglerConfig &&
-    Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
-    consumesGeneratedWorkerTypes(config)
-  );
+  return config.doesContainWranglerConfig && hasWranglerDependency(packageJson) && consumesGeneratedWorkerTypes(config);
 }
 
 export function getWorkerTypesScriptError(config: PackageConfig): string | undefined {
   if (!config.doesContainWranglerConfig) return;
   const scripts = config.packageJson?.scripts ?? {};
-  const hasWrangler = Boolean(
-    config.packageJson?.dependencies?.wrangler || config.packageJson?.devDependencies?.wrangler
-  );
   let hasInvocation = false;
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
-    const normalizedScript = script.replaceAll(/\s+/gu, ' ');
-    if (!hasWranglerTypesInvocation(normalizedScript)) continue;
-    hasInvocation = true;
     const segments = splitScriptSegments(script);
+    const hasDirectInvocation = (segments ?? splitShellCommandsForDetection(script)).some(hasWranglerTypesInvocation);
+    if (!hasDirectInvocation) continue;
+    hasInvocation = true;
     if (!segments) return `${name} contains unsupported shell syntax around wrangler types`;
     for (const segment of segments) {
       const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
@@ -469,8 +462,8 @@ export function getWorkerTypesScriptError(config: PackageConfig): string | undef
       if (!['gen-code', 'gen-types', 'postinstall'].includes(name)) {
         return `${name} must not invoke wrangler types directly`;
       }
-      if (hasCustomWorkerTypesOutput(normalized)) {
-        return `${name} must generate worker-configuration.d.ts at the default path`;
+      if (hasUnsupportedWorkerTypesArguments(normalized)) {
+        return `${name} uses unsupported wrangler types arguments`;
       }
     }
     const generatedSegments = segments.filter(
@@ -486,29 +479,73 @@ export function getWorkerTypesScriptError(config: PackageConfig): string | undef
       if (segments.length !== 1 || referencedOutsidePostinstall) {
         return 'gen-types must contain only wrangler types and must not be referenced outside postinstall';
       }
+      const postinstall = scripts.postinstall;
+      if (postinstall && /(?<![\w:-])gen-types(?![\w:-])/u.test(postinstall) && !splitScriptSegments(postinstall)) {
+        return 'postinstall must use parseable shell syntax when it references gen-types';
+      }
     }
   }
-  if (hasInvocation && !hasWrangler) return 'wrangler types requires a direct wrangler dependency';
+  if (hasInvocation && !hasWranglerDependency(config.packageJson)) {
+    return 'wrangler types requires a direct wrangler dependency';
+  }
+}
+
+function hasWranglerDependency(packageJson: PackageJson | undefined): boolean {
+  return [
+    packageJson?.dependencies,
+    packageJson?.devDependencies,
+    packageJson?.optionalDependencies,
+    packageJson?.peerDependencies,
+  ].some((dependencies) => dependencies?.wrangler !== undefined);
+}
+
+function splitShellCommandsForDetection(script: string): string[] {
+  return script
+    .replaceAll(/'[^']*'|"[^"]*"|`[^`]*`/gu, '')
+    .split(/&&|\|\||[;|]/u)
+    .map((command) => command.trim())
+    .filter(Boolean);
 }
 
 function hasWranglerTypesInvocation(script: string): boolean {
-  return /(?:^|\s)wrangler(?:\s+--cwd(?:=\S+|\s+\S+))?\s+types(?:\s|$)/u.test(script);
+  const tokens = script.trim().split(/\s+/u);
+  let commandIndex = 0;
+  while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[commandIndex] ?? '')) commandIndex += 1;
+  if (tokens[commandIndex] === 'env') {
+    commandIndex += 1;
+    while (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[commandIndex] ?? '')) commandIndex += 1;
+  }
+  if (['command', 'exec'].includes(tokens[commandIndex] ?? '')) commandIndex += 1;
+  if (['bunx', 'npx'].includes(tokens[commandIndex] ?? '')) {
+    commandIndex += 1;
+  } else if (
+    ['bun', 'npm', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '') &&
+    ['dlx', 'exec', 'x'].includes(tokens[commandIndex + 1] ?? '')
+  ) {
+    commandIndex += 2;
+  }
+  const command = tokens[commandIndex] ?? '';
+  if (!/(?:^|\/)wrangler(?:@[^/]+)?$/u.test(command)) return false;
+  return tokens.slice(commandIndex + 1).includes('types');
 }
 
-function hasCustomWorkerTypesOutput(segment: string): boolean {
+function hasUnsupportedWorkerTypesArguments(segment: string): boolean {
   const args = segment
     .replace(/^.*?\bwrangler\s+types\b/u, '')
     .trim()
     .split(/\s+/u)
     .filter(Boolean);
-  const valueOptions = new Set(['--config', '-c', '--env-file', '--env-interface']);
+  const valueOptions = new Set(['--config', '-c', '--env-file']);
+  const booleanOptions = new Set(['--include-env', '--include-runtime', '--strict-vars', '--x-include-runtime']);
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (!argument) continue;
-    if (argument === '--cwd' || argument.startsWith('--cwd=')) return true;
-    if (valueOptions.has(argument)) {
-      index += 1;
-    } else if (!argument.startsWith('-')) {
+    const [option, inlineValue] = argument.split('=', 2);
+    if (option && valueOptions.has(option)) {
+      if (inlineValue === undefined) index += 1;
+    } else if (option && booleanOptions.has(option)) {
+      if (inlineValue === undefined && /^(?:false|true)$/u.test(args[index + 1] ?? '')) index += 1;
+    } else {
       return true;
     }
   }

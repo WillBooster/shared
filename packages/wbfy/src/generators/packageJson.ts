@@ -177,7 +177,13 @@ function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scr
   const result: string[] = [];
   for (const [index, segment] of segments.entries()) {
     const kind = kinds[index];
-    if (kind === 'custom' || kind === 'genCodeWrapper' || kind === 'wranglerTypesCheck') {
+    if (kind === 'wranglerTypesCheck') {
+      if (!generationPlaced) {
+        result.push('wb gen-code');
+        generationPlaced = true;
+      }
+      result.push(segment);
+    } else if (kind === 'custom' || kind === 'genCodeWrapper') {
       result.push(segment);
     } else if (!generationPlaced) {
       result.push('wb gen-code');
