@@ -11,7 +11,7 @@ import { resolveWranglerConfig, selectD1MigrationMechanisms } from '../../utils/
 import type { ScriptArgv } from '../builder.js';
 import { toDevNull } from '../builder.js';
 import { dockerScripts } from '../dockerScripts.js';
-import { drizzleScripts, usesDrizzleKitForD1 } from '../drizzleScripts.js';
+import { drizzleScripts, findDrizzleConfig, usesDrizzleKitForD1 } from '../drizzleScripts.js';
 import { prismaScripts } from '../prismaScripts.js';
 
 export interface TestE2EOptions {
@@ -137,8 +137,12 @@ export abstract class BaseScripts {
         ? [`rm -Rf "${getLocalWranglerStateDir(project)}"`]
         : [];
     const d1Databases = resolveWranglerConfig(project)?.d1Databases ?? [];
-    const { drizzleD1Database, errorMessage, unmanagedD1Databases, wranglerNativeD1Databases } =
-      selectD1MigrationMechanisms(project, d1Databases, usesDrizzleKitForD1(project));
+    const drizzleKitManagesD1 = usesDrizzleKitForD1(project);
+    const { drizzleD1Database, errorMessage, unmanagedD1Databases } = selectD1MigrationMechanisms(
+      project,
+      d1Databases,
+      drizzleKitManagesD1
+    );
     if (errorMessage) throw new Error(errorMessage);
     if (unmanagedD1Databases.length > 0) {
       console.warn(
@@ -148,15 +152,21 @@ export abstract class BaseScripts {
       );
     }
     // The start commands apply wrangler-native migrations separately. Drizzle must stay ORM-only
-    // for those bindings because its generated SQL is not idempotent; projects without D1 still
-    // need their ordinary Drizzle database migrated.
-    const migratesWithDrizzle = d1Databases.length === 0 || !!drizzleD1Database;
+    // for those bindings because its generated SQL is not idempotent. A config targeting another
+    // database still needs to migrate that database, without receiving the local D1 URL.
+    const drizzleMigrationCommand = !project.hasDrizzle
+      ? undefined
+      : drizzleD1Database
+        ? wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))
+        : d1Databases.length === 0
+          ? drizzleScripts.migrateForStart(project)
+          : !drizzleKitManagesD1 && findDrizzleConfig(project)
+            ? drizzleScripts.migrate(project)
+            : undefined;
     return [
       ...wranglerStateWipeCommands,
       ...(project.hasPrisma ? [prismaScripts.migrate(project)] : []),
-      ...(project.hasDrizzle && migratesWithDrizzle && wranglerNativeD1Databases.length === 0
-        ? [wrapWithLocalD1DatabaseUrl(project, drizzleScripts.migrateForStart(project))]
-        : []),
+      ...(drizzleMigrationCommand ? [drizzleMigrationCommand] : []),
     ];
   }
   // ------------ END: start commands ------------

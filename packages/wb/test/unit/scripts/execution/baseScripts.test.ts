@@ -284,7 +284,10 @@ describe('BaseScripts D1 migration selection', () => {
       const project = buildD1Project(dirPath);
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
+      const migrationCommand = scripts.getMigrationCommands(project).join(' && ');
+      expect(migrationCommand).toContain('YARN drizzle-kit migrate');
+      expect(migrationCommand).not.toContain('wrangler d1 execute');
+      expect(migrationCommand).not.toContain('export DATABASE_URL');
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('No D1 migration mechanism detected for DB'));
       warn.mockRestore();
     } finally {
@@ -316,7 +319,14 @@ describe('BaseScripts D1 migration selection', () => {
       await fs.writeFile(
         path.join(dirPath, 'wrangler.jsonc'),
         JSON.stringify({
-          d1_databases: [{ binding: 'DB', database_name: 'app', migrations_pattern: 'migrations/*/migration.sql' }],
+          d1_databases: [
+            {
+              binding: 'DB',
+              database_name: 'app',
+              migrations_dir: 'migrations',
+              migrations_pattern: 'migrations/*/migration.sql',
+            },
+          ],
         })
       );
       await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
@@ -382,15 +392,32 @@ describe('BaseScripts D1 migration selection', () => {
         path.join(dirPath, 'wrangler.jsonc'),
         JSON.stringify({
           d1_databases: [
-            { binding: 'FIRST', database_name: 'first-db', migrations_pattern: 'first/*.sql' },
-            { binding: 'SECOND', database_name: 'second-db', migrations_pattern: 'second/*.sql' },
+            {
+              binding: 'FIRST',
+              database_name: 'first-db',
+              migrations_dir: 'first',
+              migrations_pattern: 'first/*.sql',
+            },
+            {
+              binding: 'SECOND',
+              database_name: 'second-db',
+              migrations_dir: 'second',
+              migrations_pattern: 'second/*.sql',
+            },
           ],
+          env: {
+            staging: {
+              d1_databases: [{ binding: 'STAGING', database_name: 'staging-db', migrations_dir: 'staging' }],
+            },
+          },
         })
       );
+      const project = buildD1Project(dirPath);
+      project.env.CLOUDFLARE_ENV = 'staging';
 
-      expect(buildD1MigrationsApplyCommands(buildD1Project(dirPath))).toEqual([
-        expect.stringContaining('d1 migrations apply first-db'),
-        expect.stringContaining('d1 migrations apply second-db'),
+      expect(buildD1MigrationsApplyCommands(project)).toEqual([
+        expect.stringMatching(/^env -u CLOUDFLARE_ENV .*d1 migrations apply first-db/u),
+        expect.stringMatching(/^env -u CLOUDFLARE_ENV .*d1 migrations apply second-db/u),
       ]);
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });

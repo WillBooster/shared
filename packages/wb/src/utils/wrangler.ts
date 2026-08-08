@@ -38,7 +38,7 @@ export function buildD1MigrationsApplyCommands(project: Pick<Project, 'dirPath' 
       const databaseName = database.database_name ?? database.binding;
       return databaseName
         ? [
-            `CI=true YARN wrangler d1 migrations apply ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}"`,
+            `env -u CLOUDFLARE_ENV CI=true YARN wrangler d1 migrations apply ${databaseName} --local --persist-to "${getLocalWranglerStateDir(project)}"`,
           ]
         : [];
     });
