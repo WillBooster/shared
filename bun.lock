@@ -37,7 +37,7 @@
         "@types/node": "26.1.2",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "20.1.0",
+        "@willbooster/wb": "20.1.1",
         "build-ts": "21.0.2",
         "oxfmt": "0.61.0",
         "oxlint": "1.76.0",
@@ -58,7 +58,7 @@
         "@types/node": "26.1.2",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "20.1.0",
+        "@willbooster/wb": "20.1.1",
         "blitz": "3.0.2",
         "build-ts": "21.0.2",
         "oxfmt": "0.61.0",
@@ -80,7 +80,7 @@
         "@types/node": "26.1.2",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "20.1.0",
+        "@willbooster/wb": "20.1.1",
         "build-ts": "21.0.2",
         "next": "16.2.12",
         "oxfmt": "0.61.0",
@@ -110,7 +110,7 @@
         "@types/node": "26.1.2",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "20.1.0",
+        "@willbooster/wb": "20.1.1",
         "build-ts": "21.0.2",
         "oxfmt": "0.61.0",
         "oxlint": "1.76.0",
@@ -143,7 +143,7 @@
         "@types/react-dom": "19.2.4",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "20.1.0",
+        "@willbooster/wb": "20.1.1",
         "babel-loader": "10.1.1",
         "build-ts": "21.0.2",
         "oxfmt": "0.61.0",
@@ -239,7 +239,7 @@
         "@types/yargs": "17.0.35",
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
-        "@willbooster/wb": "20.1.0",
+        "@willbooster/wb": "20.1.1",
         "build-ts": "21.0.2",
         "lefthook": "2.1.10",
         "oxfmt": "0.61.0",
@@ -3827,17 +3827,17 @@
 
     "@vitest/snapshot/magic-string": ["magic-string@0.30.21", "", { "dependencies": { "@jridgewell/sourcemap-codec": "^1.5.5" } }, "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ=="],
 
-    "@willbooster/shared-lib/@willbooster/wb": ["@willbooster/wb@20.1.0", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-w8ucciQODh5rIvmNQrrj+G6TqJymIAwk5BbblpDa11Ghh66okS+ZDpPnDJ8fxj5VfnG3NIPpZl6TiJ3mNtpO0g=="],
+    "@willbooster/shared-lib/@willbooster/wb": ["@willbooster/wb@20.1.1", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-V69a4aN8Yde/qKSogNIqv0lgMoTO2g+6IhuBnjgCpHdREA3mcuWO9lCzBTaKASBEgJdi+MHQGR7mze0/zATMHA=="],
 
-    "@willbooster/shared-lib-blitz-next/@willbooster/wb": ["@willbooster/wb@20.1.0", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-w8ucciQODh5rIvmNQrrj+G6TqJymIAwk5BbblpDa11Ghh66okS+ZDpPnDJ8fxj5VfnG3NIPpZl6TiJ3mNtpO0g=="],
+    "@willbooster/shared-lib-blitz-next/@willbooster/wb": ["@willbooster/wb@20.1.1", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-V69a4aN8Yde/qKSogNIqv0lgMoTO2g+6IhuBnjgCpHdREA3mcuWO9lCzBTaKASBEgJdi+MHQGR7mze0/zATMHA=="],
 
-    "@willbooster/shared-lib-next/@willbooster/wb": ["@willbooster/wb@20.1.0", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-w8ucciQODh5rIvmNQrrj+G6TqJymIAwk5BbblpDa11Ghh66okS+ZDpPnDJ8fxj5VfnG3NIPpZl6TiJ3mNtpO0g=="],
+    "@willbooster/shared-lib-next/@willbooster/wb": ["@willbooster/wb@20.1.1", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-V69a4aN8Yde/qKSogNIqv0lgMoTO2g+6IhuBnjgCpHdREA3mcuWO9lCzBTaKASBEgJdi+MHQGR7mze0/zATMHA=="],
 
-    "@willbooster/shared-lib-node/@willbooster/wb": ["@willbooster/wb@20.1.0", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-w8ucciQODh5rIvmNQrrj+G6TqJymIAwk5BbblpDa11Ghh66okS+ZDpPnDJ8fxj5VfnG3NIPpZl6TiJ3mNtpO0g=="],
+    "@willbooster/shared-lib-node/@willbooster/wb": ["@willbooster/wb@20.1.1", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-V69a4aN8Yde/qKSogNIqv0lgMoTO2g+6IhuBnjgCpHdREA3mcuWO9lCzBTaKASBEgJdi+MHQGR7mze0/zATMHA=="],
 
-    "@willbooster/shared-lib-react/@willbooster/wb": ["@willbooster/wb@20.1.0", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-w8ucciQODh5rIvmNQrrj+G6TqJymIAwk5BbblpDa11Ghh66okS+ZDpPnDJ8fxj5VfnG3NIPpZl6TiJ3mNtpO0g=="],
+    "@willbooster/shared-lib-react/@willbooster/wb": ["@willbooster/wb@20.1.1", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-V69a4aN8Yde/qKSogNIqv0lgMoTO2g+6IhuBnjgCpHdREA3mcuWO9lCzBTaKASBEgJdi+MHQGR7mze0/zATMHA=="],
 
-    "@willbooster/wbfy/@willbooster/wb": ["@willbooster/wb@20.1.0", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-w8ucciQODh5rIvmNQrrj+G6TqJymIAwk5BbblpDa11Ghh66okS+ZDpPnDJ8fxj5VfnG3NIPpZl6TiJ3mNtpO0g=="],
+    "@willbooster/wbfy/@willbooster/wb": ["@willbooster/wb@20.1.1", "", { "dependencies": { "chalk": "6.0.0", "dotenv": "17.4.2", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3", "fastest-levenshtein": "1.0.16", "globby": "16.2.2", "jsonc-parser": "3.3.1", "kill-port": "2.0.1", "minimal-promise-pool": "6.0.3", "semver": "7.8.5", "smol-toml": "1.7.1", "yargs": "18.1.0" }, "bin": { "wb": "bin/index.js" } }, "sha512-V69a4aN8Yde/qKSogNIqv0lgMoTO2g+6IhuBnjgCpHdREA3mcuWO9lCzBTaKASBEgJdi+MHQGR7mze0/zATMHA=="],
 
     "ansi-align/string-width": ["string-width@4.2.3", "", { "dependencies": { "emoji-regex": "^8.0.0", "is-fullwidth-code-point": "^3.0.0", "strip-ansi": "^6.0.1" } }, "sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g=="],
 
