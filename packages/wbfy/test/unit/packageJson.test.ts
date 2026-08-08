@@ -298,14 +298,10 @@ test.each([
   expect(packageJson.scripts?.['gen-types']).toBeUndefined();
 });
 
-// `wb gen-code` runs a BARE `wrangler types`, so a package whose own scripts pass flags that change the generated
-// file must stay unmanaged: managing it would delete the only record of that choice and regenerate a different
-// `Env`. --strict-vars=false widens `vars` to string; repeated -c pulls in service-binding/Durable Object RPC types.
-test.each([
-  ['strict-vars', { 'gen-types': 'wrangler types --strict-vars=false' }],
-  ['multiple configs', { 'gen-types': 'wrangler types -c wrangler.jsonc -c ../bound/wrangler.jsonc' }],
-  ['a custom output path', { 'gen-types': 'wrangler types --path src/env.d.ts' }],
-])('leaves a package carrying %s unmanaged', async (_description, scripts) => {
+// `wb gen-code` is the sole supported worker-types generator, so output-changing project invocations are replaced
+// instead of leaving the generated file tracked or producing a repository-specific shape.
+test('normalizes a package carrying output-changing worker-types flags', async () => {
+  const scripts = { 'gen-types': 'wrangler types --strict-vars=false' };
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
   const packageJson = await generatePackageJsonFrom(
     { ...wranglerPackageJson },
@@ -318,25 +314,8 @@ test.each([
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.['gen-types']).toBe(Object.values(scripts)[0]);
-});
-
-// Package scripts compose: deleting one another script runs would leave `bun run build` failing.
-test('keeps a gen-types script another script references', async () => {
-  const scripts = { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    {
-      depending: genI18nTsDepending,
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    },
-    { createI18nDir: true }
-  );
-
-  expect(packageJson.scripts?.['gen-types']).toBe('wrangler types');
+  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
 });
 
 // `--check` validates freshness and writes nothing, so it cannot conflict with the managed generator and must
@@ -956,8 +935,7 @@ test('normalizes an env-file wrangler types script even when the named file exis
       },
       ...wranglerPackageJson,
     },
-    // No packageJson override: config.packageJson must stay the on-disk package.json (scripts included)
-    // so `generatesWorkerTypes` evaluates `hasCustomWranglerTypesInvocation` against the env-file script.
+    // No packageJson override: config.packageJson stays the on-disk package.json, including its legacy script.
     { isCloudflare: true, doesContainWranglerConfig: true },
     { files: { 'wrangler.jsonc': '{}', '.env.cloudflare': 'CLOUDFLARE_API_TOKEN=dummy\n' } }
   );

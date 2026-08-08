@@ -159,7 +159,7 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
 
 /**
  * Keeps the project's own segments in order, replacing the FIRST segment that `wb gen-code` subsumes (a managed
- * gen-code spelling, a disposable `wrangler types`, an argument-free `gen-i18n-ts`) with `wb gen-code` and
+ * gen-code spelling, any direct `wrangler types`, an argument-free `gen-i18n-ts`) with `wb gen-code` and
  * dropping the rest. Appends the generation only when the script contained none, so nothing is reordered.
  */
 function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scripts): string[] {
@@ -235,7 +235,7 @@ function updatePostinstallScript(
     // The package genuinely opted out (its tsconfig no longer includes the declaration), and generateGitignore
     // drops the ignore rule and the untracked file with it. A leftover default-output `wrangler types` would then
     // recreate that ~500KB file as workspace noise on every install. Only a real opt-out qualifies: the other
-    // unmanaged reasons (an output-changing command, a missing dependency) leave the
+    // unmanaged reason (a missing dependency) leaves the
     // project's own generator as the ONLY one, so deleting it there would break generation outright.
     const segments = splitScriptSegments(scripts.postinstall);
     const remaining = segments?.filter((segment) => classifyScriptSegment(segment, scripts, true) !== 'wranglerTypes');
@@ -247,19 +247,8 @@ function updatePostinstallScript(
       }
     }
   }
-  // A `gen-types` script that is only a `wrangler types` invocation is dead weight ONLY where `wb gen-code`
-  // actually regenerates the file. For an unmanaged package it is the sole generator, and deleting it would also
-  // break any `postinstall: bun run gen-types` still pointing at it.
-  if (
-    managesWorkerTypes &&
-    classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false) === 'wranglerTypes' &&
-    // Package scripts compose, so another script (typically `build`) may run this one. Deleting a script that is
-    // still referenced would leave `bun run build` failing on a missing script.
-    // Whole-token match: a `gen-types-foo` or `gen-types:db` script is a different script, not a reference.
-    !Object.entries(scripts).some(
-      ([name, script]) => name !== 'gen-types' && script !== undefined && /(?<![\w:-])gen-types(?![\w:-])/u.test(script)
-    )
-  ) {
+  // A direct `gen-types` invocation is dead weight where `wb gen-code` regenerates the file.
+  if (managesWorkerTypes && classifyScriptSegment(scripts['gen-types'] ?? '', scripts, false) === 'wranglerTypes') {
     delete scripts['gen-types'];
   }
 }

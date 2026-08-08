@@ -298,10 +298,6 @@ export class Project {
   @memoizeOne
   get generatesWorkerTypes(): boolean {
     if (!findWranglerConfigPath(this) || !this.hasOwnDependency('wrangler')) return false;
-    // Defense in depth against wbfy's gitignore rule and this predicate drifting apart: if the package still
-    // runs its own output-changing `wrangler types` (e.g. `--strict-vars=false`), the bare invocation here would
-    // overwrite that file with a different `Env`.
-    if (hasOutputChangingWranglerTypes(this.packageJson.scripts ?? {})) return false;
     return hasManagedGitignoreRule(this.dirPath, WORKER_TYPES_FILE_NAME);
   }
 
@@ -741,42 +737,4 @@ function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
   } catch {
     return false;
   }
-}
-
-/**
- * Whether a package script runs a `wrangler types` that would write something other than what the bare
- * invocation writes. `--check`/`--help` validate or print and write nothing, so they do not count. `--env-file`
- * never counts: `wb gen-code` supplies its own `--env-file` stub from the committed fnox.toml, which replaces
- * the dotenv inference canonically, so an env-file-only invocation is equivalent to the managed generation
- * whether or not the named files exist on this machine — and testing local existence would make this predicate
- * disagree across machines. Mirrors wbfy's `hasCustomWranglerTypesInvocation`; the two must agree, since wbfy's
- * answer decides the gitignore rule this predicate keys on.
- */
-function hasOutputChangingWranglerTypes(scripts: Record<string, string | undefined>): boolean {
-  const wranglerTypesPattern = /(?:^|\s)wrangler\s+types(?:\s|$)/u;
-  const envFileOnlyPattern = /^(?:(?:bunx|npx)\s+|(?:yarn|pnpm)\s+dlx\s+)?wrangler\s+types(?:\s+--env-file\s+\S+)*$/u;
-  return Object.values(scripts).some((script) => {
-    if (!script || !wranglerTypesPattern.test(script)) return false;
-    // Checked on the WHOLE script, before splitting: `cd sub && wrangler types` runs the generator in another
-    // directory against another config, but its second segment alone looks like a plain invocation. wbfy
-    // classifies any script carrying this syntax as custom, and the two predicates must agree.
-    if (/[;|<>`$'"()]|\bcd\s/u.test(script)) return true;
-    return script
-      .split('&&')
-      .map((segment) => segment.trim().replaceAll(/\s+/gu, ' '))
-      .some((segment) => {
-        if (!wranglerTypesPattern.test(segment)) return false;
-        if (/(?:^|\s)(?:--help|-h)(?:\s|=|$)/u.test(segment)) return false;
-        // `--check` compares the result FOR THE SUPPLIED OPTIONS, so it is only harmless when the rest of the
-        // invocation is equivalent to the bare one.
-        const withoutCheck = segment
-          .replace(/(?:^|\s)--check(?:\s|=|$)/u, ' ')
-          .replaceAll(/\s+/gu, ' ')
-          .trim();
-        const candidate = withoutCheck === segment ? segment : withoutCheck;
-        // Not equivalent to the bare invocation, with or without `--check`: `--check` compares the result FOR
-        // THE SUPPLIED OPTIONS, so `--check --strict-vars=false` still describes a different file.
-        return !envFileOnlyPattern.test(candidate);
-      });
-  });
 }

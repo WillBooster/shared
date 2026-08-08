@@ -11,7 +11,6 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
-import { hasCustomWranglerTypesInvocation } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { escapeRegExp } from './utils/stringUtil.js';
 import {
@@ -435,11 +434,6 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
   return (
     config.doesContainWranglerConfig &&
     Boolean(packageJson?.dependencies?.['wrangler'] || packageJson?.devDependencies?.['wrangler']) &&
-    // `wb gen-code` runs `wrangler types` with no flags besides its own `--env-file` stub, so a package whose
-    // scripts pass flags that change the generated file (e.g. `--strict-vars=false`, repeated `-c` for RPC
-    // types) must stay unmanaged: managing it would delete the only record of that choice and regenerate a
-    // different `Env`.
-    !hasCustomWranglerTypesInvocation(packageJson?.scripts ?? {}) &&
     consumesGeneratedWorkerTypes(config)
   );
 }
