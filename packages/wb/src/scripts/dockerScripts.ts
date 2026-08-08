@@ -31,8 +31,11 @@ class DockerScripts {
   start(project: Project, additionalOptions = '', additionalArgs = ''): string {
     spawnSyncOnExit(this.stop(project), project);
     const allocateTty = additionalArgs.includes('/bin/bash');
-    const fnoxAgeKeyEnvOption = project.env.FNOX_AGE_KEY ? '--env FNOX_AGE_KEY ' : '';
-    return `docker run --rm ${allocateTty ? '-it ' : ''}${fnoxAgeKeyEnvOption}${selectContainerEnvOptions(project)}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
+    // No age-key forwarding: a running container gets its configuration from the declared
+    // variables forwarded below (or the platform's store in production), and handing the
+    // organization-wide identity to every tested container would let any application or
+    // dependency code read it.
+    return `docker run --rm ${allocateTty ? '-it ' : ''}${selectContainerEnvOptions(project)}--publish ${project.env.PORT}:8080 --name ${project.dockerImageName} ${additionalOptions} ${project.dockerImageName} ${additionalArgs}`;
   }
 
   stop(project: Project): string {
