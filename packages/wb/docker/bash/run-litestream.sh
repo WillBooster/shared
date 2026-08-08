@@ -7,6 +7,19 @@ if [[ "$#" -eq 0 ]]; then
   exit 64
 fi
 
+# Fail fast when the config references environment variables (e.g. the ${VAR} placeholders of
+# `wb db create-litestream-config --env-refs`) that the platform did not supply: Litestream
+# itself only logs and retries replica errors, which would silently disable backups.
+config_path="${LITESTREAM_CONFIG_PATH:-/etc/litestream.yml}"
+if [[ -f "$config_path" ]]; then
+  while IFS= read -r key; do
+    if [[ -z "$(printenv "$key" || true)" ]]; then
+      echo "run-litestream.sh: environment variable $key is required by $config_path but is not set." >&2
+      exit 1
+    fi
+  done < <(grep -o '\${[A-Za-z_][A-Za-z0-9_]*}' "$config_path" | tr -d '${}' | sort -u)
+fi
+
 litestream replicate -exec "$*" &
 litestream_pid=$!
 

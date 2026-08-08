@@ -67,6 +67,11 @@ const createLitestreamConfigBuilder = {
     type: 'string',
     default: '/etc/litestream.yml',
   },
+  'env-refs': {
+    description:
+      'Write the R2 credentials as ${VAR} placeholders that Litestream expands from the runtime environment, instead of embedding decrypted values. Allows generating the config during secret-less image builds.',
+    type: 'boolean',
+  },
 } as const;
 
 const createLitestreamConfigCommand: CommandModule<
@@ -78,13 +83,12 @@ const createLitestreamConfigCommand: CommandModule<
   builder: createLitestreamConfigBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
-    if (allProjects.length > 1) {
-      throw new Error(
-        'Creating Litestream configuration for multiple projects at once is not supported because they would overwrite each other.'
-      );
-    }
-    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db create-litestream-config', allProjects)) {
-      createLitestreamConfig(project, orm, argv.output);
+    const selectedProjects = selectLitestreamConfigProjects(allProjects);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
+      'db create-litestream-config',
+      selectedProjects
+    )) {
+      createLitestreamConfig(project, orm, argv.output, argv['env-refs']);
     }
   },
 };
@@ -347,7 +351,38 @@ function withLocalD1IfNeeded(orm: DatabaseOrm, project: Project, script: string)
   return orm === 'drizzle' ? wrapWithLocalD1DatabaseUrl(project, script) : script;
 }
 
-function createLitestreamConfig(project: Project, orm: DatabaseOrm, configPath: string): void {
+// At a monorepo root, multiple workspace projects can qualify (e.g. the root and a server
+// package sharing one root-level database), but their configs would overwrite each other. When
+// every candidate resolves to the same database file, the configs are identical, so pick one
+// instead of failing; genuinely different databases remain unsupported.
+export function selectLitestreamConfigProjects(allProjects: DatabaseOrmProject[]): DatabaseOrmProject[] {
+  if (allProjects.length <= 1) return allProjects;
+
+  const resolvable = allProjects.filter(({ orm, project }) => {
+    try {
+      getLitestreamDbPath(project, orm);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  const uniqueDbPaths = new Set(
+    resolvable.map(({ orm, project }) => path.resolve(project.dirPath, getLitestreamDbPath(project, orm)))
+  );
+  if (uniqueDbPaths.size !== 1) {
+    throw new Error(
+      'Creating Litestream configuration for multiple projects at once is not supported because they would overwrite each other.'
+    );
+  }
+  return resolvable.slice(0, 1);
+}
+
+export function createLitestreamConfig(
+  project: Project,
+  orm: DatabaseOrm,
+  configPath: string,
+  envRefs?: boolean
+): void {
   const dbPath = getLitestreamDbPath(project, orm);
   const requiredEnvVars = {
     CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID,
@@ -355,11 +390,20 @@ function createLitestreamConfig(project: Project, orm: DatabaseOrm, configPath: 
     CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID,
     CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY: project.env.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY,
   } as const;
-  const missingEnvVars = Object.entries(requiredEnvVars)
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-  if (missingEnvVars.length > 0) {
-    throw new Error(`Missing environment variables for Litestream: ${missingEnvVars.join(', ')}`);
+  // With --env-refs, Litestream expands the ${VAR} placeholders from the runtime environment
+  // (run-litestream.sh asserts they are set), so no decrypted value is needed at generation time.
+  const credentialValues = envRefs
+    ? (Object.fromEntries(Object.keys(requiredEnvVars).map((key) => [key, `\${${key}}`])) as {
+        [K in keyof typeof requiredEnvVars]: string;
+      })
+    : requiredEnvVars;
+  if (!envRefs) {
+    const missingEnvVars = Object.entries(requiredEnvVars)
+      .filter(([, value]) => !value)
+      .map(([key]) => key);
+    if (missingEnvVars.length > 0) {
+      throw new Error(`Missing environment variables for Litestream: ${missingEnvVars.join(', ')}`);
+    }
   }
 
   const litestreamConfig = `snapshot:
@@ -371,10 +415,10 @@ dbs:
     checkpoint-interval: 1m
     replica:
       type: s3
-      endpoint: https://${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID}.r2.cloudflarestorage.com
-      bucket: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
-      access-key-id: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}
-      secret-access-key: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}
+      endpoint: https://${credentialValues.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID}.r2.cloudflarestorage.com
+      bucket: ${credentialValues.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
+      access-key-id: ${credentialValues.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}
+      secret-access-key: ${credentialValues.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}
       sync-interval: 1m
 `;
 

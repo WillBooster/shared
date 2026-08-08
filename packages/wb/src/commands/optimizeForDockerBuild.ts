@@ -15,6 +15,7 @@ import {
   type Project,
 } from '../project.js';
 import { isDockerEnabled } from '../utils/ci.js';
+import { lintDockerfile } from '../utils/dockerfileLint.js';
 
 import {
   PRIVATE_REGISTRY_SCOPE,
@@ -25,6 +26,7 @@ import {
 } from '../utils/privateRegistry.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
+import { type GenDockerEnvCommandArgv, generateDockerEnv } from './genDockerEnv.js';
 import { collectManifests, materializePrivatePackages } from './setupPrivatePackages.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
@@ -82,6 +84,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     // per-project rewrite below emitting the existing "run wb setup-private-packages" hint. This
     // keeps the step a pure convenience that lets repositories drop the explicit command.
     if (argv.outside) {
+      prepareDockerBuildInputs(argv as GenDockerEnvCommandArgv & typeof argv, projects.root.dirPath);
       // Resolve the full workspace set from the repository root so a private dependency declared in
       // any sibling workspace is materialized even when optimize runs from a subpackage directory.
       const rootProjects = await findDescendantProjects(argv, false, projects.root.dirPath);
@@ -131,6 +134,40 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
   },
 };
+
+/**
+ * Lints the root Dockerfile and generates the non-secret `.docker.env` before an outside
+ * optimization pass, i.e. before every Docker build (wb's docker flows and deploy scripts all run
+ * `optimizeForDockerBuild --outside` first).
+ */
+function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, rootDirPath: string): void {
+  const dockerfilePath = path.join(rootDirPath, 'Dockerfile');
+  const dockerfileText = fs.existsSync(dockerfilePath) ? fs.readFileSync(dockerfilePath, 'utf8') : undefined;
+  if (dockerfileText) {
+    // Plain BuildKit (local builds, CI) accepts these problems silently, so without this check
+    // they are first detected by a failed production deploy.
+    const railwayConfigured = ['railway.toml', 'railway.json', '.railwayignore'].some((name) =>
+      fs.existsSync(path.join(rootDirPath, name))
+    );
+    const problems = lintDockerfile(dockerfileText, { railwayConfigured });
+    if (problems.length > 0) {
+      throw new Error(`Dockerfile problems:\n- ${problems.join('\n- ')}`);
+    }
+  }
+
+  if (fs.existsSync(path.join(rootDirPath, 'fnox.toml'))) {
+    try {
+      generateDockerEnv({ ...argv, path: undefined });
+    } catch (error) {
+      // Baking is mandatory only when the Dockerfile consumes the file; other repositories (e.g.
+      // legacy runtime-fnox images) keep building without it.
+      if (dockerfileText?.includes('.docker.env')) throw error;
+      console.warn(
+        chalk.yellow(`Skipped .docker.env generation: ${error instanceof Error ? error.message : String(error)}`)
+      );
+    }
+  }
+}
 
 /** Whether any dependency section declares a private git or `@willbooster-private/*` registry dependency. */
 function declaresPrivateDependency(packageJson: PackageJson): boolean {
