@@ -20,13 +20,12 @@ const jsonObj = {
   extends: [sharedPreset],
 };
 
-// The preset used to live in renovate.json5; it was renamed to renovate.jsonc, so the old reference
-// now fails to resolve ("Cannot find preset's package"). Drop it while migrating, like @willbooster.
-const legacyPresets = new Set([
+// Drop preset references that no longer resolve or have been folded into the shared preset.
+const obsoletePresets = [
   '@willbooster',
   'github>WillBooster/willbooster-configs:renovate.json5',
   'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc',
-]);
+];
 
 // $schema is optional: an existing config need not declare it.
 type Settings = Partial<typeof jsonObj> & {
@@ -181,7 +180,7 @@ function buildSettings(config: PackageConfig, liveSettings: Settings | undefined
   return newSettings;
 }
 
-/** The shared private-package preset and Mend organization host rule own all Verdaccio settings. */
+/** The shared preset and Mend organization host rule own all Verdaccio settings. */
 function removeInlinePrivateRegistrySettings(settings: Settings): void {
   if (settings.hostRules) {
     settings.hostRules = settings.hostRules.filter((rule) => !isPrivateRegistryHost(rule.matchHost));
@@ -295,7 +294,7 @@ function mergeRenovateExtends(
   // willbooster-configs is the shared preset itself: never inject the self-reference, and strip it
   // if a previous run (or a hand edit) left it in place.
   const presetsToAdd = config.isWillBoosterConfigs ? [] : generatedExtends;
-  const presetsToDrop = config.isWillBoosterConfigs ? new Set(legacyPresets).add(sharedPreset) : legacyPresets;
+  const presetsToDrop = config.isWillBoosterConfigs ? [...obsoletePresets, sharedPreset] : obsoletePresets;
 
   // Only insert the presets that are missing. Generated presets are prepended.
   // Moving one that is already listed would reorder the array, and a later preset overrides an
@@ -303,9 +302,7 @@ function mergeRenovateExtends(
   // rather than an addition, also costs the array's comments, which can only be preserved by insertion).
   // Compared case-insensitively: GitHub owner and repository names are case-insensitive, so a differently-spelled
   // copy of the same preset would otherwise be duplicated, and a lowercase legacy preset would survive migration.
-  const mergedExtends = existingExtends.filter(
-    (item) => ![...presetsToDrop].some((dropped) => isSamePreset(dropped, item))
-  );
+  const mergedExtends = existingExtends.filter((item) => !presetsToDrop.some((dropped) => isSamePreset(dropped, item)));
   for (const preset of presetsToAdd) {
     if (mergedExtends.some((existing) => isSamePreset(existing, preset))) continue;
     mergedExtends.unshift(preset);

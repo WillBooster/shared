@@ -29,7 +29,7 @@ async function withRepo(files: Record<string, string>, run: (dirPath: string) =>
 }
 
 const preset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
-const privatePackagesPreset = 'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc';
+const deletedPrivatePackagesPreset = 'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc';
 const legacyPreset = 'github>WillBooster/willbooster-configs:renovate.json5';
 
 test('never makes willbooster-configs extend its own preset', async () => {
@@ -57,15 +57,11 @@ test('generates renovate.jsonc in a repository without any Renovate config', asy
   });
 });
 
-test('replaces inline Verdaccio authentication and npmrc with the shared preset', async () => {
+test('removes the deleted private-package preset and inline Verdaccio settings', async () => {
   await withRepo(
     {
-      'package.json': JSON.stringify({
-        name: 'private-consumer',
-        dependencies: { '@willbooster-private/llm-proxy': '1.0.0' },
-      }),
       'renovate.jsonc': `{
-  "extends": ["${preset}", "${privatePackagesPreset}"],
+  "extends": ["${preset}", "${deletedPrivatePackagesPreset}"],
   "hostRules": [
     {
       "matchHost": "https://verdaccio-production-e389.up.railway.app/",
@@ -92,7 +88,6 @@ test('replaces inline Verdaccio authentication and npmrc with the shared preset'
 test('preserves unrelated inline npm and host settings while removing Verdaccio entries', async () => {
   await withRepo(
     {
-      'package.json': JSON.stringify({ name: '@willbooster-private/private-publisher' }),
       'renovate.jsonc': JSON.stringify({
         hostRules: [
           { matchHost: 'verdaccio-production-e389.up.railway.app', token: 'remove-me' },
