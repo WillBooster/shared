@@ -12,7 +12,7 @@ import { normalizeArgs } from '../../../../src/scripts/builder.js';
 import { BaseScripts, buildWaitOnLoopbackCommand } from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
-import { buildD1MigrationsApplyCommand } from '../../../../src/utils/wrangler.js';
+import { buildD1MigrationsApplyCommands } from '../../../../src/utils/wrangler.js';
 
 vi.mock('../../../../src/utils/port.js', () => ({
   checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
@@ -282,8 +282,11 @@ describe('BaseScripts D1 migration selection', () => {
       );
       await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'postgresql' };`);
       const project = buildD1Project(dirPath);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-      expect(scripts.getMigrationCommands(project)).not.toContain('YARN drizzle-kit migrate');
+      expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('No D1 migration mechanism detected for DB'));
+      warn.mockRestore();
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -301,7 +304,7 @@ describe('BaseScripts D1 migration selection', () => {
       const project = buildD1Project(dirPath);
 
       expect(scripts.getMigrationCommands(project).join(' && ')).toContain('YARN drizzle-kit migrate');
-      expect(buildD1MigrationsApplyCommand(project)).toBeUndefined();
+      expect(buildD1MigrationsApplyCommands(project)).toEqual([]);
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
@@ -320,7 +323,75 @@ describe('BaseScripts D1 migration selection', () => {
       const project = buildD1Project(dirPath);
 
       expect(scripts.getMigrationCommands(project).join(' && ')).not.toContain('YARN drizzle-kit migrate');
-      expect(buildD1MigrationsApplyCommand(project)).toContain('YARN wrangler d1 migrations apply app');
+      expect(buildD1MigrationsApplyCommands(project).join(' && ')).toContain('YARN wrangler d1 migrations apply app');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('rejects mixed wrangler-native and drizzle-kit D1 layouts', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
+    try {
+      await fs.mkdir(path.join(dirPath, 'native'));
+      await fs.writeFile(path.join(dirPath, 'native', '0001.sql'), 'CREATE TABLE native_table (id);');
+      await fs.writeFile(
+        path.join(dirPath, 'wrangler.jsonc'),
+        JSON.stringify({
+          d1_databases: [
+            { binding: 'NATIVE', database_name: 'native-db', migrations_dir: 'native' },
+            { binding: 'DRIZZLE', database_name: 'drizzle-db' },
+          ],
+        })
+      );
+      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
+
+      expect(() => scripts.getMigrationCommands(buildD1Project(dirPath))).toThrow(
+        'wb does not support mixing wrangler-native and non-native D1 migration layouts.'
+      );
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('rejects multiple drizzle-kit D1 bindings', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
+    try {
+      await fs.writeFile(
+        path.join(dirPath, 'wrangler.jsonc'),
+        JSON.stringify({
+          d1_databases: [
+            { binding: 'FIRST', database_name: 'first-db' },
+            { binding: 'SECOND', database_name: 'second-db' },
+          ],
+        })
+      );
+      await fs.writeFile(path.join(dirPath, 'drizzle.config.ts'), `export default { dialect: 'sqlite' };`);
+
+      expect(() => scripts.getMigrationCommands(buildD1Project(dirPath))).toThrow(
+        'wb supports drizzle-kit migrations only for a single D1 binding; found multiple.'
+      );
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
+  it('applies every wrangler-native D1 binding locally', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-base-scripts-test-'));
+    try {
+      await fs.writeFile(
+        path.join(dirPath, 'wrangler.jsonc'),
+        JSON.stringify({
+          d1_databases: [
+            { binding: 'FIRST', database_name: 'first-db', migrations_pattern: 'first/*.sql' },
+            { binding: 'SECOND', database_name: 'second-db', migrations_pattern: 'second/*.sql' },
+          ],
+        })
+      );
+
+      expect(buildD1MigrationsApplyCommands(buildD1Project(dirPath))).toEqual([
+        expect.stringContaining('d1 migrations apply first-db'),
+        expect.stringContaining('d1 migrations apply second-db'),
+      ]);
     } finally {
       await fs.rm(dirPath, { force: true, recursive: true });
     }
