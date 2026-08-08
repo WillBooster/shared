@@ -8,7 +8,6 @@ import { consumesGeneratedWorkerTypes, generatesWorkerTypes, type PackageConfig 
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { spawnSyncAndReturnStdout } from '../utils/spawnUtil.js';
 
 // Do not remove `windows`: generated .gitignore files must keep ignoring Windows-created local artifacts.
 const defaultNames = ['windows', 'macos', 'linux', 'jetbrains', 'visualstudiocode', 'emacs', 'vim', 'yarn'];
@@ -157,12 +156,10 @@ src-tauri/gen/schemas/
       // alone is false for unrelated reasons such as a missing local wrangler dependency, where the
       // file may still be consumed) the ignore rule
       // above disappears, so an already-generated file would surface as untracked noise on every
-      // checkout — delete it, but only an UNTRACKED copy (a tracked one is the user's own file).
+      // checkout — delete it. No repository tracks the file (docs/expected-repository-rules.md),
+      // so an existing copy is always a disposable generated one.
       const workerTypesPath = path.resolve(config.dirPath, 'worker-configuration.d.ts');
-      if (
-        fs.existsSync(workerTypesPath) &&
-        !spawnSyncAndReturnStdout('git', ['ls-files', '--', 'worker-configuration.d.ts'], config.dirPath).trim()
-      ) {
+      if (fs.existsSync(workerTypesPath)) {
         await promisePool.run(() => fs.promises.rm(workerTypesPath, { force: true }));
       }
     }

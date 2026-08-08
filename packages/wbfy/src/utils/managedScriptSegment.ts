@@ -101,18 +101,6 @@ export function classifyScriptSegment(
 }
 
 /**
- * Tells whether a script (re)generates worker-configuration.d.ts through the managed `wb gen-code`.
- */
-export function runsManagedGenCode(script: string | undefined, scripts: PackageJson.Scripts): boolean {
-  if (!script) return false;
-  const segments = splitScriptSegments(script);
-  return !!segments?.some((segment) => {
-    const kind = classifyScriptSegment(segment, scripts);
-    return kind === 'genCode' || kind === 'genCodeWrapper';
-  });
-}
-
-/**
  * Whether any of the package's scripts runs a `wrangler types` that would produce a DIFFERENT file from the bare
  * one `wb gen-code` runs. Managing such a package would overwrite its intended output and delete the only record
  * of the choice, so wbfy leaves the whole package alone instead.
