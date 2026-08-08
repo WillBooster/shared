@@ -481,8 +481,14 @@ export function getWorkerTypesScriptError(
         return 'gen-types must contain only wrangler types and must not be referenced outside postinstall';
       }
       const postinstall = scripts.postinstall;
-      if (postinstall && invokesPackageScript(postinstall, 'gen-types') && !splitScriptSegments(postinstall)) {
-        return 'postinstall must use parseable shell syntax when it references gen-types';
+      if (postinstall && invokesPackageScript(postinstall, 'gen-types')) {
+        const postinstallSegments = splitScriptSegments(postinstall);
+        if (
+          !postinstallSegments ||
+          !postinstallSegments.some((segment) => classifyScriptSegment(segment, scripts, true) === 'wranglerTypes')
+        ) {
+          return 'postinstall must use a canonical gen-types reference';
+        }
       }
     }
   }
@@ -602,7 +608,7 @@ function tokenizeShell(script: string): ShellWord[] {
     } else if (/\s/u.test(character)) {
       pushCurrent();
       if (character === '\n') words.push({ isOperator: true, text: character });
-    } else if (';&|()'.includes(character)) {
+    } else if (';&|()<>'.includes(character)) {
       pushCurrent();
       const isDouble = (character === '|' || character === '&') && script[index + 1] === character;
       words.push({ isOperator: true, text: isDouble ? character.repeat(2) : character });
@@ -626,7 +632,12 @@ function hasWranglerTypesInvocation(script: string): boolean {
   } else if (['bun', 'bunx', 'npx', 'pnpm', 'yarn'].includes(tokens[commandIndex] ?? '')) {
     commandIndex += 1;
   }
-  while (tokens[commandIndex]?.startsWith('-')) commandIndex += 1;
+  const runnerValueOptions = new Set(['--package', '-p']);
+  while (tokens[commandIndex]?.startsWith('-')) {
+    const [option, inlineValue] = tokens[commandIndex]?.split('=', 2) ?? [];
+    commandIndex += 1;
+    if (inlineValue === undefined && runnerValueOptions.has(option ?? '')) commandIndex += 1;
+  }
   const command = tokens[commandIndex] ?? '';
   if (!/(?:^|\/)wrangler(?:@[^/]+)?$/u.test(command)) return false;
   const globalValueOptions = new Set(['--config', '-c', '--cwd', '--env', '-e', '--env-file', '--log-level']);
