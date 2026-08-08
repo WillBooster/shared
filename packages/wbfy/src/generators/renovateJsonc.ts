@@ -20,11 +20,10 @@ const jsonObj = {
 };
 
 // Drop preset references that no longer resolve or have been folded into the shared preset.
-const obsoletePresets = [
-  '@willbooster',
+const obsoletePresets = new Set([
   'github>WillBooster/willbooster-configs:renovate.json5',
   'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc',
-];
+]);
 
 // $schema is optional: an existing config need not declare it.
 type Settings = Partial<typeof jsonObj> & {
@@ -239,19 +238,12 @@ function parseRenovateConfig(isEditableSyntax: boolean, content: string): Settin
   }
 }
 
-/** GitHub owner and repository names are case-insensitive, so the same preset may be spelled either way. */
-function isSamePreset(a: string, b: string): boolean {
-  return a.toLowerCase() === b.toLowerCase();
-}
-
 function mergeRenovateExtends(config: PackageConfig, existingExtends: string[] = []): string[] {
-  // Preserve existing order because later presets override earlier ones. GitHub names are case-insensitive.
+  // Preserve existing order because later presets override earlier ones.
   const mergedExtends = existingExtends.filter(
-    (preset) =>
-      !obsoletePresets.some((obsoletePreset) => isSamePreset(obsoletePreset, preset)) &&
-      (!config.isWillBoosterConfigs || !isSamePreset(preset, sharedPreset))
+    (preset) => !obsoletePresets.has(preset) && (!config.isWillBoosterConfigs || preset !== sharedPreset)
   );
-  if (!config.isWillBoosterConfigs && !mergedExtends.some((preset) => isSamePreset(preset, sharedPreset))) {
+  if (!config.isWillBoosterConfigs && !mergedExtends.includes(sharedPreset)) {
     mergedExtends.unshift(sharedPreset);
   }
   return mergedExtends;

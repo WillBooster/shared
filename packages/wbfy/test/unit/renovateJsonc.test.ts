@@ -30,7 +30,6 @@ async function withRepo(files: Record<string, string>, run: (dirPath: string) =>
 
 const preset = 'github>WillBooster/willbooster-configs:renovate.jsonc';
 const obsoletePresets = [
-  '@willbooster',
   'github>WillBooster/willbooster-configs:renovate.json5',
   'github>WillBooster/willbooster-configs:renovate-private-packages.jsonc',
 ];
@@ -219,7 +218,7 @@ test('reports the comments lost when dropping the legacy preset forces a rewrite
         'renovate.jsonc': `{
   "extends": [
     // Keep the local preset after the legacy preset.
-    "@willbooster",
+    "github>WillBooster/willbooster-configs:renovate.json5",
     "local>team/config"
   ]
 }
