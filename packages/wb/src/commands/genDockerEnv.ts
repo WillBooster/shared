@@ -98,14 +98,17 @@ export const genDockerEnvCommand: CommandModule<unknown, GenDockerEnvCommandOpti
  * one consumer would corrupt.
  */
 export function serializeDockerEnvLine(key: string, value: string): string {
-  if (!/^[A-Za-z_]\w*$/.test(key)) {
+  // `__proto__` is a valid shell identifier, but dotenv's parser drops the assignment (the legacy
+  // prototype setter swallows it), so the consumers would disagree on the key's very existence.
+  if (!/^[A-Za-z_]\w*$/.test(key) || key === '__proto__') {
     throw new Error(`The key ${key} cannot be written to a .docker.env file: it is not a POSIX shell identifier.`);
   }
-  // `${NAME}` is a real fnox reference, and even a bare `$NAME` (which fnox exports literally) is
-  // resolved by dotenv-expand-style consumers while shell sourcing keeps it literal, so any
-  // expansion-sensitive `$` makes the consumers disagree. `$` before a digit, space, `(`, or the
-  // end of the value is inert in both families and stays representable.
-  if (/\$[A-Za-z_${]/.test(value)) {
+  // A bare `$NAME` (which fnox exports literally) is resolved by dotenv-expand-style consumers
+  // while shell sourcing keeps it literal, dotenv-expand also rewrites `\$` to `$`, and a residual
+  // `${` marks a reference form the collector could not resolve — so any expansion-sensitive `$`
+  // makes the consumers disagree. `$` before a digit, space, `(`, or the end of the value is inert
+  // in both families and stays representable.
+  if (/\$[A-Za-z_${]|\\\$/.test(value)) {
     throw new Error(
       `The value of ${key} contains an expansion-sensitive $ reference; wb gen-docker-env does not expand references — inline the value in fnox.toml.`
     );

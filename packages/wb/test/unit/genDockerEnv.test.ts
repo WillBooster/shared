@@ -113,6 +113,42 @@ describe('collectPlaintextFnoxValues', () => {
     }
   });
 
+  it('resolves plaintext-to-plaintext ${NAME} references and rejects the rest', async () => {
+    const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-docker-env-'));
+
+    try {
+      // The canonical wbfy-tolerated pattern (`NEXT_PUBLIC_WB_ENV = "${WB_ENV}"`) and chains
+      // resolve statically, matching `fnox export`.
+      await fs.writeFile(
+        path.join(dirPath, 'fnox.toml'),
+        '[secrets]\nWB_ENV = { default = "development" }\nNEXT_PUBLIC_WB_ENV = { default = "${WB_ENV}" }\nHOST = { default = "example.com" }\nORIGIN = { default = "https://${HOST}" }\n\n[profiles.production.secrets]\nWB_ENV = { default = "production" }\n'
+      );
+      expect({ ...collectPlaintextFnoxValues(dirPath, dirPath, 'production') }).toStrictEqual({
+        WB_ENV: 'production',
+        NEXT_PUBLIC_WB_ENV: 'production',
+        HOST: 'example.com',
+        ORIGIN: 'https://example.com',
+      });
+
+      // A reference to a secret (or any non-plaintext entry) cannot be baked.
+      await fs.writeFile(
+        path.join(dirPath, 'fnox.toml'),
+        '[secrets]\nSECRET = { provider = "age", value = "YWdlCg==" }\nURL = { default = "https://${SECRET}@h" }\n'
+      );
+      expect(() => collectPlaintextFnoxValues(dirPath, dirPath, undefined)).toThrow(
+        'not a bakeable plaintext fnox entry'
+      );
+
+      await fs.writeFile(
+        path.join(dirPath, 'fnox.toml'),
+        '[secrets]\nA = { default = "${B}" }\nB = { default = "${A}" }\n'
+      );
+      expect(() => collectPlaintextFnoxValues(dirPath, dirPath, undefined)).toThrow('reference cycle');
+    } finally {
+      await fs.rm(dirPath, { force: true, recursive: true });
+    }
+  });
+
   it('keeps a `__proto__` key as ordinary data', async () => {
     const dirPath = await fs.mkdtemp(path.join(os.tmpdir(), 'wb-gen-docker-env-'));
     await fs.writeFile(path.join(dirPath, 'fnox.toml'), '[secrets]\n"__proto__" = { default = "kept" }\n');
@@ -137,9 +173,13 @@ describe('serializeDockerEnvLine', () => {
     expect(() => serializeDockerEnvLine('KEY', 'a\nb')).toThrow('apostrophes and newlines');
     expect(() => serializeDockerEnvLine('KEY', 'a\rb')).toThrow('apostrophes and newlines');
     expect(() => serializeDockerEnvLine('KEY', 'https://${DOMAIN}/api')).toThrow('does not expand references');
-    // dotenv-expand resolves a bare $NAME (and $$) while shell sourcing keeps it literal.
+    // dotenv-expand resolves a bare $NAME (and $$), and rewrites \$ to $, while shell sourcing
+    // keeps them literal.
     expect(() => serializeDockerEnvLine('KEY', '$HOME')).toThrow('does not expand references');
     expect(() => serializeDockerEnvLine('KEY', 'a$$b')).toThrow('does not expand references');
+    expect(() => serializeDockerEnvLine('KEY', String.raw`\$1`)).toThrow('does not expand references');
     expect(() => serializeDockerEnvLine('INVALID-KEY', 'x')).toThrow('not a POSIX shell identifier');
+    // dotenv's parser drops a `__proto__` assignment even though it is a valid shell identifier.
+    expect(() => serializeDockerEnvLine('__proto__', 'x')).toThrow('not a POSIX shell identifier');
   });
 });

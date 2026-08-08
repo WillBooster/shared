@@ -111,5 +111,37 @@ export function collectPlaintextFnoxValues(
     }
     values[keyName] = defaultValue;
   }
-  return values;
+  return resolvePlaintextReferences(values);
+}
+
+/**
+ * Resolve `${NAME}` references between plaintext values the way fnox's own export does (wbfy
+ * explicitly tolerates e.g. `NEXT_PUBLIC_WB_ENV = "${WB_ENV}"`). A reference to anything that is
+ * not itself a bakeable plaintext entry — a secret, an undeclared key, or a cycle — fails fast:
+ * resolving it would either require decryption or diverge from `fnox export`. Bare `$NAME` stays
+ * untouched, matching fnox, and is rejected later by the serializer because dotenv-expand-style
+ * consumers would resolve it.
+ */
+function resolvePlaintextReferences(values: Record<string, string>): Record<string, string> {
+  const resolvedValues: Record<string, string> = Object.create(null) as Record<string, string>;
+  const resolve = (keyName: string, rawValue: string, stack: readonly string[]): string => {
+    const cached = resolvedValues[keyName];
+    if (cached !== undefined) return cached;
+    if (stack.includes(keyName)) {
+      throw new Error(`The entries ${[...stack, keyName].join(' -> ')} form a reference cycle in fnox.toml.`);
+    }
+    const resolved = rawValue.replaceAll(/\$\{([A-Za-z_]\w*)\}/g, (_, referencedKeyName: string) => {
+      const referencedRawValue = values[referencedKeyName];
+      if (referencedRawValue === undefined) {
+        throw new Error(
+          `The value of ${keyName} references ${referencedKeyName}, which is not a bakeable plaintext fnox entry; only plaintext-to-plaintext references can be baked into a Docker image.`
+        );
+      }
+      return resolve(referencedKeyName, referencedRawValue, [...stack, keyName]);
+    });
+    resolvedValues[keyName] = resolved;
+    return resolved;
+  };
+  for (const [keyName, rawValue] of Object.entries(values)) resolve(keyName, rawValue, []);
+  return resolvedValues;
 }
