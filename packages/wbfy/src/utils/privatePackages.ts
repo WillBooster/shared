@@ -9,7 +9,7 @@ import { getWorkspacePackageJsonPaths } from './workspaceUtil.js';
 
 const PRIVATE_SCOPE = '@willbooster-private/';
 
-export const privateRegistryHost = 'verdaccio-production-e389.up.railway.app';
+const privateRegistryHost = 'verdaccio-production-e389.up.railway.app';
 export const privateRegistryScopeMapping = `@willbooster-private:registry=https://${privateRegistryHost}/`;
 
 /**
