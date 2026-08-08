@@ -37,8 +37,12 @@
     "agent-runtime-kit",
     "at-decorators",
     "build-ts",
+    "code-gauge",
     "gen-i18n-ts",
+    "minimal-promise-pool",
     "one-way-git-sync",
-    "vinext-progress"
+    "vinext-progress",
+    "wbfy",
+    "yarn-plugin-auto-install"
   ]
 }
