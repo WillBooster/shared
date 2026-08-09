@@ -51,8 +51,7 @@ export async function readAppliedWbfyVersionLabel(dirPath: string): Promise<stri
   // only the shape writeBadgeBlock itself writes counts as an applied badge: a top-level paragraph
   // of badges. A badge anywhere else is content that merely mentions one — a fenced example (wbfy's
   // own documentation has those), a block quote, a list item — and reading it as applied would skip
-  // every fixer for the repository. Every top-level block is examined rather than just the one after
-  // the title, because older versions stamped the block above it.
+  // every fixer for the repository.
   for (const node of fromMarkdown(readme).children) {
     if (!isBadgeBlockNode(node)) continue;
     for (const badge of node.children) {
@@ -180,23 +179,9 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   const content = withoutMark.slice(frontMatter.length).replace(/\r?\n$/u, '');
 
   const nodes = fromMarkdown(content).children;
-  // An earlier wbfy run is the normal input, and older versions recognized neither Setext nor HTML
-  // titles — so they stamped the block ABOVE such a title. That leading block must not hide the
-  // title from this run, or the badges stay above it forever and the new placement only ever
-  // applies to READMEs wbfy has never touched.
-  // Only a block carrying one of wbfy's OWN badges can be output from an older version; a paragraph
-  // of purely user-authored badges is that user's layout and must not be relocated.
-  const legacyBlock =
-    nodes[0] && isBadgeBlockNode(nodes[0]) && readBadges(nodes[0], content).some((badge) => isManagedBadge(badge))
-      ? nodes[0]
-      : undefined;
-  // ...and only when a title actually follows it, since relocating is the whole point of skipping it.
-  const relocatesLegacyBlock = !!legacyBlock && isTitleNode(nodes[1]);
-  // A leading block WITHOUT a managed badge is the user's own layout: it stays above the title, and
-  // wbfy's block goes below, which is also what keeps this idempotent — writing wbfy's badge into
-  // that block instead would make the next run see a managed badge there and relocate the lot.
-  const keepsLeadingBlock = !!nodes[0] && !legacyBlock && isBadgeBlockNode(nodes[0]) && isTitleNode(nodes[1]);
-  const titleIndex = relocatesLegacyBlock || keepsLeadingBlock ? 1 : isTitleNode(nodes[0]) ? 0 : -1;
+  // A leading badge block is the user's own layout: it stays above the title, and wbfy's block goes below.
+  const keepsLeadingBlock = !!nodes[0] && isBadgeBlockNode(nodes[0]) && isTitleNode(nodes[1]);
+  const titleIndex = keepsLeadingBlock ? 1 : isTitleNode(nodes[0]) ? 0 : -1;
   // Without a recognizable title the block sits at the very top, above everything.
   const headStartNode = keepsLeadingBlock ? nodes[0]! : nodes[titleIndex];
   const head =
@@ -210,11 +195,8 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   const body = bodyNode ? content.slice(startOffsetWithIndent(content, bodyNode)) : '';
 
   // Superseding a managed badge is just dropping the old one: a version, URL or workflow change
-  // leaves no stale copy, while a badge someone else added to the block is kept. A block the older
-  // layout left above the title is carried down here rather than dropped, so unrelated badges in it
-  // survive the move.
-  const relocated = relocatesLegacyBlock ? readBadges(legacyBlock, content) : [];
-  const badges = [...managedBadges, ...[...(existing ?? []), ...relocated].filter((badge) => !isManagedBadge(badge))];
+  // leaves no stale copy, while a badge someone else added to the block is kept.
+  const badges = [...managedBadges, ...(existing ?? []).filter((badge) => !isManagedBadge(badge))];
   // Content is sliced from its node's start offset, so whatever blank space followed the front
   // matter is gone; exactly one blank line is restored here. A closing delimiter that ended at EOF
   // carries no newline of its own and needs both, or `---` would fuse with the first badge and

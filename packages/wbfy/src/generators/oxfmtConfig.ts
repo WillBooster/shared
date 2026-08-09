@@ -1,10 +1,8 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { promisePool } from '../utils/promisePool.js';
 import { resolveWillboosterConfigModule } from '../utils/willboosterConfigsUtil.js';
 
 import { normalizeConfigContent } from './configContent.js';
@@ -18,7 +16,6 @@ const managedConfigBlocks = new ManagedConfigBlocks({
 
 export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
-    const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
     const existingContent = await fsUtil.readFileIfExists(filePath);
     const desiredContent = managedConfigBlocks.getConfigContent({
@@ -26,15 +23,9 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
       existingContent,
       filePath,
     });
-    // Remove the superseded legacy config only when the replacement landed (or none was needed):
-    // a refused write (e.g. a symlinked config) must not leave the repository with no config.
-    if (
-      normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent) &&
-      !(await fsUtil.generateFile(filePath, desiredContent))
-    ) {
-      return;
+    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
+      await fsUtil.generateFile(filePath, desiredContent);
     }
-    await promisePool.run(() => fs.promises.rm(legacyJsonConfigPath, { force: true }));
   });
 }
 

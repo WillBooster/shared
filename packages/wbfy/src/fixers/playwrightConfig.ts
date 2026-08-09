@@ -1,8 +1,6 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
-import { simpleGit } from 'simple-git';
 import * as ast from 'typescript/unstable/ast';
 
 import { logger } from '../logger.js';
@@ -25,44 +23,6 @@ interface ExtractedObjectLiteral {
   source: ast.SourceFile;
   node: ast.ObjectLiteralExpression;
 }
-interface FileHistoryEntry {
-  commit: string;
-  subject: string;
-  commitPath: string;
-  parentPath: string | undefined;
-}
-interface ExtractedCommand {
-  command: ParsedValue;
-  bindingFingerprints: Map<string, string> | undefined;
-}
-
-const knownRuntimeGlobals = new Set([
-  'Array',
-  'BigInt',
-  'Boolean',
-  'Buffer',
-  'Date',
-  'Error',
-  'JSON',
-  'Map',
-  'Math',
-  'Number',
-  'Object',
-  'Promise',
-  'RegExp',
-  'Set',
-  'String',
-  'URL',
-  'clearInterval',
-  'clearTimeout',
-  'console',
-  'globalThis',
-  'process',
-  'setInterval',
-  'setTimeout',
-  'undefined',
-]);
-const maxPlaywrightHistoryEntries = 100;
 const literal = (value: string): ParsedValue => ({ kind: 'literal', value });
 const asArray = (value: ParsedValue[]): ParsedValue => ({ kind: 'array', value });
 const asObject = (properties: Record<string, ParsedValue>, extraMembers: string[] = []): ParsedValue => ({
@@ -136,7 +96,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const defaultConfig = createDefaultConfig(config, shouldUseAppServerDefaults);
     const merged = mergeParsedObjects(defaultConfig, parsed);
     applyManagedUseDefaults(merged, defaultConfig);
-    await setWebServerCommand(merged, filePath, extractedObjectLiteral.source, shouldUseAppServerDefaults);
+    setWebServerCommand(merged);
 
     const newObjectLiteral = stringifyValue({ kind: 'object', value: merged }, 0);
     const oldContent = extractedObjectLiteral.source.text;
@@ -243,273 +203,24 @@ function getEnvFilePaths(dirPath: string): string[] {
   return envFilePaths;
 }
 
-async function setWebServerCommand(
-  object: ParsedObject,
-  filePath: string,
-  currentSource: ast.SourceFile,
-  isWebApp: boolean
-): Promise<void> {
+function setWebServerCommand(object: ParsedObject): void {
   const webServer = object.properties.webServer;
   if (webServer?.kind !== 'object') return;
 
   const command = webServer.value.properties.command;
   // Libraries can use Playwright's webServer to build and launch a fixture even though `wb start`
   // intentionally has no test server for the library itself. Preserve those custom lifecycle
-  // commands; only add or migrate the command when wbfy already owns it.
+  // commands; only add the command when wbfy already owns it.
   if (command && !isGeneratedWbStartTestCommand(command)) return;
-
-  // A web app (it defines NEXT_PUBLIC_BASE_URL) standardizes on the generated server command, so a
-  // generated command there is intended, not overwrite damage. Only a non-web-app package (e.g. a
-  // React library serving a demo fixture) carrying the generated command can be a victim of the
-  // past overwrite bug — `wb start --mode test` has nothing to serve for a library — so the Git
-  // history recovery scan runs just for that small set instead of taxing every repository.
-  if (!isWebApp) {
-    const historicalCommand = command && (await findWbfyOverwrittenWebServerCommand(filePath, command, currentSource));
-    if (historicalCommand) {
-      webServer.value.properties.command = historicalCommand;
-      return;
-    }
-  }
 
   // Playwright requires `command` whenever `webServer` exists; an externally managed server should
   // omit `webServer` instead. Keep filling this required field when a partial managed block lacks it.
   webServer.value.properties.command = literal(getWbStartTestCommand());
 }
 
-async function findWbfyOverwrittenWebServerCommand(
-  filePath: string,
-  currentCommand: ParsedValue,
-  currentSource: ast.SourceFile
-): Promise<ParsedValue | undefined> {
-  try {
-    const initialGit = simpleGit(path.dirname(filePath));
-    const rootDirOutput = await initialGit.revparse(['--show-toplevel']);
-    const rootDirPath = rootDirOutput.trim();
-    // Git reports canonical paths on macOS (/private/var), while callers can reach the same file
-    // through a symlinked path (/var). Compare physical paths so history lookup stays repository-local.
-    const relativeFilePath = path.relative(rootDirPath, fs.realpathSync(filePath));
-    const git = simpleGit(rootDirPath);
-    const extractedCommandCache = new Map<string, ExtractedCommand | undefined>();
-    const extractCommand = (content: string): ExtractedCommand | undefined => {
-      if (extractedCommandCache.has(content)) return extractedCommandCache.get(content);
-      const extracted = extractWebServerCommand(content);
-      extractedCommandCache.set(content, extracted);
-      return extracted;
-    };
-    const headCommand = extractCommand(await git.show([`HEAD:${relativeFilePath}`]))?.command;
-    // An uncommitted switch to the standard server command is repository-owned, not historical
-    // damage. Recover only when the working tree still matches the committed command.
-    if (!headCommand || !areCommandsEqual(currentCommand, headCommand)) return undefined;
-
-    const logOutput = await git.raw([
-      'log',
-      '-z',
-      '--follow',
-      '--name-status',
-      '--format=%x1e%H%x00%s',
-      '--',
-      relativeFilePath,
-    ]);
-    const history = parseFileHistory(logOutput);
-    // Recovery is a one-time migration for recently overwritten configs. Bound the fallback scan so
-    // a long-lived generated config cannot add unbounded TypeScript parses to every wbfy invocation.
-    if (history.length > maxPlaywrightHistoryEntries) return undefined;
-    for (const entry of history) {
-      if (!entry.parentPath) return undefined;
-
-      const commitCommand = extractCommand(await git.show([`${entry.commit}:${entry.commitPath}`]));
-      const previousCommand = extractCommand(await git.show([`${entry.commit}^:${entry.parentPath}`]));
-      if (!commitCommand || !previousCommand) return undefined;
-      if (areCommandsEqual(commitCommand.command, previousCommand.command)) continue;
-
-      // Only the latest command-changing transition can explain the current generated value. Older
-      // wbfy overwrites are obsolete once a maintainer has deliberately changed the command again.
-      if (!isGeneratedWbStartTestCommand(commitCommand.command)) return undefined;
-      if (isGeneratedWbStartTestCommand(previousCommand.command)) continue;
-      if (!isWbfyCommitSubject(entry.subject)) return undefined;
-      return areHistoricalBindingsUnchanged(previousCommand.bindingFingerprints, currentSource)
-        ? previousCommand.command
-        : undefined;
-    }
-  } catch {
-    // Repositories without usable Git history still receive the canonical generated command below.
-  }
-  return undefined;
-}
-
-function parseFileHistory(output: string): FileHistoryEntry[] {
-  return output
-    .split('\u001E')
-    .slice(1)
-    .flatMap((record): FileHistoryEntry[] => {
-      const [commit, subject, rawStatus, firstPath, secondPath] = record.split('\0');
-      const status = rawStatus?.trimStart();
-      if (!commit || subject === undefined || !status || !firstPath) return [];
-      if (status.startsWith('R')) {
-        return secondPath ? [{ commit, subject, commitPath: secondPath, parentPath: firstPath }] : [];
-      }
-      return [{ commit, subject, commitPath: firstPath, parentPath: status === 'A' ? undefined : firstPath }];
-    });
-}
-
-function extractWebServerCommand(content: string): ExtractedCommand | undefined {
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-playwright-history-'));
-  const tempFilePath = path.resolve(tempDirPath, 'playwright.config.ts');
-  try {
-    fs.writeFileSync(tempFilePath, content);
-    const extracted = extractDefineConfigObjectLiteral(tempFilePath);
-    if (!extracted) return undefined;
-    const webServer = getObjectPropertyInitializer(extracted.node, 'webServer');
-    if (!webServer || !ast.isObjectLiteralExpression(webServer)) return undefined;
-    const commandExpression = getObjectPropertyInitializer(webServer, 'command');
-    const command = commandExpression && parseExpression(commandExpression, extracted.source);
-    if (!command || !commandExpression) return undefined;
-    return {
-      command,
-      bindingFingerprints: getRecoverableBindingFingerprints(commandExpression, extracted.source),
-    };
-  } finally {
-    fs.rmSync(tempDirPath, { force: true, recursive: true });
-  }
-}
-
-function getObjectPropertyInitializer(
-  objectLiteral: ast.ObjectLiteralExpression,
-  propertyName: string
-): ast.Expression | undefined {
-  for (const property of objectLiteral.properties) {
-    if (
-      ast.isShorthandPropertyAssignment(property) &&
-      ast.isIdentifier(property.name) &&
-      property.name.text === propertyName
-    ) {
-      return property.name;
-    }
-    if (
-      ast.isPropertyAssignment(property) &&
-      (ast.isIdentifier(property.name) || ast.isStringLiteral(property.name)) &&
-      property.name.text === propertyName
-    ) {
-      return property.initializer;
-    }
-  }
-  return undefined;
-}
-
-function getRecoverableBindingFingerprints(
-  expression: ast.Expression,
-  source: ast.SourceFile
-): Map<string, string> | undefined {
-  const identifiers = getRecoverableCommandIdentifiers(expression);
-  if (!identifiers) return undefined;
-
-  const bindings = collectTopLevelValueBindings(source);
-  const fingerprints = new Map<string, string>();
-  for (const identifier of identifiers) {
-    if (knownRuntimeGlobals.has(identifier)) continue;
-    const fingerprint = bindings.get(identifier);
-    if (!fingerprint) return undefined;
-    fingerprints.set(identifier, fingerprint);
-  }
-  return fingerprints;
-}
-
-function getRecoverableCommandIdentifiers(expression: ast.Expression): Set<string> | undefined {
-  if (ast.isStringLiteral(expression) || ast.isNoSubstitutionTemplateLiteral(expression)) return new Set();
-  if (ast.isIdentifier(expression)) return new Set([expression.text]);
-  if (!ast.isTemplateExpression(expression)) return undefined;
-
-  const identifiers = new Set<string>();
-  for (const span of expression.templateSpans) {
-    const identifier = getPropertyAccessRootIdentifier(span.expression);
-    if (!identifier) return undefined;
-    identifiers.add(identifier);
-  }
-  return identifiers;
-}
-
-function getPropertyAccessRootIdentifier(expression: ast.Expression): string | undefined {
-  if (ast.isIdentifier(expression)) return expression.text;
-  if (ast.isPropertyAccessExpression(expression)) return getPropertyAccessRootIdentifier(expression.expression);
-  return undefined;
-}
-
-function areHistoricalBindingsUnchanged(
-  bindingFingerprints: Map<string, string> | undefined,
-  currentSource: ast.SourceFile
-): boolean {
-  if (!bindingFingerprints) return false;
-  const currentBindings = collectTopLevelValueBindings(currentSource);
-  return [...bindingFingerprints].every(([identifier, fingerprint]) => currentBindings.get(identifier) === fingerprint);
-}
-
-function collectTopLevelValueBindings(source: ast.SourceFile): Map<string, string> {
-  const bindings = new Map<string, string>();
-  for (const statement of source.statements) {
-    const fingerprint = statement.getText(source);
-    if (ast.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        collectBindingName(declaration.name, bindings, fingerprint);
-      }
-      continue;
-    }
-    if (
-      (ast.isFunctionDeclaration(statement) || ast.isClassDeclaration(statement) || ast.isEnumDeclaration(statement)) &&
-      statement.name
-    ) {
-      bindings.set(statement.name.text, fingerprint);
-      continue;
-    }
-    if (ast.isImportEqualsDeclaration(statement)) {
-      bindings.set(statement.name.text, fingerprint);
-      continue;
-    }
-    if (!ast.isImportDeclaration(statement)) continue;
-    const importClause = statement.importClause;
-    if (!importClause || importClause.phaseModifier === ast.SyntaxKind.TypeKeyword) continue;
-    if (importClause.name) bindings.set(importClause.name.text, fingerprint);
-    const namedBindings = importClause.namedBindings;
-    if (namedBindings && ast.isNamespaceImport(namedBindings)) {
-      bindings.set(namedBindings.name.text, fingerprint);
-    } else if (namedBindings && ast.isNamedImports(namedBindings)) {
-      for (const element of namedBindings.elements) {
-        if (!element.isTypeOnly) bindings.set(element.name.text, fingerprint);
-      }
-    }
-  }
-  return bindings;
-}
-
-function collectBindingName(name: ast.BindingName, bindings: Map<string, string>, fingerprint: string): void {
-  if (ast.isIdentifier(name)) {
-    bindings.set(name.text, fingerprint);
-    return;
-  }
-  for (const element of name.elements) {
-    if (element.name) collectBindingName(element.name, bindings, fingerprint);
-  }
-}
-
-function areCommandsEqual(left: ParsedValue, right: ParsedValue): boolean {
-  return left.kind === 'literal' && right.kind === 'literal' && left.value.trim() === right.value.trim();
-}
-
-function isWbfyCommitSubject(subject: string): boolean {
-  return /^(?:build|chore|fix): (?:apply wbfy|wbfy(?: this repo)?|willboosterify this repo)(?: \(#\d+\))?$/u.test(
-    subject
-  );
-}
-
 function isGeneratedWbStartTestCommand(command: ParsedValue): boolean {
   if (command.kind !== 'literal') return false;
-  // Match only commands emitted by past wbfy versions (every historical form, so none of them is
-  // preserved as "custom" pointing at a script wbfy has since removed). A broader command-shaped
-  // regex could overwrite a repository's deliberate wrapper while recognizing generated content.
-  // Single quotes only: every generated form is single-quoted (as is org formatting), and an
-  // unrecognized quoting style fails safe — the command is preserved, never overwritten.
-  return /^'(?:(?:(?:bun(?: --bun| run)?|yarn) )?wb start --mode test|(?:bun(?: run)?|yarn) start-test-server|yarn start-test)'$/u.test(
-    command.value.trim()
-  );
+  return command.value.trim() === getWbStartTestCommand();
 }
 
 function getWbStartTestCommand(): string {

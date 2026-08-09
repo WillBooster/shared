@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
+import { consumesDockerEnv } from '@willbooster/shared-lib-node/src';
 
 import {
   findDescendantProjects,
@@ -169,11 +170,14 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
     }
   }
 
-  if (candidateDirPaths.some((dirPath) => fs.existsSync(path.join(dirPath, 'fnox.toml')))) {
+  const dockerfileConsumesDockerEnv = consumesDockerEnv(dockerfileText ?? '');
+  if (
+    dockerfileConsumesDockerEnv &&
+    candidateDirPaths.some((dirPath) => fs.existsSync(path.join(dirPath, 'fnox.toml')))
+  ) {
     // Mirror Project.completeAndValidateWbEnv WITHOUT loading fnox: generateDockerEnv resolves
     // the profile via the cascade, which silently falls back to development when CI forgets to
-    // export WB_ENV — that must fail the build, not bake a development-profile image. Raised
-    // before the try below so the no-`.docker.env`-consumer warning path cannot swallow it.
+    // export WB_ENV — that must fail the build, not bake a development-profile image.
     const processEnvView = findSelfProject(argv, false)?.env ?? {};
     if (
       isCI(processEnvView.CI) &&
@@ -190,24 +194,7 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
         'WB_ENV is not exported on CI; export it before building the image so .docker.env bakes the right profile (or set WB_SKIP_ENV_CHECK=1).'
       );
     }
-    try {
-      generateDockerEnv({ ...argv, path: undefined });
-    } catch (error) {
-      // A stale file from a previous build must not survive a failed generation: a broad
-      // `COPY . .` or apply-docker-env.sh's auto-discovery would silently bake and apply it.
-      // A dry run mutates nothing, matching the rest of this command.
-      if (!argv.dryRun) fs.rmSync(path.resolve(projects.self.dirPath, '.docker.env'), { force: true });
-      // Baking is mandatory only when the Dockerfile consumes the file (comments do not count);
-      // other repositories (e.g. legacy runtime-fnox images) keep building without it.
-      const dockerfileConsumesDockerEnv = (dockerfileText ?? '')
-        .split('\n')
-        .filter((line) => !/^\s*#/.test(line))
-        .some((line) => line.includes('.docker.env'));
-      if (dockerfileConsumesDockerEnv) throw error;
-      console.warn(
-        chalk.yellow(`Skipped .docker.env generation: ${error instanceof Error ? error.message : String(error)}`)
-      );
-    }
+    generateDockerEnv({ ...argv, path: undefined });
   }
 }
 

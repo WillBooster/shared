@@ -36,7 +36,7 @@ import { generateReadme, readAppliedWbfyVersionLabel } from './generators/readme
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
 import { generateTsconfig } from './generators/tsconfig.js';
-import { fixVscodeExtensions, generateVscodeSettings } from './generators/vscodeSettings.js';
+import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
@@ -347,9 +347,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       promises.push(generateLintstagedrc(config));
       if (config.doesContainVscodeSettingsJson && config.doesContainPackageJson) {
         promises.push(generateVscodeSettings(config));
-      }
-      if (config.doesContainPackageJson) {
-        promises.push(fixVscodeExtensions(config));
       }
       if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
         promises.push(generateTsconfig(config));

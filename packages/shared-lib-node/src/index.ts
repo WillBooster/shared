@@ -10,6 +10,7 @@ export {
 } from './bunWorkspaces.js';
 export type { WorkspacesDeclaration } from './bunWorkspaces.js';
 export { normalizeBunLockfile } from './bunLockfile.js';
+export { consumesDockerEnv } from './dockerfile.js';
 export {
   hasProjectFnoxConfig,
   readEnvironmentVariables,

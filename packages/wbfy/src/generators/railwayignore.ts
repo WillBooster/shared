@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+import { consumesDockerEnv } from '@willbooster/shared-lib-node/src';
+
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -13,10 +15,9 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixRailwayignore', async () => {
     const filePath = path.resolve(config.dirPath, '.railwayignore');
     const content = await fsUtil.readFileIfExists(filePath);
+    const usesDockerEnv = consumesDockerEnv(config.dockerfile);
     if (!content) {
-      // A Railway Docker repository needs the file even if it never wrote one: without the
-      // un-ignore below, the gitignored .docker.env never reaches the uploaded build context.
-      if (config.isRailway && config.doesContainDockerfile) {
+      if (config.isRailway && usesDockerEnv) {
         await promisePool.run(() => fsUtil.generateFile(filePath, '!.docker.env\n'));
       }
       return;
@@ -27,11 +28,15 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     // non-secret .docker.env (`wb gen-docker-env` output) needs an explicit un-ignore to reach
     // the remote Docker build. Appended, not prepended: ignore files are last-match-wins, so a
     // hand-written pattern such as `*.env` earlier in the file must not silently re-exclude it.
-    if (config.doesContainDockerfile && !/^!\.docker\.env$/m.test(newContent)) {
+    if (usesDockerEnv && !/^!\.docker\.env$/m.test(newContent)) {
       newContent = `${newContent.replace(/\n?$/, '\n')}!.docker.env\n`;
+    } else if (config.dockerfile && !usesDockerEnv) {
+      newContent = newContent.replace(/^!\.docker\.env\n?/m, '');
     }
     if (newContent === content) return;
 
-    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
+    await promisePool.run(() =>
+      newContent ? fsUtil.generateFile(filePath, newContent) : fsUtil.removeConfined(filePath)
+    );
   });
 }

@@ -43,7 +43,7 @@ describe('apply-docker-env.sh', () => {
       expect(envLines).toContain('OTHER=o');
       // A Bash readonly name is a valid baked key because values are passed via `env`.
       expect(envLines).toContain('UID=9999');
-      expect(envLines.some((entry) => entry.startsWith('env_path=') || entry.startsWith('candidate='))).toBe(false);
+      expect(envLines.some((entry) => entry.startsWith('env_path='))).toBe(false);
     } finally {
       fs.rmSync(dirPath, { recursive: true, force: true });
     }

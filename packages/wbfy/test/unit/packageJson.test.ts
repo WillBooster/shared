@@ -23,29 +23,6 @@ const genI18nTsDepending = {
   genI18nTs: true,
 };
 
-test('replaces default gen-i18n-ts postinstall with managed wb gen-code scripts', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        'gen-i18n-ts': 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP',
-        postinstall: 'yarn run gen-i18n-ts > /dev/null',
-      },
-      dependencies: {
-        'gen-i18n-ts': '4.0.6',
-      },
-    },
-    { depending: genI18nTsDepending, isRoot: true },
-    { createI18nDir: true }
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    cleanup: 'bun wb lint --fix --format',
-    'gen-code': 'bun wb gen-code',
-    postinstall: 'wb gen-code',
-  });
-  expect(packageJson.scripts?.['gen-i18n-ts']).toBeUndefined();
-});
-
 test('does not restore missing default gen-i18n-ts script with managed wb gen-code postinstall', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
@@ -84,27 +61,6 @@ test('keeps custom gen-i18n-ts scripts while adding wb gen-code', async () => {
     'gen-code': 'bun wb gen-code',
     'gen-i18n-ts': 'gen-i18n-ts -i locales -o src/i18n.ts -d en-US',
   });
-});
-
-// Unparseable legacy shapes (redirections, empty segments) whose every command `wb gen-code` already runs.
-test.each([
-  ['redirections around gen-i18n-ts', 'yarn run gen-i18n-ts > /dev/null'],
-  ['empty command segments around gen-i18n-ts', ' && yarn gen-i18n-ts && bun   run   gen-i18n-ts>/dev/null && '],
-])('replaces %s with managed wb gen-code postinstall', async (_description, postinstall) => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        postinstall,
-      },
-      dependencies: {
-        'gen-i18n-ts': '4.0.6',
-      },
-    },
-    { depending: genI18nTsDepending },
-    { createI18nDir: true }
-  );
-
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
 // The same shapes but mixing in the project's OWN command. The parser cannot preserve it across the unsupported
@@ -265,59 +221,6 @@ test('normalizes managed scripts of a Cloudflare project to wb gen-code', async 
   });
 });
 
-// The shapes the repositories actually carried before `wb gen-code` learned to run `wrangler types`. Only the
-// invocations equivalent to the bare one go: `--env-file` names a file fnox repositories no longer have, and it
-// does not change what is generated. Flags that DO change the output are covered by the next test.
-test.each([
-  ['a generator appended to gen-code', { 'gen-code': 'wb gen-code && wrangler types' }],
-  ['a bare generator in postinstall', { postinstall: 'wrangler types' }],
-  ['an env-file generator', { postinstall: 'wrangler types --env-file custom.env' }],
-  ['a bunx generator', { postinstall: 'wb gen-code && bunx wrangler types' }],
-  ['a gen-types script', { 'gen-types': 'wrangler types' }],
-  [
-    'a gen-types wrapper',
-    { 'gen-types': 'wrangler types --env-file .env', postinstall: 'bun run gen-types && wb gen-code' },
-  ],
-])('drops %s from the managed scripts', async (_description, scripts) => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    {
-      depending: genI18nTsDepending,
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    },
-    { createI18nDir: true }
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    'gen-code': 'bun wb gen-code',
-    postinstall: 'wb gen-code',
-  });
-  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
-});
-
-// `wb gen-code` is the sole supported worker-types generator, so output-changing project invocations are replaced
-// instead of leaving the generated file tracked or producing a repository-specific shape.
-test('normalizes a package carrying output-changing worker-types flags', async () => {
-  const scripts = { 'gen-types': 'wrangler types --strict-vars=false' };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    {
-      depending: genI18nTsDepending,
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    },
-    { createI18nDir: true }
-  );
-
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
-  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
-});
-
 test.each([
   ['a referenced alias', { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' }],
   ['an npm run-script alias reference', { 'gen-types': 'wrangler types', build: 'npm run-script gen-types' }],
@@ -429,18 +332,6 @@ test('does not treat an unrelated Wrangler command argument as the types subcomm
   expect(packageJson.scripts).toMatchObject({ deploy: 'wrangler deploy types', postinstall: 'wb gen-code' });
 });
 
-test('normalizes an npm run-script reference from postinstall', async () => {
-  const scripts = { 'gen-types': 'wrangler types', postinstall: 'npm run-script gen-types' };
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
-  );
-
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
-  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
-});
-
 test.each([
   ['a quoted fake heredoc marker', 'echo "a << b"\necho done'],
   ['an arithmetic shift', 'echo $((1 << 2))'],
@@ -456,27 +347,26 @@ test.each([
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
 });
 
-test('recognizes wrangler in optionalDependencies as a direct dependency', async () => {
-  const scripts = { postinstall: 'wrangler types --strict-vars=false' };
-  const wranglerPackageJson = { optionalDependencies: { wrangler: '4.69.0' }, scripts };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    {
-      isCloudflare: true,
-      doesContainWranglerConfig: true,
-      packageJson: wranglerPackageJson,
-    }
-  );
-
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
-});
-
 test('rejects worker type generation without a direct wrangler dependency', async () => {
   const scripts = { postinstall: 'wrangler types --strict-vars=false' };
   const packageJson = await generatePackageJsonFrom(
     { scripts },
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: { scripts } }
   );
+
+  expect(packageJson.scripts).toEqual(scripts);
+});
+
+test.each([
+  'npm run gen-code',
+  'pnpm gen-code',
+  'yarn run gen-code',
+  'npm wb gen-code',
+  'npx wb gen-code',
+  'yarn wb gen-code',
+])('rejects unsupported postinstall alias %s instead of duplicating generation', async (postinstall) => {
+  const scripts = { 'gen-code': 'bun wb gen-code', postinstall };
+  const packageJson = await generatePackageJsonFrom({ scripts }, { packageJson: { scripts } });
 
   expect(packageJson.scripts).toEqual(scripts);
 });
@@ -536,35 +426,6 @@ test('keeps a wb gen-code postinstall for an unmanaged worker package', async ()
   );
 
   expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
-});
-
-// A hand-written gen-code script wbfy would not generate itself still has to lose what `wb gen-code` subsumes,
-// or the redundant invocation survives every future run.
-test('strips a subsumed wrangler types from a gen-code script wbfy does not generate', async () => {
-  const wranglerPackageJson = {
-    devDependencies: { wrangler: '4.69.0' },
-    scripts: { 'gen-code': 'wb gen-code && bunx wrangler types' },
-  };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
-  );
-
-  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code');
-});
-
-// Its custom steps must keep running, and keep their position relative to the generation.
-test('keeps custom steps when stripping an unmanaged gen-code script', async () => {
-  const wranglerPackageJson = {
-    devDependencies: { wrangler: '4.69.0' },
-    scripts: { 'gen-code': 'wb gen-code && bunx wrangler types && bun run build-assets' },
-  };
-  const packageJson = await generatePackageJsonFrom(
-    { ...wranglerPackageJson },
-    { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
-  );
-
-  expect(packageJson.scripts?.['gen-code']).toBe('bun wb gen-code && bun run build-assets');
 });
 
 // Silently dropping a project's own install step (e.g. applying patches) would break its install.
@@ -687,12 +548,12 @@ test('preserves custom wrapper bodies of managed db scripts that contain a wb db
   expect(packageJson.scripts).toMatchObject(wrapperScripts);
 });
 
-test('replaces plain generated db script bodies (with or without runner prefixes)', async () => {
+test('replaces generated db script bodies using supported Bun runner prefixes', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       scripts: {
-        'db-create-migration': 'yarn wb prisma migrate-dev',
-        'db-migrate': 'bun wb prisma migrate',
+        'db-create-migration': 'bun --bun wb prisma migrate-dev',
+        'db-migrate': 'bun --bun wb prisma migrate --check-idempotency',
         'db-view': 'wb prisma studio',
       },
     },
@@ -1066,35 +927,16 @@ test('strips `bun --bun` only from command-position invocations of Node-based to
   });
 });
 
-// `wb gen-code` supplies its own `--env-file` stub from the committed fnox.toml, so an env-file-only invocation
-// is equivalent to the managed generation even when the named file exists on this machine. Classifying it by
-// local file existence would flip the worker-types management decision between dev machines (where `wb deploy`
-// creates `.env.cloudflare`) and clean checkouts — the tracked/untracked oscillation this predicate must avoid.
-test('normalizes an env-file wrangler types script even when the named file exists locally', async () => {
-  const wranglerPackageJson = { devDependencies: { wrangler: '4.107.0' } };
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        'gen-types': 'wrangler types --env-file .env.cloudflare',
-      },
-      ...wranglerPackageJson,
-    },
-    // No packageJson override: config.packageJson stays the on-disk package.json, including its legacy script.
-    { isCloudflare: true, doesContainWranglerConfig: true },
-    { files: { 'wrangler.jsonc': '{}', '.env.cloudflare': 'CLOUDFLARE_API_TOKEN=dummy\n' } }
-  );
-
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
-  expect(packageJson.scripts?.['gen-types']).toBeUndefined();
-});
-
 test('generates test/ci script running wb test-on-ci at the root', async () => {
   const packageJson = await generatePackageJsonFrom({ scripts: {} }, { isRoot: true });
   expect(packageJson.scripts?.['test/ci']).toBe('bun wb test-on-ci');
 });
 
-test('replaces a legacy generated test/ci variant with the current one', async () => {
-  const packageJson = await generatePackageJsonFrom({ scripts: { 'test/ci': 'yarn wb test-on-ci' } }, { isRoot: true });
+test('replaces the previous Bun-generated test/ci variant with the current one', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { 'test/ci': 'bun --bun wb test-on-ci' } },
+    { isRoot: true }
+  );
   expect(packageJson.scripts?.['test/ci']).toBe('bun wb test-on-ci');
 });
 
@@ -1184,7 +1026,7 @@ test('keeps a command chained onto the generated test script with a newline', as
 });
 
 test('replaces a plain generated test script body', async () => {
-  const packageJson = await generatePackageJsonFrom({ scripts: { test: 'yarn wb test' } }, jsRootConfig);
+  const packageJson = await generatePackageJsonFrom({ scripts: { test: 'bun --bun wb test' } }, jsRootConfig);
   expect(packageJson.scripts?.test).toBe('bun wb test');
 });
 
