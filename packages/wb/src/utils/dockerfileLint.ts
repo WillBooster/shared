@@ -56,10 +56,11 @@ export function lintDockerfile(dockerfileText: string, options: { railwayConfigu
 /** Yields `[INSTRUCTION, arguments]` pairs with comments stripped and continuations collapsed. */
 function parseLogicalInstructions(dockerfileText: string): [string, string][] {
   const logicalLines = dockerfileText
+    .replaceAll('\r\n', '\n')
     .split('\n')
     .filter((line) => !/^\s*#/.test(line))
     .join('\n')
-    .replaceAll(/\\\r?\n/g, ' ')
+    .replaceAll('\\\n', ' ')
     .split('\n');
   const instructions: [string, string][] = [];
   for (let index = 0; index < logicalLines.length; index++) {
@@ -67,15 +68,27 @@ function parseLogicalInstructions(dockerfileText: string): [string, string][] {
     const match = /^\s*([A-Za-z]+)\s+(.*)$/.exec(line);
     if (!match?.[1] || !match[2]) continue;
     // Dockerfile instructions are case-insensitive.
+    const instruction = match[1].toUpperCase();
     const args = match[2].trim();
-    instructions.push([match[1].toUpperCase(), args]);
-    // Docker treats lines through each heredoc delimiter as part of this instruction, so the
-    // body (e.g. a shell command like `env FNOX_AGE_KEY=... fnox export`) must not be parsed
-    // as further instructions.
-    for (const heredocMatch of args.matchAll(/<<-?["']?([A-Za-z_][A-Za-z0-9_]*)["']?/g)) {
-      while (index + 1 < logicalLines.length && logicalLines[++index]?.trim() !== heredocMatch[1]) {
-        // Skip the heredoc body.
+    instructions.push([instruction, args]);
+    // Docker treats lines through each heredoc delimiter as part of the instruction, so the body
+    // (e.g. a shell command like `env FNOX_AGE_KEY=... fnox export`) must not be parsed as
+    // further instructions. Heredocs exist only on RUN/COPY/ADD, the `(?:^|\s)` anchor keeps a
+    // `<<` inside a shell word (e.g. `sed 's/<<TOKEN>>/x/'`) from being read as one, and `<<`
+    // requires the exact delimiter line while `<<-` also strips leading tabs.
+    if (instruction !== 'RUN' && instruction !== 'COPY' && instruction !== 'ADD') continue;
+    for (const heredocMatch of args.matchAll(/(?:^|\s)<<(-?)["']?([A-Za-z_][A-Za-z0-9_]*)["']?/g)) {
+      const stripTabs = heredocMatch[1] === '-';
+      const delimiter = heredocMatch[2] ?? '';
+      let endIndex = index + 1;
+      while (endIndex < logicalLines.length) {
+        const bodyLine = logicalLines[endIndex] ?? '';
+        if ((stripTabs ? bodyLine.replace(/^\t+/, '') : bodyLine) === delimiter) break;
+        endIndex++;
       }
+      // An unterminated candidate is not a heredoc (Docker rejects a real unterminated one), so
+      // it must not swallow the rest of the file.
+      if (endIndex < logicalLines.length) index = endIndex;
     }
   }
   return instructions;

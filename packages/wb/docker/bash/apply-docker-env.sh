@@ -20,14 +20,14 @@ fi
 
 # Inherited environment variables that share this script's internal names (they are all valid
 # baked keys too) would be clobbered by the parsing below, so their original values are queued
-# as leading `env` assignments — placed after the baked ones, they always win. `$(printenv ...)`
-# strips trailing newlines, which `wb gen-docker-env` values cannot contain anyway.
-if printenv env_path > /dev/null; then set -- "env_path=$(printenv env_path)" "$@"; fi
-if printenv candidate > /dev/null; then set -- "candidate=$(printenv candidate)" "$@"; fi
-if printenv line > /dev/null; then set -- "line=$(printenv line)" "$@"; fi
-if printenv key > /dev/null; then set -- "key=$(printenv key)" "$@"; fi
-if printenv value > /dev/null; then set -- "value=$(printenv value)" "$@"; fi
-if printenv assignments > /dev/null; then set -- "assignments=$(printenv assignments)" "$@"; fi
+# as leading `env` assignments — placed after the baked ones, they always win. Direct
+# parameter expansion (not command substitution) preserves trailing newlines in the values.
+if printenv env_path > /dev/null; then set -- "env_path=${env_path:-}" "$@"; fi
+if printenv candidate > /dev/null; then set -- "candidate=${candidate:-}" "$@"; fi
+if printenv line > /dev/null; then set -- "line=${line:-}" "$@"; fi
+if printenv key > /dev/null; then set -- "key=${key:-}" "$@"; fi
+if printenv value > /dev/null; then set -- "value=${value:-}" "$@"; fi
+if printenv assignments > /dev/null; then set -- "assignments=${assignments:-}" "$@"; fi
 
 env_path="${DOCKER_ENV_PATH:-}"
 if [[ -z "$env_path" ]]; then

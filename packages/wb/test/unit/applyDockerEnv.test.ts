@@ -65,6 +65,22 @@ describe('apply-docker-env.sh', () => {
     }
   });
 
+  it('preserves trailing newlines in inherited values sharing internal names', () => {
+    const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
+    try {
+      fs.writeFileSync(path.join(dirPath, '.docker.env'), "OTHER='o'\n");
+      const result = child_process.spawnSync('bash', [scriptPath, 'bash', '-c', 'printf %s "$value" | wc -c'], {
+        cwd: dirPath,
+        encoding: 'utf8',
+        env: { ...process.env, value: 'x\n\n' },
+      });
+      expect(result.status).toBe(0);
+      expect(result.stdout.trim()).toBe('3');
+    } finally {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+    }
+  });
+
   it('execs the command unchanged when no env file exists', () => {
     const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-apply-env-'));
     try {

@@ -91,4 +91,21 @@ RUN --mount=target=/tmp/x true
     // The heredoc body is skipped, but the instruction after the delimiter is still linted.
     expect(lintDockerfile(dockerfileText, { railwayConfigured: true })).toHaveLength(1);
   });
+
+  it('does not treat << inside shell words or unterminated candidates as heredocs', () => {
+    // `<<TOKEN>>` inside a sed expression is not a heredoc and must not swallow later problems.
+    expect(
+      lintDockerfile("RUN sed -i 's/<<TOKEN>>/x/' f\nENV FNOX_AGE_KEY=abc\nCOPY .env ./\n", {
+        railwayConfigured: false,
+      })
+    ).toHaveLength(2);
+    // A regular `<<` delimiter must match the exact line: an indented occurrence inside a nested
+    // shell heredoc does not terminate it.
+    const nested = 'RUN <<OUTER\ncat <<INNER >/tmp/f\n OUTER\nENV FNOX_AGE_KEY=literal\nINNER\nOUTER\n';
+    expect(lintDockerfile(nested, { railwayConfigured: false })).toHaveLength(0);
+  });
+
+  it('lints CRLF Dockerfiles', () => {
+    expect(lintDockerfile('COPY .env ./\r\nENV FNOX_AGE_KEY=abc\r\n', { railwayConfigured: false })).toHaveLength(2);
+  });
 });
