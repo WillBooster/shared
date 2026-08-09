@@ -194,7 +194,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // Refused writes on core managed files would leave the repository partially updated, so skip
     // it BEFORE any mutation when one of them is a symlink or resolves outside the repository.
     const managedFilePaths = [
-      ...['bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
+      ...['.gitattributes', 'bunfig.toml', 'lefthook.yml', 'package.json', 'tsconfig.json'].map((name) =>
         path.resolve(rootDirPath, name)
       ),
       ...subDirPaths.flatMap((subDirPath) =>

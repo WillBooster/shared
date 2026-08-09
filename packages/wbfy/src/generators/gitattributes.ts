@@ -33,17 +33,16 @@ export async function generateGitattributes(config: PackageConfig): Promise<void
 }
 
 export function renormalizeTrackedTextFiles(dirPath: string): void {
+  const attributesFileStats = fs.lstatSync(path.resolve(dirPath, '.gitattributes'), { throwIfNoEntry: false });
+  if (!attributesFileStats?.isFile()) return;
+
   const output = spawnSyncAndReturnRawStdout('git', ['ls-files', '--eol', '-z'], dirPath);
   for (const record of output.split('\0')) {
     const separatorIndex = record.indexOf('\t');
     if (separatorIndex === -1) continue;
 
     const attributes = record.slice(0, separatorIndex);
-    if (
-      !/^i\/(?:crlf|mixed)\s/u.test(attributes) ||
-      /attr\/-text(?:\s|$)/u.test(attributes) ||
-      /attr\/.*\beol=crlf(?:\s|$)/u.test(attributes)
-    ) {
+    if (!/^i\/(?:crlf|mixed)\s/u.test(attributes) || !/attr\/.*\beol=(?:lf|crlf)(?:\s|$)/u.test(attributes)) {
       continue;
     }
 
