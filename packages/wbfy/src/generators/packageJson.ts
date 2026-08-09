@@ -1245,10 +1245,11 @@ function getLatestDependencyVersion(dependency: string): string {
 }
 
 function getDependencyVersionFromNpm(dependency: string): string {
-  // Only our own packages (bunMinimumReleaseAgeExcludes) are exempt from the gate; every
-  // third-party package, including the tooling wbfy pins, resolves to the newest release that
-  // already cleared it, because Bun rejects an exact pin younger than minimumReleaseAge.
-  if (!shouldApplyPackageAgeGate(dependency)) {
+  // The Bun policy exempts our own packages because we control their publication credentials, but
+  // wbfy applies managed-tool updates across many repositories at once. Give those releases the
+  // same soak window as third-party tools so a fresh CLI regression is caught before wbfy fans it
+  // out, while keeping the install-time security exemption for ordinary repository operations.
+  if (!shouldApplyManagedDependencyAgeGate(dependency)) {
     return getRawDependencyVersionFromNpm(dependency);
   }
 
@@ -1308,6 +1309,10 @@ function getNpmPackageTimes(dependency: string): Record<string, string> {
 
 function shouldApplyPackageAgeGate(dependency: string): boolean {
   return !bunMinimumReleaseAgeExcludes.some((pattern) => doesPackagePatternMatch(pattern, dependency));
+}
+
+function shouldApplyManagedDependencyAgeGate(dependency: string): boolean {
+  return managedDependencyNames.has(dependency) || shouldApplyPackageAgeGate(dependency);
 }
 
 function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
@@ -1414,7 +1419,7 @@ function shouldDowngradeAgeGatedManagedDependency(
   const validCurrentVersion = semver.valid(currentVersion);
   const validManagedVersion = semver.valid(managedVersion);
   return (
-    shouldApplyPackageAgeGate(dependency) &&
+    shouldApplyManagedDependencyAgeGate(dependency) &&
     validCurrentVersion !== null &&
     validManagedVersion !== null &&
     semver.gt(validCurrentVersion, validManagedVersion)

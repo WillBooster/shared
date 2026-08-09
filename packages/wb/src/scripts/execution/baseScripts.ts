@@ -179,7 +179,7 @@ export abstract class BaseScripts {
     return this.testE2EProtected(project, argv, this.startProductionProtected(project, argv), options);
   }
   testE2EDocker(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
-    return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project), options);
+    return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project), options, true);
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     project.env.PORT ||= '3000';
@@ -207,7 +207,8 @@ export abstract class BaseScripts {
     project: Project,
     argv: TestArgv,
     startCommand: string,
-    options: TestE2EOptions
+    options: TestE2EOptions,
+    isDocker = false
   ): Promise<string> {
     project.env.PORT ||= '3000';
     const port = await checkAndKillPortProcess(project.env.PORT, project);
@@ -225,9 +226,7 @@ export abstract class BaseScripts {
       '--success',
       'first',
       `${startCommand} && exit 1`,
-      `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')}
-        && ${buildHttpReadinessCommand(port)}
-        && ${playwrightCommand}`,
+      `${buildE2EReadinessCommand(port, isDocker)} && ${playwrightCommand}`,
     ]);
   }
 
@@ -308,6 +307,21 @@ export abstract class BaseScripts {
 export function buildWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
   if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
   return `wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
+}
+
+/** Polls the application over HTTP before non-Docker e2e tests start. */
+export function buildHttpWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
+  if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
+  return `NO_PROXY=localhost no_proxy=localhost wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}http-get://localhost:${port}`;
+}
+
+export function buildE2EReadinessCommand(port: string | number, isDocker: boolean): string {
+  // docker-proxy accepts TCP before the app is ready, so Docker needs the TCP+curl sequence.
+  // Direct servers retain wait-on's HTTP polling: starting a full browser burst immediately after
+  // wrangler's first response can race workerd startup and crash it with broken pipes.
+  return isDocker
+    ? `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')} && ${buildHttpReadinessCommand(port)}`
+    : buildHttpWaitOnLoopbackCommand(port, '-t 600000 -i 2000');
 }
 
 /**

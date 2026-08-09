@@ -75,7 +75,7 @@ describe('HttpServerScripts.testE2E', () => {
         '--success',
         'first',
         'echo "no build" && node dist/index.js && exit 1',
-        `wait-on -t 600000 -i 2000 tcp:localhost:3000 && curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:3000 && ${buildShellCommand(
+        `NO_PROXY=localhost no_proxy=localhost wait-on -t 600000 -i 2000 http-get://localhost:3000 && ${buildShellCommand(
           [
             'YARN',
             'vitest',

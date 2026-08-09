@@ -5,12 +5,7 @@ import { checkAndKillPortProcess } from '../../utils/port.js';
 import { buildShellCommand } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
-import {
-  BaseScripts,
-  buildHttpReadinessCommand,
-  buildWaitOnLoopbackCommand,
-  type TestE2EOptions,
-} from './baseScripts.js';
+import { BaseScripts, buildE2EReadinessCommand, type TestE2EOptions } from './baseScripts.js';
 
 /**
  * A collection of scripts for executing an app that utilizes an HTTP server like express.
@@ -29,10 +24,11 @@ export class HttpServerScripts extends BaseScripts {
     project: Project,
     argv: TestArgv,
     startCommand: string,
-    options: TestE2EOptions = {}
+    options: TestE2EOptions = {},
+    isDocker = false
   ): Promise<string> {
     if (project.hasPlaywrightConfig) {
-      return super.testE2EProtected(project, argv, startCommand, options);
+      return super.testE2EProtected(project, argv, startCommand, options, isDocker);
     }
 
     project.env.PORT ||= '3000';
@@ -50,7 +46,7 @@ export class HttpServerScripts extends BaseScripts {
       '--success',
       'first',
       `${startCommand} && exit 1`,
-      `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')} && ${buildHttpReadinessCommand(port)} && ${testCommand}${suffix}`,
+      `${buildE2EReadinessCommand(port, isDocker)} && ${testCommand}${suffix}`,
     ]);
   }
 }
