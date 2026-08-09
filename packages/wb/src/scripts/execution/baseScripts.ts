@@ -21,6 +21,8 @@ export interface TestE2EOptions {
   forwardedPlaywrightArgs?: string[];
 }
 
+const directServerStabilizationSeconds = 2;
+
 /**
  * A collection of scripts for executing an app.
  * Note that YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
@@ -179,7 +181,7 @@ export abstract class BaseScripts {
     return this.testE2EProtected(project, argv, this.startProductionProtected(project, argv), options);
   }
   testE2EDocker(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
-    return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project), options);
+    return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project), options, true);
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
     project.env.PORT ||= '3000';
@@ -207,7 +209,8 @@ export abstract class BaseScripts {
     project: Project,
     argv: TestArgv,
     startCommand: string,
-    options: TestE2EOptions
+    options: TestE2EOptions,
+    isDocker = false
   ): Promise<string> {
     project.env.PORT ||= '3000';
     const port = await checkAndKillPortProcess(project.env.PORT, project);
@@ -225,9 +228,7 @@ export abstract class BaseScripts {
       '--success',
       'first',
       `${startCommand} && exit 1`,
-      `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')}
-        && ${buildHttpReadinessCommand(port)}
-        && ${playwrightCommand}`,
+      `${buildE2EReadinessCommand(port, isDocker)} && ${playwrightCommand}`,
     ]);
   }
 
@@ -299,6 +300,19 @@ export abstract class BaseScripts {
   }
 }
 
+export function buildE2EReadinessCommand(port: string | number, isDocker: boolean): string {
+  const listeningCommand = buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000');
+  const respondingCommand = buildHttpReadinessCommand(port);
+  // docker-proxy accepts TCP before the app is ready, so every path requires an HTTP response.
+  // Direct servers then require another response after the normal two-second polling interval.
+  // Wrangler exposes no stronger readiness signal than a completed response, and starting a full
+  // client burst immediately after its first response can race workerd startup and crash it with
+  // broken pipes. curl intentionally accepts redirects and authentication errors.
+  return isDocker
+    ? `${listeningCommand} && ${respondingCommand}`
+    : `${listeningCommand} && ${respondingCommand} && sleep ${directServerStabilizationSeconds} && ${respondingCommand}`;
+}
+
 /**
  * Builds a wait-on boot check for a listening loopback port. A TCP check treats redirects and
  * authentication responses as a successfully started server; an HTTP status check would keep
@@ -318,7 +332,7 @@ export function buildWaitOnLoopbackCommand(port: string | number | undefined, wa
  * -f), so redirecting or auth-guarded servers still pass — the reason the boot check moved from
  * http-get to tcp in the first place.
  */
-export function buildHttpReadinessCommand(port: string | number): string {
+function buildHttpReadinessCommand(port: string | number): string {
   return `curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:${port}`;
 }
 

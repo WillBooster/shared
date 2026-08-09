@@ -9,8 +9,13 @@ import type { TestArgv } from '../../../../src/commands/test.js';
 import type { Project } from '../../../../src/project.js';
 import type { ScriptArgv } from '../../../../src/scripts/builder.js';
 import { normalizeArgs } from '../../../../src/scripts/builder.js';
-import { BaseScripts, buildWaitOnLoopbackCommand } from '../../../../src/scripts/execution/baseScripts.js';
+import {
+  BaseScripts,
+  buildE2EReadinessCommand,
+  buildWaitOnLoopbackCommand,
+} from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
+import type * as processUtils from '../../../../src/utils/process.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
 import { buildD1MigrationsApplyCommands } from '../../../../src/utils/wrangler.js';
 
@@ -18,10 +23,31 @@ vi.mock('../../../../src/utils/port.js', () => ({
   checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
 }));
 
+vi.mock('../../../../src/utils/process.js', async (importOriginal: () => Promise<typeof processUtils>) => ({
+  ...(await importOriginal()),
+  spawnSyncOnExit: vi.fn(),
+}));
+
 describe('buildWaitOnLoopbackCommand', () => {
   it('fails before generating an invalid command when the port is missing', () => {
     expect(() => buildWaitOnLoopbackCommand(undefined)).toThrow('Port is required');
     expect(() => buildWaitOnLoopbackCommand('')).toThrow('Port is required');
+  });
+});
+
+describe('buildE2EReadinessCommand', () => {
+  const listeningCommand = 'wait-on -t 600000 -i 2000 tcp:localhost:3000';
+  const respondingCommand =
+    'curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:3000';
+
+  it('waits for a second HTTP response before direct-server tests start', () => {
+    expect(buildE2EReadinessCommand(3000, false)).toBe(
+      `${listeningCommand} && ${respondingCommand} && sleep 2 && ${respondingCommand}`
+    );
+  });
+
+  it('waits for the container application after docker-proxy starts listening', () => {
+    expect(buildE2EReadinessCommand(3000, true)).toBe(`${listeningCommand} && ${respondingCommand}`);
   });
 });
 
@@ -87,6 +113,41 @@ describe('BaseScripts.testE2E', () => {
   } as unknown as Project;
 
   const scripts = new TestScripts();
+
+  it('stabilizes a direct server before launching Playwright', async () => {
+    const command = await scripts.testE2EProduction(
+      {
+        env: { WB_ENV: 'test', PORT: '3000' },
+        packageJson: { scripts: {} },
+        skipLaunchingServerForPlaywright: false,
+      } as unknown as Project,
+      {} as TestArgv,
+      {}
+    );
+
+    expect(command).toContain(
+      'tcp:localhost:3000 && curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:3000 && sleep 2 && curl'
+    );
+  });
+
+  it('propagates Docker readiness without the direct-server stabilization delay', async () => {
+    const command = await scripts.testE2EDocker(
+      {
+        env: { WB_ENV: 'test', PORT: '3000' },
+        packageJson: { scripts: {} },
+        declaredEnvKeys: new Set(),
+        dockerImageName: 'test-image',
+        skipLaunchingServerForPlaywright: false,
+      } as unknown as Project,
+      {} as TestArgv,
+      {}
+    );
+
+    expect(command).toContain(
+      'tcp:localhost:3000 && curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:3000 && BUN playwright test'
+    );
+    expect(command).not.toContain('sleep 2');
+  });
 
   it('uses default target when none specified', async () => {
     const command = await scripts.testE2EProduction(project, {} as TestArgv, {});
