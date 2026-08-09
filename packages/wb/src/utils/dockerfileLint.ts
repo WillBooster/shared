@@ -10,7 +10,7 @@
 // - An `ENV`/`ARG` age identity persists in image layers, and a registry reader can decrypt every
 //   profile of the committed fnox.toml with it.
 // - `COPY` of the root `.env` (or `.env.<mode>` / `.env*` globs) bakes decrypted secrets; only
-//   the generated non-secret `.docker.env` (or the legacy `dist/.env`) may be baked.
+//   the generated non-secret `.docker.env` may be baked.
 export function lintDockerfile(dockerfileText: string, options: { railwayConfigured: boolean }): string[] {
   const problems: string[] = [];
   for (const [instruction, args] of parseLogicalInstructions(dockerfileText)) {
@@ -39,8 +39,8 @@ export function lintDockerfile(dockerfileText: string, options: { railwayConfigu
     } else if (instruction === 'COPY' || instruction === 'ADD') {
       // ADD copies build-context files into a layer exactly like COPY, so it gets the same check.
       for (const source of parseCopySources(args)) {
-        // A leading `./` is the same context-root path; deeper paths such as the legacy
-        // `dist/.env` and the non-secret `.docker.env` stay allowed.
+        // A leading `./` is the same context-root path; deeper paths and the non-secret
+        // `.docker.env` stay allowed.
         const normalized = source.replace(/^\.\//, '');
         if (/^\.env(\..+|\*.*)?$/.test(normalized)) {
           problems.push(

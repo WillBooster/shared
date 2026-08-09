@@ -11,38 +11,23 @@ fi
 # command, passing only keys absent from the inherited environment, so build args and
 # platform-injected runtime values — including deliberately empty ones — always win over the
 # baked defaults (colon-less `${KEY=...}` semantics).
-# An explicitly configured path must exist: silently starting without the baked configuration
-# would be the very silent-degradation mode this helper exists to prevent.
-if [[ -n "${DOCKER_ENV_PATH:-}" && ! -f "$DOCKER_ENV_PATH" ]]; then
-  echo "apply-docker-env.sh: DOCKER_ENV_PATH=$DOCKER_ENV_PATH does not exist." >&2
-  exit 1
-fi
 
 # Inherited environment variables that share this script's internal names (they are all valid
 # baked keys too) would be clobbered by the parsing below, so their original values are queued
 # as leading `env` assignments — placed after the baked ones, they always win. Direct
 # parameter expansion (not command substitution) preserves trailing newlines in the values.
 if printenv env_path > /dev/null; then set -- "env_path=${env_path:-}" "$@"; fi
-if printenv candidate > /dev/null; then set -- "candidate=${candidate:-}" "$@"; fi
 if printenv line > /dev/null; then set -- "line=${line:-}" "$@"; fi
 if printenv key > /dev/null; then set -- "key=${key:-}" "$@"; fi
 if printenv value > /dev/null; then set -- "value=${value:-}" "$@"; fi
 if printenv assignments > /dev/null; then set -- "assignments=${assignments:-}" "$@"; fi
 
-env_path="${DOCKER_ENV_PATH:-}"
-if [[ -z "$env_path" ]]; then
-  for candidate in ./.docker.env ./.env; do
-    if [[ -f "$candidate" ]]; then
-      env_path="$candidate"
-      break
-    fi
-  done
-fi
+env_path=./.docker.env
 
 # The applied values are handed to the child via `env` instead of shell assignments, so Bash
 # readonly names (UID, EUID, ...) are valid baked keys.
 assignments=()
-if [[ -n "$env_path" ]]; then
+if [[ -f "$env_path" ]]; then
   # `|| [[ -n "$line" ]]` keeps a final line that lacks a trailing newline.
   while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"

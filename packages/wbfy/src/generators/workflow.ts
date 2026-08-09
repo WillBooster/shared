@@ -85,8 +85,7 @@ const workflows = {
       push: {
         branches: ['main'],
       },
-      // Nothing dispatches this caller any more (the workflows that pushed back and re-triggered
-      // it are retired); the trigger stays only so a maintainer can re-run the tests by hand.
+      // Let maintainers re-run the tests by hand.
       workflow_dispatch: null,
     },
     // cf. https://docs.github.com/en/actions/using-jobs/using-concurrency#example-only-cancel-in-progress-jobs-or-runs-for-the-current-workflow
@@ -238,27 +237,11 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
     }
     await fs.promises.mkdir(workflowsPath, { recursive: true });
 
-    // Remove config of semantic pull request
-    const semanticYmlPath = path.resolve(rootConfig.dirPath, '.github', 'semantic.yml');
-    await promisePool.run(() => fsUtil.removeConfined(semanticYmlPath, { recursive: true }));
-
     const entries = await fs.promises.readdir(workflowsPath, { withFileTypes: true });
-    // Decide obsolescence once (the content check reads each file) and AWAIT the deletions:
-    // promisePool.run resolves when a task enters the pool, not when it completes, so a pooled
-    // deletion could race the regeneration below on the same path (e.g. a `test.yml` whose only
-    // job called the retired gen-pr workflow would be merged with its stale on-disk content).
-    const obsoleteGenPrFileNames = new Set(
-      entries
-        .filter((entry) => entry.isFile() && isObsoleteGenPrWorkflow(workflowsPath, entry.name))
-        .map((entry) => entry.name)
-    );
-    for (const fileName of obsoleteGenPrFileNames) {
-      await fsUtil.removeConfined(path.join(workflowsPath, fileName));
-    }
     // wbfy writes .yml workflows, so each kind maps to its .yml file.
     const fileNamesByKind = new Map<string, string>();
     for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith('.yml') || obsoleteGenPrFileNames.has(entry.name)) continue;
+      if (!entry.isFile() || !entry.name.endsWith('.yml')) continue;
       fileNamesByKind.set(entry.name.slice(0, -'.yml'.length), entry.name);
     }
     const mandatoryKinds = ['test', 'semantic-pr', 'close-comment'];
@@ -277,17 +260,7 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
         await fsUtil.removeConfined(path.join(workflowsPath, testRustFileName));
       }
     }
-    // The self-applying nightly wbfy caller is retired: automated fleet maintenance is driven by
-    // developers and agents running wbfy directly instead. An existing generated caller is
-    // removed (only when the file solely calls the reusable wbfy workflow — a same-named custom
-    // workflow is left alone).
-    {
-      const wbfyFileName = fileNamesByKind.get('wbfy');
-      fileNamesByKind.delete('wbfy');
-      if (wbfyFileName && jobsAllCallReusableWorkflow(workflowsPath, wbfyFileName, 'wbfy')) {
-        await fsUtil.removeConfined(path.join(workflowsPath, wbfyFileName));
-      }
-    }
+    fileNamesByKind.delete('wbfy');
     for (const kind of mandatoryKinds) {
       if (!fileNamesByKind.has(kind)) {
         fileNamesByKind.set(kind, `${kind}.yml`);
@@ -306,19 +279,9 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       fileNamesByKind.set('deploy', 'deploy.yml');
     }
     if (fileNamesByKind.has('sync')) {
-      // The sync workflow's generation owns these files (it rewrites the force-sync workflow and
-      // deletes the obsolete sync-init one), so processing them as independent kinds would race
-      // concurrent writes on the same paths.
+      // The sync workflow's generation owns the force-sync workflow, so processing it as an
+      // independent kind would race concurrent writes on the same path.
       fileNamesByKind.delete('sync-force');
-      fileNamesByKind.delete('sync-init');
-    }
-    // Every automated fix-application path is retired: the App-based autofix-apply flow and
-    // autofix.ci both committed CI-generated changes with a bot credential, a standing risk with
-    // little benefit now that agents fix and verify before pushing. The failing test run still
-    // reports the diff, which developers and agents apply themselves.
-    for (const retiredKind of ['autofix', 'autofix-apply']) {
-      fileNamesByKind.delete(retiredKind);
-      await promisePool.run(() => fsUtil.removeConfined(path.join(workflowsPath, `${retiredKind}.yml`)));
     }
 
     for (const [kind, fileName] of fileNamesByKind) {
@@ -332,19 +295,6 @@ export function isReusableWorkflowsRepo(repository?: string): boolean {
   // Case-insensitive: GitHub repository names are, and a remote may spell this one any way. Getting it wrong
   // lets wbfy rewrite the repository that hosts the upstream workflow definitions.
   return repository?.toLowerCase().endsWith('/reusable-workflows') ?? false;
-}
-
-/**
- * The gen-pr workflow family is retired (the reusable gen-pr.yml no longer exists), so wbfy
- * removes its callers: any `gen-pr*.yml` file, plus a file under another name whose jobs ALL call
- * the reusable gen-pr workflow. Mixed files keep their other jobs, and unparsable files are only
- * matched by filename — deleting a whole workflow on a text match would be too aggressive.
- */
-export function isObsoleteGenPrWorkflow(workflowsPath: string, fileName: string): boolean {
-  if (/^gen-pr(?:-.+)?\.yml$/u.test(fileName)) return true;
-  // Owner-restricted: only WillBooster's own reusable gen-pr workflow was retired, so a caller of
-  // some other organization's same-named workflow must not be deleted.
-  return jobsAllCallReusableWorkflow(workflowsPath, fileName, 'gen-pr');
 }
 
 /**
@@ -509,29 +459,12 @@ async function writeWorkflowYaml(
     case 'test':
     case 'test-rust': {
       // Don't use `paths-ignore` for test because GitHub's Branch Protection and Rulesets require job running.
-      // The test-rust template declares no permissions at all, so this delete only strips an
-      // `actions` grant merged in from an existing test-rust.yml an older wbfy generated — it is a
-      // no-op for a fresh one. test keeps its grant for the reason stated on the test template's
-      // permissions above (skip-duplicate-actions with cancel_others: true), NOT for the retired
-      // push-back dispatch, which the reusable test workflow no longer performs.
-      if (kind === 'test-rust') {
-        delete newSettings.permissions?.actions;
-      }
-      // `statuses: write` served the aggregate commit status the reusable test workflow posted
-      // for its retired push-back dispatch runs; older wbfy-generated callers still carry it, and
-      // the array-combining merge would keep it forever without this delete.
-      delete newSettings.permissions?.statuses;
       if (newSettings.on?.pull_request) {
         delete newSettings.on.pull_request['paths-ignore'];
       }
       if (newSettings.on?.push) {
         delete newSettings.on.push['paths-ignore'];
-        // The `wbfy` push branch existed for the retired nightly self-applying wbfy caller, which
-        // pushed that branch directly; wbfy runs now arrive as pull requests covered by the
-        // pull_request trigger, so the branch entry merged in from older callers is stripped.
-        newSettings.on.push.branches = newSettings.on.push.branches.filter(
-          (branch) => branch !== 'renovate/**' && branch !== 'wbfy'
-        );
+        newSettings.on.push.branches = newSettings.on.push.branches.filter((branch) => branch !== 'renovate/**');
       }
       break;
     }
@@ -540,7 +473,6 @@ async function writeWorkflowYaml(
   await writeYaml(newSettings, filePath);
 
   if (kind === 'sync') {
-    await fsUtil.removeConfined(path.join(workflowsPath, 'sync-init.yml'));
     if (!newSettings.jobs.sync?.with) return;
 
     // Generate the force-sync workflow based on the sync workflow if it exists.
@@ -1072,9 +1004,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
-    delete secrets.DOT_ENV;
-    delete secrets.DOT_ENV_PRODUCTION;
-    delete job.with.dot_env_path;
     // The callee routes public (default-registry) installs through the Takumi Guard
     // malicious-package-blocking proxy when this token resolves; an unset organization secret
     // expands to '' and the callee treats that as "feature off", so passing it is always safe.
@@ -1101,22 +1030,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       if (mapping) {
         secrets.FNOX_AGE_KEY = mapping;
       }
-    }
-  }
-  // Callers pinned to a tag/SHA keep their secret SET untouched (the pinned revision's
-  // declarations may differ), but the fnox recipient sync migrates the repository's ciphertexts
-  // by visibility regardless of the caller's ref, so an already-present FNOX_AGE_KEY mapping must
-  // still be remapped to the CI identity that can actually decrypt them; only the mapped-from
-  // secret changes, never the declared FNOX_AGE_KEY name the pinned revision expects.
-  if (
-    secrets?.FNOX_AGE_KEY &&
-    orgWorkflowCall &&
-    !calledReusableWorkflow &&
-    fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))
-  ) {
-    const mapping = fnoxAgeKeyMapping(config);
-    if (mapping) {
-      secrets.FNOX_AGE_KEY = mapping;
     }
   }
   // reusable-workflows replaced the NPM_TOKEN secret declaration with VERDACCIO_TOKEN; GitHub
@@ -1160,11 +1073,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     job.uses = `WillBooster/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
   } else if (orgWorkflowCall && config.repository?.startsWith('github:WillBoosterLab/')) {
     job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
-  }
-
-  // Remove redundant parameters
-  if (job.with.dot_env_path === '.env') {
-    delete job.with.dot_env_path;
   }
 
   // Don't use `fly deploy --json` since it causes an error

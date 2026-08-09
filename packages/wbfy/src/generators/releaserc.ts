@@ -117,10 +117,6 @@ export async function generateReleaserc(rootConfig: PackageConfig): Promise<void
           ),
         ];
       } else if (plugin === '@semantic-release/github') {
-        // successCommentCondition/failCommentCondition below supersede these deprecated options;
-        // keeping both makes semantic-release warn and the config ambiguous.
-        delete (oldConfig as Record<string, unknown>).successComment;
-        delete (oldConfig as Record<string, unknown>).failComment;
         plugins[i] = [
           '@semantic-release/github',
           merge.all(

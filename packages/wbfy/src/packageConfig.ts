@@ -13,12 +13,7 @@ import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { escapeRegExp } from './utils/stringUtil.js';
-import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
-import {
-  getDeclaredWorkspacePatterns,
-  getWorkspacePackageJsonPaths,
-  getWorkspaceSubDirPaths,
-} from './utils/workspaceUtil.js';
+import { getWorkspacePackageJsonPaths, getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
 export interface PackageConfig {
   dirPath: string;
@@ -286,21 +281,15 @@ export async function getPackageConfig(
     const doesContainTauriConfig = ['tauri.conf.json', 'tauri.conf.json5', 'Tauri.toml'].some((fileName) =>
       fs.existsSync(path.resolve(dirPath, 'src-tauri', fileName))
     );
-    // Root-level "InPackages" signals must see every DECLARED workspace layout (e.g. apps/*), not
+    // Root-level "InPackages" signals must see every declared workspace layout (e.g. apps/*), not
     // just the conventional packages/* directory, so scan each discovered workspace directory.
-    // The packages/* fallback is routed through discovery's combined glob so declared negations
-    // (e.g. `!packages/excluded`) exclude a package from the signals too; the broad packages/**
-    // scan remains only for legacy repos with no `workspaces` declaration at all (wbfy adds the
-    // declaration only on a later generator pass), where discovery has nothing to honor.
-    const declaredWorkspacePatterns = getDeclaredWorkspacePatterns(packageJson.workspaces);
     const workspaceSubDirPaths = getWorkspaceSubDirPaths({
       dirPath,
       packageJson,
       doesContainSubPackageJsons: containsAny('packages/*/package.json', dirPath),
     });
     const containsAnyInWorkspaces = (pattern: string): boolean =>
-      workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath)) ||
-      (declaredWorkspacePatterns.length === 0 && containsAny(`packages/**/${pattern}`, dirPath));
+      workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath));
     const doesContainWranglerConfig = detectWranglerConfig(dirPath);
     const workflowContents = readWorkflowFileContents(dirPath);
     const runtimeImports = detectRuntimeImports(dirPath);
@@ -437,56 +426,9 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
 
 export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
   const scripts = config.packageJson?.scripts ?? {};
-  let hasInvocation = false;
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
-    const segments = splitScriptSegments(script);
-    if (!wranglerTypesTextPattern.test(script)) continue;
-    hasInvocation = true;
-    if (!segments) return `${name} contains unsupported shell syntax around wrangler types`;
-    let hasValidatedInvocation = false;
-    for (const segment of segments) {
-      const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
-      if (!wranglerTypesTextPattern.test(normalized)) continue;
-      hasValidatedInvocation = true;
-      const kind = classifyScriptSegment(segment, scripts, false);
-      if (kind !== 'wranglerTypes') {
-        return `${name} uses an unsupported wrangler types spelling`;
-      }
-      if (/(?:^|\s)--check(?:=true)?(?:\s|$)/u.test(normalized)) return `${name} must not check worker types directly`;
-      if (!['gen-code', 'gen-types', 'postinstall'].includes(name)) {
-        return `${name} must not invoke wrangler types directly`;
-      }
-      if (hasUnsupportedWorkerTypesArguments(normalized)) {
-        return `${name} uses unsupported wrangler types arguments`;
-      }
-    }
-    if (!hasValidatedInvocation) return `${name} uses an unsupported wrangler types spelling`;
-    const generatedSegments = segments.filter(
-      (segment) => classifyScriptSegment(segment, scripts, false) === 'wranglerTypes'
-    );
-    if (name === 'gen-types' && generatedSegments.length > 0) {
-      const referencedOutsidePostinstall = Object.entries(scripts).some(
-        ([otherName, otherScript]) =>
-          otherName !== 'gen-types' && otherName !== 'postinstall' && mentionsPackageScript(otherScript, 'gen-types')
-      );
-      if (segments.length !== 1 || referencedOutsidePostinstall) {
-        return 'gen-types must contain only wrangler types and must not be referenced outside postinstall';
-      }
-      const postinstall = scripts.postinstall;
-      if (postinstall && mentionsPackageScript(postinstall, 'gen-types')) {
-        const postinstallSegments = splitScriptSegments(postinstall);
-        if (
-          !postinstallSegments ||
-          !postinstallSegments.some((segment) => classifyScriptSegment(segment, scripts, true) === 'wranglerTypes')
-        ) {
-          return 'postinstall must use a canonical gen-types reference';
-        }
-      }
-    }
-  }
-  if (hasInvocation && !hasWranglerDependency(config.packageJson)) {
-    return 'wrangler types requires a direct wrangler dependency';
+    if (wranglerTypesTextPattern.test(script)) return `${name} must use wb gen-code instead of wrangler types`;
   }
 }
 
@@ -505,33 +447,6 @@ const wranglerTypesTextPattern = new RegExp(
   String.raw`["']?\bwrangler(?:@[^\s"']+)?\b["']?(?:${wranglerOptionPattern})*\s+types\b`,
   'u'
 );
-
-function mentionsPackageScript(script: string | undefined, scriptName: string): boolean {
-  return script !== undefined && new RegExp(`\\b${escapeRegExp(scriptName)}\\b`, 'u').test(script);
-}
-
-function hasUnsupportedWorkerTypesArguments(segment: string): boolean {
-  const args = segment
-    .replace(/^.*?\bwrangler\s+types\b/u, '')
-    .trim()
-    .split(/\s+/u)
-    .filter(Boolean);
-  const valueOptions = new Set(['--env-file']);
-  const booleanOptions = new Set(['--include-env', '--include-runtime', '--strict-vars', '--x-include-runtime']);
-  for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index];
-    if (!argument) continue;
-    const [option, inlineValue] = argument.split('=', 2);
-    if (option && valueOptions.has(option)) {
-      if (inlineValue === undefined) index += 1;
-    } else if (option && booleanOptions.has(option)) {
-      if (inlineValue === undefined && /^(?:false|true)$/u.test(args[index + 1] ?? '')) index += 1;
-    } else {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * A package whose TypeScript project cannot include worker-configuration.d.ts (e.g. one on a hand-maintained

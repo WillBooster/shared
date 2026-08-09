@@ -10,18 +10,8 @@ import type { PackageJson, SetRequired } from 'type-fest';
 
 import { getLatestCommitHash } from '../github/commit.js';
 import { logger } from '../logger.js';
-import {
-  consumesGeneratedWorkerTypes,
-  generatesWorkerTypes,
-  getWorkerTypesScriptError,
-  type PackageConfig,
-} from '../packageConfig.js';
-import {
-  classifyScriptSegment,
-  runsOnlyRedundantGeneration,
-  runsOnlyRedundantI18nGeneration,
-  splitScriptSegments,
-} from '../utils/managedScriptSegment.js';
+import { generatesWorkerTypes, getWorkerTypesScriptError, type PackageConfig } from '../packageConfig.js';
+import { classifyScriptSegment, splitScriptSegments } from '../utils/managedScriptSegment.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
 import { globIgnore } from '../utils/globUtil.js';
@@ -165,9 +155,9 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
 }
 
 /**
- * Keeps the project's own segments in order, replacing the FIRST segment that `wb gen-code` subsumes (a managed
- * gen-code spelling, any direct `wrangler types`, an argument-free `gen-i18n-ts`) with `wb gen-code` and
- * dropping the rest. Appends the generation only when the script contained none, so nothing is reordered.
+ * Keeps the project's own segments in order, replacing the first managed gen-code spelling with
+ * `wb gen-code` and dropping later duplicates. Appends generation only when the script contained
+ * none, so nothing is reordered.
  */
 function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scripts): string[] {
   const kinds = segments.map((segment) => classifyScriptSegment(segment, scripts, true));
@@ -189,38 +179,13 @@ function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scr
 }
 
 /**
- * Removes the segments `wb gen-code` performs itself (its own spellings, `wrangler types`, argument-free
- * `gen-i18n-ts`) from a script wbfy did not generate, keeping the first managed segment's POSITION so a custom
- * step that consumes generated output still runs after it. Returns undefined when nothing should change or the
- * script cannot be parsed.
+ * Normalizes managed gen-code segments while keeping the first segment's position so a custom
+ * step that consumes generated output still runs after it. Returns without changing an
+ * unparseable script.
  */
-function stripSubsumedGenCodeSegments(script: string, scripts: PackageJson.Scripts): string | undefined {
-  const segments = splitScriptSegments(script);
-  if (!segments) return undefined;
-  const rebuilt: string[] = [];
-  let generationPlaced = false;
-  for (const segment of segments) {
-    const kind = classifyScriptSegment(segment, scripts, true);
-    if (kind === 'custom' || kind === 'genCodeWrapper') {
-      rebuilt.push(segment);
-    } else if (!generationPlaced) {
-      rebuilt.push('bun wb gen-code');
-      generationPlaced = true;
-    }
-  }
-  if (!generationPlaced) return undefined;
-  const rebuiltScript = rebuilt.join(' && ');
-  return rebuiltScript === script ? undefined : rebuiltScript;
-}
-
-function updatePostinstallScript(
-  scripts: PackageJson.Scripts,
-  managesWorkerTypes: boolean,
-  hasOptedOutOfWorkerTypes: boolean
-): void {
-  // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a code-generation or
-  // worker-types pipeline normalizes to exactly that: the `wrangler types` invocations (and the `gen-types`
-  // scripts wrapping them) repositories used to carry are wbfy's to remove now that it owns the generation.
+function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerTypes: boolean): void {
+  // `bun wb gen-code` regenerates worker-configuration.d.ts itself, so a package with a
+  // code-generation or worker-types pipeline gets one managed generation segment.
   if (scripts['gen-code'] || managesWorkerTypes) {
     // Project-owned steps are never dropped, and their POSITION relative to generation is preserved: a step
     // before it may produce `wrangler types`' inputs (a wrangler config, `.dev.vars`), while one after it may
@@ -231,34 +196,8 @@ function updatePostinstallScript(
     const keptSegments = segments && rebuildPostinstallSegments(segments, scripts);
     if (keptSegments) {
       scripts.postinstall = keptSegments.join(' && ');
-    } else if (runsOnlyRedundantGeneration(scripts.postinstall)) {
-      // Unparseable, but every command it names is one `wb gen-code` already runs, so normalizing loses nothing.
-      scripts.postinstall = 'wb gen-code';
     }
     // Any other unparseable postinstall is left to a human rather than rewritten from a wrong parse.
-  } else if (runsOnlyRedundantI18nGeneration(scripts.postinstall)) {
-    delete scripts.postinstall;
-  } else if (hasOptedOutOfWorkerTypes && scripts.postinstall) {
-    // The package genuinely opted out (its tsconfig no longer includes the declaration), and generateGitignore
-    // drops the ignore rule and the untracked file with it. A leftover default-output `wrangler types` would then
-    // recreate that ~500KB file as workspace noise on every install. Only a real opt-out qualifies: the other
-    // unmanaged reason (a missing dependency) leaves the
-    // project's own generator as the ONLY one, so deleting it there would break generation outright.
-    const segments = splitScriptSegments(scripts.postinstall);
-    const remaining = segments?.filter((segment) => classifyScriptSegment(segment, scripts, true) !== 'wranglerTypes');
-    if (remaining && remaining.length !== segments?.length) {
-      if (remaining.length > 0) {
-        scripts.postinstall = remaining.join(' && ');
-      } else {
-        delete scripts.postinstall;
-      }
-    }
-  }
-  if (managesWorkerTypes) {
-    const genTypesSegments = splitScriptSegments(scripts['gen-types'] ?? '');
-    if (genTypesSegments?.some((segment) => classifyScriptSegment(segment, scripts, false) === 'wranglerTypes')) {
-      delete scripts['gen-types'];
-    }
   }
 }
 
@@ -872,14 +811,10 @@ async function normalizePackageMetadata(
   // packages, so forcing `private: true` would stop releases without any error (e.g.
   // WillBoosterLab/llm-proxy publishing @willbooster-private/llm-proxy).
   if (config.doesContainSubPackageJsons && (config.release.npmPublishesRoot || jsonObj.publishConfig)) {
-    // Older wbfy forced `private: true` on every monorepo root (and never added a publishConfig
-    // to one, since it only does that for non-private manifests — so a root-level publishConfig
-    // is user-authored publishing intent); when the user has EXPLICITLY configured
-    // `@semantic-release/npm` to publish the root itself, or declared a `publishConfig`, that
-    // stale flag silently suppresses publishing, so migrate it away. Roots relying on the
-    // plugin-less default list keep their `private` value untouched: `private: true` there can
-    // be a deliberate opt-out, which `@semantic-release/npm` honors by defaulting npmPublish to
-    // false.
+    // Explicit root publishing intent takes precedence over a private monorepo-root default.
+    // Roots relying on the plugin-less default list keep their `private` value untouched:
+    // `private: true` there can be a deliberate opt-out, which `@semantic-release/npm` honors by
+    // defaulting npmPublish to false.
     delete jsonObj.private;
   } else if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
     jsonObj.private = true;
@@ -904,9 +839,6 @@ async function normalizePackageMetadata(
     // Make VSCode possible to refactor code across subpackages.
     jsonObj.main = './src';
   }
-
-  // Yarn treats the legacy npm/chalk resolution alias as an invalid package token.
-  delete jsonObj.resolutions?.['npm/chalk'];
 
   if (!config.doesContainSubPackageJsons) {
     if (config.doesContainPubspecYaml) {
@@ -969,8 +901,8 @@ async function normalizePackageMetadata(
     delete jsonObj.scripts['gen-code'];
   } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
     // Preserve project-specific steps a repo appended to the managed `bun wb gen-code` (e.g. building extra deploy
-    // assets) instead of discarding them; only the managed gen-code and the `wrangler types` invocations it now
-    // subsumes are wbfy's to regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
+    // assets) instead of discarding them; only the managed gen-code segment is wbfy's to
+    // regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
     const segments = genCodeScript === undefined ? [] : splitScriptSegments(genCodeScript);
     const customSegments = segments?.filter(
       (segment) => classifyScriptSegment(segment, jsonObj.scripts, true) === 'custom'
@@ -978,20 +910,9 @@ async function normalizePackageMetadata(
     if (customSegments) {
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
     }
-  } else if (genCodeScript) {
-    // A hand-written gen-code script wbfy would not generate itself still has to lose the invocations `wb gen-code`
-    // now subsumes; without this the redundant `wrangler types` survives every future run, which is the drift this
-    // consolidation exists to remove. Only wbfy's own segments go — custom steps keep their position, and an
-    // unparseable script is left alone.
-    const stripped = stripSubsumedGenCodeSegments(genCodeScript, jsonObj.scripts);
-    if (stripped !== undefined) jsonObj.scripts['gen-code'] = stripped;
   }
   normalizeGenI18nTsScript(config, jsonObj);
-  updatePostinstallScript(
-    jsonObj.scripts,
-    generatesWorkerTypes(config),
-    config.doesContainWranglerConfig && !consumesGeneratedWorkerTypes(config)
-  );
+  updatePostinstallScript(jsonObj.scripts, generatesWorkerTypes(config));
   if (!jsonObj.dependencies.prettier) {
     // Because @types/prettier blocks prettier execution.
     delete jsonObj.devDependencies['@types/prettier'];
@@ -1375,9 +1296,11 @@ function getNpmPackageTimes(dependency: string): Record<string, string> {
   if (!stdout) return {};
 
   try {
-    const parsed = JSON.parse(stdout) as Record<string, string>;
-    npmPackageTimesCache.set(packageName, parsed);
-    return parsed;
+    const parsed = JSON.parse(stdout) as Record<string, string> | [Record<string, string>];
+    const times = Array.isArray(parsed) ? parsed[0] : parsed;
+    if (!times) return {};
+    npmPackageTimesCache.set(packageName, times);
+    return times;
   } catch {
     return {};
   }
@@ -1641,13 +1564,9 @@ function applyTestOnCiScript(scripts: Record<string, string>, oldScripts: Packag
   scripts['test/ci'] = oldScript && !isGeneratedTestOnCiScript(oldScript) ? oldScript : 'bun wb test-on-ci';
 }
 
-/**
- * Whether a script body is one of the KNOWN generated `wb test-on-ci` invocations (allowing legacy
- * runner prefixes, including the historical `bun --bun`). Anchored on the WHOLE body so a custom
- * wrapper that merely contains the call is preserved instead of being replaced wholesale.
- */
+/** Whether a script body is one of the generated `wb test-on-ci` invocations. */
 function isGeneratedTestOnCiScript(script: string): boolean {
-  return /^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+test-on-ci$/u.test(script.trim());
+  return /^(?:bun(?:[ \t]+--bun)?[ \t]+)?wb[ \t]+test-on-ci$/u.test(script.trim());
 }
 
 /**
@@ -1668,7 +1587,7 @@ function applyTestScript(
 
 /** Whether a script body is one of the KNOWN generated `wb test` invocations. */
 function isGeneratedTestScript(script: string): boolean {
-  return /^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+test$/u.test(script.trim());
+  return /^(?:bun(?:[ \t]+--bun)?[ \t]+)?wb[ \t]+test$/u.test(script.trim());
 }
 
 /**
@@ -1687,15 +1606,11 @@ function keepGeneratedScriptWrappers(
     const oldScript = oldScripts[scriptName]?.trim();
     const generatedScript = scripts[scriptName];
     if (!oldScript || !generatedScript || oldScript === generatedScript) continue;
-    // Existing manifests may still lead with a legacy runner prefix (`yarn wb test && ...`) or
-    // `bun run wb test && ...`, so accept those prefixes and REWRITE the matched head to the
-    // generated command. Keeping
-    // the old head verbatim would freeze a stale prefix — notably `--bun`, whose node->bun PATH
-    // shim breaks Node-based tools — and leave a body the next run no longer recognizes as a
-    // wrapper, silently dropping the chained commands one run later.
+    // Rewrite previously generated Bun runner spellings to the canonical command while retaining
+    // the repository's chained commands.
     const generatedCore = generatedScript.replace(/^bun[ \t]+/u, '');
     const headRegExp = new RegExp(
-      `^(?:(?:bun(?:[ \\t]+--bun)?|yarn|npx)(?:[ \\t]+run)?[ \\t]+)?${escapeRegExp(generatedCore).replaceAll(
+      `^(?:bun(?:[ \\t]+--bun)?(?:[ \\t]+run)?[ \\t]+)?${escapeRegExp(generatedCore).replaceAll(
         ' ',
         String.raw`[ \t]+`
       )}(?=[ \\t]*(?:&&|\\|\\||;|\\n))`,
@@ -1723,7 +1638,7 @@ function applyDatabaseScripts(
     oldScripts,
     'db-migrate',
     `${wbDbCommand} migrate --check-idempotency`,
-    /migrate(?:[ \t]+--check-idempotency)?/u
+    /migrate[ \t]+--check-idempotency/u
   );
   applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`, /studio/u);
 }
@@ -1744,8 +1659,7 @@ function applyDatabaseScript(
 
 /**
  * Whether a script body is one of the KNOWN generated `wb db`/`wb prisma` invocations FOR THE
- * GIVEN managed script (allowing legacy runner prefixes, including the historical `bun --bun`,
- * and that script's historical argument variants such as `migrate` without `--check-idempotency`).
+ * GIVEN managed script (allowing the historical `bun --bun` runner prefix).
  * Anchored on the WHOLE body AND on the exact generated argument list so a custom wrapper that
  * merely contains a wb call (`prepare-sqlite && WB_ENV=… wb db studio`), carries extra flags
  * (`wb prisma studio --port 5556`), or reuses another managed script's command
@@ -1755,7 +1669,7 @@ function isGeneratedDatabaseScript(script: string, generatedArgsPattern: RegExp)
   // Horizontal whitespace only ([ \t]) — a newline is a shell command separator, so a
   // newline-containing body is a multi-command wrapper that must be preserved.
   return new RegExp(
-    String.raw`^(?:(?:bun(?:[ \t]+--bun)?|yarn|npx)[ \t]+)?wb[ \t]+(?:db|prisma)[ \t]+(?:${generatedArgsPattern.source})$`,
+    String.raw`^(?:bun(?:[ \t]+--bun)?[ \t]+)?wb[ \t]+(?:db|prisma)[ \t]+(?:${generatedArgsPattern.source})$`,
     'u'
   ).test(script.trim());
 }
