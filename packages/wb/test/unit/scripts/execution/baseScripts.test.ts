@@ -9,7 +9,11 @@ import type { TestArgv } from '../../../../src/commands/test.js';
 import type { Project } from '../../../../src/project.js';
 import type { ScriptArgv } from '../../../../src/scripts/builder.js';
 import { normalizeArgs } from '../../../../src/scripts/builder.js';
-import { BaseScripts, buildWaitOnLoopbackCommand } from '../../../../src/scripts/execution/baseScripts.js';
+import {
+  BaseScripts,
+  buildE2EReadinessCommand,
+  buildWaitOnLoopbackCommand,
+} from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
 import { buildD1MigrationsApplyCommands } from '../../../../src/utils/wrangler.js';
@@ -22,6 +26,22 @@ describe('buildWaitOnLoopbackCommand', () => {
   it('fails before generating an invalid command when the port is missing', () => {
     expect(() => buildWaitOnLoopbackCommand(undefined)).toThrow('Port is required');
     expect(() => buildWaitOnLoopbackCommand('')).toThrow('Port is required');
+  });
+});
+
+describe('buildE2EReadinessCommand', () => {
+  const listeningCommand = 'wait-on -t 600000 -i 2000 tcp:localhost:3000';
+  const respondingCommand =
+    'curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:3000';
+
+  it('waits for a second HTTP response before direct-server tests start', () => {
+    expect(buildE2EReadinessCommand(3000, false)).toBe(
+      `${listeningCommand} && ${respondingCommand} && sleep 2 && ${respondingCommand}`
+    );
+  });
+
+  it('waits for the container application after docker-proxy starts listening', () => {
+    expect(buildE2EReadinessCommand(3000, true)).toBe(`${listeningCommand} && ${respondingCommand}`);
   });
 });
 

@@ -966,19 +966,6 @@ test('downgrades a managed tool pin that the generated release-age gate rejects'
   expect(packageJson.devDependencies?.oxfmt).not.toBe('999.0.0');
 }, 30_000);
 
-test('age-gates managed first-party tools before distributing them to repositories', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      devDependencies: { '@willbooster/wb': '999.0.0' },
-    },
-    jsRootConfig,
-    { skipAddingDeps: false }
-  );
-
-  expect(packageJson.devDependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+/u);
-  expect(packageJson.devDependencies?.['@willbooster/wb']).not.toBe('999.0.0');
-}, 30_000);
-
 test('removes TypeScript compilers from a repository without TypeScript', async () => {
   const withoutTypeScript = await generatePackageJsonFrom({
     devDependencies: {

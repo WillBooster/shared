@@ -1245,10 +1245,6 @@ function getLatestDependencyVersion(dependency: string): string {
 }
 
 function getDependencyVersionFromNpm(dependency: string): string {
-  // The Bun policy exempts our own packages because we control their publication credentials, but
-  // wbfy applies managed-tool updates across many repositories at once. Give those releases the
-  // same soak window as third-party tools so a fresh CLI regression is caught before wbfy fans it
-  // out, while keeping the install-time security exemption for ordinary repository operations.
   if (!shouldApplyManagedDependencyAgeGate(dependency)) {
     return getRawDependencyVersionFromNpm(dependency);
   }
@@ -1312,7 +1308,11 @@ function shouldApplyPackageAgeGate(dependency: string): boolean {
 }
 
 function shouldApplyManagedDependencyAgeGate(dependency: string): boolean {
-  return managedDependencyNames.has(dependency) || shouldApplyPackageAgeGate(dependency);
+  // Keep managed first-party packages aligned with Bun's explicit exemptions. wbfy's generated
+  // configuration can rely on the current wb contract, so independently soaking or downgrading wb
+  // would pair new generated files with an incompatible old CLI. Those packages are released and
+  // fixed at their source instead; only packages Bun itself gates may be selected from older tags.
+  return shouldApplyPackageAgeGate(dependency);
 }
 
 function doesPackagePatternMatch(pattern: string, dependency: string): boolean {

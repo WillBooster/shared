@@ -309,19 +309,16 @@ export function buildWaitOnLoopbackCommand(port: string | number | undefined, wa
   return `wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
 }
 
-/** Polls the application over HTTP before non-Docker e2e tests start. */
-export function buildHttpWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
-  if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
-  return `NO_PROXY=localhost no_proxy=localhost wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}http-get://localhost:${port}`;
-}
-
 export function buildE2EReadinessCommand(port: string | number, isDocker: boolean): string {
-  // docker-proxy accepts TCP before the app is ready, so Docker needs the TCP+curl sequence.
-  // Direct servers retain wait-on's HTTP polling: starting a full browser burst immediately after
-  // wrangler's first response can race workerd startup and crash it with broken pipes.
+  const listeningCommand = buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000');
+  const respondingCommand = buildHttpReadinessCommand(port);
+  // docker-proxy accepts TCP before the app is ready, so every path requires an HTTP response.
+  // Direct servers then require another response after the normal polling interval: starting a
+  // full browser burst immediately after Wrangler's first response can race workerd startup and
+  // crash it with broken pipes. curl intentionally accepts redirects and authentication errors.
   return isDocker
-    ? `${buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000')} && ${buildHttpReadinessCommand(port)}`
-    : buildHttpWaitOnLoopbackCommand(port, '-t 600000 -i 2000');
+    ? `${listeningCommand} && ${respondingCommand}`
+    : `${listeningCommand} && ${respondingCommand} && sleep 2 && ${respondingCommand}`;
 }
 
 /**
