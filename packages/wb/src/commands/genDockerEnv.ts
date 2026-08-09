@@ -18,9 +18,9 @@ import { collectPlaintextFnoxValues } from '../utils/fnoxToml.js';
 const builder = {} as const;
 
 type GenDockerEnvCommandOptions = InferredOptionTypes<typeof builder & typeof sharedOptionsBuilder>;
-type GenDockerEnvCommandArgv = ArgumentsCamelCase<GenDockerEnvCommandOptions & { path?: string }>;
+export type GenDockerEnvCommandArgv = ArgumentsCamelCase<GenDockerEnvCommandOptions & { path?: string }>;
 
-const standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
+export const standardWbEnvModes = new Set(['development', 'test', 'staging', 'production']);
 
 export const genDockerEnvCommand: CommandModule<unknown, GenDockerEnvCommandOptions> = {
   command: 'gen-docker-env [path]',
@@ -33,60 +33,65 @@ export const genDockerEnvCommand: CommandModule<unknown, GenDockerEnvCommandOpti
       default: '.docker.env',
     }) as unknown as Argv<GenDockerEnvCommandOptions>,
   async handler(argv: GenDockerEnvCommandArgv) {
-    const project = findSelfProject(argv, false);
-    if (!project) {
-      console.error(chalk.red('No project found.'));
+    try {
+      generateDockerEnv(argv);
+    } catch (error) {
+      console.error(chalk.red(error instanceof Error ? error.message : String(error)));
       process.exit(1);
     }
-
-    // The shared cascade resolution keeps this command's profile identical to the one every other
-    // wb command loads. An unresolved cascade (--auto-cascade-env=false without --cascade-env) or
-    // a non-standard mode is a hard error: it would silently bake the base (development) values
-    // into a deploy artifact.
-    const envName = resolveCascade(argv);
-    if (!envName) {
-      console.error(
-        chalk.red('No environment selected; pass --cascade-env=<mode> (or drop --auto-cascade-env=false).')
-      );
-      process.exit(1);
-    }
-    if (!standardWbEnvModes.has(envName)) {
-      console.error(chalk.red(`WB_ENV must be one of ${[...standardWbEnvModes].join(', ')}, but is ${envName}.`));
-      process.exit(1);
-    }
-
-    const envVars = collectPlaintextFnoxValues(project.dirPath, project.rootDirPath, envName);
-    // A WB_ENV-family default that disagrees with the selected mode would label the image with a
-    // different (possibly misspelled) environment than the one whose values it bakes.
-    for (const marker of ['WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
-      const value = envVars[marker];
-      if (value !== undefined && value !== envName) {
-        console.error(
-          chalk.red(`fnox.toml defines ${marker}=${value} for the ${envName} profile; align it with the mode name.`)
-        );
-        process.exit(1);
-      }
-    }
-    // Code-point order, not localeCompare: the file must be byte-identical across build hosts so
-    // Docker layer caching and image reproducibility are locale-independent.
-    const lines = Object.entries(envVars)
-      .toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([key, value]) => serializeDockerEnvLine(key, value));
-    const outputPath = path.resolve(project.dirPath, argv.path ?? '.docker.env');
-    if (argv.dryRun) {
-      console.info(
-        chalk.cyan(`Would generate ${outputPath} with ${lines.length} non-secret environment variables (${envName}).`)
-      );
-      return;
-    }
-
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, lines.join('\n') + '\n');
-    console.info(
-      chalk.green(`Generated ${outputPath} with ${lines.length} non-secret environment variables (${envName}).`)
-    );
   },
 };
+
+/**
+ * Generates the `.docker.env` file for the resolved environment. Throws on any problem so callers
+ * (the command handler and `optimizeForDockerBuild`) decide whether the failure is fatal.
+ */
+export function generateDockerEnv(argv: GenDockerEnvCommandArgv): void {
+  const project = findSelfProject(argv, false);
+  if (!project) {
+    throw new Error('No project found.');
+  }
+
+  // The shared cascade resolution keeps this command's profile identical to the one every other
+  // wb command loads. An unresolved cascade (--auto-cascade-env=false without --cascade-env) or
+  // a non-standard mode is a hard error: it would silently bake the base (development) values
+  // into a deploy artifact.
+  const envName = resolveCascade(argv);
+  if (!envName) {
+    throw new Error('No environment selected; pass --cascade-env=<mode> (or drop --auto-cascade-env=false).');
+  }
+  if (!standardWbEnvModes.has(envName)) {
+    throw new Error(`WB_ENV must be one of ${[...standardWbEnvModes].join(', ')}, but is ${envName}.`);
+  }
+
+  const envVars = collectPlaintextFnoxValues(project.dirPath, project.rootDirPath, envName);
+  // A WB_ENV-family default that disagrees with the selected mode would label the image with a
+  // different (possibly misspelled) environment than the one whose values it bakes.
+  for (const marker of ['WB_ENV', 'NEXT_PUBLIC_WB_ENV']) {
+    const value = envVars[marker];
+    if (value !== undefined && value !== envName) {
+      throw new Error(`fnox.toml defines ${marker}=${value} for the ${envName} profile; align it with the mode name.`);
+    }
+  }
+  // Code-point order, not localeCompare: the file must be byte-identical across build hosts so
+  // Docker layer caching and image reproducibility are locale-independent.
+  const lines = Object.entries(envVars)
+    .toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, value]) => serializeDockerEnvLine(key, value));
+  const outputPath = path.resolve(project.dirPath, argv.path ?? '.docker.env');
+  if (argv.dryRun) {
+    console.info(
+      chalk.cyan(`Would generate ${outputPath} with ${lines.length} non-secret environment variables (${envName}).`)
+    );
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, lines.join('\n') + '\n');
+  console.info(
+    chalk.green(`Generated ${outputPath} with ${lines.length} non-secret environment variables (${envName}).`)
+  );
+}
 
 /**
  * Serialize one `.docker.env` assignment so the SAME bytes are read back by every canonical

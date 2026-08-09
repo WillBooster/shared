@@ -7,6 +7,25 @@ if [[ "$#" -eq 0 ]]; then
   exit 64
 fi
 
+# Fail fast when the config references environment variables (e.g. the ${VAR} placeholders of
+# `wb db create-litestream-config --env-refs`) that the platform did not supply: Litestream
+# itself only logs and retries replica errors, which would silently disable backups.
+# LITESTREAM_CONFIG is Litestream's own config-path override, so the validated file is always
+# the file `litestream replicate` below actually reads.
+config_path="${LITESTREAM_CONFIG:-/etc/litestream.yml}"
+if [[ -f "$config_path" ]]; then
+  # Full-line YAML comments are stripped first: a documentation example mentioning ${VAR} must
+  # not become a runtime dependency. Inline comments are kept because a textual strip cannot
+  # tell a comment from a `#` inside a quoted scalar, and a missed placeholder (silent backup
+  # loss) is worse than a spurious requirement from an inline comment.
+  while IFS= read -r key; do
+    if [[ -z "$(printenv "$key" || true)" ]]; then
+      echo "run-litestream.sh: environment variable $key is required by $config_path but is not set." >&2
+      exit 1
+    fi
+  done < <(sed -e '/^[[:space:]]*#/d' "$config_path" | grep -o '\${[A-Za-z_][A-Za-z0-9_]*}' | tr -d '${}' | sort -u)
+fi
+
 litestream replicate -exec "$*" &
 litestream_pid=$!
 

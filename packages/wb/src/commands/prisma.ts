@@ -1,21 +1,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { resolveCascade } from '@willbooster/shared-lib-node/src';
 import type { EnvReaderOptions } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { DatabaseOrm, Project } from '../project.js';
-import { findDescendantProjects, getAbsoluteFileDatabaseUrlPath, isProjectEnvironment } from '../project.js';
+import {
+  findDescendantProjects,
+  findSelfProject,
+  getAbsoluteFileDatabaseUrlPath,
+  isProjectEnvironment,
+} from '../project.js';
 import { buildDrizzleKitCommand, drizzleScripts } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isDockerEnabled } from '../utils/ci.js';
+import { collectPlaintextFnoxValues } from '../utils/fnoxToml.js';
 import { buildShellCommand } from '../utils/shell.js';
 import { wrapWithLocalD1DatabaseUrl } from '../utils/wrangler.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
+import { standardWbEnvModes } from './genDockerEnv.js';
 
 const builder = {} as const;
 
@@ -67,6 +75,11 @@ const createLitestreamConfigBuilder = {
     type: 'string',
     default: '/etc/litestream.yml',
   },
+  'env-refs': {
+    description:
+      'Write the R2 credentials as ${VAR} placeholders that Litestream expands from the runtime environment, instead of embedding decrypted values. Allows generating the config during secret-less image builds.',
+    type: 'boolean',
+  },
 } as const;
 
 const createLitestreamConfigCommand: CommandModule<
@@ -78,13 +91,43 @@ const createLitestreamConfigCommand: CommandModule<
   builder: createLitestreamConfigBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
-    if (allProjects.length > 1) {
-      throw new Error(
-        'Creating Litestream configuration for multiple projects at once is not supported because they would overwrite each other.'
-      );
+    // With --env-refs, every value comes from the committed plaintext fnox defaults so generation
+    // stays possible in secret-less builds (reading `project.env` would spawn `fnox export`).
+    const envRefs = argv['env-refs'];
+    // With --env-refs the profile must be selected EXPLICITLY: the cascade's implicit
+    // development fallback (auto-cascade with no WB_ENV/NODE_ENV) or a nonstandard mode could
+    // make Litestream back up the wrong database, and the intended call sites (secret-less
+    // image builds / entrypoints) have no other guard.
+    const processEnvView = envRefs ? (findSelfProject(argv, false)?.env ?? {}) : {};
+    const explicitlySelected =
+      Boolean(argv.cascadeEnv) ||
+      Boolean(processEnvView.WB_ENV) ||
+      Boolean(argv.cascadeNodeEnv && processEnvView.NODE_ENV);
+    if (envRefs && !explicitlySelected) {
+      throw new Error('With --env-refs, select the profile explicitly: export WB_ENV or pass --cascade-env=<mode>.');
     }
-    for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db create-litestream-config', allProjects)) {
-      createLitestreamConfig(project, orm, argv.output);
+    const envName = envRefs ? resolveCascade(argv) : undefined;
+    if (envRefs && !envName) {
+      throw new Error('No environment selected; pass --cascade-env=<mode> (or drop --auto-cascade-env=false).');
+    }
+    if (envRefs && envName && !standardWbEnvModes.has(envName)) {
+      throw new Error(`WB_ENV must be one of ${[...standardWbEnvModes].join(', ')}, but is ${envName}.`);
+    }
+    // Resolved only for Drizzle candidates: Prisma needs no fnox value at all, and the collector
+    // validates every entry of the ancestor fnox.toml chain, so resolving it needlessly would let
+    // an unrelated non-bakeable entry abort the generation.
+    const plainEnvFor =
+      envRefs && envName
+        ? (project: Project) => collectPlaintextFnoxValues(project.dirPath, project.rootDirPath, envName)
+        : undefined;
+    const envOverrideFor = (orm: DatabaseOrm, project: Project): Record<string, string | undefined> | undefined =>
+      envRefs ? (orm === 'drizzle' ? (plainEnvFor?.(project) ?? {}) : {}) : undefined;
+    const selectedProjects = selectLitestreamConfigProjects(allProjects, envRefs, envOverrideFor);
+    for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
+      'db create-litestream-config',
+      selectedProjects
+    )) {
+      createLitestreamConfig(project, orm, argv.output, envRefs, envOverrideFor(orm, project));
     }
   },
 };
@@ -347,19 +390,75 @@ function withLocalD1IfNeeded(orm: DatabaseOrm, project: Project, script: string)
   return orm === 'drizzle' ? wrapWithLocalD1DatabaseUrl(project, script) : script;
 }
 
-function createLitestreamConfig(project: Project, orm: DatabaseOrm, configPath: string): void {
-  const dbPath = getLitestreamDbPath(project, orm);
-  const requiredEnvVars = {
-    CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID,
-    CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME: project.env.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME,
-    CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID: project.env.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID,
-    CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY: project.env.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY,
-  } as const;
-  const missingEnvVars = Object.entries(requiredEnvVars)
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-  if (missingEnvVars.length > 0) {
-    throw new Error(`Missing environment variables for Litestream: ${missingEnvVars.join(', ')}`);
+// At a monorepo root, multiple workspace projects can qualify — for a Drizzle `file:` URL, the
+// root project and a server package resolve the same root-relative database, so their configs
+// would be identical; pick one instead of failing. Every candidate must resolve (an unresolvable
+// one is a configuration error, not a silent skip), and without --env-refs the rendered R2
+// credentials must also match, because equal database paths alone do not imply equal
+// configurations. (Prisma paths resolve per project directory and thus never collapse.)
+export function selectLitestreamConfigProjects(
+  allProjects: DatabaseOrmProject[],
+  envRefs?: boolean,
+  envOverrideFor?: (orm: DatabaseOrm, project: Project) => Record<string, string | undefined> | undefined
+): DatabaseOrmProject[] {
+  if (allProjects.length <= 1) return allProjects;
+
+  const uniqueDbPaths = new Set(
+    allProjects.map(({ orm, project }) =>
+      path.resolve(
+        project.dirPath,
+        getLitestreamDbPath(project, orm, envRefs ? (envOverrideFor?.(orm, project) ?? {}) : undefined)
+      )
+    )
+  );
+  const uniqueCredentials = new Set(
+    allProjects.map(({ project }) =>
+      envRefs
+        ? ''
+        : JSON.stringify([
+            project.env.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID,
+            project.env.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME,
+            project.env.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID,
+            project.env.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY,
+          ])
+    )
+  );
+  if (uniqueDbPaths.size !== 1 || uniqueCredentials.size !== 1) {
+    throw new Error(
+      'Creating Litestream configuration for multiple projects at once is not supported because they would overwrite each other.'
+    );
+  }
+  return allProjects.slice(0, 1);
+}
+
+export function createLitestreamConfig(
+  project: Project,
+  orm: DatabaseOrm,
+  configPath: string,
+  envRefs?: boolean,
+  plainEnv?: Record<string, string | undefined>
+): void {
+  const dbPath = getLitestreamDbPath(project, orm, envRefs ? (plainEnv ?? {}) : undefined);
+  const credentialKeys = [
+    'CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID',
+    'CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME',
+    'CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID',
+    'CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY',
+  ] as const;
+  // With --env-refs, Litestream expands the ${VAR} placeholders from the runtime environment
+  // (run-litestream.sh asserts they are set), so `project.env` — whose credential values may
+  // require secret decryption — is never read on this path.
+  let credentialValues: Record<(typeof credentialKeys)[number], string>;
+  if (envRefs) {
+    credentialValues = Object.fromEntries(credentialKeys.map((key) => [key, `\${${key}}`])) as typeof credentialValues;
+  } else {
+    const missingEnvVars = credentialKeys.filter((key) => !project.env[key]);
+    if (missingEnvVars.length > 0) {
+      throw new Error(`Missing environment variables for Litestream: ${missingEnvVars.join(', ')}`);
+    }
+    credentialValues = Object.fromEntries(
+      credentialKeys.map((key) => [key, project.env[key] as string])
+    ) as typeof credentialValues;
   }
 
   const litestreamConfig = `snapshot:
@@ -371,10 +470,10 @@ dbs:
     checkpoint-interval: 1m
     replica:
       type: s3
-      endpoint: https://${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID}.r2.cloudflarestorage.com
-      bucket: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
-      access-key-id: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}
-      secret-access-key: ${requiredEnvVars.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}
+      endpoint: https://${credentialValues.CLOUDFLARE_R2_LITESTREAM_ACCOUNT_ID}.r2.cloudflarestorage.com
+      bucket: ${credentialValues.CLOUDFLARE_R2_LITESTREAM_BUCKET_NAME}
+      access-key-id: ${credentialValues.CLOUDFLARE_R2_LITESTREAM_ACCESS_KEY_ID}
+      secret-access-key: ${credentialValues.CLOUDFLARE_R2_LITESTREAM_SECRET_ACCESS_KEY}
       sync-interval: 1m
 `;
 
@@ -394,14 +493,24 @@ function getDefaultRestoreOutput(project: Project, orm: DatabaseOrm): string {
   return 'drizzle/restored.sqlite3';
 }
 
-function getLitestreamDbPath(project: Project, orm: DatabaseOrm): string {
+function getLitestreamDbPath(
+  project: Project,
+  orm: DatabaseOrm,
+  envOverride?: Record<string, string | undefined>
+): string {
   if (orm === 'prisma') {
     return `${project.prismaDirName}/mount/prod.sqlite3`;
   }
 
-  const dbPath = getAbsoluteFileDatabaseUrlPath(project);
+  const dbPath = getAbsoluteFileDatabaseUrlPath(
+    envOverride ? { env: envOverride, dirPath: project.dirPath, rootDirPath: project.rootDirPath } : project
+  );
   if (!dbPath) {
-    throw new Error('wb db create-litestream-config for Drizzle requires file: DATABASE_URL.');
+    throw new Error(
+      envOverride
+        ? 'wb db create-litestream-config --env-refs for Drizzle requires a plaintext file: DATABASE_URL default in fnox.toml.'
+        : 'wb db create-litestream-config for Drizzle requires file: DATABASE_URL.'
+    );
   }
   return dbPath;
 }

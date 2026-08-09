@@ -10,11 +10,13 @@ import type { CommandModule, InferredOptionTypes } from 'yargs';
 
 import {
   findDescendantProjects,
+  findSelfProject,
   getAbsoluteFileDatabaseUrlPath,
   getFileDatabaseUrlPath,
   type Project,
 } from '../project.js';
-import { isDockerEnabled } from '../utils/ci.js';
+import { isCI, isDockerEnabled } from '../utils/ci.js';
+import { lintDockerfile } from '../utils/dockerfileLint.js';
 
 import {
   PRIVATE_REGISTRY_SCOPE,
@@ -25,6 +27,7 @@ import {
 } from '../utils/privateRegistry.js';
 
 import { prepareForRunningCommand } from './commandUtils.js';
+import { type GenDockerEnvCommandArgv, generateDockerEnv } from './genDockerEnv.js';
 import { collectManifests, materializePrivatePackages } from './setupPrivatePackages.js';
 
 const dependencySectionKeys = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const;
@@ -82,6 +85,7 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     // per-project rewrite below emitting the existing "run wb setup-private-packages" hint. This
     // keeps the step a pure convenience that lets repositories drop the explicit command.
     if (argv.outside) {
+      prepareDockerBuildInputs(argv as GenDockerEnvCommandArgv & typeof argv, projects);
       // Resolve the full workspace set from the repository root so a private dependency declared in
       // any sibling workspace is materialized even when optimize runs from a subpackage directory.
       const rootProjects = await findDescendantProjects(argv, false, projects.root.dirPath);
@@ -131,6 +135,81 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
     }
   },
 };
+
+/**
+ * Lints the Dockerfile and generates the non-secret `.docker.env` before an outside optimization
+ * pass, i.e. before every Docker build (wb's docker flows and deploy scripts all run
+ * `optimizeForDockerBuild --outside` first).
+ */
+function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { root: Project; self: Project }): void {
+  // Resolve the Dockerfile the same way the build does: the self project's own Dockerfile wins
+  // over the repository root's, so workspace-level Dockerfiles are linted too.
+  const candidateDirPaths = [...new Set([projects.self.dirPath, projects.root.dirPath])];
+  const dockerfileDirPath = candidateDirPaths.find((dirPath) => fs.existsSync(path.join(dirPath, 'Dockerfile')));
+  const dockerfileText = dockerfileDirPath
+    ? fs.readFileSync(path.join(dockerfileDirPath, 'Dockerfile'), 'utf8')
+    : undefined;
+  // The escape hatch is read WITHOUT loading the project environment (loading would spawn
+  // `fnox export`, i.e. decrypt every secret, and hard-fail keyless CI runs), so it must be
+  // exported in the build environment rather than declared in fnox.toml.
+  const skipLint = findSelfProject(argv, false)?.env.WB_SKIP_DOCKERFILE_LINT === '1';
+  if (dockerfileText && !skipLint) {
+    // Plain BuildKit (local builds, CI) accepts these problems silently, so without this check
+    // they are first detected by a failed production deploy. WB_SKIP_DOCKERFILE_LINT=1 is the
+    // escape hatch for repositories that keep a Railway config but build their image elsewhere.
+    // `.railwayignore` is deliberately NOT a signal: wbfy creates it for any Railway-related
+    // repository (including ones whose image is built elsewhere), so using it here would turn
+    // the lint on circularly.
+    const railwayConfigured = candidateDirPaths.some((dirPath) =>
+      ['railway.toml', 'railway.json'].some((name) => fs.existsSync(path.join(dirPath, name)))
+    );
+    const problems = lintDockerfile(dockerfileText, { railwayConfigured });
+    if (problems.length > 0) {
+      throw new Error(`Dockerfile problems:\n- ${problems.join('\n- ')}`);
+    }
+  }
+
+  if (candidateDirPaths.some((dirPath) => fs.existsSync(path.join(dirPath, 'fnox.toml')))) {
+    // Mirror Project.completeAndValidateWbEnv WITHOUT loading fnox: generateDockerEnv resolves
+    // the profile via the cascade, which silently falls back to development when CI forgets to
+    // export WB_ENV — that must fail the build, not bake a development-profile image. Raised
+    // before the try below so the no-`.docker.env`-consumer warning path cannot swallow it.
+    const processEnvView = findSelfProject(argv, false)?.env ?? {};
+    if (
+      isCI(processEnvView.CI) &&
+      !processEnvView.WB_ENV &&
+      // An explicit cascade flag selects the profile just as well as an exported WB_ENV; only
+      // the implicit development fallback must fail.
+      !argv.cascadeEnv &&
+      !(argv.cascadeNodeEnv && processEnvView.NODE_ENV) &&
+      // Match Project.completeAndValidateWbEnv's opt-out values exactly.
+      processEnvView.WB_SKIP_ENV_CHECK !== '1' &&
+      processEnvView.WB_SKIP_ENV_CHECK !== 'true'
+    ) {
+      throw new Error(
+        'WB_ENV is not exported on CI; export it before building the image so .docker.env bakes the right profile (or set WB_SKIP_ENV_CHECK=1).'
+      );
+    }
+    try {
+      generateDockerEnv({ ...argv, path: undefined });
+    } catch (error) {
+      // A stale file from a previous build must not survive a failed generation: a broad
+      // `COPY . .` or apply-docker-env.sh's auto-discovery would silently bake and apply it.
+      // A dry run mutates nothing, matching the rest of this command.
+      if (!argv.dryRun) fs.rmSync(path.resolve(projects.self.dirPath, '.docker.env'), { force: true });
+      // Baking is mandatory only when the Dockerfile consumes the file (comments do not count);
+      // other repositories (e.g. legacy runtime-fnox images) keep building without it.
+      const dockerfileConsumesDockerEnv = (dockerfileText ?? '')
+        .split('\n')
+        .filter((line) => !/^\s*#/.test(line))
+        .some((line) => line.includes('.docker.env'));
+      if (dockerfileConsumesDockerEnv) throw error;
+      console.warn(
+        chalk.yellow(`Skipped .docker.env generation: ${error instanceof Error ? error.message : String(error)}`)
+      );
+    }
+  }
+}
 
 /** Whether any dependency section declares a private git or `@willbooster-private/*` registry dependency. */
 function declaresPrivateDependency(packageJson: PackageJson): boolean {

@@ -11,6 +11,7 @@ import { promisePool } from '../utils/promisePool.js';
 const includedNodeModulesPatterns = ['@willbooster'];
 
 const commonContent = `
+.env*
 **/.DS_Store
 **/.cache
 **/.claude
