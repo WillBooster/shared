@@ -298,17 +298,6 @@ export abstract class BaseScripts {
   }
 }
 
-/**
- * Builds a wait-on boot check for a listening loopback port. A TCP check treats redirects and
- * authentication responses as a successfully started server; an HTTP status check would keep
- * waiting even though Playwright can already use the app. `localhost` lets Node try both address
- * families when a dev server binds only IPv4 or IPv6.
- */
-export function buildWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
-  if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
-  return `wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
-}
-
 export function buildE2EReadinessCommand(port: string | number, isDocker: boolean): string {
   const listeningCommand = buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000');
   const respondingCommand = buildHttpReadinessCommand(port);
@@ -319,6 +308,17 @@ export function buildE2EReadinessCommand(port: string | number, isDocker: boolea
   return isDocker
     ? `${listeningCommand} && ${respondingCommand}`
     : `${listeningCommand} && ${respondingCommand} && sleep 2 && ${respondingCommand}`;
+}
+
+/**
+ * Builds a wait-on boot check for a listening loopback port. A TCP check treats redirects and
+ * authentication responses as a successfully started server; an HTTP status check would keep
+ * waiting even though Playwright can already use the app. `localhost` lets Node try both address
+ * families when a dev server binds only IPv4 or IPv6.
+ */
+export function buildWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
+  if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
+  return `wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
 }
 
 /**

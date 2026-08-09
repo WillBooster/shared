@@ -1245,7 +1245,7 @@ function getLatestDependencyVersion(dependency: string): string {
 }
 
 function getDependencyVersionFromNpm(dependency: string): string {
-  if (!shouldApplyManagedDependencyAgeGate(dependency)) {
+  if (!shouldApplyPackageAgeGate(dependency)) {
     return getRawDependencyVersionFromNpm(dependency);
   }
 
@@ -1304,15 +1304,11 @@ function getNpmPackageTimes(dependency: string): Record<string, string> {
 }
 
 function shouldApplyPackageAgeGate(dependency: string): boolean {
-  return !bunMinimumReleaseAgeExcludes.some((pattern) => doesPackagePatternMatch(pattern, dependency));
-}
-
-function shouldApplyManagedDependencyAgeGate(dependency: string): boolean {
   // Keep managed first-party packages aligned with Bun's explicit exemptions. wbfy's generated
   // configuration can rely on the current wb contract, so independently soaking or downgrading wb
   // would pair new generated files with an incompatible old CLI. Those packages are released and
   // fixed at their source instead; only packages Bun itself gates may be selected from older tags.
-  return shouldApplyPackageAgeGate(dependency);
+  return !bunMinimumReleaseAgeExcludes.some((pattern) => doesPackagePatternMatch(pattern, dependency));
 }
 
 function doesPackagePatternMatch(pattern: string, dependency: string): boolean {
@@ -1419,7 +1415,7 @@ function shouldDowngradeAgeGatedManagedDependency(
   const validCurrentVersion = semver.valid(currentVersion);
   const validManagedVersion = semver.valid(managedVersion);
   return (
-    shouldApplyManagedDependencyAgeGate(dependency) &&
+    shouldApplyPackageAgeGate(dependency) &&
     validCurrentVersion !== null &&
     validManagedVersion !== null &&
     semver.gt(validCurrentVersion, validManagedVersion)

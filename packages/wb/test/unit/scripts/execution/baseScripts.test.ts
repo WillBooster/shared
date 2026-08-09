@@ -108,6 +108,41 @@ describe('BaseScripts.testE2E', () => {
 
   const scripts = new TestScripts();
 
+  it('stabilizes a direct server before launching Playwright', async () => {
+    const command = await scripts.testE2EProduction(
+      {
+        env: { WB_ENV: 'test', PORT: '3000' },
+        packageJson: { scripts: {} },
+        skipLaunchingServerForPlaywright: false,
+      } as unknown as Project,
+      {} as TestArgv,
+      {}
+    );
+
+    expect(command).toContain(
+      'tcp:localhost:3000 && curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:3000 && sleep 2 && curl'
+    );
+  });
+
+  it('propagates Docker readiness without the direct-server stabilization delay', async () => {
+    const command = await scripts.testE2EDocker(
+      {
+        env: { WB_ENV: 'test', PORT: '3000' },
+        packageJson: { scripts: {} },
+        declaredEnvKeys: new Set(),
+        dockerImageName: 'test-image',
+        skipLaunchingServerForPlaywright: false,
+      } as unknown as Project,
+      {} as TestArgv,
+      {}
+    );
+
+    expect(command).toContain(
+      'tcp:localhost:3000 && curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:3000 && BUN playwright test'
+    );
+    expect(command).not.toContain('sleep 2');
+  });
+
   it('uses default target when none specified', async () => {
     const command = await scripts.testE2EProduction(project, {} as TestArgv, {});
     expect(command).toContain('BUN playwright test test/e2e/');
