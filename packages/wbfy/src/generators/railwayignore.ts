@@ -30,7 +30,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     // hand-written pattern such as `*.env` earlier in the file must not silently re-exclude it.
     if (usesDockerEnv && !/^!\.docker\.env$/m.test(newContent)) {
       newContent = `${newContent.replace(/\n?$/, '\n')}!.docker.env\n`;
-    } else if (config.doesContainDockerfile && !usesDockerEnv) {
+    } else if (config.dockerfile && !usesDockerEnv) {
       newContent = newContent.replace(/^!\.docker\.env\n?/m, '');
     }
     if (newContent === content) return;

@@ -19,7 +19,7 @@ test('unignores .docker.env only when the Dockerfile consumes it', async () => {
     await promisePool.promiseAll();
     expect(fs.readFileSync(filePath, 'utf8')).toBe('!.docker.env\n');
 
-    await fixRailwayignore(createConfig({ dirPath, isRailway: true, dockerfile: '' }));
+    await fixRailwayignore(createConfig({ dirPath, isRailway: true, doesContainDockerfile: true, dockerfile: '' }));
     await promisePool.promiseAll();
     expect(fs.readFileSync(filePath, 'utf8')).toBe('!.docker.env\n');
 
