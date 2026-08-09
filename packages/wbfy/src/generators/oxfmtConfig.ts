@@ -23,11 +23,8 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
       existingContent,
       filePath,
     });
-    if (
-      normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent) &&
-      !(await fsUtil.generateFile(filePath, desiredContent))
-    ) {
-      return;
+    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
+      await fsUtil.generateFile(filePath, desiredContent);
     }
   });
 }

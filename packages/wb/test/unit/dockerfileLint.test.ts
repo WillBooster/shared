@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { consumesDockerEnv } from '@willbooster/shared-lib-node/src';
 
-import { consumesDockerEnv, lintDockerfile } from '../../src/utils/dockerfileLint.js';
+import { lintDockerfile } from '../../src/utils/dockerfileLint.js';
 
 describe('lintDockerfile', () => {
   it('rejects non-cache RUN mounts only when a Railway config exists', () => {

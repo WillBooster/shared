@@ -53,13 +53,6 @@ export function lintDockerfile(dockerfileText: string, options: { railwayConfigu
   return problems;
 }
 
-/** Whether the Dockerfile consumes the generated non-secret environment, directly or through wb's helper. */
-export function consumesDockerEnv(dockerfileText: string): boolean {
-  return dockerfileText
-    .split('\n')
-    .some((line) => !/^\s*#/u.test(line) && (line.includes('.docker.env') || line.includes('apply-docker-env.sh')));
-}
-
 /** Yields `[INSTRUCTION, arguments]` pairs with comments stripped and continuations collapsed. */
 function parseLogicalInstructions(dockerfileText: string): [string, string][] {
   const logicalLines = dockerfileText

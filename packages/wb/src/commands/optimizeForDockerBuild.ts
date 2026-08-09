@@ -7,6 +7,7 @@ import chalk from 'chalk';
 import { globby } from 'globby';
 import type { PackageJson } from 'type-fest';
 import type { CommandModule, InferredOptionTypes } from 'yargs';
+import { consumesDockerEnv } from '@willbooster/shared-lib-node/src';
 
 import {
   findDescendantProjects,
@@ -16,7 +17,7 @@ import {
   type Project,
 } from '../project.js';
 import { isCI, isDockerEnabled } from '../utils/ci.js';
-import { consumesDockerEnv, lintDockerfile } from '../utils/dockerfileLint.js';
+import { lintDockerfile } from '../utils/dockerfileLint.js';
 
 import {
   PRIVATE_REGISTRY_SCOPE,

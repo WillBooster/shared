@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+import { consumesDockerEnv } from '@willbooster/shared-lib-node/src';
+
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -13,9 +15,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('fixRailwayignore', async () => {
     const filePath = path.resolve(config.dirPath, '.railwayignore');
     const content = await fsUtil.readFileIfExists(filePath);
-    const usesDockerEnv = config.dockerfile
-      .split('\n')
-      .some((line) => !/^\s*#/u.test(line) && (line.includes('.docker.env') || line.includes('apply-docker-env.sh')));
+    const usesDockerEnv = consumesDockerEnv(config.dockerfile);
     if (!content) {
       if (config.isRailway && usesDockerEnv) {
         await promisePool.run(() => fsUtil.generateFile(filePath, '!.docker.env\n'));
@@ -30,7 +30,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     // hand-written pattern such as `*.env` earlier in the file must not silently re-exclude it.
     if (usesDockerEnv && !/^!\.docker\.env$/m.test(newContent)) {
       newContent = `${newContent.replace(/\n?$/, '\n')}!.docker.env\n`;
-    } else if (!usesDockerEnv) {
+    } else if (config.doesContainDockerfile && !usesDockerEnv) {
       newContent = newContent.replace(/^!\.docker\.env\n?/m, '');
     }
     if (newContent === content) return;

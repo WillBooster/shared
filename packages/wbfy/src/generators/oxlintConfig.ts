@@ -35,11 +35,8 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
           filePath,
         });
 
-    if (
-      normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent) &&
-      !(await fsUtil.generateFile(filePath, desiredContent))
-    ) {
-      return;
+    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
+      await fsUtil.generateFile(filePath, desiredContent);
     }
   });
 }
