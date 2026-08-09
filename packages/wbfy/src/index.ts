@@ -58,8 +58,19 @@ import { disposeTypeScriptApi } from './utils/typescriptApi.js';
 import { getWbfyVersion, getWbfyVersionLabel } from './utils/version.js';
 import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
 
+/**
+ * Applies only the global release-age gate, without touching any repository. Spelled out in full
+ * rather than shortened (e.g. `gate`) because the default command takes positional paths: a short
+ * name would swallow a directory that happens to share it.
+ */
+const applyReleaseAgeGateCommand = 'apply-release-age-gate';
+
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
+    .command(
+      applyReleaseAgeGateCommand,
+      "Apply only the organization's minimum-release-age policy to this machine's global package-manager configs"
+    )
     .command('$0 [paths..]', 'Make a given project follow the WillBooster standard', (yargs) => {
       yargs.positional('paths', {
         describe: 'project paths to be wbfied',
@@ -92,6 +103,13 @@ async function main(): Promise<void> {
     .version(getWbfyVersion())
     .strict().argv;
   options.isVerbose = argv.verbose;
+
+  // Deliberately before the Bun check in willboosterifyPaths(): the gate must be appliable on a
+  // machine whose Bun is missing or outdated, which is exactly a machine that still needs gating.
+  if (argv._[0] === applyReleaseAgeGateCommand) {
+    if (!ensureGlobalReleaseAgeGates()) process.exitCode = 1;
+    return;
+  }
 
   let hasInvalidPackageConfig = false;
   try {
