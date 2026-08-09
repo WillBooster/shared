@@ -46,19 +46,40 @@ test('marks tracked CRLF text for renormalization when introducing text attribut
   }
 });
 
-test('does not renormalize when .gitattributes is a symlink', async () => {
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitattributes-symlink-'));
+test('reads tracked EOL metadata beyond Node default buffer', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitattributes-large-'));
   try {
     git(tempDirPath, 'init');
     git(tempDirPath, 'config', 'core.autocrlf', 'false');
-    fs.writeFileSync(path.join(tempDirPath, 'Main.java'), 'class Main {\r\n}\r\n');
-    fs.writeFileSync(path.join(tempDirPath, 'attributes-target'), '*.java text eol=lf\n');
-    fs.symlinkSync('attributes-target', path.join(tempDirPath, '.gitattributes'));
-    git(tempDirPath, 'add', 'Main.java');
+    fs.writeFileSync(path.join(tempDirPath, 'zzzz.java'), 'class Last {\r\n}\r\n');
+    git(tempDirPath, 'add', 'zzzz.java');
+    fs.writeFileSync(path.join(tempDirPath, '.gitattributes'), '*.java text eol=lf\n');
+
+    const emptyBlob = child_process.execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: tempDirPath,
+      encoding: 'utf8',
+      input: '',
+    });
+    const indexEntries = Array.from(
+      { length: 12_000 },
+      (_, index) => `100644 ${emptyBlob.trim()}\tbulk/${index.toString().padStart(5, '0')}-${'x'.repeat(64)}.txt\n`
+    ).join('');
+    child_process.execFileSync('git', ['update-index', '--index-info'], {
+      cwd: tempDirPath,
+      input: indexEntries,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const eolMetadata = child_process.execFileSync('git', ['ls-files', '--eol', '-z'], {
+      cwd: tempDirPath,
+      encoding: 'utf8',
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    expect(Buffer.byteLength(eolMetadata)).toBeGreaterThan(1024 * 1024);
+    expect(eolMetadata).toContain('\tzzzz.java\0');
 
     renormalizeTrackedTextFiles(tempDirPath);
 
-    expect(fs.readFileSync(path.join(tempDirPath, 'Main.java'), 'utf8')).toContain('\r\n');
+    expect(fs.readFileSync(path.join(tempDirPath, 'zzzz.java'), 'utf8')).not.toContain('\r\n');
   } finally {
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }

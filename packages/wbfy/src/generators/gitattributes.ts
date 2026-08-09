@@ -1,3 +1,4 @@
+import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -6,7 +7,8 @@ import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { promisePool } from '../utils/promisePool.js';
-import { spawnSyncAndReturnRawStdout } from '../utils/spawnUtil.js';
+
+const gitOutputMaxBuffer = 64 * 1024 * 1024;
 
 // cf. https://bun.sh/guides/install/git-diff-bun-lockfile
 const newContent = `* text=auto
@@ -33,10 +35,12 @@ export async function generateGitattributes(config: PackageConfig): Promise<void
 }
 
 export function renormalizeTrackedTextFiles(dirPath: string): void {
-  const attributesFileStats = fs.lstatSync(path.resolve(dirPath, '.gitattributes'), { throwIfNoEntry: false });
-  if (!attributesFileStats?.isFile()) return;
-
-  const output = spawnSyncAndReturnRawStdout('git', ['ls-files', '--eol', '-z'], dirPath);
+  const output = child_process.execFileSync('git', ['ls-files', '--eol', '-z'], {
+    cwd: dirPath,
+    encoding: 'utf8',
+    maxBuffer: gitOutputMaxBuffer,
+  });
+  let renormalizedCount = 0;
   for (const record of output.split('\0')) {
     const separatorIndex = record.indexOf('\t');
     if (separatorIndex === -1) continue;
@@ -56,5 +60,9 @@ export function renormalizeTrackedTextFiles(dirPath: string): void {
     // blob; this also prevents Prettier's metadata cache from skipping the newly changed file.
     const content = fs.readFileSync(trackedFilePath);
     fs.writeFileSync(trackedFilePath, Buffer.from(content.toString('binary').replaceAll('\r\n', '\n'), 'binary'));
+    renormalizedCount++;
+  }
+  if (renormalizedCount > 0) {
+    console.info(`Renormalized line endings in ${renormalizedCount} tracked file(s).`);
   }
 }
