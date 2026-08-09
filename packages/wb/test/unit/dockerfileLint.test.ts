@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { lintDockerfile } from '../../src/utils/dockerfileLint.js';
+import { consumesDockerEnv, lintDockerfile } from '../../src/utils/dockerfileLint.js';
 
 describe('lintDockerfile', () => {
   it('rejects non-cache RUN mounts only when a Railway config exists', () => {
@@ -107,5 +107,13 @@ RUN --mount=target=/tmp/x true
 
   it('lints CRLF Dockerfiles', () => {
     expect(lintDockerfile('COPY .env ./\r\nENV FNOX_AGE_KEY=abc\r\n', { railwayConfigured: false })).toHaveLength(2);
+  });
+});
+
+describe('consumesDockerEnv', () => {
+  it('recognizes direct and helper-based consumption outside comments', () => {
+    expect(consumesDockerEnv('COPY .docker.env ./\n')).toBe(true);
+    expect(consumesDockerEnv('CMD ["./bash/apply-docker-env.sh", "node", "index.js"]\n')).toBe(true);
+    expect(consumesDockerEnv('# COPY .docker.env ./\n# apply-docker-env.sh\n')).toBe(false);
   });
 });

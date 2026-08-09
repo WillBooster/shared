@@ -15,7 +15,7 @@ export async function fixRailwayignore(config: PackageConfig): Promise<void> {
     const content = await fsUtil.readFileIfExists(filePath);
     const usesDockerEnv = config.dockerfile
       .split('\n')
-      .some((line) => !/^\s*#/u.test(line) && line.includes('.docker.env'));
+      .some((line) => !/^\s*#/u.test(line) && (line.includes('.docker.env') || line.includes('apply-docker-env.sh')));
     if (!content) {
       if (config.isRailway && usesDockerEnv) {
         await promisePool.run(() => fsUtil.generateFile(filePath, '!.docker.env\n'));

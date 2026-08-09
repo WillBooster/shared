@@ -16,7 +16,7 @@ import {
   type Project,
 } from '../project.js';
 import { isCI, isDockerEnabled } from '../utils/ci.js';
-import { lintDockerfile } from '../utils/dockerfileLint.js';
+import { consumesDockerEnv, lintDockerfile } from '../utils/dockerfileLint.js';
 
 import {
   PRIVATE_REGISTRY_SCOPE,
@@ -169,9 +169,7 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
     }
   }
 
-  const dockerfileConsumesDockerEnv = (dockerfileText ?? '')
-    .split('\n')
-    .some((line) => !/^\s*#/u.test(line) && line.includes('.docker.env'));
+  const dockerfileConsumesDockerEnv = consumesDockerEnv(dockerfileText ?? '');
   if (
     dockerfileConsumesDockerEnv &&
     candidateDirPaths.some((dirPath) => fs.existsSync(path.join(dirPath, 'fnox.toml')))

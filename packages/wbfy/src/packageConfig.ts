@@ -426,6 +426,9 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
 
 export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
   const scripts = config.packageJson?.scripts ?? {};
+  if (/(?:^|&&)\s*(?:npm|pnpm|yarn)\s+(?:run(?:-script)?\s+)?gen-code\s*(?:&&|$)/u.test(scripts.postinstall ?? '')) {
+    return 'postinstall must use wb gen-code instead of a non-Bun gen-code runner';
+  }
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
     if (wranglerTypesTextPattern.test(script)) return `${name} must use wb gen-code instead of wrangler types`;

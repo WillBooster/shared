@@ -357,6 +357,16 @@ test('rejects worker type generation without a direct wrangler dependency', asyn
   expect(packageJson.scripts).toEqual(scripts);
 });
 
+test.each(['npm run gen-code', 'pnpm gen-code', 'yarn run gen-code'])(
+  'rejects unsupported postinstall alias %s instead of duplicating generation',
+  async (postinstall) => {
+    const scripts = { 'gen-code': 'bun wb gen-code', postinstall };
+    const packageJson = await generatePackageJsonFrom({ scripts }, { packageJson: { scripts } });
+
+    expect(packageJson.scripts).toEqual(scripts);
+  }
+);
+
 // A wrapper around a CUSTOMIZED gen-code is the install-time entry point for BOTH the managed generation and the
 // project's own steps. Replacing it with a bare `wb gen-code` would stop `build-assets` running on install;
 // appending one would run every generator twice.

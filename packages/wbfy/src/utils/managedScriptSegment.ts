@@ -1,9 +1,8 @@
 import type { PackageJson } from 'type-fest';
 
 /**
- * `wb gen-code` runs `wrangler types` as its first step, so wbfy no longer has to model arbitrary shells to keep
- * worker-configuration.d.ts generated. It only needs to recognize the two segments it owns — the managed
- * `wb gen-code` and a direct `wrangler types` invocation — and to leave everything else alone.
+ * Recognizes the managed `wb gen-code` segment, a one-level package-script wrapper around it, and
+ * custom segments that wbfy leaves alone.
  */
 type ScriptSegmentKind = 'custom' | 'genCode' | 'genCodeWrapper';
 
