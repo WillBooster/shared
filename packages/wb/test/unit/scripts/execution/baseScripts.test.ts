@@ -15,11 +15,17 @@ import {
   buildWaitOnLoopbackCommand,
 } from '../../../../src/scripts/execution/baseScripts.js';
 import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/sharedOptionsBuilder.js';
+import type * as processUtils from '../../../../src/utils/process.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../src/utils/shell.js';
 import { buildD1MigrationsApplyCommands } from '../../../../src/utils/wrangler.js';
 
 vi.mock('../../../../src/utils/port.js', () => ({
   checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
+}));
+
+vi.mock('../../../../src/utils/process.js', async (importOriginal: () => Promise<typeof processUtils>) => ({
+  ...(await importOriginal()),
+  spawnSyncOnExit: vi.fn(),
 }));
 
 describe('buildWaitOnLoopbackCommand', () => {

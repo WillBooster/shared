@@ -21,6 +21,8 @@ export interface TestE2EOptions {
   forwardedPlaywrightArgs?: string[];
 }
 
+const directServerStabilizationSeconds = 2;
+
 /**
  * A collection of scripts for executing an app.
  * Note that YARN zzz` is replaced with `yarn zzz` or `node_modules/.bin/zzz`.
@@ -302,12 +304,13 @@ export function buildE2EReadinessCommand(port: string | number, isDocker: boolea
   const listeningCommand = buildWaitOnLoopbackCommand(port, '-t 600000 -i 2000');
   const respondingCommand = buildHttpReadinessCommand(port);
   // docker-proxy accepts TCP before the app is ready, so every path requires an HTTP response.
-  // Direct servers then require another response after the normal polling interval: starting a
-  // full browser burst immediately after Wrangler's first response can race workerd startup and
-  // crash it with broken pipes. curl intentionally accepts redirects and authentication errors.
+  // Direct servers then require another response after the normal two-second polling interval.
+  // Wrangler exposes no stronger readiness signal than a completed response, and starting a full
+  // client burst immediately after its first response can race workerd startup and crash it with
+  // broken pipes. curl intentionally accepts redirects and authentication errors.
   return isDocker
     ? `${listeningCommand} && ${respondingCommand}`
-    : `${listeningCommand} && ${respondingCommand} && sleep 2 && ${respondingCommand}`;
+    : `${listeningCommand} && ${respondingCommand} && sleep ${directServerStabilizationSeconds} && ${respondingCommand}`;
 }
 
 /**
@@ -329,7 +332,7 @@ export function buildWaitOnLoopbackCommand(port: string | number | undefined, wa
  * -f), so redirecting or auth-guarded servers still pass — the reason the boot check moved from
  * http-get to tcp in the first place.
  */
-export function buildHttpReadinessCommand(port: string | number): string {
+function buildHttpReadinessCommand(port: string | number): string {
   return `curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:${port}`;
 }
 
