@@ -85,6 +85,15 @@ test('reads tracked EOL metadata beyond Node default buffer', () => {
   }
 });
 
+test('skips renormalization outside a Git repository', () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitattributes-no-git-'));
+  try {
+    expect(() => renormalizeTrackedTextFiles(tempDirPath)).not.toThrow();
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});
+
 function git(cwd: string, ...args: string[]): string {
   return child_process.execFileSync('git', args, { cwd, encoding: 'utf8' });
 }

@@ -35,11 +35,18 @@ export async function generateGitattributes(config: PackageConfig): Promise<void
 }
 
 export function renormalizeTrackedTextFiles(dirPath: string): void {
-  const output = child_process.execFileSync('git', ['ls-files', '--eol', '-z'], {
-    cwd: dirPath,
-    encoding: 'utf8',
-    maxBuffer: gitOutputMaxBuffer,
-  });
+  let output: string;
+  try {
+    output = child_process.execFileSync('git', ['ls-files', '--eol', '-z'], {
+      cwd: dirPath,
+      encoding: 'utf8',
+      maxBuffer: gitOutputMaxBuffer,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    console.warn(`Skipped tracked line-ending renormalization: ${(error as Error).message}`);
+    return;
+  }
   let renormalizedCount = 0;
   for (const record of output.split('\0')) {
     const separatorIndex = record.indexOf('\t');
