@@ -20,7 +20,7 @@ import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateFnoxToml } from './generators/fnoxToml.js';
 import { generateGeminiConfig } from './generators/geminiConfig.js';
 import { removeGeminiSettings } from './generators/geminiSettings.js';
-import { generateGitattributes } from './generators/gitattributes.js';
+import { generateGitattributes, renormalizeTrackedTextFiles } from './generators/gitattributes.js';
 import { generateGitignore } from './generators/gitignore.js';
 import { ensureGlobalReleaseAgeGates } from './generators/globalReleaseAgeGate.js';
 import { generateIdeaSettings } from './generators/idea.js';
@@ -384,6 +384,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     }
     await Promise.all(promises);
     await promisePool.promiseAll();
+    // Run after every pooled generator write so normalization cannot overwrite a concurrent
+    // update, and before cleanup so formatter metadata caches observe the changed files.
+    renormalizeTrackedTextFiles(rootDirPath);
     // Refresh lock files
     try {
       refreshBunLock(rootDirPath);

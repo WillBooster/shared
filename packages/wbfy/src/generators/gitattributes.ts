@@ -28,26 +28,29 @@ dist/** linguist-generated=true
 export async function generateGitattributes(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateGitattributes', async () => {
     const filePath = path.resolve(config.dirPath, '.gitattributes');
-    await promisePool.run(async () => {
-      await fsUtil.generateFile(filePath, newContent);
-      renormalizeTrackedTextFiles(config.dirPath);
-    });
+    await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }
 
-function renormalizeTrackedTextFiles(dirPath: string): void {
+export function renormalizeTrackedTextFiles(dirPath: string): void {
   const output = spawnSyncAndReturnRawStdout('git', ['ls-files', '--eol', '-z'], dirPath);
   for (const record of output.split('\0')) {
     const separatorIndex = record.indexOf('\t');
     if (separatorIndex === -1) continue;
 
     const attributes = record.slice(0, separatorIndex);
-    if (!/^i\/(?:crlf|mixed)\s/u.test(attributes) || /attr\/-text(?:\s|$)/u.test(attributes)) continue;
+    if (
+      !/^i\/(?:crlf|mixed)\s/u.test(attributes) ||
+      /attr\/-text(?:\s|$)/u.test(attributes) ||
+      /attr\/.*\beol=crlf(?:\s|$)/u.test(attributes)
+    ) {
+      continue;
+    }
 
     const relativePath = record.slice(separatorIndex + 1);
     const trackedFilePath = path.resolve(dirPath, relativePath);
-    const stats = fs.lstatSync(trackedFilePath);
-    if (!stats.isFile()) continue;
+    const stats = fs.lstatSync(trackedFilePath, { throwIfNoEntry: false });
+    if (!stats?.isFile()) continue;
 
     // Git's stat cache can hide pre-existing CRLF blobs after wbfy introduces text attributes.
     // Normalize bytes in the worktree so the caller's normal `git add -A` records the canonical
