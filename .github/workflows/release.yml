@@ -1,9 +1,9 @@
 name: Release
-on:
+'on':
   push:
     branches:
       - main
-  workflow_dispatch:
+  workflow_dispatch: null
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
