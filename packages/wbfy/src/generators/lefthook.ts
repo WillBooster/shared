@@ -291,7 +291,7 @@ ${
   hasJsOrTs
     ? String.raw`
 if [ -n "$oxfmt_files" ]; then
-  node node_modules/.bin/oxfmt --write --no-error-on-unmatched-pattern '!**/package.json' $oxfmt_files
+  bun oxfmt --write --no-error-on-unmatched-pattern '!**/package.json' $oxfmt_files
 fi
 `
     : ''
@@ -299,7 +299,7 @@ fi
 ${
   hasJava
     ? String.raw`if [ -n "$prettier_files" ]; then
-  node node_modules/.bin/prettier --cache --write --ignore-unknown -- $prettier_files
+  bun prettier --cache --write --ignore-unknown -- $prettier_files
 fi`
     : ''
 }
@@ -307,13 +307,13 @@ ${
   hasJsOrTs
     ? String.raw`
 if [ -n "$oxlint_files" ]; then
-  node node_modules/.bin/oxlint --fix $oxlint_files
+  bun oxlint --fix $oxlint_files
 fi
 `
     : ''
 }
 if [ -n "$package_json_files" ]; then
-  node node_modules/.bin/sort-package-json -- $package_json_files
+  bun sort-package-json -- $package_json_files
 fi
 ${
   hasPythonPackageManager(config)
@@ -408,8 +408,8 @@ function generatePostMergeCommands(config: PackageConfig, allConfigs: PackageCon
   // post-merge hooks stay wb-driven because `prisma deploy`/`generate` need no blitz loader.
   if (config.depending.prisma) {
     postMergeCommands.push(
-      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/wb prisma deploy"`,
-      String.raw`run_if_changed ".*\.prisma" "node node_modules/.bin/wb prisma generate"`
+      String.raw`run_if_changed ".*\.prisma" "bun wb prisma deploy"`,
+      String.raw`run_if_changed ".*\.prisma" "bun wb prisma generate"`
     );
   }
   const genI18nTsCommand = getGenI18nTsCommand(config, config.packageJson?.scripts);

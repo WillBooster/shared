@@ -327,8 +327,9 @@ function buildReleaseWorkflow(
             : []),
           {
             name: 'Release',
-            // Run semantic-release with Node because it checks Node.js runtime requirements.
-            run: 'node node_modules/semantic-release/bin/semantic-release.js',
+            // semantic-release checks Node.js runtime requirements; `bun <bin>` respects its
+            // `#!/usr/bin/env node` shebang, so it still runs under real Node.
+            run: 'bun semantic-release',
             env: {
               GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
               HUSKY: '0',
