@@ -115,7 +115,7 @@ test('installs Playwright browsers from the declaring workspace package in a mon
     const workflow = yaml.load(content) as ParsedWorkflow;
     const steps = workflow.jobs.test?.steps ?? [];
     // Every declaring package gets its own browser installation (versions may differ).
-    const installSteps = steps.filter((step) => step.run === 'bun run playwright install --with-deps');
+    const installSteps = steps.filter((step) => step.run === 'bun playwright install --with-deps');
     expect(installSteps.map((step) => step['working-directory'])).toEqual(['packages/app', 'packages/web']);
     const cacheStep = steps.find((step) => step.uses?.startsWith('actions/cache@'));
     expect(cacheStep?.with?.key).toBe(

@@ -180,7 +180,7 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
           ...playwrightDirPaths.map(
             (dirPath): Step => ({
               if: "steps.playwright-cache.outputs.cache-hit != 'true'",
-              run: 'bun run playwright install --with-deps',
+              run: 'bun playwright install --with-deps',
               ...workingDir(dirPath),
             })
           ),
@@ -188,7 +188,7 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
             (dirPath): Step => ({
               // The cached browsers still need their system dependencies on a fresh runner.
               if: "steps.playwright-cache.outputs.cache-hit == 'true'",
-              run: 'bun run playwright install-deps',
+              run: 'bun playwright install-deps',
               ...workingDir(dirPath),
             })
           ),

@@ -410,7 +410,7 @@ async function applyPackageJsonConventions(
     delete jsonObj.scripts.prepublishOnly;
     delete jsonObj.scripts.prepack;
     delete jsonObj.scripts.postpack;
-    jsonObj.scripts.prepare = 'lefthook install || true';
+    jsonObj.scripts.prepare = 'bun lefthook install || true';
     // When @willbooster/wb is a workspace of this repository, the generated `bun wb …` scripts run
     // its gitignored dist build (bin/index.js imports ../dist/index.js), so a fresh checkout must
     // build it during install; registry installs ship a prebuilt dist and need no extra step.
