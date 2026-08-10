@@ -313,7 +313,7 @@ fi
     : ''
 }
 if [ -n "$package_json_files" ]; then
-  bun sort-package-json -- $package_json_files
+  bun sort-package-json $package_json_files
 fi
 ${
   hasPythonPackageManager(config)
