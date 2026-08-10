@@ -94,8 +94,8 @@ test('grants aries fnox access only to the selected repositories', () => {
     'WillBooster/cheerlings',
     'WillBooster/chofu-walking',
     'WillBooster/prompt-study',
-    'WillBoosterLab/exercode',
-    'WillBoosterLab/judge',
+    'WillBooster/exercode',
+    'WillBooster/judge',
   ];
 
   for (const repository of selectedRepositories) {
@@ -119,7 +119,7 @@ test('grants sunaga and ayame fnox access only to their selected repositories', 
     publicKey: 'age1vxm2gs003ruwm8p6h3hv7xasju2s8k4mxmc34zm6grdwznrs09nq6xz5vz',
   };
 
-  for (const repository of ['WillBoosterLab/exercode', 'WillBoosterLab/judge']) {
+  for (const repository of ['WillBooster/exercode', 'WillBooster/judge']) {
     const recipients = getFnoxAgeRecipients(createConfig({ repository: `github:${repository}` }));
     expect(recipients).toContainEqual(sunagaRecipient);
     expect(recipients).toContainEqual(ayameRecipient);
