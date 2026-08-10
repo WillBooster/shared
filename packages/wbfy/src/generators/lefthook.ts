@@ -272,46 +272,12 @@ bun wb lint --fix --format -- {staged_files}
 `.trim();
   }
 
-  const oxlintPattern = extensions.oxlint.map((extension) => String.raw`\.${extension}$`).join('|');
-  const oxfmtPattern = extensions.oxfmt.map((extension) => String.raw`\.${extension}$`).join('|');
-  const prettierPattern = extensions.prettierOnly.map((extension) => String.raw`\.${extension}$`).join('|');
-  const hasJsOrTs = doesContainJsOrTs(config);
-  const hasJava = doesContainJava(config);
-
   return String.raw`
 # Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
-${hasJsOrTs ? String.raw`oxlint_files="$(printf '%s\n' {staged_files} | grep -E '(${oxlintPattern})' || true)"` : ''}
-${hasJsOrTs ? String.raw`oxfmt_files="$(printf '%s\n' {staged_files} | grep -E '(${oxfmtPattern})' | grep -v -E '(^|/)package\.json$' || true)"` : ''}
-${hasJava ? String.raw`prettier_files="$(printf '%s\n' {staged_files} | grep -E '(${prettierPattern})' || true)"` : ''}
 package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
 ${hasPythonPackageManager(config) ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}
 
-${
-  hasJsOrTs
-    ? String.raw`
-if [ -n "$oxfmt_files" ]; then
-  bun oxfmt --write --no-error-on-unmatched-pattern '!**/package.json' $oxfmt_files
-fi
-`
-    : ''
-}
-${
-  hasJava
-    ? String.raw`if [ -n "$prettier_files" ]; then
-  bun prettier --cache --write --ignore-unknown -- $prettier_files
-fi`
-    : ''
-}
-${
-  hasJsOrTs
-    ? String.raw`
-if [ -n "$oxlint_files" ]; then
-  bun oxlint --fix $oxlint_files
-fi
-`
-    : ''
-}
 if [ -n "$package_json_files" ]; then
   bun sort-package-json $package_json_files
 fi
