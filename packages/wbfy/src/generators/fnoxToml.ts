@@ -96,8 +96,8 @@ export const FNOX_AGE_PRINCIPALS = [
         'WillBooster/cheerlings',
         'WillBooster/chofu-walking',
         'WillBooster/prompt-study',
-        'WillBoosterLab/exercode',
-        'WillBoosterLab/judge',
+        'WillBooster/exercode',
+        'WillBooster/judge',
       ],
     },
   },
@@ -105,14 +105,14 @@ export const FNOX_AGE_PRINCIPALS = [
     name: 'sunaga',
     publicKeys: ['age1ulxzn6y68ku34cpx5fya5gf7rnrwz0uflnye6uxuhg34p2njhgkqmg73g4'],
     repositoryScope: {
-      repositories: ['WillBoosterLab/exercode', 'WillBoosterLab/judge'],
+      repositories: ['WillBooster/exercode', 'WillBooster/judge'],
     },
   },
   {
     name: 'ayame',
     publicKeys: ['age1vxm2gs003ruwm8p6h3hv7xasju2s8k4mxmc34zm6grdwznrs09nq6xz5vz'],
     repositoryScope: {
-      repositories: ['WillBooster/chofu-walking', 'WillBoosterLab/exercode', 'WillBoosterLab/judge'],
+      repositories: ['WillBooster/chofu-walking', 'WillBooster/exercode', 'WillBooster/judge'],
     },
   },
 ] as const satisfies readonly FnoxAgePrincipal[];
