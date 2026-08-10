@@ -38,7 +38,7 @@ test('does not restore missing default gen-i18n-ts script with managed wb gen-co
   expect(packageJson.scripts).toMatchObject({
     cleanup: 'bun wb lint --fix --format',
     'gen-code': 'bun wb gen-code',
-    postinstall: 'wb gen-code',
+    postinstall: 'bun wb gen-code',
   });
   expect(packageJson.scripts?.['gen-i18n-ts']).toBeUndefined();
 });
@@ -201,7 +201,7 @@ test('keeps prettier for packages that import it as a runtime library but drops 
 });
 
 // `wb gen-code` generates worker-configuration.d.ts itself, so wbfy no longer weaves `wrangler types` into the
-// managed scripts: a Cloudflare package normalizes to the same `bun wb gen-code` / `wb gen-code` pair as any other.
+// managed scripts: a Cloudflare package normalizes to `bun wb gen-code` like any other.
 test('normalizes managed scripts of a Cloudflare project to wb gen-code', async () => {
   const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' } };
   const packageJson = await generatePackageJsonFrom(
@@ -217,7 +217,7 @@ test('normalizes managed scripts of a Cloudflare project to wb gen-code', async 
 
   expect(packageJson.scripts).toMatchObject({
     'gen-code': 'bun wb gen-code',
-    postinstall: 'wb gen-code',
+    postinstall: 'bun wb gen-code',
   });
 });
 
@@ -329,7 +329,7 @@ test('does not treat an unrelated Wrangler command argument as the types subcomm
     }
   );
 
-  expect(packageJson.scripts).toMatchObject({ deploy: 'wrangler deploy types', postinstall: 'wb gen-code' });
+  expect(packageJson.scripts).toMatchObject({ deploy: 'wrangler deploy types', postinstall: 'bun wb gen-code' });
 });
 
 test.each([
@@ -344,7 +344,7 @@ test.each([
   );
 
   expect(packageJson.scripts?.help).toBe(help);
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('bun wb gen-code');
 });
 
 test('rejects worker type generation without a direct wrangler dependency', async () => {
@@ -410,7 +410,7 @@ test('preserves the position of a custom step after generation', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code && bun run build-assets');
+  expect(packageJson.scripts?.postinstall).toBe('bun wb gen-code && bun run build-assets');
 });
 
 // `wb gen-code` also runs prisma, drizzle-kit check, and chakra typegen, so it must survive even where the
@@ -425,7 +425,7 @@ test('keeps a wb gen-code postinstall for an unmanaged worker package', async ()
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('bun wb gen-code');
 });
 
 // Silently dropping a project's own install step (e.g. applying patches) would break its install.
@@ -436,7 +436,7 @@ test('preserves custom postinstall segments', async () => {
     { createI18nDir: true }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('patch-package && wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('patch-package && bun wb gen-code');
 });
 
 // A project may append its own step to the managed `bun wb gen-code` (e.g. building extra deploy assets).
@@ -476,7 +476,7 @@ test('runs wb gen-code after a project postinstall that has no gen-code script',
     { isCloudflare: true, doesContainWranglerConfig: true, packageJson: wranglerPackageJson }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('node scripts/writeDevVars.js && wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('node scripts/writeDevVars.js && bun wb gen-code');
   expect(packageJson.scripts?.['gen-code']).toBeUndefined();
 });
 
@@ -513,7 +513,7 @@ test('generates worker types on install despite machine-local dotenv files', asy
     }
   );
 
-  expect(packageJson.scripts?.postinstall).toBe('wb gen-code');
+  expect(packageJson.scripts?.postinstall).toBe('bun wb gen-code');
 });
 
 test('keeps custom database scripts for drizzle projects', async () => {

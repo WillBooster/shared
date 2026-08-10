@@ -180,7 +180,7 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
           ...playwrightDirPaths.map(
             (dirPath): Step => ({
               if: "steps.playwright-cache.outputs.cache-hit != 'true'",
-              run: 'bun run playwright install --with-deps',
+              run: 'bun playwright install --with-deps',
               ...workingDir(dirPath),
             })
           ),
@@ -188,7 +188,7 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
             (dirPath): Step => ({
               // The cached browsers still need their system dependencies on a fresh runner.
               if: "steps.playwright-cache.outputs.cache-hit == 'true'",
-              run: 'bun run playwright install-deps',
+              run: 'bun playwright install-deps',
               ...workingDir(dirPath),
             })
           ),
@@ -327,8 +327,9 @@ function buildReleaseWorkflow(
             : []),
           {
             name: 'Release',
-            // Run semantic-release with Node because it checks Node.js runtime requirements.
-            run: 'node node_modules/semantic-release/bin/semantic-release.js',
+            // semantic-release checks Node.js runtime requirements; `bun <bin>` respects its
+            // `#!/usr/bin/env node` shebang, so it still runs under real Node.
+            run: 'bun semantic-release',
             env: {
               GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
               HUSKY: '0',
