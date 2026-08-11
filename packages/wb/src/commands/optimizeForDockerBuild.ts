@@ -136,9 +136,13 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       if (argv.skipInstall) {
         console.info('Skipped installing dependencies.');
       } else {
-        child_process.spawnSync(projects.root.packageManagerCommand, ['install'], {
+        const result = child_process.spawnSync(projects.root.packageManagerCommand, ['install'], {
           stdio: 'inherit',
         });
+        if (result.status !== 0) {
+          console.error(chalk.red('Failed to install dependencies.'));
+          process.exit(result.status ?? 1);
+        }
         console.info('Installed dependencies.');
       }
       await cleanupDockerBuildArtifacts(optimizedProjects);
