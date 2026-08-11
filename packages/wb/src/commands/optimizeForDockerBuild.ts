@@ -63,6 +63,11 @@ const builder = {
     type: 'boolean',
     alias: 'o',
   },
+  'skip-install': {
+    description:
+      'Skip the dependency installation after rewriting package.json files (for Dockerfiles that run their own install afterwards)',
+    type: 'boolean',
+  },
 } as const;
 
 export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> = {
@@ -128,10 +133,18 @@ export const optimizeForDockerBuildCommand: CommandModule<unknown, InferredOptio
       optimizedProjects.push(project);
     }
     if (!argv.dryRun && !argv.outside) {
-      child_process.spawnSync(projects.root.packageManagerCommand, ['install'], {
-        stdio: 'inherit',
-      });
-      console.info('Installed dependencies.');
+      if (argv.skipInstall) {
+        console.info('Skipped installing dependencies.');
+      } else {
+        const result = child_process.spawnSync(projects.root.packageManagerCommand, ['install'], {
+          stdio: 'inherit',
+        });
+        if (result.status !== 0) {
+          console.error(chalk.red('Failed to install dependencies.'));
+          process.exit(result.status ?? 1);
+        }
+        console.info('Installed dependencies.');
+      }
       await cleanupDockerBuildArtifacts(optimizedProjects);
     }
   },
