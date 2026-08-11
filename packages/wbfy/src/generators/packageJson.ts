@@ -156,8 +156,8 @@ async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson
 
 /**
  * Keeps the project's own segments in order, replacing the first managed gen-code spelling with
- * `wb gen-code` and dropping later duplicates. Appends generation only when the script contained
- * none, so nothing is reordered.
+ * `bun wb gen-code` and dropping later duplicates. Appends generation only when the script
+ * contained none, so nothing is reordered.
  */
 function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scripts): string[] {
   const kinds = segments.map((segment) => classifyScriptSegment(segment, scripts, true));
@@ -170,11 +170,11 @@ function rebuildPostinstallSegments(segments: string[], scripts: PackageJson.Scr
     if (kind === 'custom' || kind === 'genCodeWrapper') {
       result.push(segment);
     } else if (!generationPlaced) {
-      result.push('wb gen-code');
+      result.push('bun wb gen-code');
       generationPlaced = true;
     }
   }
-  if (!generationPlaced) result.push('wb gen-code');
+  if (!generationPlaced) result.push('bun wb gen-code');
   return result;
 }
 
@@ -410,7 +410,7 @@ async function applyPackageJsonConventions(
     delete jsonObj.scripts.prepublishOnly;
     delete jsonObj.scripts.prepack;
     delete jsonObj.scripts.postpack;
-    jsonObj.scripts.prepare = 'lefthook install || true';
+    jsonObj.scripts.prepare = 'bun lefthook install || true';
     // When @willbooster/wb is a workspace of this repository, the generated `bun wb …` scripts run
     // its gitignored dist build (bin/index.js imports ../dist/index.js), so a fresh checkout must
     // build it during install; registry installs ship a prebuilt dist and need no extra step.
