@@ -16,6 +16,7 @@ import {
 import { buildDrizzleKitCommand, drizzleScripts } from '../scripts/drizzleScripts.js';
 import { prismaScripts } from '../scripts/prismaScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
+import { isTursoDatabaseUrl, restoreTursoDatabase } from '../scripts/tursoRestore.js';
 import { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isDockerEnabled } from '../utils/ci.js';
 import { collectPlaintextFnoxValues } from '../utils/fnoxToml.js';
@@ -289,12 +290,25 @@ const restoreBuilder = {
 
 const restoreCommand: CommandModule<unknown, InferredOptionTypes<typeof restoreBuilder>> = {
   command: 'restore',
-  describe: "Restore DB from Litestream's backup",
+  describe: 'Restore DB from a Litestream backup or Turso',
   builder: restoreBuilder,
   async handler(argv) {
     const allProjects = await findDatabaseOrmProjects(argv);
     for (const { orm, project } of prepareForRunningDatabaseOrmCommand('db restore', allProjects)) {
       const output = argv.output ?? getDefaultRestoreOutput(project, orm);
+      if (isTursoDatabaseUrl(project.env.DATABASE_URL)) {
+        if (argv.dryRun) {
+          console.info(`Would restore Turso database to ${output}.`);
+          continue;
+        }
+        await restoreTursoDatabase({
+          authToken: project.env.DATABASE_AUTH_TOKEN,
+          databaseUrl: project.env.DATABASE_URL,
+          outputPath: path.resolve(project.dirPath, output),
+        });
+        console.info(chalk.green(`Restored Turso database to ${output}.`));
+        continue;
+      }
       await runWithSpawn(getDatabaseOrmScripts(orm).restore(project, output, argv.config), project, argv);
     }
   },
