@@ -48,6 +48,7 @@ A repository that deviates from these rules is fixed manually (or by re-running 
 - Declare locally served D1 bindings at the wrangler config's top level and keep their migration layouts aligned with each `env.<name>` copy: local `wb start`/`wb test` and `wrangler dev` use the top level, while deploy resolves the selected environment. wb selects wrangler-native migrations for an explicit `migrations_pattern` or flat `*.sql` files in `migrations_dir`; otherwise a D1-targeting drizzle config selects drizzle-kit. When such a drizzle config is present, mixing native and non-native layouts across bindings or declaring multiple drizzle-managed D1 bindings is unsupported and aborts local start/test and deploy.
 - Prisma schemas live at `prisma/schema.prisma`, `prisma/schema/`, or `db/schema.prisma`; i18n resources in `i18n/` with default locale `ja-JP`; a Chakra theme at `src/theme.ts`.
 - Real Node.js must be on `PATH` (not a Bun shim) for Playwright, wrangler, and vinext.
+- Plain Next.js apps run Next.js >= 16.3, so `wb start` passes no bundler flag to `next dev` (Turbopack is the default). Blitz apps pin Next.js 15, where the flagless `next dev` selects the webpack dev server that `withBlitz` requires, and wbfy keeps their `typescript` pin below 7 (Next.js 15's `next build` cannot use tsgo).
 - macOS and Linux only; Windows is unsupported. A project using `wb db restore` with Turso declares a `libsql:` or `turso:` `DATABASE_URL` and `DATABASE_AUTH_TOKEN`, and has `sqlite3` on `PATH`.
 
 ## GitHub-side conventions (WillBooster / WillBoosterLab repositories)
