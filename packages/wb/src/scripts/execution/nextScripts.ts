@@ -12,11 +12,11 @@ class NextScripts extends BaseScripts {
     super(true);
   }
 
-  protected override startDevProtected(project: Project, argv: ScriptArgv): string {
-    // Blitz's withBlitz wires its RPC layer through a webpack loader, which Turbopack ignores,
-    // so Blitz apps must run the webpack dev server (Turbopack dies with resolve errors).
-    const bundlerOption = project.packageJson.dependencies?.blitz ? '--webpack ' : '';
-    return `YARN next dev ${bundlerOption}${argv.normalizedArgsText ?? ''}`;
+  protected override startDevProtected(_: Project, argv: ScriptArgv): string {
+    // No bundler flag is needed for either project kind: plain Next.js apps run Next.js >= 16.3,
+    // which defaults to Turbopack, while Blitz apps pin Next.js 15, which defaults to the webpack
+    // dev server that Blitz's withBlitz RPC loader requires (Turbopack ignores webpack loaders).
+    return `YARN next dev ${argv.normalizedArgsText ?? ''}`.trim();
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {

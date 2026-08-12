@@ -1065,7 +1065,9 @@ function installNpmDependencies(
 ): void {
   if (dependencies.length === 0) return;
 
-  const dependencySpecifiers = [...new Set(dependencies)];
+  const dependencySpecifiers = [
+    ...new Set(dependencies.map((dependency) => getInstallDependencySpecifier(config, rootConfig, dependency))),
+  ];
   spawnSync('bun', ['add', ...(dev ? ['-D'] : []), '--exact', ...dependencySpecifiers], config.dirPath);
 }
 
@@ -1110,11 +1112,13 @@ function addPackageJsonDependencies(
       // keeps being bumped like any managed dependency.
     }
     const shouldUpdateExistingDependency = shouldUpdateExistingManagedDependency(
+      config,
+      rootConfig,
       dependency,
       packageJsonDependencies[dependency]
     );
     if (shouldUpdateExistingDependency) {
-      const managedVersion = getLatestDependencyVersion(dependency);
+      const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
       if (shouldDowngradeAgeGatedManagedDependency(dependency, packageJsonDependencies[dependency], managedVersion)) {
         // `bun add dependency` preserves an existing exact pin, so write the age-cleared version
         // directly. The final repository-wide install refreshes the lockfile after every package
@@ -1131,7 +1135,7 @@ function addPackageJsonDependencies(
       packageJsonDependencies[dependency] !== '*'
     )
       continue;
-    const latestVersion = getLatestDependencyVersion(dependency);
+    const latestVersion = getManagedDependencyVersion(config, rootConfig, dependency);
     if (latestVersion === '*' && packageJsonDependencies[dependency]) continue;
     packageJsonDependencies[dependency] = latestVersion;
   }
@@ -1321,6 +1325,20 @@ function getRawDependencyVersionFromNpm(dependency: string): string {
   return spawnSyncAndReturnStdout('npm', ['show', dependency, 'version', '--workspaces=false'], process.cwd()) || '*';
 }
 
+function getInstallDependencySpecifier(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
+  // TypeScript is version-capped in Blitz repositories, so its install specifier must carry the
+  // managed version — a bare `bun add` would install the incompatible latest.
+  if (dependency === typescriptDependency && isBlitzRepository(config, rootConfig)) {
+    return `${dependency}@${getManagedDependencyVersion(config, rootConfig, dependency)}`;
+  }
+  return dependency;
+}
+
+/** Whether the repository contains a Blitz app (the current package or the workspace root). */
+function isBlitzRepository(config: PackageConfig, rootConfig: PackageConfig): boolean {
+  return config.depending.blitz || rootConfig.depending.blitz;
+}
+
 const workspacePackageDirsCache = new Map<string, Map<string, string>>();
 
 /** Map from each workspace package's name to its directory (relative to the monorepo root). */
@@ -1345,12 +1363,34 @@ export function getWorkspacePackageDirs(rootConfig: PackageConfig): Map<string, 
   return workspaceDirsByName;
 }
 
-function shouldUpdateExistingManagedDependency(dependency: string, currentVersion: string | undefined): boolean {
+function shouldUpdateExistingManagedDependency(
+  config: PackageConfig,
+  rootConfig: PackageConfig,
+  dependency: string,
+  currentVersion: string | undefined
+): boolean {
   if (!currentVersion) return true;
   if (currentVersion === '*') return true;
   if (isWorkspaceProtocolRange(currentVersion)) return true;
   if (!managedDependencyNames.has(dependency)) return false;
-  const managedVersion = getLatestDependencyVersion(dependency);
+  const managedVersion = getManagedDependencyVersion(config, rootConfig, dependency);
+  const currentValidVersion = semver.valid(currentVersion);
+  // A TypeScript 7 pin in a Blitz repository is likewise incompatible (`next build` fails on
+  // the Next.js 15 that Blitz pins — see getManagedDependencyVersion), so rewrite it to the
+  // capped release instead of preserving it via the no-downgrade rule below. The pin may be a
+  // RANGE (e.g. `^7.0.0`), which semver.valid rejects — judge the major from the range minimum.
+  const currentTypescriptVersion =
+    currentValidVersion ?? (semver.validRange(currentVersion) ? semver.minVersion(currentVersion)?.version : undefined);
+  if (
+    dependency === typescriptDependency &&
+    isBlitzRepository(config, rootConfig) &&
+    currentTypescriptVersion &&
+    semver.major(currentTypescriptVersion) >= 7 &&
+    semver.valid(managedVersion) &&
+    isNewerPackageVersion(currentVersion, managedVersion)
+  ) {
+    return true;
+  }
   // The generated bunfig applies the organization age gate even to exact pins. If a managed
   // third-party tool is newer than the newest release that cleared that gate, preserving the pin
   // produces a package.json that a fresh install without the old lockfile cannot resolve (notably
@@ -1379,6 +1419,41 @@ function shouldDowngradeAgeGatedManagedDependency(
     validCurrentVersion !== null &&
     validManagedVersion !== null &&
     semver.gt(validCurrentVersion, validManagedVersion)
+  );
+}
+
+// The newest TypeScript 6 release at the time the Blitz cap shipped; used only when the registry
+// lookup for the actual newest pre-v7 release fails (see getManagedDependencyVersion).
+const lastKnownPreV7TypescriptVersion = '6.0.3';
+
+function getManagedDependencyVersion(config: PackageConfig, rootConfig: PackageConfig, dependency: string): string {
+  const latestVersion = getLatestDependencyVersion(dependency);
+  if (dependency === typescriptDependency && isBlitzRepository(config, rootConfig)) {
+    // Blitz pins Next.js 15, whose build-time `verifyTypeScriptSetup` requires the classic
+    // `typescript` compiler API; the TypeScript 7 `typescript` package is the tsgo binary
+    // without that API, so `next build` aborts with "Failed to install required TypeScript
+    // dependencies" (observed in WillBooster/survey-system). Cap `typescript` below 7 until
+    // Blitz supports a Next.js release that understands tsgo. A failed registry lookup must
+    // resolve to a known-compatible release — falling back to latestVersion would reinstall the
+    // incompatible TypeScript 7.
+    const validLatestVersion = semver.valid(latestVersion);
+    if (validLatestVersion && semver.major(validLatestVersion) < 7) return latestVersion;
+    // The capped lookup must respect the age gate too: this version is written as an exact pin,
+    // and Bun refuses to resolve one published inside the minimum-release-age window. There is no
+    // ungated fallback — without publication metadata the age of a range result is unknown, so a
+    // partial registry failure would otherwise write a version Bun then refuses to install.
+    return getLatestAgeGatedVersionBelow(typescriptDependency, '7.0.0') ?? lastKnownPreV7TypescriptVersion;
+  }
+  return latestVersion;
+}
+
+/**
+ * The highest release of `packageName` below `exclusiveUpperBound` that already cleared the age
+ * gate, or undefined when the registry lookup fails or no such release exists yet.
+ */
+function getLatestAgeGatedVersionBelow(packageName: string, exclusiveUpperBound: string): string | undefined {
+  return getAgeGatedVersionsDescending(getNpmPackageTimes(packageName)).find((version) =>
+    semver.lt(version, exclusiveUpperBound)
   );
 }
 
