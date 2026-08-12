@@ -88,7 +88,7 @@ export async function buildIfNeeded(
 }
 
 // Common build output directories used across org projects (vinext/build-ts emit dist,
-// Next.js emits .next, CRA-style apps emit build, `next export` emits out).
+// Next.js emits .next, CRA-style apps emit build, Next.js `output: 'export'` emits out).
 const defaultOutputCandidates = ['dist', 'build', '.next', 'out'];
 
 function getExplicitOutputPaths(
