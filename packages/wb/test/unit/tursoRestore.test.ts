@@ -43,6 +43,9 @@ COMMIT;
 `);
     });
     const outputPath = await createOutputPath();
+    await Promise.all(
+      ['-journal', '-wal', '-shm'].map(async (suffix) => fs.promises.writeFile(`${outputPath}${suffix}`, 'stale'))
+    );
 
     await restoreTursoDatabase({
       authToken,
@@ -53,6 +56,11 @@ COMMIT;
     const result = await spawnAsync('sqlite3', [outputPath, 'SELECT body FROM messages;'], { stdio: 'pipe' });
     expect(result.status).toBe(0);
     expect(result.stdout.trim()).toBe('restored');
+    await Promise.all(
+      ['-journal', '-wal', '-shm'].map(async (suffix) =>
+        expect(fs.promises.stat(`${outputPath}${suffix}`)).rejects.toMatchObject({ code: 'ENOENT' })
+      )
+    );
   });
 
   it('keeps the previous database when importing the dump fails', async () => {

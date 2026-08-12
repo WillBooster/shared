@@ -89,12 +89,15 @@ async function importDump(dump: ReadableStream<Uint8Array>, outputPath: string):
     });
   });
 
-  try {
-    await Promise.all([dump.pipeTo(Writable.toWeb(sqlite.stdin)), completion]);
-  } catch (error) {
-    sqlite.kill();
-    throw error;
-  }
+  const [pipeResult, completionResult] = await Promise.allSettled([
+    dump.pipeTo(Writable.toWeb(sqlite.stdin)).catch((error: unknown) => {
+      sqlite.kill();
+      throw error;
+    }),
+    completion,
+  ]);
+  if (completionResult.status === 'rejected') throw completionResult.reason;
+  if (pipeResult.status === 'rejected') throw pipeResult.reason;
 }
 
 async function validateSqliteDatabase(databasePath: string): Promise<void> {
@@ -107,13 +110,12 @@ async function validateSqliteDatabase(databasePath: string): Promise<void> {
   }
 }
 
-async function removeSqliteSidecarFiles(databasePath: string): Promise<void> {
-  await Promise.all([
-    fs.promises.rm(`${databasePath}-wal`, { force: true }),
-    fs.promises.rm(`${databasePath}-shm`, { force: true }),
-  ]);
-}
-
 async function removeSqliteFiles(databasePath: string): Promise<void> {
   await Promise.all([fs.promises.rm(databasePath, { force: true }), removeSqliteSidecarFiles(databasePath)]);
+}
+
+async function removeSqliteSidecarFiles(databasePath: string): Promise<void> {
+  await Promise.all(
+    ['-journal', '-wal', '-shm'].map(async (suffix) => fs.promises.rm(`${databasePath}${suffix}`, { force: true }))
+  );
 }
