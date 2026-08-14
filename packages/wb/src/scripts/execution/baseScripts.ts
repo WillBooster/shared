@@ -4,7 +4,7 @@ import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
-import { checkAndKillPortProcess } from '../../utils/port.js';
+import { ensurePort } from '../../utils/port.js';
 import { buildShellCommand, buildShellEnvironmentAssignment } from '../../utils/shell.js';
 import { findWranglerConfigPath, getLocalWranglerStateDir, wrapWithLocalD1DatabaseUrl } from '../../utils/wrangler.js';
 import { resolveWranglerConfig, selectD1MigrationMechanisms } from '../../utils/wranglerConfig.js';
@@ -39,7 +39,7 @@ export abstract class BaseScripts {
 
   // ------------ START: start commands ------------
   async startDev(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    await ensurePort(project);
     if (!this.shouldWaitAndOpenApp) return this.startDevProtected(project, argv);
 
     return buildShellCommand([
@@ -53,7 +53,7 @@ export abstract class BaseScripts {
     ]);
   }
   async startProduction(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    await ensurePort(project);
     if (!this.shouldWaitAndOpenApp) return this.startProductionProtected(project, argv);
 
     return buildShellCommand([
@@ -67,11 +67,11 @@ export abstract class BaseScripts {
     ]);
   }
   async startTest(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    await ensurePort(project);
     return this.startProductionProtected(project, argv);
   }
   async startDocker(project: Project, argv: ScriptArgv): Promise<string> {
-    await checkAndKillPortProcess(project.env.PORT, project);
+    await ensurePort(project);
     if (!this.shouldWaitAndOpenApp) {
       return `${this.buildDocker(project, 'development')}
       && ${dockerScripts.stopAndStart(project, argv.normalizedDockerOptionsText ?? '', argv.normalizedArgsText ?? '')}`;
@@ -174,18 +174,22 @@ export abstract class BaseScripts {
   // ------------ END: start commands ------------
 
   // ------------ START: test (e2e) commands ------------
-  testE2EDev(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+  // The port must be resolved before building the start command: some builders (vinext, Workers,
+  // Docker) embed it in the command text instead of reading the PORT environment variable.
+  async testE2EDev(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    await ensurePort(project);
     return this.testE2EProtected(project, argv, this.startDevProtected(project, argv), options);
   }
-  testE2EProduction(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+  async testE2EProduction(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    await ensurePort(project);
     return this.testE2EProtected(project, argv, this.startProductionProtected(project, argv), options);
   }
-  testE2EDocker(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+  async testE2EDocker(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
+    await ensurePort(project);
     return this.testE2EProtected(project, argv, dockerScripts.stopAndStart(project), options, true);
   }
   async testStart(project: Project, argv: ScriptArgv): Promise<string> {
-    project.env.PORT ||= '3000';
-    await checkAndKillPortProcess(project.env.PORT, project);
+    await ensurePort(project);
     // In the test environment the dev server runs against fresh, disposable state (e.g. an empty
     // local D1), so the schema must be migrated first — an app whose pages query the database
     // would otherwise answer 500 and the startup check would never see a 2xx.
@@ -212,8 +216,7 @@ export abstract class BaseScripts {
     options: TestE2EOptions,
     isDocker = false
   ): Promise<string> {
-    project.env.PORT ||= '3000';
-    const port = await checkAndKillPortProcess(project.env.PORT, project);
+    const port = await ensurePort(project);
     const playwrightCommand = this.buildPlaywrightOnlyCommand(project, argv, options);
     if (project.skipLaunchingServerForPlaywright) {
       return playwrightCommand;

@@ -1,5 +1,6 @@
 import type { Project } from '../../project.js';
 import { isProjectEnvironment } from '../../project.js';
+import { getEnsuredPort } from '../../utils/port.js';
 import {
   buildD1MigrationsApplyCommands,
   buildGenDevVarsCommand,
@@ -20,9 +21,8 @@ class VinextScripts extends BaseScripts {
   }
 
   protected override startDevProtected(project: Project, argv: ScriptArgv): string {
-    project.env.PORT ||= '3000';
     // Unlike `next dev`, Vite-based vinext does not read the PORT environment variable.
-    const devCommand = `YARN vinext dev --port ${project.env.PORT} ${argv.normalizedArgsText ?? ''}`.trim();
+    const devCommand = `YARN vinext dev --port ${getEnsuredPort(project)} ${argv.normalizedArgsText ?? ''}`.trim();
     // The Cloudflare vite plugin (miniflare) reads runtime vars only from a .dev.vars file,
     // so it must be regenerated from the fnox-managed values before serving.
     const commands = [buildGenDevVarsCommand(argv, '.dev.vars')];
@@ -33,8 +33,7 @@ class VinextScripts extends BaseScripts {
   }
 
   protected override buildDefaultProductionStartCommands(project: Project, argv: ScriptArgv): string[] {
-    project.env.PORT ||= '3000';
-    const port = project.env.PORT;
+    const port = getEnsuredPort(project);
     // Serving the built worker starts from an empty (or wiped) local D1, so wrangler-native
     // migrations (if any) must be applied first; drizzle/prisma migrations are handled by
     // buildProductionCommand.

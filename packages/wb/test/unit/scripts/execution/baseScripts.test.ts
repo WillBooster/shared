@@ -20,7 +20,7 @@ import { buildShellCommand, buildShellEnvironmentAssignment } from '../../../../
 import { buildD1MigrationsApplyCommands } from '../../../../src/utils/wrangler.js';
 
 vi.mock('../../../../src/utils/port.js', () => ({
-  checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
+  ensurePort: vi.fn().mockResolvedValue(3000),
 }));
 
 vi.mock('../../../../src/utils/process.js', async (importOriginal: () => Promise<typeof processUtils>) => ({

@@ -9,7 +9,7 @@ import { buildEnvReaderOptionArgs, sharedOptionsBuilder } from '../../../../src/
 import { buildShellCommand } from '../../../../src/utils/shell.js';
 
 vi.mock('../../../../src/utils/port.js', () => ({
-  checkAndKillPortProcess: vi.fn().mockResolvedValue(3000),
+  ensurePort: vi.fn().mockResolvedValue(3000),
 }));
 
 describe('HttpServerScripts.testE2E', () => {

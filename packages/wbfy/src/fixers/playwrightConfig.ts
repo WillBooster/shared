@@ -91,8 +91,12 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
     const parsed = parseObjectLiteralExpression(extractedObjectLiteral.node, extractedObjectLiteral.source);
     if (!parsed) return;
 
+    // wb derives NEXT_PUBLIC_BASE_URL from the resolved port for Next.js/vinext apps (vinext
+    // apps also depend on next, so `depending.next` covers both), so those need no declared
+    // variable; other packages still require a declaration.
     const shouldUseAppServerDefaults =
-      (await doesDefineNextPublicBaseUrl(config.dirPath)) && shouldManageAppServerDefaults(config, parsed);
+      shouldManageAppServerDefaults(config, parsed) &&
+      (config.depending.next || (await doesDefineNextPublicBaseUrl(config.dirPath)));
     const defaultConfig = createDefaultConfig(config, shouldUseAppServerDefaults);
     const merged = mergeParsedObjects(defaultConfig, parsed);
     applyManagedUseDefaults(merged, defaultConfig);

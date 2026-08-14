@@ -15,6 +15,7 @@ import { findExplicitPlaywrightTargetIndexes } from '../scripts/execution/baseSc
 import { selectScripts } from '../scripts/execution/selectScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { ensurePort } from '../utils/port.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
 
 const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
@@ -245,6 +246,8 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
           break;
         }
         case 'generate': {
+          // The codegen URL is built before testE2EProduction resolves the port, so resolve it here.
+          await ensurePort(project);
           const exitCode = await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
               playwrightArgs: ['codegen', `http://localhost:${project.env.PORT}`],
@@ -297,6 +300,11 @@ async function testOnDocker(
   options: TestRunOptions = {}
 ): Promise<number> {
   project.env.WB_DOCKER ||= '1';
+  // Resolve the port before building the image so the host publish port, readiness checks, and
+  // Playwright base URL agree from the start. Note the image itself bakes only fnox-declared
+  // values, so a Docker-run profile must declare PORT (and NEXT_PUBLIC_BASE_URL where the app
+  // needs it) instead of relying on the auto-derived values.
+  await ensurePort(project);
   const buildExitCode = await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv, {
     exitIfFailed: options.exitIfFailed,
   });
