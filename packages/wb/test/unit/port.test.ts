@@ -4,14 +4,14 @@ import { createServer } from 'node:net';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Project } from '../../src/project.js';
-import { ensurePort, getEnsuredPort } from '../../src/utils/port.js';
+import { computePreferredPort, ensurePort, getEnsuredPort } from '../../src/utils/port.js';
 
 vi.mock('../../src/utils/process.js', () => ({
   killPortProcessImmediatelyAndOnExit: vi.fn().mockResolvedValue(undefined),
 }));
 
 const AUTO_PORT_RANGE_START = 20_000;
-const AUTO_PORT_RANGE_END_EXCLUSIVE = 32_768 + 100;
+const AUTO_PORT_RANGE_END_EXCLUSIVE = 32_768;
 
 function createFakeProject(env: Record<string, string | undefined> = {}): Project {
   return { name: 'wb-port-selection-test', env: { WB_ENV: 'test', ...env } } as unknown as Project;
@@ -51,13 +51,28 @@ describe('ensurePort', () => {
     expect(project.env.NEXT_PUBLIC_BASE_URL).toBe('http://localhost:1234');
   });
 
-  it('searches upward when the preferred port is occupied', async () => {
+  it('searches another in-range port when the preferred port is occupied', async () => {
     const preferredPort = await ensurePort(createFakeProject());
     const server = await occupyPort(preferredPort);
     try {
       const fallbackPort = await ensurePort(createFakeProject());
-      expect(fallbackPort).toBeGreaterThan(preferredPort);
-      expect(fallbackPort).toBeLessThan(preferredPort + 100);
+      expect(fallbackPort).not.toBe(preferredPort);
+      expect(fallbackPort).toBeGreaterThanOrEqual(AUTO_PORT_RANGE_START);
+      expect(fallbackPort).toBeLessThan(AUTO_PORT_RANGE_END_EXCLUSIVE);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('keeps wrapped fallback probes inside the range at the top edge', async () => {
+    // `pkg-3620` in the test environment hashes to the range's last port, 32767.
+    const project = { name: 'pkg-3620', env: { WB_ENV: 'test' } } as unknown as Project;
+    expect(computePreferredPort(project)).toBe(32_767);
+    const server = await occupyPort(32_767);
+    try {
+      const fallbackPort = await ensurePort(project);
+      expect(fallbackPort).toBeGreaterThanOrEqual(AUTO_PORT_RANGE_START);
+      expect(fallbackPort).toBeLessThan(AUTO_PORT_RANGE_END_EXCLUSIVE);
     } finally {
       server.close();
     }

@@ -51,6 +51,11 @@ export const genDevVarsCommand: CommandModule<unknown, GenDevVarsCommandOptions>
       if (effectiveValue === '' && envVars[key] !== '') explicitlyEmptiedKeys.add(key);
       envVars[key] = effectiveValue;
     }
+    // wb derives NEXT_PUBLIC_BASE_URL from the auto-selected port when fnox does not define it
+    // (see ensurePort); the worker runtime reads only .dev.vars, so bridge the derived value too.
+    if (envVars.NEXT_PUBLIC_BASE_URL === undefined && project.env.NEXT_PUBLIC_BASE_URL !== undefined) {
+      envVars.NEXT_PUBLIC_BASE_URL = project.env.NEXT_PUBLIC_BASE_URL;
+    }
     const lines = Object.entries(envVars)
       .filter(([key, value]) => value !== '' || explicitlyEmptiedKeys.has(key))
       .toSorted(([a], [b]) => a.localeCompare(b))

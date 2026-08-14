@@ -5,6 +5,7 @@ import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yar
 import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
+import { computePreferredPort } from '../utils/port.js';
 
 const killPortIfNonCiBuilder = {} as const;
 
@@ -13,7 +14,7 @@ export const killPortIfNonCiCommand: CommandModule<
   InferredOptionTypes<typeof killPortIfNonCiBuilder & typeof sharedOptionsBuilder>
 > = {
   command: 'kill-port-if-non-ci',
-  describe: 'Kill the port specified by PORT environment variable if non-CI.',
+  describe: 'Kill the process on the PORT environment variable (or the auto-selection preferred port) if non-CI.',
   builder: killPortIfNonCiBuilder,
   async handler(argv) {
     await killPortIfNonCi(argv);
@@ -35,11 +36,9 @@ export async function killPortIfNonCi(
   }
 
   const portEnv = project.env.PORT;
-  if (!portEnv) {
-    console.info('Skip killing port because PORT is not defined (wb auto-selects a free port).');
-    return;
-  }
-  const port = Number(portEnv);
+  // Without a configured PORT, reclaim the deterministic preferred port ensurePort starts its
+  // search from, so a leftover server (e.g. after SIGKILL) cannot shift the auto-selected URL.
+  const port = portEnv === undefined ? computePreferredPort(project) : Number(portEnv);
   if (!Number.isInteger(port) || port <= 0) {
     console.error(chalk.red(`PORT environment variable is invalid: ${portEnv}`));
     process.exit(1);

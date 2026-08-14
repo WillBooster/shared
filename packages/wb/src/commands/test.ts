@@ -300,6 +300,11 @@ async function testOnDocker(
   options: TestRunOptions = {}
 ): Promise<number> {
   project.env.WB_DOCKER ||= '1';
+  // Resolve the port before building the image so the host publish port, readiness checks, and
+  // Playwright base URL agree from the start. Note the image itself bakes only fnox-declared
+  // values, so a Docker-run profile must declare PORT (and NEXT_PUBLIC_BASE_URL where the app
+  // needs it) instead of relying on the auto-derived values.
+  await ensurePort(project);
   const buildExitCode = await runWithSpawn(`${scripts.buildDocker(project, 'test')}${toDevNull(argv)}`, project, argv, {
     exitIfFailed: options.exitIfFailed,
   });

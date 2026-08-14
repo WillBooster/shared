@@ -39,7 +39,7 @@ export function getEnsuredPort(project: Project): string {
   return port;
 }
 
-function computePreferredPort(project: Project): number {
+export function computePreferredPort(project: Project): number {
   return AUTO_PORT_RANGE_START + (hashText(`${project.name}\n${project.env.WB_ENV}`) % AUTO_PORT_RANGE_SIZE);
 }
 
@@ -56,10 +56,11 @@ function hashText(text: string): number {
 
 async function findFreePort(preferredPort: number): Promise<number> {
   for (let offset = 0; offset < AUTO_PORT_MAX_PROBE_COUNT; offset++) {
-    const port = preferredPort + offset;
+    // Wrap within the range so a preferred port near the top cannot escape into ephemeral ports.
+    const port = AUTO_PORT_RANGE_START + ((preferredPort - AUTO_PORT_RANGE_START + offset) % AUTO_PORT_RANGE_SIZE);
     if (await isPortAvailable(port)) return port;
   }
-  throw new Error(`No free port found in [${preferredPort}, ${preferredPort + AUTO_PORT_MAX_PROBE_COUNT}).`);
+  throw new Error(`No free port found after probing ${AUTO_PORT_MAX_PROBE_COUNT} ports from ${preferredPort}.`);
 }
 
 /**
@@ -96,7 +97,9 @@ async function probePort(host: string, port: number): Promise<boolean> {
         resolve(false);
         return;
       }
-      if (err.code === 'EAFNOSUPPORT') {
+      // An unsupported or administratively disabled address family (e.g. IPv6 turned off via
+      // sysctl, which yields EADDRNOTAVAIL) cannot hold the port, so treat it as available.
+      if (err.code === 'EAFNOSUPPORT' || err.code === 'EADDRNOTAVAIL') {
         resolve(true);
         return;
       }
