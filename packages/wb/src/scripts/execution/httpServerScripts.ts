@@ -1,7 +1,7 @@
 import type { TestArgv } from '../../commands/test.js';
 import type { Project } from '../../project.js';
 import { buildEnvReaderOptionArgs } from '../../sharedOptionsBuilder.js';
-import { checkAndKillPortProcess } from '../../utils/port.js';
+import { ensurePort } from '../../utils/port.js';
 import { buildShellCommand } from '../../utils/shell.js';
 import type { ScriptArgv } from '../builder.js';
 
@@ -31,8 +31,7 @@ export class HttpServerScripts extends BaseScripts {
       return super.testE2EProtected(project, argv, startCommand, options, isDocker);
     }
 
-    project.env.PORT ||= '3000';
-    const port = await checkAndKillPortProcess(project.env.PORT, project);
+    const port = await ensurePort(project);
     const suffix = project.packageJson.scripts?.['test/e2e-additional'] ? ' && YARN test/e2e-additional' : '';
     const targets = argv.targets?.map(String);
     const normalizedTargets = targets?.length ? targets : ['test/e2e/'];

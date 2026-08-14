@@ -15,6 +15,7 @@ import { findExplicitPlaywrightTargetIndexes } from '../scripts/execution/baseSc
 import { selectScripts } from '../scripts/execution/selectScripts.js';
 import { runWithSpawn } from '../scripts/run.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
+import { ensurePort } from '../utils/port.js';
 import { findTestStructureViolations, printTestStructureViolations } from '../utils/testStructure.js';
 
 const ANSI_ESCAPE_CODE_REGEXP = new RegExp(`${String.fromCodePoint(27)}\\[[0-?]*[ -/]*[@-~]`, 'g');
@@ -245,6 +246,8 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
           break;
         }
         case 'generate': {
+          // The codegen URL is built before testE2EProduction resolves the port, so resolve it here.
+          await ensurePort(project);
           const exitCode = await runTestCommand(
             await scripts.testE2EProduction(project, e2eArgv, {
               playwrightArgs: ['codegen', `http://localhost:${project.env.PORT}`],

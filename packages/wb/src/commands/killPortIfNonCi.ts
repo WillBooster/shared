@@ -35,6 +35,10 @@ export async function killPortIfNonCi(
   }
 
   const portEnv = project.env.PORT;
+  if (!portEnv) {
+    console.info('Skip killing port because PORT is not defined (wb auto-selects a free port).');
+    return;
+  }
   const port = Number(portEnv);
   if (!Number.isInteger(port) || port <= 0) {
     console.error(chalk.red(`PORT environment variable is invalid: ${portEnv}`));

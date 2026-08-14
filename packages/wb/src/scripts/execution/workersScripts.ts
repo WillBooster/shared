@@ -1,4 +1,5 @@
 import type { Project } from '../../project.js';
+import { getEnsuredPort } from '../../utils/port.js';
 import {
   buildD1MigrationsApplyCommands,
   buildGenDevVarsCommand,
@@ -27,7 +28,7 @@ class WorkersScripts extends HttpServerScripts {
   }
 
   private buildWranglerDevCommands(project: Project, argv: ScriptArgv): string[] {
-    project.env.PORT ||= '8787';
+    const port = getEnsuredPort(project);
     const stateDir = getLocalWranglerStateDir(project);
 
     // These helpers read the default-named wrangler config; that is safe because workersScripts
@@ -37,7 +38,7 @@ class WorkersScripts extends HttpServerScripts {
       // Apply wrangler-native D1 migrations (if any) so the local database matches the deployed one.
       ...buildD1MigrationsApplyCommands(project),
       buildWranglerDevCommand(
-        `dev --ip 127.0.0.1 --port ${project.env.PORT} --persist-to "${stateDir}" ${argv.normalizedArgsText ?? ''}`.trim()
+        `dev --ip 127.0.0.1 --port ${port} --persist-to "${stateDir}" ${argv.normalizedArgsText ?? ''}`.trim()
       ),
     ];
   }
