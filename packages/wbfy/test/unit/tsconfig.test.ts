@@ -50,6 +50,13 @@ test('allows import and export syntax in packages that emit CommonJS', async () 
   expect(compilerOptions.verbatimModuleSyntax).toBe(false);
 });
 
+test('keeps explicit verbatim module syntax enforcement in CommonJS packages', async () => {
+  const compilerOptions = await generateCompilerOptionsFrom({
+    compilerOptions: { module: 'CommonJS', verbatimModuleSyntax: true },
+  });
+  expect(compilerOptions.verbatimModuleSyntax).toBe(true);
+});
+
 test('merges settings from a tsconfig containing JSONC comments instead of replacing the file', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(`{
   "compilerOptions": {

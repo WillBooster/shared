@@ -504,7 +504,13 @@ function deleteLegacyModuleSettings(compilerOptions: TsConfigJson.CompilerOption
 }
 
 function normalizeCommonJsModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
-  if (!compilerOptions || lowerCaseSetting(compilerOptions.module) !== 'commonjs') return;
+  if (
+    !compilerOptions ||
+    lowerCaseSetting(compilerOptions.module) !== 'commonjs' ||
+    compilerOptions.verbatimModuleSyntax !== undefined
+  ) {
+    return;
+  }
 
   // @tsconfig/bun enables verbatimModuleSyntax, which rejects ordinary ESM import/export syntax
   // when a Node package deliberately keeps CommonJS output (for example Firebase Functions).

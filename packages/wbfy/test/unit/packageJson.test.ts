@@ -592,6 +592,22 @@ test('prepares Flutter dependencies in a JavaScript monorepo before CI cleanup',
   expect(packageJson.scripts?.['common/ci-setup']).toBe('flutter pub get');
 });
 
+test.each([
+  'flutter pub get',
+  'flutter pub get && bun run setup-poetry',
+  'flutter pub get && bun run setup-uv',
+  'bun run setup-poetry',
+  'bun run setup-uv',
+])('removes stale generated CI setup %s after its package metadata is removed', async (ciSetupScript) => {
+  const packageJson = await generatePackageJsonFrom({ scripts: { 'common/ci-setup': ciSetupScript } });
+  expect(packageJson.scripts?.['common/ci-setup']).toBeUndefined();
+});
+
+test('preserves a custom CI setup when no managed setup is needed', async () => {
+  const packageJson = await generatePackageJsonFrom({ scripts: { 'common/ci-setup': 'prepare-custom-sdk' } });
+  expect(packageJson.scripts?.['common/ci-setup']).toBe('prepare-custom-sdk');
+});
+
 test('preserves an already-pinned git commit of a private package instead of bumping it', async () => {
   const pinnedSpecifier = 'git@github.com:WillBoosterLab/llm-proxy.git#4ef9b35e2d1d94adba17e167b7ae18a2e299f7f6';
   const packageJson = await generatePackageJsonFrom({

@@ -899,6 +899,8 @@ async function normalizePackageMetadata(
     // the generated package configuration, including in repositories whose root also owns JS
     // workspaces, so prepare every detected package ecosystem before cleanup starts.
     jsonObj.scripts['common/ci-setup'] = ciSetupCommands.join(' && ');
+  } else if (isGeneratedCiSetupScript(jsonObj.scripts['common/ci-setup'])) {
+    delete jsonObj.scripts['common/ci-setup'];
   }
 
   if (config.repository || jsonObj.repository) {
@@ -1491,6 +1493,10 @@ function formatRepositoryForPackageJson(
   }
 
   return repository;
+}
+
+function isGeneratedCiSetupScript(script: string | undefined): boolean {
+  return /^(?:flutter pub get(?: && )?)?(?:bun run setup-(?:poetry|uv))$|^flutter pub get$/u.test(script ?? '');
 }
 
 function normalizeRepositoryUrlForPackageJson(repository: PackageJson['repository']): string | undefined {
