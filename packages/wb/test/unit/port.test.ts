@@ -45,10 +45,15 @@ describe('ensurePort', () => {
     await expect(ensurePort(createFakeProject())).resolves.toBe(port);
   });
 
-  it('keeps an already-derived NEXT_PUBLIC_BASE_URL', async () => {
+  it('fails fast on a pinned localhost NEXT_PUBLIC_BASE_URL without a matching PORT', async () => {
     const project = createFakeProject({ NEXT_PUBLIC_BASE_URL: 'http://localhost:1234' });
+    await expect(ensurePort(project)).rejects.toThrow('points at localhost while PORT is undefined');
+  });
+
+  it('keeps a non-loopback NEXT_PUBLIC_BASE_URL', async () => {
+    const project = createFakeProject({ NEXT_PUBLIC_BASE_URL: 'https://example.willbooster.com' });
     await ensurePort(project);
-    expect(project.env.NEXT_PUBLIC_BASE_URL).toBe('http://localhost:1234');
+    expect(project.env.NEXT_PUBLIC_BASE_URL).toBe('https://example.willbooster.com');
   });
 
   it('searches another in-range port when the preferred port is occupied', async () => {

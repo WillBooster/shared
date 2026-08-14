@@ -25,6 +25,7 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  */
 export async function ensurePort(project: Project): Promise<number> {
   if (!project.env.PORT) {
+    assertNoPinnedLoopbackBaseUrl(project.env.NEXT_PUBLIC_BASE_URL);
     const port = await findFreePort(computePreferredPort(project));
     project.env.PORT = String(port);
     project.env.NEXT_PUBLIC_BASE_URL ||= `http://localhost:${port}`;
@@ -37,6 +38,29 @@ export function getEnsuredPort(project: Project): string {
   const port = project.env.PORT;
   if (!port) throw new Error('PORT is not resolved yet; ensurePort must run first.');
   return port;
+}
+
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * A pinned localhost NEXT_PUBLIC_BASE_URL cannot match an auto-selected port, so every consumer
+ * of the URL would silently point at the wrong server (e.g. Playwright's baseURL during a
+ * migration that dropped only PORT); fail fast instead. See docs/expected-repository-rules.md:
+ * pinning a localhost URL requires pinning the matching PORT.
+ */
+function assertNoPinnedLoopbackBaseUrl(baseUrl: string | undefined): void {
+  if (!baseUrl) return;
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return;
+  }
+  if (!LOOPBACK_HOSTNAMES.has(url.hostname)) return;
+  throw new Error(
+    `NEXT_PUBLIC_BASE_URL (${baseUrl}) points at localhost while PORT is undefined; ` +
+      'define the matching PORT, or remove NEXT_PUBLIC_BASE_URL so wb derives both from the auto-selected port.'
+  );
 }
 
 export function computePreferredPort(project: Project): number {
