@@ -45,14 +45,21 @@ describe('ensurePort', () => {
     await expect(ensurePort(createFakeProject())).resolves.toBe(port);
   });
 
-  it('fails fast on a NEXT_PUBLIC_BASE_URL pinning an explicit port without a matching PORT', async () => {
-    const project = createFakeProject({ NEXT_PUBLIC_BASE_URL: 'http://localhost:1234' });
-    await expect(ensurePort(project)).rejects.toThrow('pins port 1234 while PORT is undefined');
-
-    const customDomainProject = createFakeProject({
-      NEXT_PUBLIC_BASE_URL: 'http://localhost-exercode.willbooster.net:3000',
-    });
-    await expect(ensurePort(customDomainProject)).rejects.toThrow('pins port 3000 while PORT is undefined');
+  it('fails fast on a NEXT_PUBLIC_BASE_URL pinning its port without a matching PORT', async () => {
+    const pinnedBaseUrls = [
+      'http://localhost:1234',
+      'http://localhost-exercode.willbooster.net:3000',
+      // `URL#port` hides an explicitly written default port; the raw authority must be inspected.
+      'http://localhost:80',
+      'https://example.willbooster.com:443',
+      // A portless loopback URL pins the scheme's default port.
+      'http://localhost',
+      'http://127.0.0.1',
+    ];
+    for (const baseUrl of pinnedBaseUrls) {
+      const project = createFakeProject({ NEXT_PUBLIC_BASE_URL: baseUrl });
+      await expect(ensurePort(project)).rejects.toThrow('pins its port while PORT is undefined');
+    }
   });
 
   it('keeps a non-loopback NEXT_PUBLIC_BASE_URL', async () => {

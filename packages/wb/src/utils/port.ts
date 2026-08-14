@@ -40,13 +40,16 @@ export function getEnsuredPort(project: Project): string {
   return port;
 }
 
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
+
 /**
- * A base URL pinning an explicit port cannot match an auto-selected port, so every consumer of
- * the URL (e.g. Playwright's baseURL during a migration that dropped only PORT) would silently
- * point at the wrong server; fail fast instead. Loopback-resolving custom domains (e.g.
- * localhost-*.willbooster.net) make a hostname allowlist unreliable, so the check keys on the
- * explicit port. See docs/expected-repository-rules.md: pinning a base URL with an explicit port
- * requires pinning the matching PORT.
+ * A base URL pinning a port cannot match an auto-selected port, so every consumer of the URL
+ * (e.g. Playwright's baseURL during a migration that dropped only PORT) would silently point at
+ * the wrong server; fail fast instead. Loopback-resolving custom domains (e.g.
+ * localhost-*.willbooster.net) make a hostname allowlist unreliable, so the check keys on an
+ * explicit port in the raw authority (`URL#port` hides an explicitly written default port such
+ * as `http://x:80`); a portless LOOPBACK URL pins the scheme's default port just as fatally.
+ * See docs/expected-repository-rules.md: pinning such a base URL requires pinning the matching PORT.
  */
 function assertNoPinnedPortInBaseUrl(baseUrl: string | undefined): void {
   if (!baseUrl) return;
@@ -56,11 +59,17 @@ function assertNoPinnedPortInBaseUrl(baseUrl: string | undefined): void {
   } catch {
     return;
   }
-  if (!url.port) return;
+  if (!hasExplicitPortInAuthority(baseUrl) && !LOOPBACK_HOSTNAMES.has(url.hostname)) return;
   throw new Error(
-    `NEXT_PUBLIC_BASE_URL (${baseUrl}) pins port ${url.port} while PORT is undefined; ` +
+    `NEXT_PUBLIC_BASE_URL (${baseUrl}) pins its port while PORT is undefined; ` +
       'define the matching PORT, or remove NEXT_PUBLIC_BASE_URL so wb derives both from the auto-selected port.'
   );
+}
+
+function hasExplicitPortInAuthority(baseUrl: string): boolean {
+  const authority = baseUrl.replace(/^[^:]+:\/\//, '').split(/[/?#]/, 1)[0] ?? '';
+  const host = authority.slice(authority.lastIndexOf('@') + 1);
+  return /:\d+$/.test(host);
 }
 
 export function computePreferredPort(project: Project): number {
