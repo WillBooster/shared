@@ -19,18 +19,18 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * upward from a deterministic preferred port derived from the package name and WB_ENV, so
  * repositories need no manually assigned, non-conflicting ports while the local URL stays stable
  * across runs (e.g. for OAuth redirect URIs), and a development server can coexist with an e2e
- * test run of the same repository. NEXT_PUBLIC_BASE_URL is derived from an auto-selected port
- * (unless already defined) so app code and Playwright configs reading it keep working without
- * fnox definitions.
+ * test run of the same repository. NEXT_PUBLIC_BASE_URL is derived from the resolved port —
+ * declared or auto-selected — unless already defined, so app code and Playwright configs reading
+ * it keep working without fnox definitions.
  */
 export async function ensurePort(project: Project): Promise<number> {
   if (!project.env.PORT) {
-    assertNoPinnedLoopbackBaseUrl(project.env.NEXT_PUBLIC_BASE_URL);
-    const port = await findFreePort(computePreferredPort(project));
-    project.env.PORT = String(port);
-    project.env.NEXT_PUBLIC_BASE_URL ||= `http://localhost:${port}`;
+    assertNoPinnedPortInBaseUrl(project.env.NEXT_PUBLIC_BASE_URL);
+    project.env.PORT = String(await findFreePort(computePreferredPort(project)));
   }
-  return await checkAndKillPortProcess(project.env.PORT, project);
+  const port = await checkAndKillPortProcess(project.env.PORT, project);
+  project.env.NEXT_PUBLIC_BASE_URL ||= `http://localhost:${port}`;
+  return port;
 }
 
 /** Reads the port `ensurePort` resolved; script builders must not run before it. */
@@ -40,15 +40,15 @@ export function getEnsuredPort(project: Project): string {
   return port;
 }
 
-const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
-
 /**
- * A pinned localhost NEXT_PUBLIC_BASE_URL cannot match an auto-selected port, so every consumer
- * of the URL would silently point at the wrong server (e.g. Playwright's baseURL during a
- * migration that dropped only PORT); fail fast instead. See docs/expected-repository-rules.md:
- * pinning a localhost URL requires pinning the matching PORT.
+ * A base URL pinning an explicit port cannot match an auto-selected port, so every consumer of
+ * the URL (e.g. Playwright's baseURL during a migration that dropped only PORT) would silently
+ * point at the wrong server; fail fast instead. Loopback-resolving custom domains (e.g.
+ * localhost-*.willbooster.net) make a hostname allowlist unreliable, so the check keys on the
+ * explicit port. See docs/expected-repository-rules.md: pinning a base URL with an explicit port
+ * requires pinning the matching PORT.
  */
-function assertNoPinnedLoopbackBaseUrl(baseUrl: string | undefined): void {
+function assertNoPinnedPortInBaseUrl(baseUrl: string | undefined): void {
   if (!baseUrl) return;
   let url: URL;
   try {
@@ -56,9 +56,9 @@ function assertNoPinnedLoopbackBaseUrl(baseUrl: string | undefined): void {
   } catch {
     return;
   }
-  if (!LOOPBACK_HOSTNAMES.has(url.hostname)) return;
+  if (!url.port) return;
   throw new Error(
-    `NEXT_PUBLIC_BASE_URL (${baseUrl}) points at localhost while PORT is undefined; ` +
+    `NEXT_PUBLIC_BASE_URL (${baseUrl}) pins port ${url.port} while PORT is undefined; ` +
       'define the matching PORT, or remove NEXT_PUBLIC_BASE_URL so wb derives both from the auto-selected port.'
   );
 }

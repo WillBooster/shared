@@ -27,10 +27,10 @@ async function occupyPort(port: number): Promise<Server> {
 }
 
 describe('ensurePort', () => {
-  it('respects an explicitly configured PORT and derives no base URL', async () => {
+  it('respects an explicitly configured PORT and derives NEXT_PUBLIC_BASE_URL from it', async () => {
     const project = createFakeProject({ PORT: '3456' });
     await expect(ensurePort(project)).resolves.toBe(3456);
-    expect(project.env.NEXT_PUBLIC_BASE_URL).toBeUndefined();
+    expect(project.env.NEXT_PUBLIC_BASE_URL).toBe('http://localhost:3456');
   });
 
   it('auto-selects a deterministic free port and derives NEXT_PUBLIC_BASE_URL', async () => {
@@ -45,9 +45,14 @@ describe('ensurePort', () => {
     await expect(ensurePort(createFakeProject())).resolves.toBe(port);
   });
 
-  it('fails fast on a pinned localhost NEXT_PUBLIC_BASE_URL without a matching PORT', async () => {
+  it('fails fast on a NEXT_PUBLIC_BASE_URL pinning an explicit port without a matching PORT', async () => {
     const project = createFakeProject({ NEXT_PUBLIC_BASE_URL: 'http://localhost:1234' });
-    await expect(ensurePort(project)).rejects.toThrow('points at localhost while PORT is undefined');
+    await expect(ensurePort(project)).rejects.toThrow('pins port 1234 while PORT is undefined');
+
+    const customDomainProject = createFakeProject({
+      NEXT_PUBLIC_BASE_URL: 'http://localhost-exercode.willbooster.net:3000',
+    });
+    await expect(ensurePort(customDomainProject)).rejects.toThrow('pins port 3000 while PORT is undefined');
   });
 
   it('keeps a non-loopback NEXT_PUBLIC_BASE_URL', async () => {
