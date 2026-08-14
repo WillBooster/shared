@@ -583,6 +583,15 @@ test('uses bun runner for generated Python scripts in bun projects', async () =>
   expect(packageJson.scripts?.['lint-fix']).not.toContain('yarn');
 });
 
+test('prepares Flutter dependencies in a JavaScript monorepo before CI cleanup', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: {}, workspaces: ['packages/*'] },
+    { doesContainPubspecYaml: true, doesContainSubPackageJsons: true, isRoot: true }
+  );
+
+  expect(packageJson.scripts?.['common/ci-setup']).toBe('flutter pub get');
+});
+
 test('preserves an already-pinned git commit of a private package instead of bumping it', async () => {
   const pinnedSpecifier = 'git@github.com:WillBoosterLab/llm-proxy.git#4ef9b35e2d1d94adba17e167b7ae18a2e299f7f6';
   const packageJson = await generatePackageJsonFrom({

@@ -119,6 +119,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     // aliases without relying on baseUrl's broad fallback resolution.
     delete newSettings.compilerOptions?.baseUrl;
     deleteLegacyModuleSettings(newSettings.compilerOptions);
+    normalizeCommonJsModuleSettings(newSettings.compilerOptions);
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
@@ -500,6 +501,15 @@ function deleteLegacyModuleSettings(compilerOptions: TsConfigJson.CompilerOption
   if (moduleResolution === 'node' || moduleResolution === 'node10') {
     delete compilerOptions.moduleResolution;
   }
+}
+
+function normalizeCommonJsModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
+  if (!compilerOptions || lowerCaseSetting(compilerOptions.module) !== 'commonjs') return;
+
+  // @tsconfig/bun enables verbatimModuleSyntax, which rejects ordinary ESM import/export syntax
+  // when a Node package deliberately keeps CommonJS output (for example Firebase Functions).
+  // The explicit module kind is the package's emit contract, so disable the inherited restriction.
+  compilerOptions.verbatimModuleSyntax = false;
 }
 
 function lowerCaseSetting(value: unknown): string | undefined {

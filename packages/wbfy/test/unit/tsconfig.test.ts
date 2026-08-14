@@ -44,6 +44,12 @@ test('drops removed node10 resolver spellings regardless of casing', async () =>
   expect(compilerOptions.moduleResolution).toBeUndefined();
 });
 
+test('allows import and export syntax in packages that emit CommonJS', async () => {
+  const compilerOptions = await generateCompilerOptionsFrom({ compilerOptions: { module: 'CommonJS' } });
+  expect(compilerOptions.module).toBe('CommonJS');
+  expect(compilerOptions.verbatimModuleSyntax).toBe(false);
+});
+
 test('merges settings from a tsconfig containing JSONC comments instead of replacing the file', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(`{
   "compilerOptions": {

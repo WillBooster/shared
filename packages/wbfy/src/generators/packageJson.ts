@@ -800,6 +800,8 @@ async function normalizePackageMetadata(
   jsonObj: WritablePackageJson,
   dependencyUpdates: DependencyUpdates
 ): Promise<void> {
+  const ciSetupCommands = config.doesContainPubspecYaml ? ['flutter pub get'] : [];
+
   if (!jsonObj.name) {
     jsonObj.name = path.basename(config.dirPath);
   }
@@ -859,7 +861,7 @@ async function normalizePackageMetadata(
         delete jsonObj.scripts.postinstall;
       }
       const scriptRunner = 'bun run';
-      jsonObj.scripts['common/ci-setup'] = `${scriptRunner} setup-${pythonPackageManager}`;
+      ciSetupCommands.push(`${scriptRunner} setup-${pythonPackageManager}`);
       delete jsonObj.scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
       delete jsonObj.scripts['setup-poetry-asdf'];
       jsonObj.scripts[`setup-${pythonPackageManager}`] = getPythonSetupCommand(pythonPackageManager);
@@ -890,6 +892,13 @@ async function normalizePackageMetadata(
         dependencyUpdates.pythonDevDependencies.push('black', 'isort', 'flake8');
       }
     }
+  }
+
+  if (ciSetupCommands.length > 0) {
+    // The reusable workflow installs JavaScript dependencies only. Flutter analysis still needs
+    // the generated package configuration, including in repositories whose root also owns JS
+    // workspaces, so prepare every detected package ecosystem before cleanup starts.
+    jsonObj.scripts['common/ci-setup'] = ciSetupCommands.join(' && ');
   }
 
   if (config.repository || jsonObj.repository) {
