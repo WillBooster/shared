@@ -22,6 +22,10 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * test run of the same repository. NEXT_PUBLIC_BASE_URL is derived from the resolved port —
  * declared or auto-selected — unless already defined, so app code and Playwright configs reading
  * it keep working without fnox definitions.
+ *
+ * Callers may run this more than once per command; repeating checkAndKillPortProcess is
+ * deliberate, not redundancy to cache away: it reclaims a port still held by a previous phase's
+ * server (e.g. `wb test-on-ci` between the startup check and e2e), and its probe is cheap.
  */
 export async function ensurePort(project: Project): Promise<number> {
   if (!project.env.PORT) {
