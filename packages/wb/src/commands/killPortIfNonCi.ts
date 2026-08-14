@@ -36,9 +36,10 @@ export async function killPortIfNonCi(
   }
 
   const portEnv = project.env.PORT;
-  // Without a configured PORT, reclaim the deterministic preferred port ensurePort starts its
-  // search from, so a leftover server (e.g. after SIGKILL) cannot shift the auto-selected URL.
-  const port = portEnv === undefined ? computePreferredPort(project) : Number(portEnv);
+  // Without a configured PORT (matching ensurePort's falsy check, so an empty value counts too),
+  // reclaim the deterministic preferred port ensurePort starts its search from, so a leftover
+  // server (e.g. after SIGKILL) cannot shift the auto-selected URL.
+  const port = portEnv ? Number(portEnv) : computePreferredPort(project);
   if (!Number.isInteger(port) || port <= 0) {
     console.error(chalk.red(`PORT environment variable is invalid: ${portEnv}`));
     process.exit(1);
