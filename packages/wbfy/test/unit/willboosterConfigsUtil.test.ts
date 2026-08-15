@@ -25,20 +25,11 @@ describe('resolveWillboosterConfigModule', () => {
     expect(resolveWillboosterConfigModule(config, '@willbooster/oxlint-config')).toBe('../oxlint-config/config.mjs');
   });
 
+  // Also covers `wbfy <repo>/packages/oxlint-config`, which targets the child directly: the module
+  // path comes from the generated package's own location, not the CLI entry, so it stays flat.
   it('resolves to ./config.mjs when a config package consumes itself', () => {
     const config = createConfig({
       dirPath: '/repo/willbooster-configs/packages/oxlint-config',
-      isWillBoosterConfigs: true,
-    });
-    expect(resolveWillboosterConfigModule(config, '@willbooster/oxlint-config')).toBe('./config.mjs');
-  });
-
-  // `wbfy <repo>/packages/oxlint-config` targets the child directly, so the module path must be
-  // derived from the generated package's own location, not the CLI entry, to avoid a nested path.
-  it('resolves to ./config.mjs when wbfy is invoked directly on the self-consuming package', () => {
-    const config = createConfig({
-      dirPath: '/repo/willbooster-configs/packages/oxlint-config',
-      isRoot: false,
       isWillBoosterConfigs: true,
     });
     expect(resolveWillboosterConfigModule(config, '@willbooster/oxlint-config')).toBe('./config.mjs');
