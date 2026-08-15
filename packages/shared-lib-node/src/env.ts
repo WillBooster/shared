@@ -226,27 +226,38 @@ export function readFnoxEnvironmentVariables(
   // `[profiles.<cascade>.secrets]` is the fnox analogue of `.env.<cascade>`: when the caller
   // forces a mode off CI, profile-declared values must override inherited shell variables just
   // like `.env.<mode>` values do, while base `[secrets]` values keep losing to process.env.
-  // `--no-defaults` omits the base `[secrets]` table, so its key set IS the profile's own
-  // declarations — a profile entry repeating the base value still overrides (cf.
-  // https://github.com/WillBooster/shared/issues/1080). It runs LAZILY, only when a process.env
-  // collision actually needs adjudicating — it would otherwise add a subprocess (including age
-  // decryption) to every forced-mode invocation for nothing.
+  // A key's value is profile-specific under EITHER criterion, because neither alone covers both
+  // shapes: `--no-defaults` omits the base `[secrets]` table, so its key set is exactly the
+  // profile's own declarations — including one repeating the base value, which a value comparison
+  // cannot see (https://github.com/WillBooster/shared/issues/1080) — while a base entry
+  // interpolating a profile-overridden key (`DATABASE_URL = "postgres://${DB_HOST}/app"`) stays
+  // out of that key set although its exported value differs from the base export's.
+  // Both exports run LAZILY, only when a process.env collision actually needs adjudicating — they
+  // would otherwise add subprocesses (including age decryption) to every forced-mode invocation
+  // for nothing — and a failing export simply disables its own criterion (conservative).
   // The omitted base table also makes fnox reject a profile default REFERENCING a base secret
-  // (`URL = { default = "https://${HOST}/x" }`), which the repository rules therefore forbid; no
-  // override is applied when the export fails, and the warning names that rule because the loss
-  // would otherwise be invisible.
+  // (`URL = { default = "https://${HOST}/x" }`), which the repository rules therefore forbid; the
+  // warning names that rule because the lost precision would otherwise be invisible.
   let cachedProfileKeys: Set<string> | undefined | false = false;
   const getProfileKeys = (): Set<string> | undefined => {
     if (cachedProfileKeys === false) {
       const profileSecrets = runFnoxExport(cwd, cascade, { quiet: true, profileOnly: true });
       if (!profileSecrets) {
         console.warn(
-          `Failed to read the "${cascade}" fnox profile's own secrets, so its values do not override the inherited environment variables. Make the defaults in [profiles.${cascade}.secrets] independent of the base [secrets] table.`
+          `Failed to read the "${cascade}" fnox profile's own secrets, so its values equal to the base values do not override the inherited environment variables. Make the defaults in [profiles.${cascade}.secrets] independent of the base [secrets] table.`
         );
       }
       cachedProfileKeys = profileSecrets && new Set(Object.keys(profileSecrets));
     }
     return cachedProfileKeys;
+  };
+  let cachedBaseSecrets: Record<string, unknown> | undefined | false = false;
+  const overridesProcessEnv = (key: string, value: string): boolean => {
+    if (getProfileKeys()?.has(key)) return true;
+    if (cachedBaseSecrets === false) {
+      cachedBaseSecrets = runFnoxExport(cwd, undefined, { quiet: true, ignoreProfileEnvVar: true });
+    }
+    return cachedBaseSecrets !== undefined && cachedBaseSecrets[key] !== value;
   };
 
   const envVars: Record<string, string> = {};
@@ -257,9 +268,12 @@ export function readFnoxEnvironmentVariables(
     // (The mise reader below intentionally uses a value-equality check instead: `mise env` echoes
     // back variables the ambient mise activation already exported, and a differing value means the
     // requested cascade profile should win over the stale activation.)
-    if (!options?.ignoreProcessEnv && key in process.env) {
-      const profileKeys = options?.modeFileOverridesProcessEnv && cascade ? getProfileKeys() : undefined;
-      if (!profileKeys?.has(key)) continue;
+    if (
+      !options?.ignoreProcessEnv &&
+      key in process.env &&
+      !(options?.modeFileOverridesProcessEnv && cascade && overridesProcessEnv(key, value))
+    ) {
+      continue;
     }
     envVars[key] = value;
     keys.push(key);
@@ -270,7 +284,7 @@ export function readFnoxEnvironmentVariables(
 function runFnoxExport(
   cwd: string,
   cascade: string | undefined,
-  options: { quiet: boolean; profileOnly?: boolean }
+  options: { quiet: boolean; profileOnly?: boolean; ignoreProfileEnvVar?: boolean }
 ): Record<string, unknown> | undefined {
   // `--if-missing error` (default): fnox otherwise exits 0 and silently omits secrets it fails to
   // resolve (e.g. a missing age key), which would be indistinguishable from undeclared secrets.
@@ -298,8 +312,17 @@ function runFnoxExport(
   if (options.profileOnly) {
     args.push('--no-defaults');
   }
+  const env = { ...process.env };
+  if (options.ignoreProfileEnvVar) {
+    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must
+    // read the BASE secrets, so the inherited profile selection is cleared for it — and only for
+    // it. A PRIMARY export still honors FNOX_PROFILE: it either stays profile-less (fnox reads the
+    // variable) or folds it into the `--profile` it passes (see wb dotenv's cascade).
+    delete env.FNOX_PROFILE;
+  }
   const result = childProcess.spawnSync('fnox', args, {
     cwd,
+    env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
