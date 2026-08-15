@@ -225,17 +225,19 @@ test('keeps and restores prettier when a runtime prettier plugin is declared', a
   });
   expect(retainedPackageJson.dependencies?.prettier).toBe('3.0.0');
 
-  const restoredPackageJson = await generatePackageJsonFrom(
-    {
-      dependencies: {
-        'prettier-plugin-organize-attributes': '1.0.0',
-      },
+  const missingPrettierPackageJson = {
+    dependencies: {
+      'prettier-plugin-organize-attributes': '1.0.0',
     },
-    { doesContainJava: true }
-  );
+  };
+  const restoredPackageJson = await generatePackageJsonFrom(missingPrettierPackageJson);
+  const restoredJavaPackageJson = await generatePackageJsonFrom(missingPrettierPackageJson, {
+    doesContainJava: true,
+  });
 
   expect(restoredPackageJson.dependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
   expect(restoredPackageJson.dependencies?.['prettier-plugin-organize-attributes']).toBe('1.0.0');
+  expect(restoredJavaPackageJson.dependencies?.prettier).toBe(restoredPackageJson.dependencies?.prettier);
 });
 
 // `wb gen-code` generates worker-configuration.d.ts itself, so wbfy no longer weaves `wrangler types` into the
