@@ -1009,6 +1009,19 @@ test('preserves standalone CLI dependencies when scripts execute their bins', as
   expect(packageJson.devDependencies?.['wait-on']).toBe('9.0.1');
 });
 
+test('preserves standalone CLI dependencies in concurrent child commands', async () => {
+  const packageJson = await generatePackageJsonFrom({
+    scripts: {
+      preview: 'concurrently "bun run start" "wait-on tcp:3000 && open-cli http://localhost:3000"',
+      test: 'wb concurrently "bun run start" "wait-on tcp:3000"',
+    },
+    devDependencies: { 'open-cli': '8.0.0', 'wait-on': '9.0.1' },
+  });
+
+  expect(packageJson.devDependencies?.['open-cli']).toBe('8.0.0');
+  expect(packageJson.devDependencies?.['wait-on']).toBe('9.0.1');
+});
+
 test('keeps commands chained onto the generated test and verify-full scripts', async () => {
   const packageJson = await generatePackageJsonFrom(
     {

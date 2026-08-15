@@ -173,12 +173,35 @@ function doesShellScriptInvokeCommand(script: string, command: string): boolean 
       invokesCommand = true;
       return;
     }
+    if (doesConcurrentChildInvokeCommand(tokens, index, executable, command)) {
+      invokesCommand = true;
+      return;
+    }
     if (executable !== 'bun') return;
     const firstArgument = unquoteShellToken(tokens[index + 1]?.text ?? '');
     const target = firstArgument === 'run' ? tokens[index + 2] : tokens[index + 1];
     if (unquoteShellToken(target?.text ?? '') === command) invokesCommand = true;
   });
   return invokesCommand;
+}
+
+function doesConcurrentChildInvokeCommand(
+  tokens: readonly ShellToken[],
+  commandIndex: number,
+  executable: string,
+  command: string
+): boolean {
+  const isWbConcurrent =
+    executable === 'wb' && unquoteShellToken(tokens[commandIndex + 1]?.text ?? '') === 'concurrently';
+  if (executable !== 'concurrently' && !isWbConcurrent) return false;
+  const firstArgumentIndex = commandIndex + (isWbConcurrent ? 2 : 1);
+  for (const token of tokens.slice(firstArgumentIndex)) {
+    if (isShellSeparator(token.text)) break;
+    const quote = token.text[0];
+    if ((quote !== '"' && quote !== "'") || token.text.at(-1) !== quote) continue;
+    if (doesShellScriptInvokeCommand(token.text.slice(1, -1), command)) return true;
+  }
+  return false;
 }
 
 async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
