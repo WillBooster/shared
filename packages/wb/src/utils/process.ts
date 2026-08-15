@@ -34,7 +34,7 @@ export async function killPortContainerAndProcess(port: number, project: Project
   killListeningProcessesByPort(port);
 }
 
-function killListeningProcessesByPort(port: number): void {
+export function killListeningProcessesByPort(port: number): void {
   for (const pid of listListeningProcessIds(port)) {
     try {
       process.kill(pid, 'SIGKILL');

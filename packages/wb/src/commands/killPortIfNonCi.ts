@@ -5,7 +5,7 @@ import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
 import { computePreferredPort } from '../utils/port.js';
-import { killPortContainerAndProcess } from '../utils/process.js';
+import { killListeningProcessesByPort } from '../utils/process.js';
 
 const killPortIfNonCiBuilder = {} as const;
 
@@ -14,8 +14,7 @@ export const killPortIfNonCiCommand: CommandModule<
   InferredOptionTypes<typeof killPortIfNonCiBuilder & typeof sharedOptionsBuilder>
 > = {
   command: 'kill-port-if-non-ci',
-  describe:
-    'Kill the process or Docker container on the PORT environment variable (or the auto-selection preferred port) if non-CI.',
+  describe: 'Kill the process on the PORT environment variable (or the auto-selection preferred port) if non-CI.',
   builder: killPortIfNonCiBuilder,
   async handler(argv) {
     await killPortIfNonCi(argv);
@@ -48,7 +47,7 @@ export async function killPortIfNonCi(
 
   console.info(`Killing the port: ${port}`);
   try {
-    await killPortContainerAndProcess(port, project);
+    killListeningProcessesByPort(port);
   } catch {
     // do nothing
   }

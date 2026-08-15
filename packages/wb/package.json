@@ -10,11 +10,7 @@
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
   "type": "module",
-  "bin": {
-    "open-cli": "bin/open-cli.js",
-    "wait-on": "bin/wait-on.js",
-    "wb": "bin/index.js"
-  },
+  "bin": "bin/index.js",
   "files": [
     "bin/",
     "docker/",

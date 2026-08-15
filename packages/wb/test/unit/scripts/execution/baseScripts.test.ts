@@ -36,7 +36,7 @@ describe('buildWaitOnLoopbackCommand', () => {
 });
 
 describe('buildE2EReadinessCommand', () => {
-  const listeningCommand = 'wait-on -t 600000 -i 2000 tcp:localhost:3000';
+  const listeningCommand = 'YARN wb wait-on -t 600000 -i 2000 tcp:localhost:3000';
   const respondingCommand =
     'curl -s -o /dev/null -m 5 --retry 150 --retry-delay 2 --retry-all-errors http://localhost:3000';
 

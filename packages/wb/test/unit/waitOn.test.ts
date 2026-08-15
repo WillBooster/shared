@@ -16,6 +16,7 @@ describe('waitOn', () => {
       const address = server.address();
       if (address === null || typeof address === 'string') throw new Error('TCP server has no port.');
       await waitOn(`tcp:localhost:${address.port}`, { interval: 10, timeout: 1000 });
+      await waitOn(`tcp:${address.port}`, { interval: 10, timeout: 1000 });
     } finally {
       await closeServer(server);
     }

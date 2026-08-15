@@ -65,10 +65,10 @@ export async function waitOn(
 
 function buildResourceCheck(resource: string, interval: number): (deadline: number) => Promise<boolean> {
   if (resource.startsWith('tcp:')) {
-    const match = /^tcp:(?<host>[^:]+):(?<port>\d+)$/u.exec(resource);
-    const host = match?.groups?.host;
+    const match = /^tcp:(?:(?<host>[^:]+):)?(?<port>\d+)$/u.exec(resource);
+    const host = match?.groups?.host ?? 'localhost';
     const port = Number(match?.groups?.port);
-    if (!host || !Number.isInteger(port) || port <= 0 || port > 65_535) {
+    if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
       throw new Error(`Invalid TCP resource: ${resource}`);
     }
     return (deadline) => isTcpPortListening(host, port, deadline);
