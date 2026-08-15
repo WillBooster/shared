@@ -252,13 +252,15 @@ test('hardens every install with the Takumi Guard proxy without exposing the tok
       isRoot: true,
       isWillBoosterRepo: false,
       repository: 'github:someone/example',
+      depending: { ...createConfig().depending, semanticRelease: true },
+      release: { branches: ['main'], github: true, npm: false, npmPublishesRoot: false },
       packageJson: { scripts: { deploy: 'WB_ENV=production bun wb deploy' } },
     });
     await generateSelfContainedWorkflows(config);
     await promisePool.promiseAll();
 
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
-    for (const fileName of ['test.yml', 'deploy-production.yml']) {
+    for (const fileName of ['test.yml', 'deploy-production.yml', 'release.yml']) {
       const workflow = yaml.load(await fs.readFile(path.join(workflowsPath, fileName), 'utf8')) as ParsedWorkflow;
       const job = Object.values(workflow.jobs)[0];
       // The `if:` gates read the non-secret signal, and the empty token keeps the generated

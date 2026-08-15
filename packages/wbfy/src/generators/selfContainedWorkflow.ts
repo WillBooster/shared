@@ -372,12 +372,13 @@ function buildReleaseWorkflow(
  * `[[ -e .npmrc ]]`, and the second `rm -rf node_modules` in the fallback (an interrupted lifecycle
  * run may leave node_modules inconsistent, so the retry starts clean rather than trusting a repair).
  *
- * `tolerateLifecycleScriptFailure` decides what a failing lifecycle-script replay does. The test
- * workflow tolerates it (the tokenless environment also lacks FNOX_AGE_KEY, so a postinstall that
- * wants decrypted secrets cannot succeed there, and typecheck/lint/test fail loudly on a broken
- * tree anyway). Deploy and release workflows must not: a `::warning::` does not fail the job, so
- * the fallback would ship a tree whose lifecycle scripts (e.g. a `postinstall: wb gen-code`) never
- * ran, silently deploying degraded output (#1127).
+ * `tolerateLifecycleScriptFailure` decides what a failing lifecycle-script replay does. Every
+ * replay runs tokenless and without FNOX_AGE_KEY (the key is scoped to the later Deploy/Release
+ * step), so a postinstall that needs decrypted secrets is unsupported in all of them by design.
+ * The test workflow tolerates the failure because typecheck/lint/test fail loudly on a degraded
+ * tree anyway. Deploy and release workflows must not: a `::warning::` does not fail the job, so
+ * the fallback would ship a tree whose lifecycle scripts (e.g. a `postinstall: wb gen-code`)
+ * never ran, silently deploying degraded output (#1127).
  */
 function buildInstallSteps(tolerateLifecycleScriptFailure: boolean): Step[] {
   return [
