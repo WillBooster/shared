@@ -216,6 +216,30 @@ test('keeps prettier for packages that import it as a runtime library but drops 
   expect(notImporting.dependencies?.prettier).toBeUndefined();
 });
 
+test('keeps and restores prettier when a runtime prettier plugin is declared', async () => {
+  const retainedPackageJson = await generatePackageJsonFrom({
+    dependencies: {
+      prettier: '3.0.0',
+      'prettier-plugin-organize-attributes': '1.0.0',
+    },
+  });
+  expect(retainedPackageJson.dependencies?.prettier).toBe('3.0.0');
+
+  const missingPrettierPackageJson = {
+    dependencies: {
+      'prettier-plugin-organize-attributes': '1.0.0',
+    },
+  };
+  const restoredPackageJson = await generatePackageJsonFrom(missingPrettierPackageJson);
+  const restoredJavaPackageJson = await generatePackageJsonFrom(missingPrettierPackageJson, {
+    doesContainJava: true,
+  });
+
+  expect(restoredPackageJson.dependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
+  expect(restoredPackageJson.dependencies?.['prettier-plugin-organize-attributes']).toBe('1.0.0');
+  expect(restoredJavaPackageJson.dependencies?.prettier).toBe(restoredPackageJson.dependencies?.prettier);
+});
+
 // `wb gen-code` generates worker-configuration.d.ts itself, so wbfy no longer weaves `wrangler types` into the
 // managed scripts: a Cloudflare package normalizes to `bun wb gen-code` like any other.
 test('normalizes managed scripts of a Cloudflare project to wb gen-code', async () => {
