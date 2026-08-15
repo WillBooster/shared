@@ -50,7 +50,7 @@
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
     "@willbooster/wb": "workspace:*",
-    "build-ts": "21.0.4",
+    "build-ts": "21.0.6",
     "next": "16.3.0",
     "oxfmt": "0.62.0",
     "oxlint": "1.77.0",
