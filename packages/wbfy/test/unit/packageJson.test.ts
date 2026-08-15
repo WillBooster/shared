@@ -989,6 +989,26 @@ test('removes a package self-dependency from every dependency section', async ()
   expect(packageJson.peerDependencies?.['@example/self-referencing']).toBeUndefined();
 });
 
+test('removes standalone CLI dependencies when scripts use the wb replacements', async () => {
+  const packageJson = await generatePackageJsonFrom({
+    scripts: { preview: 'bun wb wait-on tcp:3000 && bun wb open-cli http://localhost:3000' },
+    devDependencies: { 'open-cli': '8.0.0', 'wait-on': '9.0.1' },
+  });
+
+  expect(packageJson.devDependencies?.['open-cli']).toBeUndefined();
+  expect(packageJson.devDependencies?.['wait-on']).toBeUndefined();
+});
+
+test('preserves standalone CLI dependencies when scripts execute their bins', async () => {
+  const packageJson = await generatePackageJsonFrom({
+    scripts: { preview: 'bun wait-on tcp:3000 && bun run open-cli http://localhost:3000' },
+    devDependencies: { 'open-cli': '8.0.0', 'wait-on': '9.0.1' },
+  });
+
+  expect(packageJson.devDependencies?.['open-cli']).toBe('8.0.0');
+  expect(packageJson.devDependencies?.['wait-on']).toBe('9.0.1');
+});
+
 test('keeps commands chained onto the generated test and verify-full scripts', async () => {
   const packageJson = await generatePackageJsonFrom(
     {

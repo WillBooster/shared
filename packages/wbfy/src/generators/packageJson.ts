@@ -159,8 +159,26 @@ function removeWbCliReplacementDependencies(jsonObj: WritablePackageJson): void 
 }
 
 function doesPackageScriptUseCommand(scripts: PackageJson.Scripts, command: string): boolean {
-  const commandPattern = new RegExp(`(?<![\\w-])${escapeRegExp(command)}(?![\\w-])`, 'u');
-  return Object.values(scripts).some((script) => typeof script === 'string' && commandPattern.test(script));
+  return Object.values(scripts).some(
+    (script) => typeof script === 'string' && doesShellScriptInvokeCommand(script, command)
+  );
+}
+
+function doesShellScriptInvokeCommand(script: string, command: string): boolean {
+  const tokens = tokenizeShellCommand(script);
+  let invokesCommand = false;
+  forEachCommandPositionToken(tokens, (token, index) => {
+    const executable = unquoteShellToken(token.text);
+    if (executable === command) {
+      invokesCommand = true;
+      return;
+    }
+    if (executable !== 'bun') return;
+    const firstArgument = unquoteShellToken(tokens[index + 1]?.text ?? '');
+    const target = firstArgument === 'run' ? tokens[index + 2] : tokens[index + 1];
+    if (unquoteShellToken(target?.text ?? '') === command) invokesCommand = true;
+  });
+  return invokesCommand;
 }
 
 async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
