@@ -657,8 +657,11 @@ function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJs
 }
 
 function shouldKeepWbAsRuntimeDependency(jsonObj: PackageJson): boolean {
-  const postinstallScript = jsonObj.scripts?.postinstall;
-  return typeof postinstallScript === 'string' && /\bwb\b/u.test(postinstallScript);
+  // Production images run migrations after devDependencies are pruned, just as package managers
+  // run postinstall during production installs, so both entry points must retain the wb binary.
+  return [jsonObj.scripts?.postinstall, jsonObj.scripts?.['db-migrate']].some(
+    (script) => typeof script === 'string' && /\bwb\b/u.test(script)
+  );
 }
 
 function shouldKeepBuildTsAsRuntimeDependency(jsonObj: PackageJson): boolean {

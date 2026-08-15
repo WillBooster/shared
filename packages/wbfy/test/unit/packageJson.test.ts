@@ -144,6 +144,22 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
   expect(packageJson.dependencies?.['@willbooster/wb']).not.toBe(oldWbVersion);
 });
 
+test('keeps wb as a runtime dependency when db-migrate uses it', async () => {
+  const oldWbVersion = '0.0.1';
+  const packageJson = await generatePackageJsonFrom({
+    dependencies: {
+      '@willbooster/wb': oldWbVersion,
+    },
+    scripts: {
+      'db-migrate': 'bun wb db migrate --check-idempotency',
+    },
+  });
+
+  expect(packageJson.dependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+/u);
+  expect(packageJson.dependencies?.['@willbooster/wb']).not.toBe(oldWbVersion);
+  expect(packageJson.devDependencies?.['@willbooster/wb']).toBeUndefined();
+});
+
 test('preserves workspace: dependency specifiers in public packages', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
