@@ -43,8 +43,9 @@ const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
+// wb and wbfy publish independently. Add a replacement here only after a releasing wb commit has
+// published its implementation, or the next wbfy release can prune a binary that latest wb lacks.
 const wbCliReplacementDependencies = ['open-cli', 'wait-on'];
-const wbCliReplacementMinVersion = '21.7.0';
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
 const managedDependencyNames = new Set([
   wbDependency,
@@ -79,7 +80,6 @@ export async function generatePackageJson(
   rootConfig: PackageConfig,
   skipAddingDeps: boolean
 ): Promise<void> {
-  assertWbCliReplacementsArePublished(config.packageJson);
   return logger.functionIgnoringException('generatePackageJson', async () => {
     await core(config, rootConfig, skipAddingDeps);
   });
@@ -154,31 +154,10 @@ function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJso
 }
 
 function removeWbCliReplacementDependencies(jsonObj: WritablePackageJson): void {
-  for (const dependency of getRemovableWbCliReplacementDependencies(jsonObj)) {
+  for (const dependency of wbCliReplacementDependencies) {
+    if (doesPackageScriptUseCommand(jsonObj.scripts, dependency)) continue;
     Reflect.deleteProperty(jsonObj.devDependencies, dependency);
   }
-}
-
-function assertWbCliReplacementsArePublished(jsonObj: PackageJson | undefined): void {
-  if (!jsonObj) return;
-  const removableDependencies = getRemovableWbCliReplacementDependencies(jsonObj);
-  if (removableDependencies.length === 0) return;
-
-  // wbfy and wb release independently. Refuse to prune the standalone binaries until npm serves
-  // the wb implementation, or a wbfy release can generate commands that its managed wb cannot run.
-  const publishedWbVersion = getLatestDependencyVersion(wbDependency);
-  if (!semver.valid(publishedWbVersion) || semver.lt(publishedWbVersion, wbCliReplacementMinVersion)) {
-    throw new Error(
-      `${wbDependency} >=${wbCliReplacementMinVersion} must be available from npm before removing ${removableDependencies.join(', ')} (resolved ${publishedWbVersion})`
-    );
-  }
-}
-
-function getRemovableWbCliReplacementDependencies(jsonObj: PackageJson): string[] {
-  return wbCliReplacementDependencies.filter(
-    (dependency) =>
-      jsonObj.devDependencies?.[dependency] && !doesPackageScriptUseCommand(jsonObj.scripts ?? {}, dependency)
-  );
 }
 
 function doesPackageScriptUseCommand(scripts: PackageJson.Scripts, command: string): boolean {
