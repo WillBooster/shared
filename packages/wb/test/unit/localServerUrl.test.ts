@@ -65,8 +65,15 @@ async function publishServerUrl(
   return filePath;
 }
 
+// The publication format fixes the locale and timezone, so that a publisher and a reader in
+// differently configured shells still describe one process identically.
 function readProcessStartTime(pid: number): string {
-  return childProcess.spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim();
+  return childProcess
+    .spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
+      encoding: 'utf8',
+      env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+    })
+    .stdout.trim();
 }
 
 async function publishRunningServerUrl(wbEnv: string, packageName: string): Promise<string> {

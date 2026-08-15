@@ -185,10 +185,16 @@ function isPublisherAlive(pid: number, startTime: string | undefined): boolean {
   return !startTime || !currentStartTime || startTime.trim() === currentStartTime;
 }
 
-/** `ps` covers both supported platforms; /proc exists only on Linux. */
+/**
+ * `ps` covers both supported platforms; /proc exists only on Linux. `lstart` renders the start
+ * time with the CALLING process's locale and timezone, so the publisher and a later reader would
+ * otherwise disagree about an unchanged process whenever their environments differ (an IDE
+ * terminal against a login shell, say). Both sides therefore fix them.
+ */
 function readProcessStartTime(pid: number): string | undefined {
   const result = childProcess.spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
     encoding: 'utf8',
+    env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
     stdio: ['ignore', 'pipe', 'ignore'],
     timeout: 2000,
   });
