@@ -80,6 +80,17 @@ test('is idempotent and leaves already-defined values untouched', () => {
   expect(secondPass).toBe(customized);
 });
 
+test('inserts only the missing key into a section that already defines the other one', () => {
+  const wbEnvOnly = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '';
+  const withNextPublic = insertWbEnvIntoFnoxToml(wbEnvOnly, true) ?? '';
+  const settings = parse(withNextPublic) as FnoxSubtree;
+  expect(settings.secrets?.WB_ENV).toEqual({ default: 'development' });
+  expect(settings.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'development' });
+  // A re-inserted WB_ENV would be a duplicate key, which makes the TOML unparsable and the
+  // insertion bail out with undefined.
+  expect(settings.profiles?.test?.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'test' });
+});
+
 test('inserts no explanatory comment and removes the one written by earlier wbfy versions', () => {
   const inserted = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '';
   expect(inserted).not.toContain('# CI sets WB_ENV');
