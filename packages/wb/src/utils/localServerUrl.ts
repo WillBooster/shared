@@ -9,7 +9,7 @@ import type { Project } from '../project.js';
 // always carry a fixed, deployed URL that a local file must never shadow.
 const LOCAL_SERVER_WB_ENVS = new Set(['development', 'test']);
 const WB_DIRECTORY_NAME = '.wb';
-const URL_FILE_EXTENSION = '.url';
+const PUBLICATION_FILE_EXTENSION = '.json';
 const UNNAMED_PACKAGE_NAME = 'unknown';
 const SCHEME_DEFAULT_PORTS = new Map([
   ['http:', 80],
@@ -17,9 +17,16 @@ const SCHEME_DEFAULT_PORTS = new Map([
 ]);
 const SERVING_PROBE_TIMEOUT_MS = 1000;
 
+interface LocalServerPublication {
+  url: string;
+  pid: number;
+  /** Absent where `ps` is unavailable, which leaves the pid as the only publisher evidence. */
+  startedAt?: string;
+}
+
 /**
  * Publishes the URL of the server `wb start` / `wb test` is about to serve into
- * `<repository root>/.wb/server-<WB_ENV>-<package>.url`.
+ * `<repository root>/.wb/server-<WB_ENV>-<package>.json`.
  *
  * A publication is never deleted, only overwritten by the next server of the same package: a
  * reader accepts one only while its publisher is alive and its origin answers, so an outdated file
@@ -30,11 +37,12 @@ const SERVING_PROBE_TIMEOUT_MS = 1000;
  * Commands that merely CONSUME the app (e.g. `wb run scripts/importProblems.ts`) cannot compute an
  * auto-selected port: the selection returns a FREE port, i.e. never the one a running server
  * occupies. Without this file, a repository whose scripts must name the local server would have to
- * pin PORT for that reason alone. Its first line is the bare URL so any language can read it
- * (`head -1`); the second and third identify the publishing process, so a gone publisher cannot be
- * mistaken for a live server by an unrelated process that later takes the same port. All three
- * live in ONE file replaced by rename: siblings would expose an intermediate state pairing one
- * server's pid with another's URL, and no write order makes that pairing safe in every restart.
+ * pin PORT for that reason alone. The file is wb's own record, not a published interface: reading
+ * the URL out of it is unsafe without the publisher identity it carries beside it, since a
+ * publication outlives its server. Consumers get the URL from `wb run`, which exposes only a
+ * verified one as NEXT_PUBLIC_BASE_URL. One file replaced by rename keeps the URL and the identity
+ * inseparable: siblings would expose an intermediate state pairing one server's pid with another's
+ * URL, and no write order makes that pairing safe in every restart.
  *
  * It lives at the REPOSITORY root, not the package directory, because `wb start` serves each
  * descendant project (see start.ts) while a consuming script commonly runs at the root: a reader
@@ -53,7 +61,12 @@ export function publishLocalServerUrl(project: Project, baseUrl: string): void {
   // and a pid belonging to different servers. The pid in the temporary name keeps two publishers
   // of one package from colliding on it.
   const temporaryFilePath = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(temporaryFilePath, `${baseUrl}\n${process.pid}\n${readProcessStartTime(process.pid) ?? ''}\n`);
+  const publication: LocalServerPublication = {
+    url: baseUrl,
+    pid: process.pid,
+    startedAt: readProcessStartTime(process.pid),
+  };
+  fs.writeFileSync(temporaryFilePath, `${JSON.stringify(publication, undefined, 2)}\n`);
   fs.renameSync(temporaryFilePath, filePath);
 }
 
@@ -130,9 +143,9 @@ async function readServingUrl(filePath: string): Promise<string | undefined> {
   let baseUrl: string;
   let url: URL;
   try {
-    const [rawBaseUrl, rawPid, rawStartTime] = fs.readFileSync(filePath, 'utf8').split('\n');
-    if (!isPublisherAlive(Number(rawPid), rawStartTime)) return undefined;
-    baseUrl = (rawBaseUrl ?? '').trim();
+    const publication = JSON.parse(fs.readFileSync(filePath, 'utf8')) as LocalServerPublication;
+    if (!isPublisherAlive(publication.pid, publication.startedAt)) return undefined;
+    baseUrl = publication.url;
     url = new URL(baseUrl);
   } catch {
     return undefined;
@@ -210,7 +223,7 @@ function listLocalServerUrlFilePaths(wbDirPath: string, wbEnv: string): string[]
   }
   const prefix = `server-${wbEnv}-`;
   return fileNames
-    .filter((fileName) => fileName.startsWith(prefix) && fileName.endsWith(URL_FILE_EXTENSION))
+    .filter((fileName) => fileName.startsWith(prefix) && fileName.endsWith(PUBLICATION_FILE_EXTENSION))
     .map((fileName) => path.join(wbDirPath, fileName));
 }
 
@@ -240,6 +253,6 @@ function buildLocalServerUrlFilePath(
   return path.join(
     rootDirPath,
     WB_DIRECTORY_NAME,
-    `server-${wbEnv}-${encodeURIComponent(projectName)}${URL_FILE_EXTENSION}`
+    `server-${wbEnv}-${encodeURIComponent(projectName)}${PUBLICATION_FILE_EXTENSION}`
   );
 }

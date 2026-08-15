@@ -59,9 +59,9 @@ async function publishServerUrl(
   publisherPid = process.pid,
   publisherStartTime = readProcessStartTime(publisherPid)
 ): Promise<string> {
-  const filePath = path.join(projectDirPath, '.wb', `server-${wbEnv}-${encodeURIComponent(packageName)}.url`);
+  const filePath = path.join(projectDirPath, '.wb', `server-${wbEnv}-${encodeURIComponent(packageName)}.json`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${baseUrl}\n${publisherPid}\n${publisherStartTime}\n`);
+  await fs.writeFile(filePath, JSON.stringify({ url: baseUrl, pid: publisherPid, startedAt: publisherStartTime }));
   return filePath;
 }
 
@@ -250,10 +250,13 @@ describe('wb run', () => {
     const strayFilePath = path.join(
       path.dirname(projectDirPath),
       '.wb',
-      `server-development-${encodeURIComponent(ROOT_PACKAGE_NAME)}.url`
+      `server-development-${encodeURIComponent(ROOT_PACKAGE_NAME)}.json`
     );
     await fs.mkdir(path.dirname(strayFilePath), { recursive: true });
-    await fs.writeFile(strayFilePath, `${baseUrl}\n${process.pid}\n${readProcessStartTime(process.pid)}\n`);
+    await fs.writeFile(
+      strayFilePath,
+      JSON.stringify({ url: baseUrl, pid: process.pid, startedAt: readProcessStartTime(process.pid) })
+    );
     try {
       expect(runScript()).toBe('null');
     } finally {
