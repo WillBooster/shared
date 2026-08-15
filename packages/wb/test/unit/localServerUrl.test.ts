@@ -117,6 +117,42 @@ describe('wb run', () => {
     expect(runScript()).toBe('null');
   });
 
+  it('reaches the server from a directory that holds no manifest of its own', async () => {
+    // `wb run` accepts a manifest-less working directory; a script in `scripts/` belongs to the
+    // repository just as one at the root does.
+    const scriptsDirPath = path.join(projectDirPath, 'scripts');
+    await fs.mkdir(scriptsDirPath, { recursive: true });
+    await fs.copyFile(path.join(projectDirPath, 'print-base-url.js'), path.join(scriptsDirPath, 'print-base-url.js'));
+    const baseUrl = await publishRunningServerUrl('development', ROOT_PACKAGE_NAME);
+
+    expect(runScript({}, scriptsDirPath)).toBe(JSON.stringify(baseUrl));
+  });
+
+  it('reaches its own app server from a manifest-less directory inside that package', async () => {
+    const appScriptsDirPath = path.join(projectDirPath, APP_DIR_NAME, 'scripts');
+    await writePackage(path.join(projectDirPath, APP_DIR_NAME), APP_PACKAGE_NAME);
+    await fs.mkdir(appScriptsDirPath, { recursive: true });
+    await fs.copyFile(
+      path.join(projectDirPath, 'print-base-url.js'),
+      path.join(appScriptsDirPath, 'print-base-url.js')
+    );
+    const appUrl = await publishRunningServerUrl('development', APP_PACKAGE_NAME);
+    // A second app rules out the single-server fallback answering by luck.
+    await publishRunningServerUrl('development', ADMIN_PACKAGE_NAME);
+
+    expect(runScript({}, appScriptsDirPath)).toBe(JSON.stringify(appUrl));
+  });
+
+  it('reaches a server published as an IPv6 loopback URL', async () => {
+    const server = createServer();
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '::1', resolve));
+    const baseUrl = `http://[::1]:${(server.address() as { port: number }).port}`;
+    await publishServerUrl('development', ROOT_PACKAGE_NAME, baseUrl);
+
+    expect(runScript()).toBe(JSON.stringify(baseUrl));
+  });
+
   it('never hands a package script a sibling app server', async () => {
     const adminDirPath = path.join(projectDirPath, ADMIN_DIR_NAME);
     await writePackage(adminDirPath, ADMIN_PACKAGE_NAME);

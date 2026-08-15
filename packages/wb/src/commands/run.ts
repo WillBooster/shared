@@ -38,7 +38,7 @@ export const runCommand: CommandModule = {
     // Resolved AFTER the dry-run return, which must touch nothing, and never in `wb dotenv`: that
     // is also the low-level runner wb wraps SERVER-STARTING commands in, which must keep resolving
     // their own port.
-    await applyLocalServerUrl(cwd, env, project?.name);
+    await applyLocalServerUrl(cwd, env);
     await runCommandWithEnvironment(command, 'wb run <script> [args...]', {
       cwd,
       env,
