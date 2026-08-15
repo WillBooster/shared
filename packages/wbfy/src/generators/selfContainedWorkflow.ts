@@ -154,18 +154,16 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
     ...buildInstallSteps(),
     ...(playwrightDirPaths.length > 0
       ? ([
-          ...playwrightDirPaths.map(
-            (dirPath, index): Step => ({
-              name: `Get Playwright version${dirPath ? ` (${dirPath})` : ''}`,
-              // The INSTALLED version, not the package.json specifier: a range like `^1.45.0`
-              // stays unchanged across lockfile updates, so keying the cache on it would restore
-              // stale browsers that no longer match the library. Runs after `bun install`, so the
-              // package is resolvable from the declaring package's directory.
-              id: `playwright-version-${index}`,
-              run: 'echo "version=$(bun -e "try { console.log(require(\'@playwright/test/package.json\').version) } catch {}")" >> "$GITHUB_OUTPUT"',
-              ...workingDir(dirPath),
-            })
-          ),
+          ...playwrightDirPaths.map((dirPath, index): Step => ({
+            name: `Get Playwright version${dirPath ? ` (${dirPath})` : ''}`,
+            // The INSTALLED version, not the package.json specifier: a range like `^1.45.0`
+            // stays unchanged across lockfile updates, so keying the cache on it would restore
+            // stale browsers that no longer match the library. Runs after `bun install`, so the
+            // package is resolvable from the declaring package's directory.
+            id: `playwright-version-${index}`,
+            run: 'echo "version=$(bun -e "try { console.log(require(\'@playwright/test/package.json\').version) } catch {}")" >> "$GITHUB_OUTPUT"',
+            ...workingDir(dirPath),
+          })),
           {
             name: 'Cache Playwright browsers',
             id: 'playwright-cache',
@@ -177,21 +175,17 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
                 .join('-')}`,
             },
           },
-          ...playwrightDirPaths.map(
-            (dirPath): Step => ({
-              if: "steps.playwright-cache.outputs.cache-hit != 'true'",
-              run: 'bun playwright install --with-deps',
-              ...workingDir(dirPath),
-            })
-          ),
-          ...playwrightDirPaths.map(
-            (dirPath): Step => ({
-              // The cached browsers still need their system dependencies on a fresh runner.
-              if: "steps.playwright-cache.outputs.cache-hit == 'true'",
-              run: 'bun playwright install-deps',
-              ...workingDir(dirPath),
-            })
-          ),
+          ...playwrightDirPaths.map((dirPath): Step => ({
+            if: "steps.playwright-cache.outputs.cache-hit != 'true'",
+            run: 'bun playwright install --with-deps',
+            ...workingDir(dirPath),
+          })),
+          ...playwrightDirPaths.map((dirPath): Step => ({
+            // The cached browsers still need their system dependencies on a fresh runner.
+            if: "steps.playwright-cache.outputs.cache-hit == 'true'",
+            run: 'bun playwright install-deps',
+            ...workingDir(dirPath),
+          })),
         ] satisfies Step[])
       : []),
     ...(hasTypecheck ? [{ run: 'bun run typecheck', ...fnoxEnv }] : []),
