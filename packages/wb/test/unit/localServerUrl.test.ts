@@ -56,12 +56,17 @@ async function publishServerUrl(
   wbEnv: string,
   packageName: string,
   baseUrl: string,
-  publisherPid = process.pid
+  publisherPid = process.pid,
+  publisherStartTime = readProcessStartTime(publisherPid)
 ): Promise<string> {
   const filePath = path.join(projectDirPath, '.wb', `server-${wbEnv}-${encodeURIComponent(packageName)}.url`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${baseUrl}\n${publisherPid}\n`);
+  await fs.writeFile(filePath, `${baseUrl}\n${publisherPid}\n${publisherStartTime}\n`);
   return filePath;
+}
+
+function readProcessStartTime(pid: number): string {
+  return childProcess.spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim();
 }
 
 async function publishRunningServerUrl(wbEnv: string, packageName: string): Promise<string> {
@@ -182,6 +187,15 @@ describe('wb run', () => {
     expect(runScript()).toBe('null');
   });
 
+  it('ignores a publication whose pid the OS has reassigned since', async () => {
+    // A publication outlives its server, so a recycled pid plus a port an unrelated app happens to
+    // serve would otherwise revive it. The recorded start time is what makes the identity unique.
+    const baseUrl = `http://localhost:${await listenOnFreePort()}`;
+    await publishServerUrl('development', ROOT_PACKAGE_NAME, baseUrl, process.pid, 'Thu Jan  1 00:00:00 2015');
+
+    expect(runScript()).toBe('null');
+  });
+
   it('reads the environment its own WB_ENV names', async () => {
     const developmentUrl = await publishRunningServerUrl('development', ROOT_PACKAGE_NAME);
     // The e2e server of the same repository listens elsewhere, so its URL must not leak into a
@@ -232,7 +246,7 @@ describe('wb run', () => {
       `server-development-${encodeURIComponent(ROOT_PACKAGE_NAME)}.url`
     );
     await fs.mkdir(path.dirname(strayFilePath), { recursive: true });
-    await fs.writeFile(strayFilePath, `${baseUrl}\n${process.pid}\n`);
+    await fs.writeFile(strayFilePath, `${baseUrl}\n${process.pid}\n${readProcessStartTime(process.pid)}\n`);
     try {
       expect(runScript()).toBe('null');
     } finally {

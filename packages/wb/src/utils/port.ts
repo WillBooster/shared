@@ -22,8 +22,8 @@ const AUTO_PORT_MAX_PROBE_COUNT = 100;
  * across runs (e.g. for OAuth redirect URIs), and a development server can coexist with an e2e
  * test run of the same repository. NEXT_PUBLIC_BASE_URL is derived from the resolved port —
  * declared or auto-selected — unless already defined, so app code and Playwright configs reading
- * it keep working without fnox definitions. The resolved URL is also published for the lifetime of
- * this process (see publishLocalServerUrl), so consuming commands can reach it.
+ * it keep working without fnox definitions. The resolved URL is also published (see
+ * publishLocalServerUrl) so consuming commands can reach it while this server is alive and serving.
  *
  * Callers may run this more than once per command; repeating checkAndKillPortProcess is
  * deliberate, not redundancy to cache away: it reclaims a port still held by a previous phase's

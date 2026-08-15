@@ -1,3 +1,4 @@
+import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
@@ -30,10 +31,10 @@ const SERVING_PROBE_TIMEOUT_MS = 1000;
  * auto-selected port: the selection returns a FREE port, i.e. never the one a running server
  * occupies. Without this file, a repository whose scripts must name the local server would have to
  * pin PORT for that reason alone. Its first line is the bare URL so any language can read it
- * (`head -1`), and its second is the publisher's pid, so a crashed publisher cannot be mistaken for
- * a live server by an unrelated process that later takes the same port. Both live in ONE file
- * replaced by rename: siblings would expose an intermediate state pairing one server's pid with
- * another's URL, and no write order makes that pairing safe in every restart.
+ * (`head -1`); the second and third identify the publishing process, so a gone publisher cannot be
+ * mistaken for a live server by an unrelated process that later takes the same port. All three
+ * live in ONE file replaced by rename: siblings would expose an intermediate state pairing one
+ * server's pid with another's URL, and no write order makes that pairing safe in every restart.
  *
  * It lives at the REPOSITORY root, not the package directory, because `wb start` serves each
  * descendant project (see start.ts) while a consuming script commonly runs at the root: a reader
@@ -52,7 +53,7 @@ export function publishLocalServerUrl(project: Project, baseUrl: string): void {
   // and a pid belonging to different servers. The pid in the temporary name keeps two publishers
   // of one package from colliding on it.
   const temporaryFilePath = `${filePath}.${process.pid}.tmp`;
-  fs.writeFileSync(temporaryFilePath, `${baseUrl}\n${process.pid}\n`);
+  fs.writeFileSync(temporaryFilePath, `${baseUrl}\n${process.pid}\n${readProcessStartTime(process.pid) ?? ''}\n`);
   fs.renameSync(temporaryFilePath, filePath);
 }
 
@@ -129,8 +130,8 @@ async function readServingUrl(filePath: string): Promise<string | undefined> {
   let baseUrl: string;
   let url: URL;
   try {
-    const [rawBaseUrl, rawPid] = fs.readFileSync(filePath, 'utf8').split('\n');
-    if (!isPublisherAlive(Number(rawPid))) return undefined;
+    const [rawBaseUrl, rawPid, rawStartTime] = fs.readFileSync(filePath, 'utf8').split('\n');
+    if (!isPublisherAlive(Number(rawPid), rawStartTime)) return undefined;
     baseUrl = (rawBaseUrl ?? '').trim();
     url = new URL(baseUrl);
   } catch {
@@ -166,15 +167,32 @@ function isServing(hostname: string, port: number): Promise<boolean> {
   });
 }
 
-/** Signal 0 tests for existence; EPERM means the process exists under another user. */
-function isPublisherAlive(pid: number): boolean {
+/**
+ * A publication outlives its server, so mere existence of its pid proves nothing: the OS recycles
+ * pids, and a recycled one plus a port an unrelated app happens to serve would revive a long-dead
+ * publication and misdirect a mutating script. The start time makes the identity non-recyclable.
+ */
+function isPublisherAlive(pid: number, startTime: string | undefined): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
+    if ((error as NodeJS.ErrnoException).code !== 'EPERM') return false;
   }
+  const currentStartTime = readProcessStartTime(pid);
+  // Absent on either side (a `ps`-less environment) leaves the pid check as the only evidence,
+  // which is what this feature had before and still beats refusing every publication.
+  return !startTime || !currentStartTime || startTime.trim() === currentStartTime;
+}
+
+/** `ps` covers both supported platforms; /proc exists only on Linux. */
+function readProcessStartTime(pid: number): string | undefined {
+  const result = childProcess.spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+    timeout: 2000,
+  });
+  return result.status === 0 ? result.stdout.trim() || undefined : undefined;
 }
 
 function listLocalServerUrlFilePaths(wbDirPath: string, wbEnv: string): string[] {
