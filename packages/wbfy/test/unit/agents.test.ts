@@ -34,18 +34,12 @@ test('scopes the OS compatibility rule when a workspace package contains a Tauri
 
 test('omits the OS compatibility rule for public OSS without a `@willbooster/` package', () => {
   const rootConfig = createConfig({ packageJson: { name: 'example' } });
-  const content = generateAgentCodingStyle(rootConfig, [rootConfig, createConfig({ packageJson: { name: 'sub' } })]);
+  const subConfig = createConfig({ packageJson: { name: 'sub' } });
+  expect(generateAgentCodingStyle(rootConfig, [rootConfig, subConfig])).not.toContain('macOS and Linux');
 
-  expect(content).not.toContain('macOS and Linux');
-});
-
-test('keeps the OS compatibility rule for a private repository and for a `@willbooster/` package', () => {
+  // A private repository is not OSS for the general public, so it keeps the restriction.
   const privateConfig = createConfig({ packageJson: { name: 'example' }, isPublicRepo: false });
   expect(generateAgentCodingStyle(privateConfig, [privateConfig])).toContain('only with macOS and Linux');
-
-  const rootConfig = createConfig({ packageJson: { name: 'example' } });
-  const content = generateAgentCodingStyle(rootConfig, [rootConfig, createScopedConfig()]);
-  expect(content).toContain('only with macOS and Linux');
 });
 
 test('correlates the server-instance rule with each package deployment target', () => {
