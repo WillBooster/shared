@@ -52,8 +52,9 @@ interface LocalServerPublication {
 export function publishLocalServerUrl(project: Project, baseUrl: string): void {
   // The Git repository, not Project#rootDirPath, whose depth-2 heuristic would disagree with the
   // reader for a workspace nested at another depth (e.g. `apps/group/*`) and silently no-op.
-  const rootDirPath = findRepositoryRootDirPath(project.dirPath) ?? project.rootDirPath;
-  const filePath = buildLocalServerUrlFilePath(rootDirPath, project.env.WB_ENV, project.name);
+  // Outside a repository there is nowhere a reader would look, so publishing would only litter.
+  const rootDirPath = findRepositoryRootDirPath(project.dirPath);
+  const filePath = rootDirPath && buildLocalServerUrlFilePath(rootDirPath, project.env.WB_ENV, project.name);
   if (!filePath) return;
 
   fs.mkdirSync(path.dirname(filePath), { recursive: true });

@@ -47,6 +47,20 @@ async function listenOnFreePort(): Promise<number> {
   return (server.address() as { port: number }).port;
 }
 
+/** The port of a listener on `::1`, or undefined where the host has no IPv6 loopback. */
+async function listenOnIpv6LoopbackPort(): Promise<number | undefined> {
+  const server = createServer();
+  servers.push(server);
+  const listening = await new Promise<boolean>((resolve, reject) => {
+    server.once('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EAFNOSUPPORT' || error.code === 'EADDRNOTAVAIL') resolve(false);
+      else reject(error);
+    });
+    server.listen(0, '::1', () => resolve(true));
+  });
+  return listening ? (server.address() as { port: number }).port : undefined;
+}
+
 async function closeServers(): Promise<void> {
   await Promise.all(servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
 }
@@ -155,10 +169,11 @@ describe('wb run', () => {
   });
 
   it('reaches a server published as an IPv6 loopback URL', async () => {
-    const server = createServer();
-    servers.push(server);
-    await new Promise<void>((resolve) => server.listen(0, '::1', resolve));
-    const baseUrl = `http://[::1]:${(server.address() as { port: number }).port}`;
+    const port = await listenOnIpv6LoopbackPort();
+    // The case is vacuous where the kernel has no IPv6 loopback to publish in the first place;
+    // any other bind failure is a real one and rejects.
+    if (port === undefined) return;
+    const baseUrl = `http://[::1]:${port}`;
     await publishServerUrl('development', ROOT_PACKAGE_NAME, baseUrl);
 
     expect(runScript()).toBe(JSON.stringify(baseUrl));
