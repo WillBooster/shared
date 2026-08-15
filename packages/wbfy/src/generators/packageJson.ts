@@ -44,6 +44,7 @@ const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
 const wbCliReplacementDependencies = ['open-cli', 'wait-on'];
+const wbCliReplacementMinVersion = '21.7.0';
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
 const managedDependencyNames = new Set([
   wbDependency,
@@ -152,8 +153,21 @@ function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJso
 }
 
 function removeWbCliReplacementDependencies(jsonObj: WritablePackageJson): void {
-  for (const dependency of wbCliReplacementDependencies) {
-    if (doesPackageScriptUseCommand(jsonObj.scripts, dependency)) continue;
+  const removableDependencies = wbCliReplacementDependencies.filter(
+    (dependency) => jsonObj.devDependencies[dependency] && !doesPackageScriptUseCommand(jsonObj.scripts, dependency)
+  );
+  if (removableDependencies.length === 0) return;
+
+  // wbfy and wb release independently. Refuse to prune the standalone binaries until npm serves
+  // the wb implementation, or a wbfy release can generate commands that its managed wb cannot run.
+  const publishedWbVersion = getLatestDependencyVersion(wbDependency);
+  if (semver.lt(publishedWbVersion, wbCliReplacementMinVersion)) {
+    throw new Error(
+      `${wbDependency} ${wbCliReplacementMinVersion} must be published before removing ${removableDependencies.join(', ')}`
+    );
+  }
+
+  for (const dependency of removableDependencies) {
     Reflect.deleteProperty(jsonObj.devDependencies, dependency);
   }
 }
