@@ -43,6 +43,8 @@ const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
+// wb and wbfy publish independently. Add a replacement here only after a releasing wb commit has
+// published its implementation, or the next wbfy release can prune a binary that latest wb lacks.
 const wbCliReplacementDependencies = ['open-cli', 'wait-on'];
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
 const managedDependencyNames = new Set([
@@ -657,8 +659,13 @@ function moveManagedToolDependenciesToDevDependencies(jsonObj: WritablePackageJs
 }
 
 function shouldKeepWbAsRuntimeDependency(jsonObj: PackageJson): boolean {
-  const postinstallScript = jsonObj.scripts?.postinstall;
-  return typeof postinstallScript === 'string' && /\bwb\b/u.test(postinstallScript);
+  // Production images run migrations after devDependencies are pruned, just as package managers
+  // run postinstall during production installs, so both entry points must retain the wb binary.
+  // Keep the word match conservative: supported custom wrappers can put wb inside shell loops that
+  // the command-position parser cannot classify, while a false positive only retains the CLI.
+  return [jsonObj.scripts?.postinstall, jsonObj.scripts?.['db-migrate']].some(
+    (script) => typeof script === 'string' && /\bwb\b/u.test(script)
+  );
 }
 
 function shouldKeepBuildTsAsRuntimeDependency(jsonObj: PackageJson): boolean {
