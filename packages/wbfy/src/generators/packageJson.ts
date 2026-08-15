@@ -167,22 +167,23 @@ function doesPackageScriptUseCommand(scripts: PackageJson.Scripts, command: stri
 function doesShellScriptInvokeCommand(script: string, command: string): boolean {
   const tokens = tokenizeShellCommand(script);
   let invokesCommand = false;
-  forEachCommandPositionToken(tokens, (token, index) => {
-    const executable = unquoteShellToken(token.text);
+  forEachCommandPositionToken(tokens, (_token, index) => {
+    const executableIndex = getExecutableIndex(tokens, index);
+    const executable = unquoteShellToken(tokens[executableIndex]?.text ?? '');
     if (executable === command) {
       invokesCommand = true;
       return;
     }
-    if (doesConcurrentChildInvokeCommand(tokens, index, executable, command)) {
+    if (doesConcurrentChildInvokeCommand(tokens, executableIndex, executable, command)) {
       invokesCommand = true;
-      return;
     }
-    if (executable !== 'bun') return;
-    const firstArgument = unquoteShellToken(tokens[index + 1]?.text ?? '');
-    const target = firstArgument === 'run' ? tokens[index + 2] : tokens[index + 1];
-    if (unquoteShellToken(target?.text ?? '') === command) invokesCommand = true;
   });
   return invokesCommand;
+}
+
+function getExecutableIndex(tokens: readonly ShellToken[], commandIndex: number): number {
+  if (unquoteShellToken(tokens[commandIndex]?.text ?? '') !== 'bun') return commandIndex;
+  return unquoteShellToken(tokens[commandIndex + 1]?.text ?? '') === 'run' ? commandIndex + 2 : commandIndex + 1;
 }
 
 function doesConcurrentChildInvokeCommand(
