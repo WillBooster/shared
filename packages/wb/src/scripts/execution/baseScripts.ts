@@ -299,7 +299,7 @@ export abstract class BaseScripts {
     const port = project.env.PORT;
     return `${this.waitApp(
       project
-    )} || ${buildWaitOnLoopbackCommand(port)} && open-cli http://\${HOST:-localhost}:${port}`;
+    )} || ${buildWaitOnLoopbackCommand(port)} && YARN wb open-cli http://\${HOST:-localhost}:${port}`;
   }
 }
 
@@ -324,7 +324,7 @@ export function buildE2EReadinessCommand(port: string | number, isDocker: boolea
  */
 export function buildWaitOnLoopbackCommand(port: string | number | undefined, waitOnArgs?: string): string {
   if (port === undefined || port === '') throw new Error('Port is required for the loopback readiness check.');
-  return `wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
+  return `YARN wb wait-on ${waitOnArgs ? `${waitOnArgs} ` : ''}tcp:localhost:${port}`;
 }
 
 /**

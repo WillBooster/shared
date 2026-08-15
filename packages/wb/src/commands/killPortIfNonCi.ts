@@ -1,11 +1,11 @@
 import chalk from 'chalk';
-import killPortProcess from 'kill-port';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import { findSelfProject } from '../project.js';
 import type { sharedOptionsBuilder } from '../sharedOptionsBuilder.js';
 import { isCI } from '../utils/ci.js';
 import { computePreferredPort } from '../utils/port.js';
+import { killListeningProcessesByPort } from '../utils/process.js';
 
 const killPortIfNonCiBuilder = {} as const;
 
@@ -47,7 +47,7 @@ export async function killPortIfNonCi(
 
   console.info(`Killing the port: ${port}`);
   try {
-    await killPortProcess(port);
+    killListeningProcessesByPort(port);
   } catch {
     // do nothing
   }

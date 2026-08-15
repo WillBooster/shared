@@ -43,6 +43,7 @@ const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
+const wbCliReplacementDependencies = ['open-cli', 'wait-on'];
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
 const managedDependencyNames = new Set([
   wbDependency,
@@ -93,6 +94,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
   removeSelfDependency(config, jsonObj);
+  removeWbCliReplacementDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipAddingDeps);
@@ -147,6 +149,60 @@ function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJso
   for (const section of getDependencySections(jsonObj)) {
     Reflect.deleteProperty(section, packageName);
   }
+}
+
+function removeWbCliReplacementDependencies(jsonObj: WritablePackageJson): void {
+  for (const dependency of wbCliReplacementDependencies) {
+    if (doesPackageScriptUseCommand(jsonObj.scripts, dependency)) continue;
+    Reflect.deleteProperty(jsonObj.devDependencies, dependency);
+  }
+}
+
+function doesPackageScriptUseCommand(scripts: PackageJson.Scripts, command: string): boolean {
+  return Object.values(scripts).some(
+    (script) => typeof script === 'string' && doesShellScriptInvokeCommand(script, command)
+  );
+}
+
+function doesShellScriptInvokeCommand(script: string, command: string): boolean {
+  const tokens = tokenizeShellCommand(script);
+  let invokesCommand = false;
+  forEachCommandPositionToken(tokens, (_token, index) => {
+    const executableIndex = getExecutableIndex(tokens, index);
+    const executable = unquoteShellToken(tokens[executableIndex]?.text ?? '');
+    if (executable === command) {
+      invokesCommand = true;
+      return;
+    }
+    if (doesConcurrentChildInvokeCommand(tokens, executableIndex, executable, command)) {
+      invokesCommand = true;
+    }
+  });
+  return invokesCommand;
+}
+
+function getExecutableIndex(tokens: readonly ShellToken[], commandIndex: number): number {
+  if (unquoteShellToken(tokens[commandIndex]?.text ?? '') !== 'bun') return commandIndex;
+  return unquoteShellToken(tokens[commandIndex + 1]?.text ?? '') === 'run' ? commandIndex + 2 : commandIndex + 1;
+}
+
+function doesConcurrentChildInvokeCommand(
+  tokens: readonly ShellToken[],
+  commandIndex: number,
+  executable: string,
+  command: string
+): boolean {
+  const isWbConcurrent =
+    executable === 'wb' && unquoteShellToken(tokens[commandIndex + 1]?.text ?? '') === 'concurrently';
+  if (executable !== 'concurrently' && !isWbConcurrent) return false;
+  const firstArgumentIndex = commandIndex + (isWbConcurrent ? 2 : 1);
+  for (const token of tokens.slice(firstArgumentIndex)) {
+    if (isShellSeparator(token.text)) break;
+    const quote = token.text[0];
+    if ((quote !== '"' && quote !== "'") || token.text.at(-1) !== quote) continue;
+    if (doesShellScriptInvokeCommand(token.text.slice(1, -1), command)) return true;
+  }
+  return false;
 }
 
 async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {

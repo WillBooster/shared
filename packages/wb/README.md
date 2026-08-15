@@ -19,6 +19,7 @@ Commands:
   wb maintenance <action>       Start or stop a lightweight maintenance page
                                 server.
                                 Example: wb maintenance start
+  wb open-cli <target>          Open a URL or file in its default application
   wb optimizeForDockerBuild     Optimize configuration when building a Docker
                                 image
   wb prisma                     Run database commands              [aliases: db]
@@ -39,6 +40,7 @@ Commands:
                                 loaded.
   wb tc                         Run type checking. Environment variables are not
                                 loaded.
+  wb wait-on <resource>         Wait for an HTTP(S) URL or TCP port
 
 Options:
       --cascade-env       Environment (fnox profile / mise env) to load
