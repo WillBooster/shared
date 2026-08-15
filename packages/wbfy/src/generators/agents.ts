@@ -151,8 +151,9 @@ ${generateAgentCodingStyle(rootConfig, allConfigs)}
 }
 
 export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: PackageConfig[]): string {
-  // Tauri desktop apps ship Windows builds, so the macOS/Linux-only rule must not ban the
-  // Windows-specific code they require.
+  // Tauri desktop apps ship Windows builds, and the boundary between app code and shared code is
+  // too fuzzy to scope the macOS/Linux-only rule per package, so such repositories target all
+  // three OSes instead.
   const hasDesktopApp = allConfigs.some((c) => c.depending.tauri || c.doesContainTauriConfigInPackages);
   // A public repository with no `@willbooster/` package is OSS for the general public, whose users
   // may run Windows, so no OS restriction applies there. An unknown visibility collapses to
@@ -162,7 +163,7 @@ export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: 
   const osCompatibilityInstruction = isGeneralPublicOss
     ? ''
     : hasDesktopApp
-      ? '- Server and CLI code targets macOS and Linux; the Tauri desktop app additionally supports Windows, so keep its Windows-specific code working.'
+      ? '- Ensure compatibility with Windows, macOS, and Linux.'
       : '- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.';
   // Cloudflare Workers execute across many ephemeral isolates and two requests are not guaranteed
   // to hit the same instance, so the single-instance simplification silently loses state there —
