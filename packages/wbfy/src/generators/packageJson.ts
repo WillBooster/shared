@@ -441,6 +441,7 @@ async function applyPackageJsonConventions(
   const devDependencies = ['sort-package-json'];
   const pythonDevDependencies: string[] = [];
   const hasJava = doesContainJava(config);
+  const needsRuntimePrettier = hasRuntimePrettierPlugin(jsonObj);
 
   if (
     hasJava &&
@@ -450,13 +451,17 @@ async function applyPackageJsonConventions(
     jsonObj.prettier = '@willbooster/prettier-config';
     devDependencies.push('prettier-plugin-java', '@willbooster/prettier-config');
   }
-  if (hasJava) {
+  if (needsRuntimePrettier) {
+    ensureRuntimePrettier(jsonObj, dependencies);
+  } else if (hasJava) {
     devDependencies.push('prettier');
-  } else {
+  }
+  if (!hasJava) {
     // Drop prettier-the-formatter (oxfmt replaces it), but keep `prettier` itself when the package
-    // imports it as a library — otherwise isolated installs turn the removed dependency into a
-    // phantom import (WillBoosterLab/judge #2042).
-    removePrettierArtifacts(jsonObj, config.depending.prettierRuntime);
+    // imports it as a library or ships a runtime Prettier plugin. Runtime plugins can be consumed by
+    // dynamically loaded code outside app/src, so their dependency declaration is the durable signal
+    // that production installs still need Prettier (WillBooster/judge #2116).
+    removePrettierArtifacts(jsonObj, config.depending.prettierRuntime || needsRuntimePrettier);
   }
 
   delete jsonObj.devDependencies['lint-staged'];
@@ -1809,6 +1814,19 @@ function removePrettierArtifacts(jsonObj: WritablePackageJson, keepPrettierDepen
     delete section['@willbooster/prettier-config'];
     delete section['@types/prettier'];
   }
+}
+
+function hasRuntimePrettierPlugin(jsonObj: WritablePackageJson): boolean {
+  return Object.keys(jsonObj.dependencies).some(
+    (dependency) =>
+      dependency.includes('prettier-plugin') && !['prettier-plugin-java', 'prettier-plugin-prisma'].includes(dependency)
+  );
+}
+
+function ensureRuntimePrettier(jsonObj: WritablePackageJson, dependencies: string[]): void {
+  jsonObj.dependencies.prettier ??= jsonObj.devDependencies.prettier;
+  delete jsonObj.devDependencies.prettier;
+  dependencies.push('prettier');
 }
 
 async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {
