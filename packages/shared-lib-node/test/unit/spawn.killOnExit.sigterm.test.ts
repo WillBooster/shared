@@ -1,17 +1,21 @@
+import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { isProcessRunning, wait, waitForProcessStopped } from '../../../../test/helpers/processUtils.js';
 import { spawnAsync } from '../../src/spawn.js';
 import { treeKill } from '../../src/treeKill.js';
 
-describe('spawnAsync killOnExit with SIGTERM', () => {
+const fixturePath = path.resolve('test-fixtures/spawnAsyncKillOnExitHarness.mjs');
+
+describe('spawnAsync killOnExit with a termination signal', () => {
   const pidsToCleanUp = new Set<number>();
+  const pidFilePaths = new Set<string>();
 
   // dist/ is built once for the whole run by the globalSetup in vitest.config.ts.
 
@@ -22,129 +26,86 @@ describe('spawnAsync killOnExit with SIGTERM', () => {
       await waitForProcessStopped(pid, 10_000);
     }
     pidsToCleanUp.clear();
+    for (const pidFilePath of pidFilePaths) {
+      fs.rmSync(pidFilePath, { force: true });
+    }
+    pidFilePaths.clear();
   });
 
-  it('kills child process on parent SIGTERM when killOnExit is enabled', async () => {
-    const fixturePath = path.resolve('test-fixtures/spawnAsyncKillOnExitHarness.mjs');
+  /** Starts a process that runs a long-lived child through `spawnAsync(..., { killOnExit: true })`. */
+  function startHarness(...args: string[]): { harness: ChildProcess & { pid: number }; pidFilePath: string } {
     const pidFilePath = path.join(os.tmpdir(), `spawn-kill-on-exit-${randomUUID()}.pid`);
-    try {
-      fs.rmSync(pidFilePath, { force: true });
-      const harness = spawn(process.execPath, [fixturePath, pidFilePath], {
-        stdio: 'ignore',
-      });
-      expect(harness.pid).toBeDefined();
-      if (!harness.pid) {
-        throw new Error('harness.pid is undefined');
-      }
-      pidsToCleanUp.add(harness.pid);
+    pidFilePaths.add(pidFilePath);
+    const harness = spawn(process.execPath, [fixturePath, pidFilePath, ...args], { stdio: 'ignore' });
+    if (!harness.pid) {
+      throw new Error('harness.pid is undefined');
+    }
+    pidsToCleanUp.add(harness.pid);
+    return { harness: harness as ChildProcess & { pid: number }, pidFilePath };
+  }
+
+  it.each(['SIGINT', 'SIGTERM', 'SIGQUIT'] as const)(
+    'kills the child process on parent %s when killOnExit is enabled',
+    async (signal) => {
+      const { harness, pidFilePath } = startHarness();
 
       const childPid = await waitForWrittenPid(pidFilePath, 10_000);
       pidsToCleanUp.add(childPid);
       expect(isProcessRunning(childPid)).toBe(true);
 
-      process.kill(harness.pid, 'SIGTERM');
+      process.kill(harness.pid, signal);
       await waitForProcessStopped(childPid, 10_000);
       pidsToCleanUp.delete(childPid);
       expect(isProcessRunning(childPid)).toBe(false);
+    },
+    30_000
+  );
 
-      treeKill(harness.pid, 'SIGKILL');
-      await waitForProcessStopped(harness.pid, 10_000);
-      pidsToCleanUp.delete(harness.pid);
-    } finally {
-      fs.rmSync(pidFilePath, { force: true });
-    }
+  // The handlers are installed on the shared `process` object, so a leak would accumulate across
+  // every spawnAsync call of a long-running command such as `wb start`.
+  it('leaves no listener behind once the command has exited', async () => {
+    const events = ['beforeExit', 'SIGINT', 'SIGTERM', 'SIGQUIT'] as const;
+    const listenerCountsBefore = events.map((event) => process.listenerCount(event));
+
+    await spawnAsync('sleep', ['0.01'], { killOnExit: true });
+
+    expect(events.map((event) => process.listenerCount(event))).toEqual(listenerCountsBefore);
+  });
+
+  // Re-raising the signal on itself is what lets a parent shell see the real termination reason.
+  it('dies from the received signal after cleanup when no other listener remains', async () => {
+    const { harness, pidFilePath } = startHarness();
+    // The written PID proves the harness finished registering its handlers.
+    pidsToCleanUp.add(await waitForWrittenPid(pidFilePath, 10_000));
+    const exited = waitForExit(harness);
+
+    process.kill(harness.pid, 'SIGTERM');
+
+    const { code, signal } = await exited;
+    expect(signal).toBe('SIGTERM');
+    expect(code).toBeUndefined();
   }, 30_000);
 
-  it('registers SIGTERM cleanup for killOnExit', async () => {
-    const onSpy = vi.spyOn(process, 'on');
-    const removeSpy = vi.spyOn(process, 'removeListener');
-    const onCallsStart = onSpy.mock.calls.length;
-    const removeCallsStart = removeSpy.mock.calls.length;
-    try {
-      const command = process.platform === 'win32' ? 'node' : 'sleep';
-      const args = process.platform === 'win32' ? ['-e', 'setTimeout(() => {}, 5)'] : ['0.01'];
-      await spawnAsync(command, args, { killOnExit: true });
+  it('lets the application handle the signal when another listener remains', async () => {
+    const { harness, pidFilePath } = startHarness('--exit-on-sigterm');
+    pidsToCleanUp.add(await waitForWrittenPid(pidFilePath, 10_000));
+    const exited = waitForExit(harness);
 
-      const registeredEvents = onSpy.mock.calls.slice(onCallsStart).map((args) => args[0]);
-      expect(registeredEvents).toContain('beforeExit');
-      expect(registeredEvents).toContain('SIGINT');
-      expect(registeredEvents).toContain('SIGTERM');
-      if (process.platform === 'win32') {
-        expect(registeredEvents).not.toContain('SIGQUIT');
-      } else {
-        expect(registeredEvents).toContain('SIGQUIT');
-      }
+    process.kill(harness.pid, 'SIGTERM');
 
-      const removedEvents = removeSpy.mock.calls.slice(removeCallsStart).map((args) => args[0]);
-      expect(removedEvents).toContain('beforeExit');
-      expect(removedEvents).toContain('SIGINT');
-      expect(removedEvents).toContain('SIGTERM');
-      if (process.platform === 'win32') {
-        expect(removedEvents).not.toContain('SIGQUIT');
-      } else {
-        expect(removedEvents).toContain('SIGQUIT');
-      }
-    } finally {
-      onSpy.mockRestore();
-      removeSpy.mockRestore();
-    }
-  });
-
-  it('re-sends received signal to self after killOnExit cleanup when no other listeners remain', async () => {
-    const onSpy = vi.spyOn(process, 'on');
-    const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
-    try {
-      const command = process.platform === 'win32' ? 'node' : 'sleep';
-      const args = process.platform === 'win32' ? ['-e', 'setTimeout(() => {}, 20)'] : ['0.02'];
-      const promise = spawnAsync(command, args, { killOnExit: true });
-
-      const signalRegistration = [...onSpy.mock.calls].toReversed().find(([event]) => event === 'SIGTERM');
-      if (!signalRegistration) {
-        throw new Error('SIGTERM handler is not registered');
-      }
-      const signalHandler = signalRegistration[1];
-      if (typeof signalHandler !== 'function') {
-        throw new TypeError('SIGTERM handler is not a function');
-      }
-      signalHandler();
-      expect(killSpy).toHaveBeenCalledWith(process.pid, 'SIGTERM');
-
-      await promise;
-    } finally {
-      killSpy.mockRestore();
-      onSpy.mockRestore();
-    }
-  });
-
-  it('does not re-send received signal to self when another listener remains', async () => {
-    const appSignalHandler = vi.fn();
-    const onSpy = vi.spyOn(process, 'on');
-    const killSpy = vi.spyOn(process, 'kill').mockReturnValue(true);
-    process.on('SIGTERM', appSignalHandler);
-    try {
-      const command = process.platform === 'win32' ? 'node' : 'sleep';
-      const args = process.platform === 'win32' ? ['-e', 'setTimeout(() => {}, 20)'] : ['0.02'];
-      const promise = spawnAsync(command, args, { killOnExit: true });
-
-      const signalRegistration = [...onSpy.mock.calls].toReversed().find(([event]) => event === 'SIGTERM');
-      if (!signalRegistration) {
-        throw new Error('SIGTERM handler is not registered');
-      }
-      const signalHandler = signalRegistration[1];
-      if (typeof signalHandler !== 'function') {
-        throw new TypeError('SIGTERM handler is not a function');
-      }
-      signalHandler();
-      expect(killSpy).not.toHaveBeenCalledWith(process.pid, 'SIGTERM');
-
-      await promise;
-    } finally {
-      process.removeListener('SIGTERM', appSignalHandler);
-      killSpy.mockRestore();
-      onSpy.mockRestore();
-    }
-  });
+    const { code, signal } = await exited;
+    expect(code).toBe(0);
+    expect(signal).toBeUndefined();
+  }, 30_000);
 });
+
+function waitForExit(child: ChildProcess): Promise<{ code?: number; signal?: NodeJS.Signals }> {
+  return new Promise((resolve) => {
+    child.once('exit', (code, signal) => {
+      resolve({ code: code ?? undefined, signal: signal ?? undefined });
+    });
+  });
+}
 
 async function waitForWrittenPid(filePath: string, timeoutMs: number): Promise<number> {
   const startedAt = Date.now();

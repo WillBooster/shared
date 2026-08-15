@@ -119,12 +119,13 @@ function generateAgentInstruction(
 
 - If on \`main\`, create a new branch; otherwise work on the current branch.
 - Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.
-- Write a test only when explicitly requested, or when a behavior is both likely to regress AND has no other automatic safeguard (type checking, linting, or an existing test/CI check would not catch the breakage). Skip the test when an existing signal already catches the regression, or when you are only confirming an external fact (a library's behavior, whether a version fixes an issue)—verify those once manually instead of adding a permanent test.
+- Write a test only when explicitly requested, or when a behavior is both likely to regress AND has no other automatic safeguard (type checking, linting, or an existing test/CI check would not catch the breakage). Skip the test when an existing signal already catches the regression, when the implementation merely maps conditions to constant outputs so a test would restate that mapping and fail only on intentional edits (a change detector), or when you are only confirming an external fact (a library's behavior, whether a version fixes an issue); verify the latter two once manually instead of adding a permanent test.
 - When writing tests, follow these rules:
-  - Continue modifying tests and/or code until all tests pass.
-  - Ensure tests are idempotent and independent (e.g., reset persistent data) so they can run repeatedly or in parallel.
+  - Test externally observable behavior (e.g., emitted files, CLI output, rendered results) at the system boundary, not implementation details: do not mirror production logic, assert that a branch is taken, or feed hand-assembled internal objects to internal functions.
   - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
+  - Ensure tests are idempotent and independent (e.g., reset persistent data) so they can run repeatedly or in parallel.
   - Avoid fixed waits in E2E tests; wait for conditions instead.
+  - Continue modifying tests and/or code until all tests pass.
 - When fixing issues (including test failures), investigate the root cause first (e.g., via debug logs or screenshots) and fix it instead of applying workarounds.
 - After making changes, run \`${packageManager} run verify\` (type checking and linting; takes up to 10 minutes), or \`${packageManager} run verify-full\` (all tests; takes up to 1 hour) if you changed runtime behavior or tests. Fix errors and re-run until it passes.
   - Agent shells may terminate tracked commands (including background ones) at time limits, often minutes, so run commands that can exceed your shell-call timeout (e.g., \`${packageManager} run verify\` and \`${packageManager} run verify-full\`) detached via nohup, from a shell call that returns immediately: \`mkdir -p .tmp; rm -f .tmp/verify-full.exit; nohup sh -c '${packageManager} run verify-full; echo $? > .tmp/verify-full.exit' > .tmp/verify-full.log 2>&1 &\` (the redirects are required: an inherited stdout/stderr pipe would keep the call waiting). Poll from separate calls, each shorter than your shell-call timeout: \`for i in 1 2 3; do test -f .tmp/verify-full.exit && break; sleep 20; done; cat .tmp/verify-full.exit 2>/dev/null || echo still running\`. Repeat until the exit file appears (its content is the exit code), then read the log; if it never appears while the log stops growing, the run itself died.
@@ -134,7 +135,7 @@ function generateAgentInstruction(
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
-${generateAgentCodingStyle(allConfigs)}
+${generateAgentCodingStyle(rootConfig, allConfigs)}
 `
     .replaceAll(/\.\n\n+-/g, '.\n-')
     .replaceAll(/\n{3,}/g, '\n\n')
@@ -149,13 +150,21 @@ ${generateAgentCodingStyle(allConfigs)}
   return baseContent + normalizedExtraContent;
 }
 
-export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
-  // Tauri desktop apps ship Windows builds, so the macOS/Linux-only rule must not ban the
-  // Windows-specific code they require.
+export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: PackageConfig[]): string {
+  // Tauri desktop apps ship Windows builds, and the boundary between app code and shared code is
+  // too fuzzy to scope the macOS/Linux-only rule per package, so such repositories target all
+  // three OSes instead.
   const hasDesktopApp = allConfigs.some((c) => c.depending.tauri || c.doesContainTauriConfigInPackages);
-  const osCompatibilityInstruction = hasDesktopApp
-    ? '- Server and CLI code targets macOS and Linux; the Tauri desktop app additionally supports Windows, so keep its Windows-specific code working.'
-    : '- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.';
+  // A public repository with no `@willbooster/` package is OSS for the general public, whose users
+  // may run Windows, so no OS restriction applies there. An unknown visibility collapses to
+  // isPublicRepo=false and therefore keeps the restrictive default.
+  const isGeneralPublicOss =
+    rootConfig.isPublicRepo && allConfigs.every((c) => !c.packageJson?.name?.startsWith('@willbooster/'));
+  const osCompatibilityInstruction = isGeneralPublicOss
+    ? ''
+    : hasDesktopApp
+      ? '- Ensure compatibility with Windows, macOS, and Linux.'
+      : '- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.';
   // Cloudflare Workers execute across many ephemeral isolates and two requests are not guaranteed
   // to hit the same instance, so the single-instance simplification silently loses state there —
   // but Workers deliberately reuse execution contexts, so best-effort isolate-local caches stay

@@ -68,7 +68,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     const reviewLanguageInstruction = config.isPublicRepo
       ? 'Review in English based on the following coding standards.'
       : '以下のコーディング規約を踏まえて、日本語でレビューしてください。';
-    const styleguideContent = `${reviewLanguageInstruction}\n\n${generateAgentCodingStyle(allConfigs)}${
+    const styleguideContent = `${reviewLanguageInstruction}\n\n${generateAgentCodingStyle(config, allConfigs)}${
       codingRuleExtraContent ? `\n${codingRuleExtraContent.trimEnd()}` : ''
     }`;
 

@@ -191,34 +191,28 @@ describe('runConcurrently', () => {
   });
 
   it('passes ci through to child environments', async () => {
-    const spawnMock = vi.spyOn(child_process, 'spawn').mockImplementation((_command, _options) => {
-      const child = {
-        once(event: string, listener: (...args: unknown[]) => void) {
-          if (event === 'exit') {
-            queueMicrotask(() => {
-              listener(0, undefined);
-            });
-          }
-          return child;
-        },
-      } as unknown as child_process.ChildProcess;
-      return child;
-    });
+    const markerFilePath = path.join(
+      os.tmpdir(),
+      `wb-concurrently-ci-${process.pid}-${Math.random().toString(36).slice(2)}.txt`
+    );
+    // `1` distinguishes the value wb forces from the `true` that a CI runner exports on its own.
+    const writeCiScript = `require('node:fs').writeFileSync(${JSON.stringify(markerFilePath)}, String(process.env.CI))`;
 
-    await expect(
-      runConcurrently({
-        commands: ['ignored'],
+    try {
+      const exitCode = await runConcurrently({
+        commands: [`${process.execPath} -e ${JSON.stringify(writeCiScript)}`],
         project,
         killOthers: false,
         killOthersOnFail: false,
         success: 'all',
         ci: true,
-      })
-    ).resolves.toBe(0);
+      });
 
-    expect(spawnMock).toHaveBeenCalledOnce();
-    const spawnOptions = spawnMock.mock.calls[0]?.[1] as child_process.SpawnOptions;
-    expect(spawnOptions.env?.CI).toBe('1');
+      expect(exitCode).toBe(0);
+      expect(fs.readFileSync(markerFilePath, 'utf8')).toBe('1');
+    } finally {
+      await fs.promises.rm(markerFilePath, { force: true });
+    }
   });
 
   it('returns failure when a child process emits an error', async () => {
@@ -252,14 +246,8 @@ describe('runConcurrently', () => {
 });
 
 describe('concurrentlyCommand', () => {
-  it('registers shared env-loading options', () => {
-    const builder = concurrentlyCommand.builder as Record<string, unknown>;
-    expect(builder['cascade-env']).toBeDefined();
-    expect(builder['auto-cascade-env']).toBeDefined();
-    expect(builder.verbose).toBeDefined();
-  });
-
   it('accepts env-loading flags when parsing direct wb concurrently usage', () => {
+    // The real handler would run the commands, so parsing alone is what this exercises.
     const command = {
       ...concurrentlyCommand,
       handler: vi.fn(),
@@ -274,6 +262,5 @@ describe('concurrentlyCommand', () => {
     expect(argv.autoCascadeEnv).toBe(false);
     expect(argv.cascadeEnv).toBe('staging');
     expect(argv.commands).toEqual(['echo first', 'echo second']);
-    expect(command.handler).toHaveBeenCalledOnce();
   });
 });

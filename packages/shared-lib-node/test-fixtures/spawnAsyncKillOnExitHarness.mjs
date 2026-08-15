@@ -4,7 +4,7 @@ const pidFilePath = process.argv[2];
 if (!pidFilePath) {
   throw new Error('pidFilePath is required');
 }
-const exitOnSigint = process.argv.includes('--exit-on-sigint');
+const exitOnSigterm = process.argv.includes('--exit-on-sigterm');
 
 const keepAliveScript = [
   "const fs = require('node:fs');",
@@ -17,11 +17,10 @@ void spawnAsync(process.execPath, ['-e', keepAliveScript, pidFilePath], {
   stdio: 'ignore',
 });
 
-if (exitOnSigint) {
-  process.on('SIGINT', () => {
-    setTimeout(() => {
-      process.exit(0);
-    }, 50);
+// An application-owned listener: spawnAsync's own handler must then leave termination to the app.
+if (exitOnSigterm) {
+  process.on('SIGTERM', () => {
+    process.exit(0);
   });
 }
 
