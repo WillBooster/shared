@@ -14,7 +14,7 @@ permissions:
   pull-requests: read
 jobs:
   test:
-    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@main
+    uses: WillBooster/reusable-workflows/.github/workflows/test.yml@fix/bun-frozen-lockfile
     with:
       github_hosted_runner: true
     secrets:
