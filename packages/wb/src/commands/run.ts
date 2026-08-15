@@ -6,6 +6,7 @@ import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { getRunScriptArgs } from '../../bin/runArgs.js';
 import { findSelfProject, readAndMergeEnvironmentVariables, type Project } from '../project.js';
+import { applyLocalServerUrl } from '../utils/localServerUrl.js';
 import { usesBunRuntime } from '../utils/runtime.js';
 import { runCommandWithEnvironment } from './dotenv.js';
 
@@ -27,6 +28,11 @@ export const runCommand: CommandModule = {
     const cwd = process.cwd();
     const project = findSelfProject(argv, true, cwd);
     const env = project?.env ?? readStandaloneEnvironment(argv, cwd);
+    // A script run here CONSUMES the app, so the URL of a locally running server is exactly what
+    // it cannot compute: an auto-selected port is a FREE one, never the port that server holds.
+    // `wb dotenv` deliberately stays out of this — it is also the low-level runner wb wraps
+    // SERVER-STARTING commands in, which must keep resolving their own port.
+    await applyLocalServerUrl(cwd, env);
     const command = buildRunCommand(cwd, args, env, project);
     if (argv.dryRun) {
       console.info(`Would run: ${command.join(' ')}`);
