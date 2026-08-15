@@ -134,7 +134,7 @@ function generateAgentInstruction(
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
-${generateAgentCodingStyle(allConfigs)}
+${generateAgentCodingStyle(rootConfig, allConfigs)}
 `
     .replaceAll(/\.\n\n+-/g, '.\n-')
     .replaceAll(/\n{3,}/g, '\n\n')
@@ -149,13 +149,20 @@ ${generateAgentCodingStyle(allConfigs)}
   return baseContent + normalizedExtraContent;
 }
 
-export function generateAgentCodingStyle(allConfigs: PackageConfig[]): string {
+export function generateAgentCodingStyle(rootConfig: PackageConfig, allConfigs: PackageConfig[]): string {
   // Tauri desktop apps ship Windows builds, so the macOS/Linux-only rule must not ban the
   // Windows-specific code they require.
   const hasDesktopApp = allConfigs.some((c) => c.depending.tauri || c.doesContainTauriConfigInPackages);
-  const osCompatibilityInstruction = hasDesktopApp
-    ? '- Server and CLI code targets macOS and Linux; the Tauri desktop app additionally supports Windows, so keep its Windows-specific code working.'
-    : '- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.';
+  // A public repository with no `@willbooster/` package is OSS for the general public, whose users
+  // may run Windows, so no OS restriction applies there. An unknown visibility collapses to
+  // isPublicRepo=false and therefore keeps the restrictive default.
+  const isGeneralPublicOss =
+    rootConfig.isPublicRepo && allConfigs.every((c) => !c.packageJson?.name?.startsWith('@willbooster/'));
+  const osCompatibilityInstruction = isGeneralPublicOss
+    ? ''
+    : hasDesktopApp
+      ? '- Server and CLI code targets macOS and Linux; the Tauri desktop app additionally supports Windows, so keep its Windows-specific code working.'
+      : '- Ensure compatibility only with macOS and Linux; do not include Windows-specific code.';
   // Cloudflare Workers execute across many ephemeral isolates and two requests are not guaranteed
   // to hit the same instance, so the single-instance simplification silently loses state there —
   // but Workers deliberately reuse execution contexts, so best-effort isolate-local caches stay
