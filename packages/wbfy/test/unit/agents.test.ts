@@ -5,7 +5,8 @@ import type { PackageConfig } from '../../src/packageConfig.js';
 
 import { createConfig } from '../helpers/testConfig.js';
 
-/** A `@willbooster/` package keeps the OS restriction, which the general-public-OSS rule drops. */
+// The OS restriction survives only outside the general-public-OSS rule, which a `@willbooster/`
+// package excludes.
 const createScopedConfig = (overrides: Partial<PackageConfig> = {}): PackageConfig =>
   createConfig({ packageJson: { name: '@willbooster/example' }, ...overrides });
 
@@ -46,19 +47,19 @@ test('correlates the server-instance rule with each package deployment target', 
   const vinextDepending = { ...createConfig().depending, vinext: true };
 
   // A vinext app that IS the Worker gets the multi-isolate rule, not the single-instance one.
-  const workersApp = createScopedConfig({ depending: vinextDepending, doesContainWranglerConfig: true });
+  const workersApp = createConfig({ depending: vinextDepending, doesContainWranglerConfig: true });
   const workersStyle = generateAgentCodingStyle(workersApp, [workersApp]);
   expect(workersStyle).toContain('multiple ephemeral isolates');
   expect(workersStyle).not.toContain('Assume a single server instance.');
 
   // A Worker-only repository (e.g. a Hono API) needs the multi-isolate rule too.
-  const workerOnly = createScopedConfig({ doesContainWranglerConfig: true });
+  const workerOnly = createConfig({ doesContainWranglerConfig: true });
   const workerOnlyStyle = generateAgentCodingStyle(workerOnly, [workerOnly]);
   expect(workerOnlyStyle).toContain('multiple ephemeral isolates');
   expect(workerOnlyStyle).not.toContain('Assume a single server instance.');
 
   // A server-hosted vinext app keeps the single-instance simplification.
-  const serverApp = createScopedConfig({ depending: vinextDepending });
+  const serverApp = createConfig({ depending: vinextDepending });
   const serverStyle = generateAgentCodingStyle(serverApp, [serverApp]);
   expect(serverStyle).toContain('Assume a single server instance.');
   expect(serverStyle).not.toContain('ephemeral isolates');
