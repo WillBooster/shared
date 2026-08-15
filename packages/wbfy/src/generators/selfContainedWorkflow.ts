@@ -425,17 +425,17 @@ fi`,
       if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
       name: 'Run dependency lifecycle scripts without registry credentials',
       // A repeated `bun install` is a no-op that replays nothing, so node_modules has to go first.
-      run: tolerateLifecycleScriptFailure
-        ? `set -euo pipefail
+      run: `set -euo pipefail
 rm -rf node_modules
-bun install --frozen-lockfile || {
+bun install --frozen-lockfile${
+        tolerateLifecycleScriptFailure
+          ? ` || {
   echo "::warning::Lifecycle scripts failed; completing the install without them"
   rm -rf node_modules
   bun install --frozen-lockfile --ignore-scripts
 }`
-        : `set -euo pipefail
-rm -rf node_modules
-bun install --frozen-lockfile`,
+          : ''
+      }`,
     },
     {
       if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
