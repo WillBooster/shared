@@ -19,9 +19,13 @@ const SERVING_PROBE_TIMEOUT_MS = 1000;
 
 /**
  * Publishes the URL of the server `wb start` / `wb test` is about to serve into
- * `<repository root>/.wb/server-<WB_ENV>-<package>.url`, and removes it when this process exits
- * gracefully (Node emits no `exit` event for SIGHUP or SIGKILL, so a publication can outlive its
- * server; a reader ignores one whose publisher is gone).
+ * `<repository root>/.wb/server-<WB_ENV>-<package>.url`.
+ *
+ * A publication is never deleted, only overwritten by the next server of the same package: a
+ * reader accepts one only while its publisher is alive and its origin answers, so an outdated file
+ * is already inert. Deleting on exit would buy nothing but tidiness and cannot be made correct —
+ * checking ownership and unlinking are separate syscalls, so an exiting server can always be
+ * preempted between them and remove the replacement that a pinned-port restart just published.
  *
  * Commands that merely CONSUME the app (e.g. `wb run scripts/importProblems.ts`) cannot compute an
  * auto-selected port: the selection returns a FREE port, i.e. never the one a running server
@@ -42,30 +46,12 @@ export function publishLocalServerUrl(project: Project, baseUrl: string): void {
   const filePath = buildLocalServerUrlFilePath(rootDirPath, project.env.WB_ENV, project.name);
   if (!filePath) return;
 
-  const pidFilePath = toPidFilePath(filePath);
-  const content = `${baseUrl}\n`;
-  const pidContent = `${process.pid}\n`;
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, content);
-  fs.writeFileSync(pidFilePath, pidContent);
-  // Only the synchronous 'exit' event is hooked: a signal listener would suppress Node's default
-  // termination. The signals wb handles itself still reach it, because src/index.ts exits
-  // explicitly.
-  process.on('exit', () => {
-    try {
-      // Ownership is the PID, not the URL: a restart on a PINNED port republishes the very same
-      // URL, so a content check alone would let the exiting server delete the live one's
-      // publication. The content check still guards a republication by this same process.
-      if (fs.readFileSync(pidFilePath, 'utf8') !== pidContent) return;
-      if (fs.readFileSync(filePath, 'utf8') !== content) return;
-      // The pid goes first: a reader that catches the intermediate state must conclude "gone",
-      // never "published by a live process".
-      fs.rmSync(pidFilePath, { force: true });
-      fs.rmSync(filePath, { force: true });
-    } catch {
-      // An already removed file (e.g. another process wiping .wb) must not break the exit.
-    }
-  });
+  // The pid goes first: a reader that catches the intermediate state must find the OLD url with a
+  // new pid — a combination its liveness probe rejects — never a new url attributed to a publisher
+  // that has already gone.
+  fs.writeFileSync(toPidFilePath(filePath), `${process.pid}\n`);
+  fs.writeFileSync(filePath, `${baseUrl}\n`);
 }
 
 /**
