@@ -504,18 +504,18 @@ function deleteLegacyModuleSettings(compilerOptions: TsConfigJson.CompilerOption
 }
 
 function normalizeCommonJsModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
-  if (
-    !compilerOptions ||
-    lowerCaseSetting(compilerOptions.module) !== 'commonjs' ||
-    compilerOptions.verbatimModuleSyntax !== undefined
-  ) {
-    return;
-  }
+  if (!compilerOptions) return;
 
-  // @tsconfig/bun enables verbatimModuleSyntax, which rejects ordinary ESM import/export syntax
-  // when a Node package deliberately keeps CommonJS output (for example Firebase Functions).
-  // The explicit module kind is the package's emit contract, so disable the inherited restriction.
-  compilerOptions.verbatimModuleSyntax = false;
+  if (lowerCaseSetting(compilerOptions.module) === 'commonjs') {
+    // @tsconfig/bun enables verbatimModuleSyntax, which rejects ordinary ESM import/export syntax
+    // when a Node package deliberately keeps CommonJS output (for example Firebase Functions).
+    // The explicit module kind is the package's emit contract, so disable only the inherited restriction.
+    compilerOptions.verbatimModuleSyntax ??= false;
+  } else if (compilerOptions.verbatimModuleSyntax === false) {
+    // `false` is wbfy's CommonJS override; other module kinds return to the Bun base's canonical
+    // behavior so changing a package from CommonJS to ESM does not retain stale emit semantics.
+    delete compilerOptions.verbatimModuleSyntax;
+  }
 }
 
 function lowerCaseSetting(value: unknown): string | undefined {

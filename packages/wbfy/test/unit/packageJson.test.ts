@@ -592,6 +592,18 @@ test('prepares Flutter dependencies in a JavaScript monorepo before CI cleanup',
   expect(packageJson.scripts?.['common/ci-setup']).toBe('flutter pub get');
 });
 
+test('prepares root Python dependencies in a JavaScript monorepo before CI cleanup', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: {}, workspaces: ['packages/*'] },
+    { doesContainSubPackageJsons: true, doesContainUvLock: true, isRoot: true }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'common/ci-setup': 'bun run setup-uv',
+    'setup-uv': 'uv sync --frozen',
+  });
+});
+
 test.each([
   'flutter pub get',
   'flutter pub get && bun run setup-poetry',

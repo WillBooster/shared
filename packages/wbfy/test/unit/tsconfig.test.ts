@@ -57,6 +57,13 @@ test('keeps explicit verbatim module syntax enforcement in CommonJS packages', a
   expect(compilerOptions.verbatimModuleSyntax).toBe(true);
 });
 
+test('removes the generated CommonJS override after a package switches to ESM', async () => {
+  const compilerOptions = await generateCompilerOptionsFrom({
+    compilerOptions: { module: 'ESNext', verbatimModuleSyntax: false },
+  });
+  expect(compilerOptions.verbatimModuleSyntax).toBeUndefined();
+});
+
 test('merges settings from a tsconfig containing JSONC comments instead of replacing the file', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(`{
   "compilerOptions": {

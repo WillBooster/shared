@@ -842,6 +842,18 @@ async function normalizePackageMetadata(
     jsonObj.main = './src';
   }
 
+  const pythonPackageManager = getPythonPackageManager(config);
+  const scriptRunner = 'bun run';
+  if (pythonPackageManager) {
+    if (jsonObj.scripts.postinstall === 'poetry install') {
+      delete jsonObj.scripts.postinstall;
+    }
+    ciSetupCommands.push(`${scriptRunner} setup-${pythonPackageManager}`);
+    delete jsonObj.scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
+    delete jsonObj.scripts['setup-poetry-asdf'];
+    jsonObj.scripts[`setup-${pythonPackageManager}`] = getPythonSetupCommand(pythonPackageManager);
+  }
+
   if (!config.doesContainSubPackageJsons) {
     if (config.doesContainPubspecYaml) {
       jsonObj.scripts.lint = 'flutter analyze';
@@ -855,16 +867,7 @@ async function normalizePackageMetadata(
       }
     }
 
-    const pythonPackageManager = getPythonPackageManager(config);
     if (pythonPackageManager) {
-      if (jsonObj.scripts.postinstall === 'poetry install') {
-        delete jsonObj.scripts.postinstall;
-      }
-      const scriptRunner = 'bun run';
-      ciSetupCommands.push(`${scriptRunner} setup-${pythonPackageManager}`);
-      delete jsonObj.scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
-      delete jsonObj.scripts['setup-poetry-asdf'];
-      jsonObj.scripts[`setup-${pythonPackageManager}`] = getPythonSetupCommand(pythonPackageManager);
       const pythonFiles = await fg.glob('**/*.py', {
         cwd: config.dirPath,
         dot: true,
