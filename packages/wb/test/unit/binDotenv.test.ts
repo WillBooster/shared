@@ -131,6 +131,29 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
+  it.runIf(isFnoxAvailable())('overrides an inherited value with a profile key repeating the base value', async () => {
+    // The forced mode must win over the parent shell for every key the profile itself declares,
+    // including one whose value coincides with the base value
+    // (https://github.com/WillBooster/shared/issues/1080).
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nPORT = { default = "3000" }\n\n[profiles.test.secrets]\nPORT = { default = "3000" }\n'
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
+      }
+    );
+    expect(result.stdout).toBe('3000\n');
+    expect(result.status).toBe(0);
+  });
+
   it.runIf(isFnoxAvailable())(
     'rejects an env source whose WB_ENV disagrees with the default development cascade',
     async () => {

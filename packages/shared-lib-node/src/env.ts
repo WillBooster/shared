@@ -224,18 +224,21 @@ export function readFnoxEnvironmentVariables(
   const secrets = runFnoxExport(cwd, cascade, { quiet: false });
   if (!secrets) return [{}, []];
   // `[profiles.<cascade>.secrets]` is the fnox analogue of `.env.<cascade>`: when the caller
-  // forces a mode off CI, profile-specific values must override inherited shell variables just
-  // like `.env.<mode>` values do, while base `[secrets]` values keep losing to process.env. A key
-  // is profile-specific when the profile export's value differs from the base export's; when the
-  // base export fails, no override is applied (conservative). The base export runs LAZILY, only
-  // when a process.env collision actually needs adjudicating — it would otherwise add a
-  // subprocess (including age decryption) to every forced-mode invocation for nothing.
-  let cachedBaseSecrets: Record<string, unknown> | undefined | false = false;
-  const getBaseSecrets = (): Record<string, unknown> | undefined => {
-    if (cachedBaseSecrets === false) {
-      cachedBaseSecrets = runFnoxExport(cwd, undefined, { quiet: true, ignoreProfileEnvVar: true });
+  // forces a mode off CI, profile-declared values must override inherited shell variables just
+  // like `.env.<mode>` values do, while base `[secrets]` values keep losing to process.env.
+  // `--no-defaults` omits the base `[secrets]` table, so its key set IS the profile's own
+  // declarations — a profile entry repeating the base value still overrides (cf.
+  // https://github.com/WillBooster/shared/issues/1080). When that export fails, no override is
+  // applied (conservative). It runs LAZILY, only when a process.env collision actually needs
+  // adjudicating — it would otherwise add a subprocess (including age decryption) to every
+  // forced-mode invocation for nothing.
+  let cachedProfileKeys: Set<string> | undefined | false = false;
+  const getProfileKeys = (): Set<string> | undefined => {
+    if (cachedProfileKeys === false) {
+      const profileSecrets = runFnoxExport(cwd, cascade, { quiet: true, profileOnly: true });
+      cachedProfileKeys = profileSecrets && new Set(Object.keys(profileSecrets));
     }
-    return cachedBaseSecrets;
+    return cachedProfileKeys;
   };
 
   const envVars: Record<string, string> = {};
@@ -247,9 +250,8 @@ export function readFnoxEnvironmentVariables(
     // back variables the ambient mise activation already exported, and a differing value means the
     // requested cascade profile should win over the stale activation.)
     if (!options?.ignoreProcessEnv && key in process.env) {
-      const baseSecrets = options?.modeFileOverridesProcessEnv && cascade ? getBaseSecrets() : undefined;
-      const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
-      if (!overridesProcessEnv) continue;
+      const profileKeys = options?.modeFileOverridesProcessEnv && cascade ? getProfileKeys() : undefined;
+      if (!profileKeys?.has(key)) continue;
     }
     envVars[key] = value;
     keys.push(key);
@@ -260,7 +262,7 @@ export function readFnoxEnvironmentVariables(
 function runFnoxExport(
   cwd: string,
   cascade: string | undefined,
-  options: { quiet: boolean; ignoreProfileEnvVar?: boolean }
+  options: { quiet: boolean; profileOnly?: boolean }
 ): Record<string, unknown> | undefined {
   // `--if-missing error` (default): fnox otherwise exits 0 and silently omits secrets it fails to
   // resolve (e.g. a missing age key), which would be indistinguishable from undeclared secrets.
@@ -282,20 +284,14 @@ function runFnoxExport(
     allowMissingSecrets ? 'warn' : 'error',
     '--non-interactive',
   ];
-  const env = { ...process.env };
   if (cascade) {
     args.push('--profile', cascade);
   }
-  if (options.ignoreProfileEnvVar) {
-    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must
-    // read the BASE secrets, so the inherited profile selection is cleared for it — and only for
-    // it. A PRIMARY export still honors FNOX_PROFILE: it either stays profile-less (fnox reads the
-    // variable) or folds it into the `--profile` it passes (see wb dotenv's cascade).
-    delete env.FNOX_PROFILE;
+  if (options.profileOnly) {
+    args.push('--no-defaults');
   }
   const result = childProcess.spawnSync('fnox', args, {
     cwd,
-    env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
