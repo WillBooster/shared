@@ -44,13 +44,18 @@ describe('kill-port command', () => {
 function startListeningProcess(): Promise<[number, number]> {
   const child = spawn(process.execPath, [
     '-e',
-    "const server = require('node:net').createServer(); server.listen(0, '127.0.0.1', () => console.log(server.address().port));",
+    // The port is printed as a string because CI sets FORCE_COLOR, and `console.log` wraps a
+    // number argument in ANSI color codes, which `Number()` would read as NaN.
+    "const server = require('node:net').createServer(); server.listen(0, '127.0.0.1', () => console.log(String(server.address().port)));",
   ]);
   const { pid } = child;
   if (!pid) throw new Error('Failed to spawn a listening process.');
 
   return new Promise((resolve, reject) => {
     child.once('error', reject);
+    // Without this, a child that dies before printing its port would stall the whole suite until
+    // vitest's 10-minute timeout. Rejecting a resolved promise later (on the test's own kill) is a no-op.
+    child.once('exit', (code) => reject(new Error(`The listening process exited early with code ${code}.`)));
     child.stdout.once('data', (data: Buffer) => {
       resolve([pid, Number(data.toString().trim())]);
     });
