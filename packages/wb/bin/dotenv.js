@@ -171,12 +171,7 @@ function readFnoxEnvironmentVariables(cwd, cascade, modeFileOverridesProcessEnv)
   let cachedProfileKeys = false;
   const getProfileKeys = () => {
     if (cachedProfileKeys === false) {
-      const profileSecrets = runFnoxExport(cwd, cascade, { quiet: true, profileOnly: true });
-      if (!profileSecrets) {
-        console.warn(
-          `Failed to read the "${cascade}" fnox profile's own secrets, so its values equal to the base values do not override the inherited environment variables. Make the defaults in [profiles.${cascade}.secrets] independent of the base [secrets] table.`
-        );
-      }
+      const profileSecrets = runFnoxExport(cwd, cascade, { quiet: false, profileOnly: true });
       cachedProfileKeys = profileSecrets && new Set(Object.keys(profileSecrets));
     }
     return cachedProfileKeys;
@@ -224,9 +219,15 @@ function runFnoxExport(cwd, cascade, options) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (result.error || result.status !== 0 || !result.stdout?.trim()) {
+    // The profile-only export reports what its failure costs plus its likeliest cause, and always
+    // quotes fnox's own error because other causes (e.g. a fnox too old for `--no-defaults`) look
+    // identical from here.
     if (!options.quiet) {
+      const reason = result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`;
       console.warn(
-        `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
+        options.profileOnly
+          ? `Failed to read the "${cascade}" fnox profile's own secrets, so its values equal to the base values do not override the inherited environment variables. Make the defaults in [profiles.${cascade}.secrets] independent of the base [secrets] table. ${reason}`
+          : `Failed to read fnox secrets: ${reason}`
       );
     }
     return;
