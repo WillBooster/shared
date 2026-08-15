@@ -81,7 +81,6 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
 
 async function setupLabel(octokit: Octokit, owner: string, repo: string, name: string, color: string): Promise<void> {
   try {
-    // Issues permission
     await octokit.request('POST /repos/{owner}/{repo}/labels', {
       owner,
       repo,
@@ -89,7 +88,6 @@ async function setupLabel(octokit: Octokit, owner: string, repo: string, name: s
       color,
     });
   } catch {
-    // Issues permission
     await octokit.request('PATCH /repos/{owner}/{repo}/labels/{name}', {
       owner,
       repo,
@@ -101,7 +99,6 @@ async function setupLabel(octokit: Octokit, owner: string, repo: string, name: s
 
 async function deleteLabel(octokit: Octokit, owner: string, repo: string, name: string): Promise<void> {
   try {
-    // Issues permission
     await octokit.request('DELETE /repos/{owner}/{repo}/labels/{name}', {
       owner,
       repo,

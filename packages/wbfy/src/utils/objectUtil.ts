@@ -17,7 +17,6 @@ export function sortKeys<T extends Record<string, unknown>>(obj: T): T {
     delete obj[key];
     (obj as Record<string, unknown>)[key] = value;
 
-    // if value is an object, sort the keys of the object
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       sortKeys(value as Record<string, unknown>);
     }

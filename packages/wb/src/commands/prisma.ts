@@ -263,7 +263,6 @@ const resetCommand: CommandModule<unknown, InferredOptionTypes<typeof builder>> 
         argv
       );
     }
-    // Force to reset test database
     if (process.env.WB_ENV !== 'test') {
       process.env.WB_ENV = 'test';
       for (const { orm, project } of prepareForRunningDatabaseOrmCommand(
@@ -577,7 +576,6 @@ function* prepareForRunningDatabaseOrmCommand(
 export function extractUnknownOptions(argv: Record<string, unknown>, knownOptions: string[] = []): string {
   const unknownOptions: string[] = [];
 
-  // Build list of known options from shared options builders
   const sharedOptionKeys = Object.keys(sharedOptionsBuilder);
   const sharedOptionAliases = Object.values(sharedOptionsBuilder)
     .flatMap((option) => {
@@ -588,15 +586,7 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
     })
     .map(String);
 
-  const allKnownOptions = new Set([
-    ...knownOptions,
-    ...sharedOptionKeys,
-    ...sharedOptionAliases,
-    // Internal yargs properties
-    '--',
-    '_',
-    '$0',
-  ]);
+  const allKnownOptions = new Set([...knownOptions, ...sharedOptionKeys, ...sharedOptionAliases, '--', '_', '$0']);
 
   for (const [key, value] of Object.entries(argv)) {
     if (!allKnownOptions.has(key)) {
@@ -607,16 +597,11 @@ export function extractUnknownOptions(argv: Record<string, unknown>, knownOption
         continue; // Skip camelCase version if kebab-case exists
       }
 
-      // Handle boolean flags
       if (typeof value === 'boolean' && value) {
         unknownOptions.push(`--${key}`);
-      }
-      // Handle string/number values
-      else if (typeof value === 'string' || typeof value === 'number') {
+      } else if (typeof value === 'string' || typeof value === 'number') {
         unknownOptions.push(`--${key}`, String(value));
-      }
-      // Handle arrays
-      else if (Array.isArray(value)) {
+      } else if (Array.isArray(value)) {
         for (const item of value) {
           unknownOptions.push(`--${key}`, String(item));
         }

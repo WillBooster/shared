@@ -95,7 +95,6 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
     return 1;
   }
 
-  // Get test targets from positional arguments
   const testTargets = (testArgv.targets ?? []) as string[];
   const forwardedPlaywrightArgs = testArgv['--'] ?? [];
   const { shouldRunE2e, shouldRunUnit } = resolveTestExecutionTargets(testTargets, forwardedPlaywrightArgs);
@@ -118,7 +117,6 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
       return 1;
     }
 
-    // Run unit tests if needed
     const defaultUnitTargets = getDefaultUnitTargets(project);
     const explicitUnitTargets = testTargets.filter((target) => !isE2eTarget(target));
     const unitTargets = explicitUnitTargets.length > 0 ? explicitUnitTargets : defaultUnitTargets;
@@ -132,12 +130,10 @@ export async function test(argv: TestCommandArgv, options: TestRunOptions = {}):
         return exitCode;
       }
     }
-    // Skip e2e tests if not needed or no e2e directory exists
     if (!shouldRunE2e || !fs.existsSync(path.join(project.dirPath, 'test', 'e2e'))) {
       continue;
     }
 
-    // Get e2e targets for this project
     const e2eTargets = testTargets.filter((target) => isE2eTarget(target));
     const e2eArgv = { ...testArgv, targets: e2eTargets.length > 0 ? e2eTargets : undefined };
 

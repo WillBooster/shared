@@ -37,7 +37,6 @@ export abstract class BaseScripts {
     return dockerScripts.buildImage(project, version);
   }
 
-  // ------------ START: start commands ------------
   async startDev(project: Project, argv: ScriptArgv): Promise<string> {
     await ensurePort(project);
     if (!this.shouldWaitAndOpenApp) return this.startDevProtected(project, argv);
@@ -171,9 +170,7 @@ export abstract class BaseScripts {
       ...(drizzleMigrationCommand ? [drizzleMigrationCommand] : []),
     ];
   }
-  // ------------ END: start commands ------------
 
-  // ------------ START: test (e2e) commands ------------
   // The port must be resolved before building the start command: some builders (vinext, Workers,
   // Docker) embed it in the command text instead of reading the PORT environment variable.
   async testE2EDev(project: Project, argv: TestArgv, options: TestE2EOptions): Promise<string> {
@@ -257,7 +254,6 @@ export abstract class BaseScripts {
   usesUnitRunnerForE2e(_: Project): boolean {
     return false;
   }
-  // ------------ END: test (e2e) commands ------------
 
   testUnit(project: Project, argv: TestArgv): string {
     const targets = argv.targets?.map(String);

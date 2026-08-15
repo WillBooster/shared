@@ -35,13 +35,11 @@ export async function typeCheck(argv: TypeCheckCommandArgv): Promise<number> {
     const commands = buildTypeCheckCommands(project);
     while (commands.length > 0) {
       const exitCode = await runWithSpawnInParallel(commands.join(' && '), project, argv, {
-        // Disable interactive mode
         ci: projects.descendants.length > 1,
         exitIfFailed: false,
         preserveColor: true,
       });
 
-      // Re-try type checking after removing `.next` directory
       const nextDirPath = path.join(project.dirPath, '.next');
       if (exitCode && fs.existsSync(nextDirPath)) {
         fs.rmSync(nextDirPath, { force: true, recursive: true });
