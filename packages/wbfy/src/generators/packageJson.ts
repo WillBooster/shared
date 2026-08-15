@@ -43,6 +43,8 @@ const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
+// wb and wbfy publish independently. Add a replacement here only after a releasing wb commit has
+// published its implementation, or the next wbfy release can prune a binary that latest wb lacks.
 const wbCliReplacementDependencies = ['open-cli', 'wait-on'];
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
 const managedDependencyNames = new Set([
