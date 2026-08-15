@@ -281,6 +281,14 @@ test('hardens every install with the Takumi Guard proxy without exposing the tok
       );
       expect(replayStep?.env).toBeUndefined();
       expect(replayStep?.if).toBe("${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}");
+      // Only the test workflow tolerates failing lifecycle scripts; a deploy must not silently
+      // ship a tree whose lifecycle scripts (e.g. `postinstall: wb gen-code`) never ran (#1127).
+      if (fileName === 'test.yml') {
+        expect(replayStep?.run).toContain('::warning::');
+      } else {
+        expect(replayStep?.run).not.toContain('::warning::');
+        expect(replayStep?.run).not.toContain('--ignore-scripts');
+      }
       // Guard answers `npm publish` with 405, so the proxy must not outlive the install.
       const cleanupStep = steps.find((step) => step.name === 'Remove the generated .npmrc');
       expect(cleanupStep?.if).toBe("${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}");
