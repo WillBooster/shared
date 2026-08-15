@@ -55,8 +55,9 @@ function requiresNextPublicWbEnv(config: PackageConfig): boolean {
  * Inserts missing WB_ENV (and optionally NEXT_PUBLIC_WB_ENV) entries into a fnox.toml: the base
  * `[secrets]` table carries the development defaults and `[profiles.<mode>.secrets]` overlays
  * each other mode, matching the org-standard layout. Formatting and comments are preserved (only
- * missing lines are inserted / missing sections appended). Returns undefined when the content
- * cannot be safely edited (unparsable before or after the edit).
+ * missing lines are inserted / missing sections appended), except that the explanatory comment
+ * earlier wbfy versions wrote is deleted. Returns undefined when the content cannot be safely
+ * edited (unparsable before or after the edit).
  */
 export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolean): string | undefined {
   let settings: FnoxTomlSubtree;
