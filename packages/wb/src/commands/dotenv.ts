@@ -7,6 +7,7 @@ import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { prependNodeModulesBinToPath } from '../utils/binPath.js';
 import { isCI } from '../utils/ci.js';
+import { applyLocalServerUrl } from '../utils/localServerUrl.js';
 
 interface ParsedDotenvArgs {
   command: string[];
@@ -45,6 +46,10 @@ export async function runCommandWithEnvironment(
   const cwd = path.resolve(commandEnvironment?.cwd ?? process.cwd());
   const env = commandEnvironment?.env ?? process.env;
   if (!commandEnvironment) readAndApplyEnvironmentVariables(cwd);
+  // Commands routed through here CONSUME the app rather than serve it (`wb start`/`wb test` build
+  // their own commands), so a locally running server's auto-selected URL is exactly what they
+  // cannot compute themselves.
+  await applyLocalServerUrl(cwd, env);
   const berryBinFolderPath = env.BERRY_BIN_FOLDER;
   removeNpmAndYarnEnvironmentVariables(env);
   // Stripping yarn's environment also removes its temporary bin folder — the ONLY place
