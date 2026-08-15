@@ -562,6 +562,7 @@ test('preserves custom wrapper bodies of managed db scripts that contain a wb db
   );
 
   expect(packageJson.scripts).toMatchObject(wrapperScripts);
+  expect(packageJson.dependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+/u);
 });
 
 test('replaces generated db script bodies using supported Bun runner prefixes', async () => {
