@@ -57,8 +57,8 @@ const baseSettings: Omit<LefthookSettings, 'pre-commit'> = {
   },
 };
 
-// Lefthook expands {staged_files} as shell-escaped args, so the generated scripts may pass it
-// unquoted (paths with spaces stay intact).
+// Lefthook expands {staged_files} as shell-escaped args, so the unquoted loops below keep paths
+// with spaces intact.
 const preCommitSettings: LefthookSettings['pre-commit'] = {
   jobs: [
     {
@@ -96,15 +96,16 @@ exit "$failed"
       // Staging a DELETION of bun.lock leaves no file for inspection, so Lefthook skips this job
       // rather than passing a missing path to the loop (verified); the rewrite therefore cannot
       // resurrect a deleted lockfile as an empty file.
-      // `set -e` keeps a partially written temp file from replacing the lockfile. A sibling temp
-      // file makes the replacement an atomic same-directory rename, and `cp -p` gives it the
-      // lockfile's original mode (mktemp alone creates 0600, and git tracks only the executable
-      // bit, so that would change silently). The name must stay unpredictable and be created by
-      // mktemp: a repository-committed symlink at a fixed sibling path would otherwise be followed
-      // by `cp` and the redirection, and the `mv` would then turn bun.lock into that symlink.
-      // The sed pattern is anchored to `", ` so only a registry entry's `resolved` slot is cleared:
-      // a DIRECT tarball dependency carries the same host in the workspace descriptor and the
-      // package tuple's first element, which must survive.
+      // `set -e` aborts on any failure so a partially written temp file never replaces the
+      // lockfile. A sibling temp file makes the replacement an atomic same-directory rename, and
+      // `cp -p` gives it the lockfile's original mode (mktemp alone creates 0600, and git tracks
+      // only the executable bit, so that would change silently). The name must stay unpredictable
+      // and be created by mktemp: a repository-committed symlink at a fixed sibling path would
+      // otherwise be followed by `cp` and the redirection, and the `mv` would then turn bun.lock
+      // into that symlink. The sed is anchored to `", ` so only a registry entry's `resolved` slot
+      // is cleared (mirroring reusable-workflows and wb's normalizeBunLockfile): a DIRECT tarball
+      // dependency carries the same host in the workspace descriptor and the package tuple's first
+      // element, which must survive.
       name: 'normalize-bun-lockfile',
       glob: 'bun.lock',
       run: `
@@ -257,13 +258,17 @@ function getCleanupGlobs(config: PackageConfig): string {
 
 function getCleanupCommand(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
-    return String.raw`bun run --cwd packages/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}`;
+    return String.raw`
+bun run --cwd packages/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
+`.trim();
   }
   // Python-only Bun repos install wb for shared scripts but not Oxlint, so
   // staged-file hooks must use the language-specific formatter path below.
   const canUseWbForStagedFiles = doesContainJsOrTs(config) || doesContainJava(config);
   if (canUseWbForStagedFiles) {
-    return 'bun wb lint --fix --format -- {staged_files}';
+    return `
+bun wb lint --fix --format -- {staged_files}
+`.trim();
   }
 
   return String.raw`

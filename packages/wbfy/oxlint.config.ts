@@ -3,7 +3,6 @@ import type { OxlintConfig } from 'oxlint';
 
 import oxlintBaseConfig from '@willbooster/oxlint-config';
 
-// Oxlint rejects the root-only type-aware options outside the root config.
 const oxlintResolvedConfig: OxlintConfig = structuredClone(oxlintBaseConfig);
 delete oxlintResolvedConfig.options;
 // wbfy:end oxlint-base

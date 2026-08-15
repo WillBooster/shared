@@ -18,7 +18,6 @@ export function parseCommandLineArgs(argsString: string): string[] {
   let inSingleQuote = false;
 
   for (const char of argsString) {
-    // Handle quotes
     if (char === '"' && !inSingleQuote) {
       inDoubleQuote = !inDoubleQuote;
       continue;
@@ -29,7 +28,6 @@ export function parseCommandLineArgs(argsString: string): string[] {
       continue;
     }
 
-    // Handle spaces (only split on spaces outside of quotes)
     if (char === ' ' && !inDoubleQuote && !inSingleQuote) {
       if (current) {
         result.push(current);
@@ -38,11 +36,9 @@ export function parseCommandLineArgs(argsString: string): string[] {
       continue;
     }
 
-    // Add character to current argument
     current += char;
   }
 
-  // Add the last argument if there is one
   if (current) {
     result.push(current);
   }

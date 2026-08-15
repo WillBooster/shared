@@ -56,7 +56,6 @@ function spawnSyncAndReturnStdoutInternal(
 
 export function getSpawnSyncArgs(command: string, args: string[], cwd: string): [string, string[], SpawnSyncOptions] {
   const env = { ...process.env };
-  // Remove berry from PATH
   if (env.PATH && env.BERRY_BIN_FOLDER) {
     env.PATH = env.PATH.split(':')
       .filter((p) => p !== env.BERRY_BIN_FOLDER)

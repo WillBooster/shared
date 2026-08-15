@@ -115,13 +115,11 @@ function getNextConfigObjectLiteral(
   return objectLiteral ? { source, objectLiteral } : undefined;
 }
 
-// Unwrap `({ ... })` to the object literal.
 function unwrapObjectLiteral(node: ast.Expression): ast.ObjectLiteralExpression | undefined {
   const current = unwrapParentheses(node);
   return ast.isObjectLiteralExpression(current) ? current : undefined;
 }
 
-// Peel wrapping parentheses off an expression.
 function unwrapParentheses(node: ast.Expression): ast.Expression {
   let current = node;
   while (ast.isParenthesizedExpression(current)) {
@@ -141,7 +139,6 @@ function getPropertyKey(name: ast.PropertyName, source: ast.SourceFile): string 
   return 'text' in name && typeof name.text === 'string' ? name.text : name.getText(source);
 }
 
-// Remove line and block comments from a source snippet.
 function stripComments(text: string): string {
   return text.replaceAll(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '');
 }
