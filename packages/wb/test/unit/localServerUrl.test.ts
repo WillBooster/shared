@@ -60,8 +60,7 @@ async function publishServerUrl(
 ): Promise<string> {
   const filePath = path.join(projectDirPath, '.wb', `server-${wbEnv}-${encodeURIComponent(packageName)}.url`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, `${baseUrl}\n`);
-  await fs.writeFile(filePath.replace(/\.url$/, '.pid'), `${publisherPid}\n`);
+  await fs.writeFile(filePath, `${baseUrl}\n${publisherPid}\n`);
   return filePath;
 }
 
@@ -233,13 +232,11 @@ describe('wb run', () => {
       `server-development-${encodeURIComponent(ROOT_PACKAGE_NAME)}.url`
     );
     await fs.mkdir(path.dirname(strayFilePath), { recursive: true });
-    await fs.writeFile(strayFilePath, `${baseUrl}\n`);
-    await fs.writeFile(strayFilePath.replace(/\.url$/, '.pid'), `${process.pid}\n`);
+    await fs.writeFile(strayFilePath, `${baseUrl}\n${process.pid}\n`);
     try {
       expect(runScript()).toBe('null');
     } finally {
       await fs.rm(strayFilePath, { force: true });
-      await fs.rm(strayFilePath.replace(/\.url$/, '.pid'), { force: true });
     }
   });
 

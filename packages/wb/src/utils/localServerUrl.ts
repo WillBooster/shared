@@ -9,7 +9,6 @@ import type { Project } from '../project.js';
 const LOCAL_SERVER_WB_ENVS = new Set(['development', 'test']);
 const WB_DIRECTORY_NAME = '.wb';
 const URL_FILE_EXTENSION = '.url';
-const PID_FILE_EXTENSION = '.pid';
 const UNNAMED_PACKAGE_NAME = 'unknown';
 const SCHEME_DEFAULT_PORTS = new Map([
   ['http:', 80],
@@ -30,9 +29,11 @@ const SERVING_PROBE_TIMEOUT_MS = 1000;
  * Commands that merely CONSUME the app (e.g. `wb run scripts/importProblems.ts`) cannot compute an
  * auto-selected port: the selection returns a FREE port, i.e. never the one a running server
  * occupies. Without this file, a repository whose scripts must name the local server would have to
- * pin PORT for that reason alone. The file holds the bare URL so any language can read it, and a
- * `.pid` sibling records the publisher so a crashed one cannot be mistaken for a live server by an
- * unrelated process that later takes the same port.
+ * pin PORT for that reason alone. Its first line is the bare URL so any language can read it
+ * (`head -1`), and its second is the publisher's pid, so a crashed publisher cannot be mistaken for
+ * a live server by an unrelated process that later takes the same port. Both live in ONE file
+ * replaced by rename: siblings would expose an intermediate state pairing one server's pid with
+ * another's URL, and no write order makes that pairing safe in every restart.
  *
  * It lives at the REPOSITORY root, not the package directory, because `wb start` serves each
  * descendant project (see start.ts) while a consuming script commonly runs at the root: a reader
@@ -47,11 +48,12 @@ export function publishLocalServerUrl(project: Project, baseUrl: string): void {
   if (!filePath) return;
 
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  // The pid goes first: a reader that catches the intermediate state must find the OLD url with a
-  // new pid — a combination its liveness probe rejects — never a new url attributed to a publisher
-  // that has already gone.
-  fs.writeFileSync(toPidFilePath(filePath), `${process.pid}\n`);
-  fs.writeFileSync(filePath, `${baseUrl}\n`);
+  // Rename replaces atomically, so a concurrent reader sees either publication whole, never a URL
+  // and a pid belonging to different servers. The pid in the temporary name keeps two publishers
+  // of one package from colliding on it.
+  const temporaryFilePath = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporaryFilePath, `${baseUrl}\n${process.pid}\n`);
+  fs.renameSync(temporaryFilePath, filePath);
 }
 
 /**
@@ -127,8 +129,9 @@ async function readServingUrl(filePath: string): Promise<string | undefined> {
   let baseUrl: string;
   let url: URL;
   try {
-    if (!isPublisherAlive(Number(fs.readFileSync(toPidFilePath(filePath), 'utf8')))) return undefined;
-    baseUrl = fs.readFileSync(filePath, 'utf8').trim();
+    const [rawBaseUrl, rawPid] = fs.readFileSync(filePath, 'utf8').split('\n');
+    if (!isPublisherAlive(Number(rawPid))) return undefined;
+    baseUrl = (rawBaseUrl ?? '').trim();
     url = new URL(baseUrl);
   } catch {
     return undefined;
@@ -215,8 +218,4 @@ function buildLocalServerUrlFilePath(
     WB_DIRECTORY_NAME,
     `server-${wbEnv}-${encodeURIComponent(projectName)}${URL_FILE_EXTENSION}`
   );
-}
-
-function toPidFilePath(filePath: string): string {
-  return `${filePath.slice(0, -URL_FILE_EXTENSION.length)}${PID_FILE_EXTENSION}`;
 }
