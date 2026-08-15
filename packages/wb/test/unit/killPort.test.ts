@@ -4,22 +4,38 @@ import { describe, expect, it } from 'vitest';
 
 import { waitForProcessStopped } from '../../../../test/helpers/processUtils.js';
 import { killPorts } from '../../src/commands/killPort.js';
+import { isPortAvailable } from '../../src/utils/port.js';
 
 describe('kill-port command', () => {
   it('kills the process listening on the given port', async () => {
     const [pid, port] = await startListeningProcess();
 
-    killPorts([port]);
+    killPorts([String(port)]);
 
     await waitForProcessStopped(pid, 10_000);
   });
 
-  it('rejects an invalid port before killing anything', async () => {
+  it('kills no port when another port is invalid', async () => {
     const [pid, port] = await startListeningProcess();
 
-    expect(() => killPorts([port, 65_536])).toThrow('Invalid port: 65536');
+    try {
+      expect(() => killPorts([String(port), '65536'])).toThrow('Invalid port: 65536');
+      expect(await isPortAvailable(port)).toBe(false);
+    } finally {
+      process.kill(pid, 'SIGKILL');
+    }
+    await waitForProcessStopped(pid, 10_000);
+  });
 
-    process.kill(pid, 'SIGKILL');
+  it('kills nothing on a dry run', async () => {
+    const [pid, port] = await startListeningProcess();
+
+    try {
+      killPorts([String(port)], true);
+      expect(await isPortAvailable(port)).toBe(false);
+    } finally {
+      process.kill(pid, 'SIGKILL');
+    }
     await waitForProcessStopped(pid, 10_000);
   });
 });
