@@ -122,6 +122,20 @@ describe('readAndApplyEnvironmentVariables()', () => {
     }
   );
 
+  it.runIf(isFnoxAvailable())(
+    'should override inherited process.env with a profile key whose value equals the base value',
+    () => {
+      delete process.env.CI;
+      process.env.WB_ENV = 'test';
+      process.env.SAME_IN_PROFILE = 'shell';
+      const envVars = readAndApplyEnvironmentVariables({ autoCascadeEnv: true }, 'test/fixtures/app-fnox');
+      // The test profile declares SAME_IN_PROFILE explicitly, so it overrides the inherited value
+      // even though its value coincides with the base one.
+      expect(envVars.SAME_IN_PROFILE).toBe('same-value');
+      delete process.env.SAME_IN_PROFILE;
+    }
+  );
+
   it.runIf(isFnoxAvailable())('should load env vars from a fnox profile with --cascade-env=test', () => {
     const envVars = readAndApplyEnvironmentVariables({ cascadeEnv: 'test' }, 'test/fixtures/app-fnox');
     expect(envVars).toMatchObject({
