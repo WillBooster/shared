@@ -43,6 +43,7 @@ const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
+const wbfyManagedPrettierPlugins = new Set(['prettier-plugin-java', 'prettier-plugin-prisma']);
 // wb and wbfy publish independently. Add a replacement here only after a releasing wb commit has
 // published its implementation, or the next wbfy release can prune a binary that latest wb lacks.
 const wbCliReplacementDependencies = ['open-cli', 'wait-on'];
@@ -1809,8 +1810,7 @@ function removePrettierArtifacts(jsonObj: WritablePackageJson, keepPrettierDepen
   for (const section of dependencySections) {
     if (!section) continue;
     if (!keepPrettierDependency) delete section.prettier;
-    delete section['prettier-plugin-java'];
-    delete section['prettier-plugin-prisma'];
+    for (const plugin of wbfyManagedPrettierPlugins) delete section[plugin];
     delete section['@willbooster/prettier-config'];
     delete section['@types/prettier'];
   }
@@ -1818,8 +1818,7 @@ function removePrettierArtifacts(jsonObj: WritablePackageJson, keepPrettierDepen
 
 function hasRuntimePrettierPlugin(jsonObj: WritablePackageJson): boolean {
   return Object.keys(jsonObj.dependencies).some(
-    (dependency) =>
-      dependency.includes('prettier-plugin') && !['prettier-plugin-java', 'prettier-plugin-prisma'].includes(dependency)
+    (dependency) => dependency.includes('prettier-plugin') && !wbfyManagedPrettierPlugins.has(dependency)
   );
 }
 

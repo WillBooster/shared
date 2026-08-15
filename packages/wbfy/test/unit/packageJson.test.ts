@@ -216,8 +216,16 @@ test('keeps prettier for packages that import it as a runtime library but drops 
   expect(notImporting.dependencies?.prettier).toBeUndefined();
 });
 
-test('keeps prettier when a runtime prettier plugin is declared', async () => {
-  const packageJson = await generatePackageJsonFrom(
+test('keeps and restores prettier when a runtime prettier plugin is declared', async () => {
+  const retainedPackageJson = await generatePackageJsonFrom({
+    dependencies: {
+      prettier: '3.0.0',
+      'prettier-plugin-organize-attributes': '1.0.0',
+    },
+  });
+  expect(retainedPackageJson.dependencies?.prettier).toBe('3.0.0');
+
+  const restoredPackageJson = await generatePackageJsonFrom(
     {
       dependencies: {
         'prettier-plugin-organize-attributes': '1.0.0',
@@ -226,8 +234,8 @@ test('keeps prettier when a runtime prettier plugin is declared', async () => {
     { doesContainJava: true }
   );
 
-  expect(packageJson.dependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
-  expect(packageJson.dependencies?.['prettier-plugin-organize-attributes']).toBe('1.0.0');
+  expect(restoredPackageJson.dependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
+  expect(restoredPackageJson.dependencies?.['prettier-plugin-organize-attributes']).toBe('1.0.0');
 });
 
 // `wb gen-code` generates worker-configuration.d.ts itself, so wbfy no longer weaves `wrangler types` into the
