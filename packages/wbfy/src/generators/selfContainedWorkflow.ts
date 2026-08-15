@@ -355,7 +355,7 @@ function buildReleaseWorkflow(
 }
 
 /**
- * The install sequence every generated workflow shares: a plain `bun install`, hardened into the
+ * The install sequence every generated workflow shares: `bun install --frozen-lockfile`, hardened into the
  * reusable workflows' three-step dance when the repository registers a TAKUMI_GUARD_TOKEN secret.
  *
  * Takumi Guard (https://flatt.tech/takumi/features/guard) is a registry proxy that blocks
@@ -395,11 +395,19 @@ mv "$NPMRC" .npmrc`,
     },
     {
       name: 'Install dependencies',
+      // --frozen-lockfile: a plain `bun install` silently repairs a bun.lock that is stale against
+      // package.json, so CI would run dependency resolutions that were never reviewed (#1126).
+      // With NO bun.lock at all, --frozen-lockfile silently installs fresh, unpinned resolutions
+      // (Bun 1.3.14 exits 0 and writes no lockfile), so a missing lockfile must fail explicitly.
       run: `set -euo pipefail
+if [[ ! -e bun.lock ]]; then
+  echo "::error::bun.lock is missing; commit it so CI installs stay reproducible"
+  exit 1
+fi
 if [[ "$HAS_TAKUMI_GUARD_TOKEN" == "true" ]]; then
-  bun install --ignore-scripts
+  bun install --frozen-lockfile --ignore-scripts
 else
-  bun install
+  bun install --frozen-lockfile
 fi`,
       // Step-scoped: a job-level token would be readable by every dependency lifecycle script the
       // tokenless replay below runs.
@@ -414,10 +422,10 @@ fi`,
       // decrypted secrets cannot succeed here and must not take the whole job down.
       run: `set -euo pipefail
 rm -rf node_modules
-bun install || {
+bun install --frozen-lockfile || {
   echo "::warning::Lifecycle scripts failed; completing the install without them"
   rm -rf node_modules
-  bun install --ignore-scripts
+  bun install --frozen-lockfile --ignore-scripts
 }`,
     },
     {
