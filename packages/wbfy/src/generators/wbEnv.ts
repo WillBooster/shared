@@ -69,7 +69,7 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
 
   // Earlier wbfy versions explained wb's WB_ENV precedence here, in several wording variants; drop
   // any of them so target repositories converge on a comment-free section.
-  const previousWbEnvCommentPattern = /^# CI sets WB_ENV as a process env var[^\n]*\n/mu;
+  const previousWbEnvCommentPattern = /^# CI sets WB_ENV as a process env var, which wins over fnox[^\n]*\n/mu;
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
   let updatedContent = content.replace(previousWbEnvCommentPattern, '');
   for (const mode of wbEnvModes) {
