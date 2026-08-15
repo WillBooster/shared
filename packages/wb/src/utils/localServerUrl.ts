@@ -1,18 +1,20 @@
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
 
 import type { Project } from '../project.js';
-
-import { isPortAvailable } from './port.js';
 
 // Only local environments serve a URL that cannot be known ahead of time; staging and production
 // always carry a fixed, deployed URL that a local file must never shadow.
 const LOCAL_SERVER_WB_ENVS = new Set(['development', 'test']);
 const WB_DIRECTORY_NAME = '.wb';
+const URL_FILE_EXTENSION = '.url';
+const PID_FILE_EXTENSION = '.pid';
 const SCHEME_DEFAULT_PORTS = new Map([
   ['http:', 80],
   ['https:', 443],
 ]);
+const SERVING_PROBE_TIMEOUT_MS = 1000;
 
 /**
  * Publishes the URL of the server `wb start` / `wb test` is about to serve into
@@ -21,7 +23,9 @@ const SCHEME_DEFAULT_PORTS = new Map([
  * Commands that merely CONSUME the app (e.g. `wb run scripts/importProblems.ts`) cannot compute an
  * auto-selected port: the selection returns a FREE port, i.e. never the one a running server
  * occupies. Without this file, a repository whose scripts must name the local server would have to
- * pin PORT for that reason alone. The file holds the bare URL so any language can read it.
+ * pin PORT for that reason alone. The file holds the bare URL so any language can read it, and a
+ * `.pid` sibling records the publisher so a crashed one cannot be mistaken for a live server by an
+ * unrelated process that later takes the same port.
  *
  * It lives at the REPOSITORY root, not the package directory, because `wb start` serves each
  * descendant project (see start.ts) while a consuming script commonly runs at the root: a reader
@@ -35,14 +39,19 @@ export function publishLocalServerUrl(project: Project, baseUrl: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const content = `${baseUrl}\n`;
   fs.writeFileSync(filePath, content);
+  fs.writeFileSync(toPidFilePath(filePath), `${process.pid}\n`);
   // Only the synchronous 'exit' event is hooked: a signal listener would suppress Node's default
-  // termination, and a file surviving a crash misleads nobody because readLocalServerUrl ignores
-  // one whose port serves nothing.
+  // termination. Signals wb handles itself still reach it (src/index.ts exits explicitly), and a
+  // publication surviving SIGKILL misleads nobody because a reader ignores a dead publisher.
   process.on('exit', () => {
     try {
       // A later server of the same package republishes this path with its own free port, so
       // removing it blindly would strand a server that is still serving.
-      if (fs.readFileSync(filePath, 'utf8') === content) fs.rmSync(filePath, { force: true });
+      if (fs.readFileSync(filePath, 'utf8') !== content) return;
+      // The pid goes first: a reader that catches the intermediate state must conclude "gone",
+      // never "published by a live process".
+      fs.rmSync(toPidFilePath(filePath), { force: true });
+      fs.rmSync(filePath, { force: true });
     } catch {
       // An already removed file (e.g. another process wiping .wb) must not break the exit.
     }
@@ -50,36 +59,40 @@ export function publishLocalServerUrl(project: Project, baseUrl: string): void {
 }
 
 /**
- * Reads the URL published by a local server that is still serving, or undefined when none is.
- * `preferredProjectName` selects among the app servers of a monorepo; without a match, an
- * unambiguous single publication answers, because a consuming script at the repository root
- * usually means the one app the repository serves.
+ * Reads the URL of a local server that is serving right now, or undefined when none is.
+ *
+ * `preferredProjectName` names the caller's own package, which wins whenever it is serving. A
+ * repository root — where a consuming script cannot belong to any single app — falls back to the
+ * one app that is serving; anywhere else no fallback applies, because handing a package's script
+ * a sibling app's URL is worse than handing it nothing.
  */
 export async function readLocalServerUrl(
   cwd: string,
   wbEnv: string | undefined,
   preferredProjectName?: string
 ): Promise<string | undefined> {
-  const filePath = selectLocalServerUrlFilePath(cwd, wbEnv, preferredProjectName);
-  if (!filePath) return undefined;
+  const wbDirPath = findRepositoryWbDirectoryPath(cwd);
+  if (!wbDirPath || !wbEnv || !LOCAL_SERVER_WB_ENVS.has(wbEnv)) return undefined;
 
-  let baseUrl: string;
-  let port: number | undefined;
-  try {
-    baseUrl = fs.readFileSync(filePath, 'utf8').trim();
-    const url = new URL(baseUrl);
-    // `URL#port` is empty for a scheme's default port, so `http://localhost:80` must not read as
-    // portless — the probe below needs the port the server actually listens on.
-    port = url.port ? Number(url.port) : SCHEME_DEFAULT_PORTS.get(url.protocol);
-  } catch {
-    return undefined;
+  const rootDirPath = path.dirname(wbDirPath);
+  const preferredFilePath = preferredProjectName
+    ? buildLocalServerUrlFilePath(rootDirPath, wbEnv, preferredProjectName)
+    : undefined;
+  if (preferredFilePath) {
+    const preferredUrl = await readServingUrl(preferredFilePath);
+    if (preferredUrl) return preferredUrl;
   }
-  // The URL is published while the start command is still being BUILT, so an unbound port means
-  // "not serving yet" just as often as "the server crashed". Either way there is nothing to
-  // consume — and deleting the file here would strand the server that is about to bind it, since
-  // each server publishes only once.
-  if (!port || (await isPortAvailable(port))) return undefined;
-  return baseUrl;
+  if (path.resolve(cwd) !== rootDirPath) return undefined;
+
+  // Liveness decides which publications count: a crashed server's file lingers until something
+  // republishes it, and letting it vote would make one stale file hide the app that IS serving.
+  const candidateUrls = await Promise.all(
+    listLocalServerUrlFilePaths(wbDirPath, wbEnv).map((filePath) => readServingUrl(filePath))
+  );
+  const servingUrls = candidateUrls.filter((url) => url !== undefined);
+  // Several apps of one monorepo cannot be told apart without a name, and guessing would point the
+  // script at the wrong app.
+  return servingUrls.length === 1 ? servingUrls[0] : undefined;
 }
 
 /**
@@ -98,29 +111,66 @@ export async function applyLocalServerUrl(
   if (baseUrl) env.NEXT_PUBLIC_BASE_URL = baseUrl;
 }
 
-function selectLocalServerUrlFilePath(
-  cwd: string,
-  wbEnv: string | undefined,
-  preferredProjectName: string | undefined
-): string | undefined {
-  const wbDirPath = findRepositoryWbDirectoryPath(cwd);
-  if (!wbDirPath || !wbEnv || !LOCAL_SERVER_WB_ENVS.has(wbEnv)) return undefined;
+/** The published URL when its publisher is alive and its origin answers, else undefined. */
+async function readServingUrl(filePath: string): Promise<string | undefined> {
+  let baseUrl: string;
+  let url: URL;
+  try {
+    if (!isPublisherAlive(Number(fs.readFileSync(toPidFilePath(filePath), 'utf8')))) return undefined;
+    baseUrl = fs.readFileSync(filePath, 'utf8').trim();
+    url = new URL(baseUrl);
+  } catch {
+    return undefined;
+  }
+  // `URL#port` is empty for a scheme's default port, so `http://localhost:80` must not read as
+  // portless — the probe below needs the port the server actually listens on.
+  const port = url.port ? Number(url.port) : SCHEME_DEFAULT_PORTS.get(url.protocol);
+  if (!port) return undefined;
+  return (await isServing(url.hostname, port)) ? baseUrl : undefined;
+}
 
-  const preferredFilePath =
-    preferredProjectName && buildLocalServerUrlFilePath(path.dirname(wbDirPath), wbEnv, preferredProjectName);
-  if (preferredFilePath && fs.existsSync(preferredFilePath)) return preferredFilePath;
+/**
+ * Connects rather than binds. `isPortAvailable` would hold the port for an event-loop turn, and
+ * the URL is published BEFORE the server binds it (see ensurePort), so a bind probe could take the
+ * port from the very server it is asking about and kill it with EADDRINUSE. Connecting to the
+ * published origin also answers the question the consumer actually has: can this URL be reached?
+ */
+function isServing(hostname: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host: hostname, port });
+    const finish = (serving: boolean): void => {
+      socket.destroy();
+      resolve(serving);
+    };
+    socket.setTimeout(SERVING_PROBE_TIMEOUT_MS);
+    socket.once('connect', () => finish(true));
+    socket.once('timeout', () => finish(false));
+    socket.once('error', () => finish(false));
+  });
+}
 
+/** Signal 0 tests for existence; EPERM means the process exists under another user. */
+function isPublisherAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+function listLocalServerUrlFilePaths(wbDirPath: string, wbEnv: string): string[] {
   let fileNames: string[];
   try {
     fileNames = fs.readdirSync(wbDirPath);
   } catch {
-    return undefined;
+    return [];
   }
   const prefix = `server-${wbEnv}-`;
-  const candidates = fileNames.filter((fileName) => fileName.startsWith(prefix) && fileName.endsWith('.url'));
-  // Several app servers of one monorepo cannot be told apart without a name, and guessing would
-  // point the script at the wrong app.
-  return candidates.length === 1 ? path.join(wbDirPath, candidates[0] as string) : undefined;
+  return fileNames
+    .filter((fileName) => fileName.startsWith(prefix) && fileName.endsWith(URL_FILE_EXTENSION))
+    .map((fileName) => path.join(wbDirPath, fileName));
 }
 
 /**
@@ -143,9 +193,15 @@ function buildLocalServerUrlFilePath(
   projectName: string
 ): string | undefined {
   if (!wbEnv || !LOCAL_SERVER_WB_ENVS.has(wbEnv)) return undefined;
-  return path.join(rootDirPath, WB_DIRECTORY_NAME, `server-${wbEnv}-${toFileNameSegment(projectName)}.url`);
+  // Percent-encoding is injective and leaves every npm-legal name a single filename-safe segment,
+  // unlike replacing unsafe characters, which maps `@foo/bar-baz` and `@foo-bar/baz` alike.
+  return path.join(
+    rootDirPath,
+    WB_DIRECTORY_NAME,
+    `server-${wbEnv}-${encodeURIComponent(projectName)}${URL_FILE_EXTENSION}`
+  );
 }
 
-function toFileNameSegment(projectName: string): string {
-  return projectName.replaceAll(/[^\w.-]/g, '-');
+function toPidFilePath(filePath: string): string {
+  return `${filePath.slice(0, -URL_FILE_EXTENSION.length)}${PID_FILE_EXTENSION}`;
 }

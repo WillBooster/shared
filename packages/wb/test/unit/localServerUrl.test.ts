@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 const binIndexPath = fileURLToPath(new URL('../../bin/index.js', import.meta.url));
 const ROOT_PACKAGE_NAME = 'local-server-url-fixture';
 const APP_PACKAGE_NAME = '@fixtures/app';
+const ADMIN_PACKAGE_NAME = '@fixtures/admin';
 const APP_DIR_NAME = 'packages/app';
+const ADMIN_DIR_NAME = 'packages/admin';
 
 let projectDirPath: string;
 const servers: Server[] = [];
@@ -50,10 +52,16 @@ async function closeServers(): Promise<void> {
 }
 
 /** Publishes as `wb start` does: at the repository root, named after the serving package. */
-async function publishServerUrl(wbEnv: string, packageName: string, baseUrl: string): Promise<string> {
-  const filePath = path.join(projectDirPath, '.wb', `server-${wbEnv}-${packageName.replaceAll(/[^\w.-]/g, '-')}.url`);
+async function publishServerUrl(
+  wbEnv: string,
+  packageName: string,
+  baseUrl: string,
+  publisherPid = process.pid
+): Promise<string> {
+  const filePath = path.join(projectDirPath, '.wb', `server-${wbEnv}-${encodeURIComponent(packageName)}.url`);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, `${baseUrl}\n`);
+  await fs.writeFile(filePath.replace(/\.url$/, '.pid'), `${publisherPid}\n`);
   return filePath;
 }
 
@@ -102,10 +110,40 @@ describe('wb run', () => {
     const appDirPath = path.join(projectDirPath, APP_DIR_NAME);
     await writePackage(appDirPath, APP_PACKAGE_NAME);
     const appUrl = await publishRunningServerUrl('development', APP_PACKAGE_NAME);
-    await publishRunningServerUrl('development', '@fixtures/admin');
+    await publishRunningServerUrl('development', ADMIN_PACKAGE_NAME);
 
     expect(runScript({}, appDirPath)).toBe(JSON.stringify(appUrl));
     // Ambiguous from the root: naming no package must not silently pick one of the apps.
+    expect(runScript()).toBe('null');
+  });
+
+  it('never hands a package script a sibling app server', async () => {
+    const adminDirPath = path.join(projectDirPath, ADMIN_DIR_NAME);
+    await writePackage(adminDirPath, ADMIN_PACKAGE_NAME);
+    await publishRunningServerUrl('development', APP_PACKAGE_NAME);
+
+    // Seeding the wrong app is worse than seeding nothing, so the single-server fallback is for
+    // the repository root only.
+    expect(runScript({}, adminDirPath)).toBe('null');
+  });
+
+  it('looks past a crashed publication to the app that is serving', async () => {
+    // A publication survives a non-graceful exit, and counting it would hide the live server for
+    // as long as the file exists.
+    const crashedUrl = `http://localhost:${await listenOnFreePort()}`;
+    await publishServerUrl('development', ADMIN_PACKAGE_NAME, crashedUrl);
+    await closeServers();
+    const runningUrl = await publishRunningServerUrl('development', APP_PACKAGE_NAME);
+
+    expect(runScript()).toBe(JSON.stringify(runningUrl));
+  });
+
+  it('ignores a publication whose publisher is gone even when its port is taken', async () => {
+    // Auto-selected ports are reused across repositories, so occupancy alone cannot prove that the
+    // server that published this URL is the one now answering.
+    const baseUrl = `http://localhost:${await listenOnFreePort()}`;
+    await publishServerUrl('development', ROOT_PACKAGE_NAME, baseUrl, await findDeadPid());
+
     expect(runScript()).toBe('null');
   });
 
@@ -153,14 +191,19 @@ describe('wb run', () => {
     // A stray .wb in an ancestor (a parent workspace, the home directory, a tmp root) must not
     // answer for a repository that published nothing.
     const baseUrl = `http://localhost:${await listenOnFreePort()}`;
-    const ancestorDirPath = path.dirname(projectDirPath);
-    const strayFilePath = path.join(ancestorDirPath, '.wb', `server-development-${ROOT_PACKAGE_NAME}.url`);
+    const strayFilePath = path.join(
+      path.dirname(projectDirPath),
+      '.wb',
+      `server-development-${encodeURIComponent(ROOT_PACKAGE_NAME)}.url`
+    );
     await fs.mkdir(path.dirname(strayFilePath), { recursive: true });
     await fs.writeFile(strayFilePath, `${baseUrl}\n`);
+    await fs.writeFile(strayFilePath.replace(/\.url$/, '.pid'), `${process.pid}\n`);
     try {
       expect(runScript()).toBe('null');
     } finally {
       await fs.rm(strayFilePath, { force: true });
+      await fs.rm(strayFilePath.replace(/\.url$/, '.pid'), { force: true });
     }
   });
 
@@ -168,3 +211,10 @@ describe('wb run', () => {
     expect(runScript()).toBe('null');
   });
 });
+
+/** A pid no process holds: spawning one and letting it exit yields a pid the OS has just freed. */
+async function findDeadPid(): Promise<number> {
+  const child = childProcess.spawn(process.execPath, ['-e', '']);
+  await new Promise((resolve) => child.once('exit', resolve));
+  return child.pid as number;
+}
