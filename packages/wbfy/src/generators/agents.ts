@@ -119,7 +119,7 @@ function generateAgentInstruction(
 
 - If on \`main\`, create a new branch; otherwise work on the current branch.
 - Run \`git\` commands one at a time to avoid \`index.lock\` conflicts.
-- Write a test only when explicitly requested, or when a behavior is both likely to regress AND has no other automatic safeguard (type checking, linting, or an existing test/CI check would not catch the breakage). Skip the test when an existing signal already catches the regression, or when you are only confirming an external fact (a library's behavior, whether a version fixes an issue)—verify those once manually instead of adding a permanent test.
+- Write a test only when explicitly requested, or when a behavior is both likely to regress AND has no other automatic safeguard (type checking, linting, or an existing test/CI check would not catch the breakage). Skip the test when an existing signal already catches the regression, when the implementation merely maps conditions to constant outputs so a test would restate that mapping and fail only on intentional edits (a change detector), or when you are only confirming an external fact (a library's behavior, whether a version fixes an issue); verify the latter two once manually instead of adding a permanent test.
 - When writing tests, follow these rules:
   - Test externally observable behavior (e.g., emitted files, CLI output, rendered results) at the system boundary, not implementation details: do not mirror production logic, assert that a branch is taken, or feed hand-assembled internal objects to internal functions.
   - Prefer actual API calls over mocks, unless actual calls are impractical, have unintended side effects, or mocks are explicitly requested.
