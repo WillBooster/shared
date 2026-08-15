@@ -43,6 +43,7 @@ const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
+const wbCliReplacementDependencies = ['open-cli', 'wait-on'];
 const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
 const managedDependencyNames = new Set([
   wbDependency,
@@ -93,6 +94,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
   removeSelfDependency(config, jsonObj);
+  removeWbCliReplacementDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipAddingDeps);
@@ -146,6 +148,14 @@ function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJso
   // Node self-references need no dependency edge, which would break monorepo release ordering.
   for (const section of getDependencySections(jsonObj)) {
     Reflect.deleteProperty(section, packageName);
+  }
+}
+
+function removeWbCliReplacementDependencies(jsonObj: WritablePackageJson): void {
+  for (const section of getDependencySections(jsonObj)) {
+    for (const dependency of wbCliReplacementDependencies) {
+      Reflect.deleteProperty(section, dependency);
+    }
   }
 }
 

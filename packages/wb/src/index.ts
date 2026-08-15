@@ -17,6 +17,7 @@ import { genDockerEnvCommand } from './commands/genDockerEnv.js';
 import { killPortIfNonCiCommand } from './commands/killPortIfNonCi.js';
 import { lintCommand } from './commands/lint.js';
 import { maintenanceCommand } from './commands/maintenance.js';
+import { openCliCommand } from './commands/openCli.js';
 import { optimizeForDockerBuildCommand } from './commands/optimizeForDockerBuild.js';
 import { prismaCommand } from './commands/prisma.js';
 import { railwayEnvCommand } from './commands/railwayEnv.js';
@@ -31,6 +32,7 @@ import { testOnCiCommand } from './commands/testOnCi.js';
 import { treeKillCommand } from './commands/treeKill.js';
 import { tcCommand, typeCheckCommand } from './commands/typecheck.js';
 import { verifyCodeCommand } from './commands/verifyCode.js';
+import { waitOnCommand } from './commands/waitOn.js';
 import { sharedOptionsBuilder } from './sharedOptionsBuilder.js';
 
 protectRunScriptArgs(process.argv);
@@ -72,6 +74,7 @@ await yargs(hideBin(process.argv))
   .command(killPortIfNonCiCommand)
   .command(lintCommand)
   .command(maintenanceCommand)
+  .command(openCliCommand)
   .command(optimizeForDockerBuildCommand)
   .command(prismaCommand)
   .command(railwayEnvCommand)
@@ -86,6 +89,7 @@ await yargs(hideBin(process.argv))
   .command(treeKillCommand)
   .command(typeCheckCommand)
   .command(tcCommand)
+  .command(waitOnCommand)
   .demandCommand()
   .strict()
   .version(getVersion())

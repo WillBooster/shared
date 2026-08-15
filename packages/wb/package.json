@@ -10,7 +10,11 @@
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
   "type": "module",
-  "bin": "bin/index.js",
+  "bin": {
+    "open-cli": "bin/open-cli.js",
+    "wait-on": "bin/wait-on.js",
+    "wb": "bin/index.js"
+  },
   "files": [
     "bin/",
     "docker/",
@@ -37,7 +41,6 @@
     "fastest-levenshtein": "1.0.16",
     "globby": "16.2.3",
     "jsonc-parser": "3.3.1",
-    "kill-port": "2.0.1",
     "minimal-promise-pool": "6.0.3",
     "semver": "7.8.5",
     "smol-toml": "1.7.1",
@@ -52,7 +55,6 @@
     "@tsconfig/node-ts": "23.6.4",
     "@types/babel__core": "7.20.5",
     "@types/bun": "1.3.14",
-    "@types/kill-port": "2.0.3",
     "@types/node": "26.2.0",
     "@types/semver": "7.8.0",
     "@types/yargs": "17.0.35",
