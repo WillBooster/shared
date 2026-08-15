@@ -13,8 +13,8 @@ wb <command>
 
 Commands:
   wb buildIfNeeded              Build code if changes are detected
-  wb kill-port-if-non-ci        Kill the port specified by PORT environment
-                                variable if non-CI.
+  wb kill-port-if-non-ci        Kill the process or Docker container on the PORT
+                                environment variable if non-CI.
   wb lint [files...]            Lint code
   wb maintenance <action>       Start or stop a lightweight maintenance page
                                 server.

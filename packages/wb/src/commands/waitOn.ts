@@ -4,6 +4,8 @@ import { setTimeout } from 'node:timers/promises';
 import chalk from 'chalk';
 import type { Argv, CommandModule, InferredOptionTypes } from 'yargs';
 
+const httpRequestTimeoutMs = 5000;
+
 const builder = {
   timeout: {
     alias: 't',
@@ -47,12 +49,12 @@ export async function waitOn(
   resource: string,
   { interval, timeout }: { interval: number; timeout?: number }
 ): Promise<void> {
-  if (!Number.isFinite(interval) || interval < 0) throw new Error(`Invalid interval: ${interval}`);
-  if (timeout !== undefined && (!Number.isFinite(timeout) || timeout < 0)) {
+  if (!Number.isInteger(interval) || interval < 0) throw new Error(`Invalid interval: ${interval}`);
+  if (timeout !== undefined && (!Number.isInteger(timeout) || timeout < 0)) {
     throw new Error(`Invalid timeout: ${timeout}`);
   }
 
-  const checkResource = buildResourceCheck(resource);
+  const checkResource = buildResourceCheck(resource, interval);
   const deadline = timeout === undefined ? Number.POSITIVE_INFINITY : Date.now() + timeout;
   while (!(await checkResource(deadline))) {
     const remainingMs = deadline - Date.now();
@@ -61,7 +63,7 @@ export async function waitOn(
   }
 }
 
-function buildResourceCheck(resource: string): (deadline: number) => Promise<boolean> {
+function buildResourceCheck(resource: string, interval: number): (deadline: number) => Promise<boolean> {
   if (resource.startsWith('tcp:')) {
     const match = /^tcp:(?<host>[^:]+):(?<port>\d+)$/u.exec(resource);
     const host = match?.groups?.host;
@@ -69,7 +71,7 @@ function buildResourceCheck(resource: string): (deadline: number) => Promise<boo
     if (!host || !Number.isInteger(port) || port <= 0 || port > 65_535) {
       throw new Error(`Invalid TCP resource: ${resource}`);
     }
-    return () => isTcpPortListening(host, port);
+    return (deadline) => isTcpPortListening(host, port, deadline);
   }
 
   let url: URL;
@@ -81,30 +83,39 @@ function buildResourceCheck(resource: string): (deadline: number) => Promise<boo
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error(`Unsupported resource: ${resource}`);
   }
-  return (deadline) => isHttpResponding(url, deadline);
+  return (deadline) => isHttpResponding(url, deadline, interval);
 }
 
-function isTcpPortListening(host: string, port: number): Promise<boolean> {
+function isTcpPortListening(host: string, port: number, deadline: number): Promise<boolean> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) return Promise.resolve(false);
+
   return new Promise((resolve) => {
     const socket = net.createConnection({ autoSelectFamily: true, host, port });
+    let settled = false;
     const finish = (listening: boolean): void => {
+      if (settled) return;
+      settled = true;
       socket.destroy();
       resolve(listening);
     };
-    socket.setTimeout(300, () => finish(false));
+    socket.setTimeout(Math.min(300, remainingMs), () => finish(false));
     socket.once('connect', () => finish(true));
     socket.once('error', () => finish(false));
   });
 }
 
-async function isHttpResponding(url: URL, deadline: number): Promise<boolean> {
+async function isHttpResponding(url: URL, deadline: number, interval: number): Promise<boolean> {
   try {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) return false;
+    const attemptTimeoutMs = Math.min(remainingMs, Math.max(interval, httpRequestTimeoutMs));
     const response = await fetch(url, {
       method: 'HEAD',
       redirect: 'follow',
-      ...(Number.isFinite(remainingMs) ? { signal: AbortSignal.timeout(Math.max(1, remainingMs)) } : {}),
+      signal: AbortSignal.timeout(
+        Number.isFinite(attemptTimeoutMs) ? Math.max(1, attemptTimeoutMs) : httpRequestTimeoutMs
+      ),
     });
     return response.ok;
   } catch {

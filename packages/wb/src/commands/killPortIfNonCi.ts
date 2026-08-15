@@ -14,7 +14,8 @@ export const killPortIfNonCiCommand: CommandModule<
   InferredOptionTypes<typeof killPortIfNonCiBuilder & typeof sharedOptionsBuilder>
 > = {
   command: 'kill-port-if-non-ci',
-  describe: 'Kill the process on the PORT environment variable (or the auto-selection preferred port) if non-CI.',
+  describe:
+    'Kill the process or Docker container on the PORT environment variable (or the auto-selection preferred port) if non-CI.',
   builder: killPortIfNonCiBuilder,
   async handler(argv) {
     await killPortIfNonCi(argv);

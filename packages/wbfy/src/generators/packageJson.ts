@@ -152,11 +152,15 @@ function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJso
 }
 
 function removeWbCliReplacementDependencies(jsonObj: WritablePackageJson): void {
-  for (const section of getDependencySections(jsonObj)) {
-    for (const dependency of wbCliReplacementDependencies) {
-      Reflect.deleteProperty(section, dependency);
-    }
+  for (const dependency of wbCliReplacementDependencies) {
+    if (doesPackageScriptUseCommand(jsonObj.scripts, dependency)) continue;
+    Reflect.deleteProperty(jsonObj.devDependencies, dependency);
   }
+}
+
+function doesPackageScriptUseCommand(scripts: PackageJson.Scripts, command: string): boolean {
+  const commandPattern = new RegExp(`(?<![\\w-])${escapeRegExp(command)}(?![\\w-])`, 'u');
+  return Object.values(scripts).some((script) => typeof script === 'string' && commandPattern.test(script));
 }
 
 async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
