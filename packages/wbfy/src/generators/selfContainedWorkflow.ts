@@ -151,7 +151,7 @@ function buildTestWorkflow(config: PackageConfig, allPackageConfigs: PackageConf
   const steps: Step[] = [
     { uses: checkoutAction },
     { uses: miseAction },
-    ...buildInstallSteps(),
+    ...buildInstallSteps(true),
     ...(playwrightDirPaths.length > 0
       ? ([
           ...playwrightDirPaths.map((dirPath, index): Step => ({
@@ -261,7 +261,7 @@ function buildDeployWorkflow(environment: 'staging' | 'production', scriptName: 
             name: 'Set WB_VERSION',
             run: 'set -euo pipefail\nWB_VERSION=$(git describe --always --tags)\necho "WB_VERSION=$WB_VERSION" >> "$GITHUB_ENV"',
           },
-          ...buildInstallSteps(),
+          ...buildInstallSteps(false),
           {
             name: 'Deploy',
             uses: retryAction,
@@ -309,7 +309,7 @@ function buildReleaseWorkflow(
           // fetch-depth 0: semantic-release reads the full history to compute the next version.
           { uses: checkoutAction, with: { 'fetch-depth': 0 } },
           { uses: miseAction },
-          ...buildInstallSteps(),
+          ...buildInstallSteps(false),
           ...(hasProductionDeployWorkflow
             ? [
                 {
@@ -371,8 +371,16 @@ function buildReleaseWorkflow(
  * `$RUNNER_TEMP` (set by the runner application on every runner, and `set -u` fails loudly if not),
  * `[[ -e .npmrc ]]`, and the second `rm -rf node_modules` in the fallback (an interrupted lifecycle
  * run may leave node_modules inconsistent, so the retry starts clean rather than trusting a repair).
+ *
+ * `tolerateLifecycleScriptFailure` decides what a failing lifecycle-script replay does. Every
+ * replay runs tokenless and without FNOX_AGE_KEY (the key is scoped to the later Deploy/Release
+ * step), so a postinstall that needs decrypted secrets is unsupported in all of them by design.
+ * The test workflow tolerates the failure because typecheck/lint/test fail loudly on a degraded
+ * tree anyway. Deploy and release workflows must not: a `::warning::` does not fail the job, so
+ * the fallback would ship a tree whose lifecycle scripts (e.g. a `postinstall: wb gen-code`)
+ * never ran, silently deploying degraded output (#1127).
  */
-function buildInstallSteps(): Step[] {
+function buildInstallSteps(tolerateLifecycleScriptFailure: boolean): Step[] {
   return [
     {
       if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
@@ -417,16 +425,17 @@ fi`,
       if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
       name: 'Run dependency lifecycle scripts without registry credentials',
       // A repeated `bun install` is a no-op that replays nothing, so node_modules has to go first.
-      // A failing repository postinstall is tolerated exactly as the reusable workflows tolerate
-      // it: the token-free environment also lacks FNOX_AGE_KEY, so a postinstall that wants
-      // decrypted secrets cannot succeed here and must not take the whole job down.
       run: `set -euo pipefail
 rm -rf node_modules
-bun install --frozen-lockfile || {
+bun install --frozen-lockfile${
+        tolerateLifecycleScriptFailure
+          ? ` || {
   echo "::warning::Lifecycle scripts failed; completing the install without them"
   rm -rf node_modules
   bun install --frozen-lockfile --ignore-scripts
-}`,
+}`
+          : ''
+      }`,
     },
     {
       if: "${{ env.HAS_TAKUMI_GUARD_TOKEN == 'true' }}",
