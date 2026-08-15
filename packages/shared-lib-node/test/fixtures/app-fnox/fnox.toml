@@ -3,9 +3,13 @@ ENV = { default = "fnox-development" }
 PORT = { default = "6001" }
 NAME = { default = "app-fnox" }
 FNOX_ONLY = { default = "base-fnox" }
+# Declared by BOTH the base and the test profile with the SAME value: the forced mode must still
+# override an inherited shell value (https://github.com/WillBooster/shared/issues/1080).
+SAME_IN_PROFILE = { default = "same-value" }
 # Bare `$VAR` passes through fnox, so this exercises the reader's own expansion of loaded keys.
 REF = { default = "ref-$FNOX_ONLY" }
 
 [profiles.test.secrets]
 ENV = { default = "fnox-test" }
 PORT = { default = "6002" }
+SAME_IN_PROFILE = { default = "same-value" }

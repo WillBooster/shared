@@ -132,7 +132,7 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
   // NODE_ENV || 'development'`, see readEnvironmentVariables) so a repo keeping dev-only secrets
   // in `[profiles.development.secrets]` loads them when WB_ENV is unset instead of only the base
   // table. It additionally honors an explicit FNOX_PROFILE, because fnox honors it and `wb dotenv`
-  // without WB_ENV is documented to as well (see runFnoxExport's ignoreProfileEnvVar note).
+  // without WB_ENV is documented to as well.
   // NODE_ENV is read through the `runtimeEnv` alias, never as the `process.env.NODE_ENV` member
   // expression that the bundler inlines to 'production' (which would wrongly select production).
   const runtimeEnv = process.env;

@@ -161,25 +161,34 @@ function readFnoxEnvironmentVariables(cwd, cascade, modeFileOverridesProcessEnv)
 
   const secrets = runFnoxExport(cwd, cascade, { quiet: false });
   if (!secrets) return {};
-  // A key is profile-specific (and may override process.env off CI) when the profile export's
-  // value differs from the base export's; when the base export fails, no override is applied.
-  // The base export runs lazily, only when a process.env collision needs adjudicating.
+  // A key's value is profile-specific (and may override process.env off CI) under EITHER
+  // criterion: the `--no-defaults` export — the profile's own table without the base `[secrets]`
+  // — contains it, or its value differs from the base export's (which alone covers a base entry
+  // interpolating a profile-overridden key). Both exports run lazily, only when a process.env
+  // collision needs adjudicating, and a failing export disables its own criterion. Because the
+  // profile-only export omits the base table, fnox rejects a profile default referencing a base
+  // secret (forbidden by the repository rules); the warning names the rule.
+  let cachedProfileKeys = false;
+  const getProfileKeys = () => {
+    if (cachedProfileKeys === false) {
+      const profileSecrets = runFnoxExport(cwd, cascade, { quiet: false, profileOnly: true });
+      cachedProfileKeys = profileSecrets && new Set(Object.keys(profileSecrets));
+    }
+    return cachedProfileKeys;
+  };
   let cachedBaseSecrets = false;
-  const getBaseSecrets = () => {
+  const overridesProcessEnv = (key, value) => {
+    if (getProfileKeys()?.has(key)) return true;
     if (cachedBaseSecrets === false) {
       cachedBaseSecrets = runFnoxExport(cwd, undefined, { quiet: true, ignoreProfileEnvVar: true });
     }
-    return cachedBaseSecrets;
+    return cachedBaseSecrets !== undefined && cachedBaseSecrets[key] !== value;
   };
 
   const envVars = {};
   for (const [key, value] of Object.entries(secrets)) {
     if (typeof value !== 'string') continue;
-    if (key in process.env) {
-      const baseSecrets = modeFileOverridesProcessEnv && cascade ? getBaseSecrets() : undefined;
-      const overridesProcessEnv = baseSecrets !== undefined && baseSecrets[key] !== value;
-      if (!overridesProcessEnv) continue;
-    }
+    if (key in process.env && !(modeFileOverridesProcessEnv && cascade && overridesProcessEnv(key, value))) continue;
     envVars[key] = value;
   }
   return envVars;
@@ -189,15 +198,18 @@ function runFnoxExport(cwd, cascade, options) {
   // `--if-missing error`: fnox otherwise exits 0 and silently omits secrets it fails to resolve.
   // `--non-interactive`: prompts or browser auth flows would hang forever because stdin is ignored.
   const args = ['export', '--format', 'json', '--no-color', '--if-missing', 'error', '--non-interactive'];
-  const env = { ...process.env };
   if (cascade) {
     args.push('--profile', cascade);
   }
+  if (options.profileOnly) {
+    // Omit the base `[secrets]` table so the export's key set is exactly the profile's own
+    // declarations, giving per-key provenance regardless of whether the values coincide.
+    args.push('--no-defaults');
+  }
+  const env = { ...process.env };
   if (options.ignoreProfileEnvVar) {
-    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must
-    // read the BASE secrets, so the inherited profile selection is cleared for it — and only for
-    // it. A PRIMARY export still honors FNOX_PROFILE: it either stays profile-less (fnox reads the
-    // variable) or folds it into the `--profile` it passes (see wb dotenv's cascade).
+    // Without `--profile`, fnox falls back to FNOX_PROFILE; the base-adjudication export must read
+    // the BASE secrets, so the inherited profile selection is cleared for it — and only for it.
     delete env.FNOX_PROFILE;
   }
   const result = childProcess.spawnSync('fnox', args, {
@@ -207,9 +219,15 @@ function runFnoxExport(cwd, cascade, options) {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   if (result.error || result.status !== 0 || !result.stdout?.trim()) {
+    // The profile-only export reports what its failure costs plus its likeliest cause, and always
+    // quotes fnox's own error because other causes (e.g. a fnox too old for `--no-defaults`) look
+    // identical from here.
     if (!options.quiet) {
+      const reason = result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`;
       console.warn(
-        `Failed to read fnox secrets: ${result.error?.message || result.stderr?.trim() || `fnox exited with status ${result.status}`}`
+        options.profileOnly
+          ? `Failed to read the "${cascade}" fnox profile's own secrets, so its values equal to the base values do not override the inherited environment variables. Make the defaults in [profiles.${cascade}.secrets] independent of the base [secrets] table. ${reason}`
+          : `Failed to read fnox secrets: ${reason}`
       );
     }
     return;

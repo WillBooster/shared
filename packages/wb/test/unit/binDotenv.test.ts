@@ -131,6 +131,77 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
+  it.runIf(isFnoxAvailable())('overrides an inherited value with a profile key repeating the base value', async () => {
+    // The forced mode must win over the parent shell for every key the profile itself declares,
+    // including one whose value coincides with the base value
+    // (https://github.com/WillBooster/shared/issues/1080).
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nPORT = { default = "3000" }\n\n[profiles.test.secrets]\nPORT = { default = "3000" }\n'
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
+      }
+    );
+    expect(result.stdout).toBe('3000\n');
+    expect(result.status).toBe(0);
+  });
+
+  it.runIf(isFnoxAvailable())('overrides an inherited value derived from a profile-overridden key', async () => {
+    // DATABASE_URL is declared only in the base table, so it is absent from the profile's own
+    // declarations, yet the profile's DB_HOST makes its exported value profile-specific: the value
+    // comparison must keep covering that shape (https://github.com/WillBooster/shared/issues/930).
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nDB_HOST = { default = "localhost" }\nDATABASE_URL = { default = "postgres://${DB_HOST}/app" }\n\n[profiles.test.secrets]\nDB_HOST = { default = "test-db" }\n'
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$DATABASE_URL"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, WB_ENV: 'test', DATABASE_URL: 'postgres://localhost/dev' },
+      }
+    );
+    expect(result.stdout).toBe('postgres://test-db/app\n');
+    expect(result.status).toBe(0);
+  });
+
+  it.runIf(isFnoxAvailable())('warns when a profile default references a base secret', async () => {
+    // Such a reference is forbidden (docs/expected-repository-rules.md) because it makes the
+    // profile-only export fail, leaving only the value comparison: a profile value equal to the
+    // base value silently stops overriding, so the lost precision must be reported.
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nHOST = { default = "example.com" }\nPORT = { default = "3000" }\n\n[profiles.test.secrets]\nPORT = { default = "6002" }\nURL = { default = "https://${HOST}/x" }\n'
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
+      }
+    );
+    expect(result.stderr).toContain('[profiles.test.secrets]');
+    // The value comparison still overrides PORT, whose profile value differs from the base one.
+    expect(result.stdout).toBe('6002\n');
+    expect(result.status).toBe(0);
+  });
+
   it.runIf(isFnoxAvailable())(
     'rejects an env source whose WB_ENV disagrees with the default development cascade',
     async () => {
