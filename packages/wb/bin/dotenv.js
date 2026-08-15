@@ -162,13 +162,19 @@ function readFnoxEnvironmentVariables(cwd, cascade, modeFileOverridesProcessEnv)
   const secrets = runFnoxExport(cwd, cascade, { quiet: false });
   if (!secrets) return {};
   // A key is profile-declared (and may override process.env off CI) when the `--no-defaults`
-  // export — the profile's own table without the base `[secrets]` — contains it; when that export
-  // fails, no override is applied. It runs lazily, only when a process.env collision needs
-  // adjudicating.
+  // export — the profile's own table without the base `[secrets]` — contains it. It runs lazily,
+  // only when a process.env collision needs adjudicating. Because that export omits the base
+  // table, fnox rejects a profile default referencing a base secret (forbidden by the repository
+  // rules); no override is applied then, and the warning names the rule.
   let cachedProfileKeys = false;
   const getProfileKeys = () => {
     if (cachedProfileKeys === false) {
       const profileSecrets = runFnoxExport(cwd, cascade, { quiet: true, profileOnly: true });
+      if (!profileSecrets) {
+        console.warn(
+          `Failed to read the "${cascade}" fnox profile's own secrets, so its values do not override the inherited environment variables. Make the defaults in [profiles.${cascade}.secrets] independent of the base [secrets] table.`
+        );
+      }
       cachedProfileKeys = profileSecrets && new Set(Object.keys(profileSecrets));
     }
     return cachedProfileKeys;

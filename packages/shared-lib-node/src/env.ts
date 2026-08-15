@@ -228,14 +228,22 @@ export function readFnoxEnvironmentVariables(
   // like `.env.<mode>` values do, while base `[secrets]` values keep losing to process.env.
   // `--no-defaults` omits the base `[secrets]` table, so its key set IS the profile's own
   // declarations — a profile entry repeating the base value still overrides (cf.
-  // https://github.com/WillBooster/shared/issues/1080). When that export fails, no override is
-  // applied (conservative). It runs LAZILY, only when a process.env collision actually needs
-  // adjudicating — it would otherwise add a subprocess (including age decryption) to every
-  // forced-mode invocation for nothing.
+  // https://github.com/WillBooster/shared/issues/1080). It runs LAZILY, only when a process.env
+  // collision actually needs adjudicating — it would otherwise add a subprocess (including age
+  // decryption) to every forced-mode invocation for nothing.
+  // The omitted base table also makes fnox reject a profile default REFERENCING a base secret
+  // (`URL = { default = "https://${HOST}/x" }`), which the repository rules therefore forbid; no
+  // override is applied when the export fails, and the warning names that rule because the loss
+  // would otherwise be invisible.
   let cachedProfileKeys: Set<string> | undefined | false = false;
   const getProfileKeys = (): Set<string> | undefined => {
     if (cachedProfileKeys === false) {
       const profileSecrets = runFnoxExport(cwd, cascade, { quiet: true, profileOnly: true });
+      if (!profileSecrets) {
+        console.warn(
+          `Failed to read the "${cascade}" fnox profile's own secrets, so its values do not override the inherited environment variables. Make the defaults in [profiles.${cascade}.secrets] independent of the base [secrets] table.`
+        );
+      }
       cachedProfileKeys = profileSecrets && new Set(Object.keys(profileSecrets));
     }
     return cachedProfileKeys;

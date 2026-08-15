@@ -154,6 +154,30 @@ describe('bin/index.js dotenv fast path', () => {
     expect(result.status).toBe(0);
   });
 
+  it.runIf(isFnoxAvailable())('warns when a profile default references a base secret', async () => {
+    // Such a reference is forbidden (docs/expected-repository-rules.md) because it makes the
+    // profile-only export fail, which silently disables the forced-mode override: the loss must be
+    // reported instead.
+    await fs.mkdir(path.join(projectDirPath, '.git'), { recursive: true });
+    await fs.writeFile(
+      path.join(projectDirPath, 'fnox.toml'),
+      '[secrets]\nHOST = { default = "example.com" }\nPORT = { default = "3000" }\n\n[profiles.test.secrets]\nPORT = { default = "6002" }\nURL = { default = "https://${HOST}/x" }\n'
+    );
+
+    const result = childProcess.spawnSync(
+      process.execPath,
+      [binIndexPath, 'dotenv', '--', 'sh', '-c', 'echo "$PORT"'],
+      {
+        cwd: projectDirPath,
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, WB_ENV: 'test', PORT: '9999' },
+      }
+    );
+    expect(result.stderr).toContain('[profiles.test.secrets]');
+    expect(result.stdout).toBe('9999\n');
+    expect(result.status).toBe(0);
+  });
+
   it.runIf(isFnoxAvailable())(
     'rejects an env source whose WB_ENV disagrees with the default development cascade',
     async () => {
