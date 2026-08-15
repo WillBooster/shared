@@ -269,9 +269,11 @@ test('hardens every install with the Takumi Guard proxy without exposing the tok
       const steps = job?.steps ?? [];
       const installStep = steps.find((step) => step.name === 'Install dependencies');
       expect(installStep?.env?.TAKUMI_GUARD_TOKEN).toBe('${{ secrets.TAKUMI_GUARD_TOKEN }}');
-      expect(installStep?.run).toContain('bun install --ignore-scripts');
+      expect(installStep?.run).toContain('bun install --frozen-lockfile --ignore-scripts');
+      // A missing bun.lock would otherwise install fresh, unpinned resolutions silently.
+      expect(installStep?.run).toContain('bun.lock is missing');
       // Without the secret the very same step still installs normally.
-      expect(installStep?.run).toContain('bun install\nfi');
+      expect(installStep?.run).toContain('bun install --frozen-lockfile\nfi');
 
       // The replay runs the lifecycle scripts, so it must not carry the token.
       const replayStep = steps.find(
