@@ -16,12 +16,17 @@ vi.mock('../../src/utils/process.js', () => ({
 const AUTO_PORT_RANGE_START = 20_000;
 const AUTO_PORT_RANGE_END_EXCLUSIVE = 32_768;
 
-// A real directory is required because ensurePort publishes the resolved URL under `<dirPath>/.wb`.
+// A real directory is required because ensurePort publishes the resolved URL under `<rootDirPath>/.wb`.
 const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-port-selection-test-'));
 afterAll(() => fs.rmSync(dirPath, { force: true, recursive: true }));
 
 function createFakeProject(env: Record<string, string | undefined> = {}): Project {
-  return { name: 'wb-port-selection-test', dirPath, env: { WB_ENV: 'test', ...env } } as unknown as Project;
+  return {
+    name: 'wb-port-selection-test',
+    dirPath,
+    rootDirPath: dirPath,
+    env: { WB_ENV: 'test', ...env },
+  } as unknown as Project;
 }
 
 async function occupyPort(port: number): Promise<Server> {
@@ -90,7 +95,7 @@ describe('ensurePort', () => {
 
   it('keeps wrapped fallback probes inside the range at the top edge', async () => {
     // `pkg-3620` in the test environment hashes to the range's last port, 32767.
-    const project = { name: 'pkg-3620', dirPath, env: { WB_ENV: 'test' } } as unknown as Project;
+    const project = { name: 'pkg-3620', dirPath, rootDirPath: dirPath, env: { WB_ENV: 'test' } } as unknown as Project;
     expect(computePreferredPort(project)).toBe(32_767);
     const server = await occupyPort(32_767);
     try {
