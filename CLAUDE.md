@@ -33,6 +33,7 @@
 - Design modules and directories with high cohesion and low coupling; split large modules when needed.
 - Place calling functions above the functions they call (top-down order); place variable and type declarations above their usage.
 - Write comments and JSDoc only for hard-to-understand code: explain "why" in comments and "what" in JSDoc.
+- Never explain the behavior of WillBooster's in-house tools (e.g., `wb`, `wbfy`) in comments at their usage sites; developers already know their specifications, so document them only inside the tool's own package.
 - If lint errors or warnings cannot be fixed, use ignore comments with reasons (e.g., `// oxlint-disable-next-line <rule> -- <reason>`).
 - Prefer `undefined` over `null` unless required by APIs or libraries.
 - Build prompts as a single template literal instead of `join()` on a pre-computable array of strings.
