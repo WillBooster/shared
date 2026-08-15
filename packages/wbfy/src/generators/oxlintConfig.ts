@@ -80,19 +80,20 @@ ${managedConfigBlocks.getBlock('export', 'export default oxlintResolvedConfig;')
 `;
 }
 
+/**
+ * The config body: `structuredClone` keeps a package-local copy so repositories can add settings
+ * outside managed blocks without mutating the shared imported config object, and the root config
+ * forces the type-aware options on so no customization can silently disable type checking. Deleting
+ * them in a non-root config does not disable type checking, since the lint commands pass
+ * `--type-aware` and `--type-check` explicitly.
+ */
 function getResolvedConfigContent(baseConfigName: string, isRootConfig: boolean): string {
   if (isRootConfig) {
-    return `// Keep a package-local copy so repositories can add settings outside
-// managed blocks without mutating the shared imported config object.
-const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
-// The type-aware options make lint perform type checking. Always force them on here,
-// inside the managed block, so no customization can silently disable type checking.
+    return `const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
 oxlintResolvedConfig.options = { ...oxlintResolvedConfig.options, typeAware: true, typeCheck: true };`;
   }
 
-  return `// Oxlint rejects the root-only type-aware options outside the root config, so delete them
-// here. This does NOT disable type checking: the lint commands pass the --type-aware and
-// --type-check flags explicitly.
+  return `// Oxlint rejects the root-only type-aware options outside the root config.
 const oxlintResolvedConfig: OxlintConfig = structuredClone(${baseConfigName});
 delete oxlintResolvedConfig.options;`;
 }

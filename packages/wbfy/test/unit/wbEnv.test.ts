@@ -80,39 +80,18 @@ test('is idempotent and leaves already-defined values untouched', () => {
   expect(secondPass).toBe(customized);
 });
 
-test('does not duplicate the explanatory comment when only NEXT_PUBLIC_WB_ENV is inserted later', () => {
-  const wbEnvOnly = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '';
-  const withNextPublic = insertWbEnvIntoFnoxToml(wbEnvOnly, true) ?? '';
-  const commentCount = withNextPublic.split('# CI sets WB_ENV').length - 1;
-  expect(commentCount).toBe(1);
-  const settings = parse(withNextPublic) as FnoxSubtree;
-  expect(settings.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'development' });
-});
+test('inserts no explanatory comment and removes the one written by earlier wbfy versions', () => {
+  const inserted = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '';
+  expect(inserted).not.toContain('# CI sets WB_ENV');
 
-test('rewrites the outdated precedence comment written by earlier wbfy versions', () => {
-  const withOutdatedComment = (insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '').replace(
-    /# CI sets WB_ENV.*$/mu,
-    '# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally.'
+  const withLegacyComment = inserted.replace(
+    '[secrets]\n',
+    '[secrets]\n# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally.\n'
   );
-  const migrated = insertWbEnvIntoFnoxToml(withOutdatedComment, false) ?? '';
-  expect(migrated).not.toContain('these defaults only fill it locally');
-  expect(migrated).toContain('bare fnox run/export uses the fnox value, so pass -P <profile>');
-  expect(migrated.split('# CI sets WB_ENV').length - 1).toBe(1);
-  // The migration is a pure rewrite: values stay untouched and a second pass is a no-op.
-  expect(parse(migrated)).toEqual(parse(withOutdatedComment));
-  expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
-});
-
-test('rewrites the outdated precedence comment variant without a trailing period', () => {
-  // Some repositories (e.g. agentic-workflows-dashboard) still carry a period-less variant.
-  const withOutdatedVariant = (insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '').replace(
-    /# CI sets WB_ENV.*$/mu,
-    '# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally'
-  );
-  const migrated = insertWbEnvIntoFnoxToml(withOutdatedVariant, false) ?? '';
-  expect(migrated).not.toContain('these defaults only fill it locally');
-  expect(migrated).toContain('bare fnox run/export uses the fnox value, so pass -P <profile>');
-  expect(migrated.split('# CI sets WB_ENV').length - 1).toBe(1);
+  const migrated = insertWbEnvIntoFnoxToml(withLegacyComment, false) ?? '';
+  expect(migrated).not.toContain('# CI sets WB_ENV');
+  // The migration is a pure comment removal: values stay untouched and a second pass is a no-op.
+  expect(parse(migrated)).toEqual(parse(withLegacyComment));
   expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
 });
 

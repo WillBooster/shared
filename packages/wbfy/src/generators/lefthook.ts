@@ -57,6 +57,8 @@ const baseSettings: Omit<LefthookSettings, 'pre-commit'> = {
   },
 };
 
+// Lefthook expands {staged_files} as shell-escaped args, so the generated scripts may pass it
+// unquoted (paths with spaces stay intact).
 const preCommitSettings: LefthookSettings['pre-commit'] = {
   jobs: [
     {
@@ -70,7 +72,6 @@ const preCommitSettings: LefthookSettings['pre-commit'] = {
       glob: '**/migration.sql',
       run: `
 failed=0
-# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 for file in {staged_files}; do
   if grep -q 'Warnings:' "$file"; then
     echo "Migration SQL file ($file) contains warnings! Please solve the warnings and commit again."
@@ -95,24 +96,23 @@ exit "$failed"
       // Staging a DELETION of bun.lock leaves no file for inspection, so Lefthook skips this job
       // rather than passing a missing path to the loop (verified); the rewrite therefore cannot
       // resurrect a deleted lockfile as an empty file.
+      // `set -e` keeps a partially written temp file from replacing the lockfile. A sibling temp
+      // file makes the replacement an atomic same-directory rename, and `cp -p` gives it the
+      // lockfile's original mode (mktemp alone creates 0600, and git tracks only the executable
+      // bit, so that would change silently). The name must stay unpredictable and be created by
+      // mktemp: a repository-committed symlink at a fixed sibling path would otherwise be followed
+      // by `cp` and the redirection, and the `mv` would then turn bun.lock into that symlink.
+      // The sed pattern is anchored to `", ` so only a registry entry's `resolved` slot is cleared:
+      // a DIRECT tarball dependency carries the same host in the workspace descriptor and the
+      // package tuple's first element, which must survive.
       name: 'normalize-bun-lockfile',
       glob: 'bun.lock',
       run: `
-# Abort on any failure: a partially written temp file must never replace the lockfile.
 set -e
-# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 for file in {staged_files}; do
-  # A sibling temp file makes the replacement an atomic same-directory rename, and \`cp -p\` gives
-  # it the lockfile's original mode (mktemp alone creates 0600, and git tracks only the executable
-  # bit, so that would change silently). The name must stay unpredictable and be created by
-  # mktemp: a repository-committed symlink at a fixed sibling path would otherwise be followed by
-  # \`cp\` and the redirection, and the \`mv\` would then turn bun.lock into that symlink.
   normalized="$(mktemp "$file.wbfy-normalizing.XXXXXX")"
   trap 'rm -f "$normalized"' EXIT
   cp -p "$file" "$normalized"
-  # Anchored to \`", \` so only a registry entry's \`resolved\` slot is cleared (mirroring
-  # reusable-workflows and wb's normalizeBunLockfile): a DIRECT tarball dependency carries the same
-  # host in the workspace descriptor and the package tuple's first element, which must survive.
   sed -E 's#(", )"https://npm\\.flatt\\.tech/[^"]*"#\\1""#g' "$file" > "$normalized"
   if ! cmp -s "$file" "$normalized"; then
     mv "$normalized" "$file"
@@ -257,23 +257,16 @@ function getCleanupGlobs(config: PackageConfig): string {
 
 function getCleanupCommand(config: PackageConfig): string {
   if (hasLocalWbWorkspace(config)) {
-    return String.raw`
-# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
-bun run --cwd packages/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}
-`.trim();
+    return String.raw`bun run --cwd packages/wb start --working-dir "$(git rev-parse --show-toplevel)" lint --fix --format -- {staged_files}`;
   }
   // Python-only Bun repos install wb for shared scripts but not Oxlint, so
   // staged-file hooks must use the language-specific formatter path below.
   const canUseWbForStagedFiles = doesContainJsOrTs(config) || doesContainJava(config);
   if (canUseWbForStagedFiles) {
-    return `
-# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
-bun wb lint --fix --format -- {staged_files}
-`.trim();
+    return 'bun wb lint --fix --format -- {staged_files}';
   }
 
   return String.raw`
-# Lefthook expands {staged_files} as shell-escaped args, so paths with spaces stay intact.
 package_json_files="$(printf '%s\n' {staged_files} | grep -E '(^|/)package\.json$' || true)"
 ${hasPythonPackageManager(config) ? String.raw`python_files="$(printf '%s\n' {staged_files} | grep -E '\.py$' || true)"` : ''}
 ${config.doesContainPubspecYaml ? String.raw`dart_files="$(printf '%s\n' {staged_files} | grep -E '\.dart$' | grep -v 'generated' | grep -v '\.freezed\.dart$' | grep -v '\.g\.dart$' || true)"` : ''}

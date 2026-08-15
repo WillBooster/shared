@@ -70,9 +70,7 @@ const newContent = (existingContent: string | undefined, useGlobalStore: boolean
   // Turbopack rejects global-store symlinks because they resolve outside its filesystem root.
   // Keeping Next.js installs project-local avoids widening that root to $HOME (or `/` in Docker),
   // which would expand development filesystem watching and bypass the boundary's cache benefits.
-  const globalStoreLine = useGlobalStore
-    ? 'globalStore = true'
-    : '# Keep Turbopack dependencies inside the project root.\nglobalStore = false';
+  const globalStoreLine = `globalStore = ${useGlobalStore}`;
   // No `[run] bun = true`: its node->bun PATH shim leaks into every child process and breaks
   // tools requiring real Node.js (Playwright, wrangler, vinext); any existing setting is dropped.
   // publicHoistPattern — tsx: build-ts under Node.js spawns `node --import tsx`, which resolves

@@ -67,16 +67,11 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
     return undefined;
   }
 
-  const wbEnvComment =
-    '# CI sets WB_ENV as a process env var, which wins over fnox when loaded through wb; bare fnox run/export uses the fnox value, so pass -P <profile>.';
-  // Earlier wbfy versions wrote a comment overstating the precedence (bare `fnox run/export` lets
-  // the fnox value win over an inherited process env var), in several wording variants (with or
-  // without a trailing period); rewrite any of them in place so target repositories converge on
-  // the corrected wording instead of keeping the stale claim forever.
-  const outdatedWbEnvCommentPattern =
-    /^# CI sets WB_ENV as a process env var, which wins over fnox;(?! when loaded through wb).*$/mu;
+  // Earlier wbfy versions explained wb's WB_ENV precedence here, in several wording variants; drop
+  // any of them so target repositories converge on a comment-free section.
+  const previousWbEnvCommentPattern = /^# CI sets WB_ENV as a process env var[^\n]*\n/mu;
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
-  let updatedContent = content.replace(outdatedWbEnvCommentPattern, wbEnvComment);
+  let updatedContent = content.replace(previousWbEnvCommentPattern, '');
   for (const mode of wbEnvModes) {
     // The staging mode is optional: complete it only when the repository already declares the profile.
     if (mode === 'staging' && !settings.profiles?.staging) continue;
@@ -91,13 +86,10 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
       .filter((keyName) => definedKeys?.[keyName] === undefined)
       .map((keyName) => `${keyName} = { default = "${mode}" }`);
     if (missingLines.length === 0) continue;
-    // Skip the comment when a previous run already wrote it (e.g. WB_ENV exists and only
-    // NEXT_PUBLIC_WB_ENV is inserted now); re-inserting would duplicate it on every such run.
-    const includesComment = mode === 'development' && !updatedContent.includes(wbEnvComment);
     updatedContent = insertIntoFnoxSection(
       updatedContent,
       mode === 'development' ? 'secrets' : `profiles.${mode}.secrets`,
-      includesComment ? [wbEnvComment, ...missingLines] : missingLines
+      missingLines
     );
   }
   if (updatedContent === content) return content;
