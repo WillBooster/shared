@@ -34,7 +34,6 @@ export interface PackageConfig {
   isRailway: boolean;
   isEsmPackage: boolean;
   isWillBoosterConfigs: boolean;
-  // dependency information
   /** Directories containing Cargo.toml (relative to dirPath, root-most first). Empty if the repo has no Rust code. */
   cargoTomlDirPaths: string[];
   doesContainSubPackageJsons: boolean;
@@ -54,7 +53,6 @@ export interface PackageConfig {
   doesContainTauriConfigInPackages: boolean;
   doesContainTemplateYaml: boolean;
   doesContainVscodeSettingsJson: boolean;
-  // source code files
   doesContainJavaScript: boolean;
   doesContainTypeScript: boolean;
   doesContainJsxOrTsx: boolean;
@@ -248,7 +246,6 @@ export async function getPackageConfig(
       // do nothing
     }
 
-    // Read wbfy.json
     const wbfyJsonPath = path.resolve(dirPath, 'wbfy.json');
     let wbfyJson: WbfyJson | undefined;
     try {

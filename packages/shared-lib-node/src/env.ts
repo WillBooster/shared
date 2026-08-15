@@ -456,7 +456,6 @@ export function readAndApplyEnvironmentVariables(
  * This function removes environment variables related to npm and yarn from the given environment variables.
  * */
 export function removeNpmAndYarnEnvironmentVariables(envVars: Record<string, string | undefined>): void {
-  // Remove npm & yarn environment variables from process.env
   if (envVars.PATH && envVars.BERRY_BIN_FOLDER) {
     envVars.PATH = envVars.PATH.replace(`${envVars.BERRY_BIN_FOLDER}:`, '')
       // Temporary directory in macOS

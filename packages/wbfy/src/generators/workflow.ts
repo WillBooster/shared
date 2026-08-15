@@ -366,7 +366,6 @@ async function writeWorkflowYaml(
     newSettings = merge.all([newSettings, oldSettings, newSettings], { arrayMerge: combineMerge }) as Workflow;
   }
 
-  // Skip a broken workflow
   if (!('jobs' in newSettings)) return;
 
   if (kind === 'test-rust') {
@@ -391,7 +390,6 @@ async function writeWorkflowYaml(
         'cancel-in-progress': false,
       },
     };
-    // Move jobs to the bottom
     moveToBottom(newSettings, 'jobs');
     if (newSettings.on?.push) {
       newSettings.on.push['paths-ignore'] = [
@@ -444,7 +442,6 @@ async function writeWorkflowYaml(
       } else if (newSettings.on?.push && config.release.branches.length > 0) {
         newSettings.on.push.branches = config.release.branches;
       } else {
-        // Don't use the release workflow if release branch is not specified
         await fsUtil.removeConfined(filePath);
         return;
       }
@@ -468,7 +465,6 @@ async function writeWorkflowYaml(
       }
       break;
     }
-    // No default
   }
   await writeYaml(newSettings, filePath);
 
@@ -1101,7 +1097,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
   if (secrets) {
     if (Object.keys(secrets).length > 0) {
-      // Move secrets prop after with prop
       const newSecrets = sortKeys(secrets);
       delete job.secrets;
       job.secrets = newSecrets;

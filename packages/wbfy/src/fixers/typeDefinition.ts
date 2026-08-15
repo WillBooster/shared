@@ -33,20 +33,17 @@ export async function fixTypeDefinitions(
 
       if (dirent.isFile() && hasTypeDeclarationExtension) {
         if (hasLibrary) {
-          // Move @types/<name>/index.d.ts if installed
           await fs.mkdir(path.join(libTypeDirPath, dirName), { recursive: true });
           await promisePool.run(() =>
             fs.rename(path.join(libTypeDirPath, dirent.name), path.join(libTypeDirPath, dirName, 'index.d.ts'))
           );
         } else if (srcTypeDirPath) {
-          // Move src/types/<name> if not installed
           await fs.mkdir(srcTypeDirPath, { recursive: true });
           await promisePool.run(() =>
             fs.rename(path.join(libTypeDirPath, dirent.name), path.join(srcTypeDirPath, dirent.name))
           );
         }
       } else if (dirent.isDirectory() && srcTypeDirPath && !hasLibrary) {
-        // Move src/types/<name>.d.ts if not installed
         await fs.mkdir(srcTypeDirPath, { recursive: true });
         await promisePool.run(() =>
           ignoreEnoentAsync(() =>
