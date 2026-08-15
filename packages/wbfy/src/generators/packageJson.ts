@@ -79,6 +79,7 @@ export async function generatePackageJson(
   rootConfig: PackageConfig,
   skipAddingDeps: boolean
 ): Promise<void> {
+  assertWbCliReplacementsArePublished(config.packageJson);
   return logger.functionIgnoringException('generatePackageJson', async () => {
     await core(config, rootConfig, skipAddingDeps);
   });
@@ -153,23 +154,31 @@ function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJso
 }
 
 function removeWbCliReplacementDependencies(jsonObj: WritablePackageJson): void {
-  const removableDependencies = wbCliReplacementDependencies.filter(
-    (dependency) => jsonObj.devDependencies[dependency] && !doesPackageScriptUseCommand(jsonObj.scripts, dependency)
-  );
+  for (const dependency of getRemovableWbCliReplacementDependencies(jsonObj)) {
+    Reflect.deleteProperty(jsonObj.devDependencies, dependency);
+  }
+}
+
+function assertWbCliReplacementsArePublished(jsonObj: PackageJson | undefined): void {
+  if (!jsonObj) return;
+  const removableDependencies = getRemovableWbCliReplacementDependencies(jsonObj);
   if (removableDependencies.length === 0) return;
 
   // wbfy and wb release independently. Refuse to prune the standalone binaries until npm serves
   // the wb implementation, or a wbfy release can generate commands that its managed wb cannot run.
   const publishedWbVersion = getLatestDependencyVersion(wbDependency);
-  if (semver.lt(publishedWbVersion, wbCliReplacementMinVersion)) {
+  if (!semver.valid(publishedWbVersion) || semver.lt(publishedWbVersion, wbCliReplacementMinVersion)) {
     throw new Error(
-      `${wbDependency} ${wbCliReplacementMinVersion} must be published before removing ${removableDependencies.join(', ')}`
+      `${wbDependency} >=${wbCliReplacementMinVersion} must be available from npm before removing ${removableDependencies.join(', ')} (resolved ${publishedWbVersion})`
     );
   }
+}
 
-  for (const dependency of removableDependencies) {
-    Reflect.deleteProperty(jsonObj.devDependencies, dependency);
-  }
+function getRemovableWbCliReplacementDependencies(jsonObj: PackageJson): string[] {
+  return wbCliReplacementDependencies.filter(
+    (dependency) =>
+      jsonObj.devDependencies?.[dependency] && !doesPackageScriptUseCommand(jsonObj.scripts ?? {}, dependency)
+  );
 }
 
 function doesPackageScriptUseCommand(scripts: PackageJson.Scripts, command: string): boolean {
