@@ -6,6 +6,7 @@ import type { ArgumentsCamelCase, Argv, CommandModule } from 'yargs';
 
 import { getRunScriptArgs } from '../../bin/runArgs.js';
 import { findSelfProject, readAndMergeEnvironmentVariables, type Project } from '../project.js';
+import { applyLocalServerUrl } from '../utils/localServerUrl.js';
 import { usesBunRuntime } from '../utils/runtime.js';
 import { runCommandWithEnvironment } from './dotenv.js';
 
@@ -32,6 +33,12 @@ export const runCommand: CommandModule = {
       console.info(`Would run: ${command.join(' ')}`);
       return;
     }
+    // A script run here CONSUMES the app, so the URL of a locally running server is exactly what
+    // it cannot compute: an auto-selected port is a FREE one, never the port that server holds.
+    // Resolved AFTER the dry-run return, which must touch nothing, and never in `wb dotenv`: that
+    // is also the low-level runner wb wraps SERVER-STARTING commands in, which must keep resolving
+    // their own port.
+    await applyLocalServerUrl(cwd, env);
     await runCommandWithEnvironment(command, 'wb run <script> [args...]', {
       cwd,
       env,
