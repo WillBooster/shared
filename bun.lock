@@ -38,7 +38,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.6",
+        "build-ts": "21.0.7",
         "oxfmt": "0.62.0",
         "oxlint": "1.77.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -60,7 +60,7 @@
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
         "blitz": "3.0.2",
-        "build-ts": "21.0.6",
+        "build-ts": "21.0.7",
         "oxfmt": "0.62.0",
         "oxlint": "1.77.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -81,7 +81,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.6",
+        "build-ts": "21.0.7",
         "next": "16.3.0",
         "oxfmt": "0.62.0",
         "oxlint": "1.77.0",
@@ -111,7 +111,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.6",
+        "build-ts": "21.0.7",
         "oxfmt": "0.62.0",
         "oxlint": "1.77.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -145,7 +145,7 @@
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
         "babel-loader": "10.1.1",
-        "build-ts": "21.0.6",
+        "build-ts": "21.0.7",
         "oxfmt": "0.62.0",
         "oxlint": "1.77.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -192,7 +192,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "at-decorators": "7.1.2",
-        "build-ts": "21.0.6",
+        "build-ts": "21.0.7",
         "oxfmt": "0.62.0",
         "oxlint": "1.77.0",
         "oxlint-tsgolint": "7.0.2001",
@@ -238,7 +238,7 @@
         "@willbooster/oxfmt-config": "1.2.2",
         "@willbooster/oxlint-config": "1.4.8",
         "@willbooster/wb": "workspace:*",
-        "build-ts": "21.0.6",
+        "build-ts": "21.0.7",
         "lefthook": "2.1.10",
         "oxfmt": "0.62.0",
         "oxlint": "1.77.0",
@@ -1503,7 +1503,7 @@
 
     "buffer-xor": ["buffer-xor@1.0.3", "", {}, "sha512-571s0T7nZWK6vB67HI5dyUF7wXiNcfaPPPTl6zYCNApANjIvYJTg7hlud/+cJpdAhS7dVzqMLmfhfHR3rAcOjQ=="],
 
-    "build-ts": ["build-ts@21.0.6", "", { "dependencies": { "@babel/core": "8.0.1", "@babel/plugin-proposal-decorators": "8.0.2", "@babel/plugin-transform-explicit-resource-management": "8.0.1", "@babel/preset-env": "8.0.2", "@babel/preset-react": "8.0.1", "@babel/preset-typescript": "8.0.1", "@willbooster/shared-lib-node": "13.2.0", "magic-string": "1.1.0", "oxc-parser": "0.143.0", "rolldown": "1.2.3", "signal-exit": "4.1.0", "tsx": "4.23.11", "typescript": "7.0.2", "yargs": "18.1.0" }, "bin": { "build-ts": "bin/index.js" } }, "sha512-w/fOoATQG+Hylpt7SpxFmg4eP0rMPBXHrV9z6MTGts/FgqPXAKRAYiAUt3fbTYjraMq7el/98bcjYTBdmR7SjA=="],
+    "build-ts": ["build-ts@21.0.7", "", { "dependencies": { "@babel/core": "8.0.1", "@babel/plugin-proposal-decorators": "8.0.2", "@babel/plugin-transform-explicit-resource-management": "8.0.1", "@babel/preset-env": "8.0.2", "@babel/preset-react": "8.0.1", "@babel/preset-typescript": "8.0.1", "@willbooster/shared-lib-node": "13.2.1", "magic-string": "1.1.0", "oxc-parser": "0.143.0", "rolldown": "1.2.3", "signal-exit": "4.1.0", "tsx": "4.23.11", "typescript": "7.0.2", "yargs": "18.1.0" }, "bin": { "build-ts": "bin/index.js" } }, "sha512-349ZzdulRwZrnfjvBL29hYGZuF9eUzJFsNcpN2ntQiwfZrCS0SMh6VUmwbKnVQYgyH/TdTkjDtgKGU9PtQAwXg=="],
 
     "builtin-status-codes": ["builtin-status-codes@3.0.0", "", {}, "sha512-HpGFw18DgFWlncDfjTa2rcQ4W88O1mC8e8yZ2AvQY5KDaktSTwo+KRf6nHK6FRI5FyRyb/5T6+TSxfP7QyGsmQ=="],
 
@@ -3883,7 +3883,7 @@
 
     "boxen/type-fest": ["type-fest@2.19.0", "", {}, "sha512-RAH822pAdBgcNMAfWnCBU3CFZcfZ/i1eZjwFU/dsLKumyuuP3niueg2UAukXYF0E2AAoc82ZSSf9J0WQBinzHA=="],
 
-    "build-ts/@willbooster/shared-lib-node": ["@willbooster/shared-lib-node@13.2.0", "", { "dependencies": { "@types/yargs": "17.0.35", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3" } }, "sha512-serQVCZV+pwLtOMao2WZ11WLGSYZ4NfNSLmV53UzJeW23je18LRy0huWz1Td7PaolV/n1fZjy4JFJcxa7afgcA=="],
+    "build-ts/@willbooster/shared-lib-node": ["@willbooster/shared-lib-node@13.2.1", "", { "dependencies": { "@types/yargs": "17.0.35", "dotenv-expand": "13.0.0", "fast-glob": "3.3.3" } }, "sha512-z2CYOVDQdajp2dofcD+lGfB94SbEsp6cTECjno5B4Gk+5KCOZx3IdT4qnFUwkSt+sLAh0qc0IIJVl/b0wplWcw=="],
 
     "bun-types/@types/node": ["@types/node@26.1.2", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg=="],
 
