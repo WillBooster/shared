@@ -56,9 +56,10 @@ export async function restoreTursoDatabase({
   }
 }
 
-function getTursoDumpUrl(databaseUrl: string): URL {
-  const url = new URL(databaseUrl);
-  if (url.protocol === 'libsql:' || url.protocol === 'turso:') url.protocol = 'https:';
+export function getTursoDumpUrl(databaseUrl: string): URL {
+  // The WHATWG URL spec silently ignores assigning `protocol` across the special/non-special
+  // scheme boundary (e.g. libsql: -> https:), so the scheme must be rewritten textually.
+  const url = new URL(databaseUrl.replace(/^(?:libsql|turso):/u, 'https:'));
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     throw new Error(`Unsupported Turso database URL protocol: ${url.protocol}`);
   }
