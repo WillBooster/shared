@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { isTursoDatabaseUrl, restoreTursoDatabase } from '../../src/scripts/tursoRestore.js';
+import { getTursoDumpUrl, isTursoDatabaseUrl, restoreTursoDatabase } from '../../src/scripts/tursoRestore.js';
 
 const temporaryPaths: string[] = [];
 const servers: http.Server[] = [];
@@ -26,6 +26,18 @@ describe('isTursoDatabaseUrl', () => {
     expect(isTursoDatabaseUrl('turso://database.example.com')).toBe(true);
     expect(isTursoDatabaseUrl('file:./db.sqlite3')).toBe(false);
     expect(isTursoDatabaseUrl('postgresql://database.example.com/app')).toBe(false);
+  });
+});
+
+describe('getTursoDumpUrl', () => {
+  it('converts Turso schemes to https and appends /dump', () => {
+    expect(getTursoDumpUrl('libsql://database.example.com').href).toBe('https://database.example.com/dump');
+    expect(getTursoDumpUrl('turso://database.example.com/').href).toBe('https://database.example.com/dump');
+    expect(getTursoDumpUrl('http://127.0.0.1:8080?token=x#frag').href).toBe('http://127.0.0.1:8080/dump');
+  });
+
+  it('rejects non-Turso protocols', () => {
+    expect(() => getTursoDumpUrl('postgresql://database.example.com/app')).toThrow('Unsupported');
   });
 });
 
