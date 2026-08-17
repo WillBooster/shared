@@ -1030,8 +1030,11 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   }
   // reusable-workflows replaced the NPM_TOKEN secret declaration with VERDACCIO_TOKEN; GitHub
   // rejects passing an undeclared secret to a reusable workflow with a startup_failure that emits
-  // no check runs, so a leftover NPM_TOKEN silently disables every calling workflow.
-  if (secrets && calledReusableWorkflow) {
+  // no check runs, so a leftover NPM_TOKEN silently disables every calling workflow. The @main
+  // release workflow re-declares NPM_TOKEN (optional) for registry.npmjs.org token publishes
+  // (e.g. first publishes of napi platform packages, which npm trusted publishing cannot
+  // create), so a release caller's mapping is a deliberate configuration and stays.
+  if (secrets && calledReusableWorkflow && calledReusableWorkflow !== 'release') {
     delete secrets.NPM_TOKEN;
   }
 
