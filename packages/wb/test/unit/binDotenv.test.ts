@@ -309,16 +309,17 @@ describe('bin/index.js run command', () => {
     }
   );
 
-  it('distinguishes a global option value named run from the run command', async () => {
+  it('distinguishes a global option value named like a command from the run command', async () => {
     await fs.writeFile(path.join(projectDirPath, 'probe.js'), "console.log('executed');\n");
 
     const result = childProcess.spawnSync(
       process.execPath,
-      [binIndexPath, '--working-dir', projectDirPath, '--quiet-env', '--cascade-env', 'run', 'run', 'probe.js'],
+      // "test" is both a wb command name and a standard mode: the option must consume it as its
+      // value, leaving the following "run" as the command.
+      [binIndexPath, '--working-dir', projectDirPath, '--quiet-env', '--cascade-env', 'test', 'run', 'probe.js'],
       {
         encoding: 'utf8',
-        // An explicit --cascade-env becomes WB_ENV, and "run" is deliberately non-standard here.
-        env: { PATH: process.env.PATH, WB_SKIP_ENV_CHECK: '1' },
+        env: { PATH: process.env.PATH },
       }
     );
     expect(result.stderr).toBe('');
