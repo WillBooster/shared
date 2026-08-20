@@ -38,7 +38,7 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
+    tools.bun = pinLatestBunVersion(tools.bun, resolveLatestBunVersion(config.dirPath, currentBunVersion));
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = pinConcreteToolVersion(
         'fnox',
@@ -53,33 +53,47 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
 }
 
 /**
- * The generated bunfig.toml relies on `globalStore` (Bun >= 1.3.14) and `publicHoistPattern`
- * (Bun >= 1.3.1); older Bun versions silently ignore them and install a different layout from the
- * one wbfy validated. mise resolves `latest` and range selectors such as "1.2" or `prefix:1.2` to
- * the newest locally INSTALLED matching version — not the newest release — so only an exact pin
- * at or above the minimum proves the floor. Selectors that cannot prove it are replaced with the
- * Bun version running wbfy (which the startup guard proved meets the floor) rather than the
- * frozen minimum, so repositories keep tracking the current toolchain. The runtime pin is
- * independent of @types/bun: that package is age-gated like every other third-party dependency, so
- * it can sit behind the pinned runtime until the minimum-release-age window elapses. Handles
- * mise's string, array, and `{ version = "…" }` tool forms.
+ * Replaces every Bun version that is not an exact pin at or above `latestBunVersion` with it, so
+ * repositories track the current Bun: Renovate does not manage mise.toml pins, so a pin left
+ * behind (e.g. 1.3.14 once 1.4.0 is out) never self-heals. Only an exact pin is kept because mise
+ * resolves `latest` and range selectors such as "1.3" or `prefix:1.3` to the newest locally
+ * INSTALLED matching version — not the newest release — so nothing else proves which Bun CI
+ * installs, nor that it understands every option in the generated bunfig.toml (`globalStore`
+ * needs Bun >= 1.3.14, `publicHoistPattern` >= 1.3.1). A pin AHEAD of the resolved version is
+ * kept: it is a machine whose mise release-age gate still hides that Bun, not an outdated
+ * repository. The runtime pin is independent of @types/bun: that package is age-gated like every
+ * other third-party dependency, so it can sit behind the pinned runtime until the
+ * minimum-release-age window elapses. Handles mise's string, array, and `{ version = "…" }` tool
+ * forms.
  */
-function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string): unknown {
-  if (typeof bunVersion === 'string') {
-    const range = bunVersion.startsWith('prefix:') ? bunVersion.slice('prefix:'.length) : bunVersion;
-    // Unverifiable selectors ("latest", "ref:…", "path:…", aliases) cannot prove the floor either.
-    const lowestResolvableVersion = semver.validRange(range) && semver.minVersion(range);
-    return lowestResolvableVersion && semver.gte(lowestResolvableVersion, minimumBunVersion)
-      ? bunVersion
-      : currentBunVersion;
-  }
+function pinLatestBunVersion(bunVersion: unknown, latestBunVersion: string): unknown {
   if (Array.isArray(bunVersion)) {
-    return [...new Set(bunVersion.map((version) => liftOutdatedBunVersion(version, currentBunVersion)))];
+    return [...new Set(bunVersion.map((version) => pinLatestBunVersion(version, latestBunVersion)))];
   }
   if (bunVersion && typeof bunVersion === 'object' && 'version' in bunVersion) {
-    return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version, currentBunVersion) };
+    return { ...bunVersion, version: pinLatestBunVersion(bunVersion.version, latestBunVersion) };
   }
-  return bunVersion;
+  return typeof bunVersion === 'string' && semver.valid(bunVersion) && semver.gte(bunVersion, latestBunVersion)
+    ? bunVersion
+    : latestBunVersion;
+}
+
+/**
+ * The newest Bun of the running Bun's major that mise resolves, falling back to the running Bun
+ * itself — which the startup guard proved meets minimumBunVersion, so the pin never drops below
+ * the floor even when mise is unavailable (e.g. offline) or resolves nothing. `mise latest`
+ * honours the machine's minimum-release-age gate, so a freshly published Bun reaches repositories
+ * only once that window elapses. Staying within the major keeps a future Bun 2 from being pushed
+ * to every repository before anyone runs it: upgrading the Bun that runs wbfy is what propagates
+ * a new major.
+ */
+function resolveLatestBunVersion(cwd: string, currentBunVersion: string): string {
+  const latestVersion = spawnSyncAndReturnStdout('mise', ['latest', 'bun'], cwd);
+  return semver.valid(latestVersion) &&
+    semver.major(latestVersion) === semver.major(currentBunVersion) &&
+    semver.gt(latestVersion, currentBunVersion)
+    ? latestVersion
+    : currentBunVersion;
 }
 
 /**
