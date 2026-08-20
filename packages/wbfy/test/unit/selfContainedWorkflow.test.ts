@@ -195,8 +195,14 @@ test('generates release and deploy workflows for wb-deploy scripts and semantic-
     const release = await fs.readFile(path.join(workflowsPath, 'release.yml'), 'utf8');
     expect(release).toContain('semantic-release');
     expect(release).toContain('gh workflow run deploy-production.yml');
-    const releaseWorkflow = yaml.load(release) as { on: { push: { branches: string[] } } };
+    const releaseWorkflow = yaml.load(release) as {
+      on: { push: { branches: string[] } };
+      jobs: { release: { env: Record<string, string> } };
+    };
     expect(releaseWorkflow.on.push.branches).toEqual(['release']);
+    // A release job names no environment, so wb's CI guard must be skipped; otherwise a
+    // `postinstall` that calls wb exits 1 and the release never reaches semantic-release.
+    expect(releaseWorkflow.jobs.release.env.WB_SKIP_ENV_CHECK).toBe('1');
   });
 });
 
