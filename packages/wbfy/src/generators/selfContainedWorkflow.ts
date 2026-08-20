@@ -304,13 +304,11 @@ function buildReleaseWorkflow(
     jobs: {
       release: {
         'runs-on': 'ubuntu-latest',
-        // WB_SKIP_ENV_CHECK: the test and deploy jobs name their environment via WB_ENV, but a
-        // release job has none — semantic-release only reads git history and publishes. Without
-        // this, `wb`'s CI guard (see wb's completeAndValidateWbEnv) exits 1 in every fnox-using
-        // repository whose postinstall calls wb (e.g. `postinstall: wb gen-code`), and since
-        // buildInstallSteps(false) deliberately does not tolerate a failing lifecycle replay,
-        // the whole release fails before semantic-release runs.
-        env: { WB_SKIP_ENV_CHECK: '1', ...guardJobEnv },
+        // Releases build production artifacts, hence the environment — the same default as the
+        // reusable release workflow. wb's CI guard also requires an exported WB_ENV, so without
+        // it a `postinstall` that calls wb (e.g. `wb gen-code`) exits 1 before semantic-release
+        // runs.
+        env: { WB_ENV: 'production', ...guardJobEnv },
         steps: [
           // fetch-depth 0: semantic-release reads the full history to compute the next version.
           { uses: checkoutAction, with: { 'fetch-depth': 0 } },

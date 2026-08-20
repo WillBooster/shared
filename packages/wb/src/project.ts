@@ -180,12 +180,10 @@ export class Project {
    *   otherwise silently select the development cascade, which is the failure this guards against.
    * - `NEXT_PUBLIC_WB_ENV` is derived from `WB_ENV` for Next.js/vinext apps when missing, so a
    *   production build can no longer bake a stale development value into the client bundle.
-   * Skipped when `WB_SKIP_ENV_CHECK=1` is set.
    */
   private completeAndValidateWbEnv(hasEnvironmentSources: boolean): void {
     const env = this.envCache;
     if (!env) return;
-    if (env.WB_SKIP_ENV_CHECK === '1' || env.WB_SKIP_ENV_CHECK === 'true') return;
 
     // On CI, WB_ENV must be EXPORTED by the workflow — checked against process.env, not the
     // merged environment: a committed base default (e.g. fnox's development entry) would
@@ -193,8 +191,7 @@ export class Project {
     if (isCI(env.CI) && !process.env.WB_ENV && hasEnvironmentSources) {
       console.error(
         chalk.red(
-          'WB_ENV is not exported on CI. Export WB_ENV explicitly (the reusable workflows pass it via the "environment" input), ' +
-            'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+          'WB_ENV is not exported on CI. Export WB_ENV explicitly (the reusable workflows pass it via the "environment" input).'
         )
       );
       process.exit(1);
@@ -215,7 +212,7 @@ export class Project {
       console.error(
         chalk.red(
           `WB_ENV must be one of development, test, staging, or production, but is "${env.WB_ENV}". ` +
-            'Fix the value in the env source or the exported variable, or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+            'Fix the value in the env source or the exported variable.'
         )
       );
       process.exit(1);
@@ -249,8 +246,7 @@ export class Project {
       console.error(
         chalk.red(
           `WB_ENV resolves to "${env.WB_ENV}" although the "${expectedMode}" environment was selected. ` +
-            `Fix the WB_ENV defined in the mode's env source (e.g. the fnox "${expectedMode}" profile), ` +
-            'or set WB_SKIP_ENV_CHECK=1 to skip this check.'
+            `Fix the WB_ENV defined in the mode's env source (e.g. the fnox "${expectedMode}" profile).`
         )
       );
       process.exit(1);

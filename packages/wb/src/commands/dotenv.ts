@@ -105,17 +105,11 @@ function getParsedDotenvArgsFromYargs(argv: ArgumentsCamelCase): ParsedDotenvArg
 }
 
 function validateStandardWbEnv(value: string | undefined, fixTarget: string): void {
-  if (
-    !value ||
-    ['development', 'test', 'staging', 'production'].includes(value) ||
-    process.env.WB_SKIP_ENV_CHECK === '1' ||
-    process.env.WB_SKIP_ENV_CHECK === 'true'
-  ) {
+  if (!value || ['development', 'test', 'staging', 'production'].includes(value)) {
     return;
   }
   console.error(
-    `WB_ENV must be one of development, test, staging, or production, but is "${value}". ` +
-      `Fix ${fixTarget}, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+    `WB_ENV must be one of development, test, staging, or production, but is "${value}". Fix ${fixTarget}.`
   );
   process.exit(1);
 }
@@ -171,10 +165,9 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
       process.env[key] = value;
     }
   }
-  // Validate only AFTER applying the sources, so a WB_SKIP_ENV_CHECK defined in an env SOURCE is
-  // honored: both the captured exported mode (it selected the profile) and the FINAL value the
-  // child will see — the fnox profile may define a broken WB_ENV (e.g. `prodcution`), and a forced
-  // mode's profile may even override a VALID exported value.
+  // Validate only AFTER applying the sources: both the captured exported mode (it selected the
+  // profile) and the FINAL value the child will see — the fnox profile may define a broken WB_ENV
+  // (e.g. `prodcution`), and a forced mode's profile may even override a VALID exported value.
   validateStandardWbEnv(mode, 'the exported variable');
   validateStandardWbEnv(process.env.WB_ENV, 'the env source or the exported variable');
   // The selected environment is what an env source silently resolving WB_ENV to a DIFFERENT value
@@ -186,13 +179,11 @@ function readAndApplyEnvironmentVariables(cwd: string): void {
   if (
     process.env.WB_ENV &&
     ['development', 'test', 'staging', 'production'].includes(expectedCascade) &&
-    process.env.WB_ENV !== expectedCascade &&
-    process.env.WB_SKIP_ENV_CHECK !== '1' &&
-    process.env.WB_SKIP_ENV_CHECK !== 'true'
+    process.env.WB_ENV !== expectedCascade
   ) {
     console.error(
       `WB_ENV resolves to "${process.env.WB_ENV}" although the "${expectedCascade}" environment was selected. ` +
-        `Fix the WB_ENV defined in the env sources, or set WB_SKIP_ENV_CHECK=1 to skip this check.`
+        `Fix the WB_ENV defined in the env sources.`
     );
     process.exit(1);
   }

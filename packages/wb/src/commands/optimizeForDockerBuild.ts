@@ -198,13 +198,10 @@ function prepareDockerBuildInputs(argv: GenDockerEnvCommandArgv, projects: { roo
       // An explicit cascade flag selects the profile just as well as an exported WB_ENV; only
       // the implicit development fallback must fail.
       !argv.cascadeEnv &&
-      !(argv.cascadeNodeEnv && processEnvView.NODE_ENV) &&
-      // Match Project.completeAndValidateWbEnv's opt-out values exactly.
-      processEnvView.WB_SKIP_ENV_CHECK !== '1' &&
-      processEnvView.WB_SKIP_ENV_CHECK !== 'true'
+      !(argv.cascadeNodeEnv && processEnvView.NODE_ENV)
     ) {
       throw new Error(
-        'WB_ENV is not exported on CI; export it before building the image so .docker.env bakes the right profile (or set WB_SKIP_ENV_CHECK=1).'
+        'WB_ENV is not exported on CI; export it before building the image so .docker.env bakes the right profile.'
       );
     }
     generateDockerEnv({ ...argv, path: undefined });

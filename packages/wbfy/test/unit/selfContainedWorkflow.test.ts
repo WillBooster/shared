@@ -200,9 +200,9 @@ test('generates release and deploy workflows for wb-deploy scripts and semantic-
       jobs: { release: { env: Record<string, string> } };
     };
     expect(releaseWorkflow.on.push.branches).toEqual(['release']);
-    // A release job names no environment, so wb's CI guard must be skipped; otherwise a
-    // `postinstall` that calls wb exits 1 and the release never reaches semantic-release.
-    expect(releaseWorkflow.jobs.release.env.WB_SKIP_ENV_CHECK).toBe('1');
+    // Releases build production artifacts, and wb's CI guard requires an exported WB_ENV;
+    // without it a `postinstall` that calls wb exits 1 before semantic-release runs.
+    expect(releaseWorkflow.jobs.release.env.WB_ENV).toBe('production');
   });
 });
 
