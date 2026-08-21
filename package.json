@@ -29,7 +29,7 @@
     "@types/glob": "9.0.0"
   },
   "devDependencies": {
-    "@anolilab/multi-semantic-release": "4.4.6",
+    "@anolilab/multi-semantic-release": "4.4.7",
     "@tsconfig/bun": "1.0.10",
     "@tsconfig/node-lts": "24.0.0",
     "@tsconfig/node-ts": "23.6.4",
