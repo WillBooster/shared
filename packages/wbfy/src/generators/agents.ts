@@ -132,6 +132,7 @@ function generateAgentInstruction(
 - Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
   - Always create new commits; avoid \`--amend\`.
+- In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.), describe only what exists in the final snapshot: never mention symbols or concepts that were added and later removed or renamed along the way, even if they mattered during the work. If you cannot confirm that an identifier or feature name you are about to write exists in the final diff or the current codebase, drop that statement.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
