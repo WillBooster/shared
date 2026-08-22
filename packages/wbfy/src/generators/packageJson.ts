@@ -474,7 +474,10 @@ async function applyPackageJsonConventions(
     delete jsonObj.scripts.prepublishOnly;
     delete jsonObj.scripts.prepack;
     delete jsonObj.scripts.postpack;
-    jsonObj.scripts.prepare = 'bun lefthook install || true';
+    // On a repository's first wbfy run, adding lefthook can invoke prepare before the parallel
+    // lefthook generator has created this script. The final lock refresh runs it after generation.
+    jsonObj.scripts.prepare =
+      'bun lefthook install || true; test ! -f .lefthook/normalize-bun-lockfile.sh || bash .lefthook/normalize-bun-lockfile.sh';
     // When @willbooster/wb is a workspace of this repository, the generated `bun wb …` scripts run
     // its gitignored dist build (bin/index.js imports ../dist/index.js), so a fresh checkout must
     // build it during install; registry installs ship a prebuilt dist and need no extra step.
