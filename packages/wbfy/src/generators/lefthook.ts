@@ -93,35 +93,9 @@ exit "$failed"
       // not depend on these URLs — with an empty `resolved`, bun derives the download URL from
       // the configured registry — so strip them. Only the Guard host is stripped: a scoped
       // registry such as Verdaccio legitimately records its own URL for private packages.
-      // Staging a DELETION of bun.lock leaves no file for inspection, so Lefthook skips this job
-      // rather than passing a missing path to the loop (verified); the rewrite therefore cannot
-      // resurrect a deleted lockfile as an empty file.
-      // `set -e` aborts on any failure so a partially written temp file never replaces the
-      // lockfile. A sibling temp file makes the replacement an atomic same-directory rename, and
-      // `cp -p` gives it the lockfile's original mode (mktemp alone creates 0600, and git tracks
-      // only the executable bit, so that would change silently). The name must stay unpredictable
-      // and be created by mktemp: a repository-committed symlink at a fixed sibling path would
-      // otherwise be followed by `cp` and the redirection, and the `mv` would then turn bun.lock
-      // into that symlink. The sed is anchored to `", ` so only a registry entry's `resolved` slot
-      // is cleared (mirroring reusable-workflows and wb's normalizeBunLockfile): a DIRECT tarball
-      // dependency carries the same host in the workspace descriptor and the package tuple's first
-      // element, which must survive.
       name: 'normalize-bun-lockfile',
       glob: 'bun.lock',
-      run: `
-set -e
-for file in {staged_files}; do
-  normalized="$(mktemp "$file.wbfy-normalizing.XXXXXX")"
-  trap 'rm -f "$normalized"' EXIT
-  cp -p "$file" "$normalized"
-  sed -E 's#(", )"https://npm\\.flatt\\.tech/[^"]*"#\\1""#g' "$file" > "$normalized"
-  if ! cmp -s "$file" "$normalized"; then
-    mv "$normalized" "$file"
-    echo "Removed Takumi Guard proxy URLs from $file so the lockfile stays registry-agnostic."
-  fi
-  rm -f "$normalized"
-done
-`.trim(),
+      run: 'bash .lefthook/normalize-bun-lockfile.sh {staged_files}',
       stage_fixed: true,
     },
     {
@@ -141,6 +115,32 @@ done
 };
 
 const scripts = {
+  // prepare calls this without arguments after Bun saves the root lockfile; Lefthook passes its
+  // staged path. The unpredictable sibling file makes replacement atomic, `cp -p` preserves its
+  // mode, and the anchored pattern cannot erase a direct tarball dependency URL.
+  normalizeBunLockfile: `
+#!/bin/bash
+set -e
+
+if [[ "$#" -eq 0 ]]; then
+  set -- bun.lock
+fi
+
+normalized=""
+trap '[[ -z "$normalized" ]] || rm -f "$normalized"' EXIT
+for file in "$@"; do
+  [[ -f "$file" ]] || continue
+  normalized="$(mktemp "$file.wbfy-normalizing.XXXXXX")"
+  cp -p "$file" "$normalized"
+  sed -E 's#(", )"https://npm\\.flatt\\.tech/[^"]*"#\\1""#g' "$file" > "$normalized"
+  if ! cmp -s "$file" "$normalized"; then
+    mv "$normalized" "$file"
+    echo "Removed Takumi Guard proxy URLs from $file so the lockfile stays registry-agnostic."
+  fi
+  rm -f "$normalized"
+  normalized=""
+done
+`.trim(),
   postMerge: `
 #!/bin/bash
 
@@ -197,6 +197,10 @@ async function core(config: PackageConfig, allConfigs: PackageConfig[]): Promise
     });
   }
   const postMergeCommand = `${scripts.postMerge}\n\n${generatePostMergeCommands(config, allConfigs).join('\n')}\n`;
+  fs.mkdirSync(dirPath, { recursive: true });
+  await fs.promises.writeFile(path.resolve(dirPath, 'normalize-bun-lockfile.sh'), scripts.normalizeBunLockfile + '\n', {
+    mode: 0o755,
+  });
   fs.mkdirSync(path.join(dirPath, 'post-merge'), { recursive: true });
   await fs.promises.writeFile(path.resolve(dirPath, 'post-merge', 'prepare.sh'), postMergeCommand, {
     mode: 0o755,

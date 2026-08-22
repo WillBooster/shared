@@ -1,3 +1,4 @@
+import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,6 +8,56 @@ import { expect, test } from 'vitest';
 import { generateLefthookUpdatingPackageJson } from '../../src/generators/lefthook.js';
 
 import { createConfig } from '../helpers/testConfig.js';
+
+test('generated lockfile normalizer removes only Guard registry resolutions', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-lefthook-'));
+  try {
+    const config = createConfig({ dirPath: tempDirPath, isRoot: true });
+    await generateLefthookUpdatingPackageJson(config);
+    const lockfilePath = path.join(tempDirPath, 'bun.lock');
+    fs.writeFileSync(
+      lockfilePath,
+      `{
+  "workspaces": {
+    "": {
+      "dependencies": {
+        "tarball": "https://npm.flatt.tech/direct.tgz"
+      }
+    }
+  },
+  "packages": {
+    "public": ["public@1.0.0", "https://npm.flatt.tech/public/-/public-1.0.0.tgz", {}],
+    "private": ["private@1.0.0", "https://verdaccio.example/private/-/private-1.0.0.tgz", {}],
+    "tarball": ["tarball@https://npm.flatt.tech/direct.tgz", {}, "sha512-a"]
+  }
+}
+`
+    );
+
+    const result = childProcess.spawnSync('bash', ['.lefthook/normalize-bun-lockfile.sh'], {
+      cwd: tempDirPath,
+      encoding: 'utf8',
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(fs.readFileSync(lockfilePath, 'utf8')).toBe(`{
+  "workspaces": {
+    "": {
+      "dependencies": {
+        "tarball": "https://npm.flatt.tech/direct.tgz"
+      }
+    }
+  },
+  "packages": {
+    "public": ["public@1.0.0", "", {}],
+    "private": ["private@1.0.0", "https://verdaccio.example/private/-/private-1.0.0.tgz", {}],
+    "tarball": ["tarball@https://npm.flatt.tech/direct.tgz", {}, "sha512-a"]
+  }
+}
+`);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
 
 test('post-merge cache clearing covers workspace frameworks with workspace-relative paths', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-lefthook-'));

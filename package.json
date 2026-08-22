@@ -17,7 +17,7 @@
     "format": "bun wb lint --format",
     "lint": "bun wb lint",
     "lint-fix": "bun wb lint --fix",
-    "prepare": "bun lefthook install || true && bun run --cwd 'packages/wb' build",
+    "prepare": "(bun lefthook install || true) && (test ! -f .lefthook/normalize-bun-lockfile.sh || bash .lefthook/normalize-bun-lockfile.sh) && bun run --cwd 'packages/wb' build",
     "release": "node scripts/prepareNpmCompatibleRelease.mjs && bun multi-semantic-release --debug",
     "test": "bun wb test",
     "test/ci": "bun wb test-on-ci",
