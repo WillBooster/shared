@@ -497,50 +497,15 @@ const runnerValueOptions = new Set([
   '--call',
 ]);
 
-// Runner options that change WHERE the command runs, so `wb`'s own `-w` (and every wrangler path)
-// resolves relative to a directory this static parser cannot recover: directory selectors
-// (`--cwd`/`-C`/`--prefix`/`--dir`) and workspace/filter selectors (`--filter`/`-F`/`--workspace`/
-// `--workspaces`/`--ws`, which run inside the selected workspace). Their presence makes the
-// worker-directory resolution unsound, so scaffolding is declined rather than guessed.
-const contextChangingRunnerOptions = new Set([
-  '--cwd',
-  '-C',
-  '--prefix',
-  '--dir',
-  '--filter',
-  '-F',
-  '--workspace',
-  '-w',
-  '--workspaces',
-  '--ws',
-]);
-
-/**
- * Advance past a runner's `-`-prefixed options, consuming a separate value token where one applies.
- * `sawContextChange` reports whether any option relocates the execution directory/package (see
- * contextChangingRunnerOptions), so the caller can decline scaffolding it cannot resolve correctly.
- */
-// Short context-changing options whose value may be attached (`-Cdir`, `-Fpkg`, `-wpackages/api`).
-const shortContextChangingRunnerOptions = ['-C', '-F', '-w'];
-
-function skipRunnerOptions(tokens: string[], startIndex: number): { index: number; sawContextChange: boolean } {
+/** Advance past a runner's options, consuming a separate value token where one applies. */
+function skipRunnerOptions(tokens: string[], startIndex: number): number {
   let index = startIndex;
-  let sawContextChange = false;
   while (index < tokens.length && (tokens[index] ?? '').startsWith('-')) {
     const option = tokens[index] ?? '';
-    const bareOption = option.includes('=') ? option.slice(0, option.indexOf('=')) : option;
-    // Detect both the exact form (`-C`, `--filter`, `--filter=x`) and a short option with its value
-    // attached (`-Cdir`) — the latter would otherwise slip past the set lookup and mis-resolve.
-    if (
-      contextChangingRunnerOptions.has(bareOption) ||
-      (!option.startsWith('--') && shortContextChangingRunnerOptions.some((short) => option.startsWith(short)))
-    ) {
-      sawContextChange = true;
-    }
     index++;
     if (!option.includes('=') && runnerValueOptions.has(option) && index < tokens.length) index++;
   }
-  return { index, sawContextChange };
+  return index;
 }
 
 /**
@@ -559,8 +524,7 @@ function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredo
   let quote: string | undefined;
   // Whether the script uses any heredoc. Faithfully classifying which body lines are data (the
   // delimiter word can be quoted/backslash-escaped, `<<-` strips leading tabs, terminators match
-  // exactly) is more than this parser models, so a heredoc anywhere makes the caller decline
-  // scaffolding instead of risking either reading a body line as a command or hiding a real one.
+  // exactly) is more than this parser models, so a heredoc anywhere makes detection return false.
   let sawHeredoc = false;
   // Heredoc delimiters whose bodies begin at the NEXT newline: `cat <<A <<B` queues A then B, and
   // the commands AFTER the `<<` header on the same line still execute, so the header is recorded
@@ -693,36 +657,32 @@ function tokenizeShellCommand(script: string): { segments: string[][]; sawHeredo
 }
 
 /**
- * The wb argument tokens of a `wb … deploy` invocation (everything after `wb`, so BOTH the global
- * options that precede `deploy` and the arguments that follow it), or undefined when no segment
- * runs `wb deploy` at command position. Env assignments, package runners, and global yargs options
- * (with their value tokens) may precede the deploy command; shell quoting/escaping/comments/
- * grouping are honored. Returning both sides lets the worker-directory resolver read `-w` wherever
- * it appears, since wb declares it globally.
+ * Whether a deploy script invokes `wb … deploy` at command position. Env assignments, package
+ * runners, and global yargs options (with their value tokens) may precede the deploy command;
+ * shell quoting, escaping, comments, and grouping are honored.
  */
-function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string>): string[] | undefined {
+export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
   const { segments, sawHeredoc } = tokenizeShellCommand(deployScript);
-  // A heredoc makes body-vs-command classification unreliable (see tokenizeShellCommand); decline.
-  if (sawHeredoc) return undefined;
+  // A heredoc makes body-vs-command classification unreliable (see tokenizeShellCommand).
+  if (sawHeredoc) return false;
   for (const tokens of segments) {
     let index = 0;
     while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/u.test(tokens[index] ?? '')) index++;
     // Leading launchers run the following command: `env` (with options + KEY=value assignments)
     // and the POSIX `command` builtin (with its `-p`/`-v`/`-V` options). Command-position shell
     // reserved words and other launchers (`if`/`then`/`for`/`time`/`exec`/`!`/brace groups, …) are
-    // NOT modeled: they leave a non-`wb` first token, so the segment simply does not match and
-    // scaffolding is declined — a deliberate false-negative (safe for guidance) over guessing.
+    // NOT modeled: they leave a non-`wb` first token, so the segment simply does not match. This is
+    // a deliberate false-negative for generated guidance.
     if (tokens[index] === 'env') {
       index++;
       while (index < tokens.length) {
         const token = tokens[index] ?? '';
         if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token)) index++;
-        // env's `-C`/`--chdir` relocates the working directory, so `wb`'s `-w` and wrangler paths
-        // resolve from a directory this parser cannot recover: decline rather than mis-resolve.
-        // The value may be attached (`-Cdir`, `--chdir=dir`).
-        else if (token === '-C' || token.startsWith('-C') || token === '--chdir' || token.startsWith('--chdir=')) {
-          return undefined;
-        } else if (token === '-u') index += 2;
+        // env's directory value may be separate or attached (`-Cdir`, `--chdir=dir`). It changes
+        // where wb runs but not whether the command invokes wb deploy.
+        else if (token === '-C' || token === '--chdir') index += 2;
+        else if (token.startsWith('-C') || token.startsWith('--chdir=')) index++;
+        else if (token === '-u') index += 2;
         else if (token.startsWith('-')) index++;
         else break;
       }
@@ -743,23 +703,13 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
       }
     }
     if (index < 0) continue;
-    // A `cd`/`pushd`/`popd` at command position (`cd packages/api && wb deploy`, or wrapped in
-    // `command`/`env`) changes the directory the later `wb deploy` resolves `-w` and wrangler paths
-    // from, which this per-segment parser cannot recover, so decline. Checked AFTER unwrapping the
-    // launchers so `command cd …` is caught too.
-    if (['cd', 'pushd', 'popd'].includes(tokens[index] ?? '')) return undefined;
     // Resolve a runner prefix to whether the following token is a BINARY (the wb executable) or a
     // package SCRIPT name. `bunx`/`npx` and `<pm> x|dlx|exec` run a binary; `<pm> run|run-script`
     // (and bare `npm <name>`, or any runner followed by `--`) run a package script — so
     // `npm run wb deploy` executes the script named `wb`, not the wb binary, and must be rejected.
     if (['npm', 'pnpm', 'yarn', 'bun'].includes(tokens[index] ?? '')) {
       const runner = tokens[index] ?? '';
-      const runnerScan = skipRunnerOptions(tokens, index + 1);
-      // A context-changing runner option (directory or workspace/filter selector) moves where
-      // `wb -w` resolves, which this parser cannot recover, so decline rather than scaffold a wrong
-      // target (e.g. `pnpm --filter api exec wb deploy` runs inside the selected workspace).
-      if (runnerScan.sawContextChange) return undefined;
-      index = runnerScan.index;
+      index = skipRunnerOptions(tokens, index + 1);
       const subcommand = tokens[index] ?? '';
       if (['run', 'run-script'].includes(subcommand)) continue; // runs a package script, not wb
       // Executor subcommands are runner-SPECIFIC: bun reserves only `x` (`bun dlx`/`bun exec` run a
@@ -775,13 +725,11 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
         continue; // bare `npm wb` never runs a binary
       } else if (tokens[index] === 'wb' && scriptNames.has('wb')) {
         // Bare `bun/pnpm/yarn wb` runs a package SCRIPT named `wb` when one exists (passing `deploy`
-        // as its argument), not the wb binary, so decline rather than mis-scaffold.
+        // as its argument), not the wb binary.
         continue;
       }
     } else if (['bunx', 'npx'].includes(tokens[index] ?? '')) {
-      const runnerScan = skipRunnerOptions(tokens, index + 1);
-      if (runnerScan.sawContextChange) return undefined;
-      index = runnerScan.index;
+      index = skipRunnerOptions(tokens, index + 1);
     }
     if (tokens[index] !== 'wb') continue;
     const wbArgs = tokens.slice(index + 1);
@@ -796,14 +744,9 @@ function parseWbDeployArgs(deployScript: string, scriptNames: ReadonlySet<string
       if (wbGlobalValueOptions.has(flag) && commandIndex < wbArgs.length) commandIndex++;
     }
     if (wbArgs[commandIndex] !== 'deploy') continue;
-    return wbArgs;
+    return true;
   }
-  return undefined;
-}
-
-/** Whether a deploy script invokes `wb … deploy` at command position. */
-export function invokesWbDeploy(deployScript: string, scriptNames: ReadonlySet<string>): boolean {
-  return parseWbDeployArgs(deployScript, scriptNames) !== undefined;
+  return false;
 }
 
 /**
