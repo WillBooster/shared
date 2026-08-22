@@ -8,6 +8,26 @@ import { fsUtil } from '../../src/utils/fsUtil.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
 
+test('uses the repository directory name before the first package.json is generated', async () => {
+  const tempRootPath = path.join(process.cwd(), '.tmp');
+  await fs.promises.mkdir(tempRootPath, { recursive: true });
+  const dirPath = await fs.promises.mkdtemp(path.join(tempRootPath, 'docs-only-project-'));
+
+  try {
+    fsUtil.setRootDirPath(dirPath);
+    const config = createConfig({ dirPath, isRoot: true, doesContainPackageJson: false, packageJson: {} });
+    await generateAgentInstructions(config, [config]);
+    await promisePool.promiseAll();
+
+    const content = await fs.promises.readFile(path.join(dirPath, 'AGENTS.md'), 'utf8');
+    expect(content).toContain(`- Name: \`${path.basename(dirPath)}\``);
+    expect(content).not.toContain('- Name: `unknown`');
+  } finally {
+    fsUtil.setRootDirPath(undefined);
+    await fs.promises.rm(dirPath, { force: true, recursive: true });
+  }
+});
+
 test('describes wb deploy only when the package script invokes it', async () => {
   const tempRootPath = path.join(process.cwd(), '.tmp');
   await fs.promises.mkdir(tempRootPath, { recursive: true });

@@ -830,11 +830,18 @@ test('keeps a plain monorepo root private', async () => {
 });
 
 test('creates the managed manifest for a repository without package.json', async () => {
-  const packageJson = await generatePackageJsonFrom({}, { isRoot: true }, { omitInitialPackageJson: true });
+  const packageJson = await generatePackageJsonFrom(
+    {},
+    { isRoot: true, doesContainPackageJson: false },
+    { omitInitialPackageJson: true, skipAddingDeps: false }
+  );
 
   expect(packageJson.name).toBeDefined();
   expect(packageJson.license).toBe('UNLICENSED');
   expect(packageJson.scripts?.cleanup).toBe('bun wb lint --fix --format');
+  expect(packageJson.devDependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+$/u);
+  expect(packageJson.devDependencies?.lefthook).toMatch(/^\d+\.\d+\.\d+$/u);
+  expect(packageJson.devDependencies?.['sort-package-json']).toMatch(/^\d+\.\d+\.\d+$/u);
 });
 
 // @semantic-release/npm silently skips private packages, so forcing `private: true` on a

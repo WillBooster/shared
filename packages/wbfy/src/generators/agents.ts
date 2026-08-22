@@ -109,10 +109,11 @@ function generateAgentInstruction(
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
     ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`.`
     : '';
+  const projectName = rootConfig.packageJson?.name || path.basename(path.resolve(rootConfig.dirPath));
   const baseContent = `
 ## Project Information
 
-- Name: \`${rootConfig.packageJson?.name || 'unknown'}\`${description ? `\n- Description: ${description}` : ''}
+- Name: \`${projectName}\`${description ? `\n- Description: ${description}` : ''}
 - Package Manager: ${packageManager}
 
 ## General Instructions

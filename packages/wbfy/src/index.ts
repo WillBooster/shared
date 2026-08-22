@@ -309,7 +309,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       !shouldRunWorkflows &&
       !isReusableWorkflowsRepo(rootConfig.repository) &&
       !!rootConfig.repository?.startsWith('github:') &&
-      rootConfig.doesContainPackageJson &&
       rootConfig.isRoot;
     await Promise.all([
       abbreviationPromise.then(() => generateReadme(rootConfig)),
@@ -369,7 +368,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
 
       promises.push(generateLintstagedrc(config));
-      if (config.doesContainVscodeSettingsJson && config.doesContainPackageJson) {
+      if (config.doesContainVscodeSettingsJson && (config.doesContainPackageJson || config.isRoot)) {
         promises.push(generateVscodeSettings(config));
       }
       if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {

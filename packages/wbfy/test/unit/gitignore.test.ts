@@ -29,3 +29,22 @@ test('keeps maven and python ignore entries in multi-language repositories', asy
     fs.rmSync(tempDirPath, { force: true, recursive: true });
   }
 });
+
+test('ignores node_modules when the root manifest will be created during this run', async () => {
+  const tempDirPath = await fs.promises.realpath(fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-gitignore-')));
+  try {
+    const config = createConfig({
+      dirPath: tempDirPath,
+      isRoot: true,
+      doesContainPackageJson: false,
+      packageJson: {},
+    });
+    await generateGitignore(config, config);
+    await promisePool.promiseAll();
+
+    const content = fs.readFileSync(path.join(tempDirPath, '.gitignore'), 'utf8');
+    expect(content).toMatch(/^node_modules\/$/mu);
+  } finally {
+    fs.rmSync(tempDirPath, { force: true, recursive: true });
+  }
+});

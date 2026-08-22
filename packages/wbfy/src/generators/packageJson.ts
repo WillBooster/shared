@@ -91,6 +91,10 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (workerTypesScriptError) throw new Error(workerTypesScriptError);
   const filePath = path.resolve(config.dirPath, 'package.json');
   const jsonObj = await readPackageJson(filePath);
+  // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
+  // dependency versions into the new manifest directly; the final repository-wide `bun install`
+  // then installs them and remains the authoritative failure check.
+  const skipDependencyInstall = skipAddingDeps || !config.doesContainPackageJson;
 
   await updateScripts(config, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
@@ -100,7 +104,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   removeWbCliReplacementDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
-  addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipAddingDeps);
+  addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipDependencyInstall);
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
@@ -114,7 +118,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   // below: `bun add` follows the symlink and would modify the file outside the repository.
   if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
 
-  if (!skipAddingDeps) {
+  if (!skipDependencyInstall) {
     installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
     formatPackageJsonWithProjectFormatter(config, filePath);
   }
