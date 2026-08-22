@@ -155,7 +155,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     !force && versionLabel && !versionLabel.endsWith('-dirty-local') ? versionLabel : undefined;
 
   let hasInvalidPackageConfig = false;
-  for (const rootDirPath of paths) {
+  for (const inputDirPath of paths) {
+    // Normalize once at the CLI boundary. Generators use dirPath for cwd and basename decisions;
+    // leaving the supported default `.` unresolved would generate an invalid package name of `.`.
+    const rootDirPath = path.resolve(inputDirPath);
     // Confine every generated file to this repository (see fsUtil.generateFile). Set BEFORE any
     // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
     fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
@@ -285,7 +288,13 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // The layout must be verified installable BEFORE any `bun add` mutates package.json files:
     // per-package installs tolerate failures (spawnSync discards their status), so a layout that
     // cannot install would silently drop every managed dependency update for the rest of the run.
-    if (!skipDeps && !probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore)) {
+    // A docs-only repository has no manifest to probe on its first run; generatePackageJson below
+    // creates it before the authoritative refreshBunLock check.
+    if (
+      !skipDeps &&
+      rootConfig.doesContainPackageJson &&
+      !probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore)
+    ) {
       // refreshBunLock below is the authority on whether the final install failed.
       console.warn(`bun install currently fails in ${rootDirPath} under the isolated linker.`);
     }
@@ -303,7 +312,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       !shouldRunWorkflows &&
       !isReusableWorkflowsRepo(rootConfig.repository) &&
       !!rootConfig.repository?.startsWith('github:') &&
-      rootConfig.doesContainPackageJson &&
       rootConfig.isRoot;
     await Promise.all([
       abbreviationPromise.then(() => generateReadme(rootConfig)),
@@ -363,7 +371,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
 
       promises.push(generateLintstagedrc(config));
-      if (config.doesContainVscodeSettingsJson && config.doesContainPackageJson) {
+      if (config.doesContainVscodeSettingsJson) {
         promises.push(generateVscodeSettings(config));
       }
       if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {

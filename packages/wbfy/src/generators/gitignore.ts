@@ -59,7 +59,9 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
       headUserContent += `${path.basename(config.dirPath)}
 `;
     }
-    if (config.doesContainPackageJson) {
+    // Every accepted repository root receives a managed package.json later in the same run, so its
+    // dependency tree must be ignored even when the manifest did not exist at config-detection time.
+    if (config.doesContainPackageJson || config.isRoot) {
       names.push('node');
     }
     // Recursive detection (not just a root pom.xml): a multi-language repository keeps its Maven

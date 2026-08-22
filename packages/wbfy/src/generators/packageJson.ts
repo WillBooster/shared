@@ -91,7 +91,6 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (workerTypesScriptError) throw new Error(workerTypesScriptError);
   const filePath = path.resolve(config.dirPath, 'package.json');
   const jsonObj = await readPackageJson(filePath);
-
   await updateScripts(config, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
@@ -100,7 +99,16 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   removeWbCliReplacementDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
-  addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipAddingDeps);
+  // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
+  // dependency versions into the new manifest directly; the final repository-wide `bun install`
+  // then installs them and remains the authoritative failure check.
+  addDependencyVersionsToPackageJson(
+    config,
+    rootConfig,
+    jsonObj,
+    dependencyUpdates,
+    skipAddingDeps || !config.doesContainPackageJson
+  );
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
@@ -116,7 +124,11 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
 
   if (!skipAddingDeps) {
     installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
-    formatPackageJsonWithProjectFormatter(config, filePath);
+    // A newly created manifest is already sorted by wbfy's bundled serializer; the target formatter
+    // is available without an extra fetch only when this run started with package.json.
+    if (config.doesContainPackageJson) {
+      formatPackageJsonWithProjectFormatter(config, filePath);
+    }
   }
 }
 
@@ -127,8 +139,16 @@ function serializePackageJson(jsonObj: WritablePackageJson): string {
 }
 
 async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
-  const jsonText = await fs.promises.readFile(filePath, 'utf8');
-  const jsonObj = JSON.parse(jsonText) as PackageJson;
+  let jsonObj: PackageJson = {};
+  try {
+    const jsonText = await fs.promises.readFile(filePath, 'utf8');
+    jsonObj = JSON.parse(jsonText) as PackageJson;
+  } catch (error) {
+    // Documentation-only repositories have no manifest on their first wbfy run. Starting from an
+    // empty object lets the normal generator establish the same managed baseline as every other
+    // repository; malformed or unreadable existing manifests must still fail loudly.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   jsonObj.scripts = jsonObj.scripts ?? {};
   jsonObj.dependencies = jsonObj.dependencies ?? {};
   jsonObj.devDependencies = jsonObj.devDependencies ?? {};
@@ -1096,11 +1116,13 @@ function installDependencyUpdates(
   jsonObj: PackageJson,
   dependencyUpdates: DependencyUpdates
 ): void {
-  const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-  installNpmDependencies(config, rootConfig, dependencies, false);
+  if (config.doesContainPackageJson) {
+    const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
+    installNpmDependencies(config, rootConfig, dependencies, false);
 
-  const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-  installNpmDependencies(config, rootConfig, devDependencies, true);
+    const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
+    installNpmDependencies(config, rootConfig, devDependencies, true);
+  }
 
   const pythonPackageManager = getPythonPackageManager(config);
   if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
