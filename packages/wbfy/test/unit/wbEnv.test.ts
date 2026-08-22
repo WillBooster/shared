@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { parse } from 'smol-toml';
-import { expect, test } from 'vitest';
+import { TOML } from 'bun';
+import { expect, test } from 'bun:test';
 
 import { ensureWbEnvDefinitions, insertWbEnvIntoFnoxToml } from '../../src/generators/wbEnv.js';
 
@@ -33,7 +33,7 @@ interface FnoxSubtree {
 test('inserts WB_ENV into the base secrets and every profile of a fnox.toml', () => {
   const updated = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false);
   expect(updated).toBeDefined();
-  const settings = parse(updated ?? '') as FnoxSubtree;
+  const settings = TOML.parse(updated ?? '') as FnoxSubtree;
   expect(settings.secrets?.WB_ENV).toEqual({ default: 'development' });
   expect(settings.profiles?.test?.secrets?.WB_ENV).toEqual({ default: 'test' });
   expect(settings.profiles?.production?.secrets?.WB_ENV).toEqual({ default: 'production' });
@@ -47,7 +47,7 @@ test('inserts WB_ENV into the base secrets and every profile of a fnox.toml', ()
 test('creates missing profile sections for the standard modes', () => {
   const minimal = '[secrets]\nPORT = { default = "3000" }\n';
   const updated = insertWbEnvIntoFnoxToml(minimal, false);
-  const settings = parse(updated ?? '') as FnoxSubtree;
+  const settings = TOML.parse(updated ?? '') as FnoxSubtree;
   expect(settings.secrets?.WB_ENV).toEqual({ default: 'development' });
   expect(settings.profiles?.test?.secrets?.WB_ENV).toEqual({ default: 'test' });
   expect(settings.profiles?.production?.secrets?.WB_ENV).toEqual({ default: 'production' });
@@ -59,13 +59,13 @@ test('completes an existing staging profile', () => {
 API_KEY = { provider = "age", value = "ghi" }
 `;
   const updated = insertWbEnvIntoFnoxToml(withStaging, false);
-  const settings = parse(updated ?? '') as FnoxSubtree;
+  const settings = TOML.parse(updated ?? '') as FnoxSubtree;
   expect(settings.profiles?.staging?.secrets?.WB_ENV).toEqual({ default: 'staging' });
 });
 
 test('adds NEXT_PUBLIC_WB_ENV for Next.js/vinext repositories', () => {
   const updated = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, true);
-  const settings = parse(updated ?? '') as FnoxSubtree;
+  const settings = TOML.parse(updated ?? '') as FnoxSubtree;
   expect(settings.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'development' });
   expect(settings.profiles?.test?.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'test' });
   expect(settings.profiles?.production?.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'production' });
@@ -83,7 +83,7 @@ test('is idempotent and leaves already-defined values untouched', () => {
 test('inserts only the missing key into a section that already defines the other one', () => {
   const wbEnvOnly = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '';
   const withNextPublic = insertWbEnvIntoFnoxToml(wbEnvOnly, true) ?? '';
-  const settings = parse(withNextPublic) as FnoxSubtree;
+  const settings = TOML.parse(withNextPublic) as FnoxSubtree;
   expect(settings.secrets?.WB_ENV).toEqual({ default: 'development' });
   expect(settings.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'development' });
   // A re-inserted WB_ENV would be a duplicate key, which makes the TOML unparsable and the
@@ -102,7 +102,7 @@ test('inserts no explanatory comment and removes the one written by earlier wbfy
   const migrated = insertWbEnvIntoFnoxToml(withLegacyComment, false) ?? '';
   expect(migrated).not.toContain('# CI sets WB_ENV');
   // The migration is a pure comment removal: values stay untouched and a second pass is a no-op.
-  expect(parse(migrated)).toEqual(parse(withLegacyComment));
+  expect(TOML.parse(migrated)).toEqual(TOML.parse(withLegacyComment));
   expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
 });
 
@@ -123,7 +123,7 @@ test('ensureWbEnvDefinitions updates the root fnox.toml and skips non-fnox repos
 
     fs.writeFileSync(path.join(tempDirPath, 'fnox.toml'), fnoxTomlWithoutWbEnv);
     await ensureWbEnvDefinitions(rootConfig, [rootConfig]);
-    const settings = parse(fs.readFileSync(path.join(tempDirPath, 'fnox.toml'), 'utf8')) as FnoxSubtree;
+    const settings = TOML.parse(fs.readFileSync(path.join(tempDirPath, 'fnox.toml'), 'utf8')) as FnoxSubtree;
     expect(settings.secrets?.WB_ENV).toEqual({ default: 'development' });
     expect(settings.profiles?.production?.secrets?.WB_ENV).toEqual({ default: 'production' });
   } finally {

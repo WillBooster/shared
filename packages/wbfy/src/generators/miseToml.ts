@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import semver from 'semver';
-import { parse, stringify } from 'smol-toml';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -14,8 +13,8 @@ interface MiseToml {
   [key: string]: unknown;
 }
 
-// The oldest Bun that understands every option in the generated bunfig.toml (globalStore).
-export const minimumBunVersion = '1.3.14';
+// The oldest Bun runtime wbfy supports.
+export const minimumBunVersion = '1.4.0';
 
 /**
  * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions while
@@ -48,14 +47,15 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     }
     settings.tools = tools;
 
-    await fsUtil.generateFile(miseTomlPath, stringify(settings));
+    // @ts-expect-error -- Bun 1.4 provides TOML.stringify before the age-gated @types/bun version declares it.
+    await fsUtil.generateFile(miseTomlPath, Bun.TOML.stringify(settings));
   });
 }
 
 /**
- * The generated bunfig.toml relies on `globalStore` (Bun >= 1.3.14) and `publicHoistPattern`
- * (Bun >= 1.3.1); older Bun versions silently ignore them and install a different layout from the
- * one wbfy validated. mise resolves `latest` and range selectors such as "1.2" or `prefix:1.2` to
+ * wbfy relies on Bun 1.4 runtime APIs, and the generated bunfig.toml relies on `globalStore` and
+ * `publicHoistPattern`; older Bun versions cannot reliably run wbfy or reproduce the install layout
+ * it validated. mise resolves `latest` and range selectors such as "1.2" or `prefix:1.2` to
  * the newest locally INSTALLED matching version — not the newest release — so only an exact pin
  * at or above the minimum proves the floor. Selectors that cannot prove it are replaced with the
  * Bun version running wbfy (which the startup guard proved meets the floor) rather than the
@@ -134,5 +134,5 @@ function parseMiseToml(miseTomlPath: string): MiseToml {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
     throw error;
   }
-  return parse(content) as MiseToml;
+  return Bun.TOML.parse(content) as MiseToml;
 }

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { generateFnoxToml, hasFnoxSyncFailed } from '../../src/generators/fnoxToml.js';
 import { generateWorkflows } from '../../src/generators/workflow.js';

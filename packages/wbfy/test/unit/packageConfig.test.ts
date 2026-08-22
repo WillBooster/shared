@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { generateWorkflows } from '../../src/generators/workflow.js';
 import { getPackageConfig } from '../../src/packageConfig.js';
@@ -70,6 +70,38 @@ jobs:
     await generateWorkflows(config);
     await promisePool.promiseAll();
     expect(fs.existsSync(path.join(workflowsDirPath, 'test-rust.yml'))).toBe(false);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('preserves a Rust workflow whose duplicate jobs key hides a custom job', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    const workflowsDirPath = path.join(packageDirPath, '.github', 'workflows');
+    fs.mkdirSync(workflowsDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(packageDirPath, 'package.json'), '{}');
+    const workflowPath = path.join(workflowsDirPath, 'test-rust.yml');
+    const workflowContent = `name: Test Rust
+on: push
+jobs:
+  custom:
+    runs-on: ubuntu-latest
+    steps: []
+jobs:
+  test-rust:
+    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main
+`;
+    fs.writeFileSync(workflowPath, workflowContent);
+
+    const config = await getPackageConfig(packageDirPath);
+    if (!config) throw new Error('unreachable');
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+
+    expect(fs.readFileSync(workflowPath, 'utf8')).toBe(workflowContent);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }

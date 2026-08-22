@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'bun:test';
 
 import { generateRepositoryNpmrc } from '../../src/generators/npmrc.js';
 import type { PackageConfig } from '../../src/packageConfig.js';
@@ -29,8 +29,12 @@ describe('generateRepositoryNpmrc', () => {
       packageConfig(workspaceDirPath, repoAuthor, false),
     ]);
 
-    await expect(fs.promises.lstat(path.join(rootDirPath, '.npmrc'))).rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(fs.promises.lstat(path.join(workspaceDirPath, '.npmrc'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.promises.lstat(path.join(rootDirPath, '.npmrc')).catch((error: unknown) => error)).toMatchObject({
+      code: 'ENOENT',
+    });
+    expect(
+      await fs.promises.lstat(path.join(workspaceDirPath, '.npmrc')).catch((error: unknown) => error)
+    ).toMatchObject({ code: 'ENOENT' });
   });
 
   it.each(['WillBooster', 'WillBoosterLab'])(
@@ -55,10 +59,12 @@ describe('generateRepositoryNpmrc', () => {
         packageConfig(workspaceDirPath, repoAuthor, false),
       ]);
 
-      await expect(fs.promises.readFile(path.join(rootDirPath, '.npmrc'), 'utf8')).resolves.toBe(
+      expect(await fs.promises.readFile(path.join(rootDirPath, '.npmrc'), 'utf8')).toBe(
         '@willbooster-private:registry=https://verdaccio-production-e389.up.railway.app/\n'
       );
-      await expect(fs.promises.lstat(path.join(workspaceDirPath, '.npmrc'))).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(
+        await fs.promises.lstat(path.join(workspaceDirPath, '.npmrc')).catch((error: unknown) => error)
+      ).toMatchObject({ code: 'ENOENT' });
     }
   );
 
@@ -77,7 +83,7 @@ describe('generateRepositoryNpmrc', () => {
 
     await generateRepositoryNpmrc([packageConfig(workspaceDirPath, 'WillBooster', false)]);
 
-    await expect(fs.promises.lstat(npmrcPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.promises.lstat(npmrcPath).catch((error: unknown) => error)).toMatchObject({ code: 'ENOENT' });
   });
 
   it('preserves repository npmrc files outside the organizations', async () => {
@@ -88,7 +94,7 @@ describe('generateRepositoryNpmrc', () => {
 
     await generateRepositoryNpmrc([packageConfig(rootDirPath, 'example', true)]);
 
-    await expect(fs.promises.readFile(npmrcPath, 'utf8')).resolves.toBe('registry=https://example.test/\n');
+    expect(await fs.promises.readFile(npmrcPath, 'utf8')).toBe('registry=https://example.test/\n');
   });
 });
 

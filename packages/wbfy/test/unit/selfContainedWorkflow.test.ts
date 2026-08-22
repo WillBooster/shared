@@ -1,10 +1,9 @@
-// oxlint-disable eslint-plugin-import/no-named-as-default-member -- Namespace YAML calls make load/dump usage clearer.
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import * as yaml from 'js-yaml';
-import { expect, test } from 'vitest';
+import { YAML } from 'bun';
+import { expect, test } from 'bun:test';
 
 import {
   generateSelfContainedWorkflows,
@@ -45,7 +44,7 @@ test('generates self-contained test and semantic-pr workflows without reusable-w
     const testContent = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
     expect(testContent.startsWith(selfContainedWorkflowMarker)).toBe(true);
     expect(testContent).not.toContain('reusable-workflows');
-    const testWorkflow = yaml.load(testContent) as ParsedWorkflow;
+    const testWorkflow = YAML.parse(testContent) as ParsedWorkflow;
     const runCommands = testWorkflow.jobs.test?.steps.map((step) => step.run).filter(Boolean);
     expect(runCommands).toContain('bun run test/ci');
     // No TypeScript and no Playwright in this repository.
@@ -75,7 +74,7 @@ test('includes typecheck, Playwright caching and step-scoped FNOX_AGE_KEY when t
     await promisePool.promiseAll();
 
     const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
-    const workflow = yaml.load(content) as ParsedWorkflow;
+    const workflow = YAML.parse(content) as ParsedWorkflow;
     const steps = workflow.jobs.test?.steps ?? [];
     expect(steps.map((step) => step.run)).toContain('bun run typecheck');
     expect(steps.some((step) => step.uses?.startsWith('actions/cache@'))).toBe(true);
@@ -112,7 +111,7 @@ test('installs Playwright browsers from the declaring workspace package in a mon
     await promisePool.promiseAll();
 
     const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'test.yml'), 'utf8');
-    const workflow = yaml.load(content) as ParsedWorkflow;
+    const workflow = YAML.parse(content) as ParsedWorkflow;
     const steps = workflow.jobs.test?.steps ?? [];
     // Every declaring package gets its own browser installation (versions may differ).
     const installSteps = steps.filter((step) => step.run === 'bun playwright install --with-deps');
@@ -138,7 +137,7 @@ test('semantic-pr workflow grants the permissions the action needs', async () =>
     await promisePool.promiseAll();
 
     const content = await fs.readFile(path.join(dirPath, '.github', 'workflows', 'semantic-pr.yml'), 'utf8');
-    const workflow = yaml.load(content) as {
+    const workflow = YAML.parse(content) as {
       jobs: Record<string, { permissions?: Record<string, string> }>;
     };
     expect(workflow.jobs['semantic-pr']?.permissions).toEqual({ 'pull-requests': 'read', statuses: 'write' });
@@ -188,14 +187,14 @@ test('generates release and deploy workflows for wb-deploy scripts and semantic-
     const production = await fs.readFile(path.join(workflowsPath, 'deploy-production.yml'), 'utf8');
     expect(production).toContain('bun run deploy');
     expect(production).toContain('nick-fields/retry@');
-    const staging = yaml.load(await fs.readFile(path.join(workflowsPath, 'deploy-staging.yml'), 'utf8')) as {
+    const staging = YAML.parse(await fs.readFile(path.join(workflowsPath, 'deploy-staging.yml'), 'utf8')) as {
       on: { push?: { branches: string[] } };
     };
     expect(staging.on.push?.branches).toEqual(['main']);
     const release = await fs.readFile(path.join(workflowsPath, 'release.yml'), 'utf8');
     expect(release).toContain('semantic-release');
     expect(release).toContain('gh workflow run deploy-production.yml');
-    const releaseWorkflow = yaml.load(release) as {
+    const releaseWorkflow = YAML.parse(release) as {
       on: { push: { branches: string[] } };
       jobs: { release: { env: Record<string, string> } };
     };
@@ -219,8 +218,18 @@ test('does not generate deploy workflows for bespoke deploy scripts', async () =
     await promisePool.promiseAll();
 
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
-    await expect(fs.access(path.join(workflowsPath, 'deploy-production.yml'))).rejects.toThrow();
-    await expect(fs.access(path.join(workflowsPath, 'release.yml'))).rejects.toThrow();
+    expect(
+      await fs.access(path.join(workflowsPath, 'deploy-production.yml')).then(
+        () => true,
+        () => false
+      )
+    ).toBe(false);
+    expect(
+      await fs.access(path.join(workflowsPath, 'release.yml')).then(
+        () => true,
+        () => false
+      )
+    ).toBe(false);
   });
 });
 
@@ -267,7 +276,7 @@ test('hardens every install with the Takumi Guard proxy without exposing the tok
 
     const workflowsPath = path.join(dirPath, '.github', 'workflows');
     for (const fileName of ['test.yml', 'deploy-production.yml', 'release.yml']) {
-      const workflow = yaml.load(await fs.readFile(path.join(workflowsPath, fileName), 'utf8')) as ParsedWorkflow;
+      const workflow = YAML.parse(await fs.readFile(path.join(workflowsPath, fileName), 'utf8')) as ParsedWorkflow;
       const job = Object.values(workflow.jobs)[0];
       // The `if:` gates read the non-secret signal, and the empty token keeps the generated
       // .npmrc's ${TAKUMI_GUARD_TOKEN} reference expandable in the tokenless steps.

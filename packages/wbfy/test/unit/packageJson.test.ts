@@ -2,11 +2,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, setDefaultTimeout, test } from 'bun:test';
 import type { PackageJson } from 'type-fest';
 
 import { generatePackageJson } from '../../src/generators/packageJson.js';
 import { createConfig } from '../helpers/testConfig.js';
+
+setDefaultTimeout(60_000);
 
 interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
@@ -261,7 +263,7 @@ test('normalizes managed scripts of a Cloudflare project to wb gen-code', async 
   });
 });
 
-test.each([
+const rejectedWranglerScripts: [string, Record<string, string>, boolean?][] = [
   ['a referenced alias', { 'gen-types': 'wrangler types', build: 'bun run gen-types && vite build' }],
   ['an npm run-script alias reference', { 'gen-types': 'wrangler types', build: 'npm run-script gen-types' }],
   ['a quoted alias reference', { 'gen-types': 'wrangler types', build: 'bun run "gen-types"' }],
@@ -340,7 +342,9 @@ test.each([
     { postinstall: 'wrangler types --config packages/app/wrangler.jsonc' },
     false,
   ],
-])(
+];
+
+test.each(rejectedWranglerScripts)(
   'rejects %s instead of partially normalizing it',
   async (_description, scripts, doesContainWranglerConfig = true) => {
     const wranglerPackageJson = { devDependencies: { wrangler: '4.69.0' }, scripts };

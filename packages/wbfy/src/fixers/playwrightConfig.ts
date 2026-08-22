@@ -85,7 +85,7 @@ export async function fixPlaywrightConfig(config: PackageConfig): Promise<void> 
   if (!fs.existsSync(filePath)) return;
 
   return logger.functionIgnoringException('fixPlaywrightConfig', async () => {
-    const extractedObjectLiteral = extractDefineConfigObjectLiteral(filePath);
+    const extractedObjectLiteral = await extractDefineConfigObjectLiteral(filePath);
     if (!extractedObjectLiteral) return;
 
     const parsed = parseObjectLiteralExpression(extractedObjectLiteral.node, extractedObjectLiteral.source);
@@ -231,8 +231,8 @@ function getWbStartTestCommand(): string {
   return `'bun wb start --mode test'`;
 }
 
-function extractDefineConfigObjectLiteral(filePath: string): ExtractedObjectLiteral | undefined {
-  const source = parseSourceFile(filePath);
+async function extractDefineConfigObjectLiteral(filePath: string): Promise<ExtractedObjectLiteral | undefined> {
+  const source = await parseSourceFile(filePath);
   if (!source) return undefined;
 
   // TypeScript already understands nested object literals and template strings, so use
