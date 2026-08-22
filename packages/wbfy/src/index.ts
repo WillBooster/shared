@@ -329,8 +329,8 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       generateLintstagedrc(rootConfig),
     ]);
     await promisePool.promiseAll();
-    // After the workflow generator (and its pooled writes) so the instruction files see the
-    // deploy workflows a first run scaffolds instead of lagging one run behind.
+    // After the workflow generator (and its pooled writes) so the instruction files describe the
+    // finalized workflow files instead of lagging one run behind.
     await generateAgentInstructions(rootConfig, allPackageConfigs);
     await promisePool.promiseAll();
 
