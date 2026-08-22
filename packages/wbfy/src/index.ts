@@ -155,7 +155,10 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     !force && versionLabel && !versionLabel.endsWith('-dirty-local') ? versionLabel : undefined;
 
   let hasInvalidPackageConfig = false;
-  for (const rootDirPath of paths) {
+  for (const inputDirPath of paths) {
+    // Normalize once at the CLI boundary. Generators use dirPath for cwd and basename decisions;
+    // leaving the supported default `.` unresolved would generate an invalid package name of `.`.
+    const rootDirPath = path.resolve(inputDirPath);
     // Confine every generated file to this repository (see fsUtil.generateFile). Set BEFORE any
     // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
     fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
@@ -368,7 +371,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       }
 
       promises.push(generateLintstagedrc(config));
-      if (config.doesContainVscodeSettingsJson && (config.doesContainPackageJson || config.isRoot)) {
+      if (config.doesContainVscodeSettingsJson) {
         promises.push(generateVscodeSettings(config));
       }
       if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {

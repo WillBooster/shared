@@ -119,7 +119,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
 
   if (!skipAddingDeps) {
-    installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates, skipNpmDependencyInstall);
+    installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
     if (!skipNpmDependencyInstall) {
       formatPackageJsonWithProjectFormatter(config, filePath);
     }
@@ -1108,10 +1108,9 @@ function installDependencyUpdates(
   config: PackageConfig,
   rootConfig: PackageConfig,
   jsonObj: PackageJson,
-  dependencyUpdates: DependencyUpdates,
-  skipNpmDependencies: boolean
+  dependencyUpdates: DependencyUpdates
 ): void {
-  if (!skipNpmDependencies) {
+  if (config.doesContainPackageJson) {
     const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
     installNpmDependencies(config, rootConfig, dependencies, false);
 
