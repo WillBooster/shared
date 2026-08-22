@@ -285,7 +285,13 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // The layout must be verified installable BEFORE any `bun add` mutates package.json files:
     // per-package installs tolerate failures (spawnSync discards their status), so a layout that
     // cannot install would silently drop every managed dependency update for the rest of the run.
-    if (!skipDeps && !probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore)) {
+    // A docs-only repository has no manifest to probe on its first run; generatePackageJson below
+    // creates it before the authoritative refreshBunLock check.
+    if (
+      !skipDeps &&
+      rootConfig.doesContainPackageJson &&
+      !probeIsolatedBunInstall(rootDirPath, rootConfig, previousBunGlobalStore, useGlobalStore)
+    ) {
       // refreshBunLock below is the authority on whether the final install failed.
       console.warn(`bun install currently fails in ${rootDirPath} under the isolated linker.`);
     }

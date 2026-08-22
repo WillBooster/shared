@@ -127,8 +127,16 @@ function serializePackageJson(jsonObj: WritablePackageJson): string {
 }
 
 async function readPackageJson(filePath: string): Promise<WritablePackageJson> {
-  const jsonText = await fs.promises.readFile(filePath, 'utf8');
-  const jsonObj = JSON.parse(jsonText) as PackageJson;
+  let jsonObj: PackageJson = {};
+  try {
+    const jsonText = await fs.promises.readFile(filePath, 'utf8');
+    jsonObj = JSON.parse(jsonText) as PackageJson;
+  } catch (error) {
+    // Documentation-only repositories have no manifest on their first wbfy run. Starting from an
+    // empty object lets the normal generator establish the same managed baseline as every other
+    // repository; malformed or unreadable existing manifests must still fail loudly.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
   jsonObj.scripts = jsonObj.scripts ?? {};
   jsonObj.dependencies = jsonObj.dependencies ?? {};
   jsonObj.devDependencies = jsonObj.devDependencies ?? {};

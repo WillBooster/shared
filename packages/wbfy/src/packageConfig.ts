@@ -390,7 +390,12 @@ export async function getPackageConfig(
       config.doesContainPomXml ||
       config.doesContainPubspecYaml ||
       config.doesContainTauriConfig ||
-      config.doesContainTemplateYaml
+      config.doesContainTemplateYaml ||
+      // A repository can legitimately contain only documentation. Its Git metadata is enough to
+      // establish that the CLI target is a project root; requiring a language manifest here would
+      // make wbfy unable to create the package.json that it manages for such repositories. Both
+      // ordinary checkouts (`.git` directory) and worktrees (`.git` file) satisfy this check.
+      (config.isRoot && fs.existsSync(path.resolve(dirPath, '.git')))
     ) {
       return config;
     }

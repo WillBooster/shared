@@ -11,6 +11,8 @@ import { createConfig } from '../helpers/testConfig.js';
 interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
   devDependencies?: Record<string, string | undefined>;
+  license?: string;
+  name?: string;
   peerDependencies?: Record<string, string | undefined>;
   private?: boolean;
   publishConfig?: { access?: string; registry?: string };
@@ -827,6 +829,14 @@ test('keeps a plain monorepo root private', async () => {
   expect(packageJson.private).toBe(true);
 });
 
+test('creates the managed manifest for a repository without package.json', async () => {
+  const packageJson = await generatePackageJsonFrom({}, { isRoot: true }, { omitInitialPackageJson: true });
+
+  expect(packageJson.name).toBeDefined();
+  expect(packageJson.license).toBe('UNLICENSED');
+  expect(packageJson.scripts?.cleanup).toBe('bun wb lint --fix --format');
+});
+
 // @semantic-release/npm silently skips private packages, so forcing `private: true` on a
 // publishing monorepo root (e.g. WillBoosterLab/llm-proxy) would stop releases without any error.
 test('does not force private on a monorepo root released via @semantic-release/npm', async () => {
@@ -1111,7 +1121,12 @@ test('replaces a plain generated test script body', async () => {
 async function generatePackageJsonFrom(
   initialPackageJson: Record<string, unknown>,
   configOverrides: Parameters<typeof createConfig>[0] = {},
-  options: { createI18nDir?: boolean; files?: Record<string, string>; skipAddingDeps?: boolean } = {}
+  options: {
+    createI18nDir?: boolean;
+    files?: Record<string, string>;
+    omitInitialPackageJson?: boolean;
+    skipAddingDeps?: boolean;
+  } = {}
 ): Promise<GeneratedPackageJson> {
   const dirPath = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'wbfy-package-json-')));
   const packageJsonPath = path.join(dirPath, 'package.json');
@@ -1125,7 +1140,9 @@ async function generatePackageJsonFrom(
       await fs.mkdir(path.dirname(filePath), { recursive: true });
       await fs.writeFile(filePath, content);
     }
-    await fs.writeFile(packageJsonPath, JSON.stringify(initialPackageJson));
+    if (!options.omitInitialPackageJson) {
+      await fs.writeFile(packageJsonPath, JSON.stringify(initialPackageJson));
+    }
 
     const config = createConfig({
       packageJson: initialPackageJson as PackageJson,

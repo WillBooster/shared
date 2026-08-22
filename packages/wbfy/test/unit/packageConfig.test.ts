@@ -44,6 +44,22 @@ test('accepts Cargo-only Tauri projects without a package.json', async () => {
   }
 });
 
+test('accepts a documentation-only Git repository without a package.json', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    fs.mkdirSync(path.join(tempDirPath, '.git'));
+    fs.writeFileSync(path.join(tempDirPath, 'README.md'), '# Documentation\n');
+
+    const config = await getPackageConfig(tempDirPath);
+
+    expect(config).toBeDefined();
+    expect(config?.isRoot).toBe(true);
+    expect(config?.doesContainPackageJson).toBe(false);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('removes a generated Rust workflow based only on a cached Cargo project', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {
