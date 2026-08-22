@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import JSON5 from 'json5';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -231,7 +230,7 @@ async function readContentIfPossible(filePath: string): Promise<string | undefin
 function parseRenovateConfig(isEditableSyntax: boolean, content: string): Settings | undefined {
   if (isEditableSyntax) return jsoncUtil.parseObjectIgnoringError<Settings>(content);
   try {
-    const value: unknown = JSON5.parse(content);
+    const value: unknown = Bun.JSON5.parse(content);
     return !!value && typeof value === 'object' && !Array.isArray(value) ? (value as Settings) : undefined;
   } catch {
     return undefined;

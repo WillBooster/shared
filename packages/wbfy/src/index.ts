@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import { ignoreError, ignoreErrorAsync } from '@willbooster/shared-lib/src';
 import { normalizeBunLockfile } from '@willbooster/shared-lib-node/src';
-import semver from 'semver';
 import yargs from 'yargs';
 
 import { fixNextConfigJson } from './fixers/nextConfig.js';
@@ -53,7 +52,7 @@ import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
-import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
 import { getWbfyVersion, getWbfyVersionLabel } from './utils/version.js';
 import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
@@ -105,7 +104,7 @@ async function main(): Promise<void> {
   options.isVerbose = argv.verbose;
 
   // Deliberately before the Bun check in willboosterifyPaths(): the gate must be appliable on a
-  // machine whose Bun is missing or outdated, which is exactly a machine that still needs gating.
+  // machine whose Bun is outdated, which is exactly a machine that still needs gating.
   if (argv._[0] === applyReleaseAgeGateCommand) {
     if (!ensureGlobalReleaseAgeGates()) process.exitCode = 1;
     return;
@@ -117,7 +116,7 @@ async function main(): Promise<void> {
   } finally {
     // The TypeScript compiler server spawned for AST parsing keeps an open IPC
     // channel that would otherwise prevent the Node.js process from exiting.
-    disposeTypeScriptApi();
+    await disposeTypeScriptApi();
   }
   if (hasInvalidPackageConfig) {
     process.exitCode = 1;
@@ -128,22 +127,16 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // Before anything else — even the Bun check below: the developer machine's global
   // package-manager configs must receive the org's minimum-release-age policy on EVERY run,
   // because they are what guards brand-new local projects that have no wbfy-generated repository
-  // config yet, and that protection must not depend on a working Bun installation.
+  // config yet, and that protection must work before the supported-version check.
   ensureGlobalReleaseAgeGates();
 
-  // wbfy manages repositories through Bun + mise and runs `bun add` / `bun install`;
-  // proceeding without Bun cannot produce or validate the managed lockfile.
-  // The version floor matters too: older Bun silently ignores the generated bunfig.toml options
-  // (globalStore, publicHoistPattern) and would validate a different install layout than the one
-  // repositories get once mise upgrades them. It stays unconditional even though the already-applied
-  // check below can make a run a no-op: a missing or outdated Bun is a broken environment wbfy must
-  // report, and hiding it whenever every path happens to be skipped would surface it only later.
-  const bunVersion = spawnSyncAndReturnStdout('bun', ['--version'], '.');
-  if (!semver.valid(bunVersion)) {
-    console.error('wbfy requires Bun. Install Bun (e.g. via mise) and re-run.');
-    return true;
-  }
-  if (semver.lt(bunVersion, minimumBunVersion)) {
+  // wbfy manages repositories through Bun + mise and uses Bun 1.4 runtime APIs. The version floor
+  // also ensures the generated bunfig.toml options produce the install layout wbfy validates. It
+  // stays unconditional even though the already-applied check below can make a run a no-op: an
+  // outdated Bun is a broken environment wbfy must report, and hiding it whenever every path
+  // happens to be skipped would surface it only later.
+  const bunVersion = Bun.version;
+  if (!Bun.semver.satisfies(bunVersion, `>=${minimumBunVersion}`)) {
     console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }

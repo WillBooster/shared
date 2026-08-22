@@ -5,7 +5,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import * as yaml from 'js-yaml';
 
 import { logger } from '../logger.js';
 import { hasFnoxSyncFailed, resolveFnoxCiAgeKeySecretName } from './fnoxToml.js';
@@ -301,7 +300,7 @@ export function jobsAllCallReusableWorkflow(workflowsPath: string, fileName: str
   const isTargetCall = (uses: unknown): boolean =>
     typeof uses === 'string' && parseOrgReusableWorkflowCall(uses)?.workflowName === workflowName;
   try {
-    const workflow = yaml.load(content) as Workflow | undefined;
+    const workflow = Bun.YAML.parse(content) as Workflow | undefined;
     if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
       const jobs = Object.values(workflow.jobs);
       return jobs.length > 0 && jobs.every((job) => isTargetCall(job?.uses));
@@ -331,14 +330,14 @@ async function writeWorkflowYaml(
   if (oldContent !== undefined) {
     let oldSettings: Workflow;
     try {
-      oldSettings = yaml.load(oldContent) as Workflow;
+      oldSettings = Bun.YAML.parse(oldContent) as Workflow;
     } catch {
       // An existing workflow wbfy cannot parse must be left untouched: writing the template
       // without merging would silently discard the repository's workflow.
       console.warn(`Skipped generating ${filePath} because the existing content is not parsable as YAML.`);
       return;
     }
-    // yaml.load returns undefined for empty/comment-only files and non-objects for scalar
+    // YAML.parse returns undefined for empty/comment-only files and non-objects for scalar
     // documents without throwing; deepmerge would crash on them.
     if (typeof oldSettings !== 'object' || oldSettings === null || Array.isArray(oldSettings)) {
       console.warn(`Skipped generating ${filePath} because the existing content is not a workflow.`);
@@ -778,7 +777,7 @@ export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
       return false;
     }
     try {
-      const workflow = yaml.load(content) as Workflow | undefined;
+      const workflow = Bun.YAML.parse(content) as Workflow | undefined;
       if (workflow && typeof workflow === 'object' && workflow.jobs && typeof workflow.jobs === 'object') {
         return Object.values(workflow.jobs).some((job) => callsDeployWorkflow(job?.uses));
       }
@@ -950,6 +949,6 @@ async function writeYaml(newSettings: Workflow, filePath: string): Promise<void>
   if (newSettings.permissions && Object.keys(newSettings.permissions).length === 0) {
     delete newSettings.permissions;
   }
-  const yamlText = yaml.dump(newSettings, { lineWidth: -1 });
+  const yamlText = Bun.YAML.stringify(newSettings, undefined, 2);
   await fsUtil.writeFileConfined(filePath, yamlText);
 }

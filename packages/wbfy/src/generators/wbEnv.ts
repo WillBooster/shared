@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { parse } from 'smol-toml';
-
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -62,7 +60,7 @@ function requiresNextPublicWbEnv(config: PackageConfig): boolean {
 export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolean): string | undefined {
   let settings: FnoxTomlSubtree;
   try {
-    settings = parse(content) as FnoxTomlSubtree;
+    settings = Bun.TOML.parse(content) as FnoxTomlSubtree;
   } catch {
     console.warn('Skipped inserting WB_ENV into fnox.toml because it is not parsable as TOML.');
     return undefined;
@@ -98,7 +96,7 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
   // Re-parse before returning: an unusual layout (e.g. dotted keys without a table header) could
   // make the textual edit produce a duplicate table; fail safely instead of corrupting the file.
   try {
-    const updatedSettings = parse(updatedContent) as FnoxTomlSubtree;
+    const updatedSettings = Bun.TOML.parse(updatedContent) as FnoxTomlSubtree;
     for (const mode of wbEnvModes) {
       if (mode === 'staging' && !settings.profiles?.staging) continue;
       const definedKeys = mode === 'development' ? updatedSettings.secrets : updatedSettings.profiles?.[mode]?.secrets;

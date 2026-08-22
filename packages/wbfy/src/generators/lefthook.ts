@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import * as yaml from 'js-yaml';
-
 import { logger } from '../logger.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -178,7 +176,7 @@ async function core(config: PackageConfig, allConfigs: PackageConfig[]): Promise
     delete settings['pre-push'];
   }
   await Promise.all([
-    fsUtil.writeFileConfined(path.join(config.dirPath, 'lefthook.yml'), yaml.dump(settings, { lineWidth: -1 })),
+    fsUtil.writeFileConfined(path.join(config.dirPath, 'lefthook.yml'), Bun.YAML.stringify(settings, undefined, 2)),
     fs.promises.rm(dirPath, { force: true, recursive: true }),
   ]);
   if (hasHuskyDir) {

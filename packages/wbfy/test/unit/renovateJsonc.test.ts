@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import type { ParseError } from 'jsonc-parser';
 import { parse } from 'jsonc-parser';
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { generateRenovateJsonc } from '../../src/generators/renovateJsonc.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';

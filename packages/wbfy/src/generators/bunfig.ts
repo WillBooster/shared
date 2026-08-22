@@ -1,8 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { parse } from 'smol-toml';
-
 import releaseAgeGate from '../../configs/releaseAgeGate.json' with { type: 'json' };
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
@@ -119,7 +117,7 @@ function parseBunfigToml(content: string | undefined): BunfigToml | undefined {
     return undefined;
   }
   try {
-    return parse(content) as BunfigToml;
+    return Bun.TOML.parse(content) as BunfigToml;
   } catch {
     return undefined;
   }

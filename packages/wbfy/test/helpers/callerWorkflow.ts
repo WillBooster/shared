@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { load } from 'js-yaml';
-import { expect } from 'vitest';
+import { YAML } from 'bun';
+import { expect } from 'bun:test';
 
 export interface CallerJob {
   secrets?: Record<string, string>;
@@ -27,7 +27,7 @@ export async function withTempWorkflowsRepo(
 
 /** Reads the sole job of a generated caller workflow. */
 export function readCallerJob(workflowsPath: string, fileName = 'test.yml'): CallerJob {
-  const parsed = load(fs.readFileSync(path.join(workflowsPath, fileName), 'utf8')) as {
+  const parsed = YAML.parse(fs.readFileSync(path.join(workflowsPath, fileName), 'utf8')) as {
     jobs: Record<string, CallerJob>;
   };
   const job = Object.values(parsed.jobs)[0];

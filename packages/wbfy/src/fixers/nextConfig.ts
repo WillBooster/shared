@@ -25,7 +25,7 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
       .find((p) => fs.existsSync(p));
     if (!filePath) return;
 
-    const extracted = getNextConfigObjectLiteral(filePath);
+    const extracted = await getNextConfigObjectLiteral(filePath);
     if (!extracted) return;
     const { source, objectLiteral } = extracted;
 
@@ -57,10 +57,10 @@ export async function fixNextConfigJson(config: PackageConfig): Promise<void> {
   });
 }
 
-function getNextConfigObjectLiteral(
+async function getNextConfigObjectLiteral(
   filePath: string
-): { source: ast.SourceFile; objectLiteral: ast.ObjectLiteralExpression } | undefined {
-  const source = parseSourceFile(filePath);
+): Promise<{ source: ast.SourceFile; objectLiteral: ast.ObjectLiteralExpression } | undefined> {
+  const source = await parseSourceFile(filePath);
   if (!source) return undefined;
 
   // The WillBooster standard declares the config as `const nextConfig: NextConfig = { ... }` and
