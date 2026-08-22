@@ -136,7 +136,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
   // outdated Bun is a broken environment wbfy must report, and hiding it whenever every path
   // happens to be skipped would surface it only later.
   const bunVersion = Bun.version;
-  if (!Bun.semver.satisfies(bunVersion, `>=${minimumBunVersion}`)) {
+  if (Bun.semver.order(bunVersion, minimumBunVersion) < 0) {
     console.error(`wbfy requires Bun >= ${minimumBunVersion} (found ${bunVersion}). Upgrade Bun and re-run.`);
     return true;
   }

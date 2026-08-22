@@ -4,6 +4,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import * as yaml from 'js-yaml';
+
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -118,7 +120,7 @@ async function writeSelfContainedWorkflow(filePath: string, workflow: Workflow):
   }
 
   const header = `${selfContainedWorkflowMarker} Remove this line to stop wbfy from overwriting this file.\n`;
-  const yamlText = Bun.YAML.stringify(workflow, undefined, 2);
+  const yamlText = yaml.dump(workflow, { lineWidth: -1 });
   await fsUtil.writeFileConfined(filePath, header + yamlText);
 }
 

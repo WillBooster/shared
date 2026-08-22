@@ -75,6 +75,38 @@ jobs:
   }
 });
 
+test('preserves a Rust workflow whose duplicate jobs key hides a custom job', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    const workflowsDirPath = path.join(packageDirPath, '.github', 'workflows');
+    fs.mkdirSync(workflowsDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(path.join(packageDirPath, 'package.json'), '{}');
+    const workflowPath = path.join(workflowsDirPath, 'test-rust.yml');
+    const workflowContent = `name: Test Rust
+on: push
+jobs:
+  custom:
+    runs-on: ubuntu-latest
+    steps: []
+jobs:
+  test-rust:
+    uses: WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main
+`;
+    fs.writeFileSync(workflowPath, workflowContent);
+
+    const config = await getPackageConfig(packageDirPath);
+    if (!config) throw new Error('unreachable');
+    await generateWorkflows(config);
+    await promisePool.promiseAll();
+
+    expect(fs.readFileSync(workflowPath, 'utf8')).toBe(workflowContent);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('detects prettier imported as a runtime library, ignoring prefix-sharing packages', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {

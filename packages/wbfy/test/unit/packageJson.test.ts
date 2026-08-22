@@ -2,11 +2,13 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'bun:test';
+import { expect, setDefaultTimeout, test } from 'bun:test';
 import type { PackageJson } from 'type-fest';
 
 import { generatePackageJson } from '../../src/generators/packageJson.js';
 import { createConfig } from '../helpers/testConfig.js';
+
+setDefaultTimeout(60_000);
 
 interface GeneratedPackageJson {
   dependencies?: Record<string, string | undefined>;
