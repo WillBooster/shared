@@ -7,7 +7,7 @@ A repository that deviates from these rules is fixed manually (or by re-running 
 ## Repository preconditions
 
 - Bun at or above the pinned minimum version is installed; `wbfy` aborts otherwise.
-- The target directory is a Git repository root, or has a supported manifest such as `package.json`, `poetry.lock`, `uv.lock`, `go.mod`, `pom.xml`, or `pubspec.yaml`; a manifest-less Git root receives a managed `package.json` on its first run.
+- The target directory is a Git repository root, or has a supported manifest such as `package.json`, `poetry.lock`, `uv.lock`, `go.mod`, `pom.xml`, or `pubspec.yaml`. Every accepted root without `package.json` receives a managed one on its first run, including roots accepted through another ecosystem's manifest, because wbfy's tooling and final lockfile verification require Bun dependencies.
 - Monorepos place workspaces under `packages/*` and/or the patterns declared in the root `package.json` `workspaces` array.
 - Every managed file is a regular in-repository file: symlinks and paths resolving outside the repository are refused.
 - Git dependency specifiers in `package.json` files may point only at `WillBooster/*` or `WillBoosterLab/*`; anything else aborts the run (other ecosystems' manifests are not checked).

@@ -94,7 +94,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
   // dependency versions into the new manifest directly; the final repository-wide `bun install`
   // then installs them and remains the authoritative failure check.
-  const skipDependencyInstall = skipAddingDeps || !config.doesContainPackageJson;
+  const skipNpmDependencyInstall = skipAddingDeps || !config.doesContainPackageJson;
 
   await updateScripts(config, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
@@ -104,7 +104,7 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   removeWbCliReplacementDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
-  addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipDependencyInstall);
+  addDependencyVersionsToPackageJson(config, rootConfig, jsonObj, dependencyUpdates, skipNpmDependencyInstall);
   await updatePrivatePackages(jsonObj);
   removeEmptyDependencySections(jsonObj);
 
@@ -118,9 +118,11 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   // below: `bun add` follows the symlink and would modify the file outside the repository.
   if (!(await fsUtil.generateFile(filePath, serializePackageJson(jsonObj)))) return;
 
-  if (!skipDependencyInstall) {
-    installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates);
-    formatPackageJsonWithProjectFormatter(config, filePath);
+  if (!skipAddingDeps) {
+    installDependencyUpdates(config, rootConfig, jsonObj, dependencyUpdates, skipNpmDependencyInstall);
+    if (!skipNpmDependencyInstall) {
+      formatPackageJsonWithProjectFormatter(config, filePath);
+    }
   }
 }
 
@@ -1106,13 +1108,16 @@ function installDependencyUpdates(
   config: PackageConfig,
   rootConfig: PackageConfig,
   jsonObj: PackageJson,
-  dependencyUpdates: DependencyUpdates
+  dependencyUpdates: DependencyUpdates,
+  skipNpmDependencies: boolean
 ): void {
-  const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
-  installNpmDependencies(config, rootConfig, dependencies, false);
+  if (!skipNpmDependencies) {
+    const dependencies = dependencyUpdates.dependencies.filter((dep) => !jsonObj.devDependencies?.[dep]);
+    installNpmDependencies(config, rootConfig, dependencies, false);
 
-  const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
-  installNpmDependencies(config, rootConfig, devDependencies, true);
+    const devDependencies = dependencyUpdates.devDependencies.filter((dep) => !jsonObj.dependencies?.[dep]);
+    installNpmDependencies(config, rootConfig, devDependencies, true);
+  }
 
   const pythonPackageManager = getPythonPackageManager(config);
   if (pythonPackageManager && dependencyUpdates.pythonDevDependencies.length > 0) {
