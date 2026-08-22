@@ -91,9 +91,6 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (workerTypesScriptError) throw new Error(workerTypesScriptError);
   const filePath = path.resolve(config.dirPath, 'package.json');
   const jsonObj = await readPackageJson(filePath);
-  // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
-  // dependency versions into the new manifest directly; the final repository-wide `bun install`
-  // then installs them and remains the authoritative failure check.
   await updateScripts(config, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
@@ -102,6 +99,9 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   removeWbCliReplacementDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
+  // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
+  // dependency versions into the new manifest directly; the final repository-wide `bun install`
+  // then installs them and remains the authoritative failure check.
   addDependencyVersionsToPackageJson(
     config,
     rootConfig,
