@@ -3,44 +3,48 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 const packageDirPath = path.resolve(import.meta.dirname, '..', '..');
 const distIndexPath = path.join(packageDirPath, 'dist', 'index.js');
 
-test('applying wbfy keeps a small project clean after rerunning cleanup', { timeout: 300 * 1000 }, () => {
-  ensureBuiltCli();
+test(
+  'applying wbfy keeps a small project clean after rerunning cleanup',
+  () => {
+    ensureBuiltCli();
 
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
-  try {
-    writeSmallProjectFixture(tempDirPath);
+    const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-cleanup-idempotency-'));
+    try {
+      writeSmallProjectFixture(tempDirPath);
 
-    runCommand('git', ['init'], tempDirPath);
-    runCommand('node', [distIndexPath, tempDirPath], packageDirPath);
+      runCommand('git', ['init'], tempDirPath);
+      runCommand('bun', [distIndexPath, tempDirPath], packageDirPath);
 
-    runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
-    runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
-    runCommand('git', ['add', '-A'], tempDirPath);
-    runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
-      HUSKY: '0',
-      LEFTHOOK: '0',
-    });
+      runCommand('git', ['config', 'user.email', 'agent@willbooster.com'], tempDirPath);
+      runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
+      runCommand('git', ['add', '-A'], tempDirPath);
+      runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
+        HUSKY: '0',
+        LEFTHOOK: '0',
+      });
 
-    runCommand('bun', ['run', 'cleanup'], tempDirPath, {
-      HUSKY: '0',
-      LEFTHOOK: '0',
-    });
+      runCommand('bun', ['run', 'cleanup'], tempDirPath, {
+        HUSKY: '0',
+        LEFTHOOK: '0',
+      });
 
-    const statusResult = child_process.spawnSync('git', ['status', '--short'], {
-      cwd: tempDirPath,
-      encoding: 'utf8',
-    });
-    expect(statusResult.status).toBe(0);
-    expect(statusResult.stdout.trim()).toBe('');
-  } finally {
-    fs.rmSync(tempDirPath, { force: true, recursive: true });
-  }
-});
+      const statusResult = child_process.spawnSync('git', ['status', '--short'], {
+        cwd: tempDirPath,
+        encoding: 'utf8',
+      });
+      expect(statusResult.status).toBe(0);
+      expect(statusResult.stdout.trim()).toBe('');
+    } finally {
+      fs.rmSync(tempDirPath, { force: true, recursive: true });
+    }
+  },
+  300 * 1000
+);
 
 function ensureBuiltCli(): void {
   if (isDistUpToDate()) return;

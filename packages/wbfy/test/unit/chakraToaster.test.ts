@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { fixChakraToaster } from '../../src/fixers/chakraToaster.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
@@ -25,7 +25,7 @@ export const toaster = createToaster({ placement: 'bottom-end' });
     await fixChakraToaster(createConfig({ dirPath, depending: { ...createConfig().depending, chakra: true } }));
     await fixChakraToaster(createConfig({ dirPath, depending: { ...createConfig().depending, chakra: true } }));
 
-    await expect(fs.readFile(filePath, 'utf8')).resolves.toBe(`import { createToaster } from '@chakra-ui/react';
+    expect(await fs.readFile(filePath, 'utf8')).toBe(`import { createToaster } from '@chakra-ui/react';
 import type { CreateToasterReturn } from '@chakra-ui/react';
 
 export const toaster: CreateToasterReturn = createToaster({ placement: 'bottom-end' });

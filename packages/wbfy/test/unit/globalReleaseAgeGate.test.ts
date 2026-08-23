@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { bunMinimumReleaseAgeExcludes, bunMinimumReleaseAgeSeconds } from '../../src/generators/bunfig.js';
 import { getWbfyDirPath } from '../../src/utils/version.js';
@@ -61,7 +61,12 @@ npmRegistries:
       expect(bunfig).toContain(`  "${bunMinimumReleaseAgeExcludes.at(-1)}",\n`);
     }
     expect(await fs.readFile(path.join(xdgDirPath, '.npmrc'), 'utf8')).toBe(npmrc);
-    await expect(fs.access(path.join(xdgDirPath, '.yarnrc.yml'))).rejects.toThrow();
+    expect(
+      await fs.access(path.join(xdgDirPath, '.yarnrc.yml')).then(
+        () => true,
+        () => false
+      )
+    ).toBe(false);
 
     // Re-running must not stack another copy of the gate on top of the previous one.
     expect(run()).toBe(0);

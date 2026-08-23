@@ -3,8 +3,6 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 import fg from 'fast-glob';
-import { simpleGit } from 'simple-git';
-import { parse as parseToml } from 'smol-toml';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
 
@@ -700,7 +698,7 @@ async function readMiseTasks(dirPath: string): Promise<Record<string, string>> {
   for (const fileName of ['mise.toml', '.mise.toml']) {
     const filePath = path.resolve(dirPath, fileName);
     try {
-      const settings = parseToml(await fsp.readFile(filePath, 'utf8')) as { tasks?: Record<string, unknown> };
+      const settings = Bun.TOML.parse(await fsp.readFile(filePath, 'utf8')) as { tasks?: Record<string, unknown> };
       for (const [name, value] of Object.entries(settings.tasks ?? {})) {
         tasks[name] = readMiseTaskCommand(value);
       }
@@ -808,15 +806,8 @@ function buildRuntimeImportRegExp(packageName: string): RegExp {
 }
 
 async function fetchRepoInfo(dirPath: string, packageJson: PackageJson): Promise<Record<string, unknown> | undefined> {
-  let remoteUrl: string | undefined;
-  try {
-    const remotes = await simpleGit(dirPath).getRemotes(true);
-    const origin = remotes.find((r) => r.name === 'origin');
-    remoteUrl = origin?.refs.fetch ?? origin?.refs.push;
-  } catch {
-    // Not a git repository (e.g. a scratch directory); fall back to package.json's repository.
-  }
-  if (typeof remoteUrl === 'string') {
+  const remoteUrl = getOriginRemoteUrl(dirPath);
+  if (remoteUrl) {
     const json = await requestRepoInfo(remoteUrl);
     if (json) return json;
   }
@@ -895,16 +886,10 @@ async function resolveLocalRepoIdentity(
   dirPath: string,
   packageJson: PackageJson
 ): Promise<[string | undefined, string | undefined]> {
-  try {
-    const remotes = await simpleGit(dirPath).getRemotes(true);
-    const origin = remotes.find((remote) => remote.name === 'origin');
-    const remoteUrl = origin?.refs.fetch ?? origin?.refs.push;
-    if (remoteUrl) {
-      const identity = readGitHubIdentity(remoteUrl);
-      if (identity) return identity;
-    }
-  } catch {
-    // Not a git repository, or git is unavailable: fall through to the manifest.
+  const remoteUrl = getOriginRemoteUrl(dirPath);
+  if (remoteUrl) {
+    const identity = readGitHubIdentity(remoteUrl);
+    if (identity) return identity;
   }
   const url = typeof packageJson.repository === 'string' ? packageJson.repository : packageJson.repository?.url;
   if (url) {
@@ -912,6 +897,10 @@ async function resolveLocalRepoIdentity(
     if (identity) return identity;
   }
   return [undefined, undefined];
+}
+
+function getOriginRemoteUrl(dirPath: string): string | undefined {
+  return spawnSyncAndReturnStdout('git', ['config', '--get', 'remote.origin.url'], dirPath) || undefined;
 }
 
 /**

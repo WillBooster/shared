@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test } from 'bun:test';
 
 import { generateMiseToml } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
@@ -23,7 +23,7 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
       fs.writeFileSync(path.join(dirPath, fileName), content);
     }
     fsUtil.setRootDirPath(dirPath);
-    await generateMiseToml(createConfig({ dirPath }), '1.3.14');
+    await generateMiseToml(createConfig({ dirPath }), '1.4.0');
     await promisePool.promiseAll();
     return fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8');
   } finally {
@@ -32,10 +32,10 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
 }
 
 test('lifts every configured Bun version in a multi-version mise entry', async () => {
-  const content = await generateFrom({ 'mise.toml': '[tools]\nbun = ["1.2.0", "1.3.14"]\nnode = "24.18.0"\n' });
+  const content = await generateFrom({ 'mise.toml': '[tools]\nbun = ["1.2.0", "1.4.0"]\nnode = "24.18.0"\n' });
 
   expect(content).not.toContain('1.2.0');
-  expect(content).toContain('bun = [ "1.3.14" ]');
+  expect(content).toContain('bun = ["1.4.0"]');
 });
 
 test('pins the concrete version behind an lts/* mise selector', async () => {

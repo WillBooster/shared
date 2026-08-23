@@ -20,7 +20,7 @@
     "skipLibCheck": true,
     "sourceMap": true,
     "strict": true,
-    "types": ["node", "vitest/globals", "bun"],
+    "types": ["node", "bun"],
     "verbatimModuleSyntax": true
   },
   "exclude": ["test/fixtures", "packages/*/test/fixtures"],

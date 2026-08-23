@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, expect, mock, spyOn, test } from 'bun:test';
 
 import { generateReadme, readAppliedWbfyVersionLabel, writeBadgeBlock } from '../../src/generators/readme.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
@@ -30,11 +30,11 @@ async function withTempDir(test: (dirPath: string) => Promise<void>): Promise<vo
 // any later test sharing this worker to a repository root that no longer exists.
 afterEach(() => {
   fsUtil.setRootDirPath(undefined);
-  vi.restoreAllMocks();
+  mock.restore();
 });
 
 async function runGenerateReadme(dirPath: string, versionLabel: string | undefined): Promise<string> {
-  vi.spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);
+  spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);
   fsUtil.setRootDirPath(dirPath);
   await generateReadme(createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' } }));
   await promisePool.promiseAll();
@@ -360,7 +360,7 @@ test('reports no applied version when the README cannot be read', async () => {
   await withTempDir(async (dirPath) => {
     const error: NodeJS.ErrnoException = new Error('EACCES: permission denied');
     error.code = 'EACCES';
-    vi.spyOn(fsUtil, 'readFileConfinedIfExists').mockRejectedValue(error);
+    spyOn(fsUtil, 'readFileConfinedIfExists').mockRejectedValue(error);
 
     expect(await readAppliedWbfyVersionLabel(dirPath)).toBeUndefined();
   });
@@ -393,7 +393,7 @@ test('keeps an existing README that cannot be read', async () => {
     // test would silently exercise the success path instead in a root container.
     const error: NodeJS.ErrnoException = new Error('EACCES: permission denied');
     error.code = 'EACCES';
-    vi.spyOn(fsUtil, 'readFileIfExists').mockRejectedValue(error);
+    spyOn(fsUtil, 'readFileIfExists').mockRejectedValue(error);
 
     // generateReadme swallows the read failure, so the unreadable README must stay untouched
     // instead of being overwritten with the generated stub.

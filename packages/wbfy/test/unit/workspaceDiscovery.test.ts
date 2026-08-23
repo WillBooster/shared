@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { expect, test } from 'vitest';
+import { expect, test } from 'bun:test';
 
 import { getWorkspaceDirPatterns, getWorkspaceSubDirPaths } from '../../src/utils/workspaceUtil.js';
 import { generateTsconfig } from '../../src/generators/tsconfig.js';
@@ -242,7 +242,13 @@ test('drops a negation-derived exclude after the workspace negation is removed',
 // A negation is written as a PATTERN when it excludes exactly what it matches, and as the
 // ancestor's package-owned subpaths when it sits above a workspace. Both shapes must be retired
 // with their negation, while hygiene globs a user added stay untouched.
-test.each([
+const workspaceNegationCases: {
+  name: string;
+  workspaceDirNames: string[];
+  negated: string[];
+  plain: string[];
+  staleEntry: string;
+}[] = [
   {
     name: 'a pattern-shaped negation',
     workspaceDirNames: ['apps/web', 'apps/api'],
@@ -257,37 +263,42 @@ test.each([
     plain: ['apps/**'],
     staleEntry: 'apps/excluded/src',
   },
-])('drops $name after the workspace negation is removed', async ({ workspaceDirNames, negated, plain, staleEntry }) => {
-  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
-  try {
-    for (const workspaceDirName of workspaceDirNames) {
-      const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
-      fs.mkdirSync(path.join(workspaceDirPath, 'src'), { recursive: true });
-      fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
-      fs.writeFileSync(path.join(workspaceDirPath, 'src', 'index.ts'), 'export {};\n');
-    }
-    const generate = async (workspaces: string[]): Promise<string[]> => {
-      fs.writeFileSync(
-        path.join(tempDirPath, 'package.json'),
-        JSON.stringify({ name: 'root', private: true, workspaces })
-      );
-      const config = await getPackageConfig(tempDirPath, { isRoot: false });
-      if (!config) throw new Error('unreachable');
-      config.isRoot = true;
-      await generateTsconfig(config);
-      await promisePool.promiseAll();
-      const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
-        exclude?: string[];
-      };
-      return tsconfig.exclude ?? [];
-    };
+];
 
-    expect(await generate(negated)).toContain(staleEntry);
-    expect(await generate(plain)).not.toContain(staleEntry);
-  } finally {
-    fs.rmSync(tempDirPath, { recursive: true, force: true });
+test.each(workspaceNegationCases)(
+  'drops $name after the workspace negation is removed',
+  async ({ workspaceDirNames, negated, plain, staleEntry }) => {
+    const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));
+    try {
+      for (const workspaceDirName of workspaceDirNames) {
+        const workspaceDirPath = path.join(tempDirPath, workspaceDirName);
+        fs.mkdirSync(path.join(workspaceDirPath, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({}));
+        fs.writeFileSync(path.join(workspaceDirPath, 'src', 'index.ts'), 'export {};\n');
+      }
+      const generate = async (workspaces: string[]): Promise<string[]> => {
+        fs.writeFileSync(
+          path.join(tempDirPath, 'package.json'),
+          JSON.stringify({ name: 'root', private: true, workspaces })
+        );
+        const config = await getPackageConfig(tempDirPath, { isRoot: false });
+        if (!config) throw new Error('unreachable');
+        config.isRoot = true;
+        await generateTsconfig(config);
+        await promisePool.promiseAll();
+        const tsconfig = JSON.parse(fs.readFileSync(path.join(tempDirPath, 'tsconfig.json'), 'utf8')) as {
+          exclude?: string[];
+        };
+        return tsconfig.exclude ?? [];
+      };
+
+      expect(await generate(negated)).toContain(staleEntry);
+      expect(await generate(plain)).not.toContain(staleEntry);
+    } finally {
+      fs.rmSync(tempDirPath, { recursive: true, force: true });
+    }
   }
-});
+);
 
 test('keeps hygiene excludes a workspace directory happens to match', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-workspaces-'));

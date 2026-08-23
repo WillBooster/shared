@@ -1277,7 +1277,7 @@ async function getExistingTsconfigBaseDependencies(config: PackageConfig): Promi
     const absoluteFilePath = path.resolve(config.dirPath, filePath);
     // TypeScript 7's native compiler dropped the in-process `parseConfigFileTextToJson`
     // helper, so parse the tsconfig into an AST and read its top-level `extends` directly.
-    const source = parseSourceFile(absoluteFilePath);
+    const source = await parseSourceFile(absoluteFilePath);
     if (!source) {
       console.warn(`Preserve managed @tsconfig dependencies because ${absoluteFilePath} could not be parsed.`);
       return new Set(managedTsconfigBaseDependencies);
