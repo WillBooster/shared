@@ -429,11 +429,11 @@ export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJs
       scripts.postinstall ?? ''
     )
   ) {
-    return 'postinstall must use wb gen-code instead of a non-Bun gen-code runner';
+    return 'postinstall must use bun wb gen-code instead of a non-Bun gen-code runner';
   }
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
-    if (wranglerTypesTextPattern.test(script)) return `${name} must use wb gen-code instead of wrangler types`;
+    if (wranglerTypesTextPattern.test(script)) return `${name} must use bun wb gen-code instead of wrangler types`;
   }
 }
 

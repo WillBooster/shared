@@ -633,8 +633,10 @@ async function normalizePackageMetadata(
     jsonObj.name = path.basename(config.dirPath);
   }
 
-  // A plain monorepo root is private unless its release or publish configuration says otherwise.
-  if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
+  // Explicit root publishing intent takes precedence over wbfy's private monorepo-root default.
+  if (config.doesContainSubPackageJsons && (config.release.npmPublishesRoot || jsonObj.publishConfig)) {
+    delete jsonObj.private;
+  } else if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
     jsonObj.private = true;
   }
   if (!jsonObj.license) {
@@ -1386,8 +1388,8 @@ function isGeneratedTestScript(script: string): boolean {
  * Keeps a script that CHAINS extra commands onto the generated one (e.g. a polyglot monorepo
  * appending its Maven and RSpec suites to `wb test`, which runs JavaScript/TypeScript runners
  * only). Such a wrapper still runs the generated command, so replacing it would silently drop the
- * repository's own steps — the same reasoning as `applyTestOnCiScript`. A script that starts with
- * anything else is standardized as usual.
+ * repository's own steps — the same reasoning as `applyTestOnCiScript`. An unrecognized chained
+ * script is kept wholesale rather than losing its project-owned commands.
  */
 function keepGeneratedScriptWrappers(
   scripts: Record<string, string>,
@@ -1406,6 +1408,8 @@ function keepGeneratedScriptWrappers(
     if (headRegExp.test(oldScript)) {
       // A function replacement keeps `$`-shaped characters in the generated command literal.
       scripts[scriptName] = oldScript.replace(headRegExp, () => generatedScript);
+    } else if (/(?:&&|\|\||;|\n)/u.test(oldScript)) {
+      scripts[scriptName] = oldScript;
     }
   }
 }
@@ -1418,21 +1422,29 @@ function applyDatabaseScripts(
 ): void {
   if (!config.depending.prisma && !config.depending.drizzle) return;
 
-  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`);
-  applyDatabaseScript(scripts, oldScripts, 'db-migrate', `${wbDbCommand} migrate --check-idempotency`);
-  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`);
+  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`, 'migrate-dev');
+  applyDatabaseScript(
+    scripts,
+    oldScripts,
+    'db-migrate',
+    `${wbDbCommand} migrate --check-idempotency`,
+    'migrate --check-idempotency'
+  );
+  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`, 'studio');
 }
 
 function applyDatabaseScript(
   scripts: Record<string, string>,
   oldScripts: PackageJson.Scripts,
   name: string,
-  generatedScript: string
+  generatedScript: string,
+  generatedArguments: string
 ): void {
   const oldScript = oldScripts[name];
   // Some repositories wrap migration commands to prepare SQLite directories,
   // fan out over tenants, or perform cleanup that wb cannot infer generically.
-  scripts[name] = oldScript && oldScript.trim() !== generatedScript ? oldScript : generatedScript;
+  const generatedBodies = [`bun wb db ${generatedArguments}`, `bun wb prisma ${generatedArguments}`];
+  scripts[name] = oldScript && !generatedBodies.includes(oldScript.trim()) ? oldScript : generatedScript;
 }
 
 function getWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' {

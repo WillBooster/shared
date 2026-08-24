@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import merge from 'deepmerge';
@@ -31,7 +32,15 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
 
     const dirPath = path.resolve(config.dirPath, '.gemini');
     const configFilePath = path.resolve(dirPath, 'config.yaml');
+    const nonCanonicalConfigFilePath = path.resolve(dirPath, 'config.yml');
     const styleguideFilePath = path.resolve(dirPath, 'styleguide.md');
+
+    if (await fs.promises.lstat(nonCanonicalConfigFilePath).catch(() => {})) {
+      console.warn(
+        `Skipped generating ${configFilePath} because ${nonCanonicalConfigFilePath} is not a supported Gemini config location. Rename it manually.`
+      );
+      return;
+    }
 
     let newConfig: object = structuredClone(defaultConfig);
     const oldContent = await fsUtil.readFileConfinedIfExists(configFilePath);

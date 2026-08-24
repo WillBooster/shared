@@ -462,7 +462,6 @@ test('preserves project-specific steps appended to the managed gen-code script',
   expect(second.scripts?.['gen-code']).toBe(expected);
 });
 
-// A gen-code script whose shell wbfy does not model is left to a human instead of being rewritten from a wrong parse.
 // Without a gen-code script `wb gen-code` still has to run on install, but a project-owned postinstall step may
 // generate `wrangler types`' own inputs (a wrangler config, `.dev.vars`), so it keeps running first.
 test('runs wb gen-code after a project postinstall that has no gen-code script', async () => {
@@ -525,6 +524,25 @@ test('keeps custom database scripts for drizzle projects', async () => {
   expect(packageJson.scripts).toMatchObject({
     'db-create-migration': 'bun wb db migrate-dev',
     'db-migrate': 'bun scripts/runDrizzleMigrationsToAllClients.ts',
+    'db-view': 'bun wb db studio',
+  });
+});
+
+test('updates generated database scripts when the repository switches frameworks', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      scripts: {
+        'db-create-migration': 'bun wb prisma migrate-dev',
+        'db-migrate': 'bun wb prisma migrate --check-idempotency',
+        'db-view': 'bun wb prisma studio',
+      },
+    },
+    { depending: { ...createConfig().depending, drizzle: true } }
+  );
+
+  expect(packageJson.scripts).toMatchObject({
+    'db-create-migration': 'bun wb db migrate-dev',
+    'db-migrate': 'bun wb db migrate --check-idempotency',
     'db-view': 'bun wb db studio',
   });
 });
@@ -794,9 +812,36 @@ test('does not force private on a monorepo root released via @semantic-release/n
   expect(packageJson.private).toBe(false);
 });
 
+test('allows a private monorepo root to become an explicitly published package', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { name: '@willbooster-private/llm-proxy', private: true, workspaces: ['packages/*'] },
+    {
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: true },
+    }
+  );
+
+  expect(packageJson.private).toBeUndefined();
+});
+
 test('does not force private on a monorepo root with a publishConfig', async () => {
   const packageJson = await generatePackageJsonFrom(
     { name: 'published-monorepo', workspaces: ['packages/*'], publishConfig: { registry: 'https://npm.example.com' } },
+    { isRoot: true, doesContainSubPackageJsons: true }
+  );
+
+  expect(packageJson.private).toBeUndefined();
+});
+
+test('allows a private monorepo root to gain an explicit publishConfig', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    {
+      name: 'published-monorepo',
+      private: true,
+      workspaces: ['packages/*'],
+      publishConfig: { registry: 'https://npm.example.com' },
+    },
     { isRoot: true, doesContainSubPackageJsons: true }
   );
 
@@ -885,6 +930,15 @@ test('keeps commands chained onto the generated test and verify-full scripts', a
     test: 'bun wb test && bun run test/analyzers',
     'verify-full': 'bun wb verify --full && bun run test/analyzers',
   });
+});
+
+test('does not discard project commands from an unrecognized chained test script', async () => {
+  const packageJson = await generatePackageJsonFrom(
+    { scripts: { test: 'bun run custom-test && mvn test' } },
+    jsRootConfig
+  );
+
+  expect(packageJson.scripts?.test).toBe('bun run custom-test && mvn test');
 });
 
 test('keeps a command chained onto the generated test script with a newline', async () => {
