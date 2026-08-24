@@ -43,9 +43,13 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
       return;
     }
 
-    const nonCanonicalConfigPath = nonCanonicalConfigPaths
-      .map((relativePath) => path.resolve(config.dirPath, relativePath))
-      .find((candidate) => fs.existsSync(candidate));
+    const nonCanonicalConfigCandidates = await Promise.all(
+      nonCanonicalConfigPaths.map(async (relativePath) => {
+        const candidate = path.resolve(config.dirPath, relativePath);
+        return (await fs.promises.lstat(candidate).catch(() => {})) ? candidate : undefined;
+      })
+    );
+    const nonCanonicalConfigPath = nonCanonicalConfigCandidates.find((candidate) => candidate !== undefined);
     if (nonCanonicalConfigPath || config.packageJson?.renovate) {
       console.warn(
         `Skipped generating ${filePath} because the repository has a non-canonical Renovate config${

@@ -35,15 +35,15 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     const nonCanonicalConfigFilePath = path.resolve(dirPath, 'config.yml');
     const styleguideFilePath = path.resolve(dirPath, 'styleguide.md');
 
-    if (await fs.promises.lstat(nonCanonicalConfigFilePath).catch(() => {})) {
+    const hasNonCanonicalConfig = !!(await fs.promises.lstat(nonCanonicalConfigFilePath).catch(() => {}));
+    if (hasNonCanonicalConfig) {
       console.warn(
         `Skipped generating ${configFilePath} because ${nonCanonicalConfigFilePath} is not a supported Gemini config location. Rename it manually.`
       );
-      return;
     }
 
     let newConfig: object = structuredClone(defaultConfig);
-    const oldContent = await fsUtil.readFileConfinedIfExists(configFilePath);
+    const oldContent = hasNonCanonicalConfig ? undefined : await fsUtil.readFileConfinedIfExists(configFilePath);
     if (oldContent !== undefined) {
       try {
         const oldConfig = Bun.YAML.parse(oldContent);
@@ -69,7 +69,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     }`;
 
     const promises = [
-      promisePool.run(() => fsUtil.generateFile(configFilePath, yamlContent)),
+      ...(hasNonCanonicalConfig ? [] : [promisePool.run(() => fsUtil.generateFile(configFilePath, yamlContent))]),
       promisePool.run(() => fsUtil.generateFile(styleguideFilePath, styleguideContent)),
     ];
     await Promise.all(promises);

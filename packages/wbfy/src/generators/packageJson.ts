@@ -1404,7 +1404,7 @@ function keepGeneratedScriptWrappers(
       `^${escapeRegExp(generatedScript).replaceAll(' ', String.raw`[ \t]+`)}(?=[ \\t]*(?:&&|\\|\\||;|\\n))`,
       'u'
     );
-    // A newline separates shell commands just like &&, || and ;, matching isGeneratedDatabaseScript.
+    // A newline separates shell commands just like &&, || and ;.
     if (headRegExp.test(oldScript)) {
       // A function replacement keeps `$`-shaped characters in the generated command literal.
       scripts[scriptName] = oldScript.replace(headRegExp, () => generatedScript);

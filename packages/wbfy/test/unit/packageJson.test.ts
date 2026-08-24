@@ -139,8 +139,8 @@ test('keeps wb as a runtime dependency when postinstall uses it', async () => {
       '@willbooster/wb': oldWbVersion,
     },
     scripts: {
-      'gen-code': 'wb gen-code',
-      postinstall: 'wb gen-code',
+      'gen-code': 'bun wb gen-code',
+      postinstall: 'bun wb gen-code',
     },
   });
 
@@ -366,6 +366,16 @@ test('rejects worker type generation without a direct wrangler dependency', asyn
 
   expect(packageJson.scripts).toEqual(scripts);
 });
+
+test.each(['wb gen-code', 'bunx wb gen-code', 'bun run wb gen-code'])(
+  'rejects non-canonical gen-code command %s instead of duplicating generation',
+  async (genCode) => {
+    const scripts = { 'gen-code': genCode };
+    const packageJson = await generatePackageJsonFrom({ scripts });
+
+    expect(packageJson.scripts).toEqual(scripts);
+  }
+);
 
 test.each([
   'npm run gen-code',

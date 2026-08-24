@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
+import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { escapeRegExp } from './utils/stringUtil.js';
 import { getWorkspacePackageJsonPaths, getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
@@ -424,6 +425,18 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
 
 export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
   const scripts = config.packageJson?.scripts ?? {};
+  for (const [name, script] of Object.entries(scripts)) {
+    if (script === undefined) continue;
+    const segments = splitScriptSegments(script);
+    const hasNonCanonicalWbGenCode = segments?.some((segment) => {
+      const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
+      return (
+        /^(?:(?:bun|bunx)(?: --bun)?(?: run)? )?wb gen-code$/u.test(normalized) &&
+        classifyScriptSegment(segment, scripts, true) === 'custom'
+      );
+    });
+    if (hasNonCanonicalWbGenCode) return `${name} must use the canonical bun wb gen-code command`;
+  }
   if (
     /(?:^|&&)\s*(?:npm|npx|pnpm|yarn)\s+(?:run(?:-script)?\s+)?(?:gen-code|wb\s+gen-code)\s*(?:&&|$)/u.test(
       scripts.postinstall ?? ''

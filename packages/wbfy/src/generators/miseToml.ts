@@ -37,7 +37,12 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    tools.bun = pinConcreteToolVersion('bun', tools.bun, config.dirPath);
+    const bunVersion = pinSupportedBunVersion(tools.bun, config.dirPath);
+    if (!bunVersion) {
+      console.warn(`Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= 1.4.`);
+      return;
+    }
+    tools.bun = bunVersion;
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = pinConcreteToolVersion(
         'fnox',
@@ -50,6 +55,18 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
     // @ts-expect-error -- Bun 1.4 provides TOML.stringify before the age-gated @types/bun version declares it.
     await fsUtil.generateFile(miseTomlPath, Bun.TOML.stringify(settings));
   });
+}
+
+function pinSupportedBunVersion(version: unknown, cwd: string): string | undefined {
+  const pinnedVersion = pinConcreteToolVersion('bun', version, cwd);
+  if (
+    typeof pinnedVersion !== 'string' ||
+    !semver.valid(pinnedVersion) ||
+    semver.lt(pinnedVersion, minimumBunVersion)
+  ) {
+    return;
+  }
+  return pinnedVersion;
 }
 
 /**

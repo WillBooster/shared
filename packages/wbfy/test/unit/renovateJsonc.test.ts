@@ -39,6 +39,17 @@ test('does not shadow a non-canonical Renovate config', async () => {
   });
 });
 
+test('does not shadow a dangling symlink at a non-canonical Renovate location', async () => {
+  await withRepository({}, async (dirPath) => {
+    fs.symlinkSync('missing-renovate.json', path.join(dirPath, 'renovate.json'));
+
+    await generateRenovateJsonc(createConfig({ dirPath }));
+
+    expect(fs.existsSync(path.join(dirPath, 'renovate.jsonc'))).toBe(false);
+    expect(fs.lstatSync(path.join(dirPath, 'renovate.json')).isSymbolicLink()).toBe(true);
+  });
+});
+
 test('leaves an unparsable canonical config untouched', async () => {
   const oldContent = '{ invalid';
   await withRepository({ 'renovate.jsonc': oldContent }, async (dirPath) => {

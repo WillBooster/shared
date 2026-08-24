@@ -47,7 +47,7 @@ import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
 import { doesContainJava, doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
-import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
 import { getWbfyVersion, getWbfyVersionLabel } from './utils/version.js';
 import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
@@ -246,6 +246,21 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     }
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
+    const trackedCloudflareEnvPaths = allPackageConfigs.flatMap((config) => {
+      if (!config.isCloudflare && !rootConfig.isCloudflare) return [];
+      return spawnSyncAndReturnStdout('git', ['ls-files', '--', '.env.cloudflare'], config.dirPath)
+        ? [path.resolve(config.dirPath, '.env.cloudflare')]
+        : [];
+    });
+    if (trackedCloudflareEnvPaths.length > 0) {
+      console.error(
+        `SECURITY ERROR: Cloudflare credentials must be untracked. Remove ${trackedCloudflareEnvPaths.join(
+          ', '
+        )} from Git, purge the token from history, and rotate CLOUDFLARE_API_TOKEN before rerunning wbfy.`
+      );
+      hasInvalidPackageConfig = true;
+      continue;
+    }
     const abbreviationPromise = fixTypos(rootConfig);
 
     await generateRepositoryNpmrc(allPackageConfigs);
