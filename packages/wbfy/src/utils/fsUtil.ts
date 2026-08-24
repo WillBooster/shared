@@ -25,7 +25,7 @@ export const fsUtil = {
     return await isConfinedWritablePath(filePath);
   },
   /**
-   * Reads a migration source, returning undefined when the file does not exist OR when it
+   * Reads a source file, returning undefined when the file does not exist OR when it
    * resolves outside the repository — a committed symlink pointing outside the repository must
    * not get its target's content copied into a tracked file. A symlink whose resolved target
    * stays inside the repository is legitimate (e.g. `.node-version -> .nvmrc`) and is read.

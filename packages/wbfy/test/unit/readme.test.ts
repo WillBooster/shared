@@ -10,8 +10,8 @@ import { promisePool } from '../../src/utils/promisePool.js';
 import * as version from '../../src/utils/version.js';
 import { createConfig } from '../helpers/testConfig.js';
 
-const legacyBadge =
-  '[![wbfy](https://img.shields.io/badge/-wbfy-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)';
+const sampleWbfyBadge =
+  '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)';
 
 function badgeOf(label: string): string {
   return `[![wbfy](https://img.shields.io/badge/wbfy-${label}-1e90ff.svg)](https://github.com/WillBooster/shared/tree/main/packages/wbfy)`;
@@ -162,35 +162,35 @@ test.each([
     // An indented code block reads exactly like a badge line once trimmed, so the line-based scan
     // consumed it and the example was deleted from the README.
     name: 'an indented code block under the title',
-    input: `# Project\n\n    ${legacyBadge}\n`,
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n    ${legacyBadge}\n`,
+    input: `# Project\n\n    ${sampleWbfyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n    ${sampleWbfyBadge}\n`,
   },
   {
     name: 'a badge example inside a multiline code span',
-    input: `# Project\n\n\`example:\n${legacyBadge}\`\n`,
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n\`example:\n${legacyBadge}\`\n`,
+    input: `# Project\n\n\`example:\n${sampleWbfyBadge}\`\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n\`example:\n${sampleWbfyBadge}\`\n`,
   },
   {
     // CommonMark allows a block quote marker with no following space.
     name: 'a fenced example inside a compact block quote',
-    input: `# Project\n\n>\`\`\`\n>${legacyBadge}\n>\`\`\`\n`,
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n>\`\`\`\n>${legacyBadge}\n>\`\`\`\n`,
+    input: `# Project\n\n>\`\`\`\n>${sampleWbfyBadge}\n>\`\`\`\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n>\`\`\`\n>${sampleWbfyBadge}\n>\`\`\`\n`,
   },
   {
     name: 'an indented code block inside a block quote',
-    input: `# Project\n\n>     ${legacyBadge}\n`,
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n>     ${legacyBadge}\n`,
+    input: `# Project\n\n>     ${sampleWbfyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n>     ${sampleWbfyBadge}\n`,
   },
   {
     // HTML blocks are recognized by CommonMark's start/end conditions, not by a list of known tags.
     name: 'a badge inside an HTML block with an unknown tag',
-    input: `# Project\n\n<custom-card>\n${legacyBadge}\n</custom-card>\n`,
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n<custom-card>\n${legacyBadge}\n</custom-card>\n`,
+    input: `# Project\n\n<custom-card>\n${sampleWbfyBadge}\n</custom-card>\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n<custom-card>\n${sampleWbfyBadge}\n</custom-card>\n`,
   },
   {
     name: 'a badge quoted below the title',
-    input: `# Project\n\n> ${legacyBadge}\n`,
-    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n> ${legacyBadge}\n`,
+    input: `# Project\n\n> ${sampleWbfyBadge}\n`,
+    expected: `# Project\n\n${badgeOf('1.2.3')}\n\n> ${sampleWbfyBadge}\n`,
   },
   {
     // A README that opens with something other than a title has no anchor to sit under, so the
@@ -218,40 +218,6 @@ test.each([
   });
 });
 
-test('supersedes a badge whose image URL format changed', async () => {
-  await withTempDir(async (dirPath) => {
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${legacyBadge}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toBe(`# example\n\n${badgeOf('1.2.3')}\n`);
-  });
-});
-
-test('supersedes a badge whose link changed', async () => {
-  await withTempDir(async (dirPath) => {
-    const oldLinkBadge = '[![wbfy](https://img.shields.io/badge/wbfy-0.9.0-1e90ff.svg)](https://example.com/old-wbfy)';
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${oldLinkBadge}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).toBe(`# example\n\n${badgeOf('1.2.3')}\n`);
-  });
-});
-
-test('supersedes a workflow badge carrying query parameters', async () => {
-  await withTempDir(async (dirPath) => {
-    const workflowsPath = path.resolve(dirPath, '.github', 'workflows');
-    fs.mkdirSync(workflowsPath, { recursive: true });
-    fs.writeFileSync(path.resolve(workflowsPath, 'test.yml'), 'name: test\n');
-    const staleBadge =
-      '[![Test](https://github.com/WillBooster/shared/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/WillBooster/shared/actions/workflows/test.yml)';
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${staleBadge}\n`);
-
-    const content = await runGenerateReadme(dirPath, '1.2.3');
-    expect(content).not.toContain('?branch=main');
-    expect(content.split('actions/workflows/test.yml/badge.svg')).toHaveLength(2);
-  });
-});
-
 test('stays idempotent with a Markdown-significant workflow filename', async () => {
   await withTempDir(async (dirPath) => {
     // An unencoded `(` would end the Markdown destination early, so wbfy could not read its own
@@ -271,7 +237,7 @@ test('replaces a badge block stamped above a title-less README', async () => {
   await withTempDir(async (dirPath) => {
     // Nothing is searched for beyond the first content, so a heading added later cannot orphan the
     // badges already at the top.
-    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${legacyBadge}\n\nDescription.\n\n## Usage\n\nSteps.\n`);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `${sampleWbfyBadge}\n\nDescription.\n\n## Usage\n\nSteps.\n`);
 
     const content = await runGenerateReadme(dirPath, '1.2.3');
     expect(content).toBe(`${badgeOf('1.2.3')}\n\nDescription.\n\n## Usage\n\nSteps.\n`);
@@ -296,17 +262,17 @@ test('leaves everything below the badge block untouched', async () => {
     // comment or in prose survives without the generator understanding any of those constructs.
     const body = [
       '```md',
-      legacyBadge,
+      sampleWbfyBadge,
       '',
       '',
       'Preserve two blank lines above.',
       '```',
       '',
       '<!--',
-      legacyBadge,
+      sampleWbfyBadge,
       '-->',
       '',
-      `Write ${legacyBadge} inline.`,
+      `Write ${sampleWbfyBadge} inline.`,
     ].join('\n');
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# Project\n\n${body}\n`);
 

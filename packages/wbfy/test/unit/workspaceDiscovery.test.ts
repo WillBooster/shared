@@ -123,9 +123,8 @@ test('removes stale wbfy-managed packages/* entries from an existing root tsconf
     fs.mkdirSync(path.join(appDirPath, 'src'), { recursive: true });
     fs.writeFileSync(path.join(appDirPath, 'package.json'), JSON.stringify({ name: 'web' }));
     fs.writeFileSync(path.join(appDirPath, 'src', 'index.ts'), 'export {};\n');
-    // The upgrade path for #995: an apps/*-only repo whose root tsconfig still carries the
-    // complete packages/* entry set an older wbfy generated, plus user-authored entries (one
-    // concrete, one wildcard-shaped but incomplete) that must survive.
+    // The repository moved its workspaces from packages/* to apps/*; the complete managed
+    // packages/* entry set is stale, while the user-authored entries must survive.
     fs.writeFileSync(
       path.join(tempDirPath, 'tsconfig.json'),
       JSON.stringify({
@@ -240,7 +239,7 @@ test('drops a negation-derived exclude after the workspace negation is removed',
 });
 
 // A negation is written as a PATTERN when it excludes exactly what it matches, and as the
-// ancestor's package-owned subpaths when it sits above a workspace. Both shapes must be retired
+// ancestor's package-owned subpaths when it sits above a workspace. Both shapes must be removed
 // with their negation, while hygiene globs a user added stay untouched.
 const workspaceNegationCases: {
   name: string;

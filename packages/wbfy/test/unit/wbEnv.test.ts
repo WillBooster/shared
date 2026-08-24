@@ -91,21 +91,6 @@ test('inserts only the missing key into a section that already defines the other
   expect(settings.profiles?.test?.secrets?.NEXT_PUBLIC_WB_ENV).toEqual({ default: 'test' });
 });
 
-test('inserts no explanatory comment and removes the one written by earlier wbfy versions', () => {
-  const inserted = insertWbEnvIntoFnoxToml(fnoxTomlWithoutWbEnv, false) ?? '';
-  expect(inserted).not.toContain('# CI sets WB_ENV');
-
-  const withLegacyComment = inserted.replace(
-    '[secrets]\n',
-    '[secrets]\n# CI sets WB_ENV as a process env var, which wins over fnox; these defaults only fill it locally.\n'
-  );
-  const migrated = insertWbEnvIntoFnoxToml(withLegacyComment, false) ?? '';
-  expect(migrated).not.toContain('# CI sets WB_ENV');
-  // The migration is a pure comment removal: values stay untouched and a second pass is a no-op.
-  expect(TOML.parse(migrated)).toEqual(TOML.parse(withLegacyComment));
-  expect(insertWbEnvIntoFnoxToml(migrated, false)).toBe(migrated);
-});
-
 test('refuses to edit an unparsable fnox.toml', () => {
   expect(insertWbEnvIntoFnoxToml('[secrets\nbroken', false)).toBeUndefined();
 });

@@ -43,11 +43,6 @@ const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
-const wbfyManagedPrettierPlugins = new Set(['prettier-plugin-java', 'prettier-plugin-prisma']);
-// wb and wbfy publish independently. Add a replacement here only after a releasing wb commit has
-// published its implementation, or the next wbfy release can prune a binary that latest wb lacks.
-const wbCliReplacementDependencies = ['open-cli', 'wait-on'];
-const defaultGenI18nTsScript = 'gen-i18n-ts -i i18n -o src/__generated__/i18n.ts -d ja-JP';
 const managedDependencyNames = new Set([
   wbDependency,
   buildTsDependency,
@@ -91,12 +86,10 @@ async function core(config: PackageConfig, rootConfig: PackageConfig, skipAdding
   if (workerTypesScriptError) throw new Error(workerTypesScriptError);
   const filePath = path.resolve(config.dirPath, 'package.json');
   const jsonObj = await readPackageJson(filePath);
-  await updateScripts(config, jsonObj);
+  updateScripts(config, jsonObj);
   await ensureTrustedDependencies(config, jsonObj);
   moveManagedToolDependenciesToDevDependencies(jsonObj);
   pruneCapabilityDependentCompilerDependencies(config, jsonObj);
-  removeSelfDependency(config, jsonObj);
-  removeWbCliReplacementDependencies(jsonObj);
   const dependencyUpdates = await applyPackageJsonConventions(config, rootConfig, jsonObj);
   await normalizePackageMetadata(config, rootConfig, jsonObj, dependencyUpdates);
   // On a first run there is no manifest for `bun add` to update reliably. Write the resolved
@@ -166,71 +159,8 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
   }
 }
 
-function removeSelfDependency(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  const packageName = jsonObj.name || path.basename(config.dirPath);
-  // Node self-references need no dependency edge, which would break monorepo release ordering.
-  for (const section of getDependencySections(jsonObj)) {
-    Reflect.deleteProperty(section, packageName);
-  }
-}
-
-function removeWbCliReplacementDependencies(jsonObj: WritablePackageJson): void {
-  for (const dependency of wbCliReplacementDependencies) {
-    if (doesPackageScriptUseCommand(jsonObj.scripts, dependency)) continue;
-    Reflect.deleteProperty(jsonObj.devDependencies, dependency);
-  }
-}
-
-function doesPackageScriptUseCommand(scripts: PackageJson.Scripts, command: string): boolean {
-  return Object.values(scripts).some(
-    (script) => typeof script === 'string' && doesShellScriptInvokeCommand(script, command)
-  );
-}
-
-function doesShellScriptInvokeCommand(script: string, command: string): boolean {
-  const tokens = tokenizeShellCommand(script);
-  let invokesCommand = false;
-  forEachCommandPositionToken(tokens, (_token, index) => {
-    const executableIndex = getExecutableIndex(tokens, index);
-    const executable = unquoteShellToken(tokens[executableIndex]?.text ?? '');
-    if (executable === command) {
-      invokesCommand = true;
-      return;
-    }
-    if (doesConcurrentChildInvokeCommand(tokens, executableIndex, executable, command)) {
-      invokesCommand = true;
-    }
-  });
-  return invokesCommand;
-}
-
-function getExecutableIndex(tokens: readonly ShellToken[], commandIndex: number): number {
-  if (unquoteShellToken(tokens[commandIndex]?.text ?? '') !== 'bun') return commandIndex;
-  return unquoteShellToken(tokens[commandIndex + 1]?.text ?? '') === 'run' ? commandIndex + 2 : commandIndex + 1;
-}
-
-function doesConcurrentChildInvokeCommand(
-  tokens: readonly ShellToken[],
-  commandIndex: number,
-  executable: string,
-  command: string
-): boolean {
-  const isWbConcurrent =
-    executable === 'wb' && unquoteShellToken(tokens[commandIndex + 1]?.text ?? '') === 'concurrently';
-  if (executable !== 'concurrently' && !isWbConcurrent) return false;
-  const firstArgumentIndex = commandIndex + (isWbConcurrent ? 2 : 1);
-  for (const token of tokens.slice(firstArgumentIndex)) {
-    if (isShellSeparator(token.text)) break;
-    const quote = token.text[0];
-    if ((quote !== '"' && quote !== "'") || token.text.at(-1) !== quote) continue;
-    if (doesShellScriptInvokeCommand(token.text.slice(1, -1), command)) return true;
-  }
-  return false;
-}
-
-async function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): Promise<void> {
+function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
-  removeBunRuntimeFlagFromScripts(jsonObj.scripts);
 }
 
 /**
@@ -280,179 +210,6 @@ function updatePostinstallScript(scripts: PackageJson.Scripts, managesWorkerType
   }
 }
 
-interface ShellToken {
-  text: string;
-  start: number;
-  end: number;
-}
-
-function removeBunRuntimeFlagFromScripts(scripts: PackageJson.Scripts): void {
-  // `bun --bun` prepends a node->bun PATH shim that leaks into every child process and breaks
-  // tools requiring real Node.js (Playwright, wrangler, vinext), and wb 15 warns on every run when
-  // it detects the shim. Only direct script-file executions (e.g. `exec bun --bun src/index.ts`),
-  // where the shim is an intentional Bun-runtime opt-in for spawned children, are preserved.
-  const scriptNames = new Set(Object.keys(scripts));
-  for (const [key, value] of Object.entries(scripts)) {
-    if (typeof value !== 'string' || !value.includes('--bun')) continue;
-    scripts[key] = removeBunRuntimeFlag(value, scriptNames);
-  }
-}
-
-function removeBunRuntimeFlag(script: string, scriptNames: ReadonlySet<string>): string {
-  const tokens = tokenizeShellCommand(script);
-  // A quote-aware scan (not a bare regex) so quoted literals (`echo "bun --bun ..."`), executables
-  // merely ending in `bun` (`my-bun`), quoted targets with spaces, and Bun runtime flags between
-  // `--bun` and the script file are all classified correctly.
-  const removalRanges: [number, number][] = [];
-  forEachCommandPositionToken(tokens, (token, index) => {
-    if (unquoteShellToken(token.text) !== 'bun') return;
-    const flagToken = tokens[index + 1];
-    if (!flagToken || unquoteShellToken(flagToken.text) !== '--bun') return;
-    if (shouldKeepBunRuntimeFlag(tokens.slice(index + 2), scriptNames)) return;
-    removalRanges.push([flagToken.start, flagToken.end]);
-  });
-
-  let result = script;
-  for (const [start, end] of removalRanges.toReversed()) {
-    let whitespaceStart = start;
-    while (whitespaceStart > 0 && /[ \t]/u.test(result[whitespaceStart - 1] ?? '')) whitespaceStart--;
-    result = result.slice(0, whitespaceStart) + result.slice(end);
-  }
-  return result;
-}
-
-// Node-based tools the WillBooster stack invokes from package scripts; running them (or their
-// children) under the bun-node shim breaks them, so `bun --bun <tool>` is unambiguously wrong.
-const nodeBasedTools = new Set(['next', 'vite', 'vinext', 'wrangler', 'playwright']);
-
-/**
- * Whether the tokens following `bun --bun` describe an invocation whose shim must survive. Only
- * unambiguous cases are stripped — a known Node-based tool, or a `bun run <package-script>` alias:
- * wrongly removing an intentional shim changes the runtime seen by child processes (Bun also
- * executes bare extensionless files directly), while wrongly keeping it only leaves wb's startup
- * warning.
- */
-function shouldKeepBunRuntimeFlag(followingTokens: ShellToken[], scriptNames: ReadonlySet<string>): boolean {
-  const positionals: string[] = [];
-  for (const token of followingTokens) {
-    if (isShellSeparator(token.text)) break;
-    const tokenText = unquoteShellToken(token.text);
-    // A flag may take a separate value (e.g. `--preload ./setup.ts`), so the real entrypoint is
-    // unknowable without modeling the full option arity of Bun (and of `bun run`) — keep the flag.
-    if (tokenText.startsWith('-')) return true;
-    positionals.push(tokenText);
-    // `bun run <file>` also executes script files directly, so its target decides too.
-    if (positionals[0] !== 'run' || positionals.length === 2) break;
-  }
-  const [first, second] = positionals;
-  if (first === undefined) return true;
-  if (first === 'run') {
-    // `bun run` also resolves package bins, so a known Node-based tool is unambiguous here too.
-    if (second !== undefined && nodeBasedTools.has(second)) return false;
-    // Otherwise `bun run <name>` is a package-script alias only when the name actually exists in
-    // scripts; Bun may execute a file (even an extensionless one) of that name directly.
-    return second === undefined || /[./$]/u.test(second) || !scriptNames.has(second);
-  }
-  return !nodeBasedTools.has(first);
-}
-
-/**
- * Invokes the callback for every token in shell command position: the first word of the script and
- * of every command after a separator. `KEY=VALUE` prefixes and redirections keep the next token in
- * command position.
- */
-function forEachCommandPositionToken(
-  tokens: readonly ShellToken[],
-  callback: (token: ShellToken, index: number) => void
-): void {
-  let atCommandPosition = true;
-  let redirectionOperandFollows = false;
-  for (const [index, token] of tokens.entries()) {
-    if (isShellSeparator(token.text)) {
-      atCommandPosition = true;
-      redirectionOperandFollows = false;
-      continue;
-    }
-    if (redirectionOperandFollows) {
-      redirectionOperandFollows = false;
-      continue;
-    }
-    if (!atCommandPosition) continue;
-    // A redirection may precede the command (`>out.log yarn build`); the operator and its operand
-    // leave the position intact.
-    if (isRedirectionOperator(token.text)) {
-      redirectionOperandFollows = true;
-      continue;
-    }
-    // The raw token text drives the assignment check: shell quoting turns it into an ordinary
-    // command word (`"FOO=bar" yarn build` runs the command `FOO=bar`).
-    if (/^[A-Za-z_]\w*=/u.test(token.text)) continue;
-    atCommandPosition = false;
-    callback(token, index);
-  }
-}
-
-function tokenizeShellCommand(script: string): ShellToken[] {
-  const tokens: ShellToken[] = [];
-  let index = 0;
-  while (index < script.length) {
-    const char = script[index] ?? '';
-    // An unquoted newline separates commands like `;`, so it must produce a separator token.
-    if (/[^\S\n]/u.test(char)) {
-      index++;
-      continue;
-    }
-    if (isShellSeparator(char)) {
-      let end = index + 1;
-      while (end < script.length && script[end] === char) end++;
-      tokens.push({ text: script.slice(index, end), start: index, end });
-      index = end;
-      continue;
-    }
-    // An unquoted redirection operator ends the preceding word even without whitespace
-    // (`yarn build>log` redirects `yarn build`), so it forms its own token together with an
-    // optional leading file descriptor (`2> /dev/null`).
-    const redirectionOperator = /^\d*[<>]+/u.exec(script.slice(index))?.[0];
-    if (redirectionOperator) {
-      const end = index + redirectionOperator.length;
-      tokens.push({ text: script.slice(index, end), start: index, end });
-      index = end;
-      continue;
-    }
-    let end = index;
-    let quote: string | undefined;
-    while (end < script.length) {
-      const current = script[end] ?? '';
-      if (quote) {
-        if (current === quote) quote = undefined;
-        else if (current === '\\' && quote === '"') end++;
-      } else if (current === '"' || current === "'") {
-        quote = current;
-      } else if (current === '\\') {
-        end++;
-      } else if (/\s/u.test(current) || isShellSeparator(current) || current === '<' || current === '>') {
-        break;
-      }
-      end++;
-    }
-    tokens.push({ text: script.slice(index, end), start: index, end });
-    index = end;
-  }
-  return tokens;
-}
-
-function isShellSeparator(text: string): boolean {
-  return /^[;|&()\n]+$/u.test(text);
-}
-
-function isRedirectionOperator(text: string): boolean {
-  return /^\d*[<>]/u.test(text);
-}
-
-function unquoteShellToken(text: string): string {
-  return text.replaceAll(/["']/gu, '');
-}
-
 async function applyPackageJsonConventions(
   config: PackageConfig,
   rootConfig: PackageConfig,
@@ -462,7 +219,6 @@ async function applyPackageJsonConventions(
   const devDependencies = ['sort-package-json'];
   const pythonDevDependencies: string[] = [];
   const hasJava = doesContainJava(config);
-  const needsRuntimePrettier = hasRuntimePrettierPlugin(jsonObj);
 
   if (
     hasJava &&
@@ -472,28 +228,11 @@ async function applyPackageJsonConventions(
     jsonObj.prettier = '@willbooster/prettier-config';
     devDependencies.push('prettier-plugin-java', '@willbooster/prettier-config');
   }
-  if (needsRuntimePrettier) {
-    ensureRuntimePrettier(jsonObj, dependencies);
-  } else if (hasJava) {
+  if (hasJava) {
     devDependencies.push('prettier');
   }
-  if (!hasJava) {
-    // Drop prettier-the-formatter (oxfmt replaces it), but keep `prettier` itself when the package
-    // imports it as a library or ships a runtime Prettier plugin. Runtime plugins can be consumed by
-    // dynamically loaded code outside app/src, so their dependency declaration is the durable signal
-    // that production installs still need Prettier (WillBooster/judge #2116).
-    removePrettierArtifacts(jsonObj, config.depending.prettierRuntime || needsRuntimePrettier);
-  }
-
-  delete jsonObj.devDependencies['lint-staged'];
-  delete (jsonObj as PackageJson & { 'lint-staged'?: unknown })['lint-staged'];
 
   if (config.isRoot) {
-    delete jsonObj.devDependencies.husky;
-    delete jsonObj.scripts.postpublish;
-    delete jsonObj.scripts.prepublishOnly;
-    delete jsonObj.scripts.prepack;
-    delete jsonObj.scripts.postpack;
     // Lefthook generation is best-effort and .lefthook is absent from Docker build contexts, so a
     // missing normalizer is valid. Once present, its failure must abort install rather than leave a
     // Guard-pinned lockfile behind; keep that fail-fast grouping explicit before any workspace build.
@@ -832,9 +571,6 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
 // never a loss of user policy.
 const wbfyManagedTrustedDependencies = new Set([
   '@blitzjs/auth',
-  // No longer generated (it declares its react peers properly), but kept so reclaiming the
-  // entry from repositories that received it does not warn as a loss of user policy.
-  '@blitzjs/rpc',
   '@chakra-ui/react',
   '@hookform/resolvers',
   '@willbooster/judge',
@@ -897,19 +633,8 @@ async function normalizePackageMetadata(
     jsonObj.name = path.basename(config.dirPath);
   }
 
-  // A monorepo root configured for npm publishing (semantic-release with `@semantic-release/npm`
-  // — via an explicit plugin entry, the plugin-less default list, or a config packageConfig
-  // cannot inspect statically such as JS/YAML or an `extends` preset — or an explicit
-  // `publishConfig`) must not be forced private: `@semantic-release/npm` silently skips private
-  // packages, so forcing `private: true` would stop releases without any error (e.g.
-  // WillBoosterLab/llm-proxy publishing @willbooster-private/llm-proxy).
-  if (config.doesContainSubPackageJsons && (config.release.npmPublishesRoot || jsonObj.publishConfig)) {
-    // Explicit root publishing intent takes precedence over a private monorepo-root default.
-    // Roots relying on the plugin-less default list keep their `private` value untouched:
-    // `private: true` there can be a deliberate opt-out, which `@semantic-release/npm` honors by
-    // defaulting npmPublish to false.
-    delete jsonObj.private;
-  } else if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
+  // A plain monorepo root is private unless its release or publish configuration says otherwise.
+  if (config.doesContainSubPackageJsons && !config.release.npm && !jsonObj.publishConfig) {
     jsonObj.private = true;
   }
   if (!jsonObj.license) {
@@ -948,13 +673,9 @@ async function normalizePackageMetadata(
 
     const pythonPackageManager = getPythonPackageManager(config);
     if (pythonPackageManager) {
-      if (jsonObj.scripts.postinstall === 'poetry install') {
-        delete jsonObj.scripts.postinstall;
-      }
       const scriptRunner = 'bun run';
       jsonObj.scripts['common/ci-setup'] = `${scriptRunner} setup-${pythonPackageManager}`;
       delete jsonObj.scripts[`setup-${pythonPackageManager === 'poetry' ? 'uv' : 'poetry'}`];
-      delete jsonObj.scripts['setup-poetry-asdf'];
       jsonObj.scripts[`setup-${pythonPackageManager}`] = getPythonSetupCommand(pythonPackageManager);
       const pythonFiles = await fg.glob('**/*.py', {
         cwd: config.dirPath,
@@ -990,9 +711,7 @@ async function normalizePackageMetadata(
   }
 
   const genCodeScript = jsonObj.scripts['gen-code'];
-  if (genCodeScript?.includes('No code generation needed')) {
-    delete jsonObj.scripts['gen-code'];
-  } else if (shouldGenerateWbGenCodeScript(config, genCodeScript)) {
+  if (shouldGenerateWbGenCodeScript(config)) {
     // Preserve project-specific steps a repo appended to the managed `bun wb gen-code` (e.g. building extra deploy
     // assets) instead of discarding them; only the managed gen-code segment is wbfy's to
     // regenerate. An unparseable script is left alone rather than rewritten from a wrong parse.
@@ -1004,34 +723,15 @@ async function normalizePackageMetadata(
       jsonObj.scripts['gen-code'] = ['bun wb gen-code', ...customSegments].join(' && ');
     }
   }
-  normalizeGenI18nTsScript(config, jsonObj);
   updatePostinstallScript(jsonObj.scripts, generatesWorkerTypes(config));
-  if (!jsonObj.dependencies.prettier) {
-    // Because @types/prettier blocks prettier execution.
-    delete jsonObj.devDependencies['@types/prettier'];
-  }
 }
 
-function shouldGenerateWbGenCodeScript(config: PackageConfig, oldGenCodeScript: string | undefined): boolean {
-  return (
-    config.depending.blitz ||
-    config.depending.chakra ||
-    config.depending.genI18nTs ||
-    config.depending.prisma ||
-    (config.depending.drizzle && !!oldGenCodeScript?.includes('drizzle-kit check'))
-  );
+function shouldGenerateWbGenCodeScript(config: PackageConfig): boolean {
+  return config.depending.blitz || config.depending.chakra || config.depending.genI18nTs || config.depending.prisma;
 }
 
 function appendFormatCodeCommand(formatScript: string | undefined): string {
   return formatScript ? `${formatScript} && bun run format-code` : 'bun run format-code';
-}
-
-function normalizeGenI18nTsScript(config: PackageConfig, jsonObj: WritablePackageJson): void {
-  if (!shouldManageGenI18nTs(config)) return;
-
-  if (jsonObj.scripts['gen-i18n-ts'] === defaultGenI18nTsScript) {
-    delete jsonObj.scripts['gen-i18n-ts'];
-  }
 }
 
 async function normalizePublishedConfigPackageMetadata(
@@ -1646,10 +1346,6 @@ export function generateScripts(config: PackageConfig, oldScripts: PackageJson.S
   return scripts;
 }
 
-function shouldManageGenI18nTs(config: PackageConfig): boolean {
-  return config.depending.genI18nTs && fs.existsSync(path.join(config.dirPath, 'i18n'));
-}
-
 // CI workflows (both the reusable test workflow and the self-contained variant for non-WillBooster
 // repositories) prefer `test/ci` over `test`, so standardize it on `wb test-on-ci` at the root —
 // `wb test-on-ci` already iterates workspace packages itself.
@@ -1662,7 +1358,7 @@ function applyTestOnCiScript(scripts: Record<string, string>, oldScripts: Packag
 
 /** Whether a script body is one of the generated `wb test-on-ci` invocations. */
 function isGeneratedTestOnCiScript(script: string): boolean {
-  return /^(?:bun(?:[ \t]+--bun)?[ \t]+)?wb[ \t]+test-on-ci$/u.test(script.trim());
+  return script.trim() === 'bun wb test-on-ci';
 }
 
 /**
@@ -1683,7 +1379,7 @@ function applyTestScript(
 
 /** Whether a script body is one of the KNOWN generated `wb test` invocations. */
 function isGeneratedTestScript(script: string): boolean {
-  return /^(?:bun(?:[ \t]+--bun)?[ \t]+)?wb[ \t]+test$/u.test(script.trim());
+  return script.trim() === 'bun wb test';
 }
 
 /**
@@ -1702,14 +1398,8 @@ function keepGeneratedScriptWrappers(
     const oldScript = oldScripts[scriptName]?.trim();
     const generatedScript = scripts[scriptName];
     if (!oldScript || !generatedScript || oldScript === generatedScript) continue;
-    // Rewrite previously generated Bun runner spellings to the canonical command while retaining
-    // the repository's chained commands.
-    const generatedCore = generatedScript.replace(/^bun[ \t]+/u, '');
     const headRegExp = new RegExp(
-      `^(?:bun(?:[ \\t]+--bun)?(?:[ \\t]+run)?[ \\t]+)?${escapeRegExp(generatedCore).replaceAll(
-        ' ',
-        String.raw`[ \t]+`
-      )}(?=[ \\t]*(?:&&|\\|\\||;|\\n))`,
+      `^${escapeRegExp(generatedScript).replaceAll(' ', String.raw`[ \t]+`)}(?=[ \\t]*(?:&&|\\|\\||;|\\n))`,
       'u'
     );
     // A newline separates shell commands just like &&, || and ;, matching isGeneratedDatabaseScript.
@@ -1728,46 +1418,21 @@ function applyDatabaseScripts(
 ): void {
   if (!config.depending.prisma && !config.depending.drizzle) return;
 
-  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`, /migrate-dev/u);
-  applyDatabaseScript(
-    scripts,
-    oldScripts,
-    'db-migrate',
-    `${wbDbCommand} migrate --check-idempotency`,
-    /migrate[ \t]+--check-idempotency/u
-  );
-  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`, /studio/u);
+  applyDatabaseScript(scripts, oldScripts, 'db-create-migration', `${wbDbCommand} migrate-dev`);
+  applyDatabaseScript(scripts, oldScripts, 'db-migrate', `${wbDbCommand} migrate --check-idempotency`);
+  applyDatabaseScript(scripts, oldScripts, 'db-view', `${wbDbCommand} studio`);
 }
 
 function applyDatabaseScript(
   scripts: Record<string, string>,
   oldScripts: PackageJson.Scripts,
   name: string,
-  generatedScript: string,
-  generatedArgsPattern: RegExp
+  generatedScript: string
 ): void {
   const oldScript = oldScripts[name];
   // Some repositories wrap migration commands to prepare SQLite directories,
   // fan out over tenants, or perform cleanup that wb cannot infer generically.
-  scripts[name] =
-    oldScript && !isGeneratedDatabaseScript(oldScript, generatedArgsPattern) ? oldScript : generatedScript;
-}
-
-/**
- * Whether a script body is one of the KNOWN generated `wb db`/`wb prisma` invocations FOR THE
- * GIVEN managed script (allowing the historical `bun --bun` runner prefix).
- * Anchored on the WHOLE body AND on the exact generated argument list so a custom wrapper that
- * merely contains a wb call (`prepare-sqlite && WB_ENV=… wb db studio`), carries extra flags
- * (`wb prisma studio --port 5556`), or reuses another managed script's command
- * (`"db-migrate": "wb db migrate-dev"`) is preserved instead of being replaced wholesale.
- */
-function isGeneratedDatabaseScript(script: string, generatedArgsPattern: RegExp): boolean {
-  // Horizontal whitespace only ([ \t]) — a newline is a shell command separator, so a
-  // newline-containing body is a multi-command wrapper that must be preserved.
-  return new RegExp(
-    String.raw`^(?:bun(?:[ \t]+--bun)?[ \t]+)?wb[ \t]+(?:db|prisma)[ \t]+(?:${generatedArgsPattern.source})$`,
-    'u'
-  ).test(script.trim());
+  scripts[name] = oldScript && oldScript.trim() !== generatedScript ? oldScript : generatedScript;
 }
 
 function getWbDatabaseCommand(config: PackageConfig): 'wb db' | 'wb prisma' {
@@ -1824,34 +1489,6 @@ function doesMiseTaskCallPackageScript(config: PackageConfig, name: string): boo
   return packageManagers.some((packageManager) =>
     new RegExp(String.raw`\b${packageManager}\s+(?:run\s+)?${escapeRegExp(name)}(?![a-zA-Z0-9_\-:.])`, 'u').test(task)
   );
-}
-
-function removePrettierArtifacts(jsonObj: WritablePackageJson, keepPrettierDependency = false): void {
-  delete jsonObj.prettier;
-  const dependencySections: Array<Partial<Record<string, string>> | undefined> = [
-    jsonObj.dependencies,
-    jsonObj.devDependencies,
-    jsonObj.peerDependencies,
-  ];
-  for (const section of dependencySections) {
-    if (!section) continue;
-    if (!keepPrettierDependency) delete section.prettier;
-    for (const plugin of wbfyManagedPrettierPlugins) delete section[plugin];
-    delete section['@willbooster/prettier-config'];
-    delete section['@types/prettier'];
-  }
-}
-
-function hasRuntimePrettierPlugin(jsonObj: WritablePackageJson): boolean {
-  return Object.keys(jsonObj.dependencies).some(
-    (dependency) => dependency.includes('prettier-plugin') && !wbfyManagedPrettierPlugins.has(dependency)
-  );
-}
-
-function ensureRuntimePrettier(jsonObj: WritablePackageJson, dependencies: string[]): void {
-  jsonObj.dependencies.prettier ??= jsonObj.devDependencies.prettier;
-  delete jsonObj.devDependencies.prettier;
-  dependencies.push('prettier');
 }
 
 async function updatePrivatePackages(jsonObj: WritablePackageJson): Promise<void> {

@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { expect, test } from 'bun:test';
 
-import { generateLefthookUpdatingPackageJson } from '../../src/generators/lefthook.js';
+import { generateLefthook } from '../../src/generators/lefthook.js';
 
 import { createConfig } from '../helpers/testConfig.js';
 
@@ -13,7 +13,7 @@ test('generated lockfile normalizer removes only Guard registry resolutions', as
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-lefthook-'));
   try {
     const config = createConfig({ dirPath: tempDirPath, isRoot: true });
-    await generateLefthookUpdatingPackageJson(config);
+    await generateLefthook(config);
     const lockfilePath = path.join(tempDirPath, 'bun.lock');
     fs.writeFileSync(
       lockfilePath,
@@ -71,7 +71,7 @@ test('post-merge cache clearing covers workspace frameworks with workspace-relat
       dirPath: path.join(tempDirPath, 'packages', 'web'),
       depending: { ...createConfig().depending, vinext: true },
     });
-    await generateLefthookUpdatingPackageJson(rootConfig, [rootConfig, nextConfig, vinextConfig]);
+    await generateLefthook(rootConfig, [rootConfig, nextConfig, vinextConfig]);
 
     const prepareScript = fs.readFileSync(path.join(tempDirPath, '.lefthook', 'post-merge', 'prepare.sh'), 'utf8');
     expect(prepareScript).toContain(String.raw`bun install && rm -Rf -- 'apps/\$site/.next'`);
@@ -90,11 +90,11 @@ test('the Renovate config validation job is generated only for willbooster-confi
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-lefthook-'));
   try {
     const otherConfig = createConfig({ dirPath: tempDirPath, isRoot: true });
-    await generateLefthookUpdatingPackageJson(otherConfig);
+    await generateLefthook(otherConfig);
     expect(fs.readFileSync(path.join(tempDirPath, 'lefthook.yml'), 'utf8')).not.toContain('renovate-config-validator');
 
     const configsConfig = createConfig({ dirPath: tempDirPath, isRoot: true, isWillBoosterConfigs: true });
-    await generateLefthookUpdatingPackageJson(configsConfig);
+    await generateLefthook(configsConfig);
     expect(fs.readFileSync(path.join(tempDirPath, 'lefthook.yml'), 'utf8')).toContain(
       'renovate-config-validator --strict --no-global {staged_files}'
     );
@@ -111,7 +111,7 @@ test('post-merge cache clearing stays root-relative for a root-level Next.js app
       isRoot: true,
       depending: { ...createConfig().depending, next: true },
     });
-    await generateLefthookUpdatingPackageJson(rootConfig, [rootConfig]);
+    await generateLefthook(rootConfig, [rootConfig]);
 
     const prepareScript = fs.readFileSync(path.join(tempDirPath, '.lefthook', 'post-merge', 'prepare.sh'), 'utf8');
     expect(prepareScript).toContain("bun install && rm -Rf -- '.next'");

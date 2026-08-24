@@ -68,7 +68,6 @@ export interface PackageConfig {
     next: boolean;
     playwrightTest: boolean;
     playwrightRuntime: boolean;
-    prettierRuntime: boolean;
     prisma: boolean;
     pyright: boolean;
     react: boolean;
@@ -287,7 +286,7 @@ export async function getPackageConfig(
       workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath));
     const doesContainWranglerConfig = detectWranglerConfig(dirPath);
     const workflowContents = readWorkflowFileContents(dirPath);
-    const runtimeImports = detectRuntimeImports(dirPath);
+    const importsPlaywrightAtRuntime = detectPlaywrightRuntimeImport(dirPath);
     const config: PackageConfig = {
       dirPath,
       dockerfile,
@@ -348,8 +347,7 @@ export async function getPackageConfig(
         next: !!dependencies.next,
         playwrightTest:
           !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'] || !!devDependencies.playwright,
-        playwrightRuntime: runtimeImports.playwright,
-        prettierRuntime: runtimeImports.prettier,
+        playwrightRuntime: importsPlaywrightAtRuntime,
         prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
         pyright: !!devDependencies.pyright,
         reactNative: !!dependencies['react-native'],
@@ -771,28 +769,18 @@ function findCargoTomlDirPaths(dirPath: string): string[] {
     .toSorted((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
 }
 
-// `prettier` is normally stripped in favor of oxfmt, but a package that imports it as a library
-// (e.g. formatting HTML at runtime) must keep it declared, or isolated installs turn it into a
-// phantom dependency. Subpath specifiers like `prettier/standalone` count too. Both packages are
-// detected in one pass so every source file is globbed and read only once.
-function detectRuntimeImports(dirPath: string): { playwright: boolean; prettier: boolean } {
+function detectPlaywrightRuntimeImport(dirPath: string): boolean {
   const files = fg.globSync('{app,src}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}', {
     dot: true,
     cwd: dirPath,
     ignore: [...globIgnore, '**/__tests__/**', '**/*.spec.*', '**/*.test.*', '**/playwright.config.*'],
   });
-  const result = { playwright: false, prettier: false };
-  const regExps = {
-    playwright: buildRuntimeImportRegExp('playwright'),
-    prettier: buildRuntimeImportRegExp('prettier'),
-  };
+  const playwrightImportPattern = buildRuntimeImportRegExp('playwright');
   for (const file of files) {
     const content = fs.readFileSync(path.resolve(dirPath, file), 'utf8');
-    result.playwright ||= regExps.playwright.test(content);
-    result.prettier ||= regExps.prettier.test(content);
-    if (result.playwright && result.prettier) break;
+    if (playwrightImportPattern.test(content)) return true;
   }
-  return result;
+  return false;
 }
 
 function buildRuntimeImportRegExp(packageName: string): RegExp {

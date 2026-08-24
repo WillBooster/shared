@@ -209,41 +209,6 @@ test('uses stable age-gated versions for generated dependencies when skipping in
   expect(packageJson.devDependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
 });
 
-test('keeps prettier for packages that import it as a runtime library but drops it otherwise', async () => {
-  const importing = await generatePackageJsonFrom(
-    { dependencies: { prettier: '3.9.5' } },
-    { depending: { ...createConfig().depending, prettierRuntime: true } }
-  );
-  expect(importing.dependencies?.prettier).toBe('3.9.5');
-
-  const notImporting = await generatePackageJsonFrom({ dependencies: { prettier: '3.9.5' } });
-  expect(notImporting.dependencies?.prettier).toBeUndefined();
-});
-
-test('keeps and restores prettier when a runtime prettier plugin is declared', async () => {
-  const retainedPackageJson = await generatePackageJsonFrom({
-    dependencies: {
-      prettier: '3.0.0',
-      'prettier-plugin-organize-attributes': '1.0.0',
-    },
-  });
-  expect(retainedPackageJson.dependencies?.prettier).toBe('3.0.0');
-
-  const missingPrettierPackageJson = {
-    dependencies: {
-      'prettier-plugin-organize-attributes': '1.0.0',
-    },
-  };
-  const restoredPackageJson = await generatePackageJsonFrom(missingPrettierPackageJson);
-  const restoredJavaPackageJson = await generatePackageJsonFrom(missingPrettierPackageJson, {
-    doesContainJava: true,
-  });
-
-  expect(restoredPackageJson.dependencies?.prettier).toMatch(/^\d+\.\d+\.\d+$/u);
-  expect(restoredPackageJson.dependencies?.['prettier-plugin-organize-attributes']).toBe('1.0.0');
-  expect(restoredJavaPackageJson.dependencies?.prettier).toBe(restoredPackageJson.dependencies?.prettier);
-});
-
 // `wb gen-code` generates worker-configuration.d.ts itself, so wbfy no longer weaves `wrangler types` into the
 // managed scripts: a Cloudflare package normalizes to `bun wb gen-code` like any other.
 test('normalizes managed scripts of a Cloudflare project to wb gen-code', async () => {
@@ -307,7 +272,6 @@ const rejectedWranglerScripts: [string, Record<string, string>, boolean?][] = [
   ['a check', { 'check-types': 'wrangler types --check' }],
   ['an equals-form check', { 'gen-types': 'wrangler types --check=true' }],
   ['a divergent check', { 'check-types': 'wrangler types --check --strict-vars=false' }],
-  ['a flagged alias reference', { 'gen-types': 'wrangler types', build: 'bun --bun run gen-types' }],
   ['an unparseable postinstall alias', { 'gen-types': 'wrangler types', postinstall: 'bun run gen-types > /dev/null' }],
   ['a flagged postinstall alias', { 'gen-types': 'wrangler types', postinstall: 'npm --silent run-script gen-types' }],
   ['a joined redirection', { postinstall: 'wrangler types>/dev/null' }],
@@ -438,7 +402,7 @@ test('keeps a wrapper around a customized gen-code script', async () => {
 test('preserves a customized gen-i18n-ts invocation appended to gen-code', async () => {
   const custom = 'gen-i18n-ts -i locales -o src/customI18n.ts -d en-US';
   const packageJson = await generatePackageJsonFrom(
-    { scripts: { 'gen-code': `wb gen-code && ${custom}` }, dependencies: { 'gen-i18n-ts': '4.0.6' } },
+    { scripts: { 'gen-code': `bun wb gen-code && ${custom}` }, dependencies: { 'gen-i18n-ts': '4.0.6' } },
     { depending: genI18nTsDepending },
     { createI18nDir: true }
   );
@@ -450,7 +414,7 @@ test('preserves a customized gen-i18n-ts invocation appended to gen-code', async
 test('preserves the position of a custom step after generation', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
-      scripts: { 'gen-code': 'bun wb gen-code', postinstall: 'wb gen-code && bun run build-assets' },
+      scripts: { 'gen-code': 'bun wb gen-code', postinstall: 'bun wb gen-code && bun run build-assets' },
     },
     { depending: genI18nTsDepending },
     { createI18nDir: true }
@@ -464,7 +428,7 @@ test('preserves the position of a custom step after generation', async () => {
 test('keeps a wb gen-code postinstall for an unmanaged worker package', async () => {
   const wranglerPackageJson = {
     devDependencies: { wrangler: '4.69.0', 'drizzle-orm': '0.44.5' },
-    scripts: { postinstall: 'wb gen-code' },
+    scripts: { postinstall: 'bun wb gen-code' },
   };
   const packageJson = await generatePackageJsonFrom(
     { ...wranglerPackageJson },
@@ -490,11 +454,7 @@ test('preserves custom postinstall segments', async () => {
 test('preserves project-specific steps appended to the managed gen-code script', async () => {
   const config = { depending: genI18nTsDepending };
   const expected = 'bun wb gen-code && bun wb dotenv -- build-ts run scripts/buildLessonImages.ts';
-  const first = await generatePackageJsonFrom(
-    { scripts: { 'gen-code': `wb gen-code && ${expected.split(' && ')[1]}` } },
-    config,
-    { createI18nDir: true }
-  );
+  const first = await generatePackageJsonFrom({ scripts: { 'gen-code': expected } }, config, { createI18nDir: true });
   expect(first.scripts?.['gen-code']).toBe(expected);
 
   // wbfy consumes its own output, so a second run must be a no-op.
@@ -503,16 +463,6 @@ test('preserves project-specific steps appended to the managed gen-code script',
 });
 
 // A gen-code script whose shell wbfy does not model is left to a human instead of being rewritten from a wrong parse.
-test('leaves an unmodeled gen-code script alone', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    { scripts: { 'gen-code': 'wb gen-code; tsx scripts/genRoutes.ts' } },
-    { depending: genI18nTsDepending },
-    { createI18nDir: true }
-  );
-
-  expect(packageJson.scripts?.['gen-code']).toBe('wb gen-code; tsx scripts/genRoutes.ts');
-});
-
 // Without a gen-code script `wb gen-code` still has to run on install, but a project-owned postinstall step may
 // generate `wrangler types`' own inputs (a wrangler config, `.dev.vars`), so it keeps running first.
 test('runs wb gen-code after a project postinstall that has no gen-code script', async () => {
@@ -593,25 +543,6 @@ test('preserves custom wrapper bodies of managed db scripts that contain a wb db
 
   expect(packageJson.scripts).toMatchObject(wrapperScripts);
   expect(packageJson.dependencies?.['@willbooster/wb']).toMatch(/^\d+\.\d+\.\d+/u);
-});
-
-test('replaces generated db script bodies using supported Bun runner prefixes', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        'db-create-migration': 'bun --bun wb prisma migrate-dev',
-        'db-migrate': 'bun --bun wb prisma migrate --check-idempotency',
-        'db-view': 'wb prisma studio',
-      },
-    },
-    { depending: { ...createConfig().depending, prisma: true } }
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    'db-create-migration': 'bun wb prisma migrate-dev',
-    'db-migrate': 'bun wb prisma migrate --check-idempotency',
-    'db-view': 'bun wb prisma studio',
-  });
 });
 
 test('uses bun runner for generated Python scripts in bun projects', async () => {
@@ -863,39 +794,9 @@ test('does not force private on a monorepo root released via @semantic-release/n
   expect(packageJson.private).toBe(false);
 });
 
-// Older wbfy forced `private: true` on every monorepo root; when the user explicitly configured
-// `@semantic-release/npm` to publish the root itself, the stale flag silently suppresses
-// publishing, so the generator must migrate it away on upgrade.
-test('removes stale private from a monorepo root explicitly publishing itself via @semantic-release/npm', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    { name: '@willbooster-private/llm-proxy', private: true, workspaces: ['packages/*'] },
-    {
-      isRoot: true,
-      doesContainSubPackageJsons: true,
-      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: true },
-    }
-  );
-
-  expect(packageJson.private).toBeUndefined();
-});
-
 test('does not force private on a monorepo root with a publishConfig', async () => {
   const packageJson = await generatePackageJsonFrom(
     { name: 'published-monorepo', workspaces: ['packages/*'], publishConfig: { registry: 'https://npm.example.com' } },
-    { isRoot: true, doesContainSubPackageJsons: true }
-  );
-
-  expect(packageJson.private).toBeUndefined();
-});
-
-test('removes stale private from a monorepo root with a publishConfig', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      name: 'published-monorepo',
-      private: true,
-      workspaces: ['packages/*'],
-      publishConfig: { registry: 'https://npm.example.com' },
-    },
     { isRoot: true, doesContainSubPackageJsons: true }
   );
 
@@ -927,78 +828,8 @@ test('adds no publishConfig in a private repository', async () => {
   expect(packageJson.publishConfig).toBeUndefined();
 });
 
-test('strips `bun --bun` only from command-position invocations of Node-based tools', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    {
-      scripts: {
-        // Node-based tool invocations lose `--bun`.
-        build: 'bun --bun next build',
-        dev: 'bun --bun next dev',
-        start: 'bun --bun next start && bun --bun wrangler tail',
-        'run-alias': 'bun --bun run build',
-        'run-tool': 'bun --bun run next start',
-        'quoted-executable': '"bun" --bun next build',
-        multiline: 'bun --bun next build\nbun --bun wrangler tail',
-        'env-prefix': 'NODE_ENV=production bun --bun next build',
-        // Direct script-file executions keep `--bun`.
-        'file-exec': 'exec bun --bun src/index.ts',
-        'file-chained': 'bun --bun src/index.ts;echo done',
-        'file-quoted': 'bun --bun "src/index.ts"',
-        'file-spaced-path': 'bun --bun "src/my script.ts"',
-        'file-runtime-flags': 'bun --bun --smol src/index.ts',
-        'file-variable': 'bun --bun "$ENTRYPOINT"',
-        'file-run-file': 'bun --bun run ./src/index.ts',
-        'file-extensionless': 'bun --bun ./scripts/server',
-        'file-bare-file': 'bun --bun server',
-        'file-run-missing': 'bun --bun run server',
-        'file-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
-        'file-flag-value': 'bun --bun --cwd packages/app src/index.ts',
-        // `bun --bun` outside a command position is data, not a command.
-        'echo-literal': 'echo "bun --bun next build"',
-        'nested-literal': `node -e 'console.log("use bun --bun next")'`,
-        'other-tool': 'my-bun --bun next build',
-      },
-    },
-    {}
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    build: 'bun next build',
-    dev: 'bun next dev',
-    start: 'bun next start && bun wrangler tail',
-    'run-alias': 'bun run build',
-    'run-tool': 'bun run next start',
-    'quoted-executable': '"bun" next build',
-    multiline: 'bun next build\nbun wrangler tail',
-    'env-prefix': 'NODE_ENV=production bun next build',
-    'file-exec': 'exec bun --bun src/index.ts',
-    'file-chained': 'bun --bun src/index.ts;echo done',
-    'file-quoted': 'bun --bun "src/index.ts"',
-    'file-spaced-path': 'bun --bun "src/my script.ts"',
-    'file-runtime-flags': 'bun --bun --smol src/index.ts',
-    'file-variable': 'bun --bun "$ENTRYPOINT"',
-    'file-run-file': 'bun --bun run ./src/index.ts',
-    'file-extensionless': 'bun --bun ./scripts/server',
-    'file-bare-file': 'bun --bun server',
-    'file-run-missing': 'bun --bun run server',
-    'file-quoted-flag': 'bun --bun run "--preload" ./setup.ts',
-    'file-flag-value': 'bun --bun --cwd packages/app src/index.ts',
-    'echo-literal': 'echo "bun --bun next build"',
-    'nested-literal': `node -e 'console.log("use bun --bun next")'`,
-    'other-tool': 'my-bun --bun next build',
-  });
-});
-
 test('generates test/ci script running wb test-on-ci at the root', async () => {
   const packageJson = await generatePackageJsonFrom({ scripts: {} }, { isRoot: true });
-  expect(packageJson.scripts?.['test/ci']).toBe('bun wb test-on-ci');
-});
-
-test('replaces the previous Bun-generated test/ci variant with the current one', async () => {
-  const packageJson = await generatePackageJsonFrom(
-    { scripts: { 'test/ci': 'bun --bun wb test-on-ci' } },
-    { isRoot: true }
-  );
   expect(packageJson.scripts?.['test/ci']).toBe('bun wb test-on-ci');
 });
 
@@ -1039,55 +870,6 @@ test('removes TypeScript compilers from a repository without TypeScript', async 
   expect(withoutTypeScript.devDependencies?.typescript).toBeUndefined();
 });
 
-test('removes a package self-dependency from every dependency section', async () => {
-  const packageJson = await generatePackageJsonFrom({
-    name: '@example/self-referencing',
-    dependencies: { '@example/self-referencing': '1.0.0' },
-    devDependencies: { '@example/self-referencing': '1.0.0' },
-    peerDependencies: { '@example/self-referencing': '1.0.0' },
-  });
-  expect(packageJson.dependencies?.['@example/self-referencing']).toBeUndefined();
-  expect(packageJson.devDependencies?.['@example/self-referencing']).toBeUndefined();
-  expect(packageJson.peerDependencies?.['@example/self-referencing']).toBeUndefined();
-});
-
-test('removes standalone CLI dependencies when scripts use the wb replacements', async () => {
-  const packageJson = await generatePackageJsonFrom({
-    scripts: { preview: 'bun wb wait-on tcp:3000 && bun wb open-cli http://localhost:3000' },
-    devDependencies: { 'open-cli': '8.0.0', 'wait-on': '9.0.1' },
-  });
-
-  expect(packageJson.devDependencies?.['open-cli']).toBeUndefined();
-  expect(packageJson.devDependencies?.['wait-on']).toBeUndefined();
-});
-
-test('preserves standalone CLI dependencies when scripts execute their bins', async () => {
-  const packageJson = await generatePackageJsonFrom({
-    scripts: { preview: 'bun wait-on tcp:3000 && bun run open-cli http://localhost:3000' },
-    devDependencies: { 'open-cli': '8.0.0', 'wait-on': '9.0.1' },
-  });
-
-  expect(packageJson.devDependencies?.['open-cli']).toBe('8.0.0');
-  expect(packageJson.devDependencies?.['wait-on']).toBe('9.0.1');
-});
-
-test.each([
-  'concurrently',
-  'wb concurrently',
-  'bun concurrently',
-  'bun wb concurrently',
-  'bun run concurrently',
-  'bun run wb concurrently',
-])('preserves standalone CLI dependencies in %s child commands', async (runner) => {
-  const packageJson = await generatePackageJsonFrom({
-    scripts: { preview: `${runner} "bun run start" "wait-on tcp:3000 && open-cli http://localhost:3000"` },
-    devDependencies: { 'open-cli': '8.0.0', 'wait-on': '9.0.1' },
-  });
-
-  expect(packageJson.devDependencies?.['open-cli']).toBe('8.0.0');
-  expect(packageJson.devDependencies?.['wait-on']).toBe('9.0.1');
-});
-
 test('keeps commands chained onto the generated test and verify-full scripts', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
@@ -1105,28 +887,9 @@ test('keeps commands chained onto the generated test and verify-full scripts', a
   });
 });
 
-test('normalizes the runner prefix of a chained test script instead of freezing it', async () => {
-  // Existing manifests may spell the wrapper as `bun run wb test`, and `--bun` breaks Node-based
-  // tools; both must converge on the generated command so the next run still recognizes the body.
-  const packageJson = await generatePackageJsonFrom(
-    { scripts: { test: 'bun run wb test && mvn test', 'verify-full': 'bun --bun wb verify --full; mvn test' } },
-    jsRootConfig
-  );
-
-  expect(packageJson.scripts).toMatchObject({
-    test: 'bun wb test && mvn test',
-    'verify-full': 'bun wb verify --full; mvn test',
-  });
-});
-
 test('keeps a command chained onto the generated test script with a newline', async () => {
   const packageJson = await generatePackageJsonFrom({ scripts: { test: 'bun wb test\nmvn test' } }, jsRootConfig);
   expect(packageJson.scripts?.test).toBe('bun wb test\nmvn test');
-});
-
-test('replaces a plain generated test script body', async () => {
-  const packageJson = await generatePackageJsonFrom({ scripts: { test: 'bun --bun wb test' } }, jsRootConfig);
-  expect(packageJson.scripts?.test).toBe('bun wb test');
 });
 
 async function generatePackageJsonFrom(

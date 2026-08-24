@@ -20,7 +20,7 @@ export const minimumBunVersion = '1.4.0';
  * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions while
  * preserving unrelated mise settings.
  */
-export async function generateMiseToml(config: PackageConfig, currentBunVersion: string): Promise<void> {
+export async function generateMiseToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
     // A parse failure must abort instead of falling back to {}: regenerating from an empty object
@@ -37,7 +37,7 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
+    tools.bun = pinConcreteToolVersion('bun', tools.bun, config.dirPath);
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = pinConcreteToolVersion(
         'fnox',
@@ -50,36 +50,6 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     // @ts-expect-error -- Bun 1.4 provides TOML.stringify before the age-gated @types/bun version declares it.
     await fsUtil.generateFile(miseTomlPath, Bun.TOML.stringify(settings));
   });
-}
-
-/**
- * wbfy relies on Bun 1.4 runtime APIs, and the generated bunfig.toml relies on `globalStore` and
- * `publicHoistPattern`; older Bun versions cannot reliably run wbfy or reproduce the install layout
- * it validated. mise resolves `latest` and range selectors such as "1.2" or `prefix:1.2` to
- * the newest locally INSTALLED matching version — not the newest release — so only an exact pin
- * at or above the minimum proves the floor. Selectors that cannot prove it are replaced with the
- * Bun version running wbfy (which the startup guard proved meets the floor) rather than the
- * frozen minimum, so repositories keep tracking the current toolchain. The runtime pin is
- * independent of @types/bun: that package is age-gated like every other third-party dependency, so
- * it can sit behind the pinned runtime until the minimum-release-age window elapses. Handles
- * mise's string, array, and `{ version = "…" }` tool forms.
- */
-function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string): unknown {
-  if (typeof bunVersion === 'string') {
-    const range = bunVersion.startsWith('prefix:') ? bunVersion.slice('prefix:'.length) : bunVersion;
-    // Unverifiable selectors ("latest", "ref:…", "path:…", aliases) cannot prove the floor either.
-    const lowestResolvableVersion = semver.validRange(range) && semver.minVersion(range);
-    return lowestResolvableVersion && semver.gte(lowestResolvableVersion, minimumBunVersion)
-      ? bunVersion
-      : currentBunVersion;
-  }
-  if (Array.isArray(bunVersion)) {
-    return [...new Set(bunVersion.map((version) => liftOutdatedBunVersion(version, currentBunVersion)))];
-  }
-  if (bunVersion && typeof bunVersion === 'object' && 'version' in bunVersion) {
-    return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version, currentBunVersion) };
-  }
-  return bunVersion;
 }
 
 /**

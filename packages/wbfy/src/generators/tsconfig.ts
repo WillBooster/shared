@@ -43,7 +43,7 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     // vinext is the org's Next.js-equivalent framework and owns its tsconfig just like Next/Blitz,
     // so it must skip the standard generation that would overwrite the framework's own settings.
     if (config.depending.blitz || config.depending.next || config.depending.vinext) {
-      await cleanupLegacyTsconfigModuleSettings(config);
+      await normalizeFrameworkTsconfig(config);
       return;
     }
 
@@ -118,7 +118,6 @@ export async function generateTsconfig(config: PackageConfig): Promise<void> {
     // paths is intentionally preserved so repo-local tooling can keep explicit
     // aliases without relying on baseUrl's broad fallback resolution.
     delete newSettings.compilerOptions?.baseUrl;
-    deleteLegacyModuleSettings(newSettings.compilerOptions);
     if (config.depending.reactNative) {
       delete newSettings.compilerOptions?.verbatimModuleSyntax;
     }
@@ -300,7 +299,7 @@ function getManagedWorkspacePrefix(entry: string): string | undefined {
   return workspacePrefix === '' ? undefined : workspacePrefix;
 }
 
-async function cleanupLegacyTsconfigModuleSettings(config: PackageConfig): Promise<void> {
+async function normalizeFrameworkTsconfig(config: PackageConfig): Promise<void> {
   // Next/Blitz own their tsconfig shape, but TypeScript 6 no longer accepts
   // node10 resolver spellings that older projects commonly inherited.
   const filePath = path.resolve(config.dirPath, 'tsconfig.json');
@@ -338,14 +337,12 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   const correctMapping = `${getRootDir(config)}/node_modules/undici-types/index.d.ts`;
   const existingMapping = settings.compilerOptions?.paths?.['undici-types'];
   if (existingMapping) {
-    // Rewrite any mapping wbfy could have generated — a `…/node_modules/undici-types` target with
-    // or without the concrete index.d.ts, at whatever root depth an older getRootDir computed
-    // (its fixed two-level probe mis-resolved workspaces deeper than two levels). Any other value
-    // is a deliberate repo-local mapping (e.g. patched types) and must be kept.
+    // Rewrite the generated mapping when a workspace moves to a different root depth. Any other
+    // value is a deliberate repo-local mapping (e.g. patched types) and must be kept.
     if (
       existingMapping.length === 1 &&
       typeof existingMapping[0] === 'string' &&
-      /(?:^|\/)node_modules\/undici-types(?:\/index\.d\.ts)?$/u.test(existingMapping[0])
+      /(?:^|\/)node_modules\/undici-types\/index\.d\.ts$/u.test(existingMapping[0])
     ) {
       settings.compilerOptions!.paths!['undici-types'] = [correctMapping];
     }
@@ -488,18 +485,6 @@ function filterExistingTypes(existingTypes: string[], generatedTypes: string[]):
 
 function isGeneratedTestGlobalType(typeName: string): boolean {
   return typeName === 'cypress' || typeName === 'jest' || typeName === 'mocha' || typeName === 'vitest/globals';
-}
-
-function deleteLegacyModuleSettings(compilerOptions: TsConfigJson.CompilerOptions | undefined): void {
-  if (!compilerOptions) return;
-
-  // TypeScript treats option values case-insensitively, so normalize before comparison.
-  const moduleResolution = lowerCaseSetting(compilerOptions.moduleResolution);
-  // TypeScript 6 removed the old node10 resolver spelling, so inherited base configs
-  // should choose the resolver unless a project already opted into a modern one.
-  if (moduleResolution === 'node' || moduleResolution === 'node10') {
-    delete compilerOptions.moduleResolution;
-  }
 }
 
 function lowerCaseSetting(value: unknown): string | undefined {

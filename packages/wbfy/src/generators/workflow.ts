@@ -349,17 +349,6 @@ async function writeWorkflowYaml(
 
   if (!('jobs' in newSettings)) return;
 
-  if (kind === 'test-rust') {
-    // Migrate hand-written Rust workflows (e.g. an inline cargo-check job) to the reusable workflow.
-    for (const [jobName, job] of Object.entries(newSettings.jobs)) {
-      // A job written as `jobName:` with no body parses as null.
-      if (!job?.uses?.includes('/reusable-workflows/')) {
-        delete newSettings.jobs[jobName];
-      }
-    }
-    moveToBottom(newSettings, 'jobs');
-  }
-
   if (kind.startsWith('deploy')) {
     newSettings = {
       ...newSettings,
@@ -849,35 +838,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
       }
     }
   }
-  // reusable-workflows replaced the NPM_TOKEN secret declaration with VERDACCIO_TOKEN; GitHub
-  // rejects passing an undeclared secret to a reusable workflow with a startup_failure that emits
-  // no check runs, so a leftover NPM_TOKEN silently disables every calling workflow. The @main
-  // release workflow re-declares NPM_TOKEN (optional) for registry.npmjs.org token publishes
-  // (e.g. first publishes of napi platform packages, which npm trusted publishing cannot
-  // create), so a release caller's mapping is a deliberate configuration and stays.
-  if (secrets && calledReusableWorkflow && calledReusableWorkflow !== 'release') {
-    delete secrets.NPM_TOKEN;
-  }
-
-  if (secrets?.FIREBASE_TOKEN) {
-    secrets.GCP_SA_KEY_JSON_FOR_FIREBASE = '${{ secrets.GCP_SA_KEY_JSON_FOR_FIREBASE }}';
-    delete secrets.FIREBASE_TOKEN;
-  }
-  if (
-    secrets &&
-    ((secrets.DISCORD_WEBHOOK_URL && (kind === 'release' || kind.startsWith('deploy'))) ||
-      (job.with.server_url && kind.startsWith('deploy')))
-  ) {
-    secrets.DISCORD_WEBHOOK_URL = '${{ secrets.DISCORD_WEBHOOK_URL_FOR_RELEASE }}';
-  }
-
-  if (kind === 'sync') {
-    const params = job.with.sync_params_without_dest;
-    if (typeof params === 'string') {
-      job.with.sync_params_without_dest = params.replace('sync ', '');
-    }
-  }
-
   if (kind === 'test-rust') {
     const [rustDirPath] = config.cargoTomlDirPaths;
     if (rustDirPath && rustDirPath !== '.') {
@@ -895,10 +855,6 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     job.uses = `WillBoosterLab/reusable-workflows/.github/workflows/${orgWorkflowCall.workflowName}.${orgWorkflowCall.extension}@${orgWorkflowCall.ref}`;
   }
 
-  // Don't use `fly deploy --json` since it causes an error
-  if (kind.startsWith('deploy') && secrets?.FLY_API_TOKEN && typeof job.with.deploy_command === 'string') {
-    job.with.deploy_command = job.with.deploy_command.replace(/\s+--json/, '');
-  }
   if (config.doesContainDockerfile && !job.with.ci_label && kind.startsWith('test')) {
     job.with.ci_label = 'large';
   }

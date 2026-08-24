@@ -23,20 +23,13 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
       fs.writeFileSync(path.join(dirPath, fileName), content);
     }
     fsUtil.setRootDirPath(dirPath);
-    await generateMiseToml(createConfig({ dirPath }), '1.4.0');
+    await generateMiseToml(createConfig({ dirPath }));
     await promisePool.promiseAll();
     return fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8');
   } finally {
     fs.rmSync(dirPath, { force: true, recursive: true });
   }
 }
-
-test('lifts every configured Bun version in a multi-version mise entry', async () => {
-  const content = await generateFrom({ 'mise.toml': '[tools]\nbun = ["1.2.0", "1.4.0"]\nnode = "24.18.0"\n' });
-
-  expect(content).not.toContain('1.2.0');
-  expect(content).toContain('bun = ["1.4.0"]');
-});
 
 test('pins the concrete version behind an lts/* mise selector', async () => {
   const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "lts/*"\n' });

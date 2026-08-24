@@ -24,7 +24,7 @@ export async function generateVscodeSettings(config: PackageConfig): Promise<voi
     const existingContent = await fsUtil.readFileIfExists(filePath);
     if (existingContent === undefined || jsoncUtil.isTriviaOnly(existingContent)) return;
     // .vscode/settings.json is JSONC by definition; JSON.parse would make wbfy silently skip
-    // commented files, leaving the settings it intends to remove in place.
+    // commented files.
     const parsedSettings = jsoncUtil.parseObjectIgnoringError<object>(existingContent);
     if (!parsedSettings) {
       console.warn(`Skipped updating ${filePath} because the existing content is not parsable as JSONC.`);
@@ -40,14 +40,6 @@ export async function generateVscodeSettings(config: PackageConfig): Promise<voi
     }
     if (config.depending.next) {
       settings = merge.all([settings, excludeSetting('**/.next/**')]);
-    }
-    // LLMによるvibe codingでは、自動フォーマットやコードアクションを無効化することで
-    // 生成されたコードの元の形式を維持できる
-    if ('editor.codeActionsOnSave' in settings) {
-      delete settings['editor.codeActionsOnSave'];
-    }
-    if ('editor.formatOnSave' in settings) {
-      delete settings['editor.formatOnSave'];
     }
     sortKeys(settings as Record<string, unknown>);
     // Skip the write when nothing changes semantically, so JSONC comments and formatting in an

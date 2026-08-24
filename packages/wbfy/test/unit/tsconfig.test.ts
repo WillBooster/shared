@@ -39,21 +39,15 @@ test('does not force a bundler resolver on Next configs that extend a base confi
   expect(standaloneOptions.moduleResolution).toBe('bundler');
 });
 
-test('drops removed node10 resolver spellings regardless of casing', async () => {
-  const compilerOptions = await generateCompilerOptionsFrom({ compilerOptions: { moduleResolution: 'Node10' } });
-  expect(compilerOptions.moduleResolution).toBeUndefined();
-});
-
 test('merges settings from a tsconfig containing JSONC comments instead of replacing the file', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(`{
   "compilerOptions": {
     // explains why the mapping exists
     "paths": {
-      "undici-types": ["./node_modules/undici-types"]
+      "undici-types": ["./node_modules/undici-types/index.d.ts"]
     },
   }
 }`);
-  // The legacy package-directory mapping is normalized to the concrete index.d.ts file.
   expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
 });
 
@@ -137,7 +131,8 @@ test('keeps a commented tsconfig byte-identical when the settings are already up
 
 test('merges settings from a tsconfig with a UTF-8 BOM instead of skipping it', async () => {
   const compilerOptions = await generateCompilerOptionsFromContent(
-    '\uFEFF' + JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./node_modules/undici-types'] } } })
+    '\uFEFF' +
+      JSON.stringify({ compilerOptions: { paths: { 'undici-types': ['./node_modules/undici-types/index.d.ts'] } } })
   );
   expect(compilerOptions.paths).toEqual({ 'undici-types': ['./node_modules/undici-types/index.d.ts'] });
 });

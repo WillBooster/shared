@@ -46,8 +46,7 @@ export async function generateGitignore(config: PackageConfig, rootConfig: Packa
   return logger.functionIgnoringException('generateGitignore', async () => {
     const filePath = path.resolve(config.dirPath, '.gitignore');
     const content = (await fsUtil.readFileIfExists(filePath)) ?? '';
-    const userHeadContent = ignoreFileUtil.getHeadUserContent(content);
-    let headUserContent = userHeadContent + commonContent;
+    let headUserContent = ignoreFileUtil.getHeadUserContent(content) + commonContent;
     const tailUserContent = ignoreFileUtil.getTailUserContent(content);
 
     const names = [...defaultNames];
@@ -140,8 +139,7 @@ src-tauri/gen/schemas/
       // .dev.vars* hold local secrets for wrangler dev and must never be committed.
       // .env.cloudflare carries CLOUDFLARE_API_TOKEN: CI writes it from a secret, and a local
       // `wb deploy` needs a real token in it, so committing it would leak account credentials.
-      // It is listed explicitly (although the common `.env*` rule covers it) because
-      // untrackCloudflareEnv verifies this exact managed rule before untracking.
+      // It is listed explicitly so the Cloudflare-specific credential policy remains visible.
       headUserContent += `.dev.vars*
 .env.cloudflare
 .wrangler/
@@ -225,25 +223,7 @@ src-tauri/gen/schemas/
     if (rootConfig.depending.reactNative || config.depending.reactNative || config.doesContainPubspecYaml) {
       generated = generated.replaceAll(/^(.idea\/.+)$/gm, '$1\nandroid/$1');
     }
-    // Drop HEAD user-section lines that duplicate a managed or template pattern verbatim, so
-    // hand-added entries (e.g. a pre-migration `.wrangler/`) do not linger once wbfy manages the
-    // same rule. Removing a head duplicate cannot change semantics: git honors the LAST matching
-    // rule and the managed/template copy always comes after the head. The TAIL section is left
-    // untouched — a tail rule comes after every managed rule and may deliberately re-assert a
-    // pattern over an earlier negation (e.g. `!.env.production` followed by `.env.production`),
-    // so deleting it would un-ignore files.
-    const managedContent = headUserContent.slice(userHeadContent.length);
-    const managedLines = new Set(
-      [...managedContent.split('\n'), ...generated.split('\n')]
-        .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line))
-        .filter((line) => line && !line.startsWith('#'))
-    );
-    const dedupedUserHeadContent = userHeadContent
-      .split('\n')
-      // Tolerate CRLF user content (now preserved by the generated `.gitignore -text` attribute).
-      .filter((line) => !managedLines.has(line.endsWith('\r') ? line.slice(0, -1) : line))
-      .join('\n');
-    const newContent = dedupedUserHeadContent + managedContent + '\n' + generated + tailUserContent;
+    const newContent = headUserContent + '\n' + generated + tailUserContent;
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent));
   });
 }
