@@ -65,9 +65,8 @@ function pinSupportedBunVersion(version: unknown, currentBunVersion: string, cwd
   // with the running version could silently downgrade a repository's newer explicit toolchain.
   if (typeof version !== 'string') return;
   const pinnedVersion = pinConcreteToolVersion('bun', version, cwd);
-  return typeof pinnedVersion === 'string' &&
-    semver.valid(pinnedVersion) &&
-    semver.gte(pinnedVersion, minimumBunVersion)
+  if (typeof pinnedVersion !== 'string' || !semver.valid(pinnedVersion)) return;
+  return semver.gte(pinnedVersion, minimumBunVersion)
     ? pinnedVersion
     : semver.valid(currentBunVersion) && semver.gte(currentBunVersion, minimumBunVersion)
       ? currentBunVersion

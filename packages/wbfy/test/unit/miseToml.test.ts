@@ -59,3 +59,10 @@ test('leaves a non-string Bun pin untouched', async () => {
 
   expect(content).toBe(miseToml);
 });
+
+test('leaves an unresolvable Bun selector untouched', async () => {
+  const miseToml = '[tools]\nnode = "24.19.0"\nbun = "sub-2:lts"\n';
+  const content = await generateFrom({ 'mise.toml': miseToml }, minimumBunVersion);
+
+  expect(content).toBe(miseToml);
+});

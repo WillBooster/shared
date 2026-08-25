@@ -9,17 +9,19 @@ const { minimumBunVersion } = JSON.parse(
 const bootstrapMarker = 'WBFY_BUN_BOOTSTRAPPED';
 
 if (Bun.semver.order(Bun.version, minimumBunVersion) < 0) {
-  if (process.env[bootstrapMarker]) {
+  const bootstrapStage = process.env[bootstrapMarker];
+  if (bootstrapStage === 'minimum') {
     console.error(`mise did not provide Bun ${minimumBunVersion} (still running ${Bun.version}).`);
     process.exit(1);
   }
-  // Re-enter through mise before loading the Bun 1.4-only bundle. Managed repositories can still
-  // pin the previous runtime on the first wbfy run that raises this floor. The marker bounds this
-  // to one attempt because mise can ignore even an explicit tool when Bun is disabled in settings.
+  // Prefer a supported target pin so every descendant Bun command uses that same version. A target
+  // still on the previous runtime needs one fallback to the new floor so wbfy can migrate its pin.
+  // The stages also bound retries because mise can ignore even an explicit disabled tool.
+  const useMinimum = bootstrapStage === 'target';
   const result = child_process.spawnSync(
     'mise',
-    ['exec', `bun@${minimumBunVersion}`, '--', 'bun', process.argv[1], ...process.argv.slice(2)],
-    { env: { ...process.env, [bootstrapMarker]: '1' }, stdio: 'inherit' }
+    ['exec', ...(useMinimum ? [`bun@${minimumBunVersion}`] : []), '--', 'bun', process.argv[1], ...process.argv.slice(2)],
+    { env: { ...process.env, [bootstrapMarker]: useMinimum ? 'minimum' : 'target' }, stdio: 'inherit' }
   );
   if (result.error) console.error(`Failed to start Bun ${minimumBunVersion} through mise: ${result.error.message}`);
   process.exit(result.status ?? 1);
