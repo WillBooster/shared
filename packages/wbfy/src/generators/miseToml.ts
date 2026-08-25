@@ -42,7 +42,11 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     // through that supported runtime, so generation does not depend on mise resolving `latest`.
     const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, currentBunVersion, config.dirPath);
     if (!bunVersion) {
-      console.warn(`Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= 1.4.`);
+      const reason =
+        typeof tools.bun === 'string'
+          ? 'its Bun selector did not resolve to one exact version >= 1.4'
+          : 'Bun must use a plain exact version string; table and array forms are user-managed';
+      console.warn(`Skipped generating ${miseTomlPath} because ${reason}.`);
       return;
     }
     tools.bun = bunVersion;
