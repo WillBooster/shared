@@ -42,7 +42,9 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     // resolving `latest`.
     const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, config.dirPath);
     if (!bunVersion) {
-      console.warn(`Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= 1.4.`);
+      console.warn(
+        `Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= ${minimumBunVersion}. Update the Bun pin in mise.toml and re-run.`
+      );
       return;
     }
     tools.bun = bunVersion;
