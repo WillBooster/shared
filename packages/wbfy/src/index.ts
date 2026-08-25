@@ -246,12 +246,14 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     }
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
-    const trackedCloudflareEnvPaths = allPackageConfigs.flatMap((config) => {
-      if (!config.isCloudflare && !rootConfig.isCloudflare) return [];
-      return spawnSyncAndReturnStdout('git', ['ls-files', '--', '.env.cloudflare'], config.dirPath)
-        ? [path.resolve(config.dirPath, '.env.cloudflare')]
-        : [];
-    });
+    // The managed ignore rule is unanchored, so a nested copy (e.g. workers/api/.env.cloudflare) is
+    // as much a leak as a root one; the wildcard pathspec covers every depth in one query.
+    const trackedCloudflareEnvPaths = allPackageConfigs.some((config) => config.isCloudflare)
+      ? spawnSyncAndReturnStdout('git', ['ls-files', '--', '.env.cloudflare', '*/.env.cloudflare'], rootConfig.dirPath)
+          .split('\n')
+          .filter(Boolean)
+          .map((filePath) => path.resolve(rootConfig.dirPath, filePath))
+      : [];
     if (trackedCloudflareEnvPaths.length > 0) {
       console.error(
         `SECURITY ERROR: Cloudflare credentials must be untracked. Remove ${trackedCloudflareEnvPaths.join(

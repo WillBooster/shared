@@ -185,8 +185,9 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   const bodyNode = existing && blockNode ? nodes[nodes.indexOf(blockNode) + 1] : blockNode;
   const body = bodyNode ? content.slice(startOffsetWithIndent(content, bodyNode)) : '';
 
-  // Superseding a managed badge is just dropping the old one: a version, URL or workflow change
-  // leaves no stale copy, while a badge someone else added to the block is kept.
+  // Superseding a managed badge is just dropping the old one: a version or workflow change leaves
+  // no stale copy, while any other badge in the block (including a non-canonical wbfy badge, which
+  // is removed manually) is kept.
   const badges = [...managedBadges, ...(existing ?? []).filter((badge) => !isManagedBadge(badge))];
   // Content is sliced from its node's start offset, so whatever blank space followed the front
   // matter is gone; exactly one blank line is restored here. A closing delimiter that ended at EOF

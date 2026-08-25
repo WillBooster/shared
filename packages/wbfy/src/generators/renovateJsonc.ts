@@ -69,6 +69,11 @@ export async function generateRenovateJsonc(config: PackageConfig): Promise<void
       }
     }
 
+    if (oldSettings?.extends !== undefined && !Array.isArray(oldSettings.extends)) {
+      console.warn(`Skipped generating ${filePath} because "extends" is not an array.`);
+      return;
+    }
+
     const newSettings = buildSettings(config, oldSettings);
     const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(
       oldContent,

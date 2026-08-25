@@ -437,6 +437,14 @@ export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJs
     });
     if (hasNonCanonicalWbGenCode) return `${name} must use the canonical bun wb gen-code command`;
   }
+  // `bun <script>` is not recognized as a wrapper, so a managed generation would be appended next
+  // to it and run every generator twice per install.
+  for (const segment of splitScriptSegments(scripts.postinstall ?? '') ?? []) {
+    const scriptName = /^(?:bun|bunx)(?:\s+--bun)?\s+(\S+)$/u.exec(segment)?.[1];
+    if (scriptName !== undefined && scripts[scriptName] !== undefined) {
+      return `postinstall must invoke the ${scriptName} script as bun run ${scriptName}`;
+    }
+  }
   if (
     /(?:^|&&)\s*(?:npm|npx|pnpm|yarn)\s+(?:run(?:-script)?\s+)?(?:gen-code|wb\s+gen-code)\s*(?:&&|$)/u.test(
       scripts.postinstall ?? ''
