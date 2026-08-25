@@ -40,7 +40,7 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     );
     // Unsupported pins must move with wbfy's runtime floor. The launcher has already entered
     // through that supported runtime, so generation does not depend on mise resolving `latest`.
-    const bunVersion = pinSupportedBunVersion(tools.bun, currentBunVersion, config.dirPath);
+    const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, currentBunVersion, config.dirPath);
     if (!bunVersion) {
       console.warn(`Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= 1.4.`);
       return;
@@ -61,6 +61,9 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
 }
 
 function pinSupportedBunVersion(version: unknown, currentBunVersion: string, cwd: string): string | undefined {
+  // Mise's table and array forms are deliberately user-managed. In particular, replacing one
+  // with the running version could silently downgrade a repository's newer explicit toolchain.
+  if (typeof version !== 'string') return;
   const pinnedVersion = pinConcreteToolVersion('bun', version, cwd);
   return typeof pinnedVersion === 'string' &&
     semver.valid(pinnedVersion) &&

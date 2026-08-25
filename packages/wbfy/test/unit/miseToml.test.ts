@@ -3,8 +3,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, expect, test } from 'bun:test';
+import semver from 'semver';
 
-import { generateMiseToml } from '../../src/generators/miseToml.js';
+import { generateMiseToml, minimumBunVersion } from '../../src/generators/miseToml.js';
 import { fsUtil } from '../../src/utils/fsUtil.js';
 import { promisePool } from '../../src/utils/promisePool.js';
 import { createConfig } from '../helpers/testConfig.js';
@@ -38,8 +39,23 @@ test('pins the concrete version behind an lts/* mise selector', async () => {
   expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);
 });
 
-test('replaces a Bun pin below the supported runtime floor', async () => {
-  const content = await generateFrom({ 'mise.toml': '[tools]\nbun = "1.3.14"\n' }, '1.4.0');
+test('uses the running Bun version when the pin is missing', async () => {
+  const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "24.19.0"\n' }, '1.9.9');
 
-  expect(content).toContain('bun = "1.4.0"');
+  expect(content).toContain('bun = "1.9.9"');
+});
+
+test('replaces a Bun pin below the supported runtime floor', async () => {
+  const outdatedBunVersion = '1.3.14';
+  expect(semver.lt(outdatedBunVersion, minimumBunVersion)).toBe(true);
+  const content = await generateFrom({ 'mise.toml': `[tools]\nbun = "${outdatedBunVersion}"\n` }, minimumBunVersion);
+
+  expect(content).toContain(`bun = "${minimumBunVersion}"`);
+});
+
+test('leaves a non-string Bun pin untouched', async () => {
+  const miseToml = '[tools]\nnode = "24.19.0"\nbun = { version = "1.5.9" }\n';
+  const content = await generateFrom({ 'mise.toml': miseToml }, minimumBunVersion);
+
+  expect(content).toBe(miseToml);
 });
