@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import semver from 'semver';
 
-import runtimeConfig from '../../configs/runtime.json' with { type: 'json' };
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -15,7 +14,7 @@ interface MiseToml {
 }
 
 // The oldest Bun runtime wbfy supports.
-export const minimumBunVersion = runtimeConfig.minimumBunVersion;
+export const minimumBunVersion = '1.4.0';
 
 /**
  * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions while
@@ -38,15 +37,12 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    // Unsupported pins must move with wbfy's runtime floor. The launcher has already entered
-    // through that supported runtime, so generation does not depend on mise resolving `latest`.
-    const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, currentBunVersion, config.dirPath);
+    // A repository without a Bun pin (e.g. a fresh template) takes the Bun version running wbfy,
+    // which the startup guard already proved meets the floor, so generation never depends on mise
+    // resolving `latest`.
+    const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, config.dirPath);
     if (!bunVersion) {
-      const reason =
-        typeof tools.bun === 'string'
-          ? 'mise could not resolve its Bun selector to an exact version'
-          : 'Bun must use a plain exact version string; table and array forms are user-managed';
-      console.warn(`Skipped generating ${miseTomlPath} because ${reason}.`);
+      console.warn(`Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= 1.4.`);
       return;
     }
     tools.bun = bunVersion;
@@ -64,13 +60,16 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
   });
 }
 
-function pinSupportedBunVersion(version: unknown, currentBunVersion: string, cwd: string): string | undefined {
-  // Mise's table and array forms are deliberately user-managed. In particular, replacing one
-  // with the running version could silently downgrade a repository's newer explicit toolchain.
-  if (typeof version !== 'string') return;
+function pinSupportedBunVersion(version: unknown, cwd: string): string | undefined {
   const pinnedVersion = pinConcreteToolVersion('bun', version, cwd);
-  if (typeof pinnedVersion !== 'string' || !semver.valid(pinnedVersion)) return;
-  return semver.gte(pinnedVersion, minimumBunVersion) ? pinnedVersion : currentBunVersion;
+  if (
+    typeof pinnedVersion !== 'string' ||
+    !semver.valid(pinnedVersion) ||
+    semver.lt(pinnedVersion, minimumBunVersion)
+  ) {
+    return;
+  }
+  return pinnedVersion;
 }
 
 /**
