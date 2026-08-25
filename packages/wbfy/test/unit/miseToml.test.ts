@@ -23,7 +23,7 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
       fs.writeFileSync(path.join(dirPath, fileName), content);
     }
     fsUtil.setRootDirPath(dirPath);
-    await generateMiseToml(createConfig({ dirPath }));
+    await generateMiseToml(createConfig({ dirPath }), Bun.version);
     await promisePool.promiseAll();
     return fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8');
   } finally {

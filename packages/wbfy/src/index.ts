@@ -277,7 +277,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // packages/* or apps/* while bunfig.toml exists only at the repository root.
     const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
     await generateBunfigToml(rootConfig, useGlobalStore);
-    await generateMiseToml(rootConfig);
+    await generateMiseToml(rootConfig, bunVersion);
     await generateFnoxToml(rootConfig);
     // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
     // over definitions inserted here.

@@ -20,7 +20,7 @@ export const minimumBunVersion = '1.4.0';
  * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions while
  * preserving unrelated mise settings.
  */
-export async function generateMiseToml(config: PackageConfig): Promise<void> {
+export async function generateMiseToml(config: PackageConfig, currentBunVersion: string): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
     // A parse failure must abort instead of falling back to {}: regenerating from an empty object
@@ -37,7 +37,10 @@ export async function generateMiseToml(config: PackageConfig): Promise<void> {
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    const bunVersion = pinSupportedBunVersion(tools.bun, config.dirPath);
+    // A repository without a Bun pin (e.g. a fresh template) takes the Bun version running wbfy,
+    // which the startup guard already proved meets the floor, so generation never depends on mise
+    // resolving `latest`.
+    const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, config.dirPath);
     if (!bunVersion) {
       console.warn(`Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= 1.4.`);
       return;
