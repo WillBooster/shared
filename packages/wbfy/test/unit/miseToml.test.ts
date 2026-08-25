@@ -31,15 +31,10 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
   }
 }
 
-test('pins the concrete version behind an lts/* mise selector', async () => {
+test('pins the concrete version behind an lts/* mise selector without adding a Bun pin', async () => {
   const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "lts/*"\n' });
 
   expect(content).not.toContain('lts/*');
   expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);
-});
-
-test('does not add a Bun pin to a repository without one', async () => {
-  const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "24.19.0"\n' });
-
   expect(content).not.toContain('bun');
 });

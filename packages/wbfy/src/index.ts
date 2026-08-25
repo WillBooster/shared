@@ -34,7 +34,7 @@ import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
-import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
+import { generateMiseToml, hasSupportedBunPin, minimumBunVersion } from './generators/miseToml.js';
 import { generateRepositoryNpmrc } from './generators/npmrc.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
@@ -197,6 +197,15 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     );
     if (writableResults.includes(false)) {
       console.error(`Skip ${rootDirPath}: a managed config file is a symlink or resolves outside the repository.`);
+      hasInvalidPackageConfig = true;
+      continue;
+    }
+    // Rejected before any file is written so the wbfy badge is not stamped: a developer who fixes
+    // the pin and re-runs would otherwise hit the already-applied skip above.
+    if (!hasSupportedBunPin(rootDirPath)) {
+      console.error(
+        `Skip ${rootDirPath}: mise.toml must pin Bun to one exact version >= ${minimumBunVersion} or omit it. Update the pin and re-run.`
+      );
       hasInvalidPackageConfig = true;
       continue;
     }

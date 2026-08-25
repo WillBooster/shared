@@ -69,7 +69,7 @@ function generateAgentInstruction(
   // mise owns the toolchain versions, so a version mismatch is fixed by editing mise.toml — not by
   // installing a different bun/node globally, which the next `mise install` silently overrides.
   const miseInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'mise.toml'))
-    ? '\n- Tool versions (node, bun, and others) are pinned in `mise.toml`; run `mise install` after changing it, and never install those tools globally instead.'
+    ? '\n- Tool versions (e.g., node) are pinned in `mise.toml`; run `mise install` after changing it, and never install those tools globally instead.'
     : '';
   // Isolated installs are the org standard (wbfy generates no other linker) and the most
   // agent-hostile part of the stack: a package that is only reachable because a dependency hoisted
