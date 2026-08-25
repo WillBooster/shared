@@ -66,10 +66,10 @@ function generateAgentInstruction(
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
     ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\` instead of expecting \`.env\` files. Never create a \`.env\`, \`.env.*\`, or \`.dev.vars\` file: add the variable to \`fnox.toml\` instead. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) and \`wb dotenv\` select it themselves (\`wb dotenv\` uses \`WB_ENV\`, else \`FNOX_PROFILE\`, else \`NODE_ENV\`, else the development profile; \`WB_ENV\` accepts only \`development\`/\`test\`/\`staging\`/\`production\`, so use \`FNOX_PROFILE\` for any other profile), while bare \`fnox run\` needs an explicit \`-P <profile>\`.`
     : '';
-  // mise owns the toolchain versions, so a version mismatch is fixed by editing mise.toml — not by
-  // installing a different bun/node globally, which the next `mise install` silently overrides.
+  // mise owns the pinned tool versions, so a version mismatch is fixed by editing mise.toml — not
+  // by installing a different version globally, which the next `mise install` silently overrides.
   const miseInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'mise.toml'))
-    ? '\n- Tool versions (node, bun, and others) are pinned in `mise.toml`; run `mise install` after changing it, and never install those tools globally instead.'
+    ? '\n- Tool versions (e.g., node) are pinned in `mise.toml`; run `mise install` after changing it, and never install those tools globally instead.'
     : '';
   // Isolated installs are the org standard (wbfy generates no other linker) and the most
   // agent-hostile part of the stack: a package that is only reachable because a dependency hoisted

@@ -34,7 +34,7 @@ import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
 import { generateWorkflows, isReusableWorkflowsRepo } from './generators/workflow.js';
-import { generateMiseToml, minimumBunVersion } from './generators/miseToml.js';
+import { generateMiseToml, hasSupportedBunPin, minimumBunVersion } from './generators/miseToml.js';
 import { generateRepositoryNpmrc } from './generators/npmrc.js';
 import { setupLabels } from './github/label.js';
 import { setupRepositoryRulesets } from './github/ruleset.js';
@@ -150,6 +150,16 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // Confine every generated file to this repository (see fsUtil.generateFile). Set BEFORE any
     // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
     fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
+
+    // A repository precondition, checked before the already-applied skip below and before any file
+    // is written: an unsupported pin must be reported on every run and must not stamp the badge.
+    if (!hasSupportedBunPin(rootDirPath)) {
+      console.error(
+        `Skip ${rootDirPath}: mise.toml must pin Bun to one exact version >= ${minimumBunVersion} or omit it. Update the pin and re-run.`
+      );
+      hasInvalidPackageConfig = true;
+      continue;
+    }
 
     // The badge records the build that generated the repository's configuration, so the same build
     // would only rewrite what is already there. Skipping is a deliberate trade: the parts of a run
@@ -283,7 +293,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // packages/* or apps/* while bunfig.toml exists only at the repository root.
     const useGlobalStore = resolveBunGlobalStore(allPackageConfigs, previousBunGlobalStore, skipDeps);
     await generateBunfigToml(rootConfig, useGlobalStore);
-    await generateMiseToml(rootConfig, bunVersion);
+    await generateMiseToml(rootConfig);
     await generateFnoxToml(rootConfig);
     // Run after generateFnoxToml so its transactional recipient sync cannot restore a snapshot
     // over definitions inserted here.

@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import semver from 'semver';
 
-import runtimeConfig from '../../configs/runtime.json' with { type: 'json' };
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -15,13 +14,13 @@ interface MiseToml {
 }
 
 // The oldest Bun runtime wbfy supports.
-export const minimumBunVersion = runtimeConfig.minimumBunVersion;
+export const minimumBunVersion = '1.4.0';
 
 /**
- * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions while
- * preserving unrelated mise settings.
+ * Ensures mise.toml manages the Node.js and (when fnox.toml exists) fnox tool versions while
+ * preserving the Bun pin and unrelated mise settings.
  */
-export async function generateMiseToml(config: PackageConfig, currentBunVersion: string): Promise<void> {
+export async function generateMiseToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
     // A parse failure must abort instead of falling back to {}: regenerating from an empty object
@@ -29,8 +28,8 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     const settings = parseMiseToml(miseTomlPath);
     const tools = { ...settings.tools };
 
-    // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
-    // unpinned Node would come from whatever happens to be on PATH.
+    // Ensure Node.js is always pinned: generated hooks and CI run `mise install`, and an unpinned
+    // Node would come from whatever happens to be on PATH.
     // Lift-then-pin: the lift only touches exact pins and the pin only touches selectors, so
     // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
     tools.node = pinConcreteToolVersion(
@@ -38,18 +37,9 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    // Unsupported pins must move with wbfy's runtime floor. The launcher has already entered
-    // through that supported runtime, so generation does not depend on mise resolving `latest`.
-    const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, currentBunVersion, config.dirPath);
-    if (!bunVersion) {
-      const reason =
-        typeof tools.bun === 'string'
-          ? 'mise could not resolve its Bun selector to an exact version'
-          : 'Bun must use a plain exact version string; table and array forms are user-managed';
-      console.warn(`Skipped generating ${miseTomlPath} because ${reason}.`);
-      return;
-    }
-    tools.bun = bunVersion;
+    // Bun is never added or changed: a missing pin stays missing (developers install Bun globally
+    // to run wbfy), and hasSupportedBunPin() has already rejected any pin that is not one exact
+    // supported version.
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = pinConcreteToolVersion(
         'fnox',
@@ -64,13 +54,19 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
   });
 }
 
-function pinSupportedBunVersion(version: unknown, currentBunVersion: string, cwd: string): string | undefined {
-  // Mise's table and array forms are deliberately user-managed. In particular, replacing one
-  // with the running version could silently downgrade a repository's newer explicit toolchain.
-  if (typeof version !== 'string') return;
-  const pinnedVersion = pinConcreteToolVersion('bun', version, cwd);
-  if (typeof pinnedVersion !== 'string' || !semver.valid(pinnedVersion)) return;
-  return semver.gte(pinnedVersion, minimumBunVersion) ? pinnedVersion : currentBunVersion;
+/** Whether mise.toml omits Bun or pins it to one exact version that wbfy supports. */
+export function hasSupportedBunPin(dirPath: string): boolean {
+  let bunVersion: unknown;
+  try {
+    bunVersion = parseMiseToml(path.resolve(dirPath, 'mise.toml')).tools?.bun;
+  } catch {
+    // Let generateMiseToml report the unreadable or malformed file.
+    return true;
+  }
+  return (
+    bunVersion === undefined ||
+    (typeof bunVersion === 'string' && !!semver.valid(bunVersion) && semver.gte(bunVersion, minimumBunVersion))
+  );
 }
 
 /**
