@@ -151,6 +151,16 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // fixer writes, and reset on every iteration so a multi-path run never keeps the previous root.
     fsUtil.setRootDirPath(fs.existsSync(rootDirPath) ? rootDirPath : undefined);
 
+    // A repository precondition, checked before the already-applied skip below and before any file
+    // is written: an unsupported pin must be reported on every run and must not stamp the badge.
+    if (!hasSupportedBunPin(rootDirPath)) {
+      console.error(
+        `Skip ${rootDirPath}: mise.toml must pin Bun to one exact version >= ${minimumBunVersion} or omit it. Update the pin and re-run.`
+      );
+      hasInvalidPackageConfig = true;
+      continue;
+    }
+
     // The badge records the build that generated the repository's configuration, so the same build
     // would only rewrite what is already there. Skipping is a deliberate trade: the parts of a run
     // that depend on state OUTSIDE the repository (GitHub settings, dependency updates, the fetched
@@ -197,15 +207,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     );
     if (writableResults.includes(false)) {
       console.error(`Skip ${rootDirPath}: a managed config file is a symlink or resolves outside the repository.`);
-      hasInvalidPackageConfig = true;
-      continue;
-    }
-    // Rejected before any file is written so the wbfy badge is not stamped: a developer who fixes
-    // the pin and re-runs would otherwise hit the already-applied skip above.
-    if (!hasSupportedBunPin(rootDirPath)) {
-      console.error(
-        `Skip ${rootDirPath}: mise.toml must pin Bun to one exact version >= ${minimumBunVersion} or omit it. Update the pin and re-run.`
-      );
       hasInvalidPackageConfig = true;
       continue;
     }
