@@ -74,6 +74,7 @@ export interface PackageConfig {
     react: boolean;
     reactNative: boolean;
     semanticRelease: boolean;
+    slidev: boolean;
     storybook: boolean;
     tauri: boolean;
     vinext: boolean;
@@ -353,6 +354,7 @@ export async function getPackageConfig(
         pyright: !!devDependencies.pyright,
         reactNative: !!dependencies['react-native'],
         semanticRelease: usesSemanticRelease,
+        slidev: !!dependencies['@slidev/cli'] || !!devDependencies['@slidev/cli'],
         storybook: !!devDependencies['@storybook/react'],
         tauri:
           !!dependencies['@tauri-apps/api'] ||
