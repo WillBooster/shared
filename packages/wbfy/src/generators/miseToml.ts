@@ -17,10 +17,10 @@ interface MiseToml {
 export const minimumBunVersion = '1.4.0';
 
 /**
- * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions while
- * preserving unrelated mise settings.
+ * Ensures mise.toml manages the Node.js, (when pinned) Bun and (when fnox.toml exists) fnox tool
+ * versions while preserving unrelated mise settings.
  */
-export async function generateMiseToml(config: PackageConfig, currentBunVersion: string): Promise<void> {
+export async function generateMiseToml(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateMiseToml', async () => {
     const miseTomlPath = path.resolve(config.dirPath, 'mise.toml');
     // A parse failure must abort instead of falling back to {}: regenerating from an empty object
@@ -28,8 +28,8 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     const settings = parseMiseToml(miseTomlPath);
     const tools = { ...settings.tools };
 
-    // Ensure Node.js and Bun are always pinned: generated hooks and CI run `mise install`, and an
-    // unpinned Node would come from whatever happens to be on PATH.
+    // Ensure Node.js is always pinned: generated hooks and CI run `mise install`, and an unpinned
+    // Node would come from whatever happens to be on PATH.
     // Lift-then-pin: the lift only touches exact pins and the pin only touches selectors, so
     // ordering the lift first avoids resolving `mise latest node@lts` twice for unpinned repos.
     tools.node = pinConcreteToolVersion(
@@ -37,17 +37,18 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    // A repository without a Bun pin (e.g. a fresh template) takes the Bun version running wbfy,
-    // which the startup guard already proved meets the floor, so generation never depends on mise
-    // resolving `latest`.
-    const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, config.dirPath);
-    if (!bunVersion) {
-      console.warn(
-        `Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= ${minimumBunVersion}. Update the Bun pin in mise.toml and re-run.`
-      );
-      return;
+    // A repository without a Bun pin does not depend on Bun (developers install Bun >= 1.4
+    // globally to run wbfy), so no pin is added; an existing pin must be an exact supported version.
+    if (tools.bun !== undefined) {
+      const bunVersion = pinSupportedBunVersion(tools.bun, config.dirPath);
+      if (!bunVersion) {
+        console.warn(
+          `Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= ${minimumBunVersion}. Update the Bun pin in mise.toml and re-run.`
+        );
+        return;
+      }
+      tools.bun = bunVersion;
     }
-    tools.bun = bunVersion;
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = pinConcreteToolVersion(
         'fnox',
