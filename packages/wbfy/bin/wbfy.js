@@ -7,6 +7,13 @@ const { minimumBunVersion } = JSON.parse(
   fs.readFileSync(new URL('../configs/runtime.json', import.meta.url), 'utf8')
 );
 const bootstrapMarker = 'WBFY_BUN_BOOTSTRAPPED';
+const autoInstallMarker = 'WBFY_MISE_EXEC_AUTO_INSTALL';
+const originalAutoInstall = process.env[autoInstallMarker];
+if (originalAutoInstall !== undefined) {
+  if (originalAutoInstall) process.env.MISE_EXEC_AUTO_INSTALL = originalAutoInstall;
+  else delete process.env.MISE_EXEC_AUTO_INSTALL;
+  delete process.env[autoInstallMarker];
+}
 
 if (Bun.semver.order(Bun.version, minimumBunVersion) < 0) {
   const bootstrapStage = process.env[bootstrapMarker];
@@ -18,10 +25,15 @@ if (Bun.semver.order(Bun.version, minimumBunVersion) < 0) {
   // still on the previous runtime needs one fallback to the new floor so wbfy can migrate its pin.
   // The stages also bound retries because mise can ignore even an explicit disabled tool.
   const useMinimum = bootstrapStage === 'target';
+  const env = { ...process.env, [bootstrapMarker]: useMinimum ? 'minimum' : 'target' };
+  if (!useMinimum) {
+    env[autoInstallMarker] = process.env.MISE_EXEC_AUTO_INSTALL ?? '';
+    env.MISE_EXEC_AUTO_INSTALL = 'false';
+  }
   const result = child_process.spawnSync(
     'mise',
     ['exec', ...(useMinimum ? [`bun@${minimumBunVersion}`] : []), '--', 'bun', process.argv[1], ...process.argv.slice(2)],
-    { env: { ...process.env, [bootstrapMarker]: useMinimum ? 'minimum' : 'target' }, stdio: 'inherit' }
+    { env, stdio: 'inherit' }
   );
   if (result.error) console.error(`Failed to start Bun ${minimumBunVersion} through mise: ${result.error.message}`);
   process.exit(result.status ?? 1);

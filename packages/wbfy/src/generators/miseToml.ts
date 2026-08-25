@@ -66,11 +66,7 @@ function pinSupportedBunVersion(version: unknown, currentBunVersion: string, cwd
   if (typeof version !== 'string') return;
   const pinnedVersion = pinConcreteToolVersion('bun', version, cwd);
   if (typeof pinnedVersion !== 'string' || !semver.valid(pinnedVersion)) return;
-  return semver.gte(pinnedVersion, minimumBunVersion)
-    ? pinnedVersion
-    : semver.valid(currentBunVersion) && semver.gte(currentBunVersion, minimumBunVersion)
-      ? currentBunVersion
-      : undefined;
+  return semver.gte(pinnedVersion, minimumBunVersion) ? pinnedVersion : currentBunVersion;
 }
 
 /**
