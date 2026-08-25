@@ -15,7 +15,7 @@ afterEach(() => {
   fsUtil.setRootDirPath(undefined);
 });
 
-async function generateFrom(files: Record<string, string>): Promise<string> {
+async function generateFrom(files: Record<string, string>, currentBunVersion = Bun.version): Promise<string> {
   const dirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-mise-'));
   try {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
@@ -23,7 +23,7 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
       fs.writeFileSync(path.join(dirPath, fileName), content);
     }
     fsUtil.setRootDirPath(dirPath);
-    await generateMiseToml(createConfig({ dirPath }), Bun.version);
+    await generateMiseToml(createConfig({ dirPath }), currentBunVersion);
     await promisePool.promiseAll();
     return fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8');
   } finally {
@@ -36,4 +36,10 @@ test('pins the concrete version behind an lts/* mise selector', async () => {
 
   expect(content).not.toContain('lts/*');
   expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);
+});
+
+test('replaces a Bun pin below the supported runtime floor', async () => {
+  const content = await generateFrom({ 'mise.toml': '[tools]\nbun = "1.3.14"\n' }, '1.4.0');
+
+  expect(content).toContain('bun = "1.4.0"');
 });

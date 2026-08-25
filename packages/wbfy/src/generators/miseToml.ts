@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import semver from 'semver';
 
+import runtimeConfig from '../../configs/runtime.json' with { type: 'json' };
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
@@ -14,7 +15,7 @@ interface MiseToml {
 }
 
 // The oldest Bun runtime wbfy supports.
-export const minimumBunVersion = '1.4.0';
+export const minimumBunVersion = runtimeConfig.minimumBunVersion;
 
 /**
  * Ensures mise.toml manages the Node.js, Bun and (when fnox.toml exists) fnox tool versions while
@@ -37,10 +38,9 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    // A repository without a Bun pin (e.g. a fresh template) takes the Bun version running wbfy,
-    // which the startup guard already proved meets the floor, so generation never depends on mise
-    // resolving `latest`.
-    const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, config.dirPath);
+    // Unsupported pins must move with wbfy's runtime floor. The launcher has already entered
+    // through that supported runtime, so generation does not depend on mise resolving `latest`.
+    const bunVersion = pinSupportedBunVersion(tools.bun, currentBunVersion, config.dirPath);
     if (!bunVersion) {
       console.warn(`Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= 1.4.`);
       return;
@@ -60,16 +60,15 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
   });
 }
 
-function pinSupportedBunVersion(version: unknown, cwd: string): string | undefined {
+function pinSupportedBunVersion(version: unknown, currentBunVersion: string, cwd: string): string | undefined {
   const pinnedVersion = pinConcreteToolVersion('bun', version, cwd);
-  if (
-    typeof pinnedVersion !== 'string' ||
-    !semver.valid(pinnedVersion) ||
-    semver.lt(pinnedVersion, minimumBunVersion)
-  ) {
-    return;
-  }
-  return pinnedVersion;
+  return typeof pinnedVersion === 'string' &&
+    semver.valid(pinnedVersion) &&
+    semver.gte(pinnedVersion, minimumBunVersion)
+    ? pinnedVersion
+    : semver.valid(currentBunVersion) && semver.gte(currentBunVersion, minimumBunVersion)
+      ? currentBunVersion
+      : undefined;
 }
 
 /**
