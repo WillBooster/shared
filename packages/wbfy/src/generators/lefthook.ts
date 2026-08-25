@@ -9,7 +9,6 @@ import type { PackageConfig } from '../packageConfig.js';
 import { extensions } from '../utils/extensions.js';
 import { getGenI18nTsCommand } from '../utils/genI18nTs.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
-import { spawnSync } from '../utils/spawnUtil.js';
 
 import { generateScripts } from './packageJson.js';
 
@@ -154,19 +153,14 @@ run_if_changed() {
 `.trim(),
 };
 
-export async function generateLefthookUpdatingPackageJson(
-  config: PackageConfig,
-  allConfigs: PackageConfig[] = [config]
-): Promise<void> {
-  return logger.functionIgnoringException('generateLefthookUpdatingPackageJson', async () => {
+export async function generateLefthook(config: PackageConfig, allConfigs: PackageConfig[] = [config]): Promise<void> {
+  return logger.functionIgnoringException('generateLefthook', async () => {
     await core(config, allConfigs);
   });
 }
 
 async function core(config: PackageConfig, allConfigs: PackageConfig[]): Promise<void> {
   const dirPath = path.resolve(config.dirPath, '.lefthook');
-  const huskyDirPath = path.resolve(config.dirPath, '.husky');
-  const hasHuskyDir = fs.existsSync(huskyDirPath);
   const { lint } = generateScripts(config, {});
   const settings: Partial<LefthookSettings> = {
     ...baseSettings,
@@ -181,13 +175,6 @@ async function core(config: PackageConfig, allConfigs: PackageConfig[]): Promise
     fsUtil.writeFileConfined(path.join(config.dirPath, 'lefthook.yml'), yaml.dump(settings, { lineWidth: -1 })),
     fs.promises.rm(dirPath, { force: true, recursive: true }),
   ]);
-  if (hasHuskyDir) {
-    await Promise.all([
-      fs.promises.rm(huskyDirPath, { force: true, recursive: true }),
-      fs.promises.rm(path.resolve(config.dirPath, '.huskyrc.json'), { force: true }),
-    ]);
-    spawnSync('git', ['config', '--unset', 'core.hooksPath'], config.dirPath);
-  }
 
   if (lint) {
     const prePush = getPrePushScript(config);

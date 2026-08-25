@@ -24,12 +24,10 @@ test(
       runCommand('git', ['config', 'user.name', 'WillBooster Codex'], tempDirPath);
       runCommand('git', ['add', '-A'], tempDirPath);
       runCommand('git', ['commit', '--no-verify', '-m', 'test: baseline'], tempDirPath, {
-        HUSKY: '0',
         LEFTHOOK: '0',
       });
 
       runCommand('bun', ['run', 'cleanup'], tempDirPath, {
-        HUSKY: '0',
         LEFTHOOK: '0',
       });
 

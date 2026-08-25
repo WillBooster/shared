@@ -17,24 +17,11 @@ export function spawnSyncAndReturnStatus(command: string, args: string[], cwd: s
   return 0;
 }
 
-/**
- * Like spawnSyncAndReturnStdout but WITHOUT trimming, for NUL-delimited output (e.g.
- * `git ls-files -z`) where a leading/trailing whitespace byte belongs to a file name.
- */
-export function spawnSyncAndReturnRawStdout(command: string, args: string[], cwd: string): string {
-  return spawnSyncAndReturnStdoutInternal(command, args, cwd, false)[1];
-}
-
 export function spawnSyncAndReturnStdout(command: string, args: string[], cwd: string): string {
-  return spawnSyncAndReturnStdoutInternal(command, args, cwd, true)[1];
+  return spawnSyncAndReturnStdoutInternal(command, args, cwd)[1];
 }
 
-function spawnSyncAndReturnStdoutInternal(
-  command: string,
-  args: string[],
-  cwd: string,
-  trims: boolean
-): [number, string] {
+function spawnSyncAndReturnStdoutInternal(command: string, args: string[], cwd: string): [number, string] {
   const [newCmd, newArgs, options] = getSpawnSyncArgs(command, args, cwd);
   options.stdio = 'pipe';
   const proc = child_process.spawnSync(newCmd, newArgs, options);
@@ -51,7 +38,7 @@ function spawnSyncAndReturnStdoutInternal(
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- spawnSync returns null stdout on ENOENT.
   const stdout = proc.stdout ?? '';
   const stdoutText = typeof stdout === 'string' ? stdout : stdout.toString();
-  return [proc.status ?? 1, trims ? stdoutText.trim() : stdoutText];
+  return [proc.status ?? 1, stdoutText.trim()];
 }
 
 export function getSpawnSyncArgs(command: string, args: string[], cwd: string): [string, string[], SpawnSyncOptions] {

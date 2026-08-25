@@ -722,7 +722,6 @@ export async function findWorkspacePackageDirs(
  * excludes, which a fresh clone and CI do not have. A developer with a personal
  * `worker-configuration.d.ts` exclude would otherwise turn generation on for a package wbfy
  * deliberately left unmanaged, and the resulting file would be invisible in `git status`.
- * wbfy's `untrackCloudflareEnv` fixer gates on the same committed-rule check via `hasGitignoreRule`.
  */
 function hasManagedGitignoreRule(dirPath: string, fileName: string): boolean {
   try {

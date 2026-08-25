@@ -37,7 +37,15 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
       liftOutdatedToolVersionWithinMajor('node@lts', tools.node, config.dirPath),
       config.dirPath
     );
-    tools.bun = liftOutdatedBunVersion(tools.bun ?? 'latest', currentBunVersion);
+    // A repository without a Bun pin (e.g. a fresh template) takes the Bun version running wbfy,
+    // which the startup guard already proved meets the floor, so generation never depends on mise
+    // resolving `latest`.
+    const bunVersion = pinSupportedBunVersion(tools.bun ?? currentBunVersion, config.dirPath);
+    if (!bunVersion) {
+      console.warn(`Skipped generating ${miseTomlPath} because Bun must be pinned to one exact version >= 1.4.`);
+      return;
+    }
+    tools.bun = bunVersion;
     if (fs.existsSync(path.resolve(config.dirPath, 'fnox.toml'))) {
       tools.fnox = pinConcreteToolVersion(
         'fnox',
@@ -52,34 +60,16 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
   });
 }
 
-/**
- * wbfy relies on Bun 1.4 runtime APIs, and the generated bunfig.toml relies on `globalStore` and
- * `publicHoistPattern`; older Bun versions cannot reliably run wbfy or reproduce the install layout
- * it validated. mise resolves `latest` and range selectors such as "1.2" or `prefix:1.2` to
- * the newest locally INSTALLED matching version — not the newest release — so only an exact pin
- * at or above the minimum proves the floor. Selectors that cannot prove it are replaced with the
- * Bun version running wbfy (which the startup guard proved meets the floor) rather than the
- * frozen minimum, so repositories keep tracking the current toolchain. The runtime pin is
- * independent of @types/bun: that package is age-gated like every other third-party dependency, so
- * it can sit behind the pinned runtime until the minimum-release-age window elapses. Handles
- * mise's string, array, and `{ version = "…" }` tool forms.
- */
-function liftOutdatedBunVersion(bunVersion: unknown, currentBunVersion: string): unknown {
-  if (typeof bunVersion === 'string') {
-    const range = bunVersion.startsWith('prefix:') ? bunVersion.slice('prefix:'.length) : bunVersion;
-    // Unverifiable selectors ("latest", "ref:…", "path:…", aliases) cannot prove the floor either.
-    const lowestResolvableVersion = semver.validRange(range) && semver.minVersion(range);
-    return lowestResolvableVersion && semver.gte(lowestResolvableVersion, minimumBunVersion)
-      ? bunVersion
-      : currentBunVersion;
+function pinSupportedBunVersion(version: unknown, cwd: string): string | undefined {
+  const pinnedVersion = pinConcreteToolVersion('bun', version, cwd);
+  if (
+    typeof pinnedVersion !== 'string' ||
+    !semver.valid(pinnedVersion) ||
+    semver.lt(pinnedVersion, minimumBunVersion)
+  ) {
+    return;
   }
-  if (Array.isArray(bunVersion)) {
-    return [...new Set(bunVersion.map((version) => liftOutdatedBunVersion(version, currentBunVersion)))];
-  }
-  if (bunVersion && typeof bunVersion === 'object' && 'version' in bunVersion) {
-    return { ...bunVersion, version: liftOutdatedBunVersion(bunVersion.version, currentBunVersion) };
-  }
-  return bunVersion;
+  return pinnedVersion;
 }
 
 /**

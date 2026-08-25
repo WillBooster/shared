@@ -52,10 +52,9 @@ function requiresNextPublicWbEnv(config: PackageConfig): boolean {
 /**
  * Inserts missing WB_ENV (and optionally NEXT_PUBLIC_WB_ENV) entries into a fnox.toml: the base
  * `[secrets]` table carries the development defaults and `[profiles.<mode>.secrets]` overlays
- * each other mode, matching the org-standard layout. Formatting and comments are preserved (only
- * missing lines are inserted / missing sections appended), except that the explanatory comment
- * earlier wbfy versions wrote is deleted. Returns undefined when the content cannot be safely
- * edited (unparsable before or after the edit).
+ * each other mode, matching the org-standard layout. Formatting and comments are preserved; only
+ * missing lines are inserted or missing sections appended. Returns undefined when the content
+ * cannot be safely edited (unparsable before or after the edit).
  */
 export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolean): string | undefined {
   let settings: FnoxTomlSubtree;
@@ -66,11 +65,8 @@ export function insertWbEnvIntoFnoxToml(content: string, needsNextPublic: boolea
     return undefined;
   }
 
-  // Earlier wbfy versions explained wb's WB_ENV precedence here, in several wording variants; drop
-  // any of them so target repositories converge on a comment-free section.
-  const previousWbEnvCommentPattern = /^# CI sets WB_ENV as a process env var, which wins over fnox[^\n]*\n/mu;
   const keyNames = needsNextPublic ? ['WB_ENV', 'NEXT_PUBLIC_WB_ENV'] : ['WB_ENV'];
-  let updatedContent = content.replace(previousWbEnvCommentPattern, '');
+  let updatedContent = content;
   for (const mode of wbEnvModes) {
     // The staging mode is optional: complete it only when the repository already declares the profile.
     if (mode === 'staging' && !settings.profiles?.staging) continue;

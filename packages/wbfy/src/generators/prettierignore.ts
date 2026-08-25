@@ -1,11 +1,9 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import { logger } from '../logger.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { ignoreFileUtil } from '../utils/ignoreFileUtil.js';
-import { doesContainJava } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
 
 const commonContent = `
@@ -24,10 +22,6 @@ test/fixtures/
 export async function generatePrettierignore(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generatePrettierignore', async () => {
     const filePath = path.resolve(config.dirPath, '.prettierignore');
-    if (!doesContainJava(config)) {
-      await promisePool.run(() => fs.promises.rm(filePath, { force: true }));
-      return;
-    }
     const content = (await fsUtil.readFileIfExists(filePath)) ?? '';
     const headUserContent = ignoreFileUtil.getHeadUserContent(content);
     const tailUserContent = ignoreFileUtil.getTailUserContent(content);

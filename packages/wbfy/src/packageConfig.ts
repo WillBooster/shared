@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
 import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
+import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { escapeRegExp } from './utils/stringUtil.js';
 import { getWorkspacePackageJsonPaths, getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
@@ -68,7 +69,6 @@ export interface PackageConfig {
     next: boolean;
     playwrightTest: boolean;
     playwrightRuntime: boolean;
-    prettierRuntime: boolean;
     prisma: boolean;
     pyright: boolean;
     react: boolean;
@@ -287,7 +287,7 @@ export async function getPackageConfig(
       workspaceSubDirPaths.some((workspaceSubDirPath) => containsAny(pattern, workspaceSubDirPath));
     const doesContainWranglerConfig = detectWranglerConfig(dirPath);
     const workflowContents = readWorkflowFileContents(dirPath);
-    const runtimeImports = detectRuntimeImports(dirPath);
+    const importsPlaywrightAtRuntime = detectPlaywrightRuntimeImport(dirPath);
     const config: PackageConfig = {
       dirPath,
       dockerfile,
@@ -348,8 +348,7 @@ export async function getPackageConfig(
         next: !!dependencies.next,
         playwrightTest:
           !!dependencies['@playwright/test'] || !!devDependencies['@playwright/test'] || !!devDependencies.playwright,
-        playwrightRuntime: runtimeImports.playwright,
-        prettierRuntime: runtimeImports.prettier,
+        playwrightRuntime: importsPlaywrightAtRuntime,
         prisma: !!dependencies['@prisma/client'] || !!devDependencies.prisma,
         pyright: !!devDependencies.pyright,
         reactNative: !!dependencies['react-native'],
@@ -426,16 +425,42 @@ export function generatesWorkerTypes(config: PackageConfig): boolean {
 
 export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJson'>): string | undefined {
   const scripts = config.packageJson?.scripts ?? {};
+  for (const [name, script] of Object.entries(scripts)) {
+    if (script === undefined) continue;
+    const segments = splitScriptSegments(script);
+    const hasNonCanonicalWbGenCode = segments?.some((segment) => {
+      const normalized = segment.trim().replaceAll(/\s+/gu, ' ');
+      return (
+        /^(?:(?:bun|bunx)(?: --bun)?(?: run)? )?wb gen-code$/u.test(normalized) &&
+        classifyScriptSegment(segment, scripts, true) === 'custom'
+      );
+    });
+    if (hasNonCanonicalWbGenCode) return `${name} must use the canonical bun wb gen-code command`;
+  }
+  // Only `bun run <script>` is recognized as a wrapper; another runner spelling would get a managed
+  // generation appended next to it and run every generator twice per install. Without a gen-code
+  // pipeline nothing is appended, so the spelling is irrelevant there.
+  for (const segment of splitScriptSegments(scripts.postinstall ?? '') ?? []) {
+    const scriptName = /^(?:bun|bunx)(?:\s+--bun)?(?:\s+run)?\s+(\S+)$/u.exec(segment)?.[1];
+    const target = scriptName === undefined ? undefined : scripts[scriptName];
+    if (
+      target !== undefined &&
+      segment !== `bun run ${scriptName}` &&
+      (scripts['gen-code'] !== undefined || target.includes('wb gen-code'))
+    ) {
+      return `postinstall must invoke the ${scriptName} script as bun run ${scriptName}`;
+    }
+  }
   if (
     /(?:^|&&)\s*(?:npm|npx|pnpm|yarn)\s+(?:run(?:-script)?\s+)?(?:gen-code|wb\s+gen-code)\s*(?:&&|$)/u.test(
       scripts.postinstall ?? ''
     )
   ) {
-    return 'postinstall must use wb gen-code instead of a non-Bun gen-code runner';
+    return 'postinstall must use bun wb gen-code instead of a non-Bun gen-code runner';
   }
   for (const [name, script] of Object.entries(scripts)) {
     if (script === undefined) continue;
-    if (wranglerTypesTextPattern.test(script)) return `${name} must use wb gen-code instead of wrangler types`;
+    if (wranglerTypesTextPattern.test(script)) return `${name} must use bun wb gen-code instead of wrangler types`;
   }
 }
 
@@ -771,28 +796,18 @@ function findCargoTomlDirPaths(dirPath: string): string[] {
     .toSorted((a, b) => a.split('/').length - b.split('/').length || a.localeCompare(b));
 }
 
-// `prettier` is normally stripped in favor of oxfmt, but a package that imports it as a library
-// (e.g. formatting HTML at runtime) must keep it declared, or isolated installs turn it into a
-// phantom dependency. Subpath specifiers like `prettier/standalone` count too. Both packages are
-// detected in one pass so every source file is globbed and read only once.
-function detectRuntimeImports(dirPath: string): { playwright: boolean; prettier: boolean } {
+function detectPlaywrightRuntimeImport(dirPath: string): boolean {
   const files = fg.globSync('{app,src}/**/*.{cjs,cts,js,jsx,mjs,mts,ts,tsx}', {
     dot: true,
     cwd: dirPath,
     ignore: [...globIgnore, '**/__tests__/**', '**/*.spec.*', '**/*.test.*', '**/playwright.config.*'],
   });
-  const result = { playwright: false, prettier: false };
-  const regExps = {
-    playwright: buildRuntimeImportRegExp('playwright'),
-    prettier: buildRuntimeImportRegExp('prettier'),
-  };
+  const playwrightImportPattern = buildRuntimeImportRegExp('playwright');
   for (const file of files) {
     const content = fs.readFileSync(path.resolve(dirPath, file), 'utf8');
-    result.playwright ||= regExps.playwright.test(content);
-    result.prettier ||= regExps.prettier.test(content);
-    if (result.playwright && result.prettier) break;
+    if (playwrightImportPattern.test(content)) return true;
   }
-  return result;
+  return false;
 }
 
 function buildRuntimeImportRegExp(packageName: string): RegExp {

@@ -31,20 +31,20 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     if (!config.isRoot) return;
 
     const dirPath = path.resolve(config.dirPath, '.gemini');
-    // Gemini Code Assist reads only `.gemini/config.yaml`
-    // (https://docs.cloud.google.com/gemini/docs/code-review/customize-repo-review); earlier wbfy
-    // versions wrote `config.yml`, which Gemini silently ignores. Read the legacy file as a merge
-    // source once so repository customizations migrate, then delete it below.
     const configFilePath = path.resolve(dirPath, 'config.yaml');
-    const legacyConfigFilePath = path.resolve(dirPath, 'config.yml');
+    const nonCanonicalConfigFilePath = path.resolve(dirPath, 'config.yml');
     const styleguideFilePath = path.resolve(dirPath, 'styleguide.md');
 
+    const hasNonCanonicalConfig = !!(await fs.promises.lstat(nonCanonicalConfigFilePath).catch(() => {}));
+    if (hasNonCanonicalConfig) {
+      console.warn(
+        `Skipped generating ${configFilePath} because ${nonCanonicalConfigFilePath} is not a supported Gemini config location. Rename it manually.`
+      );
+    }
+
     let newConfig: object = structuredClone(defaultConfig);
-    for (const oldFilePath of [configFilePath, legacyConfigFilePath]) {
-      // The confined read skips (returns undefined for) committed symlinks resolving outside the
-      // repository, so their targets' content is never copied into the tracked config.yaml.
-      const oldContent = await fsUtil.readFileConfinedIfExists(oldFilePath);
-      if (oldContent === undefined) continue;
+    const oldContent = hasNonCanonicalConfig ? undefined : await fsUtil.readFileConfinedIfExists(configFilePath);
+    if (oldContent !== undefined) {
       try {
         const oldConfig = Bun.YAML.parse(oldContent);
         // Merge only a mapping: empty, comment-only, or scalar YAML would either throw in
@@ -55,9 +55,6 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
       } catch {
         // do nothing - file can't be parsed
       }
-      // The higher-priority file exists; never fall back to the legacy file even when this one is
-      // empty or unparseable, or superseded legacy settings would resurrect.
-      break;
     }
 
     const yamlContent = Bun.YAML.stringify(newConfig, undefined, 2);
@@ -72,23 +69,7 @@ export async function generateGeminiConfig(config: PackageConfig, allConfigs: Pa
     }`;
 
     const promises = [
-      promisePool.run(async () => {
-        // Delete the ignored legacy file only after config.yaml was actually written — a skipped
-        // write (e.g. a committed symlink destination) must not destroy the only usable
-        // configuration — and via the containment guard so a symlinked .gemini directory can
-        // never make cleanup delete files outside the repository.
-        // Announce the removal of a git-tracked file (removeConfined itself logs only skips and
-        // returns true even for a nonexistent path). lstat (not existsSync) keeps a
-        // dangling-symlink config.yml in scope for removal.
-        const legacyExists = !!(await fs.promises.lstat(legacyConfigFilePath).catch(() => {}));
-        if (
-          (await fsUtil.generateFile(configFilePath, yamlContent)) &&
-          legacyExists &&
-          (await fsUtil.removeConfined(legacyConfigFilePath))
-        ) {
-          console.log(`Removed ${legacyConfigFilePath}: Gemini Code Assist reads only ${configFilePath}.`);
-        }
-      }),
+      ...(hasNonCanonicalConfig ? [] : [promisePool.run(() => fsUtil.generateFile(configFilePath, yamlContent))]),
       promisePool.run(() => fsUtil.generateFile(styleguideFilePath, styleguideContent)),
     ];
     await Promise.all(promises);

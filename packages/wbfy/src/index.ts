@@ -8,23 +8,18 @@ import yargs from 'yargs';
 import { fixNextConfigJson } from './fixers/nextConfig.js';
 import { fixChakraToaster } from './fixers/chakraToaster.js';
 import { fixPlaywrightConfig } from './fixers/playwrightConfig.js';
-import { fixTestDirectoriesUpdatingPackageJson } from './fixers/testDirectory.js';
-import { fixTypeDefinitions } from './fixers/typeDefinition.js';
 import { fixTypos } from './fixers/typos.js';
-import { untrackCloudflareEnv } from './fixers/cloudflareEnv.js';
 import { generateAgentInstructions } from './generators/agents.js';
 import { generateBunfigToml, readBunGlobalStore, resolveBunGlobalStore } from './generators/bunfig.js';
 import { generateDockerignore } from './generators/dockerignore.js';
 import { generateEditorconfig } from './generators/editorconfig.js';
 import { generateFnoxToml } from './generators/fnoxToml.js';
 import { generateGeminiConfig } from './generators/geminiConfig.js';
-import { removeGeminiSettings } from './generators/geminiSettings.js';
 import { generateGitattributes, renormalizeTrackedTextFiles } from './generators/gitattributes.js';
 import { generateGitignore } from './generators/gitignore.js';
 import { ensureGlobalReleaseAgeGates } from './generators/globalReleaseAgeGate.js';
 import { generateIdeaSettings } from './generators/idea.js';
-import { generateLefthookUpdatingPackageJson } from './generators/lefthook.js';
-import { generateLintstagedrc } from './generators/lintstagedrc.js';
+import { generateLefthook } from './generators/lefthook.js';
 import { generatePackageJson, getWorkspacePackageDirs } from './generators/packageJson.js';
 import { generateOxfmtConfig } from './generators/oxfmtConfig.js';
 import { generateOxlintConfig } from './generators/oxlintConfig.js';
@@ -50,9 +45,9 @@ import type { PackageConfig } from './packageConfig.js';
 import { getPackageConfig, getWorkerTypesScriptError } from './packageConfig.js';
 import { assertSafeDependencySources } from './utils/dependencySourcePolicy.js';
 import { fsUtil } from './utils/fsUtil.js';
-import { doesContainJsOrTs } from './utils/packageCapabilities.js';
+import { doesContainJava, doesContainJsOrTs } from './utils/packageCapabilities.js';
 import { promisePool } from './utils/promisePool.js';
-import { spawnSync, spawnSyncAndReturnStatus } from './utils/spawnUtil.js';
+import { spawnSync, spawnSyncAndReturnStatus, spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
 import { disposeTypeScriptApi } from './utils/typescriptApi.js';
 import { getWbfyVersion, getWbfyVersionLabel } from './utils/version.js';
 import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
@@ -223,8 +218,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       continue;
     }
 
-    await fixTestDirectoriesUpdatingPackageJson([rootDirPath, ...subDirPaths]);
-
     // Let getPackageConfig derive isRoot for the entry path: `wbfy <repo>/packages/<app>` is a
     // supported invocation whose target must keep its child classification, so forcing
     // `isRoot: true` here would apply root-only processing (lefthook install, root tsconfig,
@@ -253,6 +246,27 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     }
     const subPackageConfigs = nullableSubPackageConfigs.filter((config) => !!config);
     const allPackageConfigs = [rootConfig, ...subPackageConfigs];
+    // The managed ignore rule is unanchored, so a nested copy (e.g. workers/api/.env.cloudflare) is
+    // as much a leak as a root one; the wildcard pathspec covers every depth in one query.
+    const trackedCloudflareEnvPaths = allPackageConfigs.some((config) => config.isCloudflare)
+      ? spawnSyncAndReturnStdout(
+          'git',
+          ['-c', 'core.quotePath=false', 'ls-files', '--', '.env.cloudflare', '*/.env.cloudflare'],
+          rootConfig.dirPath
+        )
+          .split('\n')
+          .filter(Boolean)
+          .map((filePath) => path.resolve(rootConfig.dirPath, filePath))
+      : [];
+    if (trackedCloudflareEnvPaths.length > 0) {
+      console.error(
+        `SECURITY ERROR: Cloudflare credentials must be untracked. Remove ${trackedCloudflareEnvPaths.join(
+          ', '
+        )} from Git, purge the token from history, and rotate CLOUDFLARE_API_TOKEN before rerunning wbfy.`
+      );
+      hasInvalidPackageConfig = true;
+      continue;
+    }
     const abbreviationPromise = fixTypos(rootConfig);
 
     await generateRepositoryNpmrc(allPackageConfigs);
@@ -311,7 +325,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       generateDockerignore(rootConfig),
       generateEditorconfig(rootConfig),
       generateGeminiConfig(rootConfig, allPackageConfigs),
-      removeGeminiSettings(rootConfig),
       generateGitattributes(rootConfig),
       generateGitHubTemplates(rootConfig),
       generateIdeaSettings(rootConfig),
@@ -323,11 +336,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       setupLabels(rootConfig),
       setupRepositoryRulesets(rootConfig),
       setupGitHubSettings(rootConfig),
-      // Git hooks are repository-level state: when the CLI entry is a child workspace
-      // (`wbfy <repo>/apps/<app>`), installing Lefthook there would delete the child's .husky,
-      // write a child lefthook.yml, and unset the ENCLOSING repository's core.hooksPath.
-      ...(rootConfig.isRoot ? [generateLefthookUpdatingPackageJson(rootConfig, allPackageConfigs)] : []),
-      generateLintstagedrc(rootConfig),
+      // Git hooks are repository-level state: a direct workspace-child invocation must not write a
+      // child lefthook.yml or replace the enclosing repository's hook installation.
+      ...(rootConfig.isRoot ? [generateLefthook(rootConfig, allPackageConfigs)] : []),
     ]);
     await promisePool.promiseAll();
     // After the workflow generator (and its pooled writes) so the instruction files describe the
@@ -337,9 +348,6 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
 
     const promises: Promise<void>[] = [];
     for (const config of allPackageConfigs) {
-      if (config.doesContainTypeScript || config.doesContainTypeScriptInPackages) {
-        promises.push(fixTypeDefinitions(config, config.isRoot ? allPackageConfigs : [config]));
-      }
       if (config.depending.playwrightTest) {
         promises.push(fixPlaywrightConfig(config));
       }
@@ -354,16 +362,9 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       if (!config.isRoot && !config.doesContainPackageJson) {
         continue;
       }
-      await generatePrettierignore(config);
+      if (doesContainJava(config)) await generatePrettierignore(config);
       await generatePackageJson(config, rootConfig, skipDeps);
-      // Only after the barrier above: the pooled .gitignore write (which carries the managed
-      // .env.cloudflare rule) completed there, and the fixer re-verifies the rule via
-      // `git check-ignore` before untracking.
-      if (config.isCloudflare || rootConfig.isCloudflare) {
-        await untrackCloudflareEnv(config);
-      }
 
-      promises.push(generateLintstagedrc(config));
       if (config.doesContainVscodeSettingsJson) {
         promises.push(generateVscodeSettings(config));
       }

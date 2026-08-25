@@ -6,10 +6,10 @@ import type { PackageJson } from 'type-fest';
  */
 type ScriptSegmentKind = 'custom' | 'genCode' | 'genCodeWrapper';
 
-const genCodeSegmentPattern = /^(?:(?:bun|bunx)\s+)?(?:run\s+)?wb\s+gen-code$/u;
+const genCodeSegmentPattern = /^bun\s+wb\s+gen-code$/u;
 
 // A runner delegating to one of this package's own scripts, e.g. `bun run gen-types`.
-const scriptRunnerPattern = /^(?:bun|bunx)\s+(?:run\s+)?(\S+)$/u;
+const scriptRunnerPattern = /^bun\s+run\s+(\S+)$/u;
 
 // Anything wbfy's `&&` split cannot model (pipes, sequencing, redirections, quoting, substitutions, directory
 // changes). Scripts containing it are left untouched instead of being rewritten from a wrong parse.

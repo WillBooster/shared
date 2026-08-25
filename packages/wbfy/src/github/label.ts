@@ -60,19 +60,6 @@ export async function setupLabels(config: PackageConfig): Promise<void> {
       await deleteLabel(octokit, owner, repo, 'invalid');
       await deleteLabel(octokit, owner, repo, 'question');
       await deleteLabel(octokit, owner, repo, 'wontfix');
-
-      await deleteLabel(octokit, owner, repo, 'ready');
-      await deleteLabel(octokit, owner, repo, 'review requested');
-      await deleteLabel(octokit, owner, repo, 'released');
-      await deleteLabel(octokit, owner, repo, 'semantic-release');
-      await deleteLabel(octokit, owner, repo, 'llm-pr :robot:');
-      await deleteLabel(octokit, owner, repo, 'ai-pr :robot:');
-      await deleteLabel(octokit, owner, repo, 'gen-pr-all :robot:');
-      await deleteLabel(octokit, owner, repo, 'gen-pr-claude :robot:');
-      await deleteLabel(octokit, owner, repo, 'gen-pr-codex :robot:');
-      await deleteLabel(octokit, owner, repo, 'gen-pr-gemini :robot:');
-      // No repository in the orgs uses Svelte anymore.
-      await deleteLabel(octokit, owner, repo, 'r: svelte');
     } catch (error) {
       console.warn('Skip setupLabels due to:', (error as Error | undefined)?.stack ?? error);
     }

@@ -330,7 +330,6 @@ function buildReleaseWorkflow(
             run: 'bun semantic-release',
             env: {
               GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}',
-              HUSKY: '0',
               LEFTHOOK: '0',
               ...fnoxEnv,
             },
