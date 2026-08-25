@@ -23,7 +23,8 @@ if (Bun.semver.order(Bun.version, minimumBunVersion) < 0) {
   }
   // Prefer a supported target pin so every descendant Bun command uses that same version. A target
   // still on the previous runtime needs one fallback to the new floor so wbfy can migrate its pin.
-  // The stages also bound retries because mise can ignore even an explicit disabled tool.
+  // With auto-install disabled, mise can fall back to the old Bun on PATH; the stages bound that
+  // re-entry to one target attempt and one explicit-minimum attempt.
   const useMinimum = bootstrapStage === 'target';
   const env = { ...process.env, [bootstrapMarker]: useMinimum ? 'minimum' : 'target' };
   if (!useMinimum) {
@@ -32,7 +33,14 @@ if (Bun.semver.order(Bun.version, minimumBunVersion) < 0) {
   }
   const result = child_process.spawnSync(
     'mise',
-    ['exec', ...(useMinimum ? [`bun@${minimumBunVersion}`] : []), '--', 'bun', process.argv[1], ...process.argv.slice(2)],
+    [
+      'exec',
+      ...(useMinimum ? [`bun@${minimumBunVersion}`] : []),
+      '--',
+      'bun',
+      process.argv[1],
+      ...process.argv.slice(2),
+    ],
     { env, stdio: 'inherit' }
   );
   if (result.error) console.error(`Failed to start Bun ${minimumBunVersion} through mise: ${result.error.message}`);

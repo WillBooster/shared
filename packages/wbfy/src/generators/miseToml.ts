@@ -44,7 +44,7 @@ export async function generateMiseToml(config: PackageConfig, currentBunVersion:
     if (!bunVersion) {
       const reason =
         typeof tools.bun === 'string'
-          ? 'its Bun selector did not resolve to one exact version >= 1.4'
+          ? 'mise could not resolve its Bun selector to an exact version'
           : 'Bun must use a plain exact version string; table and array forms are user-managed';
       console.warn(`Skipped generating ${miseTomlPath} because ${reason}.`);
       return;
