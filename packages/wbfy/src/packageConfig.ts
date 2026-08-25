@@ -437,11 +437,17 @@ export function getWorkerTypesScriptError(config: Pick<PackageConfig, 'packageJs
     });
     if (hasNonCanonicalWbGenCode) return `${name} must use the canonical bun wb gen-code command`;
   }
-  // `bun <script>` is not recognized as a wrapper, so a managed generation would be appended next
-  // to it and run every generator twice per install.
+  // Only `bun run <script>` is recognized as a wrapper; another runner spelling would get a managed
+  // generation appended next to it and run every generator twice per install. Without a gen-code
+  // pipeline nothing is appended, so the spelling is irrelevant there.
   for (const segment of splitScriptSegments(scripts.postinstall ?? '') ?? []) {
-    const scriptName = /^(?:bun|bunx)(?:\s+--bun)?\s+(\S+)$/u.exec(segment)?.[1];
-    if (scriptName !== undefined && scripts[scriptName] !== undefined) {
+    const scriptName = /^(?:bun|bunx)(?:\s+--bun)?(?:\s+run)?\s+(\S+)$/u.exec(segment)?.[1];
+    const target = scriptName === undefined ? undefined : scripts[scriptName];
+    if (
+      target !== undefined &&
+      segment !== `bun run ${scriptName}` &&
+      (scripts['gen-code'] !== undefined || target.includes('wb gen-code'))
+    ) {
       return `postinstall must invoke the ${scriptName} script as bun run ${scriptName}`;
     }
   }

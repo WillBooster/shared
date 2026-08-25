@@ -249,7 +249,11 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
     // The managed ignore rule is unanchored, so a nested copy (e.g. workers/api/.env.cloudflare) is
     // as much a leak as a root one; the wildcard pathspec covers every depth in one query.
     const trackedCloudflareEnvPaths = allPackageConfigs.some((config) => config.isCloudflare)
-      ? spawnSyncAndReturnStdout('git', ['ls-files', '--', '.env.cloudflare', '*/.env.cloudflare'], rootConfig.dirPath)
+      ? spawnSyncAndReturnStdout(
+          'git',
+          ['-c', 'core.quotePath=false', 'ls-files', '--', '.env.cloudflare', '*/.env.cloudflare'],
+          rootConfig.dirPath
+        )
           .split('\n')
           .filter(Boolean)
           .map((filePath) => path.resolve(rootConfig.dirPath, filePath))
