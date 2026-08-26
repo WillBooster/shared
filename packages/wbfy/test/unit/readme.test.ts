@@ -602,5 +602,12 @@ test('omits the npm badge for a manifest that is not published', async () => {
         release: { ...npmPublishingOverrides.release, npmPublishesRoot: false },
       })
     ).not.toContain('npmjs.com');
+    // A single-package root keeps the `private` the manifest generator leaves it, intent or not.
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        ...npmPublishingOverrides,
+        packageJson: { ...npmPublishingOverrides.packageJson, private: true, publishConfig: { access: 'public' } },
+      })
+    ).not.toContain('npmjs.com');
   });
 });
