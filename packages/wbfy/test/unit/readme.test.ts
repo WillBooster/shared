@@ -33,10 +33,14 @@ afterEach(() => {
   mock.restore();
 });
 
-async function runGenerateReadme(dirPath: string, versionLabel: string | undefined): Promise<string> {
+async function runGenerateReadme(
+  dirPath: string,
+  versionLabel: string | undefined,
+  overrides: Partial<Parameters<typeof createConfig>[0]> = {}
+): Promise<string> {
   spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);
   fsUtil.setRootDirPath(dirPath);
-  await generateReadme(createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' } }));
+  await generateReadme(createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides }));
   await promisePool.promiseAll();
   return fs.readFileSync(path.resolve(dirPath, 'README.md'), 'utf8');
 }
@@ -498,4 +502,45 @@ test.each([
   const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
 
   expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
+
+const npmPublishingConfig = { release: { branches: [], github: true, npm: true, npmPublishesRoot: true } };
+
+test('adds an npm badge above the other badges for a published package', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingConfig);
+    expect(content).toBe(
+      `# example\n\n[![npm version](https://img.shields.io/npm/v/example.svg)](https://www.npmjs.com/package/example)\n${badgeOf('1.2.3')}\n\nBody text.\n`
+    );
+    expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingConfig)).toBe(content);
+  });
+});
+
+test('replaces a differently rendered npm badge instead of keeping both', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      '# example\n\n[![npm version](https://badge.fury.io/js/example.svg)](https://www.npmjs.com/package/example)\n\nBody text.\n'
+    );
+
+    const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingConfig);
+    expect(content).not.toContain('badge.fury.io');
+    expect(content.split('https://www.npmjs.com/package/example')).toHaveLength(2);
+  });
+});
+
+test('omits the npm badge for a package that is not published', async () => {
+  await withTempDir(async (dirPath) => {
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    expect(await runGenerateReadme(dirPath, '1.2.3')).not.toContain('npmjs.com');
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        packageJson: { name: 'example', private: true },
+        ...npmPublishingConfig,
+      })
+    ).not.toContain('npmjs.com');
+  });
 });

@@ -10,6 +10,7 @@ import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { getOctokit } from '../utils/githubUtil.js';
 import { promisePool } from '../utils/promisePool.js';
+import { escapeRegExp } from '../utils/stringUtil.js';
 import { getWbfyVersionLabel } from '../utils/version.js';
 
 const semanticReleaseBadge =
@@ -19,10 +20,16 @@ const wbfyBadgeUrlPrefix = 'https://img.shields.io/badge/wbfy-';
 const wbfyBadgeUrlSuffix = '-1e90ff.svg';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
 
+const npmPackageUrlPrefix = 'https://www.npmjs.com/package/';
+
 const managedBadgePatterns = [
   /^\[!\[wbfy\]\(https:\/\/img\.shields\.io\/badge\/wbfy-[^)\s]+-1e90ff\.svg\)\]\(https:\/\/github\.com\/WillBooster\/shared\/tree\/main\/packages\/wbfy\)$/u,
   /^\[!\[[^\]]*\]\((https:\/\/github\.com\/[^)\s]+\/actions\/workflows\/[^)\s]+)\/badge\.svg\)\]\(\1\)$/u,
 ];
+
+function buildNpmBadge(packageName: string): string {
+  return `[![npm version](https://img.shields.io/npm/v/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
+}
 
 function buildWbfyBadge(label: string): string {
   // Hyphens are escaped as `--` per shields.io's badge path syntax, so `v1.2.3-rc.1` stays intact.
@@ -66,19 +73,32 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       (await fsUtil.readFileIfExists(filePath)) ??
       `# ${config.packageJson?.name ?? path.basename(path.resolve(config.dirPath))}\n`;
 
-    // Ordered by what a reader cares about most: the workflow badges report whether the code is
-    // currently healthy, then how it is released, and last the wbfy build that configured it.
-    const badges = await buildWorkflowBadges(config);
+    // Ordered by what a reader cares about most: the npm badge names the package a reader installs,
+    // then the workflow badges report whether the code is currently healthy, then how it is
+    // released, and last the wbfy build that configured it.
+    const badges: string[] = [];
+    const npmPackageName = getPublishedNpmPackageName(config);
+    if (npmPackageName) badges.push(buildNpmBadge(npmPackageName));
+    badges.push(...(await buildWorkflowBadges(config)));
     if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) badges.push(semanticReleaseBadge);
     badges.push(buildWbfyBadge(getWbfyVersionLabel() ?? 'applied'));
 
     // The block is written in one pass from the badges wbfy manages right now. A badge that is no
     // longer wanted — a superseded version, or one whose workflow is gone — simply is not in the
     // list, so nothing has to remove it.
-    newContent = writeBadgeBlock(newContent, badges);
+    newContent = writeBadgeBlock(newContent, badges, npmPackageName);
 
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent, getLineEnding(newContent)));
   });
+}
+
+/**
+ * The npm package name the repository publishes from its root manifest, if any. A private manifest
+ * is never on npm, and neither is one no release publishes — its badge would render as "invalid".
+ */
+function getPublishedNpmPackageName(config: PackageConfig): string | undefined {
+  const packageJson = config.packageJson;
+  return packageJson?.name && !packageJson.private && config.release.npm ? packageJson.name : undefined;
 }
 
 async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
@@ -151,7 +171,7 @@ async function hasAnyWorkflowRun(
  * verbatim from the original text through the parser's positional offsets, so no reformatting of the
  * user's content is possible.
  */
-export function writeBadgeBlock(readme: string, managedBadges: string[]): string {
+export function writeBadgeBlock(readme: string, managedBadges: string[], npmPackageName?: string): string {
   const lineEnding = getLineEnding(readme);
   // A BOM is not Markdown: left in the text it hides the `#` of the title from the parser, and
   // prepending the block ahead of it would strip the marker from the file's first byte.
@@ -188,7 +208,7 @@ export function writeBadgeBlock(readme: string, managedBadges: string[]): string
   // Superseding a managed badge is just dropping the old one: a version or workflow change leaves
   // no stale copy, while any other badge in the block (including a non-canonical wbfy badge, which
   // is removed manually) is kept.
-  const badges = [...managedBadges, ...(existing ?? []).filter((badge) => !isManagedBadge(badge))];
+  const badges = [...managedBadges, ...(existing ?? []).filter((badge) => !isManagedBadge(badge, npmPackageName))];
   // Content is sliced from its node's start offset, so whatever blank space followed the front
   // matter is gone; exactly one blank line is restored here. A closing delimiter that ended at EOF
   // carries no newline of its own and needs both, or `---` would fuse with the first badge and
@@ -289,8 +309,19 @@ function encodeUrlPath(value: string): string {
   return value.replaceAll(/[()\s]/gu, (character) => `%${character.codePointAt(0)!.toString(16).toUpperCase()}`);
 }
 
-/** Whether the badge has the canonical form generated by wbfy. */
-function isManagedBadge(badge: string): boolean {
+/** Whether the badge is one wbfy writes itself, and so may be replaced by the current block. */
+function isManagedBadge(badge: string, npmPackageName?: string): boolean {
+  // Any badge linking to the package's own npm page is the npm badge, whatever image it shows: wbfy
+  // writes exactly one of them, so a differently rendered copy is the same badge, not another one.
+  if (
+    npmPackageName &&
+    new RegExp(
+      String.raw`^\[!\[[^\]]*\]\([^)\s]+\)\]\(${escapeRegExp(npmPackageUrlPrefix + npmPackageName)}\)$`,
+      'u'
+    ).test(badge)
+  ) {
+    return true;
+  }
   return badge === semanticReleaseBadge || managedBadgePatterns.some((pattern) => pattern.test(badge));
 }
 
