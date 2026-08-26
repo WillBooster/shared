@@ -506,14 +506,11 @@ test.each([
 
 /** Answers the registry probe without a network: 200 for `publishedNames`, 404 for anything else. */
 function mockNpmRegistry(publishedNames: string[]): void {
-  const respond = (input: string | Request | URL): Promise<Response> =>
-    Promise.resolve(
-      new Response(undefined, {
-        status: publishedNames.some((name) => String(input).endsWith(encodeURIComponent(name).replace('%2F', '/')))
-          ? 200
-          : 404,
-      })
-    );
+  const respond = (input: string | Request | URL): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const isPublished = publishedNames.some((name) => url.endsWith(encodeURIComponent(name).replace('%2F', '/')));
+    return Promise.resolve(new Response(undefined, { status: isPublished ? 200 : 404 }));
+  };
   respond.preconnect = (): void => {};
   spyOn(globalThis, 'fetch').mockImplementation(respond);
 }
