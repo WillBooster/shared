@@ -30,10 +30,6 @@ const managedBadgePatterns = [
   /^\[!\[[^\]]*\]\([^)\s]+\)\]\(https?:\/\/(?:www\.)?npmjs\.com\/package\/[^)\s]*\)$/u,
 ];
 
-function buildNpmBadge(packageName: string): string {
-  return `[![npm version](https://img.shields.io/npm/v/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
-}
-
 function buildWbfyBadge(label: string): string {
   // Hyphens are escaped as `--` per shields.io's badge path syntax, so `v1.2.3-rc.1` stays intact.
   return `[![wbfy](${wbfyBadgeUrlPrefix}${label.replaceAll('-', '--')}${wbfyBadgeUrlSuffix})](${wbfyBadgeLink})`;
@@ -133,6 +129,10 @@ async function isMissingFromNpmRegistry(packageName: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function buildNpmBadge(packageName: string): string {
+  return `[![npm version](https://img.shields.io/npm/v/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
 }
 
 async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
