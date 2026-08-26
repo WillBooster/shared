@@ -102,10 +102,11 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
 async function getPublishedNpmPackageName(config: PackageConfig): Promise<string | undefined> {
   const packageJson = config.packageJson;
   if (!packageJson?.name || !config.release.npm) return undefined;
-  // `private` is read the way generatePackageJson writes it: it removes the flag from a root that
-  // declares publishing intent, so reading the flag alone would deny the badge to the very
-  // manifest the same run makes publishable.
-  if (packageJson.private && !packageJson.publishConfig && !config.release.npmPublishesRoot) return undefined;
+  // `private` is read the way generatePackageJson writes it: it removes the flag from a MONOREPO
+  // root that declares publishing intent, so reading the flag alone would deny the badge to the
+  // very manifest the same run makes publishable. Anywhere else the flag stands as written.
+  const declaresPublishingIntent = !!packageJson.publishConfig || config.release.npmPublishesRoot;
+  if (packageJson.private && !(config.doesContainSubPackageJsons && declaresPublishingIntent)) return undefined;
   // The manifest only says the repository INTENDS to publish: a monorepo root that configures
   // @semantic-release/npm for its workspaces is never on npm itself, and a package's first release
   // has not happened yet. Both would render a broken badge, so the registry decides.
