@@ -120,7 +120,9 @@ async function isMissingFromNpmRegistry(packageName: string): Promise<boolean> {
     // The scope separator must survive as a path segment, so the name is encoded piecewise.
     const encodedName = packageName.split('/').map(encodeURIComponent).join('/');
     // A badge is decoration: a stalled registry connection must not hold the whole run for however
-    // long the networking stack would wait.
+    // long the networking stack would wait. The budget is generous because a timeout is read as
+    // "unknown", which on a repository seeing its first badge means no badge at all — a slow link
+    // must not cost that, and a wbfy run already spends minutes on installs.
     const response = await fetch(`https://registry.npmjs.org/${encodedName}`, {
       method: 'HEAD',
       signal: AbortSignal.timeout(10_000),
