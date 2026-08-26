@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
+import fg from 'fast-glob';
 import type { ArgumentsCamelCase, CommandModule, InferredOptionTypes } from 'yargs';
 
 import type { Project } from '../project.js';
@@ -64,6 +65,7 @@ async function verifyCodeFully(project: Project, argv: VerifyCodeCommandArgv, st
   const reporter = startVerifyFullReporter(project);
   try {
     await verifyCode(project, argv, steps);
+    await checkSlidevDecks(project, argv, steps);
     await runStep(steps, { name: 'test' }, () => runProjectTest(project, argv));
     // Printed before the reporter finishes so the summary lands in verify-full.log too.
     printVerifySummary(steps, Boolean(argv.dryRun));
@@ -125,6 +127,26 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   await runStep(steps, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
     runInProcessCommand('typecheck', () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv))
   );
+}
+
+/**
+ * Audits every Slidev deck in the repository with slidev-check.
+ *
+ * A deck whose content overflows its slide still type-checks, lints, and tests clean, so rendering
+ * the decks is the only signal that catches it. wbfy installs slidev-check wherever a `*.slidev.md`
+ * deck exists, so the checker is always available here.
+ */
+async function checkSlidevDecks(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
+  const deckPaths = fg
+    .globSync('**/*.slidev.md', { cwd: project.dirPath, ignore: ['**/node_modules/**'] })
+    .toSorted((a, b) => a.localeCompare(b));
+  if (deckPaths.length === 0) return;
+
+  await runStep(steps, { detail: deckPaths.join(' '), name: 'slidev-check' }, async () => {
+    for (const deckPath of deckPaths) {
+      await runPackageCommand(`${project.packageManagerRunCommand} slidev-check '${deckPath}'`, project, argv);
+    }
+  });
 }
 
 async function runProjectTest(project: Project, argv: VerifyCodeCommandArgv): Promise<void> {

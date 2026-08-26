@@ -48,6 +48,8 @@ export interface PackageConfig {
   /** Whether a Maven pom.xml exists anywhere in the directory tree. */
   doesContainPomXmlAnywhere: boolean;
   doesContainPubspecYaml: boolean;
+  /** Whether a Slidev deck (`*.slidev.md`) exists anywhere in the directory tree. */
+  doesContainSlidevMd: boolean;
   doesContainTauriConfig: boolean;
   doesContainTauriConfigInPackages: boolean;
   doesContainTemplateYaml: boolean;
@@ -324,6 +326,7 @@ export async function getPackageConfig(
       doesContainPomXml: fs.existsSync(path.resolve(dirPath, 'pom.xml')),
       doesContainPomXmlAnywhere: containsAny('**/pom.xml', dirPath),
       doesContainPubspecYaml: fs.existsSync(path.resolve(dirPath, 'pubspec.yaml')),
+      doesContainSlidevMd: containsAny('**/*.slidev.md', dirPath),
       doesContainTauriConfig,
       doesContainTauriConfigInPackages: containsAnyInWorkspaces(
         'src-tauri/{tauri.conf.json,tauri.conf.json5,Tauri.toml}'

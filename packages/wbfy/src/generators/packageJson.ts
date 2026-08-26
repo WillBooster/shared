@@ -330,6 +330,12 @@ async function applyPackageJsonConventions(
     devDependencies.push('babel-plugin-react-compiler');
   }
 
+  // `wb verify --full` audits every `*.slidev.md` deck with slidev-check, so the checker has to be
+  // installed wherever a deck lives.
+  if (config.doesContainSlidevMd) {
+    devDependencies.push('slidev-check');
+  }
+
   if (!isWbPackage(jsonObj)) {
     // A `workspace:` specifier depends on the wb developed in this repository (e.g.
     // WillBooster/shared itself); installing the latest registry release over it would silently
