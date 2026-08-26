@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import { globIgnore } from '@willbooster/shared-lib-node/src';
 import fg from 'fast-glob';
 
 import { isReusableWorkflowsRepo } from '../generators/workflow.js';
@@ -7,7 +8,6 @@ import { logger } from '../logger.js';
 import { options } from '../options.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { fsUtil } from '../utils/fsUtil.js';
-import { globIgnore } from '../utils/globUtil.js';
 import { promisePool } from '../utils/promisePool.js';
 import { getWorkspaceDirPatterns } from '../utils/workspaceUtil.js';
 

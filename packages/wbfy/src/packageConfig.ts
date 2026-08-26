@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
+import { globIgnore } from '@willbooster/shared-lib-node/src';
 import fg from 'fast-glob';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
 
 import { getOctokit, gitHubUtil } from './utils/githubUtil.js';
-import { globIgnore } from './utils/globUtil.js';
 import { jsoncUtil } from './utils/jsoncUtil.js';
 import { classifyScriptSegment, splitScriptSegments } from './utils/managedScriptSegment.js';
 import { spawnSyncAndReturnStdout } from './utils/spawnUtil.js';
