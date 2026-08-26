@@ -133,8 +133,10 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
  * Audits every Slidev deck in the repository with slidev-check.
  *
  * A deck whose content overflows its slide still type-checks, lints, and tests clean, so rendering
- * the decks is the only signal that catches it. wbfy installs slidev-check wherever a `*.slidev.md`
- * deck exists, so the checker is always available here.
+ * the decks is the only signal that catches it. wbfy's deck detection is recursive, so a monorepo
+ * whose deck lives in a workspace gets the checker at its root too; running every deck from this
+ * project's directory therefore always resolves the bin, and Slidev takes the deck's own directory
+ * as its user root regardless of the working directory.
  */
 async function checkSlidevDecks(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
   // The very glob wbfy's doesContainSlidevMd runs, so the decks audited here are exactly the ones
