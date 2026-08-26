@@ -570,6 +570,22 @@ test('keeps the npm badge in place when the registry cannot be reached', async (
   });
 });
 
+test('badges a private monorepo root that the manifest generator makes publishable', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    // generatePackageJson deletes `private` from such a root in the same run.
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        ...npmPublishingOverrides,
+        packageJson: { ...npmPublishingOverrides.packageJson, private: true },
+        doesContainSubPackageJsons: true,
+      })
+    ).toContain(npmBadge);
+  });
+});
+
 test('omits the npm badge for a manifest that is not published', async () => {
   await withTempDir(async (dirPath) => {
     mockNpmRegistry(['@willbooster/wbfy']);
