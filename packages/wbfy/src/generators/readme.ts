@@ -19,9 +19,15 @@ const wbfyBadgeUrlPrefix = 'https://img.shields.io/badge/wbfy-';
 const wbfyBadgeUrlSuffix = '-1e90ff.svg';
 const wbfyBadgeLink = 'https://github.com/WillBooster/shared/tree/main/packages/wbfy';
 
+const npmPackageUrlPrefix = 'https://www.npmjs.com/package/';
+
 const managedBadgePatterns = [
   /^\[!\[wbfy\]\(https:\/\/img\.shields\.io\/badge\/wbfy-[^)\s]+-1e90ff\.svg\)\]\(https:\/\/github\.com\/WillBooster\/shared\/tree\/main\/packages\/wbfy\)$/u,
   /^\[!\[[^\]]*\]\((https:\/\/github\.com\/[^)\s]+\/actions\/workflows\/[^)\s]+)\/badge\.svg\)\]\(\1\)$/u,
+  // Any badge linking to an npm package page, whatever image it shows and however the link is
+  // spelled: the block is wbfy's, it writes at most one npm badge, so a badge for a renamed or
+  // unpublished package is a stale copy of that one — not another badge to keep beside it.
+  /^\[!\[[^\]]*\]\([^)\s]+\)\]\(https?:\/\/(?:www\.)?npmjs\.com\/package\/[^)\s]*\)$/u,
 ];
 
 function buildWbfyBadge(label: string): string {
@@ -66,9 +72,13 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
       (await fsUtil.readFileIfExists(filePath)) ??
       `# ${config.packageJson?.name ?? path.basename(path.resolve(config.dirPath))}\n`;
 
-    // Ordered by what a reader cares about most: the workflow badges report whether the code is
-    // currently healthy, then how it is released, and last the wbfy build that configured it.
-    const badges = await buildWorkflowBadges(config);
+    // Ordered by what a reader cares about most: the npm badge names the package a reader installs,
+    // then the workflow badges report whether the code is currently healthy, then how it is
+    // released, and last the wbfy build that configured it.
+    const badges: string[] = [];
+    const npmPackageName = await getPublishedNpmPackageName(config);
+    if (npmPackageName) badges.push(buildNpmBadge(npmPackageName));
+    badges.push(...(await buildWorkflowBadges(config)));
     if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) badges.push(semanticReleaseBadge);
     badges.push(buildWbfyBadge(getWbfyVersionLabel() ?? 'applied'));
 
@@ -79,6 +89,53 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
 
     await promisePool.run(() => fsUtil.generateFile(filePath, newContent, getLineEnding(newContent)));
   });
+}
+
+/**
+ * The npm package name the repository publishes from its root manifest, if any. A manifest no
+ * release publishes, or one kept out of the registry on purpose, has no package page to link to.
+ */
+async function getPublishedNpmPackageName(config: PackageConfig): Promise<string | undefined> {
+  const packageJson = config.packageJson;
+  if (!packageJson?.name || !config.release.npm) return undefined;
+  // `private` is read the way generatePackageJson writes it: it removes the flag from a MONOREPO
+  // root that declares publishing intent, so reading the flag alone would deny the badge to the
+  // very manifest the same run makes publishable. Anywhere else the flag stands as written.
+  const declaresPublishingIntent = !!packageJson.publishConfig || config.release.npmPublishesRoot;
+  if (packageJson.private && !(config.doesContainSubPackageJsons && declaresPublishingIntent)) return undefined;
+  // The manifest only says the repository INTENDS to publish: a monorepo root that configures
+  // @semantic-release/npm for its workspaces is never on npm itself, and a package's first release
+  // has not happened yet. Both would render a broken badge, so the registry decides.
+  return (await isMissingFromNpmRegistry(packageJson.name)) ? undefined : packageJson.name;
+}
+
+/**
+ * Whether the registry answers that it has no such package — the ONLY answer that removes a badge.
+ * A check that cannot run (offline, an outage, a timeout) says nothing about the package, and
+ * treating it as absent would strip the badge out of every published repository wbfy touches
+ * during the outage and put it back afterwards.
+ */
+async function isMissingFromNpmRegistry(packageName: string): Promise<boolean> {
+  try {
+    // The scope separator must survive as a path segment, so the name is encoded piecewise.
+    const encodedName = packageName.split('/').map(encodeURIComponent).join('/');
+    // A badge is decoration: a stalled registry connection must not hold the whole run for however
+    // long the networking stack would wait. The budget is generous because a timeout answers
+    // "unknown", which keeps the badge — and on a repository that is not on npm that means writing
+    // one it should not have; a wbfy run already spends minutes on installs, so waiting a little
+    // longer for a real answer costs less than acting on a missing one.
+    const response = await fetch(`https://registry.npmjs.org/${encodedName}`, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(10_000),
+    });
+    return response.status === 404;
+  } catch {
+    return false;
+  }
+}
+
+function buildNpmBadge(packageName: string): string {
+  return `[![npm version](https://img.shields.io/npm/v/${packageName}.svg)](${npmPackageUrlPrefix}${packageName})`;
 }
 
 async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
@@ -289,7 +346,7 @@ function encodeUrlPath(value: string): string {
   return value.replaceAll(/[()\s]/gu, (character) => `%${character.codePointAt(0)!.toString(16).toUpperCase()}`);
 }
 
-/** Whether the badge has the canonical form generated by wbfy. */
+/** Whether the badge is one wbfy writes itself, and so may be replaced by the current block. */
 function isManagedBadge(badge: string): boolean {
   return badge === semanticReleaseBadge || managedBadgePatterns.some((pattern) => pattern.test(badge));
 }

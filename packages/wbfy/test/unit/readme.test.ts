@@ -33,10 +33,14 @@ afterEach(() => {
   mock.restore();
 });
 
-async function runGenerateReadme(dirPath: string, versionLabel: string | undefined): Promise<string> {
+async function runGenerateReadme(
+  dirPath: string,
+  versionLabel: string | undefined,
+  overrides: Partial<Parameters<typeof createConfig>[0]> = {}
+): Promise<string> {
   spyOn(version, 'getWbfyVersionLabel').mockReturnValue(versionLabel);
   fsUtil.setRootDirPath(dirPath);
-  await generateReadme(createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' } }));
+  await generateReadme(createConfig({ dirPath, isRoot: true, packageJson: { name: 'example' }, ...overrides }));
   await promisePool.promiseAll();
   return fs.readFileSync(path.resolve(dirPath, 'README.md'), 'utf8');
 }
@@ -498,4 +502,112 @@ test.each([
   const result = writeBadgeBlock(`${htmlBlock}\n\n# Real title\n\nBody.\n`, [badgeOf('1.2.3')]);
 
   expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
+});
+
+/** Answers the registry probe without a network: 200 for `publishedNames`, 404 for anything else. */
+function mockNpmRegistry(publishedNames: string[]): void {
+  const respond = (input: string | Request | URL): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const isPublished = publishedNames.some(
+      (name) => url === `https://registry.npmjs.org/${encodeURIComponent(name).replace('%2F', '/')}`
+    );
+    return Promise.resolve(new Response(undefined, { status: isPublished ? 200 : 404 }));
+  };
+  respond.preconnect = (): void => {};
+  spyOn(globalThis, 'fetch').mockImplementation(respond);
+}
+
+const npmPublishingOverrides = {
+  packageJson: { name: '@willbooster/wbfy' },
+  release: { branches: [], github: true, npm: true, npmPublishesRoot: true },
+};
+const npmBadge =
+  '[![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)';
+
+test('adds an npm badge above the other badges for a published package', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides);
+    expect(content).toBe(`# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`);
+    expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(content);
+  });
+});
+
+test('replaces an npm badge written in another form instead of keeping both', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    fs.writeFileSync(
+      path.resolve(dirPath, 'README.md'),
+      '# example\n\n[![npm](https://badge.fury.io/js/@willbooster%2Fwbfy.svg)](https://npmjs.com/package/@willbooster/wbfy/)\n\nBody text.\n'
+    );
+
+    const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides);
+    expect(content).toBe(`# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`);
+  });
+});
+
+test('drops the npm badge once the registry reports the package is gone', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry([]);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${npmBadge}\n\nBody text.\n`);
+
+    expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(
+      `# example\n\n${badgeOf('1.2.3')}\n\nBody text.\n`
+    );
+  });
+});
+
+test('keeps the npm badge in place when the registry cannot be reached', async () => {
+  await withTempDir(async (dirPath) => {
+    spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${npmBadge}\n\nBody text.\n`);
+
+    expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(
+      `# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`
+    );
+  });
+});
+
+test('badges a private monorepo root that the manifest generator makes publishable', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    // generatePackageJson deletes `private` from such a root in the same run.
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        ...npmPublishingOverrides,
+        packageJson: { ...npmPublishingOverrides.packageJson, private: true },
+        doesContainSubPackageJsons: true,
+      })
+    ).toContain(npmBadge);
+  });
+});
+
+test('omits the npm badge for a manifest that is not published', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
+
+    // No npm release configured, and a private manifest with no publishing intent.
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', { packageJson: npmPublishingOverrides.packageJson })
+    ).not.toContain('npmjs.com');
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        ...npmPublishingOverrides,
+        packageJson: { ...npmPublishingOverrides.packageJson, private: true },
+        release: { ...npmPublishingOverrides.release, npmPublishesRoot: false },
+      })
+    ).not.toContain('npmjs.com');
+    // A single-package root keeps the `private` the manifest generator leaves it, intent or not.
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        ...npmPublishingOverrides,
+        packageJson: { ...npmPublishingOverrides.packageJson, private: true, publishConfig: { access: 'public' } },
+      })
+    ).not.toContain('npmjs.com');
+  });
 });
