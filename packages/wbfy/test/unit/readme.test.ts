@@ -504,10 +504,22 @@ test.each([
   expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
 });
 
-// A real, published package: the generator asks the registry whether the badge would render.
-const publishedPackageJson = { name: '@willbooster/wbfy' };
+/** Answers the registry probe without a network: 200 for `publishedNames`, 404 for anything else. */
+function mockNpmRegistry(publishedNames: string[]): void {
+  const respond = (input: string | Request | URL): Promise<Response> =>
+    Promise.resolve(
+      new Response(undefined, {
+        status: publishedNames.some((name) => String(input).endsWith(encodeURIComponent(name).replace('%2F', '/')))
+          ? 200
+          : 404,
+      })
+    );
+  respond.preconnect = (): void => {};
+  spyOn(globalThis, 'fetch').mockImplementation(respond);
+}
+
 const npmPublishingOverrides = {
-  packageJson: publishedPackageJson,
+  packageJson: { name: '@willbooster/wbfy' },
   release: { branches: [], github: true, npm: true, npmPublishesRoot: true },
 };
 const npmBadge =
@@ -515,6 +527,7 @@ const npmBadge =
 
 test('adds an npm badge above the other badges for a published package', async () => {
   await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
 
     const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides);
@@ -523,35 +536,55 @@ test('adds an npm badge above the other badges for a published package', async (
   });
 });
 
-test('replaces a differently rendered npm badge instead of keeping both', async () => {
+test('replaces an npm badge written in another form instead of keeping both', async () => {
   await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
     fs.writeFileSync(
       path.resolve(dirPath, 'README.md'),
-      '# example\n\n[![npm version](https://badge.fury.io/js/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)\n\nBody text.\n'
+      '# example\n\n[![npm](https://badge.fury.io/js/@willbooster%2Fwbfy.svg)](https://npmjs.com/package/@willbooster/wbfy/)\n\nBody text.\n'
     );
 
     const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides);
-    expect(content).not.toContain('badge.fury.io');
-    expect(content.split('https://www.npmjs.com/package/@willbooster/wbfy')).toHaveLength(2);
+    expect(content).toBe(`# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`);
   });
 });
 
-test('omits the npm badge unless the package is really on npm', async () => {
+test('drops the npm badge once the registry reports the package is gone', async () => {
   await withTempDir(async (dirPath) => {
+    mockNpmRegistry([]);
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${npmBadge}\n\nBody text.\n`);
+
+    expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(
+      `# example\n\n${badgeOf('1.2.3')}\n\nBody text.\n`
+    );
+  });
+});
+
+test('keeps the npm badge in place when the registry cannot be reached', async () => {
+  await withTempDir(async (dirPath) => {
+    spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    fs.writeFileSync(path.resolve(dirPath, 'README.md'), `# example\n\n${npmBadge}\n\nBody text.\n`);
+
+    expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(
+      `# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`
+    );
+  });
+});
+
+test('omits the npm badge for a manifest that is not published', async () => {
+  await withTempDir(async (dirPath) => {
+    mockNpmRegistry(['@willbooster/wbfy']);
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
 
-    // No npm release configured, a private manifest, and a name the registry does not serve.
-    expect(await runGenerateReadme(dirPath, '1.2.3', { packageJson: publishedPackageJson })).not.toContain('npmjs.com');
+    // No npm release configured, and a private manifest with no publishing intent.
     expect(
-      await runGenerateReadme(dirPath, '1.2.3', {
-        ...npmPublishingOverrides,
-        packageJson: { ...publishedPackageJson, private: true },
-      })
+      await runGenerateReadme(dirPath, '1.2.3', { packageJson: npmPublishingOverrides.packageJson })
     ).not.toContain('npmjs.com');
     expect(
       await runGenerateReadme(dirPath, '1.2.3', {
         ...npmPublishingOverrides,
-        packageJson: { name: 'willbooster-shared' },
+        packageJson: { ...npmPublishingOverrides.packageJson, private: true },
+        release: { ...npmPublishingOverrides.release, npmPublishesRoot: false },
       })
     ).not.toContain('npmjs.com');
   });
