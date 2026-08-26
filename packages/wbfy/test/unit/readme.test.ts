@@ -504,17 +504,22 @@ test.each([
   expect(result.indexOf(badgeOf('1.2.3'))).toBeLessThan(result.indexOf(htmlBlock));
 });
 
-const npmPublishingConfig = { release: { branches: [], github: true, npm: true, npmPublishesRoot: true } };
+// A real, published package: the generator asks the registry whether the badge would render.
+const publishedPackageJson = { name: '@willbooster/wbfy' };
+const npmPublishingOverrides = {
+  packageJson: publishedPackageJson,
+  release: { branches: [], github: true, npm: true, npmPublishesRoot: true },
+};
+const npmBadge =
+  '[![npm version](https://img.shields.io/npm/v/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)';
 
 test('adds an npm badge above the other badges for a published package', async () => {
   await withTempDir(async (dirPath) => {
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
 
-    const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingConfig);
-    expect(content).toBe(
-      `# example\n\n[![npm version](https://img.shields.io/npm/v/example.svg)](https://www.npmjs.com/package/example)\n${badgeOf('1.2.3')}\n\nBody text.\n`
-    );
-    expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingConfig)).toBe(content);
+    const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides);
+    expect(content).toBe(`# example\n\n${npmBadge}\n${badgeOf('1.2.3')}\n\nBody text.\n`);
+    expect(await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides)).toBe(content);
   });
 });
 
@@ -522,24 +527,31 @@ test('replaces a differently rendered npm badge instead of keeping both', async 
   await withTempDir(async (dirPath) => {
     fs.writeFileSync(
       path.resolve(dirPath, 'README.md'),
-      '# example\n\n[![npm version](https://badge.fury.io/js/example.svg)](https://www.npmjs.com/package/example)\n\nBody text.\n'
+      '# example\n\n[![npm version](https://badge.fury.io/js/@willbooster/wbfy.svg)](https://www.npmjs.com/package/@willbooster/wbfy)\n\nBody text.\n'
     );
 
-    const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingConfig);
+    const content = await runGenerateReadme(dirPath, '1.2.3', npmPublishingOverrides);
     expect(content).not.toContain('badge.fury.io');
-    expect(content.split('https://www.npmjs.com/package/example')).toHaveLength(2);
+    expect(content.split('https://www.npmjs.com/package/@willbooster/wbfy')).toHaveLength(2);
   });
 });
 
-test('omits the npm badge for a package that is not published', async () => {
+test('omits the npm badge unless the package is really on npm', async () => {
   await withTempDir(async (dirPath) => {
     fs.writeFileSync(path.resolve(dirPath, 'README.md'), '# example\n\nBody text.\n');
 
-    expect(await runGenerateReadme(dirPath, '1.2.3')).not.toContain('npmjs.com');
+    // No npm release configured, a private manifest, and a name the registry does not serve.
+    expect(await runGenerateReadme(dirPath, '1.2.3', { packageJson: publishedPackageJson })).not.toContain('npmjs.com');
     expect(
       await runGenerateReadme(dirPath, '1.2.3', {
-        packageJson: { name: 'example', private: true },
-        ...npmPublishingConfig,
+        ...npmPublishingOverrides,
+        packageJson: { ...publishedPackageJson, private: true },
+      })
+    ).not.toContain('npmjs.com');
+    expect(
+      await runGenerateReadme(dirPath, '1.2.3', {
+        ...npmPublishingOverrides,
+        packageJson: { name: 'willbooster-shared' },
       })
     ).not.toContain('npmjs.com');
   });

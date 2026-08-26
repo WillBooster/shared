@@ -77,7 +77,7 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
     // then the workflow badges report whether the code is currently healthy, then how it is
     // released, and last the wbfy build that configured it.
     const badges: string[] = [];
-    const npmPackageName = getPublishedNpmPackageName(config);
+    const npmPackageName = await getPublishedNpmPackageName(config);
     if (npmPackageName) badges.push(buildNpmBadge(npmPackageName));
     badges.push(...(await buildWorkflowBadges(config)));
     if (fs.existsSync(path.resolve(config.dirPath, '.releaserc.json'))) badges.push(semanticReleaseBadge);
@@ -96,9 +96,26 @@ export async function generateReadme(config: PackageConfig): Promise<void> {
  * The npm package name the repository publishes from its root manifest, if any. A private manifest
  * is never on npm, and neither is one no release publishes — its badge would render as "invalid".
  */
-function getPublishedNpmPackageName(config: PackageConfig): string | undefined {
+async function getPublishedNpmPackageName(config: PackageConfig): Promise<string | undefined> {
   const packageJson = config.packageJson;
-  return packageJson?.name && !packageJson.private && config.release.npm ? packageJson.name : undefined;
+  if (!packageJson?.name || packageJson.private || !config.release.npm) return undefined;
+  // The manifest only says the repository INTENDS to publish: a monorepo root that configures
+  // @semantic-release/npm for its workspaces is never on npm itself, and a package's first release
+  // has not happened yet. Both would render a broken badge, so the registry decides. Anything but a
+  // package the registry serves — including a check that cannot run — leaves the badge out; the
+  // next run adds it once the package is really there.
+  return (await isPublishedOnNpm(packageJson.name)) ? packageJson.name : undefined;
+}
+
+async function isPublishedOnNpm(packageName: string): Promise<boolean> {
+  try {
+    // The scope separator must survive as a path segment, so the name is encoded piecewise.
+    const encodedName = packageName.split('/').map(encodeURIComponent).join('/');
+    const response = await fetch(`https://registry.npmjs.org/${encodedName}`, { method: 'HEAD' });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 async function buildWorkflowBadges(config: PackageConfig): Promise<string[]> {
