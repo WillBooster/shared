@@ -508,7 +508,9 @@ test.each([
 function mockNpmRegistry(publishedNames: string[]): void {
   const respond = (input: string | Request | URL): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const isPublished = publishedNames.some((name) => url.endsWith(encodeURIComponent(name).replace('%2F', '/')));
+    const isPublished = publishedNames.some(
+      (name) => url === `https://registry.npmjs.org/${encodeURIComponent(name).replace('%2F', '/')}`
+    );
     return Promise.resolve(new Response(undefined, { status: isPublished ? 200 : 404 }));
   };
   respond.preconnect = (): void => {};
