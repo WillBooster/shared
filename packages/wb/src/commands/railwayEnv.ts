@@ -140,8 +140,14 @@ export async function prepareRailwayCli(
   const installDirPath = await findIncompleteRailwayCliInstall(result.stderr);
   if (!installDirPath) return result;
 
-  console.warn(chalk.yellow('Railway CLI installation is incomplete; reinstalling it once.'));
-  await fs.rm(installDirPath, { force: true, recursive: true });
+  console.warn(chalk.yellow('Railway CLI installation is incomplete; trusting its install script once.'));
+  const trustResult = await spawnAsync('bun', ['add', '--trust', '@railway/cli'], {
+    cwd: installDirPath,
+    env,
+    stdio: 'pipe',
+    killOnExit: true,
+  });
+  if (trustResult.status !== 0) return trustResult;
   return runVersionCheck();
 }
 
