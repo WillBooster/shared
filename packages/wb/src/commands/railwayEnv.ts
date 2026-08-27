@@ -1,3 +1,7 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 import { readEnvironmentVariables, spawnAsync } from '@willbooster/shared-lib-node/src';
 import chalk from 'chalk';
 import type { ArgumentsCamelCase, Argv, CommandModule, InferredOptionTypes } from 'yargs';
@@ -88,16 +92,24 @@ export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions>
     // The Railway CLI reads auth (RAILWAY_API_TOKEN) and defaults from the environment; pass the
     // project/service/environment explicitly when available so the command works unattended in CI.
     const contextArgs: string[] = ['--skip-deploys'];
-    if (process.env.RAILWAY_PROJECT_ID) contextArgs.push(`--project=${process.env.RAILWAY_PROJECT_ID}`);
-    if (process.env.RAILWAY_SERVICE_ID) contextArgs.push(`--service=${process.env.RAILWAY_SERVICE_ID}`);
+    if (project.env.RAILWAY_PROJECT_ID) contextArgs.push(`--project=${project.env.RAILWAY_PROJECT_ID}`);
+    if (project.env.RAILWAY_SERVICE_ID) contextArgs.push(`--service=${project.env.RAILWAY_SERVICE_ID}`);
     contextArgs.push(`--environment=${envName}`);
     const setArgs = entries.flatMap(([key, value]) => ['--set', `${key}=${value}`]);
+
+    const cliCheck = await prepareRailwayCli(project.dirPath, project.env);
+    if (cliCheck.status !== 0) {
+      const detail = (cliCheck.stderr || cliCheck.stdout).trim();
+      if (detail) console.error(detail);
+      console.error(chalk.red(`Failed to prepare the Railway CLI (exit ${cliCheck.status}).`));
+      process.exit(cliCheck.status ?? 1);
+    }
 
     // stdio: 'pipe' keeps the Railway CLI's variable listing (which echoes values) out of CI logs;
     // this command only ever prints key names, never values.
     const ret = await spawnAsync('bunx', ['@railway/cli', 'variables', ...contextArgs, ...setArgs], {
       cwd: project.dirPath,
-      env: process.env,
+      env: project.env,
       stdio: 'pipe',
       killOnExit: true,
     });
@@ -110,3 +122,43 @@ export const railwayEnvCommand: CommandModule<unknown, RailwayEnvCommandOptions>
     console.info(chalk.green(`Synced ${entries.length} variable(s) to Railway (${envName}): ${keyNames.join(', ')}`));
   },
 };
+
+export async function prepareRailwayCli(
+  cwd: string,
+  env: NodeJS.ProcessEnv
+): Promise<Awaited<ReturnType<typeof spawnAsync>>> {
+  let result = await spawnAsync('bunx', ['@railway/cli', '--version'], {
+    cwd,
+    env,
+    stdio: 'pipe',
+    killOnExit: true,
+  });
+  if (result.status !== 127) return result;
+
+  const installDirPath = findIncompleteRailwayCliInstall(result.stderr);
+  if (!installDirPath) return result;
+
+  console.warn(chalk.yellow('Railway CLI installation is incomplete; reinstalling it once.'));
+  await fs.rm(installDirPath, { force: true, recursive: true });
+  result = await spawnAsync('bunx', ['@railway/cli', '--version'], {
+    cwd,
+    env,
+    stdio: 'pipe',
+    killOnExit: true,
+  });
+  return result;
+}
+
+function findIncompleteRailwayCliInstall(stderr: string): string | undefined {
+  const match = /could not find the CLI binary at (?<binaryPath>[^\r\n]+)/u.exec(stderr);
+  const binaryPath = match?.groups?.binaryPath?.trim();
+  if (!binaryPath) return;
+
+  const binarySuffix = path.join('node_modules', '@railway', 'cli', 'bin', 'railway');
+  if (!binaryPath.endsWith(binarySuffix)) return;
+
+  const installDirPath = binaryPath.slice(0, -binarySuffix.length).replace(/[\\/]$/u, '');
+  const expectedParentPath = path.join(os.tmpdir(), `bunx-${process.getuid!()}-@railway`);
+  if (path.dirname(installDirPath) !== expectedParentPath || !path.basename(installDirPath).startsWith('cli@')) return;
+  return installDirPath;
+}
