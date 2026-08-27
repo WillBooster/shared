@@ -127,38 +127,41 @@ export async function prepareRailwayCli(
   cwd: string,
   env: NodeJS.ProcessEnv
 ): Promise<Awaited<ReturnType<typeof spawnAsync>>> {
-  let result = await spawnAsync('bunx', ['@railway/cli', '--version'], {
-    cwd,
-    env,
-    stdio: 'pipe',
-    killOnExit: true,
-  });
+  const runVersionCheck = (): ReturnType<typeof spawnAsync> =>
+    spawnAsync('bunx', ['@railway/cli', '--version'], {
+      cwd,
+      env,
+      stdio: 'pipe',
+      killOnExit: true,
+    });
+  const result = await runVersionCheck();
   if (result.status !== 127) return result;
 
-  const installDirPath = findIncompleteRailwayCliInstall(result.stderr);
+  const installDirPath = await findIncompleteRailwayCliInstall(result.stderr);
   if (!installDirPath) return result;
 
   console.warn(chalk.yellow('Railway CLI installation is incomplete; reinstalling it once.'));
   await fs.rm(installDirPath, { force: true, recursive: true });
-  result = await spawnAsync('bunx', ['@railway/cli', '--version'], {
-    cwd,
-    env,
-    stdio: 'pipe',
-    killOnExit: true,
-  });
-  return result;
+  return runVersionCheck();
 }
 
-function findIncompleteRailwayCliInstall(stderr: string): string | undefined {
+async function findIncompleteRailwayCliInstall(stderr: string): Promise<string | undefined> {
   const match = /could not find the CLI binary at (?<binaryPath>[^\r\n]+)/u.exec(stderr);
   const binaryPath = match?.groups?.binaryPath?.trim();
   if (!binaryPath) return;
 
-  const binarySuffix = path.join('node_modules', '@railway', 'cli', 'bin', 'railway');
+  const binarySuffix = '/node_modules/@railway/cli/bin/railway';
   if (!binaryPath.endsWith(binarySuffix)) return;
 
-  const installDirPath = binaryPath.slice(0, -binarySuffix.length).replace(/[\\/]$/u, '');
-  const expectedParentPath = path.join(os.tmpdir(), `bunx-${process.getuid!()}-@railway`);
-  if (path.dirname(installDirPath) !== expectedParentPath || !path.basename(installDirPath).startsWith('cli@')) return;
-  return installDirPath;
+  const installDirPath = binaryPath.slice(0, -binarySuffix.length);
+  const [realInstallDirPath, realTmpDirPath] = await Promise.all([
+    fs.realpath(installDirPath).catch(() => {}),
+    fs.realpath(os.tmpdir()),
+  ]);
+  if (!realInstallDirPath) return;
+
+  const expectedParentPath = path.join(realTmpDirPath, `bunx-${process.getuid!()}-@railway`);
+  if (path.dirname(realInstallDirPath) !== expectedParentPath || !path.basename(realInstallDirPath).startsWith('cli@'))
+    return;
+  return realInstallDirPath;
 }

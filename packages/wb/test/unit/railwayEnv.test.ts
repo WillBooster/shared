@@ -10,7 +10,8 @@ import { selectFnoxSourcedKeys } from '../../src/utils/envSources.js';
 describe('prepareRailwayCli', () => {
   it('reinstalls an incomplete bunx environment once', async () => {
     const testId = `wb-test-${crypto.randomUUID()}`;
-    const installDirPath = path.join(os.tmpdir(), `bunx-${process.getuid!()}-@railway`, `cli@${testId}`);
+    const realTmpDirPath = await fs.realpath(os.tmpdir());
+    const installDirPath = path.join(realTmpDirPath, `bunx-${process.getuid!()}-@railway`, `cli@${testId}`);
     const binaryPath = path.join(installDirPath, 'node_modules', '@railway', 'cli', 'bin', 'railway');
     await fs.mkdir(path.dirname(binaryPath), { recursive: true });
     await fs.writeFile(path.join(installDirPath, 'incomplete'), 'true');
