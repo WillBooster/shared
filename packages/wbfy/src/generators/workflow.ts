@@ -123,11 +123,6 @@ const workflows = {
     },
     jobs: {
       'test-rust': {
-        permissions: {
-          // skip-duplicate-actions reads workflow runs; cancel_others is false, so read is enough.
-          actions: 'read',
-          contents: 'read',
-        },
         uses: 'WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main',
       },
     },
@@ -172,10 +167,6 @@ const workflows = {
     },
     jobs: {
       'semantic-pr': {
-        permissions: {
-          'pull-requests': 'read',
-          statuses: 'write',
-        },
         uses: 'WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main',
       },
     },
@@ -200,9 +191,6 @@ const workflows = {
     },
     jobs: {
       'close-comment': {
-        permissions: {
-          'pull-requests': 'write',
-        },
         uses: 'WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main',
       },
     },
@@ -794,6 +782,12 @@ export function hasCloudflareDeployWorkflow(workflowsDirPath: string): boolean {
 // on.workflow_call.secrets (see WillBooster/reusable-workflows). Passing either secret to any
 // other callee is a GitHub error.
 const installCapableReusableWorkflows = new Set(['deploy', 'release', 'run-script', 'test']);
+const reusableWorkflowPermissions: Record<string, Record<string, string>> = {
+  // skip-duplicate-actions reads workflow runs; cancel_others is false, so read is enough.
+  'test-rust': { actions: 'read', contents: 'read' },
+  'semantic-pr': { 'pull-requests': 'read', statuses: 'write' },
+  'close-comment': { 'pull-requests': 'write' },
+};
 
 function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   job.with ??= {};
@@ -821,6 +815,8 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
   // their secrets untouched.
   const orgWorkflowCall = parseOrgReusableWorkflowCall(job.uses);
   const calledReusableWorkflow = orgWorkflowCall?.ref === 'main' ? orgWorkflowCall.workflowName : undefined;
+  const requiredPermissions = calledReusableWorkflow ? reusableWorkflowPermissions[calledReusableWorkflow] : undefined;
+  if (requiredPermissions) job.permissions = { ...requiredPermissions };
   if (secrets && calledReusableWorkflow && installCapableReusableWorkflows.has(calledReusableWorkflow)) {
     // The callee routes public (default-registry) installs through the Takumi Guard
     // malicious-package-blocking proxy when this token resolves; an unset organization secret
