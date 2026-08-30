@@ -121,11 +121,13 @@ const workflows = {
       group: '${{ github.workflow }}-${{ github.ref }}',
       'cancel-in-progress': true,
     },
-    permissions: {
-      contents: 'read',
-    },
     jobs: {
       'test-rust': {
+        permissions: {
+          // skip-duplicate-actions reads workflow runs; cancel_others is false, so read is enough.
+          actions: 'read',
+          contents: 'read',
+        },
         uses: 'WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main',
       },
     },
@@ -168,12 +170,12 @@ const workflows = {
         types: ['opened', 'edited', 'synchronize'],
       },
     },
-    permissions: {
-      'pull-requests': 'read',
-      statuses: 'write',
-    },
     jobs: {
       'semantic-pr': {
+        permissions: {
+          'pull-requests': 'read',
+          statuses: 'write',
+        },
         uses: 'WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main',
       },
     },
@@ -196,11 +198,11 @@ const workflows = {
         types: ['opened'],
       },
     },
-    permissions: {
-      'pull-requests': 'write',
-    },
     jobs: {
       'close-comment': {
+        permissions: {
+          'pull-requests': 'write',
+        },
         uses: 'WillBooster/reusable-workflows/.github/workflows/close-comment.yml@main',
       },
     },
