@@ -7,7 +7,7 @@ name: Lint PR title
       - synchronize
 jobs:
   semantic-pr:
+    uses: WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main
     permissions:
       pull-requests: read
       statuses: write
-    uses: WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main

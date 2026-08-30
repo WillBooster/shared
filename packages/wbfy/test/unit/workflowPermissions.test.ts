@@ -14,12 +14,18 @@ const workflowSchema = z.object({
   permissions: z.record(z.string(), z.string()).optional(),
   jobs: z.record(
     z.string(),
-    z.object({
-      permissions: z.record(z.string(), z.string()).optional(),
-      'runs-on': z.string().optional(),
-      steps: z.array(z.object({ run: z.string() })).optional(),
-    })
+    z
+      .object({
+        permissions: z.record(z.string(), z.string()).optional(),
+        'runs-on': z.string().optional(),
+        steps: z.array(z.object({ run: z.string() })).optional(),
+      })
+      .passthrough()
   ),
+});
+const siblingJobSchema = z.strictObject({
+  'runs-on': z.literal('ubuntu-latest'),
+  steps: z.tuple([z.strictObject({ run: z.literal('echo preserved') })]),
 });
 
 test('generated callers scope permissions without changing preserved sibling jobs', async () => {
@@ -58,7 +64,7 @@ test('generated callers scope permissions without changing preserved sibling job
 function readPermissions(workflowsPath: string, fileName: string): Record<string, string> | undefined {
   const workflow = readWorkflow(workflowsPath, fileName);
   expect(workflow.permissions).toBeUndefined();
-  expect(workflow.jobs.sibling).toEqual({
+  expect(siblingJobSchema.parse(workflow.jobs.sibling)).toEqual({
     'runs-on': 'ubuntu-latest',
     steps: [{ run: 'echo preserved' }],
   });
