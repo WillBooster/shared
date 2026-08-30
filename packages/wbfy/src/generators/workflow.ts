@@ -121,6 +121,9 @@ const workflows = {
       group: '${{ github.workflow }}-${{ github.ref }}',
       'cancel-in-progress': true,
     },
+    permissions: {
+      contents: 'read',
+    },
     jobs: {
       'test-rust': {
         uses: 'WillBooster/reusable-workflows/.github/workflows/test-rust.yml@main',
@@ -165,6 +168,10 @@ const workflows = {
         types: ['opened', 'edited', 'synchronize'],
       },
     },
+    permissions: {
+      'pull-requests': 'read',
+      statuses: 'write',
+    },
     jobs: {
       'semantic-pr': {
         uses: 'WillBooster/reusable-workflows/.github/workflows/semantic-pr.yml@main',
@@ -188,6 +195,9 @@ const workflows = {
       pull_request: {
         types: ['opened'],
       },
+    },
+    permissions: {
+      'pull-requests': 'write',
     },
     jobs: {
       'close-comment': {
