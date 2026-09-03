@@ -769,9 +769,7 @@ test('deletes an explicitly empty trustedDependencies list', async () => {
   expect(packageJson.trustedDependencies).toBeUndefined();
 });
 
-// @chakra-ui/cli v2's `chakra-cli tokens` writes into @chakra-ui/styled-system, not
-// @chakra-ui/react, so trusting @chakra-ui/react there would be inert.
-test('does not trust @chakra-ui/react for @chakra-ui/cli v2', async () => {
+test('installs and trusts the token output package for @chakra-ui/cli v2', async () => {
   const packageJson = await generatePackageJsonFrom(
     {
       dependencies: { '@chakra-ui/react': '^2.10.9' },
@@ -780,7 +778,10 @@ test('does not trust @chakra-ui/react for @chakra-ui/cli v2', async () => {
     { isRoot: true }
   );
 
-  expect(packageJson.trustedDependencies).toBeUndefined();
+  expect(packageJson.devDependencies?.['@chakra-ui/styled-system']).toMatch(/^\d+\.\d+\.\d+$/u);
+  expect(packageJson.scripts?.chakra).toBe(`sh -c 'chakra-cli tokens "$2"' --`);
+  expect(packageJson.trustedDependencies).toContain('@chakra-ui/styled-system');
+  expect(packageJson.trustedDependencies).not.toContain('@chakra-ui/react');
 });
 
 test('keeps a plain monorepo root private', async () => {

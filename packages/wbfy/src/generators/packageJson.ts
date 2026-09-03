@@ -43,6 +43,8 @@ const typescriptGoDependency = '@typescript/native-preview';
 const wbDependency = '@willbooster/wb';
 const buildTsDependency = 'build-ts';
 const lefthookDependency = 'lefthook';
+const chakraCliDependency = '@chakra-ui/cli';
+const chakraStyledSystemDependency = '@chakra-ui/styled-system';
 const managedDependencyNames = new Set([
   wbDependency,
   buildTsDependency,
@@ -161,6 +163,18 @@ function pruneCapabilityDependentCompilerDependencies(config: PackageConfig, jso
 
 function updateScripts(config: PackageConfig, jsonObj: WritablePackageJson): void {
   jsonObj.scripts = { ...jsonObj.scripts, ...generateScripts(config, jsonObj.scripts) };
+  if (getLeadingDependencyMajor(jsonObj, chakraCliDependency) === '2') {
+    // wb uses Chakra CLI v3's `chakra typegen <theme> --strict` interface. Preserve the canonical
+    // wb pipeline while translating those fixed arguments to v2's `chakra-cli tokens <theme>`.
+    jsonObj.scripts.chakra = `sh -c 'chakra-cli tokens "$2"' --`;
+  }
+}
+
+function getLeadingDependencyMajor(jsonObj: PackageJson, dependency: string): string | undefined {
+  const versionRange = dependencySectionKeys
+    .map((section) => jsonObj[section]?.[dependency])
+    .find((version): version is string => typeof version === 'string');
+  return /\d+/u.exec(versionRange ?? '')?.[0];
 }
 
 /**
@@ -328,6 +342,13 @@ async function applyPackageJsonConventions(
   // the managed next.config never breaks `next build` with an unresolved-package error.
   if (config.depending.next) {
     devDependencies.push('babel-plugin-react-compiler');
+  }
+
+  // Chakra CLI v2 locates @chakra-ui/styled-system from the project root before writing token
+  // types. Bun's isolated linker does not expose @chakra-ui/react's transitive copy there, so the
+  // generator needs this direct tool dependency even though application code need not import it.
+  if (getLeadingDependencyMajor(jsonObj, chakraCliDependency) === '2') {
+    devDependencies.push(chakraStyledSystemDependency);
   }
 
   // `wb verify --full` audits every `*.slidev.md` deck with slidev-check, so the checker has to be
@@ -507,12 +528,13 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
   // Only @chakra-ui/cli v3's `chakra typegen` writes into the installed @chakra-ui/react;
   // v2's `chakra-cli tokens` writes into @chakra-ui/styled-system instead, so trusting
   // @chakra-ui/react there would force a useless project-local copy without fixing gen-code.
-  // Mirror wb gen-code's classification: only a range whose leading major parses to 2 selects the
-  // v2 command, so digitless specs like `latest` or catalog references count as v3.
-  const hasChakraCliV3 = (declaredDependencies.get('@chakra-ui/cli') ?? []).some(
-    (versionRange) => /\d+/u.exec(versionRange)?.[0] !== '2'
-  );
+  // Mirror the script adapter above: only a range whose leading major parses to 2 selects the v2
+  // command, so digitless specs like `latest` or catalog references count as v3.
+  const chakraCliVersions = declaredDependencies.get(chakraCliDependency) ?? [];
+  const hasChakraCliV2 = chakraCliVersions.some((versionRange) => /\d+/u.exec(versionRange)?.[0] === '2');
+  const hasChakraCliV3 = chakraCliVersions.some((versionRange) => /\d+/u.exec(versionRange)?.[0] !== '2');
   const requiredWbfyPackages = [
+    ...(hasChakraCliV2 ? [chakraStyledSystemDependency] : []),
     ...(hasChakraCliV3 && declaredDependencies.has('@chakra-ui/react') ? ['@chakra-ui/react'] : []),
     ...(declaredDependencies.has('drizzle-kit') ? ['drizzle-kit'] : []),
     // These git-dependency builds import packages they do not declare (e.g. zod), which the
@@ -578,6 +600,7 @@ async function ensureTrustedDependencies(config: PackageConfig, jsonObj: Writabl
 const wbfyManagedTrustedDependencies = new Set([
   '@blitzjs/auth',
   '@chakra-ui/react',
+  chakraStyledSystemDependency,
   '@hookform/resolvers',
   '@willbooster/judge',
   '@willbooster/llm-proxy',
