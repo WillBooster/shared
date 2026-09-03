@@ -45,6 +45,10 @@ ${this.getEndMarker(blockName)}`;
     return this.blockNames.some((blockName) => content.includes(this.getStartMarker(blockName)));
   }
 
+  hasCompleteManagedBlocks(content: string): boolean {
+    return this.blockNames.every((blockName) => this.getManagedBlockRegExp(blockName).test(content));
+  }
+
   private replaceManagedBlocks(existingContent: string, desiredContent: string, filePath: string): string {
     let content = existingContent;
     for (const blockName of this.blockNames) {

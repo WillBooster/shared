@@ -270,7 +270,7 @@ test('keeps a commented Next tsconfig byte-identical when no cleanup is needed',
       "undici-types": ["./node_modules/undici-types/index.d.ts"]
     }
   },
-  "include": ["*.config.ts", "scripts/**/*"]
+  "include": ["scripts/**/*", "*.config.ts"]
 }`;
   await withTempTsconfig(commentedContent, async (filePath, config) => {
     config.depending.next = true;
@@ -288,6 +288,14 @@ test('includes generated root tool configs in a narrow Next project', async () =
     const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { include?: string[] };
     expect(generated.include).toEqual(['*.config.ts', 'scripts/**/*', 'src/**/*']);
   });
+});
+
+test('includes Bun globals for generated tool configs in a framework project with restricted types', async () => {
+  const compilerOptions = await generateCompilerOptionsFrom(
+    { compilerOptions: { types: ['react'] }, include: ['src/**/*'] },
+    { next: true }
+  );
+  expect(compilerOptions.types).toEqual(['bun', 'react']);
 });
 
 async function generateCompilerOptionsFrom(

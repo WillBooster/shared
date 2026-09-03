@@ -314,6 +314,7 @@ async function normalizeFrameworkTsconfig(config: PackageConfig): Promise<void> 
   normalizeNextTsconfigModuleSettings(settings);
   normalizeNextTsconfigPathAliases(settings.compilerOptions);
   addManagedIncludesForFrameworkProject(settings);
+  addBunGlobalsForFrameworkProject(settings);
   addUndiciTypesPathMapping(settings, config);
   // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
   // already-clean tsconfig.json survive wbfy runs.
@@ -361,10 +362,22 @@ function addManagedIncludesForFrameworkProject(settings: TsConfigJson): void {
   // "all TS/TSX files" behavior, which already covers both paths.
   if (!settings.include) return;
 
+  let addedInclude = false;
   for (const managedInclude of ['*.config.ts', 'scripts/**/*']) {
-    if (!settings.include.includes(managedInclude)) settings.include.push(managedInclude);
+    if (!settings.include.includes(managedInclude)) {
+      settings.include.push(managedInclude);
+      addedInclude = true;
+    }
   }
-  settings.include.sort();
+  if (addedInclude) settings.include.sort();
+}
+
+function addBunGlobalsForFrameworkProject(settings: TsConfigJson): void {
+  const types = settings.compilerOptions?.types;
+  if (!types || types.includes('bun')) return;
+
+  types.push('bun');
+  types.sort();
 }
 
 function normalizeNextTsconfigModuleSettings(settings: TsConfigJson): void {

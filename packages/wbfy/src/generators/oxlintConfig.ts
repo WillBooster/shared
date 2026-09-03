@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { logger } from '../logger.js';
@@ -45,7 +46,14 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     ) {
       return;
     }
-    if (!shouldPreservePublishedLinterConfig) await fsUtil.removeConfined(legacyJsonConfigPath);
+    if (
+      !shouldPreservePublishedLinterConfig &&
+      managedConfigBlocks.hasCompleteManagedBlocks(desiredContent) &&
+      fs.existsSync(legacyJsonConfigPath) &&
+      (await fsUtil.removeConfined(legacyJsonConfigPath))
+    ) {
+      console.info(`Removed superseded ${legacyJsonConfigPath} in favor of ${filePath}.`);
+    }
   });
 }
 
