@@ -269,13 +269,24 @@ test('keeps a commented Next tsconfig byte-identical when no cleanup is needed',
     "paths": {
       "undici-types": ["./node_modules/undici-types/index.d.ts"]
     }
-  }
+  },
+  "include": ["*.config.ts", "scripts/**/*"]
 }`;
   await withTempTsconfig(commentedContent, async (filePath, config) => {
     config.depending.next = true;
     await generateTsconfig(config);
     await promisePool.promiseAll();
     expect(fs.readFileSync(filePath, 'utf8')).toBe(commentedContent);
+  });
+});
+
+test('includes generated root tool configs in a narrow Next project', async () => {
+  await withTempTsconfig('{"compilerOptions": {}, "include": ["src/**/*"]}', async (filePath, config) => {
+    config.depending.next = true;
+    await generateTsconfig(config);
+    await promisePool.promiseAll();
+    const generated = JSON.parse(fs.readFileSync(filePath, 'utf8')) as { include?: string[] };
+    expect(generated.include).toEqual(['*.config.ts', 'scripts/**/*', 'src/**/*']);
   });
 });
 

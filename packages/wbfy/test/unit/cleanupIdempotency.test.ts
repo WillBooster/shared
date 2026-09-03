@@ -78,6 +78,8 @@ function getLatestMtimeMs(entryPath: string): number {
 
 function writeSmallProjectFixture(dirPath: string): void {
   fs.mkdirSync(path.join(dirPath, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(dirPath, '.oxfmtrc.json'), `${JSON.stringify({ printWidth: 120 }, undefined, 2)}\n`);
+  fs.writeFileSync(path.join(dirPath, '.oxlintrc.json'), '{}\n');
   fs.writeFileSync(
     path.join(dirPath, 'package.json'),
     `${JSON.stringify(

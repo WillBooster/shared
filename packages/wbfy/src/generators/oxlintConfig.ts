@@ -23,6 +23,7 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
     // must not replace package-provided linter settings. Generated files with
     // managed blocks are still safe to update.
     const shouldPreservePublishedLinterConfig = isPublishedWillboosterConfigsPackage(config);
+    const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxlintrc.json');
     const filePath = path.resolve(config.dirPath, 'oxlint.config.ts');
     const existingContent = await fsUtil.readFileIfExists(filePath);
     const shouldPreserveExistingContent =
@@ -35,9 +36,16 @@ export async function generateOxlintConfig(config: PackageConfig, _rootConfig: P
           filePath,
         });
 
-    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
-      await fsUtil.generateFile(filePath, desiredContent);
+    // Oxlint rejects a directory containing both config spellings. Remove the legacy file only
+    // after its managed replacement exists; otherwise a refused write could leave the project
+    // without any linter configuration.
+    if (
+      normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent) &&
+      !(await fsUtil.generateFile(filePath, desiredContent))
+    ) {
+      return;
     }
+    if (!shouldPreservePublishedLinterConfig) await fsUtil.removeConfined(legacyJsonConfigPath);
   });
 }
 

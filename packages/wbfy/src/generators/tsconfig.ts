@@ -313,7 +313,7 @@ async function normalizeFrameworkTsconfig(config: PackageConfig): Promise<void> 
   const originalSettingsJson = JSON.stringify(settings);
   normalizeNextTsconfigModuleSettings(settings);
   normalizeNextTsconfigPathAliases(settings.compilerOptions);
-  addScriptsIncludeForFrameworkProject(settings);
+  addManagedIncludesForFrameworkProject(settings);
   addUndiciTypesPathMapping(settings, config);
   // Skip the write when nothing changes semantically, so JSONC comments and formatting in an
   // already-clean tsconfig.json survive wbfy runs.
@@ -356,13 +356,14 @@ function addUndiciTypesPathMapping(settings: TsConfigJson, config: PackageConfig
   };
 }
 
-function addScriptsIncludeForFrameworkProject(settings: TsConfigJson): void {
+function addManagedIncludesForFrameworkProject(settings: TsConfigJson): void {
   // Omitting include lets framework tsconfigs keep TypeScript's default
-  // "all TS/TSX files" behavior, which already covers scripts.
+  // "all TS/TSX files" behavior, which already covers both paths.
   if (!settings.include) return;
-  if (settings.include.includes('scripts/**/*')) return;
 
-  settings.include.push('scripts/**/*');
+  for (const managedInclude of ['*.config.ts', 'scripts/**/*']) {
+    if (!settings.include.includes(managedInclude)) settings.include.push(managedInclude);
+  }
   settings.include.sort();
 }
 

@@ -16,6 +16,7 @@ const managedConfigBlocks = new ManagedConfigBlocks({
 
 export async function generateOxfmtConfig(config: PackageConfig): Promise<void> {
   return logger.functionIgnoringException('generateOxfmtConfig', async () => {
+    const legacyJsonConfigPath = path.resolve(config.dirPath, '.oxfmtrc.json');
     const filePath = path.resolve(config.dirPath, 'oxfmt.config.ts');
     const existingContent = await fsUtil.readFileIfExists(filePath);
     const desiredContent = managedConfigBlocks.getConfigContent({
@@ -23,9 +24,16 @@ export async function generateOxfmtConfig(config: PackageConfig): Promise<void> 
       existingContent,
       filePath,
     });
-    if (normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent)) {
-      await fsUtil.generateFile(filePath, desiredContent);
+    // Oxfmt rejects a directory containing both config spellings. Remove the legacy file only
+    // after its managed replacement exists; otherwise a refused write could leave the project
+    // without any formatter configuration.
+    if (
+      normalizeConfigContent(existingContent) !== normalizeConfigContent(desiredContent) &&
+      !(await fsUtil.generateFile(filePath, desiredContent))
+    ) {
+      return;
     }
+    await fsUtil.removeConfined(legacyJsonConfigPath);
   });
 }
 
