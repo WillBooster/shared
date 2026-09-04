@@ -30,7 +30,7 @@ import { generateReadme, readAppliedWbfyVersionLabel } from './generators/readme
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
 import { generateTsconfig } from './generators/tsconfig.js';
-import { generateUserAgentInstructions } from './generators/userAgentInstructions.js';
+import { generateUserAgentConfigs } from './generators/userAgentConfigs.js';
 import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
@@ -60,7 +60,7 @@ import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
  */
 const applyReleaseAgeGateCommand = 'apply-release-age-gate';
 /** Same naming rationale as applyReleaseAgeGateCommand. */
-const generateUserAgentInstructionsCommand = 'generate-user-agent-instructions';
+const generateUserAgentConfigsCommand = 'generate-user-agent-configs';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
@@ -69,8 +69,8 @@ async function main(): Promise<void> {
       "Apply only the organization's minimum-release-age policy to this machine's global package-manager configs"
     )
     .command(
-      generateUserAgentInstructionsCommand,
-      "Overwrite this user's agent instruction files (~/.codex/AGENTS.md, ~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md) with the organization's fixed content"
+      generateUserAgentConfigsCommand,
+      "Overwrite this user's agent instruction files (~/.codex/AGENTS.md, ~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md) with the organization's fixed content and merge the organization's settings into ~/.claude/settings.json"
     )
     .command('$0 [paths..]', 'Make a given project follow the WillBooster standard', (yargs) => {
       yargs.positional('paths', {
@@ -111,8 +111,8 @@ async function main(): Promise<void> {
     if (!ensureGlobalReleaseAgeGates()) process.exitCode = 1;
     return;
   }
-  if (argv._[0] === generateUserAgentInstructionsCommand) {
-    if (!(await generateUserAgentInstructions())) process.exitCode = 1;
+  if (argv._[0] === generateUserAgentConfigsCommand) {
+    if (!(await generateUserAgentConfigs())) process.exitCode = 1;
     return;
   }
 
