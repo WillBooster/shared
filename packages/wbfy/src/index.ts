@@ -30,6 +30,7 @@ import { generateReadme, readAppliedWbfyVersionLabel } from './generators/readme
 import { generateReleaserc } from './generators/releaserc.js';
 import { generateRenovateJsonc } from './generators/renovateJsonc.js';
 import { generateTsconfig } from './generators/tsconfig.js';
+import { generateUserAgentInstructions } from './generators/userAgentInstructions.js';
 import { generateVscodeSettings } from './generators/vscodeSettings.js';
 import { ensureWbEnvDefinitions } from './generators/wbEnv.js';
 import { generateSelfContainedWorkflows } from './generators/selfContainedWorkflow.js';
@@ -58,12 +59,18 @@ import { getWorkspaceSubDirPaths } from './utils/workspaceUtil.js';
  * name would swallow a directory that happens to share it.
  */
 const applyReleaseAgeGateCommand = 'apply-release-age-gate';
+/** Same naming rationale as applyReleaseAgeGateCommand. */
+const generateUserAgentInstructionsCommand = 'generate-user-agent-instructions';
 
 async function main(): Promise<void> {
   const argv = await yargs(process.argv.slice(2))
     .command(
       applyReleaseAgeGateCommand,
       "Apply only the organization's minimum-release-age policy to this machine's global package-manager configs"
+    )
+    .command(
+      generateUserAgentInstructionsCommand,
+      "Overwrite this user's agent instruction files (~/.codex/AGENTS.md, ~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md) with the organization's fixed content"
     )
     .command('$0 [paths..]', 'Make a given project follow the WillBooster standard', (yargs) => {
       yargs.positional('paths', {
@@ -102,6 +109,10 @@ async function main(): Promise<void> {
   // machine whose Bun is outdated, which is exactly a machine that still needs gating.
   if (argv._[0] === applyReleaseAgeGateCommand) {
     if (!ensureGlobalReleaseAgeGates()) process.exitCode = 1;
+    return;
+  }
+  if (argv._[0] === generateUserAgentInstructionsCommand) {
+    if (!(await generateUserAgentInstructions())) process.exitCode = 1;
     return;
   }
 
