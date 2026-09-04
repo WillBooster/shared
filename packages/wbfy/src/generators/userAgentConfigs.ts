@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import merge from 'deepmerge';
+import { z } from 'zod';
 
 import { fsUtil } from '../utils/fsUtil.js';
 
@@ -52,12 +53,12 @@ export async function generateUserAgentConfigs(): Promise<boolean> {
 async function mergeClaudeSettings(): Promise<boolean> {
   const filePath = path.join(os.homedir(), claudeSettingsFilePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
-  let existingSettings: object = {};
+  let existingSettings: Record<string, unknown> = {};
   if (existingContent !== undefined) {
     try {
-      existingSettings = JSON.parse(existingContent) as object;
+      existingSettings = z.record(z.string(), z.unknown()).parse(JSON.parse(existingContent));
     } catch {
-      console.warn(`Skipped updating ${filePath} because the existing content is not parsable as JSON.`);
+      console.warn(`Skipped updating ${filePath} because the existing content is not a JSON object.`);
       return false;
     }
   }
