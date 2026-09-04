@@ -15,9 +15,15 @@ const userAgentInstructionContent = `- Repos live under \`~/ghq/github.com\`; al
 - No AI attribution (e.g., \`Co-Authored-By\` trailers, "Generated with ..." footers) in commits, issues, or PRs unless explicitly requested. This hides nothing: if asked which AI agent did the work, answer truthfully.
 `;
 
-/** Overwrites the user-level instruction files of every supported agent with the fixed content. */
-export async function generateUserAgentInstructions(): Promise<void> {
+/**
+ * Overwrites the user-level instruction files of every supported agent with the fixed content.
+ * Returns false when any file was skipped (e.g. a symlinked file), so the command can fail loudly.
+ */
+export async function generateUserAgentInstructions(): Promise<boolean> {
+  let hasWrittenAll = true;
   for (const relativePath of userAgentInstructionFilePaths) {
-    await fsUtil.generateFile(path.join(os.homedir(), relativePath), userAgentInstructionContent);
+    const hasWritten = await fsUtil.generateFile(path.join(os.homedir(), relativePath), userAgentInstructionContent);
+    hasWrittenAll &&= hasWritten;
   }
+  return hasWrittenAll;
 }

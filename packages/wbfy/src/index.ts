@@ -112,7 +112,7 @@ async function main(): Promise<void> {
     return;
   }
   if (argv._[0] === generateUserAgentInstructionsCommand) {
-    await generateUserAgentInstructions();
+    if (!(await generateUserAgentInstructions())) process.exitCode = 1;
     return;
   }
 
