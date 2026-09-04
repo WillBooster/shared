@@ -44,8 +44,9 @@ export async function generateUserAgentConfigs(): Promise<boolean> {
     const hasWritten = await fsUtil.generateFile(path.join(os.homedir(), relativePath), userAgentInstructionContent);
     hasWrittenAll &&= hasWritten;
   }
-  hasWrittenAll &&= await mergeClaudeSettings();
-  return hasWrittenAll;
+  // Awaited separately: `&&=` would skip the merge once an instruction file was skipped.
+  const hasMergedSettings = await mergeClaudeSettings();
+  return hasWrittenAll && hasMergedSettings;
 }
 
 async function mergeClaudeSettings(): Promise<boolean> {
