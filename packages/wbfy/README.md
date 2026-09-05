@@ -17,3 +17,4 @@ This tool must keep idempotency, i.e., it always yields the same result when a u
 ## How to Use
 
 1. `bunx @willbooster/wbfy <project directory>`
+2. `bunx @willbooster/wbfy generate-user-agent-configs` to overwrite your user-level agent instruction files (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.gemini/GEMINI.md`) with the organization's fixed content and merge the organization's settings (e.g. disabling Claude Code's commit/PR attribution) into `~/.claude/settings.json`

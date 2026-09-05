@@ -23,7 +23,7 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
       fs.writeFileSync(path.join(dirPath, fileName), content);
     }
     fsUtil.setRootDirPath(dirPath);
-    await generateMiseToml(createConfig({ dirPath }), Bun.version);
+    await generateMiseToml(createConfig({ dirPath }));
     await promisePool.promiseAll();
     return fs.readFileSync(path.join(dirPath, 'mise.toml'), 'utf8');
   } finally {
@@ -31,9 +31,10 @@ async function generateFrom(files: Record<string, string>): Promise<string> {
   }
 }
 
-test('pins the concrete version behind an lts/* mise selector', async () => {
+test('pins the concrete version behind an lts/* mise selector without adding a Bun pin', async () => {
   const content = await generateFrom({ 'mise.toml': '[tools]\nnode = "lts/*"\n' });
 
   expect(content).not.toContain('lts/*');
   expect(content).toMatch(/node = "\d+\.\d+\.\d+"/u);
+  expect(content).not.toContain('bun');
 });

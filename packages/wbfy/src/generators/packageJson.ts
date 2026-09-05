@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { globIgnore } from '@willbooster/shared-lib-node/src';
 import merge from 'deepmerge';
 import fg from 'fast-glob';
 import semver from 'semver';
@@ -14,7 +15,6 @@ import { generatesWorkerTypes, getWorkerTypesScriptError, type PackageConfig } f
 import { classifyScriptSegment, splitScriptSegments } from '../utils/managedScriptSegment.js';
 import { fsUtil } from '../utils/fsUtil.js';
 import { gitHubUtil } from '../utils/githubUtil.js';
-import { globIgnore } from '../utils/globUtil.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { doesContainJava, doesContainJsOrTs } from '../utils/packageCapabilities.js';
 import { promisePool } from '../utils/promisePool.js';
@@ -328,6 +328,12 @@ async function applyPackageJsonConventions(
   // the managed next.config never breaks `next build` with an unresolved-package error.
   if (config.depending.next) {
     devDependencies.push('babel-plugin-react-compiler');
+  }
+
+  // `wb verify --full` audits every `*.slidev.md` deck with slidev-check, so the checker has to be
+  // installed wherever a deck lives.
+  if (config.doesContainSlidevMd) {
+    devDependencies.push('slidev-check');
   }
 
   if (!isWbPackage(jsonObj)) {

@@ -47,7 +47,9 @@ export function resolveBunGlobalStore(
 export function shouldUseBunGlobalStore(configs: PackageConfig[]): boolean {
   // Blitz builds on Next.js but need not declare it directly, and its codegen also patches Next
   // inside node_modules. Both frameworks therefore require project-local isolated installs.
-  return !configs.some((config) => config.depending.next || config.depending.blitz);
+  // Slidev loads optional Vue compiler peers through local-pkg. The global store realpaths
+  // local-pkg outside the project, so Node cannot resolve a compiler declared by the project.
+  return !configs.some((config) => config.depending.next || config.depending.blitz || config.depending.slidev);
 }
 
 export async function generateBunfigToml(config: PackageConfig, useGlobalStore: boolean): Promise<void> {

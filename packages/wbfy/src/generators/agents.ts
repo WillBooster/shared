@@ -66,10 +66,10 @@ function generateAgentInstruction(
   const fnoxInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'fnox.toml'))
     ? `\n- Environment variables and secrets are managed in \`fnox.toml\` via mise + fnox; run commands through \`${packageManager} wb ...\` or \`fnox run -P <profile> -- <command>\` instead of expecting \`.env\` files. Never create a \`.env\`, \`.env.*\`, or \`.dev.vars\` file: add the variable to \`fnox.toml\` instead. Profile secrets load only when a profile is selected: mode-aware wb commands (e.g. \`wb start\`, \`wb test\`) and \`wb dotenv\` select it themselves (\`wb dotenv\` uses \`WB_ENV\`, else \`FNOX_PROFILE\`, else \`NODE_ENV\`, else the development profile; \`WB_ENV\` accepts only \`development\`/\`test\`/\`staging\`/\`production\`, so use \`FNOX_PROFILE\` for any other profile), while bare \`fnox run\` needs an explicit \`-P <profile>\`.`
     : '';
-  // mise owns the toolchain versions, so a version mismatch is fixed by editing mise.toml — not by
-  // installing a different bun/node globally, which the next `mise install` silently overrides.
+  // mise owns the pinned tool versions, so a version mismatch is fixed by editing mise.toml — not
+  // by installing a different version globally, which the next `mise install` silently overrides.
   const miseInstruction = fs.existsSync(path.resolve(rootConfig.dirPath, 'mise.toml'))
-    ? '\n- Tool versions (node, bun, and others) are pinned in `mise.toml`; run `mise install` after changing it, and never install those tools globally instead.'
+    ? '\n- Tool versions (e.g., node) are pinned in `mise.toml`; run `mise install` after changing it, and never install those tools globally instead.'
     : '';
   // Isolated installs are the org standard (wbfy generates no other linker) and the most
   // agent-hostile part of the stack: a package that is only reachable because a dependency hoisted
@@ -109,6 +109,15 @@ function generateAgentInstruction(
   const coAuthorInstruction = rootConfig.isWillBoosterRepo
     ? `\n  - End your commit message with a blank line followed by \`Co-authored-by: WillBooster (${toolName}) <agent@willbooster.com>\`.`
     : '';
+  // Keyed on the repository classification rather than on the template files' presence: the same
+  // run writes the templates for WillBooster / WillBoosterLab repositories before this generator
+  // runs, and hand-added templates elsewhere belong to AGENTS_EXTRA.md.
+  const prTemplateInstruction = rootConfig.isWillBoosterRepo
+    ? "\n  - Base the PR body on `.github/pull_request_template.md` when creating or updating a PR, even when a skill or workflow supplies its own body skeleton: keep the template's headings in its order, fill every section with the information its placeholder comment asks for at a length that fits the change (a sentence for a small change, numbered subsections for a large one), delete the placeholder comments and an empty Notes section, and keep `Close #<n>` only when the PR resolves an existing issue."
+    : '';
+  const issueTemplateInstruction = rootConfig.isWillBoosterRepo
+    ? '\n- When creating an issue, read the templates under `.github/ISSUE_TEMPLATE/` and follow the closest one: `bug.md` for wrong behavior, `change.md` for anything to build or alter. The YAML front matter between the `---` lines is metadata, not body text: prefix the title as its `title` says, pass its `labels` via `--label`, and submit only the content below the closing `---` as the body. Keep the first three sections of `change.md` for any change and add the remaining sections as the change grows; keep Problem and Proposal of `bug.md` and drop Evidence or Impact when they add nothing. Delete the placeholder comments. A question or a note that fits neither template needs no template.'
+    : '';
   const projectName = rootConfig.packageJson?.name || path.basename(path.resolve(rootConfig.dirPath));
   const baseContent = `
 ## Project Information
@@ -132,9 +141,9 @@ function generateAgentInstruction(
   - Agent shells may terminate tracked commands (including background ones) at time limits, often minutes, so run commands that can exceed your shell-call timeout (e.g., \`${packageManager} run verify\` and \`${packageManager} run verify-full\`) detached via nohup, from a shell call that returns immediately: \`mkdir -p .tmp; rm -f .tmp/verify-full.exit; nohup sh -c '${packageManager} run verify-full; echo $? > .tmp/verify-full.exit' > .tmp/verify-full.log 2>&1 &\` (the redirects are required: an inherited stdout/stderr pipe would keep the call waiting). Poll from separate calls, each shorter than your shell-call timeout: \`for i in 1 2 3; do test -f .tmp/verify-full.exit && break; sleep 20; done; cat .tmp/verify-full.exit 2>/dev/null || echo still running\`. Repeat until the exit file appears (its content is the exit code), then read the log; if it never appears while the log stops growing, the run itself died.
 - Once verified, commit and push to the current (non-main) branch, and create a PR via \`gh\` if none exists for the branch.
   - Follow the Conventional Commits format (e.g., \`feat:\`, \`fix:\`).${coAuthorInstruction}
-  - Always create new commits; avoid \`--amend\`.
+  - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
 - In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.), describe only what exists in the final snapshot: never mention symbols or concepts that were added and later removed or renamed along the way, even if they mattered during the work. If you cannot confirm that an identifier or feature name you are about to write exists in the final diff or the current codebase, drop that statement.
-- Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`).
+- Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
 - Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
 - \`AGENTS.md\`, \`CLAUDE.md\`, \`GEMINI.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; edit only \`AGENTS_EXTRA.md\` to change agent instructions.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
