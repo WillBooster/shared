@@ -39,10 +39,10 @@ export const BUG_ISSUE_SECTIONS: readonly TemplateSection[] = [
 ];
 
 /**
- * Sections a change specification must settle before a third party can implement it. The
- * issue template, the spec-booster drafting template, and the spec reviewers' checklist are all
- * rendered from this one list. The first three sections suffice for a small change, so they
- * come first.
+ * Sections a change specification must settle before a third party can implement it, defined
+ * once so that the issue template and any tool that drafts or reviews specifications against
+ * these sections (review-booster's spec checklist, via `renderSectionChecklist`) cannot drift
+ * apart. The first three sections suffice for a small change, so they come first.
  */
 export const CHANGE_ISSUE_SECTIONS: readonly TemplateSection[] = [
   {
