@@ -4,8 +4,8 @@
  * (capitalized, with a period appended) and as a checklist clause after the heading.
  */
 export interface TemplateSection {
-  heading: string;
-  requirement: string;
+  readonly heading: string;
+  readonly requirement: string;
 }
 
 /** Sections of a pull request body, in the order they appear in the PR template. */
