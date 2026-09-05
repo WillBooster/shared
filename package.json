@@ -41,7 +41,7 @@
     "@willbooster/shared-lib-node": "workspace:*",
     "@willbooster/wb": "workspace:*",
     "conventional-changelog-conventionalcommits": "10.3.0",
-    "lefthook": "2.1.10",
+    "lefthook": "2.1.12",
     "oxfmt": "0.65.0",
     "oxlint": "1.80.0",
     "oxlint-tsgolint": "7.0.2001",
