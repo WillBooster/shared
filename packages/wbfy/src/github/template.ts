@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+// The `/src` entry (a declared export) lets this workspace consumer use the sources without
+// building shared-lib first, as every other import of it in this package does.
 import {
   BUG_ISSUE_SECTIONS,
   CHANGE_ISSUE_SECTIONS,
