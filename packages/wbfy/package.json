@@ -55,6 +55,7 @@
     "@types/yargs": "17.0.35",
     "@willbooster/oxfmt-config": "1.2.2",
     "@willbooster/oxlint-config": "1.4.8",
+    "@willbooster/shared-lib": "workspace:*",
     "@willbooster/wb": "workspace:*",
     "build-ts": "21.0.9",
     "lefthook": "2.1.12",
