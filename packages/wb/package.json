@@ -10,7 +10,9 @@
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
   "type": "module",
-  "bin": "bin/index.js",
+  "bin": {
+    "wb": "bin/index.js"
+  },
   "files": [
     "bin/",
     "docker/",

@@ -10,7 +10,9 @@
   "license": "Apache-2.0",
   "author": "WillBooster Inc.",
   "type": "module",
-  "bin": "./bin/wbfy.js",
+  "bin": {
+    "wbfy": "bin/wbfy.js"
+  },
   "files": [
     "bin/",
     "configs/",

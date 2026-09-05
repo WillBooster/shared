@@ -163,7 +163,9 @@
     "packages/wb": {
       "name": "@willbooster/wb",
       "version": "0.0.0-semantically-released",
-      "bin": "bin/index.js",
+      "bin": {
+        "wb": "bin/index.js",
+      },
       "dependencies": {
         "chalk": "6.0.0",
         "dotenv": "17.4.2",
@@ -206,7 +208,9 @@
     "packages/wbfy": {
       "name": "@willbooster/wbfy",
       "version": "0.0.0-semantically-released",
-      "bin": "./bin/wbfy.js",
+      "bin": {
+        "wbfy": "bin/wbfy.js",
+      },
       "dependencies": {
         "@octokit/core": "7.0.7",
         "deepmerge": "4.3.1",
