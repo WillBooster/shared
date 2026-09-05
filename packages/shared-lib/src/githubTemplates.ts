@@ -1,4 +1,8 @@
-/** A section of a PR or issue body: its heading and what the section must state. */
+/**
+ * A section of a PR or issue body: its heading and what the section must state. `requirement`
+ * starts lowercase and ends without punctuation, so that it reads both as a placeholder sentence
+ * (capitalized, with a period appended) and as a checklist clause after the heading.
+ */
 export interface TemplateSection {
   heading: string;
   requirement: string;
@@ -41,8 +45,8 @@ export const BUG_ISSUE_SECTIONS: readonly TemplateSection[] = [
 /**
  * Sections a change specification must settle before a third party can implement it, defined
  * once so that the issue template and any tool that drafts or reviews specifications against
- * these sections (review-booster's spec checklist, via `renderSectionChecklist`) cannot drift
- * apart. The first three sections suffice for a small change, so they come first.
+ * these sections cannot drift apart; checklist consumers render it with `renderSectionChecklist`.
+ * The first three sections suffice for a small change, so they come first.
  */
 export const CHANGE_ISSUE_SECTIONS: readonly TemplateSection[] = [
   {
