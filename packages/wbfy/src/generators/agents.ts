@@ -144,7 +144,8 @@ function generateAgentInstruction(
   - Always create new commits; avoid \`--amend\`.${prTemplateInstruction}${issueTemplateInstruction}
 - In any explanatory text (commit messages, PR descriptions, documentation, code comments, etc.), describe only what exists in the final snapshot: never mention symbols or concepts that were added and later removed or renamed along the way, even if they mattered during the work. If you cannot confirm that an identifier or feature name you are about to write exists in the final diff or the current codebase, drop that statement.
 - Use heredoc for multi-line command input (e.g., \`git commit -F -\`, \`gh pr create --body-file -\`, \`gh issue create --body-file -\`).
-- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
+- Put temporary files in \`.tmp\`; use \`/tmp\` only for files that must live outside the repo.
+- \`AGENTS.md\`, \`CLAUDE.md\`, \`GEMINI.md\`, \`.cursor/rules/general.mdc\`, and \`.gemini/styleguide.md\` are generated from \`AGENTS_EXTRA.md\` and overwritten on every \`wbfy\` run; edit only \`AGENTS_EXTRA.md\` to change agent instructions.${miseInstruction}${isolatedInstallInstruction}${fnoxInstruction}${cloudflareInstruction}${railwayInstruction}${playwrightTestServerInstruction}
 
 ${generateAgentCodingStyle(rootConfig, allConfigs)}
 `
