@@ -36,13 +36,12 @@ export const jsoncUtil = {
    * jsonc-parser is fault tolerant and returns a partial object for malformed input, which must
    * not be treated as the file's configuration; reject any parse error instead. A leading BOM is
    * stripped because TypeScript accepts BOM'd config files while jsonc-parser reports the BOM as
-   * a parse error.
+   * a parse error. Callers whose reader rejects trailing commas turn `allowTrailingComma`
+   * off so such a file is reported as malformed here too.
    */
-  parseObjectIgnoringError<T extends object>(content: string): T | undefined {
+  parseObjectIgnoringError<T extends object>(content: string, allowTrailingComma = true): T | undefined {
     const parseErrors: ParseError[] = [];
-    const value = parseJsonc(content.replace(/^\uFEFF/, ''), parseErrors, { allowTrailingComma: true }) as
-      | T
-      | undefined;
+    const value = parseJsonc(content.replace(/^\uFEFF/, ''), parseErrors, { allowTrailingComma }) as T | undefined;
     return parseErrors.length === 0 && !!value && typeof value === 'object' && !Array.isArray(value)
       ? value
       : undefined;
@@ -52,7 +51,9 @@ export const jsoncUtil = {
     const scanner = createScanner(content.replace(/^\uFEFF/, ''));
     for (let kind: number = scanner.scan(); kind !== syntaxKind.eof; kind = scanner.scan()) {
       // A lexical error means the remaining tokens are unreliable; report no comment rather than
-      // guessing, since callers only use this to decide whether to warn about dropped comments.
+      // guessing. A caller that only warns about dropped comments loses nothing, and one that
+      // refuses a commented file for a strict-JSON reader still rejects such content when it
+      // parses it.
       if ((scanner.getTokenError() as number) !== scanErrorNone) return false;
       if (kind === syntaxKind.lineCommentTrivia || kind === syntaxKind.blockCommentTrivia) return true;
     }
