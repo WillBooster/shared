@@ -38,6 +38,19 @@ async function generateUserAgentConfigs(files: Record<string, string>): Promise<
   }
 }
 
+test("turns off memory and attribution while keeping the developer's own Claude settings", async () => {
+  const { exitCode, files } = await generateUserAgentConfigs({
+    '.claude/settings.json': '{\n  "effortLevel": "medium",\n  "attribution": { "commit": "keep me" }\n}\n',
+  });
+
+  expect(exitCode).toBe(0);
+  expect(JSON.parse(files['.claude/settings.json'] ?? '')).toEqual({
+    attribution: { commit: '', pr: '', sessionUrl: false },
+    autoMemoryEnabled: false,
+    effortLevel: 'medium',
+  });
+});
+
 test('merges the memory setting into a commented Gemini settings file', async () => {
   const { exitCode, files } = await generateUserAgentConfigs({
     '.gemini/settings.json': '{\n  // chosen when signing in\n  "security": { "auth": {} }\n}\n',
