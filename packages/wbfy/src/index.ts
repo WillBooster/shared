@@ -70,7 +70,7 @@ async function main(): Promise<void> {
     )
     .command(
       generateUserAgentConfigsCommand,
-      "Overwrite this user's agent instruction files (~/.codex/AGENTS.md, ~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md) with the organization's fixed content and merge the organization's settings into ~/.claude/settings.json"
+      "Overwrite this user's agent instruction files (~/.codex/AGENTS.md, ~/.claude/CLAUDE.md, ~/.gemini/GEMINI.md) with the organization's fixed content and merge the organization's settings into ~/.claude/settings.json and ~/.gemini/settings.json"
     )
     .command('$0 [paths..]', 'Make a given project follow the WillBooster standard', (yargs) => {
       yargs.positional('paths', {
