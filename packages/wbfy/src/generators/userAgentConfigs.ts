@@ -108,8 +108,10 @@ async function mergeAgentSettings(
   // Only the properties whose value changes are rewritten, so the file keeps its own formatting
   // and, where the agent allows them, its comments.
   const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(existingContent, settings);
-  if (keysLosingComments.length > 0) {
-    console.warn(`Dropped the comments in ${keysLosingComments.join(', ')} of ${filePath}.`);
+  if (!(await fsUtil.generateFile(filePath, content))) return false;
+
+  for (const key of keysLosingComments) {
+    console.warn(`Comments inside "${key}" were dropped while rewriting it in ${filePath}.`);
   }
-  return await fsUtil.generateFile(filePath, content);
+  return true;
 }
