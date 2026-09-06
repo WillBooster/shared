@@ -80,8 +80,9 @@ async function mergeAgentSettings(relativePath: string, newSettings: object): Pr
   const filePath = path.join(os.homedir(), relativePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
   let existingSettings: Record<string, unknown> = {};
-  // Both agents accept comments in their settings file, so it is parsed and rewritten as JSONC to
-  // keep the developer's own comments and formatting.
+  // Gemini CLI strips comments before parsing its settings file, so a commented file is valid
+  // input rather than deviating input: both files are parsed and rewritten as JSONC, which also
+  // keeps the developer's own formatting because only the changed properties are rewritten.
   if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
     const parsedSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(existingContent);
     if (!parsedSettings) {
