@@ -2,9 +2,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 import merge from 'deepmerge';
-import { z } from 'zod';
 
 import { fsUtil } from '../utils/fsUtil.js';
+import { jsoncUtil } from '../utils/jsoncUtil.js';
 
 /**
  * The user-level instruction file of each supported agent, relative to the home directory. These
@@ -80,14 +80,20 @@ async function mergeAgentSettings(relativePath: string, newSettings: object): Pr
   const filePath = path.join(os.homedir(), relativePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
   let existingSettings: Record<string, unknown> = {};
-  if (existingContent !== undefined) {
-    try {
-      existingSettings = z.record(z.string(), z.unknown()).parse(JSON.parse(existingContent));
-    } catch {
-      console.warn(`Skipped updating ${filePath} because the existing content is not a JSON object.`);
+  // Both agents accept comments in their settings file, so it is parsed and rewritten as JSONC to
+  // keep the developer's own comments and formatting.
+  if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
+    const parsedSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(existingContent);
+    if (!parsedSettings) {
+      console.warn(`Skipped updating ${filePath} because the existing content is not a JSONC object.`);
       return false;
     }
+    existingSettings = parsedSettings;
   }
   const settings = merge(existingSettings, newSettings);
-  return await fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2));
+  const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(existingContent, settings);
+  if (keysLosingComments.length > 0) {
+    console.warn(`Dropped the comments in ${keysLosingComments.join(', ')} of ${filePath}.`);
+  }
+  return await fsUtil.generateFile(filePath, content);
 }
