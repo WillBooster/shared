@@ -101,7 +101,9 @@ async function mergeAgentSettings(
     if (!jsoncUtil.isTriviaOnly(existingContent)) {
       const parsedSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(existingContent, false);
       if (!parsedSettings) {
-        console.warn(`Skipped updating ${filePath} because the existing content is not a JSON object.`);
+        console.warn(
+          `Skipped updating ${filePath} because the existing content is not a strict JSON object (a trailing comma, for example, is not allowed).`
+        );
         return false;
       }
       existingSettings = parsedSettings;
