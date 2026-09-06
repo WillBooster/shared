@@ -88,21 +88,24 @@ async function mergeAgentSettings(
   const filePath = path.join(os.homedir(), relativePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
   let existingSettings: Record<string, unknown> = {};
-  if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
+  if (existingContent !== undefined) {
     // An agent ignores its whole settings file when the file breaks the grammar the agent reads it
     // with, so wbfy leaves such a file to the developer to repair rather than rewriting it into a
     // file the agent still ignores: comments are tolerated only where the agent strips them, and
-    // trailing commas nowhere, since both agents parse with JSON.parse in the end.
+    // trailing commas nowhere, since both agents parse with JSON.parse in the end. Comment-only
+    // content is checked too, because it is kept as a header above the generated object.
     if (!acceptsComments && jsoncUtil.containsComment(existingContent)) {
       console.warn(`Skipped updating ${filePath} because this agent reads it as strict JSON, comments and all.`);
       return false;
     }
-    const parsedSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(existingContent, false);
-    if (!parsedSettings) {
-      console.warn(`Skipped updating ${filePath} because the existing content is not a JSON object.`);
-      return false;
+    if (!jsoncUtil.isTriviaOnly(existingContent)) {
+      const parsedSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(existingContent, false);
+      if (!parsedSettings) {
+        console.warn(`Skipped updating ${filePath} because the existing content is not a JSON object.`);
+        return false;
+      }
+      existingSettings = parsedSettings;
     }
-    existingSettings = parsedSettings;
   }
   const settings = merge(existingSettings, newSettings);
   // Only the properties whose value changes are rewritten, so the file keeps its own formatting
