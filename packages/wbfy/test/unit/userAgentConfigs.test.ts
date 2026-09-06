@@ -73,6 +73,14 @@ test('leaves a commented Claude settings file to the developer', async () => {
   expect(files['.claude/settings.json']).toBe(original);
 });
 
+test('leaves a comment-only Claude settings file to the developer', async () => {
+  const original = '// my claude settings\n';
+  const { exitCode, files } = await generateUserAgentConfigs({ '.claude/settings.json': original });
+
+  expect(exitCode).toBe(1);
+  expect(files['.claude/settings.json']).toBe(original);
+});
+
 test('leaves a settings file with a trailing comma to the developer', async () => {
   const original = '{\n  "security": { "auth": {} },\n}\n';
   const { exitCode, files } = await generateUserAgentConfigs({ '.gemini/settings.json': original });
