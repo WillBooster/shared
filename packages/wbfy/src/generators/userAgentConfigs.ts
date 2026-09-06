@@ -89,13 +89,15 @@ async function mergeAgentSettings(
   const existingContent = await fsUtil.readFileIfExists(filePath);
   let existingSettings: Record<string, unknown> = {};
   if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
-    // The agents that reject comments would ignore a commented file wholesale, so wbfy leaves it
-    // to the developer to repair rather than rewriting it into a file the agent still ignores.
+    // An agent ignores its whole settings file when the file breaks the grammar the agent reads it
+    // with, so wbfy leaves such a file to the developer to repair rather than rewriting it into a
+    // file the agent still ignores: comments are tolerated only where the agent strips them, and
+    // trailing commas nowhere, since both agents parse with JSON.parse in the end.
     if (!acceptsComments && jsoncUtil.containsComment(existingContent)) {
       console.warn(`Skipped updating ${filePath} because this agent reads it as strict JSON, comments and all.`);
       return false;
     }
-    const parsedSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(existingContent);
+    const parsedSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(existingContent, false);
     if (!parsedSettings) {
       console.warn(`Skipped updating ${filePath} because the existing content is not a JSON object.`);
       return false;
