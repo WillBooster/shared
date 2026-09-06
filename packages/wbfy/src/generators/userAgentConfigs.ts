@@ -31,6 +31,7 @@ const userAgentInstructionContent = `- Repos live under \`~/ghq/github.com\`; al
 const agentSettings = [
   {
     relativePath: '.claude/settings.json',
+    acceptsComments: false,
     /**
      * Claude Code injects its own attribution directive (a `Co-Authored-By` trailer, a "Generated
      * with" footer, and a session link) into the tool descriptions and mid-session reminders, and
@@ -49,6 +50,9 @@ const agentSettings = [
   },
   {
     relativePath: '.gemini/settings.json',
+    // Gemini CLI strips comments before parsing its settings file, unlike Claude Code, which
+    // rejects a commented file as malformed.
+    acceptsComments: true,
     settings: {
       experimental: {
         autoMemory: false,
@@ -68,30 +72,39 @@ export async function generateUserAgentConfigs(): Promise<boolean> {
     const hasWritten = await fsUtil.generateFile(path.join(os.homedir(), relativePath), userAgentInstructionContent);
     hasWrittenAll &&= hasWritten;
   }
-  for (const { relativePath, settings } of agentSettings) {
+  for (const { acceptsComments, relativePath, settings } of agentSettings) {
     // Awaited separately: `&&=` would skip the merge once an earlier file was skipped.
-    const hasMerged = await mergeAgentSettings(relativePath, settings);
+    const hasMerged = await mergeAgentSettings(relativePath, settings, acceptsComments);
     hasWrittenAll &&= hasMerged;
   }
   return hasWrittenAll;
 }
 
-async function mergeAgentSettings(relativePath: string, newSettings: object): Promise<boolean> {
+async function mergeAgentSettings(
+  relativePath: string,
+  newSettings: object,
+  acceptsComments: boolean
+): Promise<boolean> {
   const filePath = path.join(os.homedir(), relativePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
   let existingSettings: Record<string, unknown> = {};
-  // Gemini CLI strips comments before parsing its settings file, so a commented file is valid
-  // input rather than deviating input: both files are parsed and rewritten as JSONC, which also
-  // keeps the developer's own formatting because only the changed properties are rewritten.
   if (existingContent !== undefined && !jsoncUtil.isTriviaOnly(existingContent)) {
+    // The agents that reject comments would ignore a commented file wholesale, so wbfy leaves it
+    // to the developer to repair rather than rewriting it into a file the agent still ignores.
+    if (!acceptsComments && jsoncUtil.containsComment(existingContent)) {
+      console.warn(`Skipped updating ${filePath} because this agent reads it as strict JSON, comments and all.`);
+      return false;
+    }
     const parsedSettings = jsoncUtil.parseObjectIgnoringError<Record<string, unknown>>(existingContent);
     if (!parsedSettings) {
-      console.warn(`Skipped updating ${filePath} because the existing content is not a JSONC object.`);
+      console.warn(`Skipped updating ${filePath} because the existing content is not a JSON object.`);
       return false;
     }
     existingSettings = parsedSettings;
   }
   const settings = merge(existingSettings, newSettings);
+  // Only the properties whose value changes are rewritten, so the file keeps its own formatting
+  // and, where the agent allows them, its comments.
   const { content, keysLosingComments } = jsoncUtil.stringifyPreservingTrivia(existingContent, settings);
   if (keysLosingComments.length > 0) {
     console.warn(`Dropped the comments in ${keysLosingComments.join(', ')} of ${filePath}.`);
