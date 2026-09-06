@@ -18,25 +18,48 @@ const userAgentInstructionContent = `- Repos live under \`~/ghq/github.com\`; al
 - No AI attribution (e.g., \`Co-Authored-By\` trailers, "Generated with ..." footers) in commits, issues, or PRs unless explicitly requested. This hides nothing: if asked which AI agent did the work, answer truthfully.
 `;
 
-const claudeSettingsFilePath = '.claude/settings.json';
-
 /**
- * Claude Code injects its own attribution directive (a `Co-Authored-By` trailer, a "Generated with"
- * footer, and a session link) into the tool descriptions and mid-session reminders, and that
- * directive declares itself to replace earlier guidance, so the instruction file alone cannot
- * suppress it. Only this setting removes the directive at its source.
+ * The user-level settings merged into each agent's JSON settings file, relative to the home
+ * directory.
+ *
+ * Every agent that carries facts from one session into the next is turned off here because such
+ * memory makes a session depend on invisible machine-local state: its behavior stops being
+ * reproducible across developers and CI, and a stale or wrong memory silently overrides the
+ * instruction files above. Codex needs no entry because its memories are opt-in
+ * (`[features] memories = true` in `~/.codex/config.toml`), so leaving that flag unset is enough.
  */
-const claudeSettings = {
-  attribution: {
-    commit: '',
-    pr: '',
-    sessionUrl: false,
+const agentSettings = [
+  {
+    relativePath: '.claude/settings.json',
+    /**
+     * Claude Code injects its own attribution directive (a `Co-Authored-By` trailer, a "Generated
+     * with" footer, and a session link) into the tool descriptions and mid-session reminders, and
+     * that directive declares itself to replace earlier guidance, so the instruction file alone
+     * cannot suppress it. Only this setting removes the directive at its source. Auto memory is on
+     * by default, so it must be turned off explicitly.
+     */
+    settings: {
+      attribution: {
+        commit: '',
+        pr: '',
+        sessionUrl: false,
+      },
+      autoMemoryEnabled: false,
+    },
   },
-};
+  {
+    relativePath: '.gemini/settings.json',
+    settings: {
+      experimental: {
+        autoMemory: false,
+      },
+    },
+  },
+] as const;
 
 /**
  * Overwrites the user-level instruction files of every supported agent with the fixed content and
- * merges the fixed settings into Claude Code's user settings. Returns false when any file was
+ * merges the fixed settings into each agent's user settings. Returns false when any file was
  * skipped (e.g. a symlinked or unparsable file), so the command can fail loudly.
  */
 export async function generateUserAgentConfigs(): Promise<boolean> {
@@ -45,13 +68,16 @@ export async function generateUserAgentConfigs(): Promise<boolean> {
     const hasWritten = await fsUtil.generateFile(path.join(os.homedir(), relativePath), userAgentInstructionContent);
     hasWrittenAll &&= hasWritten;
   }
-  // Awaited separately: `&&=` would skip the merge once an instruction file was skipped.
-  const hasMergedSettings = await mergeClaudeSettings();
-  return hasWrittenAll && hasMergedSettings;
+  for (const { relativePath, settings } of agentSettings) {
+    // Awaited separately: `&&=` would skip the merge once an earlier file was skipped.
+    const hasMerged = await mergeAgentSettings(relativePath, settings);
+    hasWrittenAll &&= hasMerged;
+  }
+  return hasWrittenAll;
 }
 
-async function mergeClaudeSettings(): Promise<boolean> {
-  const filePath = path.join(os.homedir(), claudeSettingsFilePath);
+async function mergeAgentSettings(relativePath: string, newSettings: object): Promise<boolean> {
+  const filePath = path.join(os.homedir(), relativePath);
   const existingContent = await fsUtil.readFileIfExists(filePath);
   let existingSettings: Record<string, unknown> = {};
   if (existingContent !== undefined) {
@@ -62,6 +88,6 @@ async function mergeClaudeSettings(): Promise<boolean> {
       return false;
     }
   }
-  const settings = merge(existingSettings, claudeSettings);
+  const settings = merge(existingSettings, newSettings);
   return await fsUtil.generateFile(filePath, JSON.stringify(settings, undefined, 2));
 }
