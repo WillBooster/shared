@@ -51,7 +51,9 @@ export const jsoncUtil = {
     const scanner = createScanner(content.replace(/^\uFEFF/, ''));
     for (let kind: number = scanner.scan(); kind !== syntaxKind.eof; kind = scanner.scan()) {
       // A lexical error means the remaining tokens are unreliable; report no comment rather than
-      // guessing, since callers only use this to decide whether to warn about dropped comments.
+      // guessing. A caller that only warns about dropped comments loses nothing, and one that
+      // refuses a commented file for a strict-JSON reader still rejects such content when it
+      // parses it.
       if ((scanner.getTokenError() as number) !== scanErrorNone) return false;
       if (kind === syntaxKind.lineCommentTrivia || kind === syntaxKind.blockCommentTrivia) return true;
     }
