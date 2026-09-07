@@ -172,6 +172,32 @@ test('does not classify a disabled npm plugin as publishing', async () => {
   }
 });
 
+test('uses lifecycle-specific publish plugins for npm targets', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    fs.mkdirSync(packageDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(
+      path.join(packageDirPath, 'package.json'),
+      JSON.stringify({
+        devDependencies: { 'semantic-release': '1.0.0' },
+        release: {
+          plugins: ['@semantic-release/github'],
+          publish: [['@semantic-release/npm', { pkgRoot: 'dist' }]],
+        },
+      })
+    );
+
+    const config = await getPackageConfig(packageDirPath);
+
+    expect(config?.release.npm).toBe(true);
+    expect(config?.release.npmPublishDirPaths).toEqual([path.join(packageDirPath, 'dist')]);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('marks non-JSON release plugin targets as unknown', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {

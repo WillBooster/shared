@@ -168,10 +168,11 @@ export async function getPackageConfig(
     let releaseBranches: string[] = [];
     let releasePlugins: string[] = [];
     let releasePluginsAreExplicit = false;
+    let releaseNpmPluginsAreExplicit = false;
     let releaseNpmPluginPublishes = false;
     let releaseNpmPublishDirPaths: string[] | undefined = [];
     let releaseNpmPluginPublishesRoot = false;
-    // The FIRST existing search place wins (cosmiconfig short-circuits), so a JS/YAML/TS config
+    // The FIRST existing search place wins (cosmiconfig short-circuits), so a JS/TS config
     // or an `extends` preset makes the effective plugin list statically uninspectable (mirrors
     // readExplicitSemanticReleasePlugins in wb's release.ts). Treating it as unknown keeps
     // `release.npm` conservatively true, so applyPackageJsonConventions never forces
@@ -182,6 +183,7 @@ export async function getPackageConfig(
         | {
             branches?: unknown;
             plugins?: (string | [string, Record<string, unknown>])[];
+            publish?: unknown;
             extends?: unknown;
           }
         | undefined;
@@ -213,29 +215,24 @@ export async function getPackageConfig(
       if (Array.isArray(releaseConfig?.plugins)) {
         releasePluginsAreExplicit = true;
         for (const pluginEntry of releaseConfig.plugins) {
-          const [pluginName, pluginOptions] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry, undefined];
+          const [pluginName] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry];
           if (typeof pluginName !== 'string') continue;
           releasePlugins.push(pluginName);
-          if (pluginName !== '@semantic-release/npm') continue;
-          releaseNpmPluginPublishes ||= pluginOptions?.npmPublish !== false;
-          // With pkgRoot the plugin publishes another manifest (it resolves pkgRoot against the
-          // repo root, so `.` and `./` both mean the root itself), and npmPublish: false
-          // disables publishing entirely; only the remaining shape proves the ROOT is published.
-          const pkgRoot = pluginOptions?.pkgRoot;
-          if (pluginOptions?.npmPublish !== false) {
-            releaseNpmPublishDirPaths?.push(
-              typeof pkgRoot === 'string' ? path.resolve(dirPath, pkgRoot) : path.resolve(dirPath)
-            );
-          }
-          const publishesRoot =
-            pluginOptions?.npmPublish !== false &&
-            (pkgRoot === undefined ||
-              (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)));
-          releaseNpmPluginPublishesRoot ||= publishesRoot;
         }
       } else if (releaseConfig && releaseConfig.extends !== undefined) {
         releasePluginsAreUnknown = true;
         releaseNpmPublishDirPaths = undefined;
+      }
+      const npmPluginEntries =
+        releaseConfig?.publish === undefined
+          ? releaseConfig?.plugins
+          : normalizeReleasePluginEntries(releaseConfig.publish);
+      if (Array.isArray(npmPluginEntries)) {
+        releaseNpmPluginsAreExplicit = true;
+        const npmTargets = getNpmReleaseTargets(npmPluginEntries, dirPath);
+        releaseNpmPluginPublishes = npmTargets.publishes;
+        releaseNpmPublishDirPaths = npmTargets.publishDirPaths;
+        releaseNpmPluginPublishesRoot = npmTargets.publishesRoot;
       }
     } catch {
       releasePluginsAreUnknown = true;
@@ -250,7 +247,8 @@ export async function getPackageConfig(
       releasePlugins.length > 0 ||
       releasePluginsAreUnknown
     );
-    if (!releasePluginsAreExplicit && !releasePluginsAreUnknown) {
+    const releaseNpmPluginsAreUnknown = releasePluginsAreUnknown && !releaseNpmPluginsAreExplicit;
+    if (!releaseNpmPluginsAreExplicit && !releaseNpmPluginsAreUnknown) {
       releaseNpmPublishDirPaths = usesSemanticRelease ? [path.resolve(dirPath)] : [];
     }
 
@@ -404,8 +402,10 @@ export async function getPackageConfig(
         github: releasePluginsAreExplicit
           ? releasePlugins.includes('@semantic-release/github') || releasePluginsAreUnknown
           : usesSemanticRelease,
-        npm: releasePluginsAreExplicit ? releaseNpmPluginPublishes || releasePluginsAreUnknown : usesSemanticRelease,
-        pluginsAreExplicit: releasePluginsAreExplicit,
+        npm: releaseNpmPluginsAreExplicit
+          ? releaseNpmPluginPublishes
+          : releaseNpmPluginsAreUnknown || usesSemanticRelease,
+        pluginsAreExplicit: releasePluginsAreExplicit || releaseNpmPluginsAreExplicit,
         npmPublishDirPaths: releaseNpmPublishDirPaths,
         npmPublishesRoot: releaseNpmPluginPublishesRoot,
       },
@@ -434,6 +434,44 @@ export async function getPackageConfig(
   } catch {
     // do nothing
   }
+}
+
+function normalizeReleasePluginEntries(value: unknown): (string | [string, Record<string, unknown>])[] | undefined {
+  if (value === false || value === null) return [];
+  if (typeof value === 'string') return [value];
+  if (!Array.isArray(value)) return undefined;
+  if (
+    typeof value[0] === 'string' &&
+    (value.length === 1 || (value.length === 2 && typeof value[1] === 'object' && value[1] !== null))
+  ) {
+    return [value as [string, Record<string, unknown>]];
+  }
+  return value as (string | [string, Record<string, unknown>])[];
+}
+
+function getNpmReleaseTargets(
+  pluginEntries: (string | [string, Record<string, unknown>])[],
+  dirPath: string
+): { publishes: boolean; publishDirPaths: string[]; publishesRoot: boolean } {
+  let publishes = false;
+  let publishesRoot = false;
+  const publishDirPaths: string[] = [];
+  for (const pluginEntry of pluginEntries) {
+    const [pluginName, pluginOptions] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry, undefined];
+    if (pluginName !== '@semantic-release/npm') continue;
+    publishes ||= pluginOptions?.npmPublish !== false;
+    // With pkgRoot the plugin publishes another manifest (it resolves pkgRoot against the repo
+    // root), while npmPublish: false disables publication entirely.
+    const pkgRoot = pluginOptions?.pkgRoot;
+    if (pluginOptions?.npmPublish !== false) {
+      publishDirPaths.push(typeof pkgRoot === 'string' ? path.resolve(dirPath, pkgRoot) : path.resolve(dirPath));
+    }
+    publishesRoot ||=
+      pluginOptions?.npmPublish !== false &&
+      (pkgRoot === undefined ||
+        (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)));
+  }
+  return { publishes, publishDirPaths, publishesRoot };
 }
 
 /**
