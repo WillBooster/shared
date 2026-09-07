@@ -295,34 +295,46 @@ export async function generateWorkflows(
 }
 
 function classifyPublicNpmPublishing(packageConfig: PackageConfig, rootConfig: PackageConfig): boolean | undefined {
-  if (!packageConfig.release.npm) return false;
-  // A workspace without its own statically inspectable plugin list inherits an explicit root
-  // list. In particular, it must not re-enable npm when the root deliberately omits it.
-  if (
-    path.resolve(packageConfig.dirPath) !== path.resolve(rootConfig.dirPath) &&
-    rootConfig.release.pluginsAreExplicit &&
-    !rootConfig.release.npm &&
-    !packageConfig.release.pluginsAreExplicit &&
-    packageConfig.release.npmPublishDirPaths !== undefined
-  ) {
-    return false;
+  const isWorkspace = path.resolve(packageConfig.dirPath) !== path.resolve(rootConfig.dirPath);
+  const inheritsRootPlugins =
+    isWorkspace && !packageConfig.release.pluginsAreExplicit && packageConfig.release.npmPublishDirPaths?.length === 0;
+  if (inheritsRootPlugins) {
+    if (!rootConfig.release.npm) return false;
+    if (!rootConfig.release.npmPublishDirPaths) {
+      return classifyDynamicPublicNpmPublishing(packageConfig, rootConfig);
+    }
+    return classifyKnownPublicNpmTargets(packageConfig, [packageConfig.dirPath]);
   }
+  if (!packageConfig.release.npm) return false;
   const publishDirPaths = packageConfig.release.npmPublishDirPaths;
   if (!publishDirPaths) {
-    const sourceManifest = packageConfig.packageJson;
-    const registry = sourceManifest?.publishConfig?.registry;
-    // Dynamic plugin configuration is genuinely unknowable unless repository visibility or
-    // package metadata supplies a decisive registry signal. Preserve existing workflow state for
-    // the remaining case instead of either breaking trusted publishing or granting a new
-    // token-minting permission without evidence.
-    if (rootConfig.isPublicRepo) return true;
-    if (sourceManifest?.private === true || !packageMetadataTargetsPublicRegistry(sourceManifest)) return false;
-    return registry ? packageMetadataTargetsPublicRegistry(sourceManifest) : undefined;
+    return classifyDynamicPublicNpmPublishing(packageConfig, rootConfig);
   }
+  return classifyKnownPublicNpmTargets(packageConfig, publishDirPaths);
+}
+
+function classifyDynamicPublicNpmPublishing(
+  packageConfig: PackageConfig,
+  rootConfig: PackageConfig
+): boolean | undefined {
+  const sourceManifest = packageConfig.packageJson;
+  const registry = sourceManifest?.publishConfig?.registry;
+  // Dynamic plugin configuration is genuinely unknowable unless repository visibility or package
+  // metadata supplies a decisive registry signal. Preserve existing workflow state for the
+  // remaining case instead of either breaking trusted publishing or granting a new token-minting
+  // permission without evidence.
+  if (sourceManifest?.private === true || !packageMetadataTargetsPublicRegistry(sourceManifest)) return false;
+  if (rootConfig.isPublicRepo) return true;
+  return registry ? packageMetadataTargetsPublicRegistry(sourceManifest) : undefined;
+}
+
+function classifyKnownPublicNpmTargets(packageConfig: PackageConfig, publishDirPaths: string[]): boolean {
   return publishDirPaths.some((publishDirPath) => {
     const classification = packagePublishesPublicPackage(publishDirPath);
     const publishesNormalizedRoot =
-      packageConfig.release.npmPublishesRoot && path.resolve(publishDirPath) === path.resolve(packageConfig.dirPath);
+      packageConfig.doesContainSubPackageJsons &&
+      packageConfig.release.npmPublishesRoot &&
+      path.resolve(publishDirPath) === path.resolve(packageConfig.dirPath);
     if (classification !== undefined && !(classification === false && publishesNormalizedRoot)) {
       return classification;
     }
@@ -434,7 +446,7 @@ async function writeWorkflowYaml(
     // npm trusted publishing supports only GitHub-hosted GitHub Actions runners. Private
     // repositories otherwise default to the self-hosted release runner in reusable-workflows.
     newSettings.jobs.release.with ??= {};
-    if (!config.isPublicRepo && newSettings.jobs.release.with.github_hosted_runner !== true) {
+    if (!runsOnUsesGitHubHostedRunner(newSettings.jobs.release.with.runs_on)) {
       delete newSettings.jobs.release.with.runs_on;
     }
     newSettings.jobs.release.with.github_hosted_runner = true;
@@ -486,11 +498,30 @@ async function writeWorkflowYaml(
       // VERDACCIO_TOKEN instead and must not receive this permission. Merely consuming a private
       // dependency still requires that token for installation, but does not change where the
       // repository's own packages are published.
-      if (publishesToPublicNpm === true) {
-        newSettings.permissions ??= {};
-        newSettings.permissions['id-token'] = 'write';
-      } else if (publishesToPublicNpm === false) {
+      const releaseJob = newSettings.jobs.release;
+      if (releaseJob && publishesToPublicNpm === true) {
+        releaseJob.permissions = {
+          ...newSettings.permissions,
+          ...releaseJob.permissions,
+          'id-token': 'write',
+          contents: 'write',
+        };
         delete newSettings.permissions?.['id-token'];
+      } else if (releaseJob && publishesToPublicNpm === false) {
+        delete newSettings.permissions?.['id-token'];
+        delete releaseJob.permissions?.['id-token'];
+      } else if (releaseJob && newSettings.permissions?.['id-token']) {
+        // Migrate a legacy workflow-wide permission while preserving an unknown dynamic config.
+        // This keeps trusted publishing functional without exposing OIDC to preserved sibling jobs.
+        releaseJob.permissions = {
+          ...newSettings.permissions,
+          ...releaseJob.permissions,
+          'id-token': newSettings.permissions['id-token'],
+        };
+        delete newSettings.permissions['id-token'];
+      }
+      if (releaseJob?.permissions && Object.keys(releaseJob.permissions).length === 0) {
+        delete releaseJob.permissions;
       }
       break;
     }
@@ -522,6 +553,20 @@ async function writeWorkflowYaml(
     newSettings.on = { workflow_dispatch: null };
     delete newSettings.jobs.sync;
     await writeYaml(newSettings, path.join(workflowsPath, 'sync-force.yml'));
+  }
+}
+
+function runsOnUsesGitHubHostedRunner(runsOn: unknown): boolean {
+  if (typeof runsOn !== 'string') return false;
+  try {
+    const labels = JSON.parse(runsOn) as unknown;
+    return (
+      Array.isArray(labels) &&
+      labels.length > 0 &&
+      labels.every((label) => typeof label === 'string' && /^(?:ubuntu|macos|windows)-[a-zA-Z0-9._-]+$/u.test(label))
+    );
+  } catch {
+    return false;
   }
 }
 

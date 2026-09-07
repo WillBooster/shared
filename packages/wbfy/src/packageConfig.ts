@@ -235,9 +235,7 @@ export async function getPackageConfig(
               (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)));
           releaseNpmPluginPublishesRoot ||= publishesRoot;
         }
-      }
-      // A preset can contribute additional plugins even when the local config also lists plugins.
-      if (releaseConfig && releaseConfig.extends !== undefined) {
+      } else if (releaseConfig && releaseConfig.extends !== undefined) {
         releasePluginsAreUnknown = true;
         releaseNpmPublishDirPaths = undefined;
       }

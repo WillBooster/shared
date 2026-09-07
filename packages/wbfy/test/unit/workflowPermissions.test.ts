@@ -67,7 +67,7 @@ test('private source repositories publishing to npm keep trusted-publishing perm
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
     fs.writeFileSync(
       path.join(workflowsPath, 'release.yml'),
-      `jobs:\n  release:\n    uses: WillBooster/reusable-workflows/.github/workflows/release.yml@main\n    with:\n      runs_on: '["self-hosted"]'\n`
+      `jobs:\n  release:\n    uses: WillBooster/reusable-workflows/.github/workflows/release.yml@main\n    with:\n      github_hosted_runner: true\n      runs_on: '["self-hosted"]'\n  sibling:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
     );
 
     await generateWorkflows(
@@ -88,12 +88,14 @@ test('private source repositories publishing to npm keep trusted-publishing perm
     await promisePool.promiseAll();
 
     const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
-    expect(releaseWorkflow.permissions).toEqual({
+    expect(releaseWorkflow.permissions).toEqual({ contents: 'write' });
+    expect(releaseWorkflow.jobs.release?.permissions).toEqual({
       'id-token': 'write',
       contents: 'write',
     });
     expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
     expect(releaseWorkflow.jobs.release?.with?.runs_on).toBeUndefined();
+    expect(releaseWorkflow.jobs.sibling?.permissions).toBeUndefined();
   });
 });
 
@@ -129,7 +131,7 @@ test('workspace npm releases grant trusted-publishing permission to the caller',
     await generateWorkflows(rootConfig, [rootConfig, workspaceConfig]);
     await promisePool.promiseAll();
 
-    expect(readWorkflow(workflowsPath, 'release.yml').permissions?.['id-token']).toBe('write');
+    expect(readWorkflow(workflowsPath, 'release.yml').jobs.release?.permissions?.['id-token']).toBe('write');
   });
 });
 
@@ -195,7 +197,7 @@ test('explicit npm target keeps trusted publishing before its manifest is built'
     await promisePool.promiseAll();
 
     const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
-    expect(releaseWorkflow.permissions?.['id-token']).toBe('write');
+    expect(releaseWorkflow.jobs.release?.permissions?.['id-token']).toBe('write');
     expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
   });
 });
@@ -249,7 +251,33 @@ test('explicit root publishing is classified after package metadata normalizatio
     await generateWorkflows(rootConfig);
     await promisePool.promiseAll();
 
-    expect(readWorkflow(workflowsPath, 'release.yml').permissions?.['id-token']).toBe('write');
+    expect(readWorkflow(workflowsPath, 'release.yml').jobs.release?.permissions?.['id-token']).toBe('write');
+  });
+});
+
+test('single-package private manifests stay unpublished despite an npm plugin', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-private-single-package-', async (dirPath, workflowsPath) => {
+    const packageJson = { name: 'private-package', private: true };
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify(packageJson));
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      packageJson,
+      release: {
+        branches: ['main'],
+        github: true,
+        npm: true,
+        npmPublishDirPaths: [dirPath],
+        npmPublishesRoot: true,
+      },
+    });
+
+    await generateWorkflows(rootConfig);
+    await promisePool.promiseAll();
+
+    expect(readWorkflow(workflowsPath, 'release.yml').permissions).toEqual({ contents: 'write' });
   });
 });
 
@@ -278,9 +306,9 @@ test('workspace defaults inherit an explicit npm-free root plugin list', async (
       release: {
         branches: [],
         github: true,
-        npm: true,
+        npm: false,
         pluginsAreExplicit: false,
-        npmPublishDirPaths: [workspaceDirPath],
+        npmPublishDirPaths: [],
         npmPublishesRoot: false,
       },
     });
@@ -319,9 +347,9 @@ test('workspace defaults inherit an explicit root npm plugin', async () => {
       release: {
         branches: [],
         github: true,
-        npm: true,
+        npm: false,
         pluginsAreExplicit: false,
-        npmPublishDirPaths: [workspaceDirPath],
+        npmPublishDirPaths: [],
         npmPublishesRoot: false,
       },
     });
@@ -329,7 +357,7 @@ test('workspace defaults inherit an explicit root npm plugin', async () => {
     await generateWorkflows(rootConfig, [rootConfig, workspaceConfig]);
     await promisePool.promiseAll();
 
-    expect(readWorkflow(workflowsPath, 'release.yml').permissions?.['id-token']).toBe('write');
+    expect(readWorkflow(workflowsPath, 'release.yml').jobs.release?.permissions?.['id-token']).toBe('write');
   });
 });
 
@@ -343,7 +371,7 @@ test('public npm publishing preserves an explicit GitHub-hosted runner label', a
     const rootConfig = createConfig({
       dirPath,
       isRoot: true,
-      isPublicRepo: true,
+      isPublicRepo: false,
       depending: { ...createConfig().depending, semanticRelease: true },
       release: {
         branches: ['main'],
@@ -400,7 +428,8 @@ test('dynamic release configuration preserves existing trusted-publishing settin
     await promisePool.promiseAll();
 
     const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
-    expect(releaseWorkflow.permissions?.['id-token']).toBe('write');
+    expect(releaseWorkflow.permissions?.['id-token']).toBeUndefined();
+    expect(releaseWorkflow.jobs.release?.permissions?.['id-token']).toBe('write');
     expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
   });
 });
@@ -425,8 +454,31 @@ test('dynamic release configuration honors an explicit public registry', async (
     await promisePool.promiseAll();
 
     const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
-    expect(releaseWorkflow.permissions?.['id-token']).toBe('write');
+    expect(releaseWorkflow.jobs.release?.permissions?.['id-token']).toBe('write');
     expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
+  });
+});
+
+test('public dynamic release configuration honors an explicit custom registry', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-dynamic-custom-registry-', async (dirPath, workflowsPath) => {
+    const packageJson = {
+      name: 'custom-package',
+      publishConfig: { registry: 'https://npm.example.com/' },
+    };
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify(packageJson));
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: true,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      packageJson,
+      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: false },
+    });
+
+    await generateWorkflows(rootConfig);
+    await promisePool.promiseAll();
+
+    expect(readWorkflow(workflowsPath, 'release.yml').permissions).toEqual({ contents: 'write' });
   });
 });
 

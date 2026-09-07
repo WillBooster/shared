@@ -42,7 +42,6 @@ export function packagePublishesPublicPackage(dirPath: string): boolean | undefi
   const manifest = readPackageJsonIfExists(path.resolve(dirPath, 'package.json'));
   if (manifest?.private === true) return false;
   if (!manifest?.name) return undefined;
-  if (manifest.name.startsWith(PRIVATE_SCOPE)) return false;
   return packageMetadataTargetsPublicRegistry(manifest);
 }
 

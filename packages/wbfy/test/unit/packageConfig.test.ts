@@ -213,7 +213,7 @@ test('recognizes every dynamic semantic-release config location', async () => {
   }
 });
 
-test('marks presets as unknown even alongside local plugins', async () => {
+test('uses local plugins in preference to an extended preset', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {
     const packageDirPath = path.join(tempDirPath, 'packages', 'root');
@@ -229,8 +229,8 @@ test('marks presets as unknown even alongside local plugins', async () => {
 
     const config = await getPackageConfig(packageDirPath);
 
-    expect(config?.release.npm).toBe(true);
-    expect(config?.release.npmPublishDirPaths).toBeUndefined();
+    expect(config?.release.npm).toBe(false);
+    expect(config?.release.npmPublishDirPaths).toEqual([]);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
   }
