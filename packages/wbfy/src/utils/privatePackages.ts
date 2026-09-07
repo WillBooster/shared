@@ -24,7 +24,9 @@ export const privateRegistryScopeMapping = `@willbooster-private:registry=https:
  * `minimumReleaseAgeExcludes` mentions the scope even in repositories that do not depend on it.
  */
 export function repoResolvesPrivatePackages(
-  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson' | 'release'>
+  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'> & {
+    release?: Pick<PackageConfig['release'], 'npmPublishDirPaths'>;
+  }
 ): boolean {
   return getPackageManifests(config).some((manifest) => {
     if (manifest.name?.startsWith(PRIVATE_SCOPE)) return true;
@@ -58,12 +60,14 @@ export function packageMetadataTargetsPublicRegistry(manifest: PackageJson | und
 }
 
 function getPackageManifests(
-  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson' | 'release'>
+  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'> & {
+    release?: Pick<PackageConfig['release'], 'npmPublishDirPaths'>;
+  }
 ): PackageJson[] {
   const manifestPaths = new Set([
     path.resolve(config.dirPath, 'package.json'),
     ...getWorkspacePackageJsonPaths(config).map((relPath) => path.resolve(config.dirPath, relPath)),
-    ...(config.release.npmPublishDirPaths ?? []).map((dirPath) => path.resolve(dirPath, 'package.json')),
+    ...(config.release?.npmPublishDirPaths ?? []).map((dirPath) => path.resolve(dirPath, 'package.json')),
   ]);
   return [...manifestPaths].flatMap((manifestPath) => {
     const manifest = readPackageJsonIfExists(manifestPath);
