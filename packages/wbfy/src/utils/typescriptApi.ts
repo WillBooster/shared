@@ -10,19 +10,6 @@ let api: API | undefined;
 let connected: Promise<unknown> | undefined;
 
 /**
- * The client marks itself connected only once its first spawn completes, so concurrent
- * first requests (the fixers run in parallel) would each spawn a compiler server; the
- * extra servers are never closed and keep the process alive after `disposeTypeScriptApi`.
- * The first request is therefore awaited once before any other is sent.
- */
-async function getApi(): Promise<API> {
-  api ??= new API({ cwd: process.cwd() });
-  connected ??= api.updateSnapshot();
-  await connected;
-  return api;
-}
-
-/**
  * Parses a source file into a TypeScript AST using the bundled native compiler.
  * Returns `undefined` when the compiler cannot load the file (e.g. it is missing
  * or unparsable) so callers can fall back to conservative behavior.
@@ -47,4 +34,15 @@ export async function disposeTypeScriptApi(): Promise<void> {
   await api?.close();
   api = undefined;
   connected = undefined;
+}
+
+async function getApi(): Promise<API> {
+  api ??= new API({ cwd: process.cwd() });
+  // The client marks itself connected only once its first spawn completes, so concurrent
+  // first requests (the fixers run in parallel) would each spawn a compiler server; the
+  // extra servers are never closed and keep the process alive after `disposeTypeScriptApi`.
+  // The first request is therefore awaited once before any other is sent.
+  connected ??= api.updateSnapshot();
+  await connected;
+  return api;
 }
