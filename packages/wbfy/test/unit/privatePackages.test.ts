@@ -66,6 +66,24 @@ test('a nameless private manifest is not treated as an unbuilt public target', a
   });
 });
 
+test('detects a private package in an explicit npm publish target', async () => {
+  await withTempDir(async (tempDirPath) => {
+    const publishDirPath = path.join(tempDirPath, 'dist');
+    writeJson(path.join(tempDirPath, 'package.json'), { name: 'source-package' });
+    writeJson(path.join(publishDirPath, 'package.json'), { name: '@willbooster-private/built-package' });
+    const config = createConfig({
+      dirPath: tempDirPath,
+      release: {
+        ...createConfig().release,
+        npm: true,
+        npmPublishDirPaths: [publishDirPath],
+      },
+    });
+
+    expect(repoResolvesPrivatePackages(config)).toBe(true);
+  });
+});
+
 function writeJson(filePath: string, value: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(value, undefined, 2));

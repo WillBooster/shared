@@ -17,14 +17,14 @@ export const privateRegistryScopeMapping = `@willbooster-private:registry=https:
  * lives exclusively on the private Verdaccio registry, so exactly these repositories need the
  * VERDACCIO_TOKEN pass-through in their reusable-workflow callers.
  *
- * A repository qualifies when any workspace package.json DECLARES a dependency in the scope (any
- * dependency field), or is itself NAMED in the scope (it publishes to Verdaccio, and release.yml
- * derives its npm auth from the same secret). Nothing else is scanned: lockfiles only mirror the
- * declared dependencies, and bunfig.toml's `minimumReleaseAgeExcludes` mentions the scope even in
- * repositories that do not depend on it.
+ * A repository qualifies when any workspace or explicit npm publish-target package.json DECLARES
+ * a dependency in the scope (any dependency field), or is itself NAMED in the scope (it publishes
+ * to Verdaccio, and release.yml derives its npm auth from the same secret). Lockfiles are not
+ * scanned because they only mirror declared dependencies, and bunfig.toml's
+ * `minimumReleaseAgeExcludes` mentions the scope even in repositories that do not depend on it.
  */
 export function repoResolvesPrivatePackages(
-  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>
+  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson' | 'release'>
 ): boolean {
   return getPackageManifests(config).some((manifest) => {
     if (manifest.name?.startsWith(PRIVATE_SCOPE)) return true;
@@ -58,11 +58,15 @@ export function packageMetadataTargetsPublicRegistry(manifest: PackageJson | und
 }
 
 function getPackageManifests(
-  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>
+  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson' | 'release'>
 ): PackageJson[] {
-  const manifestRelPaths = new Set(['package.json', ...getWorkspacePackageJsonPaths(config)]);
-  return [...manifestRelPaths].flatMap((relPath) => {
-    const manifest = readPackageJsonIfExists(path.resolve(config.dirPath, relPath));
+  const manifestPaths = new Set([
+    path.resolve(config.dirPath, 'package.json'),
+    ...getWorkspacePackageJsonPaths(config).map((relPath) => path.resolve(config.dirPath, relPath)),
+    ...(config.release.npmPublishDirPaths ?? []).map((dirPath) => path.resolve(dirPath, 'package.json')),
+  ]);
+  return [...manifestPaths].flatMap((manifestPath) => {
+    const manifest = readPackageJsonIfExists(manifestPath);
     return manifest ? [manifest] : [];
   });
 }
