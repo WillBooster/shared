@@ -13,7 +13,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
-import { repoResolvesPrivatePackages } from '../utils/privatePackages.js';
+import { repoPublishesOnlyPrivatePackages, repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
 
 interface Workflow {
@@ -417,8 +417,11 @@ async function writeWorkflowYaml(
       }
       // npm trusted publishing depends on the destination registry, not GitHub repository
       // visibility: private source repositories can publish public packages through OIDC too.
-      // Verdaccio releases use VERDACCIO_TOKEN instead and must not receive this permission.
-      if (config.release.npm && !repoResolvesPrivatePackages(config)) {
+      // Repositories that exclusively publish @willbooster-private packages use
+      // VERDACCIO_TOKEN instead and must not receive this permission. Merely consuming a private
+      // dependency still requires that token for installation, but does not change where the
+      // repository's own packages are published.
+      if (config.release.npm && !repoPublishesOnlyPrivatePackages(config)) {
         newSettings.permissions ??= {};
         newSettings.permissions['id-token'] = 'write';
       } else {

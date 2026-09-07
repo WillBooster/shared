@@ -26,10 +26,7 @@ export const privateRegistryScopeMapping = `@willbooster-private:registry=https:
 export function repoResolvesPrivatePackages(
   config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>
 ): boolean {
-  const manifestRelPaths = new Set(['package.json', ...getWorkspacePackageJsonPaths(config)]);
-  return [...manifestRelPaths].some((relPath) => {
-    const manifest = readPackageJsonIfExists(path.resolve(config.dirPath, relPath));
-    if (!manifest) return false;
+  return getPackageManifests(config).some((manifest) => {
     if (manifest.name?.startsWith(PRIVATE_SCOPE)) return true;
     return [
       manifest.dependencies,
@@ -37,6 +34,29 @@ export function repoResolvesPrivatePackages(
       manifest.peerDependencies,
       manifest.optionalDependencies,
     ].some((dependencies) => Object.keys(dependencies ?? {}).some((name) => name.startsWith(PRIVATE_SCOPE)));
+  });
+}
+
+/** Whether every manifest npm can publish in the repository targets the private registry. */
+export function repoPublishesOnlyPrivatePackages(
+  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>
+): boolean {
+  const publishableManifests = getPackageManifests(config).filter(
+    (manifest) => manifest.private !== true && manifest.name
+  );
+  return (
+    publishableManifests.length > 0 &&
+    publishableManifests.every((manifest) => manifest.name?.startsWith(PRIVATE_SCOPE))
+  );
+}
+
+function getPackageManifests(
+  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>
+): PackageJson[] {
+  const manifestRelPaths = new Set(['package.json', ...getWorkspacePackageJsonPaths(config)]);
+  return [...manifestRelPaths].flatMap((relPath) => {
+    const manifest = readPackageJsonIfExists(path.resolve(config.dirPath, relPath));
+    return manifest ? [manifest] : [];
   });
 }
 

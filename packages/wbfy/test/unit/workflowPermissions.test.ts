@@ -30,7 +30,13 @@ const siblingJobSchema = z.strictObject({
 
 test('generated callers scope permissions without changing preserved sibling jobs', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-permissions-', async (dirPath, workflowsPath) => {
-    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+    fs.writeFileSync(
+      path.join(dirPath, 'package.json'),
+      JSON.stringify({
+        name: 'example',
+        devDependencies: { '@willbooster-private/build-tool': '1.0.0' },
+      })
+    );
     for (const workflowName of ['test-rust', 'semantic-pr', 'close-comment']) {
       fs.writeFileSync(
         path.join(workflowsPath, `${workflowName}.yml`),
