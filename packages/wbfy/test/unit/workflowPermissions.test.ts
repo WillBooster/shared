@@ -292,6 +292,47 @@ test('workspace defaults inherit an explicit npm-free root plugin list', async (
   });
 });
 
+test('workspace defaults inherit an explicit root npm plugin', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-root-npm-inheritance-', async (dirPath, workflowsPath) => {
+    const workspaceDirPath = path.join(dirPath, 'packages', 'app');
+    fs.mkdirSync(workspaceDirPath, { recursive: true });
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'root', private: true }));
+    fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({ name: 'app' }));
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      packageJson: { name: 'root', private: true },
+      release: {
+        branches: ['main'],
+        github: true,
+        npm: true,
+        pluginsAreExplicit: true,
+        npmPublishDirPaths: [dirPath],
+        npmPublishesRoot: false,
+      },
+    });
+    const workspaceConfig = createConfig({
+      dirPath: workspaceDirPath,
+      packageJson: { name: 'app' },
+      release: {
+        branches: [],
+        github: true,
+        npm: true,
+        pluginsAreExplicit: false,
+        npmPublishDirPaths: [workspaceDirPath],
+        npmPublishesRoot: false,
+      },
+    });
+
+    await generateWorkflows(rootConfig, [rootConfig, workspaceConfig]);
+    await promisePool.promiseAll();
+
+    expect(readWorkflow(workflowsPath, 'release.yml').permissions?.['id-token']).toBe('write');
+  });
+});
+
 test('public npm publishing preserves an explicit GitHub-hosted runner label', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-public-runner-', async (dirPath, workflowsPath) => {
     fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'public-package' }));
@@ -336,6 +377,56 @@ test('dynamic release configuration does not grant OIDC to a private repository'
     await promisePool.promiseAll();
 
     expect(readWorkflow(workflowsPath, 'release.yml').permissions).toEqual({ contents: 'write' });
+  });
+});
+
+test('dynamic release configuration preserves existing trusted-publishing settings', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-dynamic-preserved-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'public-package' }));
+    fs.writeFileSync(
+      path.join(workflowsPath, 'release.yml'),
+      `permissions:\n  id-token: write\n  contents: write\njobs:\n  release:\n    uses: WillBooster/reusable-workflows/.github/workflows/release.yml@main\n    with:\n      github_hosted_runner: true\n`
+    );
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      packageJson: { name: 'public-package' },
+      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: false },
+    });
+
+    await generateWorkflows(rootConfig);
+    await promisePool.promiseAll();
+
+    const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
+    expect(releaseWorkflow.permissions?.['id-token']).toBe('write');
+    expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
+  });
+});
+
+test('dynamic release configuration honors an explicit public registry', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-dynamic-public-registry-', async (dirPath, workflowsPath) => {
+    const packageJson = {
+      name: 'public-package',
+      publishConfig: { registry: 'https://registry.npmjs.org/' },
+    };
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify(packageJson));
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      packageJson,
+      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: false },
+    });
+
+    await generateWorkflows(rootConfig);
+    await promisePool.promiseAll();
+
+    const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
+    expect(releaseWorkflow.permissions?.['id-token']).toBe('write');
+    expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
   });
 });
 

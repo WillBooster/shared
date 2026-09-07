@@ -151,8 +151,6 @@ const workflows = {
       queue: 'max',
     },
     permissions: {
-      // https://docs.npmjs.com/trusted-publishers#step-2-configure-your-cicd-workflow
-      'id-token': 'write',
       // for semantic-release
       contents: 'write',
     },
@@ -277,37 +275,15 @@ export async function generateWorkflows(
       // independent kind would race concurrent writes on the same path.
       fileNamesByKind.delete('sync-force');
     }
-    const publishesToPublicNpm = packageConfigs.some((packageConfig) => {
-      if (!packageConfig.release.npm) return false;
-      // A workspace without its own statically inspectable plugin list inherits an explicit root
-      // list. In particular, it must not re-enable npm when the root deliberately omits it.
-      if (
-        path.resolve(packageConfig.dirPath) !== path.resolve(rootConfig.dirPath) &&
-        rootConfig.release.pluginsAreExplicit &&
-        !packageConfig.release.pluginsAreExplicit &&
-        packageConfig.release.npmPublishDirPaths !== undefined
-      ) {
-        return false;
+    let publishesToPublicNpm: boolean | undefined = false;
+    for (const packageConfig of packageConfigs) {
+      const packagePublishesToPublicNpm = classifyPublicNpmPublishing(packageConfig, rootConfig);
+      if (packagePublishesToPublicNpm) {
+        publishesToPublicNpm = true;
+        break;
       }
-      const publishDirPaths = packageConfig.release.npmPublishDirPaths;
-      // Dynamic release configuration cannot justify granting OIDC to a private repository. An
-      // explicit enabled npm target can: its package.json may be generated only during the build,
-      // so lack of a readable manifest must not make the generated release unauthenticated.
-      if (!publishDirPaths) return rootConfig.isPublicRepo;
-      return publishDirPaths.some((publishDirPath) => {
-        const classification = packagePublishesPublicPackage(publishDirPath);
-        const publishesNormalizedRoot =
-          packageConfig.release.npmPublishesRoot &&
-          path.resolve(publishDirPath) === path.resolve(packageConfig.dirPath);
-        if (classification !== undefined && !(classification === false && publishesNormalizedRoot)) {
-          return classification;
-        }
-        // Build-output manifests may not exist yet. The source package's scope and registry still
-        // rule out public npm, while a generic private monorepo can intentionally build a public
-        // package into pkgRoot. Root publishing intent also removes `private` later in this run.
-        return packageMetadataTargetsPublicRegistry(packageConfig.packageJson);
-      });
-    });
+      if (packagePublishesToPublicNpm === undefined) publishesToPublicNpm = undefined;
+    }
 
     for (const [kind, fileName] of fileNamesByKind) {
       // 実際はKnownKind以外の値も代入されることに注意
@@ -315,6 +291,45 @@ export async function generateWorkflows(
         writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName, publishesToPublicNpm)
       );
     }
+  });
+}
+
+function classifyPublicNpmPublishing(packageConfig: PackageConfig, rootConfig: PackageConfig): boolean | undefined {
+  if (!packageConfig.release.npm) return false;
+  // A workspace without its own statically inspectable plugin list inherits an explicit root
+  // list. In particular, it must not re-enable npm when the root deliberately omits it.
+  if (
+    path.resolve(packageConfig.dirPath) !== path.resolve(rootConfig.dirPath) &&
+    rootConfig.release.pluginsAreExplicit &&
+    !rootConfig.release.npm &&
+    !packageConfig.release.pluginsAreExplicit &&
+    packageConfig.release.npmPublishDirPaths !== undefined
+  ) {
+    return false;
+  }
+  const publishDirPaths = packageConfig.release.npmPublishDirPaths;
+  if (!publishDirPaths) {
+    const sourceManifest = packageConfig.packageJson;
+    const registry = sourceManifest?.publishConfig?.registry;
+    // Dynamic plugin configuration is genuinely unknowable unless repository visibility or
+    // package metadata supplies a decisive registry signal. Preserve existing workflow state for
+    // the remaining case instead of either breaking trusted publishing or granting a new
+    // token-minting permission without evidence.
+    if (rootConfig.isPublicRepo) return true;
+    if (sourceManifest?.private === true || !packageMetadataTargetsPublicRegistry(sourceManifest)) return false;
+    return registry ? packageMetadataTargetsPublicRegistry(sourceManifest) : undefined;
+  }
+  return publishDirPaths.some((publishDirPath) => {
+    const classification = packagePublishesPublicPackage(publishDirPath);
+    const publishesNormalizedRoot =
+      packageConfig.release.npmPublishesRoot && path.resolve(publishDirPath) === path.resolve(packageConfig.dirPath);
+    if (classification !== undefined && !(classification === false && publishesNormalizedRoot)) {
+      return classification;
+    }
+    // Build-output manifests may not exist yet. The source package's scope and registry still
+    // rule out public npm, while a generic private monorepo can intentionally build a public
+    // package into pkgRoot. Root publishing intent also removes `private` later in this run.
+    return packageMetadataTargetsPublicRegistry(packageConfig.packageJson);
   });
 }
 
@@ -357,7 +372,7 @@ async function writeWorkflowYaml(
   workflowsPath: string,
   kind: KnownKind,
   fileName = `${kind}.yml`,
-  publishesToPublicNpm = false
+  publishesToPublicNpm?: boolean
 ): Promise<void> {
   const filePath = path.join(workflowsPath, fileName);
   const deployProductionFileName = fs.existsSync(path.join(workflowsPath, 'deploy-production.yml'))
@@ -415,7 +430,7 @@ async function writeWorkflowYaml(
     newSettings.jobs.release.with ??= {};
     newSettings.jobs.release.with.trigger_deploy_workflow = deployProductionFileName;
   }
-  if (kind === 'release' && newSettings.jobs.release && publishesToPublicNpm) {
+  if (kind === 'release' && newSettings.jobs.release && publishesToPublicNpm === true) {
     // npm trusted publishing supports only GitHub-hosted GitHub Actions runners. Private
     // repositories otherwise default to the self-hosted release runner in reusable-workflows.
     newSettings.jobs.release.with ??= {};
@@ -471,10 +486,10 @@ async function writeWorkflowYaml(
       // VERDACCIO_TOKEN instead and must not receive this permission. Merely consuming a private
       // dependency still requires that token for installation, but does not change where the
       // repository's own packages are published.
-      if (publishesToPublicNpm) {
+      if (publishesToPublicNpm === true) {
         newSettings.permissions ??= {};
         newSettings.permissions['id-token'] = 'write';
-      } else {
+      } else if (publishesToPublicNpm === false) {
         delete newSettings.permissions?.['id-token'];
       }
       break;
