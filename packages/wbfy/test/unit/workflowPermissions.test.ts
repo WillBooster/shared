@@ -341,12 +341,13 @@ test('workspace defaults inherit an explicit npm-free root plugin list', async (
     });
     const workspaceConfig = createConfig({
       dirPath: workspaceDirPath,
+      packageJson: { name: 'app', devDependencies: { 'semantic-release': '1.0.0' } },
       release: {
         branches: [],
         github: true,
-        npm: false,
+        npm: true,
         pluginsAreExplicit: false,
-        npmPublishDirPaths: [],
+        npmPublishDirPaths: [workspaceDirPath],
         npmPublishesRoot: false,
       },
     });

@@ -305,7 +305,10 @@ export async function generateWorkflows(
 function classifyPublicNpmPublishing(packageConfig: PackageConfig, rootConfig: PackageConfig): boolean | undefined {
   const isWorkspace = path.resolve(packageConfig.dirPath) !== path.resolve(rootConfig.dirPath);
   const inheritsRootPlugins =
-    isWorkspace && !packageConfig.release.pluginsAreExplicit && packageConfig.release.npmPublishDirPaths?.length === 0;
+    isWorkspace &&
+    !packageConfig.release.pluginsAreExplicit &&
+    packageConfig.release.npmPublishDirPaths !== undefined &&
+    (rootConfig.release.pluginsAreExplicit || !packageConfig.release.npm);
   if (inheritsRootPlugins) {
     if (!rootConfig.release.npm) return false;
     if (!rootConfig.release.npmPublishDirPaths) {
