@@ -522,6 +522,13 @@ async function writeWorkflowYaml(
       }
       if (releaseJob?.permissions && Object.keys(releaseJob.permissions).length === 0) {
         delete releaseJob.permissions;
+      } else if (releaseJob?.permissions) {
+        sortKeys(releaseJob.permissions);
+      }
+      if (releaseJob?.secrets) {
+        const secrets = releaseJob.secrets;
+        delete releaseJob.secrets;
+        releaseJob.secrets = secrets;
       }
       break;
     }

@@ -71,21 +71,20 @@ test('private source repositories publishing to npm keep trusted-publishing perm
       `jobs:\n  release:\n    uses: WillBooster/reusable-workflows/.github/workflows/release.yml@main\n    with:\n      github_hosted_runner: true\n      runs_on: '["self-hosted"]'\n  sibling:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo preserved\n`
     );
 
-    await generateWorkflows(
-      createConfig({
-        dirPath,
-        isRoot: true,
-        isPublicRepo: false,
-        depending: { ...createConfig().depending, semanticRelease: true },
-        release: {
-          branches: ['main'],
-          github: true,
-          npm: true,
-          npmPublishDirPaths: [dirPath],
-          npmPublishesRoot: true,
-        },
-      })
-    );
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      release: {
+        branches: ['main'],
+        github: true,
+        npm: true,
+        npmPublishDirPaths: [dirPath],
+        npmPublishesRoot: true,
+      },
+    });
+    await generateWorkflows(rootConfig);
     await promisePool.promiseAll();
 
     const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
@@ -97,6 +96,10 @@ test('private source repositories publishing to npm keep trusted-publishing perm
     expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
     expect(releaseWorkflow.jobs.release?.with?.runs_on).toBeUndefined();
     expect(releaseWorkflow.jobs.sibling?.permissions).toBeUndefined();
+    const firstGeneration = fs.readFileSync(path.join(workflowsPath, 'release.yml'), 'utf8');
+    await generateWorkflows(rootConfig);
+    await promisePool.promiseAll();
+    expect(fs.readFileSync(path.join(workflowsPath, 'release.yml'), 'utf8')).toBe(firstGeneration);
   });
 });
 
