@@ -47,7 +47,7 @@ export function packagePublishesPublicPackage(dirPath: string): boolean | undefi
   return packageMetadataTargetsPublicRegistry(manifest);
 }
 
-/** Whether source metadata rules out publishing through npm's public registry. */
+/** Whether source metadata is compatible with publishing through npm's public registry. */
 export function packageMetadataTargetsPublicRegistry(manifest: PackageJson | undefined): boolean {
   if (manifest?.name?.startsWith(PRIVATE_SCOPE)) return false;
   const registry = manifest?.publishConfig?.registry;
