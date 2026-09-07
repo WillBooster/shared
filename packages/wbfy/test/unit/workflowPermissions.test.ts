@@ -61,6 +61,28 @@ test('generated callers scope permissions without changing preserved sibling job
   });
 });
 
+test('private source repositories publishing to npm keep trusted-publishing permission', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-npm-oidc-', async (dirPath, workflowsPath) => {
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'example' }));
+
+    await generateWorkflows(
+      createConfig({
+        dirPath,
+        isRoot: true,
+        isPublicRepo: false,
+        depending: { ...createConfig().depending, semanticRelease: true },
+        release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: true },
+      })
+    );
+    await promisePool.promiseAll();
+
+    expect(readWorkflow(workflowsPath, 'release.yml').permissions).toEqual({
+      'id-token': 'write',
+      contents: 'write',
+    });
+  });
+});
+
 function readPermissions(workflowsPath: string, fileName: string): Record<string, string> | undefined {
   const workflow = readWorkflow(workflowsPath, fileName);
   expect(workflow.permissions).toBeUndefined();

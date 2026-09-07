@@ -415,7 +415,10 @@ async function writeWorkflowYaml(
         await fsUtil.removeConfined(filePath);
         return;
       }
-      if (config.isPublicRepo) {
+      // npm trusted publishing depends on the destination registry, not GitHub repository
+      // visibility: private source repositories can publish public packages through OIDC too.
+      // Verdaccio releases use VERDACCIO_TOKEN instead and must not receive this permission.
+      if (config.release.npm && !repoResolvesPrivatePackages(config)) {
         newSettings.permissions ??= {};
         newSettings.permissions['id-token'] = 'write';
       } else {
