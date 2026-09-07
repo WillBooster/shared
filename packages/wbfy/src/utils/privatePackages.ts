@@ -40,9 +40,16 @@ export function repoResolvesPrivatePackages(
 /** Whether the manifest at a semantic-release npm target is publishable through the public registry. */
 export function packagePublishesPublicPackage(dirPath: string): boolean | undefined {
   const manifest = readPackageJsonIfExists(path.resolve(dirPath, 'package.json'));
+  if (manifest?.private === true) return false;
   if (!manifest?.name) return undefined;
-  if (manifest.private === true || manifest.name.startsWith(PRIVATE_SCOPE)) return false;
-  const registry = manifest.publishConfig?.registry;
+  if (manifest.name.startsWith(PRIVATE_SCOPE)) return false;
+  return packageMetadataTargetsPublicRegistry(manifest);
+}
+
+/** Whether source metadata rules out publishing through npm's public registry. */
+export function packageMetadataTargetsPublicRegistry(manifest: PackageJson | undefined): boolean {
+  if (manifest?.name?.startsWith(PRIVATE_SCOPE)) return false;
+  const registry = manifest?.publishConfig?.registry;
   if (!registry) return true;
   try {
     return new URL(registry).hostname === 'registry.npmjs.org';

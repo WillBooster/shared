@@ -89,6 +89,8 @@ export interface PackageConfig {
     branches: string[];
     github: boolean;
     npm: boolean;
+    /** Whether this package defines its own plugin list instead of inheriting the root list. */
+    pluginsAreExplicit?: boolean;
     /** Absolute package directories targeted by inspectable npm plugin entries; unknown when configuration is dynamic. */
     npmPublishDirPaths?: string[];
     /**
@@ -127,7 +129,21 @@ const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: bool
   { fileName: '.releaserc.yaml', jsonParseable: false },
   { fileName: '.releaserc.yml', jsonParseable: false },
   { fileName: '.releaserc.js', jsonParseable: false },
+  { fileName: '.releaserc.ts', jsonParseable: false },
+  { fileName: '.releaserc.mjs', jsonParseable: false },
+  { fileName: '.releaserc.cjs', jsonParseable: false },
+  { fileName: '.config/releaserc', jsonParseable: true },
+  { fileName: '.config/releaserc.json', jsonParseable: true },
+  { fileName: '.config/releaserc.yaml', jsonParseable: false },
+  { fileName: '.config/releaserc.yml', jsonParseable: false },
+  { fileName: '.config/releaserc.js', jsonParseable: false },
+  { fileName: '.config/releaserc.ts', jsonParseable: false },
+  { fileName: '.config/releaserc.mjs', jsonParseable: false },
+  { fileName: '.config/releaserc.cjs', jsonParseable: false },
   { fileName: 'release.config.js', jsonParseable: false },
+  { fileName: 'release.config.ts', jsonParseable: false },
+  { fileName: 'release.config.mjs', jsonParseable: false },
+  { fileName: 'release.config.cjs', jsonParseable: false },
 ];
 
 export async function getPackageConfig(
@@ -178,6 +194,7 @@ export async function getPackageConfig(
           if (!fs.existsSync(releasercPath)) continue;
           if (!jsonParseable) {
             releasePluginsAreUnknown = true;
+            releaseNpmPublishDirPaths = undefined;
             break;
           }
           // `.releaserc` and `.config/releaserc` may also hold YAML; a JSON.parse failure lands
@@ -208,7 +225,7 @@ export async function getPackageConfig(
           // disables publishing entirely; only the remaining shape proves the ROOT is published.
           const pkgRoot = pluginOptions?.pkgRoot;
           if (pluginOptions?.npmPublish !== false) {
-            releaseNpmPublishDirPaths.push(
+            releaseNpmPublishDirPaths?.push(
               typeof pkgRoot === 'string' ? path.resolve(dirPath, pkgRoot) : path.resolve(dirPath)
             );
           }
@@ -218,7 +235,9 @@ export async function getPackageConfig(
               (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)));
           releaseNpmPluginPublishesRoot ||= publishesRoot;
         }
-      } else if (releaseConfig && releaseConfig.extends !== undefined) {
+      }
+      // A preset can contribute additional plugins even when the local config also lists plugins.
+      if (releaseConfig && releaseConfig.extends !== undefined) {
         releasePluginsAreUnknown = true;
         releaseNpmPublishDirPaths = undefined;
       }
@@ -390,6 +409,7 @@ export async function getPackageConfig(
           ? releasePlugins.includes('@semantic-release/github') || releasePluginsAreUnknown
           : usesSemanticRelease,
         npm: releasePluginsAreExplicit ? releaseNpmPluginPublishes || releasePluginsAreUnknown : usesSemanticRelease,
+        pluginsAreExplicit: releasePluginsAreExplicit,
         npmPublishDirPaths: releaseNpmPublishDirPaths,
         npmPublishesRoot: releaseNpmPluginPublishesRoot,
       },

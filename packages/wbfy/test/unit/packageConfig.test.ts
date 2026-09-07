@@ -172,6 +172,70 @@ test('does not classify a disabled npm plugin as publishing', async () => {
   }
 });
 
+test('marks non-JSON release plugin targets as unknown', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    fs.mkdirSync(packageDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(
+      path.join(packageDirPath, 'package.json'),
+      JSON.stringify({ devDependencies: { 'semantic-release': '1.0.0' } })
+    );
+    fs.writeFileSync(path.join(packageDirPath, 'release.config.js'), 'export default {};\n');
+
+    const config = await getPackageConfig(packageDirPath);
+
+    expect(config?.release.npm).toBe(true);
+    expect(config?.release.npmPublishDirPaths).toBeUndefined();
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('recognizes every dynamic semantic-release config location', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    fs.mkdirSync(path.join(packageDirPath, '.config'), { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(
+      path.join(packageDirPath, 'package.json'),
+      JSON.stringify({ devDependencies: { 'semantic-release': '1.0.0' } })
+    );
+    fs.writeFileSync(path.join(packageDirPath, '.config', 'releaserc.ts'), 'export default {};\n');
+
+    const config = await getPackageConfig(packageDirPath);
+
+    expect(config?.release.npmPublishDirPaths).toBeUndefined();
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
+test('marks presets as unknown even alongside local plugins', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    fs.mkdirSync(packageDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(
+      path.join(packageDirPath, 'package.json'),
+      JSON.stringify({
+        devDependencies: { 'semantic-release': '1.0.0' },
+        release: { extends: 'release-preset', plugins: ['@semantic-release/github'] },
+      })
+    );
+
+    const config = await getPackageConfig(packageDirPath);
+
+    expect(config?.release.npm).toBe(true);
+    expect(config?.release.npmPublishDirPaths).toBeUndefined();
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 async function detectTauri(setup: { packageJson?: object; srcTauriFileName?: string }): Promise<boolean> {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {

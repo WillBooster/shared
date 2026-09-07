@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { expect, test } from 'bun:test';
 
-import { repoResolvesPrivatePackages } from '../../src/utils/privatePackages.js';
+import { packagePublishesPublicPackage, repoResolvesPrivatePackages } from '../../src/utils/privatePackages.js';
 import { createConfig } from '../helpers/testConfig.js';
 
 test('detects no private-package usage in a plain repository', async () => {
@@ -56,6 +56,13 @@ test('detects a package published to Verdaccio via its scoped name', async () =>
   await withTempDir(async (tempDirPath) => {
     writeJson(path.join(tempDirPath, 'package.json'), { name: '@willbooster-private/agentic-workflows' });
     expect(repoResolvesPrivatePackages(createConfig({ dirPath: tempDirPath }))).toBe(true);
+  });
+});
+
+test('a nameless private manifest is not treated as an unbuilt public target', async () => {
+  await withTempDir(async (tempDirPath) => {
+    writeJson(path.join(tempDirPath, 'package.json'), { private: true });
+    expect(packagePublishesPublicPackage(tempDirPath)).toBe(false);
   });
 });
 
