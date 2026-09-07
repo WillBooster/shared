@@ -41,8 +41,12 @@ async function getApi(): Promise<API> {
   // The client marks itself connected only once its first spawn completes, so concurrent
   // first requests (the fixers run in parallel) would each spawn a compiler server; the
   // extra servers are never closed and keep the process alive after `disposeTypeScriptApi`.
-  // The first request is therefore awaited once before any other is sent.
-  connected ??= api.updateSnapshot();
+  // The first request is therefore awaited once before any other is sent; a failed one is
+  // forgotten so that the next request connects again instead of failing for the whole run.
+  connected ??= api.updateSnapshot().catch((error: unknown) => {
+    connected = undefined;
+    throw error;
+  });
   await connected;
   return api;
 }
