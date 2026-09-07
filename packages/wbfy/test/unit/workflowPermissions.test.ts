@@ -434,7 +434,7 @@ test('dynamic release configuration preserves existing trusted-publishing settin
   });
 });
 
-test('dynamic release configuration honors an explicit public registry', async () => {
+test('dynamic release configuration does not infer a pkgRoot registry from source metadata', async () => {
   await withTempWorkflowsRepo('wbfy-workflow-dynamic-public-registry-', async (dirPath, workflowsPath) => {
     const packageJson = {
       name: 'public-package',
@@ -454,8 +454,8 @@ test('dynamic release configuration honors an explicit public registry', async (
     await promisePool.promiseAll();
 
     const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
-    expect(releaseWorkflow.jobs.release?.permissions?.['id-token']).toBe('write');
-    expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
+    expect(releaseWorkflow.jobs.release?.permissions?.['id-token']).toBeUndefined();
+    expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBeUndefined();
   });
 });
 

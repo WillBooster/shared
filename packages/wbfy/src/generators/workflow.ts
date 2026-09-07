@@ -301,31 +301,19 @@ function classifyPublicNpmPublishing(packageConfig: PackageConfig, rootConfig: P
   if (inheritsRootPlugins) {
     if (!rootConfig.release.npm) return false;
     if (!rootConfig.release.npmPublishDirPaths) {
-      return classifyDynamicPublicNpmPublishing(packageConfig, rootConfig);
+      return undefined;
     }
     return classifyKnownPublicNpmTargets(packageConfig, [packageConfig.dirPath]);
   }
   if (!packageConfig.release.npm) return false;
   const publishDirPaths = packageConfig.release.npmPublishDirPaths;
   if (!publishDirPaths) {
-    return classifyDynamicPublicNpmPublishing(packageConfig, rootConfig);
+    // A dynamic config can redirect pkgRoot to metadata unrelated to the source manifest. Preserve
+    // existing workflow state because neither repository visibility nor source package metadata
+    // proves which registry the effective target uses.
+    return undefined;
   }
   return classifyKnownPublicNpmTargets(packageConfig, publishDirPaths);
-}
-
-function classifyDynamicPublicNpmPublishing(
-  packageConfig: PackageConfig,
-  rootConfig: PackageConfig
-): boolean | undefined {
-  const sourceManifest = packageConfig.packageJson;
-  const registry = sourceManifest?.publishConfig?.registry;
-  // Dynamic plugin configuration is genuinely unknowable unless repository visibility or package
-  // metadata supplies a decisive registry signal. Preserve existing workflow state for the
-  // remaining case instead of either breaking trusted publishing or granting a new token-minting
-  // permission without evidence.
-  if (sourceManifest?.private === true || !packageMetadataTargetsPublicRegistry(sourceManifest)) return false;
-  if (rootConfig.isPublicRepo) return true;
-  return registry ? packageMetadataTargetsPublicRegistry(sourceManifest) : undefined;
 }
 
 function classifyKnownPublicNpmTargets(packageConfig: PackageConfig, publishDirPaths: string[]): boolean {
