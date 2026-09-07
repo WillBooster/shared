@@ -140,6 +140,7 @@ test('detects @semantic-release/npm in both string and tuple plugin forms', asyn
     );
     const config = await getPackageConfig(packageDirPath);
     expect(config?.release.npm).toBe(true);
+    expect(config?.release.npmPublishDirPaths).toEqual([packageDirPath]);
     expect(config?.depending.semanticRelease).toBe(true);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });
@@ -164,6 +165,7 @@ test('does not classify a disabled npm plugin as publishing', async () => {
     const config = await getPackageConfig(packageDirPath);
 
     expect(config?.release.npm).toBe(false);
+    expect(config?.release.npmPublishDirPaths).toEqual([]);
     expect(config?.depending.semanticRelease).toBe(true);
   } finally {
     fs.rmSync(tempDirPath, { recursive: true, force: true });

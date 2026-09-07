@@ -13,11 +13,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
-import {
-  packagePublishesPublicPackage,
-  repoPublishesPublicPackages,
-  repoResolvesPrivatePackages,
-} from '../utils/privatePackages.js';
+import { packagePublishesPublicPackage, repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
 
 interface Workflow {
@@ -280,10 +276,11 @@ export async function generateWorkflows(
     const publishesToPublicNpm = packageConfigs.some((packageConfig) => {
       if (!packageConfig.release.npm) return false;
       const publishDirPaths = packageConfig.release.npmPublishDirPaths;
-      if (!publishDirPaths) return repoPublishesPublicPackages(rootConfig);
-      return publishDirPaths.some(
-        (publishDirPath) => packagePublishesPublicPackage(publishDirPath) ?? repoPublishesPublicPackages(rootConfig)
-      );
+      // Dynamic release configuration cannot justify granting OIDC to a private repository. An
+      // explicit enabled npm target can: its package.json may be generated only during the build,
+      // so lack of a readable manifest must not make the generated release unauthenticated.
+      if (!publishDirPaths) return rootConfig.isPublicRepo;
+      return publishDirPaths.some((publishDirPath) => packagePublishesPublicPackage(publishDirPath) ?? true);
     });
 
     for (const [kind, fileName] of fileNamesByKind) {
@@ -396,6 +393,7 @@ async function writeWorkflowYaml(
     // npm trusted publishing supports only GitHub-hosted GitHub Actions runners. Private
     // repositories otherwise default to the self-hosted release runner in reusable-workflows.
     newSettings.jobs.release.with ??= {};
+    delete newSettings.jobs.release.with.runs_on;
     newSettings.jobs.release.with.github_hosted_runner = true;
   }
 

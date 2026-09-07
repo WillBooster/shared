@@ -37,20 +37,18 @@ export function repoResolvesPrivatePackages(
   });
 }
 
-/** Whether npm can publish any repository manifest to the public registry. */
-export function repoPublishesPublicPackages(
-  config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>
-): boolean {
-  return getPackageManifests(config).some(
-    (manifest) => manifest.private !== true && manifest.name && !manifest.name.startsWith(PRIVATE_SCOPE)
-  );
-}
-
 /** Whether the manifest at a semantic-release npm target is publishable through the public registry. */
 export function packagePublishesPublicPackage(dirPath: string): boolean | undefined {
   const manifest = readPackageJsonIfExists(path.resolve(dirPath, 'package.json'));
   if (!manifest?.name) return undefined;
-  return manifest.private !== true && !manifest.name.startsWith(PRIVATE_SCOPE);
+  if (manifest.private === true || manifest.name.startsWith(PRIVATE_SCOPE)) return false;
+  const registry = manifest.publishConfig?.registry;
+  if (!registry) return true;
+  try {
+    return new URL(registry).hostname === 'registry.npmjs.org';
+  } catch {
+    return false;
+  }
 }
 
 function getPackageManifests(
