@@ -106,6 +106,7 @@ export interface PackageConfig {
 }
 
 type WbfyJson = z.infer<typeof wbfyJsonSchema>;
+type ReleasePluginEntry = string | [string, Record<string, unknown>] | Record<string, unknown>;
 
 const wbfyJsonSchema = z.object({
   typos: z
@@ -182,7 +183,7 @@ export async function getPackageConfig(
       type ReleaseConfig =
         | {
             branches?: unknown;
-            plugins?: (string | [string, Record<string, unknown>])[];
+            plugins?: ReleasePluginEntry[];
             publish?: unknown;
             extends?: unknown;
           }
@@ -215,7 +216,7 @@ export async function getPackageConfig(
       if (Array.isArray(releaseConfig?.plugins)) {
         releasePluginsAreExplicit = true;
         for (const pluginEntry of releaseConfig.plugins) {
-          const [pluginName] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry];
+          const [pluginName] = parseReleasePluginEntry(pluginEntry);
           if (typeof pluginName !== 'string') continue;
           releasePlugins.push(pluginName);
         }
@@ -436,7 +437,7 @@ export async function getPackageConfig(
   }
 }
 
-function normalizeReleasePluginEntries(value: unknown): (string | [string, Record<string, unknown>])[] | undefined {
+function normalizeReleasePluginEntries(value: unknown): ReleasePluginEntry[] | undefined {
   if (value === false || value === null) return [];
   if (typeof value === 'string') return [value];
   if (!Array.isArray(value)) return undefined;
@@ -446,18 +447,18 @@ function normalizeReleasePluginEntries(value: unknown): (string | [string, Recor
   ) {
     return [value as [string, Record<string, unknown>]];
   }
-  return value as (string | [string, Record<string, unknown>])[];
+  return value as ReleasePluginEntry[];
 }
 
 function getNpmReleaseTargets(
-  pluginEntries: (string | [string, Record<string, unknown>])[],
+  pluginEntries: ReleasePluginEntry[],
   dirPath: string
 ): { publishes: boolean; publishDirPaths: string[]; publishesRoot: boolean } {
   let publishes = false;
   let publishesRoot = false;
   const publishDirPaths: string[] = [];
   for (const pluginEntry of pluginEntries) {
-    const [pluginName, pluginOptions] = Array.isArray(pluginEntry) ? pluginEntry : [pluginEntry, undefined];
+    const [pluginName, pluginOptions] = parseReleasePluginEntry(pluginEntry);
     if (pluginName !== '@semantic-release/npm') continue;
     publishes ||= pluginOptions?.npmPublish !== false;
     // With pkgRoot the plugin publishes another manifest (it resolves pkgRoot against the repo
@@ -472,6 +473,15 @@ function getNpmReleaseTargets(
         (typeof pkgRoot === 'string' && path.resolve(dirPath, pkgRoot) === path.resolve(dirPath)));
   }
   return { publishes, publishDirPaths, publishesRoot };
+}
+
+function parseReleasePluginEntry(pluginEntry: ReleasePluginEntry): [unknown, Record<string, unknown> | undefined] {
+  if (Array.isArray(pluginEntry)) return pluginEntry;
+  if (pluginEntry && typeof pluginEntry === 'object') {
+    const { path: pluginPath, ...pluginOptions } = pluginEntry;
+    return [pluginPath, pluginOptions];
+  }
+  return [pluginEntry, undefined];
 }
 
 /**

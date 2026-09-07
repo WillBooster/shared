@@ -168,9 +168,23 @@ test('private npm target is not confused with unrelated public workspace manifes
         npmPublishesRoot: false,
       },
     });
-    const appConfig = createConfig({ dirPath: path.join(dirPath, 'packages', 'app') });
+    const appConfig = createConfig({
+      dirPath: path.join(dirPath, 'packages', 'app'),
+      release: {
+        branches: [],
+        github: false,
+        npm: false,
+        pluginsAreExplicit: true,
+        npmPublishDirPaths: [],
+        npmPublishesRoot: false,
+      },
+    });
+    const privatePackageConfig = createConfig({
+      dirPath: privatePackageDirPath,
+      packageJson: { name: '@willbooster-private/cli' },
+    });
 
-    await generateWorkflows(rootConfig, [rootConfig, appConfig]);
+    await generateWorkflows(rootConfig, [rootConfig, appConfig, privatePackageConfig]);
     await promisePool.promiseAll();
 
     const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
@@ -229,6 +243,38 @@ test('unbuilt private-scope target stays on the private registry', async () => {
     await promisePool.promiseAll();
 
     expect(readWorkflow(workflowsPath, 'release.yml').permissions).toEqual({ contents: 'write' });
+  });
+});
+
+test('stale pkgRoot metadata does not override the source registry', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-stale-pkg-root-', async (dirPath, workflowsPath) => {
+    const packageJson = { name: '@willbooster-private/tool', private: true };
+    const publishDirPath = path.join(dirPath, 'dist');
+    fs.mkdirSync(publishDirPath, { recursive: true });
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify(packageJson));
+    fs.writeFileSync(path.join(publishDirPath, 'package.json'), JSON.stringify({ name: 'old-public-name' }));
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      packageJson,
+      release: {
+        branches: ['main'],
+        github: true,
+        npm: true,
+        npmPublishDirPaths: [publishDirPath],
+        npmPublishesRoot: false,
+      },
+    });
+
+    await generateWorkflows(rootConfig);
+    await promisePool.promiseAll();
+
+    const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
+    expect(releaseWorkflow.permissions).toEqual({ contents: 'write' });
+    expect(releaseWorkflow.jobs.release?.permissions?.['id-token']).toBeUndefined();
+    expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBeUndefined();
   });
 });
 

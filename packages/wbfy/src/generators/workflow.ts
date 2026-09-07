@@ -278,7 +278,7 @@ export async function generateWorkflows(
     let publishesToPublicNpm: boolean | undefined = false;
     const resolvesPrivatePackages = packageConfigs.some((packageConfig) => repoResolvesPrivatePackages(packageConfig));
     for (const packageConfig of packageConfigs) {
-      const packagePublishesToPublicNpm = classifyPublicNpmPublishing(packageConfig, rootConfig);
+      const packagePublishesToPublicNpm = classifyPublicNpmPublishing(packageConfig, rootConfig, packageConfigs);
       if (packagePublishesToPublicNpm) {
         publishesToPublicNpm = true;
         break;
@@ -302,7 +302,11 @@ export async function generateWorkflows(
   });
 }
 
-function classifyPublicNpmPublishing(packageConfig: PackageConfig, rootConfig: PackageConfig): boolean | undefined {
+function classifyPublicNpmPublishing(
+  packageConfig: PackageConfig,
+  rootConfig: PackageConfig,
+  packageConfigs: PackageConfig[]
+): boolean | undefined {
   const isWorkspace = path.resolve(packageConfig.dirPath) !== path.resolve(rootConfig.dirPath);
   const inheritsRootPlugins =
     isWorkspace &&
@@ -314,7 +318,7 @@ function classifyPublicNpmPublishing(packageConfig: PackageConfig, rootConfig: P
     if (!rootConfig.release.npmPublishDirPaths) {
       return undefined;
     }
-    return classifyKnownPublicNpmTargets(packageConfig, [packageConfig.dirPath]);
+    return classifyKnownPublicNpmTargets(packageConfig, [packageConfig.dirPath], packageConfigs);
   }
   if (!packageConfig.release.npm) return false;
   const publishDirPaths = packageConfig.release.npmPublishDirPaths;
@@ -324,12 +328,19 @@ function classifyPublicNpmPublishing(packageConfig: PackageConfig, rootConfig: P
     // proves which registry the effective target uses.
     return undefined;
   }
-  return classifyKnownPublicNpmTargets(packageConfig, publishDirPaths);
+  return classifyKnownPublicNpmTargets(packageConfig, publishDirPaths, packageConfigs);
 }
 
-function classifyKnownPublicNpmTargets(packageConfig: PackageConfig, publishDirPaths: string[]): boolean {
+function classifyKnownPublicNpmTargets(
+  packageConfig: PackageConfig,
+  publishDirPaths: string[],
+  packageConfigs: PackageConfig[]
+): boolean {
   return publishDirPaths.some((publishDirPath) => {
-    const classification = packagePublishesPublicPackage(publishDirPath);
+    const targetConfig = packageConfigs.find(
+      (candidateConfig) => path.resolve(candidateConfig.dirPath) === path.resolve(publishDirPath)
+    );
+    const classification = targetConfig ? packagePublishesPublicPackage(publishDirPath) : undefined;
     const publishesNormalizedRoot =
       packageConfig.doesContainSubPackageJsons &&
       packageConfig.release.npmPublishesRoot &&
@@ -337,10 +348,10 @@ function classifyKnownPublicNpmTargets(packageConfig: PackageConfig, publishDirP
     if (classification !== undefined && !(classification === false && publishesNormalizedRoot)) {
       return classification;
     }
-    // Build-output manifests may not exist yet. The source package's scope and registry still
-    // rule out public npm, while a generic private monorepo can intentionally build a public
-    // package into pkgRoot. Root publishing intent also removes `private` later in this run.
-    return packageMetadataTargetsPublicRegistry(packageConfig.packageJson);
+    // A pkgRoot manifest is generated build output and can be absent or stale when wbfy runs.
+    // Classify it from the source package instead so identical commits generate identical
+    // workflows. A target that is itself a configured workspace remains authoritative.
+    return packageMetadataTargetsPublicRegistry((targetConfig ?? packageConfig).packageJson);
   });
 }
 

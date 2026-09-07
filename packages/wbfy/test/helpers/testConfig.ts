@@ -71,6 +71,7 @@ export function createConfig(overrides: Partial<PackageConfig> = {}): PackageCon
       branches: [],
       github: false,
       npm: false,
+      npmPublishDirPaths: [],
       npmPublishesRoot: false,
     },
     miseTasks: {},
