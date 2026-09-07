@@ -276,6 +276,7 @@ export async function generateWorkflows(
       fileNamesByKind.delete('sync-force');
     }
     let publishesToPublicNpm: boolean | undefined = false;
+    const resolvesPrivatePackages = packageConfigs.some((packageConfig) => repoResolvesPrivatePackages(packageConfig));
     for (const packageConfig of packageConfigs) {
       const packagePublishesToPublicNpm = classifyPublicNpmPublishing(packageConfig, rootConfig);
       if (packagePublishesToPublicNpm) {
@@ -288,7 +289,14 @@ export async function generateWorkflows(
     for (const [kind, fileName] of fileNamesByKind) {
       // 実際はKnownKind以外の値も代入されることに注意
       await promisePool.run(() =>
-        writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName, publishesToPublicNpm)
+        writeWorkflowYaml(
+          rootConfig,
+          workflowsPath,
+          kind as KnownKind,
+          fileName,
+          publishesToPublicNpm,
+          resolvesPrivatePackages
+        )
       );
     }
   });
@@ -372,7 +380,8 @@ async function writeWorkflowYaml(
   workflowsPath: string,
   kind: KnownKind,
   fileName = `${kind}.yml`,
-  publishesToPublicNpm?: boolean
+  publishesToPublicNpm?: boolean,
+  resolvesPrivatePackages = repoResolvesPrivatePackages(config)
 ): Promise<void> {
   const filePath = path.join(workflowsPath, fileName);
   const deployProductionFileName = fs.existsSync(path.join(workflowsPath, 'deploy-production.yml'))
@@ -448,7 +457,7 @@ async function writeWorkflowYaml(
     // permissions) could break them.
     if (!job || !parseOrgReusableWorkflowCall(job.uses)) continue;
 
-    normalizeJob(config, job, kind);
+    normalizeJob(config, job, kind, resolvesPrivatePackages);
     isReusableWorkflow = true;
   }
   if (!isReusableWorkflow) return;
@@ -893,7 +902,7 @@ const reusableWorkflowPermissions: Record<string, Record<string, string>> = {
   'close-comment': { 'pull-requests': 'write' },
 };
 
-function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
+function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind, resolvesPrivatePackages: boolean): void {
   job.with ??= {};
   // `secrets: inherit` (parsed by js-yaml as a plain string) already forwards every caller secret
   // including the ones injected below, so preserve it untouched — property assignments on the
@@ -931,7 +940,7 @@ function normalizeJob(config: PackageConfig, job: Job, kind: KnownKind): void {
     // (or publish to Verdaccio) get the pass-through: everywhere else the credential would flow
     // into CI runs that never use it, so the line is removed instead. The GitHub secret itself is
     // always registered manually and stays registered either way.
-    if (repoResolvesPrivatePackages(config)) {
+    if (resolvesPrivatePackages) {
       secrets.VERDACCIO_TOKEN = '${{ secrets.VERDACCIO_TOKEN }}';
     } else {
       delete secrets.VERDACCIO_TOKEN;

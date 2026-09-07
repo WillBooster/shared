@@ -18,6 +18,7 @@ const workflowSchema = z.object({
       .object({
         permissions: z.record(z.string(), z.string()).optional(),
         'runs-on': z.string().optional(),
+        secrets: z.record(z.string(), z.string()).optional(),
         steps: z.array(z.object({ run: z.string() })).optional(),
         with: z.record(z.string(), z.unknown()).optional(),
       })
@@ -225,6 +226,43 @@ test('unbuilt private-scope target stays on the private registry', async () => {
     await promisePool.promiseAll();
 
     expect(readWorkflow(workflowsPath, 'release.yml').permissions).toEqual({ contents: 'write' });
+  });
+});
+
+test('workspace private publish targets receive Verdaccio credentials', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-workspace-private-target-', async (dirPath, workflowsPath) => {
+    const workspaceDirPath = path.join(dirPath, 'packages', 'tool');
+    const publishDirPath = path.join(workspaceDirPath, 'dist');
+    fs.mkdirSync(publishDirPath, { recursive: true });
+    fs.writeFileSync(path.join(dirPath, 'package.json'), JSON.stringify({ name: 'root', private: true }));
+    fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({ name: 'source-tool' }));
+    fs.writeFileSync(path.join(publishDirPath, 'package.json'), JSON.stringify({ name: '@willbooster-private/tool' }));
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      release: { branches: ['main'], github: true, npm: false, npmPublishesRoot: false },
+    });
+    const workspaceConfig = createConfig({
+      dirPath: workspaceDirPath,
+      packageJson: { name: 'source-tool' },
+      release: {
+        branches: [],
+        github: true,
+        npm: true,
+        pluginsAreExplicit: true,
+        npmPublishDirPaths: [publishDirPath],
+        npmPublishesRoot: false,
+      },
+    });
+
+    await generateWorkflows(rootConfig, [rootConfig, workspaceConfig]);
+    await promisePool.promiseAll();
+
+    const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
+    expect(releaseWorkflow.permissions).toEqual({ contents: 'write' });
+    expect(releaseWorkflow.jobs.release?.secrets?.VERDACCIO_TOKEN).toBe('${{ secrets.VERDACCIO_TOKEN }}');
   });
 });
 

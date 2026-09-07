@@ -17,7 +17,7 @@ export async function generateRepositoryNpmrc(configs: PackageConfig[]): Promise
 
   const npmrcPaths = new Set(configs.map((config) => path.resolve(config.dirPath, '.npmrc')));
   const rootConfig = configs.find((config) => config.isRoot);
-  if (rootConfig && repoResolvesPrivatePackages(rootConfig)) {
+  if (rootConfig && configs.some((config) => repoResolvesPrivatePackages(config))) {
     const rootNpmrcPath = path.resolve(rootConfig.dirPath, '.npmrc');
     await fsUtil.generateFile(rootNpmrcPath, privateRegistryScopeMapping);
     npmrcPaths.delete(rootNpmrcPath);

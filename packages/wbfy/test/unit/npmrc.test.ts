@@ -86,6 +86,30 @@ describe('generateRepositoryNpmrc', () => {
     expect(await fs.promises.lstat(npmrcPath).catch((error: unknown) => error)).toMatchObject({ code: 'ENOENT' });
   });
 
+  it('uses private publish targets declared by workspace release configs', async () => {
+    const rootDirPath = await makeTempDir();
+    const workspaceDirPath = path.join(rootDirPath, 'packages', 'tool');
+    const publishDirPath = path.join(workspaceDirPath, 'dist');
+    await fs.promises.mkdir(publishDirPath, { recursive: true });
+    await fs.promises.writeFile(path.join(rootDirPath, 'package.json'), JSON.stringify({ name: 'root' }));
+    await fs.promises.writeFile(path.join(workspaceDirPath, 'package.json'), JSON.stringify({ name: 'source-tool' }));
+    await fs.promises.writeFile(
+      path.join(publishDirPath, 'package.json'),
+      JSON.stringify({ name: '@willbooster-private/tool' })
+    );
+    fsUtil.setRootDirPath(rootDirPath);
+    const workspaceConfig = packageConfig(workspaceDirPath, 'WillBooster', false);
+    workspaceConfig.release = {
+      npmPublishDirPaths: [publishDirPath],
+    } as PackageConfig['release'];
+
+    await generateRepositoryNpmrc([packageConfig(rootDirPath, 'WillBooster', true), workspaceConfig]);
+
+    expect(await fs.promises.readFile(path.join(rootDirPath, '.npmrc'), 'utf8')).toBe(
+      '@willbooster-private:registry=https://verdaccio-production-e389.up.railway.app/\n'
+    );
+  });
+
   it('preserves repository npmrc files outside the organizations', async () => {
     const rootDirPath = await makeTempDir();
     const npmrcPath = path.join(rootDirPath, '.npmrc');
