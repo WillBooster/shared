@@ -46,6 +46,13 @@ export function repoPublishesPublicPackages(
   );
 }
 
+/** Whether the manifest at a semantic-release npm target is publishable through the public registry. */
+export function packagePublishesPublicPackage(dirPath: string): boolean | undefined {
+  const manifest = readPackageJsonIfExists(path.resolve(dirPath, 'package.json'));
+  if (!manifest?.name) return undefined;
+  return manifest.private !== true && !manifest.name.startsWith(PRIVATE_SCOPE);
+}
+
 function getPackageManifests(
   config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>
 ): PackageJson[] {

@@ -89,6 +89,8 @@ export interface PackageConfig {
     branches: string[];
     github: boolean;
     npm: boolean;
+    /** Absolute package directories targeted by inspectable npm plugin entries; unknown when configuration is dynamic. */
+    npmPublishDirPaths?: string[];
     /**
      * An explicit `@semantic-release/npm` plugin entry publishes the root manifest itself
      * (no pkgRoot redirection and npmPublish not disabled).
@@ -151,6 +153,7 @@ export async function getPackageConfig(
     let releasePlugins: string[] = [];
     let releasePluginsAreExplicit = false;
     let releaseNpmPluginPublishes = false;
+    let releaseNpmPublishDirPaths: string[] | undefined = [];
     let releaseNpmPluginPublishesRoot = false;
     // The FIRST existing search place wins (cosmiconfig short-circuits), so a JS/YAML/TS config
     // or an `extends` preset makes the effective plugin list statically uninspectable (mirrors
@@ -204,6 +207,11 @@ export async function getPackageConfig(
           // repo root, so `.` and `./` both mean the root itself), and npmPublish: false
           // disables publishing entirely; only the remaining shape proves the ROOT is published.
           const pkgRoot = pluginOptions?.pkgRoot;
+          if (pluginOptions?.npmPublish !== false) {
+            releaseNpmPublishDirPaths.push(
+              typeof pkgRoot === 'string' ? path.resolve(dirPath, pkgRoot) : path.resolve(dirPath)
+            );
+          }
           const publishesRoot =
             pluginOptions?.npmPublish !== false &&
             (pkgRoot === undefined ||
@@ -212,9 +220,11 @@ export async function getPackageConfig(
         }
       } else if (releaseConfig && releaseConfig.extends !== undefined) {
         releasePluginsAreUnknown = true;
+        releaseNpmPublishDirPaths = undefined;
       }
     } catch {
       releasePluginsAreUnknown = true;
+      releaseNpmPublishDirPaths = undefined;
     }
     // Without an explicit plugin list, semantic-release's default list applies, which includes
     // @semantic-release/npm and @semantic-release/github (mirrors releasePublishesToNpm in wb's
@@ -225,6 +235,9 @@ export async function getPackageConfig(
       releasePlugins.length > 0 ||
       releasePluginsAreUnknown
     );
+    if (!releasePluginsAreExplicit && !releasePluginsAreUnknown) {
+      releaseNpmPublishDirPaths = usesSemanticRelease ? [path.resolve(dirPath)] : [];
+    }
 
     // The caller may classify explicitly (index.ts passes false for every discovered workspace,
     // including non-packages/* layouts such as apps/*); the heuristic classifies the CLI entry
@@ -377,6 +390,7 @@ export async function getPackageConfig(
           ? releasePlugins.includes('@semantic-release/github') || releasePluginsAreUnknown
           : usesSemanticRelease,
         npm: releasePluginsAreExplicit ? releaseNpmPluginPublishes || releasePluginsAreUnknown : usesSemanticRelease,
+        npmPublishDirPaths: releaseNpmPublishDirPaths,
         npmPublishesRoot: releaseNpmPluginPublishesRoot,
       },
       miseTasks: await readMiseTasks(dirPath),

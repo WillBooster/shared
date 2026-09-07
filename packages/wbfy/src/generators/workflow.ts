@@ -13,7 +13,11 @@ import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
-import { repoPublishesPublicPackages, repoResolvesPrivatePackages } from '../utils/privatePackages.js';
+import {
+  packagePublishesPublicPackage,
+  repoPublishesPublicPackages,
+  repoResolvesPrivatePackages,
+} from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
 
 interface Workflow {
@@ -273,8 +277,14 @@ export async function generateWorkflows(
       // independent kind would race concurrent writes on the same path.
       fileNamesByKind.delete('sync-force');
     }
-    const publishesToPublicNpm =
-      packageConfigs.some((packageConfig) => packageConfig.release.npm) && repoPublishesPublicPackages(rootConfig);
+    const publishesToPublicNpm = packageConfigs.some((packageConfig) => {
+      if (!packageConfig.release.npm) return false;
+      const publishDirPaths = packageConfig.release.npmPublishDirPaths;
+      if (!publishDirPaths) return repoPublishesPublicPackages(rootConfig);
+      return publishDirPaths.some(
+        (publishDirPath) => packagePublishesPublicPackage(publishDirPath) ?? repoPublishesPublicPackages(rootConfig)
+      );
+    });
 
     for (const [kind, fileName] of fileNamesByKind) {
       // 実際はKnownKind以外の値も代入されることに注意

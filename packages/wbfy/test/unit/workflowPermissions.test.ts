@@ -78,7 +78,13 @@ test('private source repositories publishing to npm keep trusted-publishing perm
         isRoot: true,
         isPublicRepo: false,
         depending: { ...createConfig().depending, semanticRelease: true },
-        release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: true },
+        release: {
+          branches: ['main'],
+          github: true,
+          npm: true,
+          npmPublishDirPaths: [dirPath],
+          npmPublishesRoot: true,
+        },
       })
     );
     await promisePool.promiseAll();
@@ -104,6 +110,7 @@ test('workspace npm releases grant trusted-publishing permission to the caller',
     const rootConfig = createConfig({
       dirPath,
       isRoot: true,
+      isPublicRepo: false,
       doesContainSubPackageJsons: true,
       depending: { ...createConfig().depending, semanticRelease: true },
       packageJson: { name: 'private-root', private: true, workspaces: ['packages/*'] },
@@ -111,13 +118,58 @@ test('workspace npm releases grant trusted-publishing permission to the caller',
     });
     const workspaceConfig = createConfig({
       dirPath: workspaceDirPath,
-      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: true },
+      release: {
+        branches: ['main'],
+        github: true,
+        npm: true,
+        npmPublishDirPaths: [workspaceDirPath],
+        npmPublishesRoot: true,
+      },
     });
 
     await generateWorkflows(rootConfig, [rootConfig, workspaceConfig]);
     await promisePool.promiseAll();
 
     expect(readWorkflow(workflowsPath, 'release.yml').permissions?.['id-token']).toBe('write');
+  });
+});
+
+test('private npm target is not confused with unrelated public workspace manifests', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-private-target-', async (dirPath, workflowsPath) => {
+    const privatePackageDirPath = path.join(dirPath, 'packages', 'cli');
+    fs.mkdirSync(privatePackageDirPath, { recursive: true });
+    fs.mkdirSync(path.join(dirPath, 'packages', 'app'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dirPath, 'package.json'),
+      JSON.stringify({ name: 'private-root', private: true, workspaces: ['packages/*'] })
+    );
+    fs.writeFileSync(
+      path.join(privatePackageDirPath, 'package.json'),
+      JSON.stringify({ name: '@willbooster-private/cli' })
+    );
+    fs.writeFileSync(path.join(dirPath, 'packages', 'app', 'package.json'), JSON.stringify({ name: 'app' }));
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      isPublicRepo: false,
+      doesContainSubPackageJsons: true,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      packageJson: { name: 'private-root', private: true, workspaces: ['packages/*'] },
+      release: {
+        branches: ['main'],
+        github: true,
+        npm: true,
+        npmPublishDirPaths: [privatePackageDirPath],
+        npmPublishesRoot: false,
+      },
+    });
+
+    await generateWorkflows(rootConfig);
+    await promisePool.promiseAll();
+
+    const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
+    expect(releaseWorkflow.permissions).toEqual({ contents: 'write' });
+    expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBeUndefined();
   });
 });
 
