@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import { globIgnore } from '@willbooster/shared-lib-node/src';
 import fg from 'fast-glob';
+import * as yaml from 'js-yaml';
 import type { PackageJson } from 'type-fest';
 import { z } from 'zod';
 
@@ -119,23 +120,22 @@ const wbfyJsonSchema = z.object({
 
 /**
  * The semantic-release config files wbfy expects, in cosmiconfig's resolution order (the leading
- * package.json entry is checked by the caller). wbfy generates .releaserc.json; the other spellings
- * are listed only to detect a hand-written config, whose format JSON.parse cannot read and whose
- * plugin list is therefore statically uninspectable.
+ * package.json entry is checked by the caller). JSON and YAML variants are inspected directly;
+ * executable JavaScript and TypeScript variants are detected but remain statically uninspectable.
  */
-const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: boolean }[] = [
-  { fileName: '.releaserc', jsonParseable: true },
+const semanticReleaseConfigSearchPlaces: { fileName: string; jsonParseable: boolean; yamlParseable?: boolean }[] = [
+  { fileName: '.releaserc', jsonParseable: false, yamlParseable: true },
   { fileName: '.releaserc.json', jsonParseable: true },
-  { fileName: '.releaserc.yaml', jsonParseable: false },
-  { fileName: '.releaserc.yml', jsonParseable: false },
+  { fileName: '.releaserc.yaml', jsonParseable: false, yamlParseable: true },
+  { fileName: '.releaserc.yml', jsonParseable: false, yamlParseable: true },
   { fileName: '.releaserc.js', jsonParseable: false },
   { fileName: '.releaserc.ts', jsonParseable: false },
   { fileName: '.releaserc.mjs', jsonParseable: false },
   { fileName: '.releaserc.cjs', jsonParseable: false },
-  { fileName: '.config/releaserc', jsonParseable: true },
+  { fileName: '.config/releaserc', jsonParseable: false, yamlParseable: true },
   { fileName: '.config/releaserc.json', jsonParseable: true },
-  { fileName: '.config/releaserc.yaml', jsonParseable: false },
-  { fileName: '.config/releaserc.yml', jsonParseable: false },
+  { fileName: '.config/releaserc.yaml', jsonParseable: false, yamlParseable: true },
+  { fileName: '.config/releaserc.yml', jsonParseable: false, yamlParseable: true },
   { fileName: '.config/releaserc.js', jsonParseable: false },
   { fileName: '.config/releaserc.ts', jsonParseable: false },
   { fileName: '.config/releaserc.mjs', jsonParseable: false },
@@ -189,18 +189,16 @@ export async function getPackageConfig(
       // (semantic-release 25 delegates to cosmiconfig 9's default searchPlaces).
       let releaseConfig = (packageJson as { release?: ReleaseConfig }).release;
       if (releaseConfig === undefined) {
-        for (const { fileName, jsonParseable } of semanticReleaseConfigSearchPlaces) {
+        for (const { fileName, jsonParseable, yamlParseable } of semanticReleaseConfigSearchPlaces) {
           const releasercPath = path.resolve(dirPath, fileName);
           if (!fs.existsSync(releasercPath)) continue;
-          if (!jsonParseable) {
+          if (!jsonParseable && !yamlParseable) {
             releasePluginsAreUnknown = true;
             releaseNpmPublishDirPaths = undefined;
             break;
           }
-          // `.releaserc` and `.config/releaserc` may also hold YAML; a JSON.parse failure lands
-          // in the catch below and marks the plugin list unknown instead of silently reporting
-          // "no plugins".
-          releaseConfig = JSON.parse(await fsp.readFile(releasercPath, 'utf8')) as ReleaseConfig;
+          const configText = await fsp.readFile(releasercPath, 'utf8');
+          releaseConfig = (yamlParseable ? yaml.load(configText) : JSON.parse(configText)) as ReleaseConfig;
           break;
         }
       }

@@ -193,6 +193,29 @@ test('marks non-JSON release plugin targets as unknown', async () => {
   }
 });
 
+test('reads npm publish targets from YAML release configuration', async () => {
+  const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
+  try {
+    const packageDirPath = path.join(tempDirPath, 'packages', 'root');
+    fs.mkdirSync(packageDirPath, { recursive: true });
+    fs.writeFileSync(path.join(tempDirPath, 'package.json'), '{}');
+    fs.writeFileSync(
+      path.join(packageDirPath, 'package.json'),
+      JSON.stringify({ devDependencies: { 'semantic-release': '1.0.0' } })
+    );
+    fs.writeFileSync(
+      path.join(packageDirPath, '.releaserc.yml'),
+      'plugins:\n  - - "@semantic-release/npm"\n    - pkgRoot: dist\n'
+    );
+
+    const config = await getPackageConfig(packageDirPath);
+
+    expect(config?.release.npmPublishDirPaths).toEqual([path.join(packageDirPath, 'dist')]);
+  } finally {
+    fs.rmSync(tempDirPath, { recursive: true, force: true });
+  }
+});
+
 test('recognizes every dynamic semantic-release config location', async () => {
   const tempDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'wbfy-package-config-'));
   try {
