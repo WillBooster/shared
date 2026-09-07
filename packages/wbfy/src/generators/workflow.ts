@@ -13,7 +13,7 @@ import { fsUtil } from '../utils/fsUtil.js';
 import type { PackageConfig } from '../packageConfig.js';
 import { combineMerge } from '../utils/mergeUtil.js';
 import { moveToBottom, sortKeys } from '../utils/objectUtil.js';
-import { repoPublishesOnlyPrivatePackages, repoResolvesPrivatePackages } from '../utils/privatePackages.js';
+import { repoPublishesPublicPackages, repoResolvesPrivatePackages } from '../utils/privatePackages.js';
 import { promisePool } from '../utils/promisePool.js';
 
 interface Workflow {
@@ -218,7 +218,10 @@ function parseOrgReusableWorkflowCall(
   return { workflowName: match[3]!, extension: match[4]!, ref: match[5]! };
 }
 
-export async function generateWorkflows(rootConfig: PackageConfig): Promise<void> {
+export async function generateWorkflows(
+  rootConfig: PackageConfig,
+  packageConfigs: PackageConfig[] = [rootConfig]
+): Promise<void> {
   return logger.functionIgnoringException('generateWorkflow', async () => {
     if (isReusableWorkflowsRepo(rootConfig.repository)) {
       // Don't touch reusable-workflows repo because it hosts upstream workflow definitions.
@@ -270,10 +273,14 @@ export async function generateWorkflows(rootConfig: PackageConfig): Promise<void
       // independent kind would race concurrent writes on the same path.
       fileNamesByKind.delete('sync-force');
     }
+    const publishesToPublicNpm =
+      packageConfigs.some((packageConfig) => packageConfig.release.npm) && repoPublishesPublicPackages(rootConfig);
 
     for (const [kind, fileName] of fileNamesByKind) {
       // 実際はKnownKind以外の値も代入されることに注意
-      await promisePool.run(() => writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName));
+      await promisePool.run(() =>
+        writeWorkflowYaml(rootConfig, workflowsPath, kind as KnownKind, fileName, publishesToPublicNpm)
+      );
     }
   });
 }
@@ -316,7 +323,8 @@ async function writeWorkflowYaml(
   config: PackageConfig,
   workflowsPath: string,
   kind: KnownKind,
-  fileName = `${kind}.yml`
+  fileName = `${kind}.yml`,
+  publishesToPublicNpm = false
 ): Promise<void> {
   const filePath = path.join(workflowsPath, fileName);
   const deployProductionFileName = fs.existsSync(path.join(workflowsPath, 'deploy-production.yml'))
@@ -374,6 +382,12 @@ async function writeWorkflowYaml(
     newSettings.jobs.release.with ??= {};
     newSettings.jobs.release.with.trigger_deploy_workflow = deployProductionFileName;
   }
+  if (kind === 'release' && newSettings.jobs.release && publishesToPublicNpm) {
+    // npm trusted publishing supports only GitHub-hosted GitHub Actions runners. Private
+    // repositories otherwise default to the self-hosted release runner in reusable-workflows.
+    newSettings.jobs.release.with ??= {};
+    newSettings.jobs.release.with.github_hosted_runner = true;
+  }
 
   let isReusableWorkflow = false;
   for (const job of Object.values(newSettings.jobs)) {
@@ -421,7 +435,7 @@ async function writeWorkflowYaml(
       // VERDACCIO_TOKEN instead and must not receive this permission. Merely consuming a private
       // dependency still requires that token for installation, but does not change where the
       // repository's own packages are published.
-      if (config.release.npm && !repoPublishesOnlyPrivatePackages(config)) {
+      if (publishesToPublicNpm) {
         newSettings.permissions ??= {};
         newSettings.permissions['id-token'] = 'write';
       } else {

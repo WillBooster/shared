@@ -37,16 +37,12 @@ export function repoResolvesPrivatePackages(
   });
 }
 
-/** Whether every manifest npm can publish in the repository targets the private registry. */
-export function repoPublishesOnlyPrivatePackages(
+/** Whether npm can publish any repository manifest to the public registry. */
+export function repoPublishesPublicPackages(
   config: Pick<PackageConfig, 'dirPath' | 'doesContainSubPackageJsons' | 'packageJson'>
 ): boolean {
-  const publishableManifests = getPackageManifests(config).filter(
-    (manifest) => manifest.private !== true && manifest.name
-  );
-  return (
-    publishableManifests.length > 0 &&
-    publishableManifests.every((manifest) => manifest.name?.startsWith(PRIVATE_SCOPE))
+  return getPackageManifests(config).some(
+    (manifest) => manifest.private !== true && manifest.name && !manifest.name.startsWith(PRIVATE_SCOPE)
   );
 }
 

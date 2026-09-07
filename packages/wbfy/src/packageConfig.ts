@@ -150,6 +150,7 @@ export async function getPackageConfig(
     let releaseBranches: string[] = [];
     let releasePlugins: string[] = [];
     let releasePluginsAreExplicit = false;
+    let releaseNpmPluginPublishes = false;
     let releaseNpmPluginPublishesRoot = false;
     // The FIRST existing search place wins (cosmiconfig short-circuits), so a JS/YAML/TS config
     // or an `extends` preset makes the effective plugin list statically uninspectable (mirrors
@@ -198,6 +199,7 @@ export async function getPackageConfig(
           if (typeof pluginName !== 'string') continue;
           releasePlugins.push(pluginName);
           if (pluginName !== '@semantic-release/npm') continue;
+          releaseNpmPluginPublishes ||= pluginOptions?.npmPublish !== false;
           // With pkgRoot the plugin publishes another manifest (it resolves pkgRoot against the
           // repo root, so `.` and `./` both mean the root itself), and npmPublish: false
           // disables publishing entirely; only the remaining shape proves the ROOT is published.
@@ -374,9 +376,7 @@ export async function getPackageConfig(
         github: releasePluginsAreExplicit
           ? releasePlugins.includes('@semantic-release/github') || releasePluginsAreUnknown
           : usesSemanticRelease,
-        npm: releasePluginsAreExplicit
-          ? releasePlugins.includes('@semantic-release/npm') || releasePluginsAreUnknown
-          : usesSemanticRelease,
+        npm: releasePluginsAreExplicit ? releaseNpmPluginPublishes || releasePluginsAreUnknown : usesSemanticRelease,
         npmPublishesRoot: releaseNpmPluginPublishesRoot,
       },
       miseTasks: await readMiseTasks(dirPath),

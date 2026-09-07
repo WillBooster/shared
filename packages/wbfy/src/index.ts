@@ -352,7 +352,7 @@ async function willboosterifyPaths(paths: string[], skipDeps: boolean, force: bo
       fixRailwayignore(rootConfig),
       generateRenovateJsonc(rootConfig),
       generateReleaserc(rootConfig),
-      ...(shouldRunWorkflows ? [generateWorkflows(rootConfig)] : []),
+      ...(shouldRunWorkflows ? [generateWorkflows(rootConfig, allPackageConfigs)] : []),
       ...(shouldRunSelfContainedWorkflows ? [generateSelfContainedWorkflows(rootConfig, allPackageConfigs)] : []),
       setupLabels(rootConfig),
       setupRepositoryRulesets(rootConfig),

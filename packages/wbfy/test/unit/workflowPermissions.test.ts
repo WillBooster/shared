@@ -19,6 +19,7 @@ const workflowSchema = z.object({
         permissions: z.record(z.string(), z.string()).optional(),
         'runs-on': z.string().optional(),
         steps: z.array(z.object({ run: z.string() })).optional(),
+        with: z.record(z.string(), z.unknown()).optional(),
       })
       .passthrough()
   ),
@@ -82,10 +83,41 @@ test('private source repositories publishing to npm keep trusted-publishing perm
     );
     await promisePool.promiseAll();
 
-    expect(readWorkflow(workflowsPath, 'release.yml').permissions).toEqual({
+    const releaseWorkflow = readWorkflow(workflowsPath, 'release.yml');
+    expect(releaseWorkflow.permissions).toEqual({
       'id-token': 'write',
       contents: 'write',
     });
+    expect(releaseWorkflow.jobs.release?.with?.github_hosted_runner).toBe(true);
+  });
+});
+
+test('workspace npm releases grant trusted-publishing permission to the caller', async () => {
+  await withTempWorkflowsRepo('wbfy-workflow-workspace-npm-oidc-', async (dirPath, workflowsPath) => {
+    const workspaceDirPath = path.join(dirPath, 'packages', 'public-package');
+    fs.mkdirSync(workspaceDirPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(dirPath, 'package.json'),
+      JSON.stringify({ name: 'private-root', private: true, workspaces: ['packages/*'] })
+    );
+    fs.writeFileSync(path.join(workspaceDirPath, 'package.json'), JSON.stringify({ name: 'public-package' }));
+    const rootConfig = createConfig({
+      dirPath,
+      isRoot: true,
+      doesContainSubPackageJsons: true,
+      depending: { ...createConfig().depending, semanticRelease: true },
+      packageJson: { name: 'private-root', private: true, workspaces: ['packages/*'] },
+      release: { branches: ['main'], github: true, npm: false, npmPublishesRoot: false },
+    });
+    const workspaceConfig = createConfig({
+      dirPath: workspaceDirPath,
+      release: { branches: ['main'], github: true, npm: true, npmPublishesRoot: true },
+    });
+
+    await generateWorkflows(rootConfig, [rootConfig, workspaceConfig]);
+    await promisePool.promiseAll();
+
+    expect(readWorkflow(workflowsPath, 'release.yml').permissions?.['id-token']).toBe('write');
   });
 });
 
