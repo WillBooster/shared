@@ -59,3 +59,9 @@ Options:
       --version           Show version number                          [boolean]
       --help              Show help                                    [boolean]
 ```
+
+`wb verify` and `wb verify --full` are intended for coding agents. Successful runs
+print the completed steps and their durations; failures print the full captured
+output without truncation. Output is saved as it arrives, before display filtering,
+to `.wb/verify.log` or `.wb/verify-full.log` in the verified project. Each command
+overwrites its previous log; `--dry-run` leaves logs untouched.
