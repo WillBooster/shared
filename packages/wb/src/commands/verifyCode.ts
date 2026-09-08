@@ -70,6 +70,7 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       ? undefined
       : startVerificationOutput(path.join(projects.self.dirPath, '.wb', argv.full ? 'verify-full.log' : 'verify.log'));
     const progress = { steps, reporter };
+    let exitCode = 0;
     try {
       await verifyCode(projects.self, argv, progress);
       if (argv.full) {
@@ -80,9 +81,10 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
       printVerifySummary(steps, Boolean(argv.dryRun));
     } catch (error) {
       if (!(error instanceof VerificationCommandError)) console.error(error);
-      process.exitCode = error instanceof VerificationCommandError ? error.exitCode : 1;
+      exitCode = error instanceof VerificationCommandError ? error.exitCode : 1;
+      process.exitCode = exitCode;
     } finally {
-      await reporter?.finish();
+      await reporter?.finish(exitCode);
     }
   },
 };

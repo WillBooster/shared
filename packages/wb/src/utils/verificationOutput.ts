@@ -14,7 +14,7 @@ export function isCapturingVerificationOutput(): boolean {
 export function startVerificationOutput(logPath: string): {
   startStep: (name?: string) => void;
   succeed: () => void;
-  finish: () => Promise<void>;
+  finish: (exitCode: number) => Promise<void>;
 } {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   const logFile = fs.openSync(logPath, 'w+');
@@ -51,7 +51,7 @@ export function startVerificationOutput(logPath: string): {
     stderr: forward(process.stderr),
   }) as typeof console;
 
-  const finish = async (): Promise<void> => {
+  const finish = async (exitCode: number): Promise<void> => {
     if (finished) return;
     finished = true;
     capturingVerificationOutput = false;
@@ -65,14 +65,14 @@ export function startVerificationOutput(logPath: string): {
     fs.appendFileSync(logPath, message);
     const output = succeeded
       ? message
-      : `Failed step: ${stepName ?? 'verification setup'} (exit code ${process.exitCode ?? 1})\n${tail}${message}`;
+      : `Failed step: ${stepName ?? 'verification setup'} (exit code ${exitCode})\n${tail}${message}`;
     await new Promise<void>((resolve, reject) => {
       stdoutWrite(output, (error) => (error ? reject(error) : resolve()));
     });
   };
   // An unexpected process.exit() still closes the saved log. Normal failures await the flush.
-  const onExit = (): void => {
-    void finish();
+  const onExit = (exitCode: number): void => {
+    void finish(exitCode);
   };
   process.once('exit', onExit);
   return {
