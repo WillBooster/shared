@@ -1,6 +1,7 @@
 import { spawn, spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 
 import { afterEach, beforeAll, expect, it } from 'vitest';
 
@@ -32,7 +33,7 @@ it.each([false, true])('keeps successful output concise and saves raw output (fu
   expect(log).toContain('RAW_GENERATOR_STDERR');
   expect(log).not.toContain('PREVIOUS_RUN');
   expect(log).toContain('Verified in');
-  expect(log).toMatch(/✔ typecheck/);
+  expect(stripVTControlCharacters(log)).toMatch(/✔ typecheck/);
   if (full) expect(log).toContain('RAW_TEST_STDOUT');
   else expect(log).not.toContain('RAW_TEST_STDOUT');
 });
