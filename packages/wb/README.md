@@ -43,6 +43,7 @@ Commands:
                                 loaded.
   wb tc                         Run type checking. Environment variables are not
                                 loaded.
+  wb verify                    Verify project code; add --full to run tests
   wb wait-on <resource>         Wait for an HTTP(S) URL or TCP port
 
 Options:
@@ -60,8 +61,13 @@ Options:
       --help              Show help                                    [boolean]
 ```
 
-`wb verify` and `wb verify --full` are intended for coding agents. Successful runs
-print the completed steps and their durations; failures print the full captured
-output without truncation. Output is saved as it arrives, before display filtering,
+## Verification
+
+`wb verify` and `wb verify --full` are intended for coding agents. The log path is printed at startup.
+Successful runs print the completed steps and their durations. Failures print the
+failed step name, exit code, and its last 100 lines (at most 16 KiB), followed by
+the full log path. Truncated output is marked; read the log for earlier details.
+
+Output is saved as it arrives, before display filtering,
 to `.wb/verify.log` or `.wb/verify-full.log` in the verified project. Each command
 overwrites its previous log; `--dry-run` leaves logs untouched.

@@ -40,6 +40,11 @@ interface VerifyStep {
   name: string;
 }
 
+interface VerificationProgress {
+  steps: VerifyStep[];
+  reporter?: ReturnType<typeof startVerificationOutput>;
+}
+
 class VerificationCommandError extends Error {
   readonly exitCode: number;
 
@@ -64,11 +69,12 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
     const reporter = argv.dryRun
       ? undefined
       : startVerificationOutput(path.join(projects.self.dirPath, '.wb', argv.full ? 'verify-full.log' : 'verify.log'));
+    const progress = { steps, reporter };
     try {
-      await verifyCode(projects.self, argv, steps);
+      await verifyCode(projects.self, argv, progress);
       if (argv.full) {
-        await checkSlidevDecks(projects.self, argv, steps);
-        await runStep(steps, { name: 'test' }, () => runProjectTest(projects.self, argv));
+        await checkSlidevDecks(projects.self, argv, progress);
+        await runStep(progress, { name: 'test' }, () => runProjectTest(projects.self, argv));
       }
       reporter?.succeed();
       printVerifySummary(steps, Boolean(argv.dryRun));
@@ -81,26 +87,26 @@ export const verifyCodeCommand: CommandModule<unknown, VerifyCodeCommandOptions>
   },
 };
 
-async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
+async function verifyCode(
+  project: Project,
+  argv: VerifyCodeCommandArgv,
+  progress: VerificationProgress
+): Promise<void> {
   const installCommand = `${project.packageManagerCommand} install`;
   // `allowFailure` so a failed install still reaches the normalization below: bun rewrites the
   // lockfile before running lifecycle scripts, so a script failure would otherwise leave Guard
   // URLs in the working tree. The failure is reported and exits exactly as runPackageCommand would.
-  const installExitCode = await runStep(steps, { detail: installCommand, name: 'install' }, () =>
-    runPackageCommand(installCommand, project, argv, { allowFailure: true })
-  );
-  // The repository may have no `gen-code` script (where the same normalization runs at postinstall),
-  // and `verify` is the command a developer runs before committing.
-  if (!argv.dryRun) {
-    normalizeBunLockfile(project.rootDirPath);
-  }
-  if (installExitCode !== 0) {
-    console.info(chalk.red(chalk.bold(`Failed (exit code ${installExitCode}):`), installCommand));
-    throw new VerificationCommandError(installExitCode);
-  }
+  await runStep(progress, { detail: installCommand, name: 'install' }, async () => {
+    const exitCode = await runPackageCommand(installCommand, project, argv, { allowFailure: true });
+    if (!argv.dryRun) normalizeBunLockfile(project.rootDirPath);
+    if (exitCode !== 0) {
+      console.info(chalk.red(chalk.bold(`Failed (exit code ${exitCode}):`), installCommand));
+      throw new VerificationCommandError(exitCode);
+    }
+  });
   if (project.packageJson.scripts?.['gen-code']) {
     const genCodeCommand = `${project.packageManagerCommand} gen-code`;
-    await runStep(steps, { detail: genCodeCommand, name: 'gen-code' }, () =>
+    await runStep(progress, { detail: genCodeCommand, name: 'gen-code' }, () =>
       runPackageCommand(genCodeCommand, project, argv)
     );
   }
@@ -111,7 +117,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   const stepDetails = await buildStepDetails(argv);
   // `lint --fix --format` prints nothing on success, so without the step summary a passing `verify`
   // looks like it never linted at all — and it silently rewrote the working tree while at it.
-  await runStep(steps, { detail: stepDetails.cleanup, name: 'cleanup' }, () =>
+  await runStep(progress, { detail: stepDetails.cleanup, name: 'cleanup' }, () =>
     runInProcessCommand('cleanup', () =>
       lint({
         ...argv,
@@ -127,7 +133,7 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
   // `dist`). Keep the typecheck command so `verify` stays equivalent to "the repository compiles".
   // The overlap with lint is deliberate: `--type-aware` also powers type-aware lint rules, and
   // dropping only `--type-check` from lint saves ~0.1s, far less than the coverage it would cost.
-  await runStep(steps, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
+  await runStep(progress, { detail: stepDetails.typecheck, name: 'typecheck' }, () =>
     runInProcessCommand('typecheck', () => typeCheck({ ...argv, _: ['typecheck'] } as unknown as TypeCheckCommandArgv))
   );
 }
@@ -141,7 +147,11 @@ async function verifyCode(project: Project, argv: VerifyCodeCommandArgv, steps: 
  * project's directory therefore always resolves the bin, and Slidev takes the deck's own directory
  * as its user root regardless of the working directory.
  */
-async function checkSlidevDecks(project: Project, argv: VerifyCodeCommandArgv, steps: VerifyStep[]): Promise<void> {
+async function checkSlidevDecks(
+  project: Project,
+  argv: VerifyCodeCommandArgv,
+  progress: VerificationProgress
+): Promise<void> {
   // The very glob wbfy's doesContainSlidevMd runs, so the decks audited here are exactly the ones
   // it installed the checker for: a deck under an ignored directory (a fixture deck, a built copy)
   // gets no checker and must not be audited either.
@@ -150,7 +160,7 @@ async function checkSlidevDecks(project: Project, argv: VerifyCodeCommandArgv, s
     .toSorted((a, b) => a.localeCompare(b));
   if (deckPaths.length === 0) return;
 
-  await runStep(steps, { detail: deckPaths.join(' '), name: 'slidev-check' }, async () => {
+  await runStep(progress, { detail: deckPaths.join(' '), name: 'slidev-check' }, async () => {
     for (const deckPath of deckPaths) {
       // Single quotes (with embedded quotes escaped) keep a deck name containing shell syntax from
       // being expanded by the shell runPackageCommand spawns.
@@ -238,13 +248,15 @@ function toDisplayCommand(command: string): string {
 
 /** Times completed steps for the final summary; failed steps propagate their error. */
 async function runStep<T>(
-  steps: VerifyStep[],
+  progress: VerificationProgress,
   step: Omit<VerifyStep, 'durationMs'>,
   run: () => Promise<T>
 ): Promise<T> {
+  progress.reporter?.startStep(step.name);
   const startedAt = Date.now();
   const result = await run();
-  steps.push({ ...step, durationMs: Date.now() - startedAt });
+  progress.steps.push({ ...step, durationMs: Date.now() - startedAt });
+  progress.reporter?.startStep();
   return result;
 }
 

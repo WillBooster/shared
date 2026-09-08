@@ -38,7 +38,7 @@ it.each([false, true])('keeps successful output concise and saves raw output (fu
   else expect(log).not.toContain('RAW_TEST_STDOUT');
 });
 
-it('retains complete test failure output and a failing exit code', async () => {
+it('shows the failed test step without earlier successful steps', async () => {
   const dir = await createFixture();
   await fs.writeFile(
     path.join(dir, 'test/unit/example.test.ts'),
@@ -57,23 +57,35 @@ test('failure', () => {
     expect(log).toContain(text);
   }
   expect(result.stdout).not.toContain('Verified in');
+  expect(result.stdout).toContain('Failed step: test (exit code 1)');
+  expect(result.stdout).not.toContain('RAW_GENERATOR');
+  expect(log).toContain('RAW_GENERATOR_STDOUT');
 });
 
-it('flushes large failure output before exiting and preserves the command exit code', async () => {
+it.each(['bytes', 'lines'])('bounds failure output by %s and preserves the full log and exit code', async (limit) => {
   const dir = await createFixture();
   await fs.writeFile(
     path.join(dir, 'generate.ts'),
-    `console.log('LARGE_MARKER'.repeat(20000));
+    `console.log(${JSON.stringify(limit === 'bytes' ? 'LARGE_MARKER'.repeat(20_000) : Array.from({ length: 200 }, (_, i) => `FAILURE_LINE_${i}`).join('\n'))});
 console.error('LAST_FAILURE_MARKER');
 process.exit(7);`
   );
   const result = runCli(dir, ['verify']);
   expect(result.status).toBe(7);
-  expect(result.stdout.match(/LARGE_MARKER/g)).toHaveLength(20_000);
+  expect(result.stdout).toContain('Failed step: gen-code (exit code 7)');
+  expect(result.stdout).toContain('Output truncated');
+  expect(Buffer.byteLength(result.stdout)).toBeLessThan(17 * 1024);
   expect(result.stdout).toContain('LAST_FAILURE_MARKER');
   expect(result.stdout).toContain('Verification failed. Full log:');
   const log = await fs.readFile(path.join(dir, '.wb/verify.log'), 'utf8');
-  expect(log).toBe(result.stdout);
+  if (limit === 'bytes') {
+    expect(log.match(/LARGE_MARKER/g)).toHaveLength(20_000);
+  } else {
+    expect(log).toContain('FAILURE_LINE_0\n');
+    expect(result.stdout).not.toContain('FAILURE_LINE_0\n');
+    expect(result.stdout).toContain('FAILURE_LINE_199');
+    expect(result.stdout.match(/FAILURE_LINE_/g)!.length).toBeLessThanOrEqual(100);
+  }
 });
 
 it('saves raw output before completion, including when verification is killed', async () => {
@@ -85,7 +97,11 @@ console.error('RAW_ERROR_BEFORE_FINISH');
 while (!(await Bun.file('release').exists())) await Bun.sleep(10);`
   );
   const logPath = path.join(dir, '.wb/verify.log');
-  const child = spawn('bun', [cliPath, 'verify'], { cwd: dir, stdio: 'ignore', detached: true });
+  const child = spawn('bun', [cliPath, 'verify'], { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'], detached: true });
+  let output = '';
+  child.stdout!.on('data', (chunk) => {
+    output += chunk.toString();
+  });
   const exited = new Promise<void>((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', () => resolve());
@@ -94,6 +110,8 @@ while (!(await Bun.file('release').exists())) await Bun.sleep(10);`
     await expect
       .poll(() => fs.readFile(logPath, 'utf8').catch(() => ''), { timeout: 10_000 })
       .toContain('RAW_ERROR_BEFORE_FINISH');
+    await expect.poll(() => output).toContain(`Full log: ${logPath}`);
+    expect(output).not.toContain('RAW_BEFORE_FINISH');
     process.kill(-child.pid!, 'SIGKILL');
     await exited;
     const log = await fs.readFile(logPath, 'utf8');
